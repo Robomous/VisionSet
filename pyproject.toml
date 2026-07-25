@@ -1,0 +1,121 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "visionset"
+dynamic = ["version"]
+description = "Open-source, local-first tool for creating, curating, and versioning computer-vision training datasets — with a Physical AI roadmap."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Robomous Inc." }]
+keywords = ["computer-vision", "datasets", "annotation", "labeling", "physical-ai"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "pydantic>=2.7",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "typer>=0.12",
+    "mcp>=1.2",
+    "sqlalchemy>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Robomous/VisionSet"
+Issues = "https://github.com/Robomous/VisionSet/issues"
+
+[project.scripts]
+visionset = "visionset.cli.main:app"
+
+# Importer/exporter plugin discovery. Third-party distributions (e.g. a
+# `visionset-format-x` package) register their plugins in this same group.
+[project.entry-points."visionset.formats"]
+dummy = "visionset.formats._dummy:DummyExporter"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "httpx>=0.27",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "import-linter>=2.0",
+]
+
+# --- Version: single source of truth is the repo-root VERSION file ---
+[tool.hatch.version]
+source = "regex"
+path = "VERSION"
+pattern = "^(?P<version>[^\\s]+)"
+
+# The compiled UI bundle in _static/ is git-ignored but must ship in the wheel:
+# `artifacts` overrides gitignore-based exclusion during builds.
+[tool.hatch.build]
+artifacts = ["src/visionset/_static/**"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/visionset"]
+
+# --- Ruff ---
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+# --- Mypy: strict on the kernel, normal elsewhere ---
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = "visionset.kernel.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+warn_return_any = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+strict_equality = true
+
+# --- Pytest ---
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+# --- Import Linter: the kernel boundary is machine-enforced ---
+[tool.importlinter]
+root_package = "visionset"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Kernel purity: no delivery mechanisms or frameworks inside the kernel"
+type = "forbidden"
+source_modules = ["visionset.kernel"]
+forbidden_modules = [
+    "visionset.server",
+    "visionset.cli",
+    "visionset.mcp",
+    "visionset.formats",
+    "fastapi",
+    "typer",
+    "mcp",
+    "uvicorn",
+]
+
+[[tool.importlinter.contracts]]
+name = "Delivery clients are siblings: server, cli and mcp never import each other"
+type = "independence"
+modules = ["visionset.server", "visionset.cli", "visionset.mcp"]
