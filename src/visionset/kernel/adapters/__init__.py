@@ -1,0 +1,6 @@
+"""Default adapters for the kernel ports (filesystem + SQLite, local-first)."""
+
+from visionset.kernel.adapters.filesystem_blob_store import FilesystemBlobStore
+from visionset.kernel.adapters.sqlite_metadata_store import SqliteMetadataStore
+
+__all__ = ["FilesystemBlobStore", "SqliteMetadataStore"]
