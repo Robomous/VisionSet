@@ -1,0 +1,57 @@
+# Development environment only. The release artifact is the pip package.
+#
+#   docker compose -f docker/compose.yaml up                # api + app
+#   docker compose -f docker/compose.yaml --profile postgres up
+#   docker compose -f docker/compose.yaml --profile minio up
+
+services:
+  api:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace
+      - api-venv:/workspace/.venv # keep the container venv off the host checkout
+    environment:
+      VISIONSET_DEV_TOKEN: dev-token
+    command: uv run uvicorn visionset.server.main:app --reload --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+
+  app:
+    image: node:24-bookworm-slim
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @visionset/app dev --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16
+    environment:
+      POSTGRES_DB: visionset
+      POSTGRES_USER: visionset
+      POSTGRES_PASSWORD: visionset
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  minio:
+    profiles: ["minio"]
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: visionset
+      MINIO_ROOT_PASSWORD: visionset
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+volumes:
+  api-venv:
+  postgres-data:
+  minio-data:
