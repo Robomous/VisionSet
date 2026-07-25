@@ -1,0 +1,18 @@
+{
+  "name": "visionset-monorepo",
+  "private": true,
+  "description": "Root workspace for Robomous VisionSet. Version source of truth is the VERSION file.",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "version:sync": "node scripts/sync_versions.mjs",
+    "bundle:static": "node scripts/bundle_static.mjs"
+  },
+  "packageManager": "pnpm@10.30.2",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
