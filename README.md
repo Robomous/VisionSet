@@ -1,3 +1,7 @@
+<img src="https://cdn.robomous.ai/public-images/robomous-banner.svg" alt="Robomous.ai" width=300 />
+
+-----
+
 # Robomous VisionSet
 
 **VisionSet** is an open-source, local-first, SDK-first tool by [Robomous](https://robomous.ai)
