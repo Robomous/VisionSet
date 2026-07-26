@@ -8,7 +8,7 @@ written against this file cannot accidentally depend on SQLite.
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -28,6 +28,13 @@ from visionset.kernel.domain import (
     Workspace,
 )
 
+#: ``format_version`` of a store whose schema has not been created yet.
+#:
+#: Part of the port, not of one adapter: telling "never initialized" apart from
+#: "initialized at generation N" is how a caller decides whether a file is a
+#: workspace at all, and it must not have to import an adapter to ask.
+UNINITIALIZED: Final = 0
+
 
 class Repository[T](Protocol):
     """Storage for one entity type, addressed by UUID.
@@ -40,6 +47,10 @@ class Repository[T](Protocol):
     ``add`` and ``update`` are deliberately separate rather than one upsert: a
     service that inserts a duplicate, or updates something that was deleted, has
     a bug and should hear about it instead of silently overwriting.
+
+    Any write may raise ``ConstraintViolated`` — a missing parent, or a
+    uniqueness rule the store enforces. That ends the transaction, so it cannot
+    be caught and recovered from inside a unit of work.
     """
 
     def add(self, entity: T) -> T:
@@ -132,13 +143,19 @@ class MetadataStore(Protocol):
     """
 
     @property
-    def format_version(self) -> int: ...
+    def format_version(self) -> int:
+        """The stored schema generation, or ``UNINITIALIZED`` if there is none.
+
+        Raises ``WorkspaceCorrupt`` if the backing store cannot be read at all.
+        """
+        ...
 
     def initialize(self) -> None:
         """Create or migrate the storage schema. Idempotent.
 
         Raises ``WorkspaceFormatTooNew`` if the stored ``format_version`` is
-        ahead of this build: migrations only ever run forward.
+        ahead of this build: migrations only ever run forward. Raises
+        ``WorkspaceCorrupt`` if the backing store is not readable.
         """
         ...
 

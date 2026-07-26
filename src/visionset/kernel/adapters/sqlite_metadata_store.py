@@ -4,6 +4,12 @@ One workspace is one SQLite file. The store owns the engine, the schema
 generation (``format_version``), and a repository per entity type; the
 row/model translation lives in ``_mappers`` so that nothing SQLAlchemy-shaped
 escapes this package.
+
+That last part includes exceptions. SQLAlchemy's ``IntegrityError`` and
+``DatabaseError`` are translated here into ``ConstraintViolated`` and
+``WorkspaceCorrupt``, because a service that had to catch them would need a
+SQLAlchemy import to do it — which is exactly the leak this package exists to
+prevent.
 """
 
 from __future__ import annotations
@@ -25,16 +31,53 @@ from sqlalchemy import (
     select,
     text,
 )
+from sqlalchemy.engine import URL
+from sqlalchemy.exc import DatabaseError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from visionset.kernel.adapters import _mappers as m
 from visionset.kernel.adapters._tables import META_TABLE, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
-from visionset.kernel.errors import EntityAlreadyExists, EntityNotFound, WorkspaceFormatTooNew
-from visionset.kernel.ports.metadata_store import UnitOfWork
+from visionset.kernel.errors import (
+    ConstraintViolated,
+    EntityAlreadyExists,
+    EntityNotFound,
+    WorkspaceCorrupt,
+    WorkspaceFormatTooNew,
+)
+from visionset.kernel.ports.metadata_store import UNINITIALIZED, UnitOfWork
 
-#: ``format_version`` reported by a database whose schema has not been created yet.
-UNINITIALIZED = 0
+
+def _constraint_violated(exc: IntegrityError) -> ConstraintViolated:
+    """Translate SQLite's constraint complaint into a domain error.
+
+    A violation ends the transaction — SQLAlchemy refuses further work on it — so
+    a service cannot catch this and carry on. That is why service-level rules
+    check before writing instead of relying on the write to fail: the constraint
+    is the guarantee, the pre-check is the error message.
+    """
+    return ConstraintViolated(str(exc.orig))
+
+
+@contextmanager
+def _readable(db_path: Path) -> Iterator[None]:
+    """Report an unreadable database as ``WorkspaceCorrupt``, not as SQLAlchemy.
+
+    ``OperationalError`` is re-raised untranslated on purpose: "database is
+    locked" and "unable to open database file" are environmental, and calling
+    them corruption would be a lie. Surfacing them as a domain error needs a
+    port vocabulary for transient failure, which nothing needs yet.
+    """
+    try:
+        yield
+    except OperationalError:
+        raise
+    except IntegrityError as exc:
+        raise _constraint_violated(exc) from exc
+    except DatabaseError as exc:
+        raise WorkspaceCorrupt(
+            f"{db_path} is not a readable VisionSet metadata store: {exc.orig}"
+        ) from exc
 
 
 def _enable_foreign_keys(dbapi_connection: Any, _: Any) -> None:
@@ -79,6 +122,12 @@ class SqlRepository[T: m.Entity]:
         if self._mapping.sync_children is not None:
             self._mapping.sync_children(self._session, entity)
 
+    def _flush(self) -> None:
+        try:
+            self._session.flush()
+        except IntegrityError as exc:
+            raise _constraint_violated(exc) from exc
+
     def add(self, entity: T) -> T:
         if self._row(entity.id) is not None:
             raise EntityAlreadyExists(
@@ -86,7 +135,7 @@ class SqlRepository[T: m.Entity]:
             )
         self._session.add(self._mapping.to_row(entity))
         self._sync_children(entity)
-        self._session.flush()
+        self._flush()
         return entity
 
     def update(self, entity: T) -> T:
@@ -94,7 +143,7 @@ class SqlRepository[T: m.Entity]:
             raise EntityNotFound(f"no {self._mapping.row.__tablename__} with id {entity.id}")
         self._session.merge(self._mapping.to_row(entity))
         self._sync_children(entity)
-        self._session.flush()
+        self._flush()
         return entity
 
     def get(self, entity_id: UUID) -> T | None:
@@ -118,7 +167,7 @@ class SqlRepository[T: m.Entity]:
         if row is None:
             return False
         self._session.delete(row)
-        self._session.flush()
+        self._flush()
         return True
 
 
@@ -145,7 +194,11 @@ class SqlUnitOfWork:
 class SqliteMetadataStore:
     def __init__(self, db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._engine: Engine = create_engine(f"sqlite:///{db_path}")
+        self._db_path = db_path
+        #: Built through ``URL.create`` rather than an f-string: a path containing
+        #: ``#`` or ``?`` parses as a URL fragment or query and the engine would
+        #: silently target a *different* file (a truncated sibling of this one).
+        self._engine: Engine = create_engine(URL.create("sqlite", database=str(db_path)))
         event.listen(self._engine, "connect", _enable_foreign_keys)
 
     @property
@@ -155,7 +208,7 @@ class SqliteMetadataStore:
     @property
     def format_version(self) -> int:
         """The stamped schema generation, or ``UNINITIALIZED`` before creation."""
-        with self._engine.connect() as connection:
+        with _readable(self._db_path), self._engine.connect() as connection:
             stored = _stored_format_version(connection)
         return UNINITIALIZED if stored is None else stored
 
@@ -166,7 +219,7 @@ class SqliteMetadataStore:
         an existing one gets only what it is missing. A file stamped ahead of
         this build raises rather than being opened on a guess.
         """
-        with self._engine.begin() as connection:
+        with _readable(self._db_path), self._engine.begin() as connection:
             stored = _stored_format_version(connection)
             if stored is not None and stored > FORMAT_VERSION:
                 raise WorkspaceFormatTooNew(
@@ -183,8 +236,14 @@ class SqliteMetadataStore:
     @contextmanager
     def unit_of_work(self) -> Iterator[UnitOfWork]:
         """One transaction: commits on clean exit, rolls back on any exception."""
-        with Session(self._engine) as session, session.begin():
-            yield SqlUnitOfWork(session)
+        with Session(self._engine) as session:
+            try:
+                with session.begin():
+                    yield SqlUnitOfWork(session)
+            except IntegrityError as exc:
+                # A constraint can also fire at commit time, i.e. after the last
+                # repository call has already returned.
+                raise _constraint_violated(exc) from exc
 
     def close(self) -> None:
         self._engine.dispose()
