@@ -2,7 +2,7 @@
   "info": {
     "description": "REST surface of the VisionSet SDK. The committed openapi.json is the contract.",
     "title": "Robomous VisionSet API",
-    "version": "0.1.0.dev0"
+    "version": "0.0.1.dev0"
   },
   "openapi": "3.1.0",
   "paths": {
