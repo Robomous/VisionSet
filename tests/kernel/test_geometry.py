@@ -4,6 +4,7 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from visionset.kernel.domain import (
+    IMPLEMENTED_GEOMETRIES,
     Annotation,
     BboxGeometry,
     ClassificationGeometry,
@@ -125,3 +126,12 @@ def test_geometry_type_is_comparable_to_a_label_class_without_translation() -> N
 
     tagged = _annotation(ClassificationGeometry())
     assert tagged.geometry.type != label_class.geometry
+
+
+def test_implemented_geometries_names_exactly_the_variants_of_the_union() -> None:
+    # Derived from the union rather than listed beside it, so appending a variant
+    # widens it with no second edit. SchemaService refuses a class outside this set.
+    from_the_union = {g.type for g in VARIANTS}
+    expected = {GeometryType.BBOX, GeometryType.POLYGON, GeometryType.CLASSIFICATION_TAG}
+    assert IMPLEMENTED_GEOMETRIES == from_the_union == expected
+    assert set(GeometryType) > IMPLEMENTED_GEOMETRIES  # the rest is roadmap
