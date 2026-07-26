@@ -117,7 +117,7 @@ def _schema_to_domain(_: Session, row: Any) -> AnnotationSchema:
         id=row.id,
         project_id=row.project_id,
         version=row.version,
-        classes=[LabelClass.model_validate(c) for c in row.classes],
+        classes=tuple(LabelClass.model_validate(c) for c in row.classes),
     )
 
 
