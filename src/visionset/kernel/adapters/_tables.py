@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy import Uuid as SaUuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON, Float
@@ -63,6 +63,23 @@ class ProjectRow(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+#: Project names are unique per workspace, case-insensitively.
+#:
+#: Declared as an ``Index`` rather than a ``UniqueConstraint`` because only an
+#: index can carry a collation. ``COLLATE NOCASE`` folds ASCII only, and that is
+#: deliberate: it catches the collision users actually make ("Road Signs" vs
+#: "road signs") at the storage layer, while
+#: ``WorkspaceService.require_project_name`` handles the rest — Unicode case
+#: folding, NFC/NFD, surrounding whitespace — where the full normalized string
+#: is in hand. The service reports the error; this index is the guarantee.
+PROJECT_NAME_UNIQUE = Index(
+    "uq_project_workspace_name",
+    ProjectRow.workspace_id,
+    ProjectRow.name.collate("NOCASE"),
+    unique=True,
+)
 
 
 class AnnotationSchemaRow(Base):

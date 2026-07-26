@@ -34,9 +34,26 @@ with store.unit_of_work() as uow:
 - `delete` returns `False` rather than raising when there was nothing to remove.
 - `list(parent_id)` on `workspaces` — the one root entity — raises `ValueError`.
 - Ordering is insertion order (SQLite's implicit `rowid`).
+- Any write may raise `ConstraintViolated` — a missing parent, or a uniqueness rule the
+  store enforces. **A violation ends the transaction it happened in**, so it cannot be
+  caught and recovered from inside a unit of work. A service that needs a friendly error
+  has to check before writing, not translate afterwards.
 
-Uniqueness beyond the primary key (project names, schema versions) is a **service**
-concern. The store persists shapes; it does not know the rules.
+## Uniqueness
+
+The *rule* — which name, what counts as equal, which error the caller sees — is a service
+concern. The store does not know that project names are compared case-insensitively, and it
+never raises `ProjectNameTaken`.
+
+But a rule with no backstop is a wish, so the store carries the constraint too:
+`uq_project_workspace_name` on `project (workspace_id, name COLLATE NOCASE)`, alongside
+`uq_schema_project_version` and `uq_member_dataset_asset`. The invariant then survives a
+service bug, a forgotten code path, and a second process.
+
+The two layers reach different distances on purpose. `COLLATE NOCASE` folds ASCII only;
+`WorkspaceService` compares with Unicode `casefold` over an NFC-normalized, stripped string.
+The service is stricter, never looser, so nothing slips past it into a state the index would
+have allowed. See [workspaces.md](workspaces.md) for the full rule.
 
 ## Unit of work
 
@@ -85,11 +102,26 @@ missing:
 | equal to `FORMAT_VERSION` | nothing — `initialize()` is idempotent |
 | lower | the pending migrations run; the file is restamped |
 | higher | `WorkspaceFormatTooNew` — migrations only run forward |
+| not a readable database | `WorkspaceCorrupt` |
 
-**Adding migration 002:** append a `Migration` with the next version and an `upgrade`
-taking a live `Connection`. Never edit an existing migration — a workspace already
-stamped at that version will never run it again. `FORMAT_VERSION` is derived from the
-list, so it cannot drift.
+`OperationalError` — "database is locked", "unable to open database file" — is deliberately
+*not* translated. Those are environmental, not structural, and calling them corruption would
+be a lie. It is a known gap: a SQLAlchemy exception can still escape on a locked file.
 
-`format_version` here is the *database* generation. Validating the on-disk workspace
-layout around it (directories, blob-store root) belongs to `WorkspaceService`.
+**Adding a migration:** append a `Migration` with the next version and an `upgrade` taking a
+live `Connection`. Never edit an existing migration — a workspace already stamped at that
+version will never run it again. `FORMAT_VERSION` is derived from the list, so it cannot
+drift.
+
+**Every migration after the first must be idempotent.** Migration 001 is `create_all` of
+*today's* metadata, not a frozen snapshot: adding a table, column or index to `_tables`
+retroactively changes what a fresh database gets. So a later migration exists only for
+already-stamped databases, and yet it still runs against the fresh one that already has its
+change. Migration 002 is the worked example — it creates the project-name index with
+`checkfirst=True`, and it shares the one `Index` object with `_tables` rather than repeating
+the DDL, so the fresh path and the upgrade path cannot drift apart.
+`test_a_fresh_database_and_a_migrated_one_have_the_same_schema` proves they agree.
+
+`format_version` here is the *database* generation. Validating the on-disk workspace layout
+around it — directories, the blob-store root, what makes a directory a workspace at all —
+belongs to `WorkspaceService`; see [workspaces.md](workspaces.md).

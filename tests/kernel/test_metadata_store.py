@@ -5,10 +5,16 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 
-from visionset.kernel import EntityAlreadyExists, EntityNotFound, WorkspaceFormatTooNew
+from visionset.kernel import (
+    ConstraintViolated,
+    EntityAlreadyExists,
+    EntityNotFound,
+    WorkspaceCorrupt,
+    WorkspaceFormatTooNew,
+)
 from visionset.kernel.adapters import SqliteMetadataStore
+from visionset.kernel.adapters.migrations import FORMAT_VERSION
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
@@ -33,7 +39,7 @@ from visionset.kernel.domain import (
     TaskGroup,
     Workspace,
 )
-from visionset.kernel.ports import MetadataStore, UnitOfWork
+from visionset.kernel.ports import UNINITIALIZED, MetadataStore, UnitOfWork
 
 
 def _store(tmp_path: Path, name: str = "visionset.db") -> SqliteMetadataStore:
@@ -148,9 +154,9 @@ def test_unit_of_work_satisfies_the_port(tmp_path: Path) -> None:
 
 def test_format_version_is_zero_until_initialized(tmp_path: Path) -> None:
     store = SqliteMetadataStore(tmp_path / "visionset.db")
-    assert store.format_version == 0
+    assert store.format_version == UNINITIALIZED
     store.initialize()
-    assert store.format_version == 1
+    assert store.format_version == FORMAT_VERSION
     store.close()
 
 
@@ -158,7 +164,7 @@ def test_a_reopened_workspace_reports_the_same_format_version(tmp_path: Path) ->
     _store(tmp_path).close()
     reopened = SqliteMetadataStore(tmp_path / "visionset.db")
     reopened.initialize()
-    assert reopened.format_version == 1
+    assert reopened.format_version == FORMAT_VERSION
     reopened.close()
 
 
@@ -388,8 +394,59 @@ def test_list_rejects_a_parent_id_for_a_root_entity(tmp_path: Path) -> None:
 
 def test_foreign_keys_are_enforced(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    with pytest.raises(IntegrityError, match="FOREIGN KEY"), store.unit_of_work() as uow:
+    with pytest.raises(ConstraintViolated, match="FOREIGN KEY"), store.unit_of_work() as uow:
         uow.projects.add(Project(workspace_id=uuid4(), name="orphan"))
+    store.close()
+
+
+def test_a_constraint_violation_is_not_a_sqlalchemy_exception(tmp_path: Path) -> None:
+    """The kernel translates its adapter's exceptions; SQLAlchemy stays inside."""
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        workspace_id = uow.workspaces.add(Workspace(name="w")).id
+    try:
+        with store.unit_of_work() as uow:
+            uow.projects.add(Project(workspace_id=workspace_id, name="signs"))
+            uow.projects.add(Project(workspace_id=workspace_id, name="Signs"))
+    except ConstraintViolated as exc:
+        assert "sqlalchemy" not in type(exc).__module__
+        assert "UNIQUE" in str(exc)
+    else:
+        pytest.fail("a duplicate project name should have been refused")
+    store.close()
+
+
+def test_duplicate_project_names_in_one_workspace_are_refused(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        workspace_id = uow.workspaces.add(Workspace(name="w")).id
+    with pytest.raises(ConstraintViolated, match="UNIQUE"), store.unit_of_work() as uow:
+        uow.projects.add(Project(workspace_id=workspace_id, name="road signs"))
+        uow.projects.add(Project(workspace_id=workspace_id, name="Road Signs"))
+    store.close()
+
+
+def test_the_same_project_name_is_allowed_in_another_workspace(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        first = uow.workspaces.add(Workspace(name="one")).id
+        second = uow.workspaces.add(Workspace(name="two")).id
+        uow.projects.add(Project(workspace_id=first, name="signs"))
+        uow.projects.add(Project(workspace_id=second, name="signs"))
+        assert len(uow.projects.list(first)) == 1
+        assert len(uow.projects.list(second)) == 1
+    store.close()
+
+
+def test_a_file_that_is_not_a_database_is_reported_as_corrupt(tmp_path: Path) -> None:
+    db_path = tmp_path / "visionset.db"
+    db_path.write_bytes(b"this is not a SQLite file, it is a poem about one")
+
+    store = SqliteMetadataStore(db_path)
+    with pytest.raises(WorkspaceCorrupt, match="not a readable"):
+        _ = store.format_version
+    with pytest.raises(WorkspaceCorrupt, match="not a readable"):
+        store.initialize()
     store.close()
 
 
