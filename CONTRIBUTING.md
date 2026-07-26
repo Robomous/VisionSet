@@ -18,8 +18,9 @@ artifact is always the pip package).
 | Import contracts | `uv run lint-imports` |
 | Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` |
 | Lint/format | `uv run ruff check .` / `uv run ruff format .` |
-| Frontend build + tests | `pnpm -r build && pnpm -r test` |
+| Frontend build + tests | `pnpm -r build && pnpm test` |
 | Frontend lint | `pnpm -r lint` |
+| Version sync | `pnpm version:check` |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
 
 ## The two machine-enforced boundaries
@@ -35,13 +36,43 @@ If a change fights either boundary, the change is wrong — not the boundary.
 
 ## Versioning
 
-The repo-root `VERSION` file is the single source of truth (`0.1.0.dev0` style).
+The repo-root `VERSION` file is the single source of truth, in PEP 440 form. Everything
+else derives from it, in lockstep across the monorepo — the Python distribution and every
+`frontend/*` package always carry the same version.
 
-- **Python**: `pyproject.toml` reads it dynamically via hatchling's regex version source.
-- **npm**: `pnpm version:sync` (root script) rewrites the `version` field of every
-  `frontend/*` package.json, converting to npm semver (`0.1.0.dev0` → `0.1.0-dev.0`).
+- **Python**: `pyproject.toml` reads `VERSION` dynamically via hatchling's regex version
+  source; `visionset --version` prints it.
+- **npm**: `pnpm version:sync` rewrites the `version` field of every `frontend/*`
+  package.json, translating PEP 440 to npm semver. `pnpm version:check` is the CI drift
+  gate — it fails if a package.json has fallen out of step with `VERSION`.
 
-Never hand-edit a version anywhere else.
+| PEP 440 (`VERSION`, PyPI) | npm semver | Used for |
+| --- | --- | --- |
+| `0.0.1.dev0` | `0.0.1-dev.0` | Ongoing development on `main` |
+| `0.0.1a1` | `0.0.1-alpha.1` | Reserved; the alpha milestones are tags, not releases |
+| `0.0.1b1` | `0.0.1-beta.1` | The first published beta |
+| `0.0.1` | `0.0.1` | First stable release |
+
+Never hand-edit a version anywhere else — change `VERSION`, then run `pnpm version:sync`.
+
+### Tags and publishing
+
+The road to the beta is cut into six internal milestones. Each one ends with a **git tag
+only**:
+
+```
+v0.0.1-alpha.1 … v0.0.1-alpha.5     git tags, never published to PyPI or npm
+```
+
+These mark milestone completion so the tree can be checked out and bisected. `VERSION`
+stays at `0.0.1.dev0` throughout — the alpha tags do not bump it, because nothing is
+being distributed.
+
+The first artifact anyone installs is the beta: bump `VERSION` to `0.0.1b1`, run
+`pnpm version:sync`, tag `v0.0.1-beta.1`, and publish the wheel to PyPI (`0.0.1b1`) and,
+if the packages are published at all, the frontend packages to npm (`0.0.1-beta.1`).
+`0.0.1-beta` is *lower* than `0.1.0` in both version orderings, which is why `VERSION`
+sits at `0.0.1.dev0` rather than the `0.1.0.dev0` the repo was bootstrapped with.
 
 ## Commits
 
