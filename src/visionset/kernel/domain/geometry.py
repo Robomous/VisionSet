@@ -17,7 +17,7 @@ rejected until its model exists.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -80,4 +80,16 @@ Coordinates are ALWAYS floats in the asset's native reference frame — pixels f
 images — and are NEVER normalized. Normalization to a [0, 1] range, or to any
 other convention a format demands, is the exporter's concern and happens at the
 boundary, never in the domain.
+"""
+
+
+IMPLEMENTED_GEOMETRIES: Final[frozenset[GeometryType]] = frozenset(
+    variant.model_fields["type"].default for variant in get_args(get_args(Geometry)[0])
+)
+"""The subset of ``GeometryType`` that an Annotation can actually carry.
+
+Read off the union rather than listed beside it, so appending a variant widens
+this set with no second edit and no chance of the two disagreeing. It is what
+``SchemaService`` checks a proposed ``LabelClass`` against: declaring a class
+whose geometry has no model would create a class nobody could ever annotate.
 """

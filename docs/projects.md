@@ -5,6 +5,9 @@ annotations and the dataset all hang off exactly one. `ProjectService` owns its 
 and it is the **only** way to create one — `WorkspaceService` holds the name rules but has
 no `create_project`, because a second door would be a door to a project without a dataset.
 
+A new project has no annotation schema. That one is `SchemaService`'s to create, for the same
+reason — see [schemas.md](schemas.md).
+
 ```python
 from visionset.kernel.services import ProjectService, WorkspaceService
 

@@ -109,4 +109,72 @@ class ConfirmationRequired(VisionSetError):
     terminal and no user: every surface — CLI, REST, MCP — asks in its own
     idiom and then passes the answer down. Refusing by default means a caller
     that forgets to ask cannot delete anything by accident.
+
+    This guards the destruction of *data*. Narrowing a *contract* — a schema
+    version that removes a class — is guarded by ``allow_destructive`` and
+    ``DestructiveSchemaChange`` instead, because the two have different
+    remedies and should not be caught by one ``except``.
+    """
+
+
+class InvalidSchema(VisionSetError):
+    """A proposed schema version is not a valid schema.
+
+    Rules that span the whole version: two classes sharing a name, a geometry
+    with no implementation. Per-class and per-attribute validity is pydantic's,
+    enforced in ``domain/schema.py`` — a malformed ``LabelClass`` cannot be
+    constructed in the first place, so it never reaches a service to be
+    reported here.
+    """
+
+
+class UnsupportedGeometry(InvalidSchema):
+    """A class was bound to a ``GeometryType`` that has no implementation.
+
+    ``GeometryType`` names the whole roadmap; ``IMPLEMENTED_GEOMETRIES`` names
+    the part of it an Annotation can actually carry. Declaring a class outside
+    that set would create a class nobody could ever label, so it is refused at
+    the schema rather than discovered at the first annotation.
+    """
+
+
+class SchemaNotFound(VisionSetError):
+    """The project has no schema at all, or not the version that was asked for.
+
+    A project is created without a schema — ``SchemaService.create_version``
+    makes version 1 — so this is the ordinary answer for a project nobody has
+    given an ontology to yet, not a sign of damage.
+    """
+
+
+class DestructiveSchemaChange(VisionSetError):
+    """A proposed version narrows the contract and was not allowed to.
+
+    Destructive means an annotation that was valid under the previous version
+    would not be valid under this one: a class removed, a geometry changed, a
+    required attribute added, a ``select`` narrowed. Pass
+    ``allow_destructive=True`` to proceed — the flag exists so that narrowing
+    is always a decision somebody made, never a side effect of an edit.
+    """
+
+
+class SchemaChangeWouldOrphan(VisionSetError):
+    """A destructive change was refused because annotations already depend on it.
+
+    Deliberately NOT a subclass of ``DestructiveSchemaChange``: there is no flag
+    that overrides this one, and a caller that caught the base class and retried
+    with ``allow_destructive=True`` would loop. Migrating existing annotations
+    onto a new version is out of scope for M1, and until it exists the kernel
+    refuses rather than leaving labels pointing at a class the contract no
+    longer describes.
+    """
+
+
+class SchemaVersionConflict(VisionSetError):
+    """Two writers raced for the same next version number, and this one lost.
+
+    Version ``N + 1`` is computed from the versions already stored, so two
+    concurrent ``create_version`` calls can agree on it; the unique index on
+    ``(project_id, version)`` refuses the second. The remedy is to retry, which
+    re-reads the maximum and lands on ``N + 2``.
     """
