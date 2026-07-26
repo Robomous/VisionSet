@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
+from visionset.kernel.domain.geometry import Geometry
+
 Provenance = Literal["human", "model", "import"]
 
 
@@ -24,7 +26,7 @@ class Annotation(BaseModel):
     asset_id: UUID
     label_class: str
     schema_version: int = Field(ge=1)
-    geometry: dict[str, object]  # refined into a discriminated union in a later session
+    geometry: Geometry
     provenance: Provenance
     model_ref: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
