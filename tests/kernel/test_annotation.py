@@ -11,7 +11,7 @@ def _make(**overrides: object) -> Annotation:
         "asset_id": uuid4(),
         "label_class": "car",
         "schema_version": 1,
-        "geometry": {"type": "bbox", "x": 1.0, "y": 2.0, "w": 10.0, "h": 20.0},
+        "geometry": {"type": "bbox", "x": 1.0, "y": 2.0, "width": 10.0, "height": 20.0},
         "provenance": "human",
     }
     data.update(overrides)
