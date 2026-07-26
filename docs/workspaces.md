@@ -23,14 +23,18 @@ change to two functions and to nowhere else.
 ## Creating and opening
 
 ```python
-from visionset.kernel.services import WorkspaceService
+from visionset.kernel.services import ProjectService, WorkspaceService
 
 with WorkspaceService.init("./road-signs") as workspace:  # name defaults to "road-signs"
-    workspace.create_project("Speed limits")
+    ProjectService(workspace).create("Speed limits")
 
 with WorkspaceService.open("./road-signs") as workspace:
-    print(workspace.list_projects())
+    print(ProjectService(workspace).list())
 ```
+
+`WorkspaceService` holds the workspace-level rules but creates nothing inside it: projects
+come from [`ProjectService`](projects.md), so that a project can never exist without the
+dataset it is supposed to be created with.
 
 `init` and `open` are classmethods rather than work done in `__init__` for a concrete
 reason: **both default adapters `mkdir` in their constructor**, so "this directory must be
@@ -185,18 +189,23 @@ lock file.
 
 ## How later services are composed
 
-`WorkspaceService` is the handle every other service depends on:
+`WorkspaceService` is the handle every other service depends on. `ProjectService` is the
+first of them, and the shape it takes is the shape the rest take:
 
 ```python
 class ProjectService:
     def __init__(self, workspace: WorkspaceService) -> None:
         self._workspace = workspace
 
-    def create(self, name: str) -> Project:
+    def create(self, name: str, description: str | None = None) -> Project:
         with self._workspace.unit_of_work() as uow:  # one transaction per operation
             resolved = self._workspace.require_project_name(uow, name)
             project = uow.projects.add(
-                Project(workspace_id=self._workspace.workspace_id, name=resolved)
+                Project(
+                    workspace_id=self._workspace.workspace_id,
+                    name=resolved,
+                    description=description,
+                )
             )
             uow.datasets.add(Dataset(project_id=project.id, name=resolved))
             return project

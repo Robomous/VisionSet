@@ -89,3 +89,24 @@ class ProjectNameTaken(VisionSetError):
     Names are unique per workspace, ignoring case and surrounding whitespace.
     The rule is enforced twice on purpose — see ``WorkspaceService``.
     """
+
+
+class ProjectNotFound(VisionSetError):
+    """No project with that id lives in this workspace.
+
+    Deliberately not an ``EntityNotFound``: that one means a row was missing
+    where the store required one (an ``update`` against a vanished primary key),
+    which is a programming error. This one is the ordinary answer to a caller
+    naming a project that was never created, or was deleted, or belongs to a
+    different workspace — a delivery surface turns it into a 404, not a 500.
+    """
+
+
+class ConfirmationRequired(VisionSetError):
+    """A destructive operation was called without ``confirm=True``.
+
+    The guard is a parameter rather than a prompt because the kernel has no
+    terminal and no user: every surface — CLI, REST, MCP — asks in its own
+    idiom and then passes the answer down. Refusing by default means a caller
+    that forgets to ask cannot delete anything by accident.
+    """

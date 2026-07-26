@@ -28,6 +28,10 @@ Two invariants shape the code:
 - **A project name is unique per workspace, and the database enforces it.** The
   service pre-check exists for the error message; the unique index is the
   guarantee. See :meth:`WorkspaceService.require_project_name`.
+
+The name rules live here because they are workspace-wide, but nothing here
+creates a project: ``ProjectService`` is the only door, so that a project can
+never exist without the dataset it is supposed to be created with.
 """
 
 from __future__ import annotations
@@ -41,7 +45,7 @@ from types import TracebackType
 from uuid import UUID
 
 from visionset.kernel.adapters import FilesystemBlobStore, SqliteMetadataStore
-from visionset.kernel.domain import Project, Workspace
+from visionset.kernel.domain import Workspace
 from visionset.kernel.errors import (
     InvalidName,
     NotAWorkspace,
@@ -295,27 +299,6 @@ class WorkspaceService:
                     f"{self._workspace.name!r}"
                 )
         return normalized
-
-    def create_project(self, name: str, description: str | None = None) -> Project:
-        """Add a project to this workspace under a name nothing else is using.
-
-        Deliberately minimal: ``ProjectService`` owns the rest of the lifecycle
-        and the 1:1 dataset that a project is supposed to be created with.
-        """
-        with self.unit_of_work() as uow:
-            resolved = self.require_project_name(uow, name)
-            return uow.projects.add(
-                Project(
-                    workspace_id=self._workspace.id,
-                    name=resolved,
-                    description=description,
-                )
-            )
-
-    def list_projects(self) -> list[Project]:
-        """Every project in this workspace, in the order they were created."""
-        with self.unit_of_work() as uow:
-            return uow.projects.list(self._workspace.id)
 
     # --- lifecycle ---------------------------------------------------------
 
