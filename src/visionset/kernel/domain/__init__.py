@@ -11,6 +11,12 @@ from visionset.kernel.domain.annotation import Annotation, Provenance
 from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.batch import Batch, BatchState
 from visionset.kernel.domain.dataset import Dataset
+from visionset.kernel.domain.geometry import (
+    BboxGeometry,
+    ClassificationGeometry,
+    Geometry,
+    PolygonGeometry,
+)
 from visionset.kernel.domain.ingest import IngestJob, IngestState
 from visionset.kernel.domain.project import Project
 from visionset.kernel.domain.release import Manifest, Release
@@ -29,12 +35,16 @@ __all__ = [
     "Attribute",
     "Batch",
     "BatchState",
+    "BboxGeometry",
+    "ClassificationGeometry",
     "Dataset",
+    "Geometry",
     "GeometryType",
     "IngestJob",
     "IngestState",
     "LabelClass",
     "Manifest",
+    "PolygonGeometry",
     "Project",
     "Provenance",
     "Release",
