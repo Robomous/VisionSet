@@ -10,7 +10,7 @@ from visionset.kernel.ports.event_bus import Event, EventBus
 from visionset.kernel.ports.exporter import Exporter
 from visionset.kernel.ports.importer import Importer
 from visionset.kernel.ports.media_processor import MediaProcessor
-from visionset.kernel.ports.metadata_store import MetadataStore
+from visionset.kernel.ports.metadata_store import MetadataStore, Repository, UnitOfWork
 from visionset.kernel.ports.model_provider import ModelProvider
 
 __all__ = [
@@ -23,4 +23,6 @@ __all__ = [
     "MediaProcessor",
     "MetadataStore",
     "ModelProvider",
+    "Repository",
+    "UnitOfWork",
 ]
