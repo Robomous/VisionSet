@@ -44,6 +44,25 @@ class _ClosingSpy(SqliteMetadataStore):
         super().close()
 
 
+def _add_project(workspace: WorkspaceService, name: str, description: str | None = None) -> Project:
+    """Insert a project through the workspace's own rules, without ProjectService.
+
+    These tests are about ``require_project_name`` and about what survives a
+    reopen, not about the project lifecycle — ``tests/kernel/test_project_service``
+    owns that. Going through the ``uow`` keeps the subject of each test visible.
+    """
+    with workspace.unit_of_work() as uow:
+        resolved = workspace.require_project_name(uow, name)
+        return uow.projects.add(
+            Project(workspace_id=workspace.workspace_id, name=resolved, description=description)
+        )
+
+
+def _projects_of(workspace: WorkspaceService) -> list[Project]:
+    with workspace.unit_of_work() as uow:
+        return uow.projects.list(workspace.workspace_id)
+
+
 def _sql(root: Path, statement: str) -> None:
     store = SqliteMetadataStore(root / DB_FILENAME)
     with store.engine.begin() as connection:
@@ -187,11 +206,11 @@ def test_a_reopened_workspace_still_holds_the_projects_written_before_it_closed(
     tmp_path: Path,
 ) -> None:
     created = _init(tmp_path)
-    created.create_project("signs", description="street furniture")
+    _add_project(created, "signs", description="street furniture")
     created.close()
 
     reopened = WorkspaceService.open(tmp_path / "ws")
-    projects = reopened.list_projects()
+    projects = _projects_of(reopened)
     assert [(p.name, p.description) for p in projects] == [("signs", "street furniture")]
     reopened.close()
 
@@ -399,7 +418,7 @@ def test_a_unit_of_work_from_the_handle_commits_on_clean_exit(tmp_path: Path) ->
     with workspace.unit_of_work() as uow:
         assert isinstance(uow, UnitOfWork)
         uow.projects.add(Project(workspace_id=workspace.workspace_id, name="signs"))
-    assert [p.name for p in workspace.list_projects()] == ["signs"]
+    assert [p.name for p in _projects_of(workspace)] == ["signs"]
     workspace.close()
 
 
@@ -430,7 +449,7 @@ def test_alternative_adapters_can_be_injected(tmp_path: Path) -> None:
 
 def test_a_project_name_is_stripped_before_it_is_stored(tmp_path: Path) -> None:
     workspace = _init(tmp_path)
-    assert workspace.create_project("  road signs  ").name == "road signs"
+    assert _add_project(workspace, "  road signs  ").name == "road signs"
     workspace.close()
 
 
@@ -443,7 +462,7 @@ CAFE_COMPOSED = "caf\u00e9"
 def test_a_project_name_is_stored_in_composed_unicode_form(tmp_path: Path) -> None:
     assert CAFE_DECOMPOSED != CAFE_COMPOSED
     workspace = _init(tmp_path)
-    assert workspace.create_project(CAFE_DECOMPOSED).name == CAFE_COMPOSED
+    assert _add_project(workspace, CAFE_DECOMPOSED).name == CAFE_COMPOSED
     workspace.close()
 
 
@@ -451,56 +470,56 @@ def test_a_project_name_is_stored_in_composed_unicode_form(tmp_path: Path) -> No
 def test_a_blank_project_name_is_rejected(tmp_path: Path, blank: str) -> None:
     workspace = _init(tmp_path)
     with pytest.raises(InvalidName, match="non-blank"):
-        workspace.create_project(blank)
+        _add_project(workspace, blank)
     workspace.close()
 
 
 def test_a_duplicate_project_name_is_rejected(tmp_path: Path) -> None:
     workspace = _init(tmp_path)
-    workspace.create_project("signs")
+    _add_project(workspace, "signs")
     with pytest.raises(ProjectNameTaken, match="signs"):
-        workspace.create_project("signs")
-    assert len(workspace.list_projects()) == 1
+        _add_project(workspace, "signs")
+    assert len(_projects_of(workspace)) == 1
     workspace.close()
 
 
 def test_project_names_collide_regardless_of_case(tmp_path: Path) -> None:
     workspace = _init(tmp_path)
-    workspace.create_project("Road Signs")
+    _add_project(workspace, "Road Signs")
     with pytest.raises(ProjectNameTaken):
-        workspace.create_project("road signs")
+        _add_project(workspace, "road signs")
     workspace.close()
 
 
 def test_project_names_collide_regardless_of_surrounding_whitespace(tmp_path: Path) -> None:
     workspace = _init(tmp_path)
-    workspace.create_project("signs")
+    _add_project(workspace, "signs")
     with pytest.raises(ProjectNameTaken):
-        workspace.create_project("  signs\n")
+        _add_project(workspace, "  signs\n")
     workspace.close()
 
 
 def test_project_names_collide_across_unicode_normalization_forms(tmp_path: Path) -> None:
     workspace = _init(tmp_path)
-    workspace.create_project(CAFE_COMPOSED)
+    _add_project(workspace, CAFE_COMPOSED)
     with pytest.raises(ProjectNameTaken):
-        workspace.create_project(CAFE_DECOMPOSED)
+        _add_project(workspace, CAFE_DECOMPOSED)
     workspace.close()
 
 
 def test_names_differing_in_internal_whitespace_are_different_projects(tmp_path: Path) -> None:
     """Collapsing runs of spaces would rewrite the user's input for no invariant."""
     workspace = _init(tmp_path)
-    workspace.create_project("road signs")
-    workspace.create_project("road  signs")
-    assert len(workspace.list_projects()) == 2
+    _add_project(workspace, "road signs")
+    _add_project(workspace, "road  signs")
+    assert len(_projects_of(workspace)) == 2
     workspace.close()
 
 
 def test_a_project_may_keep_its_own_name_when_excluded(tmp_path: Path) -> None:
     """What ``ProjectService.rename`` needs: a no-op rename is not a collision."""
     workspace = _init(tmp_path)
-    project = workspace.create_project("signs")
+    project = _add_project(workspace, "signs")
     with workspace.unit_of_work() as uow:
         assert workspace.require_project_name(uow, "Signs", exclude=project.id) == "Signs"
         with pytest.raises(ProjectNameTaken):
@@ -511,10 +530,10 @@ def test_a_project_may_keep_its_own_name_when_excluded(tmp_path: Path) -> None:
 def test_the_same_project_name_is_free_in_a_different_workspace(tmp_path: Path) -> None:
     first = _init(tmp_path, "one")
     second = _init(tmp_path, "two")
-    first.create_project("signs")
-    second.create_project("signs")
-    assert [p.name for p in first.list_projects()] == ["signs"]
-    assert [p.name for p in second.list_projects()] == ["signs"]
+    _add_project(first, "signs")
+    _add_project(second, "signs")
+    assert [p.name for p in _projects_of(first)] == ["signs"]
+    assert [p.name for p in _projects_of(second)] == ["signs"]
     first.close()
     second.close()
 
@@ -524,16 +543,16 @@ def test_duplicate_project_names_are_refused_even_when_the_service_is_bypassed(
 ) -> None:
     """The index is the guarantee; the service pre-check is only the message."""
     workspace = _init(tmp_path)
-    workspace.create_project("signs")
+    _add_project(workspace, "signs")
     with pytest.raises(ConstraintViolated, match="UNIQUE"), workspace.unit_of_work() as uow:
         uow.projects.add(Project(workspace_id=workspace.workspace_id, name="SIGNS"))
-    assert len(workspace.list_projects()) == 1
+    assert len(_projects_of(workspace)) == 1
     workspace.close()
 
 
 def test_projects_are_listed_in_the_order_they_were_created(tmp_path: Path) -> None:
     workspace = _init(tmp_path)
     for name in ("first", "second", "third"):
-        workspace.create_project(name)
-    assert [p.name for p in workspace.list_projects()] == ["first", "second", "third"]
+        _add_project(workspace, name)
+    assert [p.name for p in _projects_of(workspace)] == ["first", "second", "third"]
     workspace.close()
