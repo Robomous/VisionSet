@@ -7,12 +7,14 @@ and by the architecture tests in ``tests/architecture/``.
 """
 
 from visionset.kernel.errors import (
+    ConfirmationRequired,
     ConstraintViolated,
     EntityAlreadyExists,
     EntityNotFound,
     InvalidName,
     NotAWorkspace,
     ProjectNameTaken,
+    ProjectNotFound,
     VisionSetError,
     WorkspaceAlreadyExists,
     WorkspaceCorrupt,
@@ -21,12 +23,14 @@ from visionset.kernel.errors import (
 )
 
 __all__ = [
+    "ConfirmationRequired",
     "ConstraintViolated",
     "EntityAlreadyExists",
     "EntityNotFound",
     "InvalidName",
     "NotAWorkspace",
     "ProjectNameTaken",
+    "ProjectNotFound",
     "VisionSetError",
     "WorkspaceAlreadyExists",
     "WorkspaceCorrupt",
