@@ -7,15 +7,29 @@ and by the architecture tests in ``tests/architecture/``.
 """
 
 from visionset.kernel.errors import (
+    ConstraintViolated,
     EntityAlreadyExists,
     EntityNotFound,
+    InvalidName,
+    NotAWorkspace,
+    ProjectNameTaken,
     VisionSetError,
+    WorkspaceAlreadyExists,
+    WorkspaceCorrupt,
     WorkspaceFormatTooNew,
+    WorkspaceNotEmpty,
 )
 
 __all__ = [
+    "ConstraintViolated",
     "EntityAlreadyExists",
     "EntityNotFound",
+    "InvalidName",
+    "NotAWorkspace",
+    "ProjectNameTaken",
     "VisionSetError",
+    "WorkspaceAlreadyExists",
+    "WorkspaceCorrupt",
     "WorkspaceFormatTooNew",
+    "WorkspaceNotEmpty",
 ]

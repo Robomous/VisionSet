@@ -1,3 +1,8 @@
+from pathlib import Path
+
+from sqlalchemy import text
+
+from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 
 
@@ -13,3 +18,59 @@ def test_migration_versions_are_unique_and_start_at_one() -> None:
 def test_every_migration_is_named() -> None:
     for migration in MIGRATIONS:
         assert migration.name
+
+
+def _schema(store: SqliteMetadataStore) -> set[str]:
+    """Every ``CREATE`` statement SQLite has on file, normalized to a set."""
+    with store.engine.connect() as connection:
+        rows = connection.execute(
+            text("select sql from sqlite_master where sql is not null")
+        ).scalars()
+        return {" ".join(sql.split()) for sql in rows}
+
+
+def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
+    """Undo everything migration 2 did, and restamp the file as generation 1."""
+    with store.engine.begin() as connection:
+        connection.execute(text("drop index if exists uq_project_workspace_name"))
+        connection.execute(text("update _visionset_meta set format_version = 1"))
+
+
+def test_migration_two_creates_the_project_name_index(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    assert any("uq_project_workspace_name" in sql for sql in _schema(store))
+    store.close()
+
+
+def test_a_fresh_database_and_a_migrated_one_have_the_same_schema(tmp_path: Path) -> None:
+    """Migration 1 is ``create_all`` of *current* metadata, so the two paths differ.
+
+    A fresh file gets migration 2's change from migration 1; an existing file gets
+    it from migration 2 itself. If those ever disagree, a workspace's behavior
+    depends on when it was created — which is the bug this test exists to catch.
+    """
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    legacy = SqliteMetadataStore(tmp_path / "legacy.db")
+    legacy.initialize()
+    _downgrade_to_version_one(legacy)
+    assert _schema(legacy) != expected  # the downgrade really removed something
+    legacy.initialize()  # migrates 1 -> FORMAT_VERSION
+
+    assert _schema(legacy) == expected
+    assert legacy.format_version == FORMAT_VERSION
+    legacy.close()
+
+
+def test_every_migration_after_the_first_is_idempotent(tmp_path: Path) -> None:
+    """They run against fresh databases that already carry their change."""
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.begin() as connection:
+        for migration in MIGRATIONS[1:]:
+            migration.upgrade(connection)
+    store.close()
