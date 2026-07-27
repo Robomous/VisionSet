@@ -74,7 +74,7 @@ class ProjectService:
         """
         with self._workspace.unit_of_work() as uow:
             project = self._require(uow, project_id)
-            return self._dataset_of(uow, project.id)
+            return self.require_dataset(uow, project.id)
 
     # --- writing -----------------------------------------------------------
 
@@ -115,7 +115,7 @@ class ProjectService:
             with self._workspace.unit_of_work() as uow:
                 project = self._require(uow, project_id)
                 resolved = self._workspace.require_project_name(uow, name, exclude=project.id)
-                dataset = self._dataset_of(uow, project.id)
+                dataset = self.require_dataset(uow, project.id)
                 renamed = uow.projects.update(project.model_copy(update={"name": resolved}))
                 uow.datasets.update(dataset.model_copy(update={"name": resolved}))
                 return renamed
@@ -165,11 +165,19 @@ class ProjectService:
             )
         return project
 
-    def _dataset_of(self, uow: UnitOfWork, project_id: UUID) -> Dataset:
+    def require_dataset(self, uow: UnitOfWork, project_id: UUID) -> Dataset:
         """The project's one dataset.
 
         Anything other than exactly one row means the 1:1 invariant was broken on
         disk. Picking the first would hide that, so it is reported instead.
+
+        Public, and taking a ``uow``, for the reason ``JobService.require_job``
+        is: ``DatasetService`` has to resolve project to dataset *inside its own
+        transaction* before it writes membership, and a second spelling of the
+        1:1 rule is a second place for it to be got wrong.
+
+        Raises:
+            WorkspaceCorrupt: the project has no dataset, or more than one.
         """
         datasets = uow.datasets.list(project_id)
         if len(datasets) != 1:
