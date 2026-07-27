@@ -478,8 +478,15 @@ def test_publishing_a_release_announces_what_it_froze(tmp_path: Path) -> None:
     fixture.close()
 
 
-def test_nothing_in_m1_emits_ingest_completed(tmp_path: Path) -> None:
-    """Declared in #13, wired in M2 — and not before, by anything, quietly."""
+def test_the_annotation_cycle_announces_no_ingest(tmp_path: Path) -> None:
+    """#20 wired the emitter, so this no longer says "nobody". It says what is
+    still true and still worth a guard: nothing on the batch → job → annotation
+    → release path is an ingest, and none of it may quietly claim to be one.
+
+    The positive coverage lives in ``tests/kernel/test_ingest_service.py``,
+    where a real run can be made without giving this file's fixture — which
+    builds its assets by hand, deliberately — a media dependency.
+    """
     fixture = Fixture(tmp_path)
     fixture.to_release()
 

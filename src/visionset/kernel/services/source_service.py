@@ -24,16 +24,16 @@ is still that path's source, so its recorded provenance is **refreshed in
 place** rather than left describing a file that is gone. ``registered_at`` is
 never rewritten; it is the first registration.
 
-**The idempotency has no constraint underneath it, and that is a deliberate,
-named gap.** ``docs/persistence.md`` says a rule with no backstop is a wish, and
-every other uniqueness rule in this store has a unique index behind it. This one
-does not, because the natural key includes a float parameter and a nullable one
-at that, and because two concurrent registrations of one folder are not yet able
-to hurt anything: no row references a source, so a duplicate is inert. That
-stops being true at #20, when ``asset.source_id`` gets a target and the winner of
-a race starts deciding an asset's recorded origin. **#20 is where this needs an
-index under it**, alongside the store's other known concurrency gap (#80, the
-untranslated ``OperationalError``).
+**That idempotency now has a constraint underneath it.** It shipped without one,
+as a named gap: no row referenced a source, so a duplicate born of two concurrent
+registrations was inert. Ingest ended that — ``asset.source_id`` has a target, so
+the winner of such a race would decide an asset's recorded origin — and
+``uq_source_project_kind_path_fps`` went in with it. The two layers do what they
+do everywhere else in this store: the pre-check below is what produces a friendly
+answer, and the index is the guarantee. A caller that loses the race sees a raw
+``ConstraintViolated``, and the remedy is to call the same method again, which
+finds the winner's row and returns it. The store's other known concurrency gap
+(#80, the untranslated ``OperationalError``) is still open.
 
 Composition follows the rule in ``docs/workspaces.md``: this service takes an
 open ``WorkspaceService`` and nothing else, and reaches ``video_processor``

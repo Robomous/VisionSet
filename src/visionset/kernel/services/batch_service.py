@@ -144,7 +144,7 @@ class BatchService:
             AssetNotFound: an asset id is not in this project.
         """
         with self._workspace.unit_of_work() as uow:
-            batch = self._require_draft(uow, batch_id)
+            batch = self.require_draft(uow, batch_id)
             added = _require_assets(uow, batch.project_id, asset_ids)
             return uow.batches.update(
                 batch.model_copy(update={"asset_ids": _deduplicated([*batch.asset_ids, *added])})
@@ -162,7 +162,7 @@ class BatchService:
             BatchNotEditable: the batch is past ``draft``.
         """
         with self._workspace.unit_of_work() as uow:
-            batch = self._require_draft(uow, batch_id)
+            batch = self.require_draft(uow, batch_id)
             dropped = set(asset_ids)
             return uow.batches.update(
                 batch.model_copy(
@@ -347,7 +347,18 @@ class BatchService:
         self._require_project(uow, batch.project_id)
         return batch
 
-    def _require_draft(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
+    def require_draft(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
+        """The batch, refusing it if its membership is already frozen.
+
+        Public, and taking a ``uow``, for the reason :meth:`require_batch` is:
+        ``IngestService`` has to know a target batch will accept members
+        *before* it decodes five thousand files, and discovering that inside a
+        later ``add_assets`` would mean finding out after the work.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            BatchNotEditable: the batch is past ``draft``.
+        """
         batch = self.require_batch(uow, batch_id)
         if batch.state is not BatchState.DRAFT:
             raise BatchNotEditable(

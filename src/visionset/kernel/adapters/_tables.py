@@ -105,6 +105,12 @@ class SourceRow(Base):
     otherwise emit different DDL. Migration 7 drops and re-creates this table
     from this class instead, so both paths run the same ``CREATE TABLE`` and the
     rule has nothing to bite on.
+
+    **That exemption expires for any column added after migration 7.** A
+    database this build wrote is already stamped at 7 and will never re-run it,
+    so a later column reaches it by ``ALTER TABLE`` after all and has to be
+    declared last like everywhere else. Nothing has needed one yet: migration 8
+    puts a unique index over this table and adds no column to it.
     """
 
     __tablename__ = "source"
@@ -123,7 +129,47 @@ class SourceRow(Base):
     video: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
+#: One origin is one source: the backstop under ``SourceService``'s idempotency
+#: rule, which shipped in #18 with nothing underneath it and acquired teeth here
+#: — see that service's module docstring for why ingest is when it had to.
+#:
+#: The fourth term is an **expression**, not a column, and it is ``coalesce``d
+#: rather than left to be NULL. SQLite treats NULLs in a unique index as
+#: distinct, so an image directory — whose ``video`` is NULL — would never
+#: collide with itself, which is most of what this index is for. ``0`` cannot be
+#: confused with a real rate: ``VideoProvenance.extraction_fps`` is ``gt=0``.
+#:
+#: This is SQL reading a JSON column, which the module docstring above reserves
+#: for values "nothing ever queries". An index is not a query: no service gains
+#: a JSON path, ``_source_to_domain`` still rehydrates ``VideoProvenance`` whole,
+#: and the doctrine's purpose — no service building SQL over JSON — is intact.
+#: The alternative was a redundant ``extraction_fps`` column written by the
+#: mapper and read by nobody, which would need this same ``json_extract`` to
+#: backfill itself and could later stop being maintained without failing.
+SOURCE_ORIGIN_UNIQUE = Index(
+    "uq_source_project_kind_path_fps",
+    SourceRow.project_id,
+    SourceRow.kind,
+    SourceRow.path,
+    text("coalesce(json_extract(video, '$.extraction_fps'), 0)"),
+    unique=True,
+)
+
+
 class IngestJobRow(Base):
+    """Ingestion runs. Rebuilt by migration 8, so column order is free here.
+
+    Rebuilt rather than altered because ``batch_id`` carries a foreign key, and
+    an ``ALTER TABLE ... ADD COLUMN`` cannot express one the way ``create_all``
+    does: SQLite spells an added key inline on the column, while a created table
+    spells it as a table constraint. The two texts differ, so the fresh-versus-
+    migrated test would fail — and dropping the key instead would leave a run
+    pointing at a batch somebody deleted. This table has no children and is
+    provably empty at that point (nothing wrote an ingest job before this
+    build), which is what makes the rebuild affordable; migration 8 counts
+    rather than assuming it.
+    """
+
     __tablename__ = "ingest_job"
 
     id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
@@ -132,6 +178,13 @@ class IngestJobRow(Base):
     )
     state: Mapped[str] = mapped_column(String, nullable=False)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: The batch this run materialized into. NULL until it reaches one — a run
+    #: that dies during the decode never does, which is why this is nullable
+    #: rather than nullable for a migration's convenience. ``SET NULL`` and not
+    #: ``CASCADE``: deleting the batch does not un-happen the run.
+    batch_id: Mapped[UUID | None] = mapped_column(
+        SaUuid, ForeignKey("batch.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class AssetRow(Base):
@@ -146,6 +199,55 @@ class AssetRow(Base):
     uri: Mapped[str] = mapped_column(String, nullable=False)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The four below arrive by ``ALTER TABLE`` in migration 8 and are therefore
+    # declared last, in the order that migration adds them. #21's
+    # ``thumbnail_hash`` goes after them, for the same reason.
+    #
+    # All four are nullable, and that is not a shortcut. ``asset`` could not be
+    # rebuilt the way migrations 6 and 7 rebuilt their tables: four tables carry
+    # ``ON DELETE CASCADE`` keys into it (``batch_asset``, ``annotation``,
+    # ``dataset_member``, ``annotation_job_asset``), and under
+    # ``PRAGMA foreign_keys = ON`` a ``DROP TABLE`` runs an implicit ``DELETE``
+    # that takes all four silently. Nor could the rows simply be refused: unlike
+    # a pre-#12 release or a pre-#18 source, an asset written before the ingest
+    # pipeline is *legitimate* — M1's example wrote them through the same public
+    # port a service uses. NULL here means "this asset predates the pipeline",
+    # which is true, where any ``server_default`` would be a fiction.
+    #: The decoded format, never the filename's suffix.
+    format: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: The source these bytes were *first* seen in.
+    #:
+    #: **Deliberately not a foreign key**, and it is the only reference in this
+    #: schema that is not. SQLite spells a key added by ``ALTER TABLE`` inline on
+    #: the column, while ``create_all`` spells one as a table constraint; the two
+    #: texts differ, so a fresh database and a migrated one would disagree — and
+    #: ``asset`` is the one table that cannot be rebuilt to escape that (four
+    #: cascading children, and rows that are legitimately already there). What
+    #: would be gained is small: there is no ``SourceService.delete``, and on the
+    #: one deletion path that does exist — a project's cascade — the asset and
+    #: the source both die by their own ``project_id`` keys. When a source
+    #: delete is added it must clear these itself, and say so where it is
+    #: written. Unindexed too: nothing lists assets by source.
+    source_id: Mapped[UUID | None] = mapped_column(SaUuid, nullable=True)
+    #: Position in the *extracted* sequence, for an asset cut out of a clip.
+    frame_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Seconds into the clip. The locator that survives a different rate.
+    frame_timestamp: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+#: The same bytes are the same asset: the backstop under the ingest pipeline's
+#: deduplication, a claim ``Asset``'s docstring has made since M1 with nothing
+#: enforcing it.
+#:
+#: Per project, not global. Two projects ingesting one photograph are two assets
+#: over one blob — that is what makes ``project_id`` the parent — and a release
+#: keyed on content hash still sees them as the same content.
+#:
+#: ``ix_asset_content_hash`` stays beside it: neither subsumes the other, and
+#: removing an index is its own migration for a benefit nobody has measured.
+ASSET_CONTENT_UNIQUE = Index(
+    "uq_asset_project_content_hash", AssetRow.project_id, AssetRow.content_hash, unique=True
+)
 
 
 class BatchRow(Base):
