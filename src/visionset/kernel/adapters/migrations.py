@@ -34,7 +34,12 @@ from typing import cast
 from sqlalchemy import Column, Connection, Table, inspect, text
 from sqlalchemy.schema import CreateColumn
 
-from visionset.kernel.adapters._tables import PROJECT_NAME_UNIQUE, Base, BatchRow
+from visionset.kernel.adapters._tables import (
+    PROJECT_NAME_UNIQUE,
+    AnnotationJobAssetRow,
+    Base,
+    BatchRow,
+)
 
 
 @dataclass(frozen=True)
@@ -87,6 +92,17 @@ def _add_batch_schema_version(connection: Connection) -> None:
     _add_column(connection, cast(Column[object], BatchRow.__table__.c.schema_version))
 
 
+def _add_job_asset_position(connection: Connection) -> None:
+    """Give per-asset progress an explicit order instead of an accidental one.
+
+    Until now the order rows came back in was whatever SQLite chose. It happened
+    to match ingest order, but only because the whole child collection is
+    rewritten on every save — an accident, not a guarantee, and
+    ``JobService.next_pending`` needs a guarantee.
+    """
+    _add_column(connection, cast(Column[object], AnnotationJobAssetRow.__table__.c.position))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -98,6 +114,11 @@ MIGRATIONS: list[Migration] = [
         version=3,
         name="batch_schema_version_pin",
         upgrade=_add_batch_schema_version,
+    ),
+    Migration(
+        version=4,
+        name="annotation_job_asset_position",
+        upgrade=_add_job_asset_position,
     ),
 ]
 

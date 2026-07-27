@@ -8,9 +8,11 @@ and by the architecture tests in ``tests/architecture/``.
 
 from visionset.kernel.errors import (
     AssetNotFound,
+    AssetNotInJob,
     BatchNotComplete,
     BatchNotEditable,
     BatchNotFound,
+    BatchNotInAnnotation,
     ConfirmationRequired,
     ConstraintViolated,
     DestructiveSchemaChange,
@@ -21,6 +23,8 @@ from visionset.kernel.errors import (
     InvalidPartition,
     InvalidSchema,
     InvalidTransition,
+    JobNotComplete,
+    JobNotFound,
     NotAWorkspace,
     ProjectNameTaken,
     ProjectNotFound,
@@ -37,9 +41,11 @@ from visionset.kernel.errors import (
 
 __all__ = [
     "AssetNotFound",
+    "AssetNotInJob",
     "BatchNotComplete",
     "BatchNotEditable",
     "BatchNotFound",
+    "BatchNotInAnnotation",
     "ConfirmationRequired",
     "ConstraintViolated",
     "DestructiveSchemaChange",
@@ -50,6 +56,8 @@ __all__ = [
     "InvalidPartition",
     "InvalidSchema",
     "InvalidTransition",
+    "JobNotComplete",
+    "JobNotFound",
     "NotAWorkspace",
     "ProjectNameTaken",
     "ProjectNotFound",
