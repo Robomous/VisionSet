@@ -21,9 +21,16 @@ from visionset.kernel.ports.metadata_store import (
     UnitOfWork,
 )
 from visionset.kernel.ports.model_provider import ModelProvider
+from visionset.kernel.ports.video_processor import (
+    DEFAULT_EXTRACTION_FPS,
+    FRAME_FORMAT,
+    VideoProcessor,
+)
 
 __all__ = [
+    "DEFAULT_EXTRACTION_FPS",
     "DEFAULT_THUMBNAIL_MAX_EDGE",
+    "FRAME_FORMAT",
     "THUMBNAIL_FORMAT",
     "UNINITIALIZED",
     "AuthProvider",
@@ -36,4 +43,5 @@ __all__ = [
     "ModelProvider",
     "Repository",
     "UnitOfWork",
+    "VideoProcessor",
 ]

@@ -210,6 +210,12 @@ class GeneratedVideo:
         return round(self.fps * self.duration_seconds)
 
 
+def _run_ffmpeg(command: list[str], path: Path) -> None:
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed generating {path.name}:\n{result.stderr}")
+
+
 def write_video(
     path: Path,
     *,
@@ -222,31 +228,116 @@ def write_video(
 
     `-fflags/-flags:v +bitexact` strip the encoder version and timestamps that would otherwise
     make two runs of the same command differ.
+
+    `-movflags +faststart` puts the index at the front of the file. Nothing in an intact clip
+    cares, but it is what makes `write_corrupt_video` able to produce a *partially* readable
+    file rather than an unopenable one — see there.
     """
     require_ffmpeg()
     width, height = size
     path.parent.mkdir(parents=True, exist_ok=True)
-    command = [
-        "ffmpeg",
-        "-nostdin",
-        "-loglevel", "error",
-        "-f", "lavfi",
-        "-i", f"testsrc=size={width}x{height}:rate={fps}:duration={duration_seconds}",
-        "-pix_fmt", "yuv420p",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-g", str(fps),
-        "-fflags", "+bitexact",
-        "-flags:v", "+bitexact",
-        "-y", str(path),
-    ]  # fmt: skip
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed generating {path.name}:\n{result.stderr}")
+    _run_ffmpeg(
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"testsrc=size={width}x{height}:rate={fps}:duration={duration_seconds}",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-g",
+            str(fps),
+            "-movflags",
+            "+faststart",
+            "-fflags",
+            "+bitexact",
+            "-flags:v",
+            "+bitexact",
+            "-y",
+            str(path),
+        ],  # fmt: skip
+        path,
+    )
     return GeneratedVideo(
         path=path,
         width=width,
         height=height,
+        fps=fps,
+        duration_seconds=duration_seconds,
+    )
+
+
+def write_corrupt_video(
+    path: Path,
+    *,
+    size: tuple[int, int] = DEFAULT_VIDEO_SIZE,
+    fps: int = 10,
+    duration_seconds: float = 2.0,
+) -> GeneratedVideo:
+    """A clip that opens, decodes for a while, and then runs out — the `CorruptMedia` case.
+
+    The trick is the faststart index `write_video` already asks for. With the index at the
+    front, truncating the tail leaves a file ffprobe describes perfectly well and ffmpeg fails
+    *partway through*, which is what separates "this file is broken" from "this is not a file we
+    can read". Truncate a clip whose index sits at the end instead and you get the latter: an
+    unopenable container, which is `write_unsupported_file`'s job and not this one's.
+
+    The returned `GeneratedVideo` describes what was asked for, not what survived — the whole
+    point is that the survivor is shorter.
+    """
+    clip = write_video(path, size=size, fps=fps, duration_seconds=duration_seconds)
+    intact = path.read_bytes()
+    path.write_bytes(intact[: len(intact) // 2])
+    return clip
+
+
+def write_rotated_video(
+    path: Path,
+    *,
+    size: tuple[int, int] = DEFAULT_VIDEO_SIZE,
+    fps: int = 10,
+    duration_seconds: float = 2.0,
+    rotation: int = 90,
+) -> GeneratedVideo:
+    """A clip carrying a display matrix — what a phone writes when it is held upright.
+
+    `-display_rotation` on the *input* plus a stream copy, because the older spelling
+    (`-metadata:s:v:0 rotate=`) is deprecated and recent ffmpeg drops it silently, which would
+    give a fixture that generates without error and tests nothing.
+
+    The returned `GeneratedVideo` carries the **stored** size, deliberately: it is what the file
+    holds, and the test's whole subject is that a probe reports something else.
+    """
+    source = path.with_name(f"upright-{path.name}")
+    clip = write_video(source, size=size, fps=fps, duration_seconds=duration_seconds)
+    _run_ffmpeg(
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-display_rotation",
+            str(rotation),
+            "-i",
+            str(source),
+            "-c",
+            "copy",
+            "-y",
+            str(path),
+        ],  # fmt: skip
+        path,
+    )
+    return GeneratedVideo(
+        path=path,
+        width=clip.width,
+        height=clip.height,
         fps=fps,
         duration_seconds=duration_seconds,
     )

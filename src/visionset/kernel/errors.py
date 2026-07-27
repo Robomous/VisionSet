@@ -520,3 +520,22 @@ class CorruptMedia(MediaError):
     whose bytes nobody can read until a training run trips over it. That is why
     probing pays for a full decode per file instead of sniffing.
     """
+
+
+class MediaToolUnavailable(VisionSetError):
+    """A media adapter needs an external program, and it is not installed.
+
+    Deliberately **not** a ``MediaError``, and the distance is the whole point.
+    Every error in that family answers "what is wrong with this file?"; this one
+    answers "what is wrong with this machine?". An ingest catches the media
+    family per item and carries on, so if this were in it, a missing decoder
+    would be recorded five thousand times against five thousand innocent files
+    and the run would report a data problem it does not have. It is the *fatal
+    cause* an ingest job records once, next to the per-file report.
+
+    Named for the tool rather than for the program, because the kernel does not
+    know which program: only the adapter does, and only the adapter spells its
+    name. The message is where that lands, and it carries an install hint — the
+    remedy here is a package manager, so an error that merely says "unavailable"
+    has told the operator nothing they did not already suspect.
+    """

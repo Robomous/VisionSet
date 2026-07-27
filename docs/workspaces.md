@@ -15,15 +15,20 @@ are the whole format — if WAL is ever adopted, `visionset.db-wal` and `-shm` b
 of it and this page has to say so, because a user who copies only `visionset.db` under WAL
 loses committed data.
 
-Two of the four ports have no line in that layout, and that is the point: the [event
-bus](events.md) is in-process and the [image processor](media.md) is a decoder, so neither
-leaves anything behind. They are composed here anyway, because a workspace is what services
+Three of the five ports have no line in that layout, and that is the point: the [event
+bus](events.md) is in-process and the two [media processors](media.md) are decoders, so none of
+them leaves anything behind. They are composed here anyway, because a workspace is what services
 are handed and every port has to arrive with it. One of each per open workspace, built by
-`event_bus_factory` and `image_processor_factory` — never a module-level singleton, which two
-workspaces open at once must not share.
+`event_bus_factory`, `image_processor_factory` and `video_processor_factory` — never a
+module-level singleton, which two workspaces open at once must not share.
+
+A new port is appended **last** to `WorkspaceService.__init__`, never inserted: `init` and `open`
+bind those arguments positionally, so a parameter added in the middle silently re-binds every one
+after it.
 
 `WorkspaceService` is the only place in the kernel that names `SqliteMetadataStore`,
-`FilesystemBlobStore`, `InProcessEventBus` or `PillowImageProcessor`. Everything above it — later
+`FilesystemBlobStore`, `InProcessEventBus`, `PillowImageProcessor` or `FfmpegVideoProcessor`.
+Everything above it — later
 surface, the CLI, MCP — gets an open service and reaches the ports through it, so swapping
 an adapter is a change to two functions and to nowhere else.
 
@@ -224,9 +229,10 @@ Four habits that keep the boundary honest:
   workspace-level rules with it.
 - One `unit_of_work()` per operation, and do the whole operation inside it.
 - Reach the ports through the handle — `workspace.metadata_store`, `workspace.blob_store`,
-  `workspace.event_bus`, `workspace.image_processor`. No service other than `workspace_service`
-  should name `SqliteMetadataStore`, `FilesystemBlobStore`, `InProcessEventBus` or
-  `PillowImageProcessor` — if a second one does, the composition point has stopped being single.
+  `workspace.event_bus`, `workspace.image_processor`, `workspace.video_processor`. No service
+  other than `workspace_service` should name `SqliteMetadataStore`, `FilesystemBlobStore`,
+  `InProcessEventBus`, `PillowImageProcessor` or `FfmpegVideoProcessor` — if a second one does,
+  the composition point has stopped being single.
 - Publish [events](events.md) *after* the `unit_of_work()` block, never inside it. An
   announcement is about work that committed, and a subscriber that raises must have nothing
   left to roll back.
