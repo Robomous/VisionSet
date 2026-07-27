@@ -62,12 +62,33 @@ class WorkspaceAlreadyExists(VisionSetError):
 
 
 class WorkspaceCorrupt(VisionSetError):
-    """The workspace layout is present but unusable.
+    """The workspace layout is present but unusable, whatever the cause.
 
     A metadata store that is not a readable database, that carries no VisionSet
-    schema, or that does not hold exactly one workspace row. Distinct from
-    ``NotAWorkspace`` (nothing there) and from ``WorkspaceFormatTooNew``
-    (readable, merely newer than this build).
+    schema, or that does not hold exactly one workspace row — and also the
+    environmental failures that leave nothing to work with: a file that cannot
+    be opened, a disk I/O error, a full disk. Distinct from ``NotAWorkspace``
+    (nothing there), from ``WorkspaceFormatTooNew`` (readable, merely newer than
+    this build), and from ``WorkspaceBusy`` (fine, just held by someone else).
+
+    "Corrupt" is the widest of these on purpose: it is where the adapter files
+    everything it could not open, read or write for a reason the caller cannot
+    fix by waiting. Splitting the causes further would invent errors nobody
+    catches — the remedy for all of them is to look at the file and the disk.
+    """
+
+
+class WorkspaceBusy(VisionSetError):
+    """Another connection holds the workspace and the wait ran out.
+
+    Transient, unlike ``WorkspaceCorrupt``: nothing is wrong with the file,
+    something else is writing to it. The remedy is to retry, which is the whole
+    reason this is its own error rather than a flavour of corruption — a surface
+    can answer it with a retry-after where corruption gets a hard failure.
+
+    Raised when a write waited out the store's ``busy_timeout`` behind another
+    writer. Under WAL a reader never reaches here, because readers do not
+    contend with the writer at all.
     """
 
 

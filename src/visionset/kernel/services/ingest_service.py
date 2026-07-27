@@ -22,8 +22,9 @@ is how a source that grew by three files is caught up.
 
 **The long middle of the run is in no transaction.** Decoding is a Pillow pass
 over thousands of files or an out-of-process ffmpeg, and holding a write
-transaction open across either is how a single-writer SQLite store starts
-reporting "database is locked" (#80). So the run resolves what it needs, closes
+transaction open across either is how a single-writer SQLite store starts making
+every other writer wait out its ``busy_timeout`` and fail with ``WorkspaceBusy``.
+So the run resolves what it needs, closes
 the transaction, does the work, and opens another to record it. Blob writes
 happen out there too, before any row exists: ``BlobStore.put`` is not
 transactional and a rollback cannot unwrite it — but a blob nothing points at is
