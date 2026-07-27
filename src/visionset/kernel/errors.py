@@ -114,6 +114,19 @@ class ConfirmationRequired(VisionSetError):
     version that removes a class — is guarded by ``allow_destructive`` and
     ``DestructiveSchemaChange`` instead, because the two have different
     remedies and should not be caught by one ``except``.
+
+    Two methods are deliberately exempt, and both are somebody's ordinary edit
+    loop rather than the destruction of a lifecycle entity:
+
+    - ``AnnotationService.delete`` — drawing a box, looking at it and taking it
+      off again is annotating. The batch gate is the guard: once the work closes,
+      nothing can touch those labels at all.
+    - ``DatasetService.remove_asset`` — curating the trunk. Nothing is destroyed:
+      the asset, its annotations and its blob all stay, and the append-only
+      change log records the removal, so the state before it is still on record
+      and re-promoting is an informed decision rather than an undo nobody kept.
+
+    An exemption is a decision written down here. Do not add a third without one.
     """
 
 
@@ -208,11 +221,23 @@ class EmptyBatch(VisionSetError):
 
 
 class BatchNotComplete(VisionSetError):
-    """A batch was told to complete while at least one of its jobs is not.
+    """The batch is not finished, said by whichever service needed it to be.
 
-    Completion is *derived*: the service recomputes it from the jobs rather than
-    taking the caller's word, because a batch marked complete is what lets its
-    annotated assets be promoted into the Dataset.
+    Two readings, one refusal, on purpose — the precedent is
+    ``BatchNotInAnnotation``, which ``JobService`` and ``AnnotationService``
+    share rather than spelling twice:
+
+    - ``BatchService.complete`` raises it when a job is still outstanding.
+      Completion is *derived*: the service recomputes it from the jobs rather
+      than taking the caller's word.
+    - ``DatasetService.promote`` raises it when the batch never reached
+      ``completed`` at all.
+
+    Both say the same thing to a caller — this batch's work is not done — and
+    both have the same remedy, which is to finish it. A second error would only
+    make a surface catch two names for one condition. And the reason the gate is
+    there in the first place is the second reading: a completed batch is exactly
+    what lets its annotated assets into the Dataset.
     """
 
 
@@ -345,6 +370,19 @@ class InvalidAttributeValue(InvalidAnnotation):
     The judgement is ``Attribute.rejects``, the same method the attribute's own
     ``default`` is checked with, so a value and a default can never be held to
     different standards.
+    """
+
+
+class DatasetNotFound(VisionSetError):
+    """No dataset with that id lives in this workspace.
+
+    Like ``ProjectNotFound`` and its siblings: a dataset belonging to another
+    workspace reads as missing rather than as forbidden.
+
+    Distinct from the ``WorkspaceCorrupt`` a project with no dataset raises. That
+    one means the 1:1 invariant broke on disk — every project is created with a
+    dataset, in the same transaction — whereas this is the ordinary answer to a
+    caller naming an id that was never a dataset, or whose project is gone.
     """
 
 

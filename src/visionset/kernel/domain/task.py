@@ -96,6 +96,30 @@ ever finish without a reviewer, and there is no review surface yet.
 """
 
 
+PROMOTABLE_PROGRESS: Final[frozenset[AssetProgress]] = frozenset(
+    {AssetProgress.ANNOTATED, AssetProgress.ACCEPTED}
+)
+"""The states that earn an asset a place in the Dataset.
+
+``DatasetService.promote`` reads this. It is stated outright rather than written
+as ``SETTLED_PROGRESS - {SKIPPED}``, even though today the two are equal: a
+subtraction would quietly promote the next settled state somebody adds, and
+whether a state belongs in the curated trunk is a decision that should have to be
+made rather than inherited.
+
+``skipped`` is the one settled state left out, and it is the whole point of the
+distinction. Settled means *does not block the job from completing*; promotable
+means *belongs in the trunk*. A skipped asset is a person's decision against
+labeling it — recorded rather than erased from the batch, which is why
+``BatchService.remove_assets`` refuses after approval — and promoting it would
+put back exactly what that person kept out.
+
+Every state here is in ``SETTLED_PROGRESS``, and it has to be: promotion only
+happens from a ``completed`` batch, and a batch cannot complete while any asset
+is unsettled, so a promotable-but-unsettled state would be unreachable.
+"""
+
+
 def progress_after_annotating(
     current: AssetProgress, *, has_annotations: bool
 ) -> AssetProgress | None:

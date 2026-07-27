@@ -83,7 +83,7 @@ class BatchService:
             BatchNotFound: no such batch in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return self._require_batch(uow, batch_id)
+            return self.require_batch(uow, batch_id)
 
     def jobs(self, batch_id: UUID) -> list[AnnotationJob]:
         """Every annotation job the batch was partitioned into, in segment order.
@@ -94,11 +94,11 @@ class BatchService:
             BatchNotFound: no such batch in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return _jobs_of(uow, self._require_batch(uow, batch_id))
+            return jobs_of(uow, self.require_batch(uow, batch_id))
 
     # ``list`` shadows the builtin for every annotation after it in this class
-    # body, so it comes last here and the two helpers that need ``list[...]``
-    # live at module level.
+    # body, so it comes last here and the helpers that need ``list[...]`` live
+    # at module level.
     def list(self, project_id: UUID) -> list[Batch]:
         """Every batch of that project, in the order they were created.
 
@@ -188,7 +188,7 @@ class BatchService:
             InvalidPartition: the segments are not an exact partition.
         """
         with self._workspace.unit_of_work() as uow:
-            batch = self._require_batch(uow, batch_id)
+            batch = self.require_batch(uow, batch_id)
             self._require_move(batch, BatchState.APPROVED)
             if not batch.asset_ids:
                 raise EmptyBatch(
@@ -238,9 +238,9 @@ class BatchService:
             BatchNotComplete: a job has not finished.
         """
         with self._workspace.unit_of_work() as uow:
-            batch = self._require_batch(uow, batch_id)
+            batch = self.require_batch(uow, batch_id)
             self._require_move(batch, BatchState.COMPLETED)
-            jobs = _jobs_of(uow, batch)
+            jobs = jobs_of(uow, batch)
             outstanding = [j for j in jobs if j.state is not AnnotationJobState.COMPLETED]
             if outstanding:
                 raise BatchNotComplete(
@@ -262,7 +262,7 @@ class BatchService:
             ConfirmationRequired: ``confirm`` was not ``True``.
         """
         with self._workspace.unit_of_work() as uow:
-            batch = self._require_batch(uow, batch_id)
+            batch = self.require_batch(uow, batch_id)
             if not confirm:
                 raise ConfirmationRequired(
                     f"deleting batch {batch.name!r} destroys its task groups and jobs, including "
@@ -274,7 +274,7 @@ class BatchService:
 
     def _move(self, batch_id: UUID, to: BatchState) -> Batch:
         with self._workspace.unit_of_work() as uow:
-            batch = self._require_batch(uow, batch_id)
+            batch = self.require_batch(uow, batch_id)
             self._require_move(batch, to)
             return uow.batches.update(batch.model_copy(update={"state": to}))
 
@@ -297,12 +297,20 @@ class BatchService:
             )
         return project
 
-    def _require_batch(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
+    def require_batch(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
         """The batch, checked through its project so workspaces stay separate.
 
         A batch belonging to another workspace reads as missing rather than as
         forbidden — this service speaks for one workspace, and anything outside
         it is not its to describe.
+
+        Public, and taking a ``uow``, for the reason ``JobService.require_job``
+        is: ``JobService`` and ``DatasetService`` both need this exact ladder
+        *inside their own transaction*, and three spellings of "no batch {id} in
+        workspace {name}" is the drift this codebase refuses.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
         """
         batch = uow.batches.get(batch_id)
         if batch is None:
@@ -313,7 +321,7 @@ class BatchService:
         return batch
 
     def _require_draft(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
-        batch = self._require_batch(uow, batch_id)
+        batch = self.require_batch(uow, batch_id)
         if batch.state is not BatchState.DRAFT:
             raise BatchNotEditable(
                 f"batch {batch.name!r} is {batch.state.value!r}, so its membership is frozen; "
@@ -322,8 +330,14 @@ class BatchService:
         return batch
 
 
-def _jobs_of(uow: UnitOfWork, batch: Batch) -> list[AnnotationJob]:
-    """Every job under the batch, task group by task group, in segment order."""
+def jobs_of(uow: UnitOfWork, batch: Batch) -> list[AnnotationJob]:
+    """Every job under the batch, task group by task group, in segment order.
+
+    Public and at module level, beside :meth:`BatchService.require_batch` and for
+    the same reason: ``JobService`` tallies these and ``DatasetService`` reads
+    their progress, so the walk from batch to jobs lives here — where
+    :meth:`BatchService.approve` writes it — rather than once per reader.
+    """
     return [
         job
         for group in uow.task_groups.list(batch.id)
