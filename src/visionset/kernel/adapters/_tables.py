@@ -139,6 +139,8 @@ class BatchRow(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     state: Mapped[str] = mapped_column(String, nullable=False)
+    #: The annotation schema version pinned at approval. NULL while a draft.
+    schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class BatchAssetRow(Base):

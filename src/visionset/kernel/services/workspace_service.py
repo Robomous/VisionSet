@@ -37,7 +37,6 @@ never exist without the dataset it is supposed to be created with.
 from __future__ import annotations
 
 import shutil
-import unicodedata
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -45,9 +44,8 @@ from types import TracebackType
 from uuid import UUID
 
 from visionset.kernel.adapters import FilesystemBlobStore, SqliteMetadataStore
-from visionset.kernel.domain import Workspace
+from visionset.kernel.domain import Workspace, normalize_name
 from visionset.kernel.errors import (
-    InvalidName,
     NotAWorkspace,
     ProjectNameTaken,
     WorkspaceAlreadyExists,
@@ -264,13 +262,14 @@ class WorkspaceService:
         whitespace is left alone — collapsing it would rewrite the user's input
         for no invariant.
 
+        The rule itself is shared (:func:`normalize_name`) because every named
+        entity answers "is this the same name?" the same way; what is specific to
+        a project is the *uniqueness* below, not the normalization.
+
         Raises:
             InvalidName: the name is blank once stripped.
         """
-        normalized = unicodedata.normalize("NFC", name).strip()
-        if not normalized:
-            raise InvalidName("a project name must contain at least one non-blank character")
-        return normalized
+        return normalize_name(name, what="project")
 
     def require_project_name(
         self, uow: UnitOfWork, name: str, *, exclude: UUID | None = None

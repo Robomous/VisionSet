@@ -29,10 +29,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import cast
 
-from sqlalchemy import Connection
+from sqlalchemy import Column, Connection, Table, inspect, text
+from sqlalchemy.schema import CreateColumn
 
-from visionset.kernel.adapters._tables import PROJECT_NAME_UNIQUE, Base
+from visionset.kernel.adapters._tables import PROJECT_NAME_UNIQUE, Base, BatchRow
 
 
 @dataclass(frozen=True)
@@ -58,12 +60,44 @@ def _add_project_name_uniqueness(connection: Connection) -> None:
     PROJECT_NAME_UNIQUE.create(connection, checkfirst=True)
 
 
+def _add_column(connection: Connection, column: Column[object]) -> None:
+    """``ALTER TABLE ... ADD COLUMN``, but only if it is not already there.
+
+    SQLite has no ``ADD COLUMN IF NOT EXISTS``, so the inspector check *is* this
+    migration's ``checkfirst`` — a database created by migration 1 already
+    carries the column, because migration 1 is ``create_all`` of the current
+    metadata. See the module docstring.
+
+    The DDL is compiled from the column object in ``_tables`` rather than typed
+    out here, for the same reason migration 2 shares its ``Index``: two spellings
+    of one column are two things that can drift.
+    """
+    table: Table = column.table
+    stored = {existing["name"] for existing in inspect(connection).get_columns(table.name)}
+    if column.name in stored:
+        return
+    definition = CreateColumn(column).compile(bind=connection).string
+    connection.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {definition}"))
+
+
+def _add_batch_schema_version(connection: Connection) -> None:
+    """Give a batch somewhere to record the schema version pinned at approval."""
+    # ``.c`` is typed as the generic column collection; the entry is a real
+    # ``Column``, which is what ``CreateColumn`` needs.
+    _add_column(connection, cast(Column[object], BatchRow.__table__.c.schema_version))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
         version=2,
         name="project_name_unique_per_workspace",
         upgrade=_add_project_name_uniqueness,
+    ),
+    Migration(
+        version=3,
+        name="batch_schema_version_pin",
+        upgrade=_add_batch_schema_version,
     ),
 ]
 
