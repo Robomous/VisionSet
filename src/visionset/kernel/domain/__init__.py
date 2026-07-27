@@ -43,12 +43,23 @@ from visionset.kernel.domain.schema_diff import (
     diff_classes,
 )
 from visionset.kernel.domain.source import Source
-from visionset.kernel.domain.task import AnnotationJob, AnnotationJobState, AssetProgress, TaskGroup
+from visionset.kernel.domain.task import (
+    ASSET_PROGRESS_TRANSITIONS,
+    JOB_TRANSITIONS,
+    SETTLED_PROGRESS,
+    AnnotationJob,
+    AnnotationJobState,
+    AssetProgress,
+    TaskGroup,
+)
 from visionset.kernel.domain.workspace import Workspace
 
 __all__ = [
+    "ASSET_PROGRESS_TRANSITIONS",
     "BATCH_TRANSITIONS",
     "IMPLEMENTED_GEOMETRIES",
+    "JOB_TRANSITIONS",
+    "SETTLED_PROGRESS",
     "Annotation",
     "AnnotationJob",
     "AnnotationJobState",

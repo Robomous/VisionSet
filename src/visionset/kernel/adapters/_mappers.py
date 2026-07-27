@@ -229,10 +229,13 @@ def _job_to_row(entity: AnnotationJob) -> t.Base:
 
 
 def _job_to_domain(session: Session, row: Any) -> AnnotationJob:
+    # Ordered, and that is a contract rather than a nicety: the dict this builds
+    # is what JobService.next_pending pages through, so the batch's asset order
+    # has to survive the round trip.
     rows = session.execute(
-        select(t.AnnotationJobAssetRow.asset_id, t.AnnotationJobAssetRow.progress).where(
-            t.AnnotationJobAssetRow.job_id == row.id
-        )
+        select(t.AnnotationJobAssetRow.asset_id, t.AnnotationJobAssetRow.progress)
+        .where(t.AnnotationJobAssetRow.job_id == row.id)
+        .order_by(t.AnnotationJobAssetRow.position)
     ).all()
     return AnnotationJob(
         id=row.id,
@@ -247,8 +250,10 @@ def _job_sync_children(session: Session, entity: AnnotationJob) -> None:
         delete(t.AnnotationJobAssetRow).where(t.AnnotationJobAssetRow.job_id == entity.id)
     )
     session.add_all(
-        t.AnnotationJobAssetRow(job_id=entity.id, asset_id=asset_id, progress=progress)
-        for asset_id, progress in entity.progress.items()
+        t.AnnotationJobAssetRow(
+            job_id=entity.id, asset_id=asset_id, progress=progress, position=position
+        )
+        for position, (asset_id, progress) in enumerate(entity.progress.items())
     )
 
 
