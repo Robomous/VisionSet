@@ -3,16 +3,20 @@
 
 Every kernel operation happens in the context of exactly one workspace, so this
 module is also the **single composition point** for the default adapters. It is
-the only place in the kernel that names ``SqliteMetadataStore`` or
-``FilesystemBlobStore``; everything above it — later services, the REST surface,
-the CLI, MCP — receives an open ``WorkspaceService`` and reaches the ports
-through it. Swapping an adapter is therefore a change to two functions here and
-to nowhere else.
+the only place in the kernel that names ``SqliteMetadataStore``,
+``FilesystemBlobStore`` or ``InProcessEventBus``; everything above it — later
+services, the REST surface, the CLI, MCP — receives an open ``WorkspaceService``
+and reaches the ports through it. Swapping an adapter is therefore a change to
+two functions here and to nowhere else.
 
 The layout is flat, and the database is the marker::
 
     <root>/visionset.db     the metadata store; holds format_version
     <root>/blobs/           the content-addressed blob store
+
+The third port has no line in that layout, and that is the point: the event bus
+is in-process and leaves nothing behind. It is composed here anyway, because a
+workspace is what services are handed and the bus has to arrive with it.
 
 There is no sidecar file carrying the format version. It lives inside the
 database it describes, for the same reason there is no alembic ledger: a second
@@ -43,7 +47,11 @@ from pathlib import Path
 from types import TracebackType
 from uuid import UUID
 
-from visionset.kernel.adapters import FilesystemBlobStore, SqliteMetadataStore
+from visionset.kernel.adapters import (
+    FilesystemBlobStore,
+    InProcessEventBus,
+    SqliteMetadataStore,
+)
 from visionset.kernel.domain import Workspace, normalize_name
 from visionset.kernel.errors import (
     NotAWorkspace,
@@ -52,7 +60,13 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
     WorkspaceNotEmpty,
 )
-from visionset.kernel.ports import UNINITIALIZED, BlobStore, MetadataStore, UnitOfWork
+from visionset.kernel.ports import (
+    UNINITIALIZED,
+    BlobStore,
+    EventBus,
+    MetadataStore,
+    UnitOfWork,
+)
 
 #: The metadata store. Its presence is what makes a directory a workspace.
 DB_FILENAME = "visionset.db"
@@ -65,6 +79,9 @@ _PREVIEW = 3
 
 type MetadataStoreFactory = Callable[[Path], MetadataStore]
 type BlobStoreFactory = Callable[[Path], BlobStore]
+#: Zero-argument, unlike the other two: a bus is not derived from the workspace
+#: path, because it has nothing on disk to be derived from.
+type EventBusFactory = Callable[[], EventBus]
 
 
 def _resolved(path: Path | str) -> Path:
@@ -78,15 +95,21 @@ def _resolved(path: Path | str) -> Path:
 
 
 class WorkspaceService:
-    """One open workspace: its identity, its directory, and its two stores.
+    """One open workspace: its identity, its directory, and its three ports.
 
     Instances come from :meth:`init` and :meth:`open`. Constructing one directly
     is the injection seam — hand it ports and nothing here touches a disk.
 
-    The ports cannot be ordinary constructor defaults because the default is
-    derived from the path, which the constructor does not own. The keyword-only
+    The two stores cannot be ordinary constructor defaults because their default
+    is derived from the path, which the constructor does not own. The keyword-only
     *factories* on ``init``/``open`` carry them instead: no module-level
     singleton, no import from a delivery module, and each default named once.
+
+    The event bus has no path to be derived from and could have been a plain
+    default, but it takes the same shape anyway — one place naming the default,
+    one bus per open workspace. A module-level default would be a singleton
+    shared by every workspace in the process, which is precisely the thing two
+    workspaces open at once must not have.
     """
 
     def __init__(
@@ -95,11 +118,13 @@ class WorkspaceService:
         workspace: Workspace,
         metadata_store: MetadataStore,
         blob_store: BlobStore,
+        event_bus: EventBus,
     ) -> None:
         self._root = root
         self._workspace = workspace
         self._metadata_store = metadata_store
         self._blob_store = blob_store
+        self._event_bus = event_bus
 
     # --- composition: the only two ways to get one ------------------------
 
@@ -111,6 +136,7 @@ class WorkspaceService:
         name: str | None = None,
         metadata_store_factory: MetadataStoreFactory = SqliteMetadataStore,
         blob_store_factory: BlobStoreFactory = FilesystemBlobStore,
+        event_bus_factory: EventBusFactory = InProcessEventBus,
     ) -> WorkspaceService:
         """Create a workspace at ``path`` and return it open.
 
@@ -158,7 +184,7 @@ class WorkspaceService:
                 metadata_store.close()
             _undo_init(root, created_root=created_root)
             raise
-        return cls(root, workspace, metadata_store, blob_store)
+        return cls(root, workspace, metadata_store, blob_store, event_bus_factory())
 
     @classmethod
     def open(
@@ -167,6 +193,7 @@ class WorkspaceService:
         *,
         metadata_store_factory: MetadataStoreFactory = SqliteMetadataStore,
         blob_store_factory: BlobStoreFactory = FilesystemBlobStore,
+        event_bus_factory: EventBusFactory = InProcessEventBus,
     ) -> WorkspaceService:
         """Open the workspace at ``path``, migrating it forward if it is behind.
 
@@ -214,7 +241,7 @@ class WorkspaceService:
         except BaseException:
             metadata_store.close()
             raise
-        return cls(root, rows[0], metadata_store, blob_store)
+        return cls(root, rows[0], metadata_store, blob_store, event_bus_factory())
 
     # --- what the surfaces and the later services read --------------------
 
@@ -242,6 +269,15 @@ class WorkspaceService:
     @property
     def blob_store(self) -> BlobStore:
         return self._blob_store
+
+    @property
+    def event_bus(self) -> EventBus:
+        """Where the services announce what they did, once it has committed.
+
+        Reached through the handle like the other two ports, so a service takes a
+        ``WorkspaceService`` and still needs no second dependency to emit.
+        """
+        return self._event_bus
 
     @property
     def format_version(self) -> int:
@@ -302,7 +338,12 @@ class WorkspaceService:
     # --- lifecycle ---------------------------------------------------------
 
     def close(self) -> None:
-        """Release the metadata store's connections. Safe to call twice."""
+        """Release the metadata store's connections. Safe to call twice.
+
+        The blob store and the event bus are not closed and have nothing to
+        close: one addresses files by hash and opens them per call, the other
+        holds a list of callables. Only the database keeps a connection.
+        """
         self._metadata_store.close()
 
     def __enter__(self) -> WorkspaceService:

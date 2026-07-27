@@ -81,6 +81,10 @@ cannot validate the class, the geometry or the attributes either.
 `add`, `update` and `delete` each take a sequence and run in one transaction. A payload with
 one bad box stores nothing at all: a half-labeled asset is not a state a caller can reach.
 
+Which is also why each publishes exactly one [`AnnotationsWritten`](events.md) after the commit,
+naming its operation — one per call, not one per box, because the call is the thing that
+happened.
+
 ## Attributes are keyed by exact name
 
 ```python

@@ -55,6 +55,7 @@ from visionset.kernel.domain import (
     ManifestAnnotation,
     ManifestAsset,
     Release,
+    ReleasePublished,
     ReleaseVerification,
     SplitAssignment,
     SplitRecipe,
@@ -111,6 +112,11 @@ class ReleaseService:
         ``split`` is stored, not applied. :meth:`assignment` turns it into folds
         on demand, from this snapshot's frozen asset set.
 
+        :class:`ReleasePublished` is announced once the row has committed, and
+        carries ``manifest_hash`` so a subscriber can read the whole snapshot
+        without being handed it. There is no dataset change-log entry: publishing
+        mutates nothing in the trunk, so "a release happened" is an event.
+
         The manifest blob is written before the row commits, so a lost tag race
         leaves the document behind with no release naming it. That is benign and
         not worth a compensating delete: the blob is content-addressed, so the
@@ -156,7 +162,8 @@ class ReleaseService:
                     classes=active.classes,
                     assets=_manifest_assets(uow, assets),
                 )
-                return uow.releases.add(
+                project_id = dataset.project_id
+                published = uow.releases.add(
                     Release(
                         dataset_id=dataset.id,
                         tag=cleaned,
@@ -174,6 +181,23 @@ class ReleaseService:
                 )
         except ConstraintViolated as exc:
             raise self._as_tag_collision(exc, cleaned) from exc
+
+        # After the ``except``, not merely after the ``with``: a lost tag race
+        # surfaces at commit time, so announcing any earlier would announce a
+        # release that does not exist.
+        self._workspace.event_bus.publish(
+            ReleasePublished(
+                release_id=published.id,
+                dataset_id=published.dataset_id,
+                project_id=project_id,
+                tag=published.tag,
+                manifest_hash=published.manifest_hash,
+                schema_version=published.schema_version,
+                asset_count=published.asset_count,
+                annotation_count=published.annotation_count,
+            )
+        )
+        return published
 
     # --- reading -----------------------------------------------------------
 

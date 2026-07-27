@@ -6,7 +6,7 @@ implement these; the kernel never imports an implementation directly.
 
 from visionset.kernel.ports.auth_provider import AuthProvider
 from visionset.kernel.ports.blob_store import BlobStore
-from visionset.kernel.ports.event_bus import Event, EventBus
+from visionset.kernel.ports.event_bus import EventBus
 from visionset.kernel.ports.exporter import Exporter
 from visionset.kernel.ports.importer import Importer
 from visionset.kernel.ports.media_processor import MediaProcessor
@@ -22,7 +22,6 @@ __all__ = [
     "UNINITIALIZED",
     "AuthProvider",
     "BlobStore",
-    "Event",
     "EventBus",
     "Exporter",
     "Importer",
