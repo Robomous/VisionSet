@@ -38,7 +38,10 @@ from visionset.kernel.domain import (
     DatasetChange,
     DatasetMember,
     GeometryType,
+    IngestFailure,
+    IngestFailureKind,
     IngestJob,
+    IngestState,
     LabelClass,
     PolygonGeometry,
     Project,
@@ -83,7 +86,25 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
             ),
         )
     )
-    ingest = uow.ingest_jobs.add(IngestJob(source_id=source.id))
+    # Counters set and a *populated* report, for the same reason the source
+    # above is a video one: leaving `failures` at its default would leave the
+    # JSON column empty in every store test and the nested round trip untested.
+    ingest = uow.ingest_jobs.add(
+        IngestJob(
+            source_id=source.id,
+            state=IngestState.COMPLETED,
+            batch_name="monday",
+            processed=3,
+            total=4,
+            failures=(
+                IngestFailure(
+                    name="/data/notes.txt",
+                    kind=IngestFailureKind.UNSUPPORTED,
+                    reason="not an image",
+                ),
+            ),
+        )
+    )
     first = uow.assets.add(
         Asset(project_id=project.id, content_hash="a" * 64, uri="file:///1.png", width=8, height=6)
     )

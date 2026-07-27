@@ -20,30 +20,44 @@ the origin of the first sighting — the rule ``Source.registered_at`` already
 follows. Re-running an ingest therefore creates nothing and is not an error; it
 is how a source that grew by three files is caught up.
 
-**Four transactions, not one, and the middle of the run is in none of them.**
-Decoding is a Pillow pass over thousands of files or an out-of-process ffmpeg,
-and holding a write transaction open across either is how a single-writer SQLite
-store starts reporting "database is locked" (#80). So the run resolves what it
-needs, closes the transaction, does the work, and opens another to record it.
-Blob writes happen out there too, before any row exists: ``BlobStore.put`` is not
+**The long middle of the run is in no transaction.** Decoding is a Pillow pass
+over thousands of files or an out-of-process ffmpeg, and holding a write
+transaction open across either is how a single-writer SQLite store starts
+reporting "database is locked" (#80). So the run resolves what it needs, closes
+the transaction, does the work, and opens another to record it. Blob writes
+happen out there too, before any row exists: ``BlobStore.put`` is not
 transactional and a rollback cannot unwrite it — but a blob nothing points at is
 harmless (content-addressed, shared, never deleted), while a row naming bytes
-that were never stored is not. The honest consequence, stated rather than
-hidden: a process killed between transactions can leave assets in the project
-with no batch, and a job stuck at ``running``. That is recoverable, and finding
-it is what #19's job record is for.
+that were never stored is not.
+
+The progress writes that go on *between* items are not a contradiction: each is
+one ``UPDATE`` that opens and commits while nothing is being decoded. What the
+warning is about is a transaction held **across** the decode, not the existence
+of writes during the phase.
+
+**The job is a state machine, and it is a table.** ``INGEST_TRANSITIONS`` in
+``domain/ingest.py`` is the whole of what is legal; this service consults it
+through ``require_move`` and never restates it. It has the kernel's only
+backward edge, ``failed -> running``, which is :meth:`IngestService.resume`.
+
+**Nothing carries a job across the decode.** ``Repository.update`` replaces the
+whole row, so a model read before the work and written after it would silently
+undo every counter the run recorded in between. Only ``job_id`` travels; every
+write re-reads the row inside its own transaction. That is what
+:meth:`require_job` is public for.
 
 **Failure splits by remedy, exactly as the media errors do.** A file that is not
-an image, or one whose bytes will not decode, is *reported* — one entry in
-``IngestResult.failures``, and the run carries on, because an operator with five
+an image, or one whose bytes will not decode, is *reported* — one entry in the
+job's ``failures``, and the run carries on, because an operator with five
 thousand files needs the other four thousand nine hundred. A missing ffmpeg is
 not a file's fault at all; it fails the job outright and is re-raised, which is
 precisely why ``MediaToolUnavailable`` sits outside the ``MediaError`` family.
 
-**What #20 deliberately leaves for later.** No transition table, no persisted
-progress counters and no persisted error report — #19 owns the job's lifecycle
-and turns ``IngestResult`` into columns. No ``thumbnail_hash``: #21. This service
-writes terminal job states directly and reports in memory.
+**What is still deliberately not here.** No ``thumbnail_hash``: #21. No
+background execution: a run is synchronous and in-process, and the API is shaped
+so that putting it behind a queue changes the caller's waiting rather than its
+vocabulary — which is why a job is created ``pending`` and moved to ``running``
+by whoever picks it up, even though today that is the same call.
 """
 
 from __future__ import annotations
@@ -53,6 +67,7 @@ from pathlib import Path
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    INGEST_TRANSITIONS,
     Asset,
     Batch,
     IngestCompleted,
@@ -65,6 +80,7 @@ from visionset.kernel.domain import (
     Source,
     SourceKind,
     normalize_name,
+    require_move,
 )
 from visionset.kernel.errors import (
     CorruptMedia,
@@ -89,7 +105,12 @@ class IngestService:
     # --- reading -----------------------------------------------------------
 
     def get(self, job_id: UUID) -> IngestJob:
-        """The ingest job with that id.
+        """The ingest job with that id, including how far it has got.
+
+        This is the polling contract. ``processed`` / ``total`` and the per-file
+        ``failures`` are written while the run is in flight, so calling this
+        from another thread, another process or the future HTTP surface reports
+        the run's real position rather than its last finished state.
 
         Raises:
             IngestJobNotFound: no such ingest job in this workspace.
@@ -123,7 +144,9 @@ class IngestService:
 
         ``UnsupportedMedia`` and ``CorruptMedia`` are collected rather than
         raised — see ``IngestResult.failures``, where each keeps the item's name
-        and the remedy apart.
+        and the remedy apart. The same report is written to the job's row as the
+        run goes, next to ``processed`` and ``total``, so a caller who did not
+        wait for this to return can still read both. See :meth:`get`.
 
         Raises:
             SourceNotFound: no such source in this workspace.
@@ -141,34 +164,91 @@ class IngestService:
             source = self._sources.require_source(uow, source_id)
             self._require_project(uow, source.project_id)
             name = self._target_name(uow, source, batch_id, batch_name)
-            job = uow.ingest_jobs.add(IngestJob(source_id=source.id, state=IngestState.RUNNING))
+            # ``pending``, not ``running``: the row exists before anybody picks
+            # the work up, which is the vocabulary a queue will need and costs
+            # nothing today. Every refusal above happens before the insert, so a
+            # run that fails fast leaves no job row at all.
+            job = uow.ingest_jobs.add(IngestJob(source_id=source.id, batch_name=name))
 
+        return self._run(job.id, source, name, batch_id)
+
+    def resume(self, job_id: UUID) -> IngestResult:
+        """Run a failed job again, on the same row and into the same batch.
+
+        A **redo, not a skip**. There is no per-file record of what the previous
+        attempt managed, and there does not need to be: blobs are
+        content-addressed and assets are deduplicated by content, so re-reading
+        the whole source creates nothing it created before. The cost is
+        re-hashing what is already stored; what it buys is that resume has no
+        second code path to get it wrong.
+
+        The counters and the per-file report are reset — they describe *this*
+        attempt, and a completed run still carrying the last attempt's report
+        would be a lie. The fatal ``error`` is cleared for the same reason.
+
+        Only a ``failed`` job can be resumed, because ``INGEST_TRANSITIONS`` has
+        no ``running -> running`` edge. A job stuck at ``running`` is a process
+        that died without reporting anything; ingest the source again instead,
+        which creates nothing and leaves the crashed row as the record it is.
+
+        Raises:
+            IngestJobNotFound: no such ingest job in this workspace.
+            InvalidTransition: the job is not ``failed``.
+            SourceNotFound: the source has since been deleted.
+            BatchNotEditable: the batch the first attempt reached is past
+                ``draft``.
+            plus everything :meth:`ingest` raises.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job = self.require_job(uow, job_id)
+            source = self._sources.require_source(uow, job.source_id)
+            self._require_project(uow, source.project_id)
+            # The friendly pre-check, so a completed job is refused before the
+            # target batch is resolved. The real one is inside ``_run``, in the
+            # transaction that actually moves the row.
+            require_move(INGEST_TRANSITIONS, job.state, IngestState.RUNNING, _subject(job.id))
+            name = self._target_name(uow, source, job.batch_id, job.batch_name)
+
+        return self._run(job.id, source, name, job.batch_id)
+
+    # --- the run, phase by phase -------------------------------------------
+
+    def _run(self, job_id: UUID, source: Source, name: str, batch_id: UUID | None) -> IngestResult:
+        """The work itself, shared by a first attempt and by a resumed one.
+
+        Takes ``job_id`` rather than an ``IngestJob`` on purpose: the row is
+        rewritten many times between here and the end, and a model captured now
+        would overwrite all of it — see the module docstring.
+        """
+        self._begin(job_id)
         try:
-            candidates, failures = self._read(source)
+            candidates, failures = self._read(source, job_id)
             assets, created = self._store(source.project_id, candidates)
             batch = self._materialize(source.project_id, name, batch_id, assets)
             with self._workspace.unit_of_work() as uow:
-                job = uow.ingest_jobs.update(
+                job = self.require_job(uow, job_id)
+                require_move(INGEST_TRANSITIONS, job.state, IngestState.COMPLETED, _subject(job_id))
+                uow.ingest_jobs.update(
                     job.model_copy(
                         update={"state": IngestState.COMPLETED, "batch_id": batch.id},
                     )
                 )
         except Exception as exc:
-            self._fail(job.id, str(exc) or exc.__class__.__name__)
+            self._fail(job_id, str(exc) or exc.__class__.__name__)
             raise
 
         # After the block, never inside it: a subscriber must not be able to put
         # its own exception on a transaction's way out.
         self._workspace.event_bus.publish(
             IngestCompleted(
-                ingest_job_id=job.id,
+                ingest_job_id=job_id,
                 project_id=source.project_id,
                 source_id=source.id,
                 asset_count=len(assets),
             )
         )
         return IngestResult(
-            job_id=job.id,
+            job_id=job_id,
             project_id=source.project_id,
             source_id=source.id,
             batch_id=batch.id,
@@ -177,19 +257,40 @@ class IngestService:
             failures=tuple(failures),
         )
 
-    # --- the run, phase by phase -------------------------------------------
+    def _begin(self, job_id: UUID) -> None:
+        """Take the job from ``pending`` or ``failed`` to ``running``, empty-handed.
 
-    def _read(self, source: Source) -> tuple[list[Asset], list[IngestFailure]]:
+        The reset is what makes a resumed run's counters and report describe the
+        attempt a caller is watching rather than the one that failed.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job = self.require_job(uow, job_id)
+            require_move(INGEST_TRANSITIONS, job.state, IngestState.RUNNING, _subject(job_id))
+            uow.ingest_jobs.update(
+                job.model_copy(
+                    update={
+                        "state": IngestState.RUNNING,
+                        "error": None,
+                        "processed": 0,
+                        "total": None,
+                        "failures": (),
+                    }
+                )
+            )
+
+    def _read(self, source: Source, job_id: UUID) -> tuple[list[Asset], list[IngestFailure]]:
         """Decode and store every item, outside any transaction.
 
         Returns candidate assets in the order the source offered them, plus one
         entry per item that could not be read at all.
         """
         if source.kind is SourceKind.VIDEO:
-            return self._read_video(source)
-        return self._read_directory(source)
+            return self._read_video(source, job_id)
+        return self._read_directory(source, job_id)
 
-    def _read_directory(self, source: Source) -> tuple[list[Asset], list[IngestFailure]]:
+    def _read_directory(
+        self, source: Source, job_id: UUID
+    ) -> tuple[list[Asset], list[IngestFailure]]:
         """Every file at the top of the directory, in filename order.
 
         Top level only. Recursion is not a per-run option but a question about
@@ -201,11 +302,19 @@ class IngestService:
         No suffix filter either: a ``notes.txt`` is reported as unsupported
         rather than skipped, because guessing which files an operator meant to
         offer is a policy the kernel would be inventing.
+
+        This is the one path that can state a ``total`` up front, because
+        listing a directory is cheap and exact. The write before the loop is
+        what publishes it — and what makes an empty directory record ``0 of 0``
+        rather than nothing at all.
         """
         candidates: list[Asset] = []
         failures: list[IngestFailure] = []
         directory = Path(source.path)
-        for path in sorted(item for item in directory.iterdir() if item.is_file()):
+        paths = sorted(item for item in directory.iterdir() if item.is_file())
+        total = len(paths)
+        self._record_progress(job_id, processed=0, total=total, failures=failures)
+        for path in paths:
             try:
                 with path.open("rb") as handle:
                     # Probe first: a file that is going to be refused should
@@ -218,21 +327,30 @@ class IngestService:
                     content_hash = self._workspace.blob_store.put(handle)
             except MediaError as exc:
                 failures.append(_failure(str(path), exc))
-                continue
-            candidates.append(
-                Asset(
-                    project_id=source.project_id,
-                    content_hash=content_hash,
-                    uri=str(path),
-                    width=metadata.width,
-                    height=metadata.height,
-                    format=metadata.format,
-                    source_id=source.id,
+            else:
+                candidates.append(
+                    Asset(
+                        project_id=source.project_id,
+                        content_hash=content_hash,
+                        uri=str(path),
+                        width=metadata.width,
+                        height=metadata.height,
+                        format=metadata.format,
+                        source_id=source.id,
+                    )
                 )
+            # After every item, read or refused alike: ``processed`` counts what
+            # the run has dealt with, and a report that only appeared at the end
+            # would be invisible for exactly as long as it is interesting.
+            self._record_progress(
+                job_id,
+                processed=len(candidates) + len(failures),
+                total=total,
+                failures=failures,
             )
         return candidates, failures
 
-    def _read_video(self, source: Source) -> tuple[list[Asset], list[IngestFailure]]:
+    def _read_video(self, source: Source, job_id: UUID) -> tuple[list[Asset], list[IngestFailure]]:
         """One asset per extracted frame, at the rate the source records.
 
         The frames are **not** re-probed. ``VideoProcessor`` guarantees each one
@@ -247,6 +365,12 @@ class IngestService:
         loop and what was extracted is kept. The loop is left by falling out of
         it, which is one of the two ways the port allows an iterator to be
         released.
+
+        ``total`` stays NULL for the whole run, and honestly so. ``VideoMetadata``
+        carries no frame count by design — it would be a guess for a
+        variable-rate clip and the number an ingest wants is what extraction
+        actually produced — so a total here would be arithmetic presented as
+        fact. ``processed`` still climbs, which is what a poller needs.
         """
         provenance = source.require_video()
         candidates: list[Asset] = []
@@ -255,6 +379,7 @@ class IngestService:
         frames = self._workspace.video_processor.frames(
             clip, fps=provenance.extraction_fps, name=clip.name
         )
+        self._record_progress(job_id, processed=0, total=None, failures=failures)
         try:
             for frame in frames:
                 content_hash = self._workspace.blob_store.put(BytesIO(frame.content))
@@ -271,8 +396,12 @@ class IngestService:
                         frame_timestamp=frame.timestamp,
                     )
                 )
+                self._record_progress(
+                    job_id, processed=len(candidates), total=None, failures=failures
+                )
         except MediaError as exc:
             failures.append(_failure(source.path, exc))
+            self._record_progress(job_id, processed=len(candidates), total=None, failures=failures)
         return candidates, failures
 
     def _store(self, project_id: UUID, candidates: list[Asset]) -> tuple[list[Asset], list[UUID]]:
@@ -317,14 +446,56 @@ class IngestService:
             return self._batches.create(project_id, name, asset_ids)
         return self._batches.add_assets(batch_id, asset_ids)
 
-    def _fail(self, job_id: UUID, cause: str) -> None:
-        """Record why a run stopped, on its own row and in its own transaction."""
+    def _record_progress(
+        self, job_id: UUID, *, processed: int, total: int | None, failures: list[IngestFailure]
+    ) -> None:
+        """Publish how far the run has got, in one ``UPDATE`` of its own.
+
+        Called after **every** item rather than on a cadence. The number a
+        caller polls is then never stale by an amount nobody can predict, and
+        there is no interval constant to pick — one that fits a directory of
+        five files and one that fits a directory of fifty thousand are not the
+        same number, and this service cannot know which it is looking at. The
+        cost is one small commit beside a decode-and-hash that costs an order of
+        magnitude more.
+
+        Re-reads the row rather than updating a copy held by the caller:
+        ``Repository.update`` replaces the whole row, so a stale model would
+        undo everything written since it was read.
+
+        A run whose job row has been deleted underneath it keeps going and
+        reports to nobody, the way ``_fail`` already tolerates the same thing —
+        losing the work over a missing receipt would be the worse answer.
+        """
         with self._workspace.unit_of_work() as uow:
             job = uow.ingest_jobs.get(job_id)
-            if job is not None:
-                uow.ingest_jobs.update(
-                    job.model_copy(update={"state": IngestState.FAILED, "error": cause})
+            if job is None:
+                return
+            uow.ingest_jobs.update(
+                job.model_copy(
+                    update={
+                        "processed": processed,
+                        "total": total,
+                        "failures": tuple(failures),
+                    }
                 )
+            )
+
+    def _fail(self, job_id: UUID, cause: str) -> None:
+        """Record why a run stopped, on its own row and in its own transaction.
+
+        The counters and the report the run got as far as writing are left
+        exactly where they are: they say how far it had come when it stopped,
+        which is the first thing anyone looking at a failure wants.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job = uow.ingest_jobs.get(job_id)
+            if job is None:
+                return
+            require_move(INGEST_TRANSITIONS, job.state, IngestState.FAILED, _subject(job_id))
+            uow.ingest_jobs.update(
+                job.model_copy(update={"state": IngestState.FAILED, "error": cause})
+            )
 
     # --- lookups shared by the operations above ----------------------------
 
@@ -390,6 +561,11 @@ class IngestService:
         with self._workspace.unit_of_work() as uow:
             source = self._sources.require_source(uow, source_id)
             return uow.ingest_jobs.list(source.id)
+
+
+def _subject(job_id: UUID) -> str:
+    """How a refused move names the run. One spelling, so refusals read alike."""
+    return f"ingest job {job_id}"
 
 
 def _failure(name: str, exc: MediaError) -> IngestFailure:

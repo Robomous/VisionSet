@@ -341,6 +341,42 @@ def _add_ingest_origin_and_uniqueness(connection: Connection) -> None:
     connection.execute(CreateIndex(SOURCE_ORIGIN_UNIQUE, if_not_exists=True))
 
 
+def _add_ingest_progress_and_report(connection: Connection) -> None:
+    """Give a run somewhere to record how far it got, and what it could not read.
+
+    Four plain columns, and the plainness is the point after migration 8: none
+    of them carries a foreign key, so ``ALTER TABLE`` can express all four and
+    the rebuild that migration 8 needed is neither available nor wanted here.
+    Not available, because this table is no longer empty — the build that
+    shipped migration 8 writes rows to it, and those rows are legitimate. Not
+    wanted, because nothing about them requires it.
+
+    Idempotent the way 3 to 5 are: the inspector check inside ``_add_column``
+    *is* the ``checkfirst``, because migration 1 is ``create_all`` of current
+    metadata. No data pre-check either, and that is a claim rather than an
+    oversight: every added column has an honest value for a row written before
+    it. ``batch_name`` is NULL — that run recorded none, and a resume falls back
+    to naming the batch after the source, exactly as the first attempt did.
+    ``processed`` is ``0`` and ``failures`` is ``[]`` — that run counted nothing
+    and reported nothing, which is true. ``total`` is NULL, which is the same
+    "not knowable" a video run writes today.
+
+    The two ``NOT NULL`` columns carry their ``server_default`` in ``_tables``
+    rather than here, because SQLite refuses ``ADD COLUMN NOT NULL`` without a
+    value for the rows already there and the DDL is compiled from the column
+    object either way.
+    """
+    # ``.c`` is typed as the generic column collection; each entry is a real
+    # ``Column``, which is what ``CreateColumn`` needs.
+    for column in (
+        IngestJobRow.__table__.c.batch_name,
+        IngestJobRow.__table__.c.processed,
+        IngestJobRow.__table__.c.total,
+        IngestJobRow.__table__.c.failures,
+    ):
+        _add_column(connection, cast(Column[object], column))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -377,6 +413,11 @@ MIGRATIONS: list[Migration] = [
         version=8,
         name="ingest_pipeline",
         upgrade=_add_ingest_origin_and_uniqueness,
+    ),
+    Migration(
+        version=9,
+        name="ingest_job_progress",
+        upgrade=_add_ingest_progress_and_report,
     ),
 ]
 

@@ -64,6 +64,75 @@ offer is a policy the kernel would be inventing.
 tests. Decoding each one again to re-confirm it would also route our own encoder's output into an
 operator's per-file report — a failure nobody could act on.
 
+## The run has a lifecycle, and it is a table
+
+`INGEST_TRANSITIONS` in `domain/ingest.py` is the whole of what is legal. `IngestService`
+consults it through `require_move`; nothing restates it.
+
+```
+pending ──▶ running ──▶ completed
+   │           │
+   └────────▶ failed ──▶ running        (resume)
+```
+
+A job is created `pending` and moved to `running` by whoever picks the work up. Today that is
+the same call, and the state is over in microseconds — it is spelled out anyway because it is
+the vocabulary a queue needs, and adding it later would mean changing what a stored row means.
+
+**`failed → running` is the only backward edge in this kernel**, and the argument against
+reopening a [batch](batches.md) does not carry over. A batch pins a schema version at approval
+and its jobs are already cut against that pin, so un-freezing one would invalidate work already
+done. Nothing is pinned against an ingest run. It is a record of work, not an artifact with
+dependents — so resuming is the same unit of work continuing, on the same row. A second row per
+attempt would fork `batch_id` and turn `IngestService.list` into a list of retries.
+
+**`running → running` is deliberately missing**, so a run stuck at `running` cannot be resumed.
+That state is a process that died without reporting anything, not a failure anybody can read.
+The remedy already exists — ingest the source again, which creates nothing — and it leaves the
+stuck row as the only evidence the crash left.
+
+## Progress a caller can poll
+
+`processed` and `total` are written to the row **as the run goes**, so
+`IngestService.get(job_id)` answers "where is it now" rather than "where did it end". That is
+the contract the HTTP API and the UI will reuse; nothing about it is specific to being in the
+same process.
+
+| | what it means |
+| --- | --- |
+| `processed` | items dealt with — decoded and stored, or reported as unreadable |
+| `total` | items the source offered, or **NULL** when that is not knowable up front |
+
+A directory can be listed, so it states its total before the first file; an empty one records
+`0 of 0` rather than nothing. A clip cannot: `VideoMetadata` carries no frame count by design —
+it would be a guess for a variable-rate clip, and the number an ingest wants is what extraction
+actually produced — so `total` stays NULL and `processed` climbs alone.
+
+The counter is written **once per item**, not on a cadence. An interval that suits five files
+and one that suits fifty thousand are different numbers, and this service cannot know which it
+is looking at; the cost of not choosing is one small commit beside a decode and a hash that
+cost an order of magnitude more.
+
+## Resuming a failed run
+
+`IngestService.resume(job_id)` re-runs a failed job on its own row, into the batch the first
+attempt was headed for. Only a `failed` job qualifies — the table says so, and the refusal is
+an ordinary `InvalidTransition` rather than an error of its own.
+
+It is a **redo, not a skip**. There is no per-file record of what the previous attempt managed,
+and there does not need to be: blobs are content-addressed and assets are deduplicated by
+content, so re-reading the whole source creates nothing it created before. The cost is
+re-hashing what is already stored; what it buys is that resume has no second code path to get
+wrong.
+
+The counters, the per-file report and the fatal `error` are reset when the attempt starts, so
+they describe the run somebody is watching rather than the one that failed. A run that *failed*
+keeps them exactly where they stopped, which is the first thing anyone reading a failure wants.
+
+`batch_name` is a column for this reason alone: a run that died during the decode reached no
+batch, so without it a resumed run would fall back to naming the batch after the source folder
+and quietly lose the name the caller asked for.
+
 ## Four transactions, and the middle of the run is in none of them
 
 1. Resolve the source, decide the target batch, and insert the `IngestJob` as `running`.
@@ -81,9 +150,14 @@ row exists: `BlobStore.put` is not transactional and a rollback cannot unwrite i
 nothing points at is harmless (content-addressed, shared, never deleted), while a row naming bytes
 that were never stored is not.
 
+The progress writes that happen *between* items are not a contradiction. Each is one `UPDATE`
+that opens and commits while nothing is being decoded; what the single-writer warning is about
+is a transaction held **across** the decode, not the existence of writes during that phase.
+
 The honest consequence, stated rather than hidden: a process killed between transactions can leave
-assets in the project with no batch and a job stuck at `running`. That is recoverable, and finding
-it is what the job record is for.
+assets in the project with no batch and a job stuck at `running`. Finding it is what the job
+record is for, and ingesting the source again is what fixes it — see the lifecycle above for why
+that is the remedy rather than a resume.
 
 Within a run, each file is **probed before it is stored**, so a file that is going to be refused
 never leaves a blob behind.
@@ -97,9 +171,14 @@ name and the reason are kept apart so a report renders as a table rather than as
 sentences, and `IngestFailureKind` exists so it can be **grouped** — real data loss must not be
 buried under ordinary operator noise.
 
+The report is on the row as well as in the return value, written as the run goes rather than at
+the end: a report that only appeared once the run finished would be invisible for exactly as
+long as it is interesting.
+
 A missing ffmpeg is not a file's fault at all. `MediaToolUnavailable` is recorded as the job's
-`error`, the job is marked `failed`, and it is re-raised — which is precisely why it sits outside
-the `MediaError` family. One broken machine is not five thousand broken files.
+`error` — a separate column from the per-file `failures`, which stays empty — the job is marked
+`failed`, and it is re-raised, which is precisely why it sits outside the `MediaError` family.
+One broken machine is not five thousand broken files.
 
 ## The target batch
 
@@ -113,11 +192,10 @@ order for a directory and frame order for a clip.
 
 ## What is deliberately not here yet
 
-- **No state machine, no persisted progress, no persisted report.** The job is written straight to
-  `completed` or `failed`, and `IngestResult` lives only in memory. The transition table, the
-  processed/total counters a caller can poll mid-run, and the report as columns are #19's, which
-  adds them *around* this working path rather than rewriting it.
 - **No thumbnails.** Generating one per asset at ingest and recording `asset.thumbnail_hash` is
   #21, for the M5 gallery.
 - **No background execution.** A run is synchronous and in-process. The service API is shaped so
-  that moving it behind a queue changes the caller's waiting, not its vocabulary.
+  that moving it behind a queue changes the caller's waiting, not its vocabulary — which is why
+  a job is created `pending` and why progress is read off the row rather than off a callback.
+- **No cross-attempt history.** The report and the counters describe the current attempt. A
+  resumed run overwrites them, and a log of every attempt would be its own table.
