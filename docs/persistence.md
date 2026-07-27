@@ -47,8 +47,16 @@ never raises `ProjectNameTaken`.
 
 But a rule with no backstop is a wish, so the store carries the constraint too:
 `uq_project_workspace_name` on `project (workspace_id, name COLLATE NOCASE)`, alongside
-`uq_schema_project_version` and `uq_member_dataset_asset`. The invariant then survives a
-service bug, a forgotten code path, and a second process.
+`uq_schema_project_version`, `uq_member_dataset_asset`, `uq_release_dataset_tag`,
+`uq_asset_project_content_hash` and `uq_source_project_kind_path_fps`. The invariant then survives
+a service bug, a forgotten code path, and a second process.
+
+The last of those is the only index here whose terms are not all columns: its fourth is
+`coalesce(json_extract(video, '$.extraction_fps'), 0)`. SQLite treats NULLs in a unique index as
+distinct, so a nullable column would let every image directory collide with nothing at all — and
+an index is not a query, so no service gains a JSON path from it. It is also the one index that
+cannot use `checkfirst`, because SQLAlchemy cannot *reflect* an expression-based index; migration
+008 issues `CREATE UNIQUE INDEX IF NOT EXISTS` compiled from the same `Index` object instead.
 
 The two layers reach different distances on purpose. `COLLATE NOCASE` folds ASCII only;
 `WorkspaceService` compares with Unicode `casefold` over an NFC-normalized, stripped string.
@@ -81,6 +89,16 @@ Foreign keys are declared `ON DELETE CASCADE` — and the store issues
 `PRAGMA foreign_keys = ON` for every connection, because SQLite ships with foreign keys
 **off**. Without that pragma every constraint here would be decorative.
 
+`CASCADE` is the rule because the child is normally *part of* the parent. `ingest_job.batch_id`
+is the exception and states the other case: a run is a record of work done, not a child of the
+batch it filled, so deleting the batch nulls the link rather than erasing the run. The same
+argument applies to `asset.source_id` — a source is a receipt and an asset is data — except that
+one is not a foreign key at all: SQLite spells a key added by `ALTER TABLE` inline on the column
+while `create_all` spells one as a table constraint, the two texts differ, and `asset` is the one
+table that could not be rebuilt to escape that (four cascading children, and rows that were
+legitimately already there). It is documented on the column, and a future `SourceService.delete`
+has to clear it by hand.
+
 ## Migrations and `format_version`
 
 There is no alembic. A local-first, single-file, single-writer store does not need a
@@ -96,8 +114,9 @@ MIGRATIONS: list[Migration] = [
     Migration(version=5, name="annotation_attributes", upgrade=...),
     Migration(version=6, name="release_manifest_pointer", upgrade=...),
     Migration(version=7, name="source_provenance", upgrade=...),
+    Migration(version=8, name="ingest_pipeline", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 7
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 8
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -139,11 +158,23 @@ one, where `batch_asset.position`, which was there from migration 001, does not.
 
 And a column arriving by `ALTER` must be declared **last** on its row class, because SQLite
 appends it: `batch.schema_version`, `annotation_job_asset.position` and `annotation.attributes`
-all sit at the end of their tables for that reason alone. `source` is exempt — migration 007
-rebuilds it from `_tables` rather than altering it, so both paths run the same `CREATE TABLE` and
-the rule has nothing to bite on. Declared anywhere else, the
+all sit at the end of their tables for that reason alone, and migration 008 put
+`asset.format`, `asset.source_id`, `asset.frame_index` and `asset.frame_timestamp` there too.
+`source` is exempt — migration 007 rebuilds it from `_tables` rather than altering it, so both
+paths run the same `CREATE TABLE` and the rule has nothing to bite on — but **that exemption
+expires for any column added after 007**, because a database this build wrote is already stamped
+at 7 and will never re-run it. Declared anywhere else, the
 `create_all` path and the `ALTER` path emit different `CREATE TABLE` text and the
 fresh-versus-migrated test fails — which is exactly what it is for.
+
+**A column that carries a foreign key cannot arrive by `ALTER` at all.** SQLite spells an added
+key inline on the column; `create_all` spells one as a table constraint. The two texts differ, so
+the fresh-versus-migrated test fails — and dropping the key instead is not free either.
+Migration 008 met this twice and answered it twice: `ingest_job` was **rebuilt** so `batch_id`
+could keep a real key (no children, provably empty), while `asset.source_id` was added without
+one, because `asset` has four cascading children and rows that were legitimately already there.
+SQLite also refuses to *drop* such a column, which is why the undo in
+`_downgrade_to_version_one` rebuilds `ingest_job` rather than altering it.
 
 **Migrations 006 and 007 drop a table**, and the bar they had to clear is worth writing down.
 `release` gained three `NOT NULL` columns with no honest default — an `ALTER` would have baked
@@ -163,6 +194,14 @@ Migration 007 carries one extra obligation that 006 did not. `ingest_job.source_
 `DROP TABLE source` runs an implicit `DELETE FROM source` that takes the ingest jobs with it,
 **silently, without raising**. A rebuild of a table with children has to count the children too.
 `release` had none, which is why the precedent alone was not enough.
+
+Migration 008 is the worked example of the **other** answer to that question. `asset` has four
+cascading children *and* rows that are perfectly legitimate — M1's example wrote assets through
+the same public port a service uses — so there is nothing to refuse and nothing that could be
+dropped. It alters instead, and every column it adds is nullable and honest: NULL means "this row
+predates the ingest pipeline", where a `server_default` would invent a format nobody probed. What
+it does refuse is data its two new unique indexes cannot accept, counted before either index is
+created so an `IntegrityError` never escapes `initialize()`.
 
 The fresh-versus-migrated test is only as strong as how far back
 `_downgrade_to_version_one` walks, so every migration added there needs its undo added too.

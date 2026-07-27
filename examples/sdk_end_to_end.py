@@ -10,16 +10,17 @@ Run it::
     uv run python examples/sdk_end_to_end.py [DESTINATION]
 
 The images are generated here at runtime, from the standard library alone. That
-is not a convenience: VisionSet never commits fixture media, and M1 has no image
-library to lean on (Pillow arrives with the media processor in M2, #16).
+is not a convenience: VisionSet never commits fixture media, and an example that
+makes its own pixels needs no fixture at all. Pillow is a dependency now, and
+this deliberately still does not use it — the encoder below is six lines and its
+bytes are fixed, which is what keeps the split folds the same on every machine.
 
-**One call in here reaches below a service, on purpose.** Creating an ``Asset``
-has no door yet. #18's ``SourceService`` registers *where* data comes from, not
-the assets themselves; the pipeline that hashes, deduplicates and materializes
-into a batch is #20, with #19's ``IngestJob`` around it. Until #20 lands,
-``_add_assets`` writes the row that ingest would write, through the same public
-port a service uses. Every other step below goes through the service that
-owns it, which is how the rest of the SDK is meant to be used.
+**Every step now goes through the service that owns it.** That sentence used to
+carry an exception: creating an ``Asset`` had no door, so this file wrote the row
+by hand through the same public port a service uses. #20's ``IngestService``
+closed it. The frames are written to disk, the directory is registered as a
+source, and the ingest hashes them, stores them once and puts them in a batch —
+which is what a real caller does with a real folder of photographs.
 """
 
 from __future__ import annotations
@@ -29,7 +30,6 @@ import struct
 import sys
 import zlib
 from dataclasses import dataclass
-from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
@@ -57,10 +57,12 @@ from visionset.kernel.services import (
     AnnotationService,
     BatchService,
     DatasetService,
+    IngestService,
     JobService,
     ProjectService,
     ReleaseService,
     SchemaService,
+    SourceService,
     WorkspaceService,
 )
 
@@ -120,6 +122,8 @@ class Summary:
 
     project_id: UUID
     dataset_id: UUID
+    source_id: UUID
+    ingest_job_id: UUID
     schema_version: int
     asset_ids: tuple[UUID, ...]
     skipped_asset_id: UUID
@@ -177,37 +181,20 @@ def frame_bytes(index: int) -> bytes:
     return png(FRAME_WIDTH, FRAME_HEIGHT, (40 + index * 30, 90, 200 - index * 20))
 
 
-# --- the one write that has no service yet --------------------------------
+# --- offering the frames to the project -----------------------------------
 
 
-def _add_assets(workspace: WorkspaceService, project_id: UUID, count: int) -> list[Asset]:
-    """Put ``count`` generated frames into the workspace and register them.
+def _write_frames(directory: Path, count: int) -> Path:
+    """Put ``count`` generated frames on disk, the way a camera would have.
 
-    THE ONE PLACE THIS EXAMPLE REACHES BELOW A SERVICE. M1 has no ingest, so
-    there is no door to an Asset yet; #20 (M2) builds the pipeline that hashes,
-    deduplicates, extracts dimensions and materializes assets into a batch, and
-    this function disappears when it lands. Until then it does by hand exactly
-    what ingest will do: store the bytes, then record the row that names them.
-
-    The blobs are written *before* the transaction opens. ``BlobStore.put`` is
-    not transactional and a rollback cannot unwrite it — but a blob nothing
-    points at is harmless (content-addressed, deduplicated, and never deleted),
-    while a row pointing at bytes that were never stored would not be.
+    Named ``frame-000.png`` upward, because ingest reads a directory in filename
+    order and that order becomes the batch's membership order — so the labels
+    below can be indexed by position and still mean what they say.
     """
-    hashes = [workspace.blob_store.put(BytesIO(frame_bytes(index))) for index in range(count)]
-    with workspace.unit_of_work() as uow:
-        return [
-            uow.assets.add(
-                Asset(
-                    project_id=project_id,
-                    content_hash=content_hash,
-                    uri=f"synthetic://road-signs/frame-{index:03d}.png",
-                    width=FRAME_WIDTH,
-                    height=FRAME_HEIGHT,
-                )
-            )
-            for index, content_hash in enumerate(hashes)
-        ]
+    directory.mkdir(parents=True, exist_ok=True)
+    for index in range(count):
+        (directory / f"frame-{index:03d}.png").write_bytes(frame_bytes(index))
+    return directory
 
 
 # --- labels ---------------------------------------------------------------
@@ -284,6 +271,8 @@ def main(dest: Path) -> Summary:
 
         projects = ProjectService(workspace)
         schemas = SchemaService(workspace)
+        sources = SourceService(workspace)
+        ingest = IngestService(workspace)
         batches = BatchService(workspace)
         jobs = JobService(workspace)
         annotations = AnnotationService(workspace)
@@ -302,13 +291,26 @@ def main(dest: Path) -> Summary:
         schema = schemas.create_version(project.id, CLASSES)
         _say(f"schema v{schema.version}: {', '.join(c.name for c in schema.classes)}")
 
-        # (4) Six generated frames. See the docstring of _add_assets.
-        assets = _add_assets(workspace, project.id, FRAME_COUNT)
-        _say(f"{len(assets)} synthetic {FRAME_WIDTH}x{FRAME_HEIGHT} frames stored")
+        # (4) Six generated frames on disk, and the directory holding them
+        # registered as where this project's data comes from. Registration does
+        # not walk the folder: what is in it is read at ingest, because a count
+        # taken now would be stale by the time anything used it.
+        incoming = _write_frames(dest / "incoming", FRAME_COUNT)
+        source = sources.register_images(project.id, incoming)
+        _say(f"source {source.kind.value} registered at {source.path}")
 
-        # (5) A batch is the unit of annotation work. In draft it is still
-        # editable; membership freezes at approval.
-        batch = batches.create(project.id, "batch-001", [asset.id for asset in assets])
+        # (5) Ingest hashes every file, stores the bytes once (content-addressed,
+        # so re-running this creates nothing), records what the decoder made of
+        # them, and puts the lot in a draft batch. Membership order is ingest
+        # order. A batch is the unit of annotation work; in draft it is still
+        # editable, and membership freezes at approval.
+        ingested = ingest.ingest(source.id, batch_name="batch-001")
+        assets = list(ingested.assets)
+        batch = batches.get(ingested.batch_id)
+        _say(
+            f"{ingested.created} assets ingested into batch {batch.name!r} "
+            f"({ingested.deduplicated} already known, {ingested.failed} unreadable)"
+        )
 
         # (6) Approval pins the active schema version to the batch forever and
         # cuts it into jobs. The partition is exact: disjoint, and their union is
@@ -376,6 +378,8 @@ def main(dest: Path) -> Summary:
         return Summary(
             project_id=project.id,
             dataset_id=dataset.id,
+            source_id=source.id,
+            ingest_job_id=ingested.job_id,
             schema_version=schema.version,
             asset_ids=tuple(asset.id for asset in assets),
             skipped_asset_id=skipped_asset_id,
@@ -434,7 +438,7 @@ def _clear_previous_run(dest: Path) -> None:
         return
     if not dest.is_dir():
         raise SystemExit(f"refusing to run: {dest} exists and is not a directory")
-    stray = {entry.name for entry in dest.iterdir()} - {"visionset.db", "blobs"}
+    stray = {entry.name for entry in dest.iterdir()} - {"visionset.db", "blobs", "incoming"}
     if stray:
         raise SystemExit(
             f"refusing to remove {dest}: it holds {', '.join(sorted(stray))}, "

@@ -32,7 +32,13 @@ from visionset.kernel.domain.geometry import (
     Geometry,
     PolygonGeometry,
 )
-from visionset.kernel.domain.ingest import IngestJob, IngestState
+from visionset.kernel.domain.ingest import (
+    IngestFailure,
+    IngestFailureKind,
+    IngestJob,
+    IngestResult,
+    IngestState,
+)
 from visionset.kernel.domain.media import (
     ImageFormat,
     ImageMetadata,
@@ -130,7 +136,10 @@ __all__ = [
     "ImageFormat",
     "ImageMetadata",
     "IngestCompleted",
+    "IngestFailure",
+    "IngestFailureKind",
     "IngestJob",
+    "IngestResult",
     "IngestState",
     "LabelClass",
     "Manifest",

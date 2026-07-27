@@ -124,7 +124,19 @@ def test_every_service_that_should_announce_itself_did(summary: Any) -> None:
     assert events.count("release_published") == 2  # the publish and the reissue
     # One per call rather than one per box: five annotated assets, five calls.
     assert events.count("annotations_written") == 5
-    # Declared but emitted by nobody until M2 wires ingest (#20).
-    assert "ingest_completed" not in events
+    assert events.count("ingest_completed") == 1
+    assert events.index("ingest_completed") < events.index("batch_approved")
     assert events.index("batch_approved") < events.index("batch_completed")
     assert events.index("batch_completed") < events.index("release_published")
+
+
+def test_the_example_ingests_rather_than_writing_assets_by_hand(summary: Any) -> None:
+    """#20 closed the one place this example reached below a service.
+
+    The assets exist because a directory was registered and read, not because
+    the example wrote the rows itself — so there is a source and an ingest job
+    behind them, and every asset carries the origin it came from.
+    """
+    assert summary.source_id is not None
+    assert summary.ingest_job_id is not None
+    assert len(summary.asset_ids) == 6
