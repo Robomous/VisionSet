@@ -2,8 +2,9 @@
 
 What is pinned here is the part later tasks will *rely on*: that equal arguments give equal
 bytes (#20's dedup and idempotency), that the EXIF fixture really is rotated (#16), that a
-corrupt file really fails to decode (#16), and that a clip carries the frame count it claims
-(#17).
+corrupt file really fails to decode (#16), that a clip carries the frame count it claims, and
+that the two damaged/rotated video generators really produce what their names say (#17) — both
+of those lean on ffmpeg behaviour that is easy to get subtly, silently wrong.
 """
 
 import hashlib
@@ -15,15 +16,18 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from tests.fixtures import media
 from tests.fixtures.media import (
     DEFAULT_IMAGE_SIZE,
+    DEFAULT_VIDEO_SIZE,
     FFMPEG_REQUIRED_ENV,
     GeneratedVideo,
     require_ffmpeg,
     write_corrupt_image,
+    write_corrupt_video,
     write_exif_rotated_image,
     write_image,
     write_image_in_unsupported_format,
     write_images,
     write_multi_picture_jpeg,
+    write_rotated_video,
     write_unsupported_file,
     write_video,
 )
@@ -165,6 +169,31 @@ def test_two_runs_of_the_same_clip_are_byte_identical(tmp_path: Path) -> None:
     first = write_video(tmp_path / "one.mp4")
     second = write_video(tmp_path / "two.mp4")
     assert _digest(first.path) == _digest(second.path)
+
+
+def test_a_corrupt_clip_is_still_readable_enough_to_describe(tmp_path: Path) -> None:
+    """The whole trick of the fixture: the faststart index survives, so ffprobe still answers.
+
+    A clip whose index went with its tail is unopenable, which is a different refusal (#17 maps
+    it to `UnsupportedMedia`) and `write_unsupported_file`'s job. This one has to break *during*
+    a decode, not before one.
+    """
+    require_ffmpeg()
+    broken = write_corrupt_video(tmp_path / "broken.mp4")
+    intact = write_video(tmp_path / "intact.mp4")
+
+    assert broken.path.stat().st_size < intact.path.stat().st_size
+    assert _probe(broken.path, "stream=codec_name") == ["h264"]
+
+
+def test_a_rotated_clip_carries_a_display_matrix(tmp_path: Path) -> None:
+    """Guards the trap that made this fixture worth a helper: `-metadata:s:v rotate=` is dropped
+    silently by recent ffmpeg, which would generate a file that tests nothing and fails nowhere."""
+    require_ffmpeg()
+    rotated = write_rotated_video(tmp_path / "portrait.mp4")
+
+    assert _probe(rotated.path, "stream_side_data=rotation") == ["90"]
+    assert (rotated.width, rotated.height) == DEFAULT_VIDEO_SIZE
 
 
 def test_the_generated_video_record_is_immutable() -> None:

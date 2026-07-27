@@ -1,4 +1,4 @@
-# usage: from visionset.kernel.domain import ImageFormat, ImageMetadata
+# usage: from visionset.kernel.domain import ImageFormat, ImageMetadata, VideoFrame, VideoMetadata
 """What a media file turns out to be, once something has decoded it.
 
 These are the *result* types of the media ports. They live in the domain rather
@@ -7,8 +7,9 @@ around: the ingest pipeline copies an ``ImageMetadata`` onto an ``Asset``, and a
 REST surface serializes one. A port's vocabulary may be domain; a domain model
 may never be a port's.
 
-``VideoMetadata`` joins this module when the video processor lands, which is why
-the file is named for the concept and not for one modality.
+Both modalities live here, which is why the file is named for the concept and not
+for one of them: :class:`ImageMetadata` for a still, :class:`VideoMetadata` and
+:class:`VideoFrame` for a clip and the frames taken out of it.
 
 **The accepted list is** :class:`ImageFormat` **, and nothing else.** Extending it
 is two adjacent edits — a member here, and the decoder's own spelling of it in
@@ -22,6 +23,16 @@ depend on a wheel.
 
 WEBP is the obvious next member. It is not here yet because a format with no
 generated fixture is a format nobody is testing.
+
+**There is deliberately no ``VideoFormat`` beside it.** The asymmetry is the
+point: an image is an asset, a video is a source. Curating :class:`ImageFormat`
+buys something, because those exact bytes enter the dataset and the promise above
+is made about them. A video's bytes never do — they leave the decoder as frames,
+which are :attr:`ImageFormat.PNG` like any other still — so a closed list of
+codecs would gate nothing while going stale every time a camera vendor ships a
+profile. :attr:`VideoMetadata.codec` therefore *records* what was read instead of
+*deciding* what may be read, the way ``DatasetChange.operation`` is a ``str``
+while ``DatasetOperation`` is the enum a writer picks from.
 """
 
 from __future__ import annotations
@@ -73,3 +84,70 @@ class ImageMetadata(BaseModel):
     width: int = Field(ge=1)
     height: int = Field(ge=1)
     format: ImageFormat
+
+
+class VideoMetadata(BaseModel):
+    """What one clip turns out to be: how big, how fast, how long, and in what codec.
+
+    **Dimensions are as displayed**, on exactly the terms :class:`ImageMetadata`
+    states. A video carries its rotation in a display matrix rather than in an
+    EXIF tag, and a phone shooting in portrait writes a landscape stream plus a
+    quarter turn; ffmpeg applies that turn when it decodes, so reporting the
+    stored numbers would describe a picture nobody will ever see. There is no
+    ``rotation_applied`` flag, for the reason there is no ``orientation_applied``
+    one: a caller that could branch on it is a caller who was handed the
+    un-normalized case after all.
+
+    :attr:`fps` is the *source* rate, which is provenance and not a decision —
+    what a decomposition ran at is a parameter the caller chose and the ingest
+    records. It is a ``float`` rather than a rational because 30000/1001 is going
+    to be reported as 29.97 by every surface that shows it, and carrying the
+    fraction only to divide it at the edge buys nothing.
+
+    :attr:`codec` is a plain ``str``. See the module docstring: this file has no
+    ``VideoFormat`` enum on purpose.
+
+    **There is no frame count.** For a variable-rate stream it would be a
+    guess, for a constant-rate one it is ``fps * duration_seconds``, and neither
+    is the number an ingest actually needs — that one is how many frames the
+    extraction produced, which only the caller doing the extraction can count.
+
+    Frozen, like every other value in the domain that is a pure function of some
+    bytes.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+    fps: float = Field(gt=0)
+    duration_seconds: float = Field(gt=0)
+    codec: str = Field(min_length=1)
+
+
+class VideoFrame(BaseModel):
+    """One still lifted out of a clip, with enough provenance to say where from.
+
+    Transient, unlike its neighbours here: nothing stores a ``VideoFrame``. The
+    :attr:`content` goes to the blob store and the two numbers go onto an
+    ``Asset``, so this type exists to keep them together for the length of one
+    loop iteration. It lives in the domain anyway because the kernel passes it
+    between a port and a service, which is the whole test for belonging here.
+
+    :attr:`index` counts **the extracted sequence**, not the source. A source
+    frame number means nothing for a variable-rate stream and cannot be
+    reproduced without knowing the rate the file was shot at; the extracted index
+    is what orders the assets and what names them. :attr:`timestamp` is the
+    locator that survives — it says where in the clip to look, whatever rate the
+    next decomposition runs at.
+
+    :attr:`content` is a complete, self-contained image in the port's
+    ``FRAME_FORMAT``. Hashing it is what gives the resulting asset its identity,
+    which is why the encoder producing it is pinned rather than left to a default.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    index: int = Field(ge=0)
+    timestamp: float = Field(ge=0)
+    content: bytes = Field(min_length=1)
