@@ -53,8 +53,16 @@ thousand files needs the other four thousand nine hundred. A missing ffmpeg is
 not a file's fault at all; it fails the job outright and is re-raised, which is
 precisely why ``MediaToolUnavailable`` sits outside the ``MediaError`` family.
 
-**What is still deliberately not here.** No ``thumbnail_hash``: #21. No
-background execution: a run is synchronous and in-process, and the API is shaped
+**A preview is a cache, so it fails softly.** Every item also gets a thumbnail,
+stored content-addressed beside its content and named by ``Asset.thumbnail_hash``
+— the M5 gallery's reason for this task. One that will not render is *not* an
+``IngestFailure``: the asset exists and nothing was lost, so the hash stays NULL
+and :meth:`backfill_thumbnails` is the remedy. That method is the same
+four-transaction discipline applied to a different job — read the ids, render
+outside any transaction, write once at the end.
+
+**What is still deliberately not here.** No background execution: a run is
+synchronous and in-process, and the API is shaped
 so that putting it behind a queue changes the caller's waiting rather than its
 vocabulary — which is why a job is created ``pending`` and moved to ``running``
 by whoever picks it up, even though today that is the same call.
@@ -64,6 +72,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -79,6 +88,7 @@ from visionset.kernel.domain import (
     Project,
     Source,
     SourceKind,
+    ThumbnailBackfill,
     normalize_name,
     require_move,
 )
@@ -214,6 +224,89 @@ class IngestService:
 
         return self._run(job.id, source, name, job.batch_id)
 
+    # --- the thumbnail cache -----------------------------------------------
+
+    def backfill_thumbnails(self, project_id: UUID) -> ThumbnailBackfill:
+        """Render a preview for every asset in the project that has none.
+
+        The remedy for the three things a NULL ``thumbnail_hash`` can mean: an
+        asset written before the cache existed, one whose preview a run could
+        not render, and one an import put there by another route. Idempotent
+        and re-runnable — a second pass over a healthy project examines nothing,
+        because there is nothing left without a preview.
+
+        **It reads the blob, never ``asset.uri``.** That path is where the bytes
+        came from and may be gone, renamed, or on a machine this is not running
+        on; ``blob_store.get(asset.content_hash)`` is what the workspace
+        actually holds.
+
+        **Three phases, and the rendering is in no transaction** — the module
+        docstring's rule, applied to a different job. Only ids and hashes cross
+        out of the first transaction, because ``Repository.update`` replaces the
+        whole row and a model captured before a slow phase would undo anything
+        written during it. The last phase re-reads each asset before writing, so
+        an ingest that filled a preview meanwhile is not clobbered by this pass.
+
+        Unlike an ingest there is no progress to poll: a backfill has no
+        ``IngestJob`` row and nothing that could carry counters. If that is ever
+        wanted it is a task of its own, not a flag on this one.
+
+        Args:
+            project_id: the project whose assets to repair.
+
+        Returns:
+            What was filled, what has no bytes left to render, and what will not
+            render — three lists, because they have three different remedies.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            self._require_project(uow, project_id)
+            pending = [
+                (asset.id, asset.content_hash, asset.uri)
+                for asset in uow.assets.list(project_id)
+                if asset.thumbnail_hash is None
+            ]
+
+        rendered: dict[UUID, str] = {}
+        missing: list[UUID] = []
+        unreadable: list[IngestFailure] = []
+        for asset_id, content_hash, uri in pending:
+            try:
+                with self._workspace.blob_store.get(content_hash) as content:
+                    thumbnail_hash = self._workspace.blob_store.put(
+                        BytesIO(self._workspace.image_processor.thumbnail(content, name=uri))
+                    )
+            except FileNotFoundError:
+                missing.append(asset_id)
+            except MediaError as exc:
+                unreadable.append(_failure(uri, exc))
+            else:
+                rendered[asset_id] = thumbnail_hash
+
+        filled: list[UUID] = []
+        with self._workspace.unit_of_work() as uow:
+            for asset_id, thumbnail_hash in rendered.items():
+                asset = uow.assets.get(asset_id)
+                if asset is None:
+                    continue
+                if asset.thumbnail_hash is None:
+                    uow.assets.update(asset.model_copy(update={"thumbnail_hash": thumbnail_hash}))
+                # Counted as filled either way, because ``filled`` states an
+                # outcome rather than a write: an ingest that rendered this one
+                # while the pass was decoding leaves it with a preview it did
+                # not have when the pass began, which is what the caller asked
+                # about. Dropping it would leave the asset in no list at all.
+                filled.append(asset_id)
+
+        return ThumbnailBackfill(
+            project_id=project_id,
+            filled=tuple(filled),
+            missing=tuple(missing),
+            unreadable=tuple(unreadable),
+        )
+
     # --- the run, phase by phase -------------------------------------------
 
     def _run(self, job_id: UUID, source: Source, name: str, batch_id: UUID | None) -> IngestResult:
@@ -328,6 +421,13 @@ class IngestService:
                     metadata = self._workspace.image_processor.probe(handle, name=str(path))
                     handle.seek(0)
                     content_hash = self._workspace.blob_store.put(handle)
+                    # No rewind before this one, and the asymmetry is the port
+                    # contract rather than an oversight: ``ImageProcessor``
+                    # promises to seek to 0 itself, which is exactly what lets
+                    # one open handle serve a probe, a hash and a thumbnail in
+                    # any order. ``BlobStore.put`` promises nothing, which is
+                    # why the rewind above is still the caller's job.
+                    thumbnail_hash = self._cache_thumbnail(handle, name=str(path))
             except MediaError as exc:
                 failures.append(_failure(str(path), exc))
             else:
@@ -340,6 +440,7 @@ class IngestService:
                         height=metadata.height,
                         format=metadata.format,
                         source_id=source.id,
+                        thumbnail_hash=thumbnail_hash,
                     )
                 )
             # After every item, read or refused alike: ``processed`` counts what
@@ -363,6 +464,13 @@ class IngestService:
         also mean putting our own encoder's output into an operator's per-file
         report — a failure nobody could act on.
 
+        They *are* thumbnailed, and that is not a contradiction of the paragraph
+        above. What must not be re-derived is anything an operator reads back as
+        a fact about their clip; a preview is a cache artifact reported to
+        nobody, and a gallery showing tiles for stills and blanks for frames
+        would be the worse outcome for the sake of a rule about metadata. It is
+        this path's only use of ``ImageProcessor``.
+
         Damage arrives once and terminally: ffmpeg yields the frames it managed
         and *then* says the bytes ran out, so the refusal is caught around the
         loop and what was extracted is kept. The loop is left by falling out of
@@ -385,18 +493,24 @@ class IngestService:
         self._record_progress(job_id, processed=0, total=None, failures=failures)
         try:
             for frame in frames:
-                content_hash = self._workspace.blob_store.put(BytesIO(frame.content))
+                uri = f"{source.path}#frame={frame.index}"
+                # One buffer serves both. ``put`` leaves it at the end and
+                # ``thumbnail`` seeks back to 0 itself, which is the same port
+                # contract the directory path leans on.
+                content = BytesIO(frame.content)
+                content_hash = self._workspace.blob_store.put(content)
                 candidates.append(
                     Asset(
                         project_id=source.project_id,
                         content_hash=content_hash,
-                        uri=f"{source.path}#frame={frame.index}",
+                        uri=uri,
                         width=provenance.metadata.width,
                         height=provenance.metadata.height,
                         format=FRAME_FORMAT,
                         source_id=source.id,
                         frame_index=frame.index,
                         frame_timestamp=frame.timestamp,
+                        thumbnail_hash=self._cache_thumbnail(content, name=uri),
                     )
                 )
                 self._record_progress(
@@ -406,6 +520,33 @@ class IngestService:
             failures.append(_failure(source.path, exc))
             self._record_progress(job_id, processed=len(candidates), total=None, failures=failures)
         return candidates, failures
+
+    def _cache_thumbnail(self, content: BinaryIO, *, name: str) -> str | None:
+        """Render a preview and store it, or hand back NULL and carry on.
+
+        Best effort by design, and the ``try`` is *inside* the caller's rather
+        than around it. A preview that will not render is not an
+        ``IngestFailure``: that error means "this file did not become an asset,
+        so go and fix the file", and here the asset exists, its bytes are
+        stored and nothing was lost. Letting the refusal reach
+        ``_read_directory``'s ``except MediaError`` would report a perfectly
+        good file as unreadable *and* leave behind the orphan blob that probing
+        first exists to prevent — a bug that would look like the feature
+        working.
+
+        The NULL is the record, which is why nothing is logged here. It is
+        exactly the state :meth:`backfill_thumbnails` queries for, so a failure
+        describes its own remedy and a later pass repairs it.
+
+        ``max_edge`` is not a parameter, here or anywhere. The port pins one
+        size; a per-call edge would fork the cache into variants that nothing
+        can tell apart from a hash, and the column holds one pointer.
+        """
+        try:
+            rendered = self._workspace.image_processor.thumbnail(content, name=name)
+        except MediaError:
+            return None
+        return self._workspace.blob_store.put(BytesIO(rendered))
 
     def _store(self, project_id: UUID, candidates: list[Asset]) -> tuple[list[Asset], list[UUID]]:
         """Write the rows, reusing whatever content the project already holds.
@@ -418,6 +559,17 @@ class IngestService:
         The map is updated as the run proceeds, so two identical files inside one
         directory become one asset rather than a pair the new unique index would
         refuse at commit.
+
+        A deduplicated candidate is otherwise discarded whole — its origin is
+        the *second* sighting and is never written — with one exception, and the
+        exception is precise. ``thumbnail_hash`` is not provenance but a cache,
+        so filling a NULL from a candidate that has one is not a rewrite; it is
+        the cache being populated by whoever first held the bytes. That is what
+        makes re-ingesting a source enough to give assets written before the
+        cache existed their previews. A value already there is **never**
+        replaced: a second encode yields the same blob on this machine and a
+        different one on another, so the swap would cost a write and buy
+        nothing.
         """
         assets: list[Asset] = []
         created: list[UUID] = []
@@ -430,6 +582,11 @@ class IngestService:
                     stored = uow.assets.add(candidate)
                     known[stored.content_hash] = stored
                     created.append(stored.id)
+                elif stored.thumbnail_hash is None and candidate.thumbnail_hash is not None:
+                    stored = uow.assets.update(
+                        stored.model_copy(update={"thumbnail_hash": candidate.thumbnail_hash})
+                    )
+                    known[stored.content_hash] = stored
                 if stored.id not in seen:
                     seen.add(stored.id)
                     assets.append(stored)

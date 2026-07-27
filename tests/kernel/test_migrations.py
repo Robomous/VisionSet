@@ -76,9 +76,19 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
             )
         )
         connection.execute(text("CREATE INDEX ix_source_project_id ON source (project_id)"))
-        # Migration 8's own undo. The index goes before the columns it names,
-        # because SQLite refuses to drop a column an index still references.
+        # Migrations 10 and 8's undo, newest column first. The index goes before
+        # the columns it names, because SQLite refuses to drop a column an index
+        # still references.
+        #
+        # Migration 10 needs its own line where migration 9 needed none:
+        # ``asset`` is only ever altered — it has four cascading children and
+        # legitimate pre-pipeline rows — so nothing below rebuilds it and takes
+        # ``thumbnail_hash`` away for free. The compensation is that migration
+        # 10's real ``ALTER`` runs on the way back up from here, which is why it
+        # has no generation twin of
+        # ``test_migration_nine_alters_a_table_migration_eight_rebuilt``.
         connection.execute(text("drop index if exists uq_asset_project_content_hash"))
+        connection.execute(text("alter table asset drop column thumbnail_hash"))
         connection.execute(text("alter table asset drop column frame_timestamp"))
         connection.execute(text("alter table asset drop column frame_index"))
         connection.execute(text("alter table asset drop column source_id"))
@@ -508,6 +518,74 @@ def test_migration_nine_keeps_the_runs_a_workspace_already_recorded(tmp_path: Pa
             text("select batch_name, processed, total, failures from ingest_job where id = 'j'")
         ).one()
     assert row == (None, 0, None, "[]")
+    store.close()
+
+
+def _downgrade_to_generation_nine(store: SqliteMetadataStore) -> None:
+    """Take ``asset`` back to the shape migration 8's ``ALTER``s left it in.
+
+    A ``DROP COLUMN`` rather than a hand-written ``CREATE TABLE``, for the
+    reason ``_downgrade_to_generation_eight`` gives: these tests compare
+    ``sqlite_master`` *text*, and SQLite rewrites the stored statement by
+    deleting the dropped column's definition and leaving every other character
+    alone, where a retyped baseline would differ in whitespace and fail for a
+    reason about this file rather than about the schema.
+    """
+    with store.engine.begin() as connection:
+        connection.execute(text("alter table asset drop column thumbnail_hash"))
+        connection.execute(text("update _visionset_meta set format_version = 9"))
+
+
+def test_migration_ten_gives_an_asset_a_place_for_its_preview(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.connect() as connection:
+        columns = {c["name"] for c in inspect(connection).get_columns("asset")}
+    assert "thumbnail_hash" in columns
+    store.close()
+
+
+def test_migration_ten_leaves_an_asset_it_did_not_render_alone(tmp_path: Path) -> None:
+    """NULL is the ordinary state of a cache, not a legacy value to tolerate.
+
+    Nothing is refused and nothing is dropped, and here that is easier to claim
+    than it was for migration 9: an asset written before this column has no
+    preview, which is precisely what NULL says, and
+    ``IngestService.backfill_thumbnails`` is the remedy that reads it.
+
+    There is no schema twin of
+    ``test_migration_nine_alters_a_table_migration_eight_rebuilt`` because
+    migration 10 does not need one. That test exists because migration 8
+    *rebuilds* ``ingest_job``, so a walk back to generation 1 re-creates
+    migration 9's columns from ``_tables`` and 9 never runs as an ``ALTER``.
+    ``asset`` is only ever altered, so
+    ``test_a_fresh_database_and_a_migrated_one_have_the_same_schema`` already
+    exercises this migration's real ``ALTER TABLE ... ADD COLUMN``.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
+        )
+    _downgrade_to_generation_nine(store)
+    with store.engine.begin() as connection:
+        connection.execute(
+            text(
+                "insert into asset (id, project_id, modality, content_hash, uri) "
+                f"values ('a', 'p', 'image', '{'a' * 64}', '/in/one.png')"
+            )
+        )
+
+    store.initialize()
+
+    with store.engine.connect() as connection:
+        row = connection.execute(
+            text("select thumbnail_hash from asset where id = 'a'")
+        ).scalar_one()
+    assert row is None
+    assert store.format_version == FORMAT_VERSION
     store.close()
 
 

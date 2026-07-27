@@ -208,6 +208,10 @@ a verification pass recomputing one — source-content hashes are reproducible, 
 hashes are not, and conflating the two is how a "verified" release starts failing on a different
 machine.
 
+`asset.thumbnail_hash` is where that cache key is recorded, and it holds itself to every word of
+this paragraph: it is absent from `Manifest`, `ReleaseService.verify` does not touch it, and a
+NULL there is an ordinary state rather than a fault. See [ingest.md](ingest.md).
+
 ## Refusals
 
 Two errors under one `MediaError` base, so an ingest can catch the family once, record the
@@ -331,14 +335,19 @@ Neither library needs an import-linter change. The contracts forbid *frameworks*
 kernel — FastAPI, Typer, MCP, uvicorn — not third-party libraries, and ffmpeg is reached through
 `subprocess` and is not an import at all.
 
-## What is deliberately not here yet
+## Everything on this page now has a caller
 
-- **No thumbnail write.** `thumbnail()` hands back bytes. Storing them content-addressed and
-  recording an `asset.thumbnail_hash` is the thumbnail-cache task, for the M5 gallery.
+Three things used to be listed here as not built yet, and none of them is. `Source` came off the
+list with registration, which records a clip's original rate and the decomposition parameters
+chosen for it, built on `VideoMetadata` exactly as anticipated — see [sources.md](sources.md).
+The `Asset` fields came off it with [ingest](ingest.md): what a probe reported is now stored as
+`asset.format`, and a frame's `index`/`timestamp` land on the asset as
+`frame_index`/`frame_timestamp` beside the source it was cut from.
 
-Two things used to be on that list and no longer are. `Source` came off it with registration,
-which records a clip's original rate and the decomposition parameters chosen for it, built on
-`VideoMetadata` exactly as anticipated — see [sources.md](sources.md). The `Asset` fields came off
-it with [ingest](ingest.md): what a probe reported is now stored as `asset.format`, and a frame's
-`index`/`timestamp` land on the asset as `frame_index`/`frame_timestamp` beside the source it was
-cut from. Both ports are called from exactly one place, and that is where.
+The thumbnail write came off it last. `thumbnail()` still only hands back bytes — storing them is
+not the port's job — but those bytes now go into the blob store during the ingest loop, on both
+paths, and the hash lands on `asset.thumbnail_hash`. The cache-key-not-identity rule above is
+what that column is built on, and `IngestService.backfill_thumbnails` is how an asset that
+predates it, or one whose preview would not render, gets caught up. See [ingest.md](ingest.md).
+
+Both ports are called from exactly one place, and that is where.

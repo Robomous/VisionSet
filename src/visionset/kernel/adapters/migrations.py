@@ -377,6 +377,40 @@ def _add_ingest_progress_and_report(connection: Connection) -> None:
         _add_column(connection, cast(Column[object], column))
 
 
+def _add_asset_thumbnail(connection: Connection) -> None:
+    """Give an asset somewhere to point at its cached preview.
+
+    The plainest migration in the file, and every way it is plain is an
+    argument rather than an omission. One column, so there is no ordering
+    question between siblings. No foreign key — it names a blob, not a row — so
+    migration 8's limit, that a column carrying a key cannot arrive by ``ALTER``
+    at all, does not bite. Nothing to refuse and nothing to rebuild: ``asset``
+    has four ``ON DELETE CASCADE`` children, and under ``PRAGMA foreign_keys =
+    ON`` dropping it would take them silently.
+
+    No data pre-check, and here that is easier to claim than it was for
+    migration 9: the column is a *cache*, so NULL is not a legacy value that
+    something has to tolerate but the ordinary state of an asset nobody has
+    rendered a preview for yet. ``IngestService.backfill_thumbnails`` reads
+    exactly that state and is the remedy for it.
+
+    Idempotent the way 3 to 5 and 9 are — the inspector check inside
+    ``_add_column`` *is* the ``checkfirst``, because migration 1 is
+    ``create_all`` of current metadata.
+
+    Unlike migration 9, this one **needs its own undo** in the tests'
+    ``_downgrade_to_version_one``. Migration 9's columns rode back on migration
+    8's rebuild of ``ingest_job``; ``asset`` is only ever altered, so nothing
+    later removes this column on the way to generation 1. The flip side is that
+    the walk back to generation 1 does exercise this ``ALTER`` for real, which
+    is why there is no generation-9 schema twin of
+    ``test_migration_nine_alters_a_table_migration_eight_rebuilt``.
+    """
+    # ``.c`` is typed as the generic column collection; the entry is a real
+    # ``Column``, which is what ``CreateColumn`` needs.
+    _add_column(connection, cast(Column[object], AssetRow.__table__.c.thumbnail_hash))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -418,6 +452,11 @@ MIGRATIONS: list[Migration] = [
         version=9,
         name="ingest_job_progress",
         upgrade=_add_ingest_progress_and_report,
+    ),
+    Migration(
+        version=10,
+        name="asset_thumbnail",
+        upgrade=_add_asset_thumbnail,
     ),
 ]
 

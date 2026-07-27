@@ -37,7 +37,9 @@ from visionset.kernel import (
     InvalidName,
     InvalidTransition,
     MediaToolUnavailable,
+    ProjectNotFound,
     SourceNotFound,
+    UnsupportedMedia,
 )
 from visionset.kernel.adapters import PillowImageProcessor
 from visionset.kernel.domain import (
@@ -59,7 +61,11 @@ from visionset.kernel.domain import (
     VideoMetadata,
     VideoProvenance,
 )
-from visionset.kernel.ports import FRAME_FORMAT
+from visionset.kernel.ports import (
+    DEFAULT_THUMBNAIL_MAX_EDGE,
+    FRAME_FORMAT,
+    THUMBNAIL_FORMAT,
+)
 from visionset.kernel.services import (
     BatchService,
     IngestService,
@@ -143,6 +149,26 @@ class _FailsOnNthFile:
         return self._real.thumbnail(content, max_edge=max_edge, name=name)
 
 
+class _ThumbnaillessProcessor:
+    """A decoder that reads every file and renders a preview for none of them.
+
+    The refusal is a `MediaError`, which is the case that matters: a preview is
+    a cache, so it must degrade to a NULL rather than travel out as an
+    `IngestFailure` about a file that is perfectly good.
+    """
+
+    def __init__(self) -> None:
+        self._real = PillowImageProcessor()
+
+    def probe(self, content: BinaryIO, *, name: str | None = None) -> ImageMetadata:
+        return self._real.probe(content, name=name)
+
+    def thumbnail(
+        self, content: BinaryIO, *, max_edge: int = 256, name: str | None = None
+    ) -> bytes:
+        raise UnsupportedMedia("no preview today")
+
+
 def _planted_video_source(workspace: WorkspaceService, project: Project, tmp_path: Path) -> Source:
     """A video source written straight to the store, because registering probes.
 
@@ -185,9 +211,32 @@ class Fixture:
     def clip(self, name: str = "clip.mp4", **kwargs: object) -> GeneratedVideo:
         return write_video(self.tmp_path / name, **kwargs)  # type: ignore[arg-type]
 
+    def blob_hashes(self) -> set[str]:
+        """Every blob on disk, named by its hash — `put` is content-addressed."""
+        return {path.name for path in (self.root / "blobs").rglob("*") if path.is_file()}
+
     def blob_count(self) -> int:
-        """Blobs on disk. `put` is content-addressed, so this counts distinct bytes."""
-        return len([path for path in (self.root / "blobs").rglob("*") if path.is_file()])
+        """Blobs on disk, **cached previews included**: distinct bytes of any kind."""
+        return len(self.blob_hashes())
+
+    def content_blob_count(self) -> int:
+        """The same, with the previews subtracted — ingested content only.
+
+        Every deduplication claim in this file is about *content*: the same
+        image is stored once. Since #21 a preview is stored beside each asset,
+        so a bare `blob_count` would make "one image, one blob" read as two and
+        say nothing about the dedup it is there to prove. Every project in the
+        workspace is walked, because two of these tests ingest into two.
+        """
+        previews: set[str] = set()
+        with self.workspace.unit_of_work() as uow:
+            for project in uow.projects.list(self.workspace.workspace_id):
+                previews |= {
+                    asset.thumbnail_hash
+                    for asset in uow.assets.list(project.id)
+                    if asset.thumbnail_hash is not None
+                }
+        return len(self.blob_hashes() - previews)
 
     def assets(self) -> list[Asset]:
         with self.workspace.unit_of_work() as uow:
@@ -456,7 +505,7 @@ def test_the_same_image_in_two_sources_is_one_blob_and_one_asset(tmp_path: Path)
     original = fixture.ingest.ingest(first.id)
     again = fixture.ingest.ingest(second.id)
 
-    assert fixture.blob_count() == 1
+    assert fixture.content_blob_count() == 1
     assert len(fixture.assets()) == 1
     assert again.created == 0
     assert again.deduplicated == 1
@@ -508,7 +557,7 @@ def test_two_identical_files_in_one_directory_become_one_asset(tmp_path: Path) -
 
     assert result.created == 1
     assert len(result.assets) == 1
-    assert fixture.blob_count() == 1
+    assert fixture.content_blob_count() == 1
     fixture.close()
 
 
@@ -523,7 +572,7 @@ def test_re_ingesting_one_source_creates_nothing(tmp_path: Path) -> None:
     assert again.created == 0
     assert again.deduplicated == 3
     assert again.asset_ids == first.asset_ids
-    assert fixture.blob_count() == 3
+    assert fixture.content_blob_count() == 3
     fixture.close()
 
 
@@ -540,7 +589,7 @@ def test_two_projects_ingesting_one_image_are_two_assets_over_one_blob(tmp_path:
 
     assert mine.asset_ids != theirs.asset_ids
     assert mine.assets[0].content_hash == theirs.assets[0].content_hash
-    assert fixture.blob_count() == 1
+    assert fixture.content_blob_count() == 1
     fixture.close()
 
 
@@ -1139,6 +1188,338 @@ def test_resuming_an_unknown_job_is_refused(tmp_path: Path) -> None:
     fixture.close()
 
 
+# --- a preview per asset --------------------------------------------------
+
+
+def _preview(fixture: Fixture, asset: Asset) -> ImageMetadata:
+    """Decode what was cached for `asset`, so the assertions can be about it."""
+    assert asset.thumbnail_hash is not None
+    with fixture.workspace.blob_store.get(asset.thumbnail_hash) as cached:
+        return PillowImageProcessor().probe(cached)
+
+
+def _blob_path(fixture: Fixture, content_hash: str) -> Path:
+    """Where `FilesystemBlobStore` keeps that hash, so a test can damage it."""
+    return fixture.root / "blobs" / content_hash[:2] / content_hash[2:4] / content_hash
+
+
+def _reread(fixture: Fixture, asset_id: UUID) -> Asset:
+    return next(asset for asset in fixture.assets() if asset.id == asset_id)
+
+
+def test_every_ingested_still_gets_a_preview_in_the_blob_store(tmp_path: Path) -> None:
+    """The issue's first acceptance criterion: retrievable by hash."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=3)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert all(asset.thumbnail_hash is not None for asset in result.assets)
+    assert all(fixture.workspace.blob_store.exists(a.thumbnail_hash or "") for a in result.assets)
+    # Three images and the three previews beside them, none of them shared.
+    assert fixture.blob_count() == 6
+    assert fixture.content_blob_count() == 3
+    fixture.close()
+
+
+def test_a_preview_is_a_jpeg_whatever_the_source_was(tmp_path: Path) -> None:
+    """The port pins the encoding, so the cache holds one format and not four."""
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "a.png", seed=1)
+    write_image(fixture.stills / "b.jpg", seed=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert {asset.format for asset in result.assets} == {ImageFormat.PNG, ImageFormat.JPEG}
+    assert {_preview(fixture, asset).format for asset in result.assets} == {THUMBNAIL_FORMAT}
+    fixture.close()
+
+
+def test_a_preview_is_bounded_by_the_port_s_pinned_edge(tmp_path: Path) -> None:
+    """Asserted against the constant, never a number copied out of it."""
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "big.png", size=(1024, 512))
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    asset = fixture.ingest.ingest(source.id).assets[0]
+
+    preview = _preview(fixture, asset)
+    assert max(preview.width, preview.height) == DEFAULT_THUMBNAIL_MAX_EDGE
+    assert (asset.width, asset.height) == (1024, 512)
+    fixture.close()
+
+
+def test_a_small_image_is_not_enlarged_into_its_preview(tmp_path: Path) -> None:
+    """`thumbnail` never upscales, so the cache is not bigger than the asset."""
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "small.png")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    asset = fixture.ingest.ingest(source.id).assets[0]
+
+    preview = _preview(fixture, asset)
+    assert (preview.width, preview.height) == (asset.width, asset.height)
+    fixture.close()
+
+
+def test_the_same_image_renders_the_same_preview_blob(tmp_path: Path) -> None:
+    """Repeatability, asserted as an equality — never against a hardcoded hash.
+
+    Determinism is promised within one Pillow build and not across them, which
+    is the whole reason a thumbnail hash is a cache key rather than an identity.
+    Two projects are used because within one, dedup would make this trivially
+    true by never rendering the second.
+    """
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "shared.png", seed=7)
+    other = fixture.projects.create("second-project")
+    here = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    there = fixture.sources.register_images(other.id, fixture.stills)
+
+    mine = fixture.ingest.ingest(here.id)
+    theirs = fixture.ingest.ingest(there.id)
+
+    assert mine.assets[0].thumbnail_hash == theirs.assets[0].thumbnail_hash
+    # One image, one preview: two assets over two blobs, not four.
+    assert fixture.blob_count() == 2
+    fixture.close()
+
+
+def test_two_identical_files_share_one_preview_blob(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "a.png", seed=3)
+    write_image(fixture.stills / "b.png", seed=3)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    fixture.ingest.ingest(source.id)
+
+    assert fixture.blob_count() == 2
+    fixture.close()
+
+
+def test_a_frame_gets_a_preview_too(tmp_path: Path) -> None:
+    """The no-re-probe rule is about reported metadata, not about the cache."""
+    fixture = Fixture(tmp_path)
+    clip = fixture.clip(fps=10, duration_seconds=1.0)
+    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert result.assets
+    assert all(asset.thumbnail_hash is not None for asset in result.assets)
+    assert {_preview(fixture, asset).format for asset in result.assets} == {THUMBNAIL_FORMAT}
+    fixture.close()
+
+
+def test_a_preview_that_will_not_render_leaves_a_null_and_no_failure(tmp_path: Path) -> None:
+    """A cache miss is not data loss, so it must not reach the per-file report."""
+    root = tmp_path / "ws"
+    workspace = WorkspaceService.init(root, image_processor_factory=_ThumbnaillessProcessor)
+    ingest = IngestService(workspace)
+    project = ProjectService(workspace).create("p")
+    stills = tmp_path / "stills"
+    stills.mkdir()
+    write_images(stills, count=2)
+    source = SourceService(workspace).register_images(project.id, stills)
+
+    result = ingest.ingest(source.id)
+
+    assert len(result.assets) == 2
+    assert result.failures == ()
+    assert all(asset.thumbnail_hash is None for asset in result.assets)
+    # The two images, and nothing beside them.
+    assert len([p for p in (root / "blobs").rglob("*") if p.is_file()]) == 2
+    workspace.close()
+
+
+def test_a_refused_file_still_leaves_no_blob_of_either_kind(tmp_path: Path) -> None:
+    """Probing first is what keeps this true once a second `put` joined the loop."""
+    fixture = Fixture(tmp_path)
+    write_unsupported_file(fixture.stills / "notes.txt")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert result.failed == 1
+    assert fixture.blob_count() == 0
+    fixture.close()
+
+
+def test_re_ingesting_fills_a_preview_an_earlier_asset_never_had(tmp_path: Path) -> None:
+    """A cache is filled by whoever first holds the bytes; provenance is not.
+
+    The planted asset stands in for one written before this column existed.
+    """
+    fixture = Fixture(tmp_path)
+    path = write_image(fixture.stills / "one.png", seed=5)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    with fixture.workspace.unit_of_work() as uow:
+        planted = uow.assets.add(
+            Asset(
+                project_id=fixture.project.id,
+                content_hash=fixture.workspace.blob_store.put(path.open("rb")),
+                uri="somewhere/else.png",
+            )
+        )
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert result.created == 0
+    assert result.assets[0].id == planted.id
+    assert result.assets[0].thumbnail_hash is not None
+    # Origin still records the first sighting; only the cache was filled.
+    assert result.assets[0].uri == "somewhere/else.png"
+    assert result.assets[0].source_id is None
+    fixture.close()
+
+
+def test_re_ingesting_does_not_replace_a_preview_that_is_already_there(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "one.png", seed=5)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    first = fixture.ingest.ingest(source.id).assets[0]
+
+    again = fixture.ingest.ingest(source.id).assets[0]
+
+    assert again.thumbnail_hash == first.thumbnail_hash
+    fixture.close()
+
+
+# --- the backfill ---------------------------------------------------------
+
+
+def _plant_unrendered(fixture: Fixture, count: int) -> list[Asset]:
+    """`count` assets holding real bytes and no preview, as a pre-#21 row would."""
+    planted: list[Asset] = []
+    for path in write_images(fixture.stills, count=count, first_seed=11):
+        with fixture.workspace.unit_of_work() as uow, path.open("rb") as handle:
+            planted.append(
+                uow.assets.add(
+                    Asset(
+                        project_id=fixture.project.id,
+                        content_hash=fixture.workspace.blob_store.put(handle),
+                        uri=str(path),
+                        format=ImageFormat.PNG,
+                    )
+                )
+            )
+    return planted
+
+
+def test_the_backfill_renders_a_preview_for_every_asset_missing_one(tmp_path: Path) -> None:
+    """The issue's second acceptance criterion."""
+    fixture = Fixture(tmp_path)
+    planted = _plant_unrendered(fixture, count=3)
+
+    report = fixture.ingest.backfill_thumbnails(fixture.project.id)
+
+    assert report.project_id == fixture.project.id
+    assert set(report.filled) == {asset.id for asset in planted}
+    assert report.examined == 3
+    assert report.missing == () and report.unreadable == ()
+    assert all(asset.thumbnail_hash is not None for asset in fixture.assets())
+    fixture.close()
+
+
+def test_a_second_backfill_pass_finds_nothing_left_to_do(tmp_path: Path) -> None:
+    """Idempotent, and cheap to re-run: there is no state to reset between passes."""
+    fixture = Fixture(tmp_path)
+    _plant_unrendered(fixture, count=2)
+    fixture.ingest.backfill_thumbnails(fixture.project.id)
+    before = fixture.blob_count()
+
+    report = fixture.ingest.backfill_thumbnails(fixture.project.id)
+
+    assert report.examined == 0
+    assert fixture.blob_count() == before
+    fixture.close()
+
+
+def test_the_backfill_leaves_an_asset_that_already_has_a_preview_alone(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    ingested = fixture.ingest.ingest(source.id)
+
+    report = fixture.ingest.backfill_thumbnails(fixture.project.id)
+
+    assert report.examined == 0
+    assert {a.thumbnail_hash for a in fixture.assets()} == {
+        a.thumbnail_hash for a in ingested.assets
+    }
+    fixture.close()
+
+
+def test_the_backfill_reads_the_blob_rather_than_the_file_it_came_from(tmp_path: Path) -> None:
+    """`uri` may name a path that is long gone; the workspace holds the bytes."""
+    fixture = Fixture(tmp_path)
+    planted = _plant_unrendered(fixture, count=1)
+    for path in fixture.stills.iterdir():
+        path.unlink()
+
+    report = fixture.ingest.backfill_thumbnails(fixture.project.id)
+
+    assert report.filled == (planted[0].id,)
+    fixture.close()
+
+
+def test_an_asset_whose_blob_is_gone_is_reported_rather_than_raised(tmp_path: Path) -> None:
+    """Workspace damage a preview pass cannot repair, and must not hide.
+
+    Not a `WorkspaceCorrupt`: raising would abandon the repair of every healthy
+    asset over one bad row, which is the argument `ReleaseVerification` already
+    makes for reporting.
+    """
+    fixture = Fixture(tmp_path)
+    planted = _plant_unrendered(fixture, count=2)
+    _blob_path(fixture, planted[0].content_hash).unlink()
+
+    report = fixture.ingest.backfill_thumbnails(fixture.project.id)
+
+    assert report.missing == (planted[0].id,)
+    assert report.filled == (planted[1].id,)
+    assert report.examined == 2
+    assert _reread(fixture, planted[0].id).thumbnail_hash is None
+    fixture.close()
+
+
+def test_stored_bytes_that_will_not_render_are_reported_by_remedy(tmp_path: Path) -> None:
+    """`IngestFailure` earns its reuse here: the split says the right thing."""
+    fixture = Fixture(tmp_path)
+    planted = _plant_unrendered(fixture, count=2)
+    _blob_path(fixture, planted[0].content_hash).write_bytes(b"not an image at all")
+
+    report = fixture.ingest.backfill_thumbnails(fixture.project.id)
+
+    assert report.filled == (planted[1].id,)
+    assert [failure.kind for failure in report.unreadable] == [IngestFailureKind.UNSUPPORTED]
+    assert report.unreadable[0].name == planted[0].uri
+    assert planted[0].uri not in report.unreadable[0].reason
+    fixture.close()
+
+
+def test_backfilling_an_unknown_project_is_refused(tmp_path: Path) -> None:
+    """An empty report would read as "nothing to do" rather than "no such thing"."""
+    fixture = Fixture(tmp_path)
+
+    with pytest.raises(ProjectNotFound):
+        fixture.ingest.backfill_thumbnails(uuid4())
+    fixture.close()
+
+
+def test_backfilling_a_project_in_another_workspace_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    elsewhere = Fixture(tmp_path, name="other")
+
+    with pytest.raises(ProjectNotFound):
+        fixture.ingest.backfill_thumbnails(elsewhere.project.id)
+
+    elsewhere.close()
+    fixture.close()
+
+
 # --- scope ----------------------------------------------------------------
 
 
@@ -1256,3 +1637,14 @@ def test_an_asset_may_carry_a_source_and_no_frame_position() -> None:
     source_id: UUID = uuid4()
 
     assert _asset(source_id=source_id).source_id == source_id
+
+
+def test_a_thumbnail_hash_is_held_to_the_same_rule_as_a_content_hash() -> None:
+    """One validator covers both, because both name a blob."""
+    with pytest.raises(ValidationError, match="thumbnail_hash must be 64"):
+        _asset(thumbnail_hash="nope")
+
+
+def test_an_asset_may_carry_no_thumbnail_hash_at_all() -> None:
+    """NULL is the ordinary state of a cache, not a violation to tolerate."""
+    assert _asset().thumbnail_hash is None
