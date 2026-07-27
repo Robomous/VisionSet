@@ -213,6 +213,22 @@ class AnnotationRow(Base):
     provenance: Mapped[str] = mapped_column(String, nullable=False)
     model_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Attribute values keyed by ``Attribute.name``. JSON for the reason
+    #: ``geometry`` is: an immutable value object that must rehydrate exactly,
+    #: and nothing ever looks one attribute up by name in SQL.
+    #:
+    #: Declared **last**, and carrying a ``server_default``, for the two things
+    #: ``ALTER TABLE`` demands — the same pair ``BatchRow.schema_version`` and
+    #: ``AnnotationJobAssetRow.position`` carry, and for the same reason. It
+    #: arrives by ALTER in migration 5: SQLite appends the column, and refuses
+    #: ``ADD COLUMN ... NOT NULL`` without a value for the rows already there.
+    #: Anywhere but last, the ``create_all`` path and the ALTER path would emit
+    #: different ``CREATE TABLE`` text —
+    #: ``test_a_fresh_database_and_a_migrated_one_have_the_same_schema`` is what
+    #: says so out loud.
+    attributes: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, server_default=text("'{}'")
+    )
 
 
 class DatasetRow(Base):

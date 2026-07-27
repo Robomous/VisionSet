@@ -96,6 +96,33 @@ ever finish without a reviewer, and there is no review surface yet.
 """
 
 
+def progress_after_annotating(
+    current: AssetProgress, *, has_annotations: bool
+) -> AssetProgress | None:
+    """Where this asset's progress should land now, or ``None`` to leave it.
+
+    The only two moves a row appearing or disappearing can justify:
+    ``unannotated -> annotated`` when the first annotation lands, and
+    ``annotated -> unannotated`` when the last one goes.
+
+    Everything else is somebody's decision rather than a consequence.
+    ``skipped`` says a person chose not to label this; ``review_pending`` says
+    a person submitted it; ``accepted`` says a reviewer took it. None of those
+    is contradicted by an annotation being drawn or erased, so annotations
+    never move them — ``JobService.mark`` is the door for a decision, and it
+    consults ``ASSET_PROGRESS_TRANSITIONS`` the same way.
+
+    Pure, and separate from ``AnnotationService`` on purpose: "what does this
+    mean for progress" is a domain question, and keeping it here is what lets
+    a test sweep it against the transition table rather than against prose.
+    """
+    if current is AssetProgress.UNANNOTATED and has_annotations:
+        return AssetProgress.ANNOTATED
+    if current is AssetProgress.ANNOTATED and not has_annotations:
+        return AssetProgress.UNANNOTATED
+    return None
+
+
 class TaskGroup(BaseModel):
     """One round of annotation work over a Batch, partitioned into jobs.
 

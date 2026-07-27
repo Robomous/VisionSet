@@ -21,8 +21,9 @@ invalid ``LabelClass`` cannot be built at all. Rules that span *classes*
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -50,6 +51,19 @@ class GeometryType(StrEnum):
 #: ``bool`` first is not cosmetic: ``True`` is an ``int`` to Python, so a laxer
 #: order would quietly store ``1.0`` as a boolean default.
 type AttributeValue = bool | float | str
+
+
+#: The type each ``Attribute.kind`` accepts, as ``isinstance`` sees it.
+#:
+#: ``number`` maps to ``float`` alone, and that is the same care the union above
+#: takes: ``True`` is an ``int`` to Python but never a ``float``, so a boolean
+#: cannot pass itself off as a number here either.
+_KIND_TYPES: Final[Mapping[str, type]] = {
+    "string": str,
+    "number": float,
+    "boolean": bool,
+    "select": str,
+}
 
 
 class Attribute(BaseModel):
@@ -97,25 +111,27 @@ class Attribute(BaseModel):
     @model_validator(mode="after")
     def _default_matches_kind(self) -> Attribute:
         """A default its own kind would reject is a bug, not a preference."""
-        if self.default is None:
-            return self
-        expected: type = {
-            "string": str,
-            "number": float,
-            "boolean": bool,
-            "select": str,
-        }[self.kind]
-        if not isinstance(self.default, expected):
-            raise ValueError(
-                f"attribute {self.name!r} is a {self.kind} but its default is "
-                f"{type(self.default).__name__}"
-            )
-        if self.kind == "select" and self.default not in (self.options or ()):
-            raise ValueError(
-                f"attribute {self.name!r} defaults to {self.default!r}, which is not one of its "
-                f"options"
-            )
+        if self.default is not None and (reason := self.rejects(self.default)) is not None:
+            raise ValueError(f"attribute {self.name!r} (as a default) {reason}")
         return self
+
+    def rejects(self, value: AttributeValue) -> str | None:
+        """Why this attribute will not take ``value``, or ``None`` if it will.
+
+        The single place "does this attribute accept this value" is decided.
+        The validator above asks it of this attribute's own ``default``, and
+        ``AnnotationService`` asks it of the values an annotation carries — so
+        a default and a label can never be judged by two rules that drifted.
+
+        The answer is a *reason fragment* rather than a whole sentence, so each
+        caller can name its own subject: "attribute 'weather' <reason>".
+        """
+        if not isinstance(value, _KIND_TYPES[self.kind]):
+            return f"is a {self.kind} but got {type(value).__name__}"
+        if self.kind == "select" and value not in (self.options or ()):
+            allowed = ", ".join(repr(option) for option in self.options or ())
+            return f"is a select and {value!r} is not one of its options ({allowed})"
+        return None
 
 
 class LabelClass(BaseModel):

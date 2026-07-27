@@ -73,7 +73,7 @@ the operation and not the individual write.
 | Kind | Storage | Why |
 | --- | --- | --- |
 | Relations that get mutated element by element | Child table — `batch_asset`, `annotation_job_asset` | Membership and per-asset progress are edited one row at a time and queried from the asset side. `batch_asset.position` preserves order. |
-| Immutable nested values | JSON column — `annotation_schema.classes`, `annotation.geometry`, `release.manifest` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
+| Immutable nested values | JSON column — `annotation_schema.classes`, `annotation.geometry`, `annotation.attributes`, `release.manifest` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
 | Timestamps | TEXT holding ISO-8601 **with offset** | SQLite's `DATETIME` storage drops the timezone. Domain timestamps are timezone-aware UTC and a naive value is rejected at construction. |
 
 Foreign keys are declared `ON DELETE CASCADE` — and the store issues
@@ -92,8 +92,9 @@ MIGRATIONS: list[Migration] = [
     Migration(version=2, name="project_name_unique_per_workspace", upgrade=...),
     Migration(version=3, name="batch_schema_version_pin", upgrade=...),
     Migration(version=4, name="annotation_job_asset_position", upgrade=...),
+    Migration(version=5, name="annotation_attributes", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 4
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 5
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -126,12 +127,18 @@ the DDL, so the fresh path and the upgrade path cannot drift apart.
 `test_a_fresh_database_and_a_migrated_one_have_the_same_schema` proves they agree.
 
 A **column** has no `checkfirst`, and SQLite has no `ADD COLUMN IF NOT EXISTS`, so migrations
-003 and 004 ask the inspector instead — that check *is* their idempotency. They still compile
-the DDL from the `Column` object in `_tables` (via `CreateColumn`) rather than typing the type
-out, for the same anti-drift reason. A column arriving by `ALTER` and declared `NOT NULL` also
-needs a `server_default`, because SQLite refuses to add one without a value for the rows
-already there — `annotation_job_asset.position` carries one where `batch_asset.position`, which
-was there from migration 001, does not.
+003, 004 and 005 ask the inspector instead — that check *is* their idempotency. They still
+compile the DDL from the `Column` object in `_tables` (via `CreateColumn`) rather than typing
+the type out, for the same anti-drift reason. A column arriving by `ALTER` and declared
+`NOT NULL` also needs a `server_default`, because SQLite refuses to add one without a value for
+the rows already there — `annotation_job_asset.position` and `annotation.attributes` both carry
+one, where `batch_asset.position`, which was there from migration 001, does not.
+
+And a column arriving by `ALTER` must be declared **last** on its row class, because SQLite
+appends it: `batch.schema_version`, `annotation_job_asset.position` and `annotation.attributes`
+all sit at the end of their tables for that reason alone. Declared anywhere else, the
+`create_all` path and the `ALTER` path emit different `CREATE TABLE` text and the
+fresh-versus-migrated test fails — which is exactly what it is for.
 
 The fresh-versus-migrated test is only as strong as how far back
 `_downgrade_to_version_one` walks, so every migration added there needs its undo added too.

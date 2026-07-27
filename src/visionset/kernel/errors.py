@@ -6,8 +6,8 @@ surface can translate the whole family to an HTTP status or an exit code with a
 single ``except`` clause. The kernel NEVER raises a framework exception —
 ``HTTPException`` and friends belong to the boundary, not here.
 
-Persistence, workspace, project, schema and batch errors live here; later
-services add their own as they land.
+Persistence, workspace, project, schema, batch, job and annotation errors live
+here; later services add their own as they land.
 """
 
 from __future__ import annotations
@@ -280,4 +280,77 @@ class SchemaVersionConflict(VisionSetError):
     concurrent ``create_version`` calls can agree on it; the unique index on
     ``(project_id, version)`` refuses the second. The remedy is to retry, which
     re-reads the maximum and lands on ``N + 2``.
+    """
+
+
+class InvalidAnnotation(VisionSetError):
+    """An annotation does not satisfy the schema version its batch pinned.
+
+    The base of the five refusals below, so a delivery surface can turn the
+    whole family into one 422 without enumerating them. Catching it is safe in
+    a way catching ``DestructiveSchemaChange`` is not: there is no flag that
+    overrides any of these, so a caller that catches the base cannot retry its
+    way into a loop. The remedy is always to fix the annotation, or to write a
+    schema version that describes it.
+
+    Per-*value* validity is not here — an annotation whose ``confidence`` is
+    outside [0, 1], or whose ``provenance`` is ``'model'`` with no
+    ``model_ref``, cannot be constructed at all (``domain/annotation.py``), so
+    it never reaches a service. This family is what needs the schema to judge.
+    """
+
+
+class LabelClassNotInSchema(InvalidAnnotation):
+    """The annotation names a class the pinned version does not declare.
+
+    Matched by exact name, like everything else that resolves a class — see
+    ``domain/schema_diff.py``. A class the *project* has since added does not
+    help: the batch pinned a version at approval, and that is what its work is
+    judged against.
+    """
+
+
+class DisallowedGeometry(InvalidAnnotation):
+    """The annotation's geometry is not the one its class is bound to.
+
+    A ``LabelClass`` declares a single ``geometry``, so this is an equality
+    test, not a membership one. ``SchemaService.allowed_geometries`` is the
+    union across a version's classes — the right answer to "what may this
+    project draw?" and the wrong one here, where a polygon under a bbox class
+    would sail through.
+    """
+
+
+class MissingRequiredAttribute(InvalidAnnotation):
+    """The class asks for an attribute value the annotation does not carry.
+
+    ``required`` and ``default`` are independent: a default is what a surface
+    should offer, not a value the kernel fills in. Substituting one here would
+    invent data nobody entered.
+    """
+
+
+class UnknownAttribute(InvalidAnnotation):
+    """The annotation carries an attribute the class does not declare.
+
+    Refused rather than dropped, for the same reason ``extra='forbid'`` is on
+    the schema models: a misspelled key that stores quietly is a value the
+    annotator believes they recorded and nobody will ever read.
+    """
+
+
+class InvalidAttributeValue(InvalidAnnotation):
+    """An attribute value is the wrong type, or outside a ``select``'s options.
+
+    The judgement is ``Attribute.rejects``, the same method the attribute's own
+    ``default`` is checked with, so a value and a default can never be held to
+    different standards.
+    """
+
+
+class AnnotationNotFound(VisionSetError):
+    """No annotation with that id lives in this workspace.
+
+    Like ``ProjectNotFound`` and ``JobNotFound``: an annotation belonging to
+    another workspace reads as missing rather than as forbidden.
     """
