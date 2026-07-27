@@ -33,6 +33,7 @@ from visionset.kernel.domain import (
     LabelClass,
     Release,
     Source,
+    SourceKind,
 )
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services import ProjectService, WorkspaceService
@@ -65,7 +66,9 @@ def _populate(workspace: WorkspaceService, project_id: UUID, dataset_id: UUID) -
                 classes=[LabelClass(name="sign", geometry=GeometryType.BBOX)],
             )
         )
-        uow.sources.add(Source(project_id=project_id, kind="local_folder", uri="/tmp/in"))
+        uow.sources.add(
+            Source(project_id=project_id, kind=SourceKind.IMAGE_DIRECTORY, path="/tmp/in")
+        )
         asset = uow.assets.add(
             Asset(project_id=project_id, content_hash=content_hash, uri="/tmp/in/a.png")
         )

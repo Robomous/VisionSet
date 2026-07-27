@@ -44,8 +44,11 @@ from visionset.kernel.domain import (
     Project,
     Release,
     Source,
+    SourceKind,
     SplitRecipe,
     TaskGroup,
+    VideoMetadata,
+    VideoProvenance,
     Workspace,
 )
 from visionset.kernel.ports import UNINITIALIZED, MetadataStore, UnitOfWork
@@ -61,7 +64,25 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
     """Persist one of every entity, wired into a valid parent chain."""
     workspace = uow.workspaces.add(Workspace(name="w", root_dir="/tmp/w"))
     project = uow.projects.add(Project(workspace_id=workspace.id, name="p", description="d"))
-    source = uow.sources.add(Source(project_id=project.id, uri="file:///images"))
+    # A *video* source, and an explicit timestamp, for the reason the release
+    # below carries a real ``SplitRecipe`` and a fixed ``created_at``: seeding
+    # the simple shape would leave the ``video`` JSON column NULL in every store
+    # test, and nothing here would ever exercise the nested round trip.
+    source = uow.sources.add(
+        Source(
+            project_id=project.id,
+            kind=SourceKind.VIDEO,
+            path="/data/clip.mp4",
+            registered_at=datetime(2026, 7, 27, 8, 0, tzinfo=UTC),
+            capture_params={"lens": "24mm"},
+            video=VideoProvenance(
+                metadata=VideoMetadata(
+                    width=64, height=48, fps=29.97, duration_seconds=2.0, codec="h264"
+                ),
+                extraction_fps=5.0,
+            ),
+        )
+    )
     ingest = uow.ingest_jobs.add(IngestJob(source_id=source.id))
     first = uow.assets.add(
         Asset(project_id=project.id, content_hash="a" * 64, uri="file:///1.png", width=8, height=6)
@@ -276,6 +297,44 @@ def test_schema_classes_and_attributes_round_trip(tmp_path: Path) -> None:
         assert label_class.attributes[0] == Attribute(
             name="occluded", kind="boolean", required=True
         )
+    store.close()
+
+
+def test_a_source_video_provenance_and_timestamp_round_trip(tmp_path: Path) -> None:
+    """The nested probe result survives the JSON column, offset and all."""
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        source = uow.sources.get(_seed(uow)[2][1])
+        assert source is not None
+        assert source.kind is SourceKind.VIDEO
+        assert source.path == "/data/clip.mp4"
+        assert source.capture_params == {"lens": "24mm"}
+        assert source.require_video() == VideoProvenance(
+            metadata=VideoMetadata(
+                width=64, height=48, fps=29.97, duration_seconds=2.0, codec="h264"
+            ),
+            extraction_fps=5.0,
+        )
+        assert source.registered_at == datetime(2026, 7, 27, 8, 0, tzinfo=UTC)
+        assert source.registered_at.tzinfo is not None
+    store.close()
+
+
+def test_a_source_without_video_provenance_round_trips_as_none(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        project_id = _seed(uow)[1][1]
+        stored = uow.sources.add(
+            Source(
+                project_id=project_id,
+                kind=SourceKind.IMAGE_DIRECTORY,
+                path="/data/stills",
+            )
+        )
+        read_back = uow.sources.get(stored.id)
+        assert read_back is not None
+        assert read_back.video is None
+        assert read_back.capture_params == {}
     store.close()
 
 

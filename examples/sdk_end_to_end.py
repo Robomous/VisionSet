@@ -14,10 +14,11 @@ is not a convenience: VisionSet never commits fixture media, and M1 has no image
 library to lean on (Pillow arrives with the media processor in M2, #16).
 
 **One call in here reaches below a service, on purpose.** Creating an ``Asset``
-has no door yet — ingest is M2 (#18 SourceService, #19 IngestJob, #20 the
-pipeline that hashes, deduplicates and materializes into a batch). Until #20
-lands, ``_add_assets`` writes the row that ingest would write, through the same
-public port a service uses. Every other step below goes through the service that
+has no door yet. #18's ``SourceService`` registers *where* data comes from, not
+the assets themselves; the pipeline that hashes, deduplicates and materializes
+into a batch is #20, with #19's ``IngestJob`` around it. Until #20 lands,
+``_add_assets`` writes the row that ingest would write, through the same public
+port a service uses. Every other step below goes through the service that
 owns it, which is how the rest of the SDK is meant to be used.
 """
 

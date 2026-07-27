@@ -298,6 +298,20 @@ class AssetNotFound(VisionSetError):
     """
 
 
+class SourceNotFound(VisionSetError):
+    """A source id does not belong to the project or workspace it was used in.
+
+    Same rule as every other cross-scope reference in the kernel: a source in a
+    different project reads as missing, not as forbidden.
+
+    Note what this is *not*. A path that does not exist on disk is a
+    ``FileNotFoundError`` and a path that is a file where a directory was wanted
+    is a ``NotADirectoryError`` — both are about the machine, not about the
+    workspace, and both stay outside the ``VisionSetError`` tree for the reason
+    ``MediaToolUnavailable`` sits outside ``MediaError``.
+    """
+
+
 class SchemaVersionConflict(VisionSetError):
     """Two writers raced for the same next version number, and this one lost.
 
