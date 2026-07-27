@@ -16,16 +16,16 @@ with WorkspaceService.open("./road-signs") as workspace:
     datasets = DatasetService(workspace)
     dataset = ProjectService(workspace).get_dataset(project.id)
 
-    datasets.promote(batch.id, actor="ana")        # the batch must be `completed`
-    datasets.assets(dataset.id)                    # what is in the trunk, in arrival order
-    datasets.remove_asset(dataset.id, asset.id)    # curate it back out
-    datasets.changes(dataset.id)                   # everything that was done, oldest first
+    datasets.promote(batch.id, actor="ana")  # the batch must be `completed`
+    datasets.assets(dataset.id)  # what is in the trunk, in arrival order
+    datasets.remove_asset(dataset.id, asset.id)  # curate it back out
+    datasets.changes(dataset.id)  # everything that was done, oldest first
 ```
 
 ## Work gets in through one gate: a completed batch
 
 ```python
-datasets.promote(batch_id)   # BatchNotComplete unless the batch is `completed`
+datasets.promote(batch_id)  # BatchNotComplete unless the batch is `completed`
 ```
 
 Not an approved batch, not one that merely looks finished. `BatchService.complete` already
@@ -113,7 +113,7 @@ An exemption is a decision written down in `errors.py`. There is no third one.
 ## The change log
 
 ```python
-datasets.changes(dataset.id)   # oldest first
+datasets.changes(dataset.id)  # oldest first
 ```
 
 Every mutation appends one `DatasetChange`; nothing ever updates or deletes one. Entries carry
