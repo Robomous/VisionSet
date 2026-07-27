@@ -33,6 +33,7 @@ from visionset.kernel.domain.geometry import (
     PolygonGeometry,
 )
 from visionset.kernel.domain.ingest import IngestJob, IngestState
+from visionset.kernel.domain.media import ImageFormat, ImageMetadata
 from visionset.kernel.domain.names import normalize_name
 from visionset.kernel.domain.partition import (
     BySegments,
@@ -116,6 +117,8 @@ __all__ = [
     "DomainEvent",
     "Geometry",
     "GeometryType",
+    "ImageFormat",
+    "ImageMetadata",
     "IngestCompleted",
     "IngestJob",
     "IngestState",

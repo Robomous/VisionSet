@@ -123,6 +123,45 @@ def write_unsupported_file(path: Path) -> Path:
     return path
 
 
+def write_image_in_unsupported_format(
+    path: Path,
+    *,
+    size: tuple[int, int] = DEFAULT_IMAGE_SIZE,
+    seed: int = 0,
+    image_format: str = "BMP",
+) -> Path:
+    """A valid, decodable image in a format VisionSet deliberately does not accept (#16).
+
+    The third refusal, and the one that is easiest to forget exists. Pillow reads
+    BMP, GIF, TIFF and WEBP perfectly well, so "we decline this format" is a real
+    branch and a different one from `write_unsupported_file`'s "these bytes are not
+    an image". Bypasses `image_format_for` on purpose — the suffix table is the list
+    of formats the *product* accepts, and this writes something outside it.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.frombytes("RGB", size, _pattern(size, seed)).save(path, format=image_format)
+    return path
+
+
+def write_multi_picture_jpeg(
+    path: Path,
+    *,
+    size: tuple[int, int] = DEFAULT_IMAGE_SIZE,
+    seed: int = 0,
+) -> Path:
+    """A two-frame MPO — what a phone writes in portrait and burst modes (#16).
+
+    Pillow reports the container as `MPO`, not `JPEG`, so a decoder that matched on
+    the format name alone would refuse a very large share of real camera output. The
+    frames differ so that nothing can quietly read the second one and call it the first.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    primary = Image.frombytes("RGB", size, _pattern(size, seed))
+    secondary = Image.frombytes("RGB", size, _pattern(size, seed + 1))
+    primary.save(path, format="MPO", append_images=[secondary], **JPEG_ENCODER_ARGS)
+    return path
+
+
 # --- video ----------------------------------------------------------------------------------
 
 FFMPEG_REQUIRED_ENV = "VISIONSET_REQUIRE_FFMPEG"
