@@ -13,6 +13,7 @@ same asset" compares ids rather than row counts.
 """
 
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID, uuid4
 
 import pytest
@@ -34,24 +35,36 @@ from visionset.kernel import (
     BatchNotFound,
     IngestJobNotFound,
     InvalidName,
+    InvalidTransition,
     MediaToolUnavailable,
     SourceNotFound,
 )
+from visionset.kernel.adapters import PillowImageProcessor
 from visionset.kernel.domain import (
+    INGEST_TRANSITIONS,
     Asset,
     BatchState,
+    GeometryType,
     ImageFormat,
+    ImageMetadata,
     IngestCompleted,
     IngestFailureKind,
+    IngestJob,
     IngestState,
+    LabelClass,
+    Project,
+    Source,
+    SourceKind,
     VideoFrame,
     VideoMetadata,
+    VideoProvenance,
 )
 from visionset.kernel.ports import FRAME_FORMAT
 from visionset.kernel.services import (
     BatchService,
     IngestService,
     ProjectService,
+    SchemaService,
     SourceService,
     WorkspaceService,
 )
@@ -71,6 +84,87 @@ class _NoFfmpeg:
         self, source: Path, *, fps: float = 1.0, name: str | None = None
     ) -> "list[VideoFrame]":
         raise MediaToolUnavailable("ffmpeg is not installed; install it and try again")
+
+
+class _WatchingProcessor:
+    """The real decoder, plus a look at the run's own row before each file.
+
+    Injected through the composition point, like `_NoFfmpeg`. The look is taken
+    through a **second** `WorkspaceService` opened on the same directory,
+    because what is being tested is that the counters are committed while the
+    run is still going — a read on the service doing the work would prove less.
+    """
+
+    def __init__(self, root: Path, source_id: list[UUID], seen: list[IngestJob]) -> None:
+        self._root = root
+        self._source_id = source_id  # filled by the test once the source exists
+        self._seen = seen
+        self._real = PillowImageProcessor()
+
+    def _observe(self) -> None:
+        watcher = WorkspaceService.open(self._root)
+        try:
+            self._seen.append(IngestService(watcher).list(self._source_id[0])[-1])
+        finally:
+            watcher.close()
+
+    def probe(self, content: BinaryIO, *, name: str | None = None) -> ImageMetadata:
+        self._observe()
+        return self._real.probe(content, name=name)
+
+    def thumbnail(
+        self, content: BinaryIO, *, max_edge: int = 256, name: str | None = None
+    ) -> bytes:
+        return self._real.thumbnail(content, max_edge=max_edge, name=name)
+
+
+class _FailsOnNthFile:
+    """A decoder that stops being a decoder partway through, and not politely.
+
+    `OSError` rather than a `MediaError`: the point is a cause the run cannot
+    report per file and has to fail on, which is what leaves the counters
+    holding the position it reached.
+    """
+
+    def __init__(self, nth: int) -> None:
+        self._nth = nth
+        self._calls = 0
+        self._real = PillowImageProcessor()
+
+    def probe(self, content: BinaryIO, *, name: str | None = None) -> ImageMetadata:
+        self._calls += 1
+        if self._calls == self._nth:
+            raise OSError("the disk went away")
+        return self._real.probe(content, name=name)
+
+    def thumbnail(
+        self, content: BinaryIO, *, max_edge: int = 256, name: str | None = None
+    ) -> bytes:
+        return self._real.thumbnail(content, max_edge=max_edge, name=name)
+
+
+def _planted_video_source(workspace: WorkspaceService, project: Project, tmp_path: Path) -> Source:
+    """A video source written straight to the store, because registering probes.
+
+    The subject of the tests that use this is the extraction, not the
+    registration, and registration would fail first on a machine with no ffmpeg.
+    """
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"not really a clip")
+    with workspace.unit_of_work() as uow:
+        return uow.sources.add(
+            Source(
+                project_id=project.id,
+                kind=SourceKind.VIDEO,
+                path=str(clip),
+                video=VideoProvenance(
+                    metadata=VideoMetadata(
+                        width=64, height=48, fps=10.0, duration_seconds=2.0, codec="h264"
+                    ),
+                    extraction_fps=1.0,
+                ),
+            )
+        )
 
 
 class Fixture:
@@ -98,6 +192,43 @@ class Fixture:
     def assets(self) -> list[Asset]:
         with self.workspace.unit_of_work() as uow:
             return uow.assets.list(self.project.id)
+
+    def freeze(self, batch_id: UUID) -> None:
+        """Approve the batch, creating the schema version approval has to pin."""
+        SchemaService(self.workspace).create_version(
+            self.project.id, [LabelClass(name="thing", geometry=GeometryType.BBOX)]
+        )
+        self.batches.approve(batch_id)
+
+    def job_in(self, state: IngestState) -> IngestJob:
+        """A job in `state`, over a source of two images that is readable now.
+
+        `completed` and `failed` are walked to through real operations — a run
+        that works, and a run whose directory was taken away and put back. The
+        other two are written directly, and this is the only place in this file
+        that plants a state rather than reaching it: a synchronous run passes
+        through `pending` and `running` inside a single call and never leaves
+        one behind, so there is nothing to walk to. Leaving them out instead
+        would leave half the table unswept.
+        """
+        write_images(self.stills, count=2)
+        source = self.sources.register_images(self.project.id, self.stills)
+        if state is IngestState.COMPLETED:
+            return self.ingest.get(self.ingest.ingest(source.id).job_id)
+        if state is IngestState.FAILED:
+            files = sorted(self.stills.iterdir())
+            for path in files:
+                path.unlink()
+            self.stills.rmdir()
+            with pytest.raises(FileNotFoundError):
+                self.ingest.ingest(source.id)
+            self.stills.mkdir()
+            write_images(self.stills, count=2)
+            return self.ingest.list(source.id)[0]
+        with self.workspace.unit_of_work() as uow:
+            return uow.ingest_jobs.add(
+                IngestJob(source_id=source.id, state=state, batch_name="planted")
+            )
 
     def close(self) -> None:
         self.workspace.close()
@@ -502,13 +633,7 @@ def test_ingesting_into_a_frozen_batch_is_refused_before_anything_is_decoded(
     write_images(fixture.stills, count=2)
     seed = fixture.sources.register_images(fixture.project.id, fixture.stills)
     opened = fixture.ingest.ingest(seed.id)
-    from visionset.kernel.domain import GeometryType, LabelClass
-    from visionset.kernel.services import SchemaService
-
-    SchemaService(fixture.workspace).create_version(
-        fixture.project.id, [LabelClass(name="thing", geometry=GeometryType.BBOX)]
-    )
-    fixture.batches.approve(opened.batch_id)
+    fixture.freeze(opened.batch_id)
     more = tmp_path / "more"
     write_images(more, count=2, first_seed=90)
     second = fixture.sources.register_images(fixture.project.id, more)
@@ -646,27 +771,7 @@ def test_a_missing_decoder_fails_the_job_and_is_re_raised(tmp_path: Path) -> Non
     workspace = WorkspaceService.init(tmp_path / "ws", video_processor_factory=_NoFfmpeg)
     projects = ProjectService(workspace)
     ingest = IngestService(workspace)
-    project = projects.create("p")
-    # Registration probes too, so the source is planted by hand rather than
-    # registered: the subject here is the extraction, not the registration.
-    clip = tmp_path / "clip.mp4"
-    clip.write_bytes(b"not really a clip")
-    from visionset.kernel.domain import Source, SourceKind, VideoProvenance
-
-    with workspace.unit_of_work() as uow:
-        source = uow.sources.add(
-            Source(
-                project_id=project.id,
-                kind=SourceKind.VIDEO,
-                path=str(clip),
-                video=VideoProvenance(
-                    metadata=VideoMetadata(
-                        width=64, height=48, fps=10.0, duration_seconds=2.0, codec="h264"
-                    ),
-                    extraction_fps=1.0,
-                ),
-            )
-        )
+    source = _planted_video_source(workspace, projects.create("p"), tmp_path)
 
     with pytest.raises(MediaToolUnavailable):
         ingest.ingest(source.id)
@@ -703,13 +808,334 @@ def test_every_run_of_one_source_is_listed_in_order(tmp_path: Path) -> None:
 
 
 def test_require_job_resolves_inside_a_callers_transaction(tmp_path: Path) -> None:
-    """The shape #19 needs: a gate it can run in its own unit of work."""
+    """The gate the service runs in its own unit of work before every write."""
     fixture = Fixture(tmp_path)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
     result = fixture.ingest.ingest(source.id)
 
     with fixture.workspace.unit_of_work() as uow:
         assert fixture.ingest.require_job(uow, result.job_id).id == result.job_id
+    fixture.close()
+
+
+# --- the transition table, swept in full ----------------------------------
+
+
+@pytest.mark.parametrize("origin", list(IngestState), ids=lambda s: f"from-{s.value}")
+def test_the_transition_table_is_the_whole_of_what_can_be_resumed(
+    tmp_path: Path, origin: IngestState
+) -> None:
+    """Every state, checked against the table itself rather than against a list.
+
+    `resume` is the one operation that names a target — `running` — so the
+    column of the square it can reach is the whole of what there is to sweep.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(origin)
+
+    if IngestState.RUNNING in INGEST_TRANSITIONS[origin]:
+        assert fixture.ingest.resume(job.id).job_id == job.id
+        assert fixture.ingest.get(job.id).state is IngestState.COMPLETED
+    else:
+        with pytest.raises(InvalidTransition, match="cannot become"):
+            fixture.ingest.resume(job.id)
+        assert fixture.ingest.get(job.id).state is origin
+    fixture.close()
+
+
+def test_a_completed_run_can_go_nowhere() -> None:
+    assert INGEST_TRANSITIONS[IngestState.COMPLETED] == frozenset()
+
+
+def test_a_run_stuck_at_running_cannot_be_resumed() -> None:
+    """A crashed process is not a reported failure, and must not be overwritten.
+
+    Ingesting the source again is the remedy — content addressing makes that
+    create nothing — and it leaves the stuck row as the record of the crash.
+    """
+    assert IngestState.RUNNING not in INGEST_TRANSITIONS[IngestState.RUNNING]
+
+
+def test_the_refusal_says_where_the_run_can_actually_go(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(IngestState.COMPLETED)
+
+    with pytest.raises(InvalidTransition, match="can only become nothing"):
+        fixture.ingest.resume(job.id)
+    fixture.close()
+
+
+# --- progress, while the run is still going -------------------------------
+
+
+def test_progress_is_visible_to_somebody_who_is_not_running_the_ingest(
+    tmp_path: Path,
+) -> None:
+    """The polling contract, read the way the API and the UI will read it.
+
+    The observer is a *second* `WorkspaceService` opened on the same directory,
+    not another call on the one doing the work: what is being claimed is that
+    the counters are committed as the run goes, and only a separate connection
+    can show that.
+    """
+    root = tmp_path / "ws"
+    source_id: list[UUID] = []
+    seen: list[IngestJob] = []
+    workspace = WorkspaceService.init(
+        root, image_processor_factory=lambda: _WatchingProcessor(root, source_id, seen)
+    )
+    projects = ProjectService(workspace)
+    sources = SourceService(workspace)
+    ingest = IngestService(workspace)
+    project = projects.create("p")
+    stills = tmp_path / "stills"
+    stills.mkdir()
+    write_images(stills, count=3)
+    source = sources.register_images(project.id, stills)
+    source_id.append(source.id)
+
+    result = ingest.ingest(source.id)
+
+    # One observation per file, each taken before that file was counted.
+    assert [job.processed for job in seen] == [0, 1, 2]
+    assert {job.total for job in seen} == {3}
+    assert {job.state for job in seen} == {IngestState.RUNNING}
+    assert ingest.get(result.job_id).processed == 3
+    workspace.close()
+
+
+def test_a_completed_run_records_how_many_items_it_processed(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=4)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    job = fixture.ingest.get(result.job_id)
+    assert (job.processed, job.total) == (4, 4)
+    fixture.close()
+
+
+def test_an_unreadable_file_still_counts_as_processed(tmp_path: Path) -> None:
+    """`processed` is items dealt with, not items that became assets."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    write_unsupported_file(fixture.stills / "notes.txt")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    job = fixture.ingest.get(result.job_id)
+    assert (job.processed, job.total) == (3, 3)
+    fixture.close()
+
+
+def test_an_empty_directory_records_a_total_of_zero(tmp_path: Path) -> None:
+    """Written before the loop, which is the only reason an empty run says anything."""
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    job = fixture.ingest.get(result.job_id)
+    assert (job.processed, job.total) == (0, 0)
+    fixture.close()
+
+
+def test_a_clip_records_no_total_because_extraction_decides_it(tmp_path: Path) -> None:
+    """`VideoMetadata` carries no frame count, so a total here would be a guess."""
+    fixture = Fixture(tmp_path)
+    clip = fixture.clip()
+    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
+
+    result = fixture.ingest.ingest(source.id)
+
+    job = fixture.ingest.get(result.job_id)
+    assert job.total is None
+    assert job.processed == len(result.assets)
+    fixture.close()
+
+
+# --- the report, on the row -----------------------------------------------
+
+
+def test_a_run_records_which_files_failed_and_why(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    write_corrupt_image(fixture.stills / "broken.png")
+    write_unsupported_file(fixture.stills / "notes.txt")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    job = fixture.ingest.get(result.job_id)
+    assert job.state is IngestState.COMPLETED  # per-file failures do not fail a run
+    assert job.failures == result.failures
+    assert {failure.kind for failure in job.failures} == {
+        IngestFailureKind.CORRUPT,
+        IngestFailureKind.UNSUPPORTED,
+    }
+    for failure in job.failures:
+        assert failure.name not in failure.reason
+    fixture.close()
+
+
+def test_a_fatal_cause_is_recorded_apart_from_the_per_file_report(tmp_path: Path) -> None:
+    """One broken machine is not five thousand broken files, on the row too."""
+    workspace = WorkspaceService.init(tmp_path / "ws", video_processor_factory=_NoFfmpeg)
+    ingest = IngestService(workspace)
+    source = _planted_video_source(workspace, ProjectService(workspace).create("p"), tmp_path)
+
+    with pytest.raises(MediaToolUnavailable):
+        ingest.ingest(source.id)
+
+    job = ingest.list(source.id)[0]
+    assert job.state is IngestState.FAILED
+    assert "ffmpeg" in (job.error or "")
+    assert job.failures == ()
+    workspace.close()
+
+
+def test_a_failed_run_keeps_the_progress_it_had_made(tmp_path: Path) -> None:
+    """How far it got is the first thing anyone reading a failure wants.
+
+    The decoder gives up on the third of four files with something that is not a
+    `MediaError` at all — a disk that went away, say — so the run stops rather
+    than reporting it, and the two files it had already counted stay counted.
+    """
+    root = tmp_path / "ws"
+    workspace = WorkspaceService.init(root, image_processor_factory=lambda: _FailsOnNthFile(3))
+    sources = SourceService(workspace)
+    ingest = IngestService(workspace)
+    project = ProjectService(workspace).create("p")
+    stills = tmp_path / "stills"
+    stills.mkdir()
+    write_images(stills, count=4)
+    source = sources.register_images(project.id, stills)
+
+    with pytest.raises(OSError, match="the disk went away"):
+        ingest.ingest(source.id)
+
+    job = ingest.list(source.id)[0]
+    assert job.state is IngestState.FAILED
+    assert (job.processed, job.total) == (2, 4)
+    workspace.close()
+
+
+# --- resuming a failed run ------------------------------------------------
+
+
+def test_resuming_a_failed_run_completes_it_on_the_same_row(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(IngestState.FAILED)
+
+    result = fixture.ingest.resume(job.id)
+
+    assert result.job_id == job.id
+    assert fixture.ingest.get(job.id).state is IngestState.COMPLETED
+    assert fixture.batches.get(result.batch_id).asset_ids == list(result.asset_ids)
+    fixture.close()
+
+
+def test_resuming_creates_no_second_job(tmp_path: Path) -> None:
+    """A run is one unit of work; a row per attempt would fork its batch."""
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(IngestState.FAILED)
+
+    fixture.ingest.resume(job.id)
+
+    assert [stored.id for stored in fixture.ingest.list(job.source_id)] == [job.id]
+    fixture.close()
+
+
+def test_resuming_clears_the_previous_attempts_report(tmp_path: Path) -> None:
+    """The counters and the report describe *this* attempt, not the last one."""
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(IngestState.FAILED)
+    assert fixture.ingest.get(job.id).error is not None
+
+    fixture.ingest.resume(job.id)
+
+    resumed = fixture.ingest.get(job.id)
+    assert resumed.error is None
+    assert resumed.failures == ()
+    assert (resumed.processed, resumed.total) == (2, 2)
+    fixture.close()
+
+
+def test_resuming_keeps_the_batch_name_the_first_attempt_was_given(tmp_path: Path) -> None:
+    """Which is what `batch_name` is a column for: a failed run reached no batch."""
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.stills.rmdir()
+    with pytest.raises(FileNotFoundError):
+        fixture.ingest.ingest(source.id, batch_name="monday")
+    fixture.stills.mkdir()
+    write_images(fixture.stills, count=1)
+
+    job = fixture.ingest.list(source.id)[0]
+    result = fixture.ingest.resume(job.id)
+
+    assert fixture.batches.get(result.batch_id).name == "monday"
+    fixture.close()
+
+
+def test_resuming_creates_no_new_blobs_for_what_was_already_stored(tmp_path: Path) -> None:
+    """Resume is a redo, and a redo of content-addressed work costs no storage."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=3)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    result = fixture.ingest.ingest(source.id)
+    before = fixture.blob_count()
+    # Put the completed run back into a state resume accepts, which nothing
+    # public does: the point here is the second read of the same bytes.
+    with fixture.workspace.unit_of_work() as uow:
+        stored = uow.ingest_jobs.get(result.job_id)
+        assert stored is not None
+        uow.ingest_jobs.update(stored.model_copy(update={"state": IngestState.FAILED}))
+
+    again = fixture.ingest.resume(result.job_id)
+
+    assert again.created == 0
+    assert again.asset_ids == result.asset_ids
+    assert fixture.blob_count() == before
+    fixture.close()
+
+
+def test_a_resumed_run_announces_itself(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(IngestState.FAILED)
+    announced: list[IngestCompleted] = []
+    fixture.workspace.event_bus.subscribe(IngestCompleted, announced.append)
+
+    fixture.ingest.resume(job.id)
+
+    assert [event.ingest_job_id for event in announced] == [job.id]
+    fixture.close()
+
+
+def test_resuming_into_a_batch_that_was_frozen_meanwhile_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    batch = fixture.batches.create(fixture.project.id, "target", [])
+    result = fixture.ingest.ingest(source.id, batch_id=batch.id)
+    with fixture.workspace.unit_of_work() as uow:
+        stored = uow.ingest_jobs.get(result.job_id)
+        assert stored is not None
+        uow.ingest_jobs.update(stored.model_copy(update={"state": IngestState.FAILED}))
+    fixture.freeze(batch.id)
+
+    with pytest.raises(BatchNotEditable):
+        fixture.ingest.resume(result.job_id)
+    fixture.close()
+
+
+def test_resuming_an_unknown_job_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+
+    with pytest.raises(IngestJobNotFound):
+        fixture.ingest.resume(uuid4())
     fixture.close()
 
 

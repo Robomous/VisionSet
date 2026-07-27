@@ -115,8 +115,9 @@ MIGRATIONS: list[Migration] = [
     Migration(version=6, name="release_manifest_pointer", upgrade=...),
     Migration(version=7, name="source_provenance", upgrade=...),
     Migration(version=8, name="ingest_pipeline", upgrade=...),
+    Migration(version=9, name="ingest_job_progress", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 8
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 9
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -167,6 +168,15 @@ at 7 and will never re-run it. Declared anywhere else, the
 `create_all` path and the `ALTER` path emit different `CREATE TABLE` text and the
 fresh-versus-migrated test fails — which is exactly what it is for.
 
+Migration 009 is where that expiry actually bit. `ingest_job` was rebuilt by 008, so its column
+order was free *then*; by 009 the table holds real rows and its four new columns —
+`batch_name`, `processed`, `total`, `failures` — arrive by `ALTER` and sit last, in the order
+the migration adds them. That path has a test of its own
+(`test_migration_nine_alters_a_table_migration_eight_rebuilt`), because the fresh-versus-migrated
+test walks back to generation 1, from where 008 re-creates the table whole and 009 finds its
+columns already present. A migration whose only exercise is through an earlier rebuild is not
+exercised at all.
+
 **A column that carries a foreign key cannot arrive by `ALTER` at all.** SQLite spells an added
 key inline on the column; `create_all` spells one as a table constraint. The two texts differ, so
 the fresh-versus-migrated test fails — and dropping the key instead is not free either.
@@ -203,10 +213,20 @@ predates the ingest pipeline", where a `server_default` would invent a format no
 it does refuse is data its two new unique indexes cannot accept, counted before either index is
 created so an `IntegrityError` never escapes `initialize()`.
 
+Migration 009 is the plainest in the file, and the plainness is the point after 008: four
+columns, none carrying a foreign key, so `ALTER` can express all of them — and every one has an
+honest value for a row written before it. A pre-#19 run counted nothing and reported nothing,
+which is exactly what `0` and `[]` say; NULL is what a run that named no batch meant. So unlike
+006, 007 and 008 it refuses nothing and drops nothing. `failures` is a JSON column rather than a
+child table on the criteria above: a per-file report is an immutable value read whole, and
+nothing queries a single failed file in SQL.
+
 The fresh-versus-migrated test is only as strong as how far back
 `_downgrade_to_version_one` walks, so every migration added there needs its undo added too.
 Migrations 006 and 007 are the two places that undo cannot borrow its DDL from `_tables`,
-because `_tables` no longer describes the shape it is restoring.
+because `_tables` no longer describes the shape it is restoring. Migration 009 is the one
+place that needs no undo of its own: its columns live on `ingest_job`, which 008's undo rebuilds
+from scratch, so restoring the generation-1 shape removes them along with everything else.
 
 `format_version` here is the *database* generation. Validating the on-disk workspace layout
 around it — directories, the blob-store root, what makes a directory a workspace at all —

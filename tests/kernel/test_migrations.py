@@ -87,6 +87,13 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
         # refuses to drop such a column at all — the constraint would be left
         # naming something that is gone. Migration 8 rebuilds this table for the
         # same underlying reason, so its undo is a rebuild too. It is empty here.
+        #
+        # This rebuild is also migration 9's undo: its four columns live on this
+        # same table, so restoring the generation-1 shape removes them with
+        # everything else. That is why nothing below mentions them — and why
+        # ``test_migration_nine_alters_a_table_migration_eight_rebuilt`` exists,
+        # because from here migration 8 re-creates the table whole and 9 never
+        # runs as the ``ALTER`` that a real generation-8 database gets.
         connection.execute(text("drop table ingest_job"))
         connection.execute(
             text(
@@ -403,6 +410,104 @@ def test_migration_eight_refuses_a_workspace_that_still_holds_a_pre_ingest_job(
 
     with store.engine.connect() as connection:
         assert connection.execute(text("select count(*) from ingest_job")).scalar_one() == 1
+    store.close()
+
+
+#: What migration 9 adds, and therefore what generation 8 did not have.
+_MIGRATION_NINE_COLUMNS = ("batch_name", "processed", "total", "failures")
+
+
+def _downgrade_to_generation_eight(store: SqliteMetadataStore) -> None:
+    """Take ``ingest_job`` back to the shape migration 8's rebuild left it in.
+
+    Four ``DROP COLUMN``s rather than a hand-written ``CREATE TABLE``, and that
+    is not only convenience. These tests compare ``sqlite_master`` *text*, and
+    SQLite rewrites the stored statement by deleting the dropped column's
+    definition and leaving every other character alone — so what is left is
+    exactly what ``table.create()`` wrote, where a retyped baseline would differ
+    in whitespace and fail for a reason about this file rather than the schema.
+
+    That these drops are even possible is migration 9's own argument restated:
+    none of the four carries a foreign key, which is why it could be an ``ALTER``
+    at all where migration 8 needed a rebuild.
+    """
+    with store.engine.begin() as connection:
+        for column in _MIGRATION_NINE_COLUMNS:
+            connection.execute(text(f"alter table ingest_job drop column {column}"))
+        connection.execute(text("update _visionset_meta set format_version = 8"))
+
+
+def test_migration_nine_gives_a_run_its_progress_and_its_report(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.connect() as connection:
+        columns = {c["name"] for c in inspect(connection).get_columns("ingest_job")}
+    assert {"batch_name", "processed", "total", "failures"} <= columns
+    store.close()
+
+
+def test_migration_nine_alters_a_table_migration_eight_rebuilt(tmp_path: Path) -> None:
+    """The ``ALTER`` path, which the fresh-versus-migrated test cannot reach.
+
+    That test walks back to generation 1, from where migration 8 re-creates
+    ``ingest_job`` whole — including migration 9's columns, since it builds from
+    ``_tables`` — so migration 9 finds them present and does nothing. A database
+    this build actually wrote is stamped at 8, and migration 9 reaches it as four
+    ``ALTER TABLE ... ADD COLUMN`` statements instead.
+
+    That is the path the declared-last rule exists for: SQLite appends an added
+    column, so the two spellings of ``CREATE TABLE ingest_job`` agree only while
+    those four stay at the end of ``IngestJobRow``.
+    """
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    legacy = SqliteMetadataStore(tmp_path / "legacy.db")
+    legacy.initialize()
+    _downgrade_to_generation_eight(legacy)
+    assert _schema(legacy) != expected  # the four columns really are gone
+
+    legacy.initialize()  # migration 9 alone, as an ALTER
+    assert _schema(legacy) == expected
+    assert legacy.format_version == FORMAT_VERSION
+    legacy.close()
+
+
+def test_migration_nine_keeps_the_runs_a_workspace_already_recorded(tmp_path: Path) -> None:
+    """Four columns with an honest value for a row written before them.
+
+    Nothing is refused and nothing is dropped here, unlike migrations 6 to 8:
+    a pre-#19 run counted nothing and reported nothing, which is exactly what
+    ``0`` and ``[]`` say, and NULL is what a run that named no batch meant.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
+        )
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at, capture_params) "
+                "values ('s', 'p', 'image_directory', '/in', '2026-07-27T00:00:00+00:00', '{}')"
+            )
+        )
+    _downgrade_to_generation_eight(store)
+    with store.engine.begin() as connection:
+        connection.execute(
+            text("insert into ingest_job (id, source_id, state) values ('j', 's', 'completed')")
+        )
+
+    store.initialize()
+
+    with store.engine.connect() as connection:
+        row = connection.execute(
+            text("select batch_name, processed, total, failures from ingest_job where id = 'j'")
+        ).one()
+    assert row == (None, 0, None, "[]")
     store.close()
 
 

@@ -2,22 +2,24 @@
 """One ingestion run: the record of it, and the report it hands back.
 
 Two shapes live here and they are not the same kind of thing. ``IngestJob`` is a
-**row** — it outlives the call, and #19 is what gives it a transition table,
-progress counters and a persisted error report. ``IngestResult`` is a **return
-value** — it exists for the caller of ``IngestService.ingest`` and is never
-stored. #20 keeps them apart deliberately: the pipeline works today and reports
-in memory, and #19 turns that report into columns without changing what the
-pipeline computes.
+**row** — it outlives the call, carries the run's state machine, its progress
+counters and its per-file report. ``IngestResult`` is a **return value** — it
+exists for the caller of ``IngestService.ingest`` and is never stored. The two
+overlap on purpose: the row is what a *poller* reads while the run is in flight
+or long after it, and the result is what the caller who waited already has in
+hand.
 
-Counts are derived properties rather than stored fields, the way batch
-completion and per-asset progress are derived elsewhere in this domain. #19's
-counters are a different thing: a running total written to a row *while* a job
-is in flight, which a summary of a finished object cannot serve.
+Summary counts on ``IngestResult`` stay derived properties, the way batch
+completion and per-asset progress are derived elsewhere in this domain. The
+job's counters are a different thing: a running total written to a row *while*
+the work is happening, which a summary of a finished object cannot serve.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Final
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,22 +28,45 @@ from visionset.kernel.domain.asset import Asset
 
 
 class IngestState(StrEnum):
+    """Lifecycle: pending -> running -> (completed | failed) -> running.
+
+    ``IngestService`` owns the moves; ``INGEST_TRANSITIONS`` below is the whole
+    of what is legal.
+    """
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
 
 
-class IngestJob(BaseModel):
-    """Tracks one ingestion run of a Source into a Project's asset pool."""
+INGEST_TRANSITIONS: Final[Mapping[IngestState, frozenset[IngestState]]] = {
+    IngestState.PENDING: frozenset({IngestState.RUNNING, IngestState.FAILED}),
+    IngestState.RUNNING: frozenset({IngestState.COMPLETED, IngestState.FAILED}),
+    IngestState.COMPLETED: frozenset(),
+    IngestState.FAILED: frozenset({IngestState.RUNNING}),
+}
+"""Every move a run may make. Anything absent raises ``InvalidTransition``.
 
-    id: UUID = Field(default_factory=uuid4)
-    source_id: UUID
-    state: IngestState = IngestState.PENDING
-    error: str | None = None
-    #: The batch this run materialized into, NULL until it has reached one.
-    #: Declared last: it arrives by ``ALTER TABLE`` in migration 8.
-    batch_id: UUID | None = None
+A table rather than guards inside the service, the shape ``BATCH_TRANSITIONS``
+established: "which moves are legal" is one readable fact, and the test for it
+sweeps the whole ``IngestState`` column against this dict instead of restating
+it.
+
+``failed -> running`` is **the first backward edge in this kernel**, and the
+argument against reopening a batch does not transfer. A batch pins a schema
+version at approval and its jobs are already partitioned against that pin, so
+un-freezing one would invalidate work already done. Nothing is pinned against an
+ingest run: it is a record of work, not an artifact with dependents. Resuming is
+therefore the same unit of work continuing, and a second row per attempt would
+fork ``batch_id`` and fill ``IngestService.list`` with retries.
+
+``running -> running`` is deliberately **absent**, which means a run stuck at
+``running`` cannot be resumed. That state is a process that died without
+reporting anything, not a failure somebody can read — and the remedy already
+exists: ingest the source again, which content addressing makes create nothing.
+Letting a resume overwrite the row would erase the only evidence the crash left.
+"""
 
 
 class IngestFailureKind(StrEnum):
@@ -78,13 +103,55 @@ class IngestFailure(BaseModel):
     reason: str
 
 
+class IngestJob(BaseModel):
+    """Tracks one ingestion run of a Source into a Project's asset pool.
+
+    Declared after ``IngestFailure`` because it holds a tuple of them, and
+    pydantic resolves that annotation when the class is created rather than when
+    it is first used.
+
+    The last four fields arrive by ``ALTER TABLE`` and are therefore declared
+    **last, in migration order** — the rule ``AssetRow`` and ``AnnotationRow``
+    already follow, and the reason is that SQLite appends an added column, so a
+    different order here would make the ``create_all`` path and the migration
+    path emit different DDL.
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    source_id: UUID
+    state: IngestState = IngestState.PENDING
+    #: The fatal cause that stopped the run, as opposed to the per-file report
+    #: below. One broken machine is not five thousand broken files.
+    error: str | None = None
+    #: The batch this run materialized into, NULL until it has reached one.
+    #: Declared last as of migration 8.
+    batch_id: UUID | None = None
+    #: The name a batch this run creates will take, decided before the decode so
+    #: that resuming a run which never reached a batch still lands where the
+    #: first attempt meant it to. NULL only on a row written before migration 9.
+    batch_name: str | None = None
+    #: Items read so far — decoded, hashed and stored, or reported as unreadable.
+    #: Written while the run is in flight, which is what makes it pollable.
+    processed: int = Field(default=0, ge=0)
+    #: Items the source offered, or NULL when that is not knowable in advance.
+    #: A directory can be listed; a clip cannot, because ``VideoMetadata``
+    #: deliberately carries no frame count — the number an ingest wants is what
+    #: extraction produced, and anything else would be a guess with a VFR clip.
+    total: int | None = Field(default=None, ge=0)
+    #: The per-file report of the **current** attempt. A resumed run starts a
+    #: fresh one rather than accumulating across attempts.
+    failures: tuple[IngestFailure, ...] = ()
+
+
 class IngestResult(BaseModel):
     """What one call to ``IngestService.ingest`` did.
 
-    In memory only: nothing reads this back, and #19 is what persists a report.
-    ``assets`` carries whole models rather than ids because there is no door
-    that reads an ``Asset`` back — a caller that has just ingested should not
-    have to reach into a repository to learn what it got.
+    The caller's copy of what the run's own row records, handed back so that
+    waiting for a synchronous run does not then require reading it. ``assets``
+    carries whole models rather than ids because there is no door that reads an
+    ``Asset`` back — a caller that has just ingested should not have to reach
+    into a repository to learn what it got, and that is the one part of this
+    that the row cannot hold.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

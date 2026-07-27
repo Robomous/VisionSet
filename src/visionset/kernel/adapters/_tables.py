@@ -11,8 +11,9 @@ Storage decisions, and why (see ``docs/persistence.md`` for the long form):
   from the asset side, which a JSON blob cannot serve.
 - Collections that are *immutable value objects* get JSON columns —
   ``annotation_schema.classes``, ``annotation.geometry``, ``annotation.attributes``,
-  ``release.split``. A schema version must rehydrate byte-identical, and nothing
-  ever queries a single ``LabelClass`` by name in SQL.
+  ``release.split``, ``source.video``, ``ingest_job.failures``. A schema version
+  must rehydrate byte-identical, and nothing ever queries a single
+  ``LabelClass`` by name — or a single failed file — in SQL.
 - A value object too large to belong in a row at all goes in the blob store, and
   the row keeps its hash — that is ``release.manifest_hash``. The line between
   the two is size and verifiability, not shape.
@@ -157,17 +158,23 @@ SOURCE_ORIGIN_UNIQUE = Index(
 
 
 class IngestJobRow(Base):
-    """Ingestion runs. Rebuilt by migration 8, so column order is free here.
+    """Ingestion runs. Rebuilt by migration 8; migration 9 then altered it.
 
-    Rebuilt rather than altered because ``batch_id`` carries a foreign key, and
-    an ``ALTER TABLE ... ADD COLUMN`` cannot express one the way ``create_all``
-    does: SQLite spells an added key inline on the column, while a created table
-    spells it as a table constraint. The two texts differ, so the fresh-versus-
-    migrated test would fail — and dropping the key instead would leave a run
-    pointing at a batch somebody deleted. This table has no children and is
-    provably empty at that point (nothing wrote an ingest job before this
-    build), which is what makes the rebuild affordable; migration 8 counts
-    rather than assuming it.
+    Migration 8 rebuilt rather than altered because ``batch_id`` carries a
+    foreign key, and an ``ALTER TABLE ... ADD COLUMN`` cannot express one the way
+    ``create_all`` does: SQLite spells an added key inline on the column, while a
+    created table spells it as a table constraint. The two texts differ, so the
+    fresh-versus-migrated test would fail — and dropping the key instead would
+    leave a run pointing at a batch somebody deleted. This table had no children
+    and was provably empty at that point (nothing wrote an ingest job before that
+    build), which is what made the rebuild affordable; migration 8 counts rather
+    than assuming it.
+
+    **That exemption expired the moment this build started writing rows.** A
+    database stamped at 8 will never re-run migration 8, so anything added after
+    it reaches that database by ``ALTER TABLE`` after all — which is why
+    migration 9's four columns are declared **last, in the order it adds them**.
+    A rebuild is no longer available here either: these rows are legitimate.
     """
 
     __tablename__ = "ingest_job"
@@ -177,6 +184,7 @@ class IngestJobRow(Base):
         SaUuid, ForeignKey("source.id", ondelete="CASCADE"), index=True, nullable=False
     )
     state: Mapped[str] = mapped_column(String, nullable=False)
+    #: The fatal cause that stopped the run, as opposed to ``failures`` below.
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     #: The batch this run materialized into. NULL until it reaches one — a run
     #: that dies during the decode never does, which is why this is nullable
@@ -185,6 +193,23 @@ class IngestJobRow(Base):
     batch_id: Mapped[UUID | None] = mapped_column(
         SaUuid, ForeignKey("batch.id", ondelete="SET NULL"), nullable=True
     )
+    #: The name a batch this run creates will take, so a resumed run lands where
+    #: the first attempt meant it to. Nullable, and honestly so: a row written
+    #: before migration 9 never recorded one.
+    batch_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Items read so far. Carries a ``server_default`` for the reason
+    #: ``AnnotationJobAssetRow.position`` does — SQLite refuses ``ADD COLUMN``
+    #: ``NOT NULL`` without a value for the rows already there — and ``0`` is
+    #: what a finished pre-#19 run in fact recorded: nothing.
+    processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    #: Items the source offered, or NULL when that is not knowable up front —
+    #: a directory can be listed, a clip cannot. See ``IngestJob.total``.
+    total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The per-file report: a list of ``IngestFailure``. JSON rather than a child
+    #: table because it is read whole and never queried by field, the rule
+    #: ``source.video`` follows. ``server_default`` on
+    #: ``AnnotationRow.attributes``' terms.
+    failures: Mapped[list[Any]] = mapped_column(JSON, nullable=False, server_default=text("'[]'"))
 
 
 class AssetRow(Base):

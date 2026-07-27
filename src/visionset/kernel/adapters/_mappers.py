@@ -7,10 +7,10 @@ directions of the conversion; the repository in
 fourteen times against fourteen tables.
 
 Most entities are flat — every field is a column — and share
-``_flat_mapping``. The seven that are not say so explicitly:
+``_flat_mapping``. The eight that are not say so explicitly:
 
-- ``AnnotationSchema`` and ``Annotation`` hold immutable nested values, encoded
-  as JSON.
+- ``AnnotationSchema``, ``Annotation`` and ``IngestJob`` hold immutable nested
+  values, encoded as JSON.
 - ``Batch`` and ``AnnotationJob`` own child tables, so their mappings carry a
   ``sync_children`` hook and rebuild their collections on read.
 - ``DatasetChange``, ``Release`` and ``Source`` encode a timezone-aware
@@ -42,7 +42,9 @@ from visionset.kernel.domain import (
     DatasetChange,
     DatasetMember,
     Geometry,
+    IngestFailure,
     IngestJob,
+    IngestState,
     LabelClass,
     Project,
     Release,
@@ -122,6 +124,37 @@ def _schema_to_domain(_: Session, row: Any) -> AnnotationSchema:
         project_id=row.project_id,
         version=row.version,
         classes=tuple(LabelClass.model_validate(c) for c in row.classes),
+    )
+
+
+def _ingest_job_to_row(entity: IngestJob) -> t.Base:
+    """Spelled out rather than left to ``_flat_mapping``, which dumps in python
+    mode and would hand a tuple of ``IngestFailure`` models to a ``JSON`` column.
+    """
+    return t.IngestJobRow(
+        id=entity.id,
+        source_id=entity.source_id,
+        state=entity.state,
+        error=entity.error,
+        batch_id=entity.batch_id,
+        batch_name=entity.batch_name,
+        processed=entity.processed,
+        total=entity.total,
+        failures=[failure.model_dump(mode="json") for failure in entity.failures],
+    )
+
+
+def _ingest_job_to_domain(_: Session, row: Any) -> IngestJob:
+    return IngestJob(
+        id=row.id,
+        source_id=row.source_id,
+        state=IngestState(row.state),
+        error=row.error,
+        batch_id=row.batch_id,
+        batch_name=row.batch_name,
+        processed=row.processed,
+        total=row.total,
+        failures=tuple(IngestFailure.model_validate(f) for f in row.failures),
     )
 
 
@@ -309,7 +342,6 @@ def _job_sync_children(session: Session, entity: AnnotationJob) -> None:
 
 WORKSPACES = _flat_mapping(Workspace, t.WorkspaceRow, None)
 PROJECTS = _flat_mapping(Project, t.ProjectRow, "workspace_id")
-INGEST_JOBS = _flat_mapping(IngestJob, t.IngestJobRow, "source_id")
 ASSETS = _flat_mapping(Asset, t.AssetRow, "project_id")
 TASK_GROUPS = _flat_mapping(TaskGroup, t.TaskGroupRow, "batch_id")
 DATASETS = _flat_mapping(Dataset, t.DatasetRow, "project_id")
@@ -326,6 +358,12 @@ ANNOTATIONS: EntityMapping[Annotation] = EntityMapping(
     parent_column="asset_id",
     to_row=_annotation_to_row,
     to_domain=_annotation_to_domain,
+)
+INGEST_JOBS: EntityMapping[IngestJob] = EntityMapping(
+    row=t.IngestJobRow,
+    parent_column="source_id",
+    to_row=_ingest_job_to_row,
+    to_domain=_ingest_job_to_domain,
 )
 SOURCES: EntityMapping[Source] = EntityMapping(
     row=t.SourceRow,

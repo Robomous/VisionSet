@@ -11,7 +11,8 @@ Three things shape this module:
 
 - **Two state machines, both tables.** ``JOB_TRANSITIONS`` and
   ``ASSET_PROGRESS_TRANSITIONS`` live in ``domain/task.py``; this service
-  consults them and never restates them. Adding a state is one edit there.
+  consults them through ``domain.require_move`` and never restates them.
+  Adding a state is one edit there.
 - **Work only happens inside an open batch.** Every write here requires the
   job's batch to be ``in_annotation``. ``AnnotationService`` needs the same gate,
   and rather than restate it, it calls :meth:`JobService.require_job` and
@@ -31,8 +32,6 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from enum import StrEnum
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -45,11 +44,11 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     BatchState,
+    require_move,
 )
 from visionset.kernel.errors import (
     AssetNotInJob,
     BatchNotInAnnotation,
-    InvalidTransition,
     JobNotComplete,
     JobNotFound,
     ProjectNotFound,
@@ -180,7 +179,7 @@ class JobService:
         with self._workspace.unit_of_work() as uow:
             job = self.require_job(uow, job_id)
             self.require_open_batch(uow, job)
-            _require_move(JOB_TRANSITIONS, job.state, AnnotationJobState.COMPLETED, f"job {job.id}")
+            require_move(JOB_TRANSITIONS, job.state, AnnotationJobState.COMPLETED, f"job {job.id}")
 
             unsettled = _unsettled(job)
             if unsettled:
@@ -232,7 +231,7 @@ class JobService:
             if current is progress:
                 return job
 
-            _require_move(
+            require_move(
                 ASSET_PROGRESS_TRANSITIONS, current, progress, f"asset {asset_id} in job {job.id}"
             )
             # Rewriting an existing key keeps its place in the dict, which keeps
@@ -247,7 +246,7 @@ class JobService:
         with self._workspace.unit_of_work() as uow:
             job = self.require_job(uow, job_id)
             self.require_open_batch(uow, job)
-            _require_move(JOB_TRANSITIONS, job.state, to, f"job {job.id}")
+            require_move(JOB_TRANSITIONS, job.state, to, f"job {job.id}")
             return uow.annotation_jobs.update(job.model_copy(update={"state": to}))
 
     def _require_project(self, uow: UnitOfWork, project_id: UUID) -> None:
@@ -310,24 +309,6 @@ class JobService:
                 f"{BatchState.IN_ANNOTATION.value!r}; no work happens in a batch nobody opened"
             )
         return batch
-
-
-def _require_move[S: StrEnum](
-    transitions: Mapping[S, frozenset[S]], current: S, to: S, subject: str
-) -> None:
-    """Consult a transition table, and refuse in its own vocabulary.
-
-    Generic over both machines rather than written twice: "is this move in the
-    table" is the same question for a job and for an asset, and the answer should
-    read the same way in both refusals.
-    """
-    if to in transitions[current]:
-        return
-    legal = ", ".join(sorted(state.value for state in transitions[current])) or "nothing"
-    raise InvalidTransition(
-        f"{subject} is {current.value!r} and cannot become {to.value!r}; "
-        f"from here it can only become {legal}"
-    )
 
 
 def _require_asset(uow: UnitOfWork, job: AnnotationJob, asset_id: UUID) -> Asset:

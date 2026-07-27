@@ -33,6 +33,7 @@ from visionset.kernel.domain.geometry import (
     PolygonGeometry,
 )
 from visionset.kernel.domain.ingest import (
+    INGEST_TRANSITIONS,
     IngestFailure,
     IngestFailureKind,
     IngestJob,
@@ -97,12 +98,14 @@ from visionset.kernel.domain.task import (
     TaskGroup,
     progress_after_annotating,
 )
+from visionset.kernel.domain.transitions import require_move
 from visionset.kernel.domain.workspace import Workspace
 
 __all__ = [
     "ASSET_PROGRESS_TRANSITIONS",
     "BATCH_TRANSITIONS",
     "IMPLEMENTED_GEOMETRIES",
+    "INGEST_TRANSITIONS",
     "JOB_TRANSITIONS",
     "MANIFEST_VERSION",
     "PROMOTABLE_PROGRESS",
@@ -171,5 +174,6 @@ __all__ = [
     "normalize_name",
     "partition_assets",
     "progress_after_annotating",
+    "require_move",
     "sha256_hex",
 ]
