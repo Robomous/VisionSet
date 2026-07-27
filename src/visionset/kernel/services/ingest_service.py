@@ -186,14 +186,17 @@ class IngestService:
         attempt, and a completed run still carrying the last attempt's report
         would be a lie. The fatal ``error`` is cleared for the same reason.
 
-        Only a ``failed`` job can be resumed, because ``INGEST_TRANSITIONS`` has
-        no ``running -> running`` edge. A job stuck at ``running`` is a process
-        that died without reporting anything; ingest the source again instead,
+        What may be resumed is whatever ``INGEST_TRANSITIONS`` says can reach
+        ``running``: a ``failed`` job, and a ``pending`` one, which a synchronous
+        run never leaves behind but a queued one would. A ``completed`` job
+        cannot, and neither can one stuck at ``running`` — that is a process that
+        died without reporting anything, so ingest the source again instead,
         which creates nothing and leaves the crashed row as the record it is.
 
         Raises:
             IngestJobNotFound: no such ingest job in this workspace.
-            InvalidTransition: the job is not ``failed``.
+            InvalidTransition: the job is ``completed``, or stuck at
+                ``running`` — see ``INGEST_TRANSITIONS``.
             SourceNotFound: the source has since been deleted.
             BatchNotEditable: the batch the first attempt reached is past
                 ``draft``.

@@ -116,8 +116,10 @@ cost an order of magnitude more.
 ## Resuming a failed run
 
 `IngestService.resume(job_id)` re-runs a failed job on its own row, into the batch the first
-attempt was headed for. Only a `failed` job qualifies — the table says so, and the refusal is
-an ordinary `InvalidTransition` rather than an error of its own.
+attempt was headed for. What qualifies is whatever the table says can reach `running` — `failed`,
+and also `pending`, which a synchronous run never leaves behind but a queued one would. A
+`completed` or `running` job is refused with an ordinary `InvalidTransition` rather than an error
+of its own.
 
 It is a **redo, not a skip**. There is no per-file record of what the previous attempt managed,
 and there does not need to be: blobs are content-addressed and assets are deduplicated by
