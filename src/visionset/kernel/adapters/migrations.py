@@ -37,6 +37,7 @@ from sqlalchemy.schema import CreateColumn
 from visionset.kernel.adapters._tables import (
     PROJECT_NAME_UNIQUE,
     AnnotationJobAssetRow,
+    AnnotationRow,
     Base,
     BatchRow,
 )
@@ -103,6 +104,16 @@ def _add_job_asset_position(connection: Connection) -> None:
     _add_column(connection, cast(Column[object], AnnotationJobAssetRow.__table__.c.position))
 
 
+def _add_annotation_attributes(connection: Connection) -> None:
+    """Give an annotation somewhere to record its attribute values.
+
+    Until now a schema could declare attributes that no annotation could carry.
+    Existing rows default to ``{}``, which is exactly what they meant: no values
+    recorded — and any class that requires one will refuse the next write to it.
+    """
+    _add_column(connection, cast(Column[object], AnnotationRow.__table__.c.attributes))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -119,6 +130,11 @@ MIGRATIONS: list[Migration] = [
         version=4,
         name="annotation_job_asset_position",
         upgrade=_add_job_asset_position,
+    ),
+    Migration(
+        version=5,
+        name="annotation_attributes",
+        upgrade=_add_annotation_attributes,
     ),
 ]
 

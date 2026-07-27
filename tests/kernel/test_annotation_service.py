@@ -1,0 +1,704 @@
+"""AnnotationService: the one door to a label, and the schema it has to satisfy.
+
+The progress sweep reads `ASSET_PROGRESS_TRANSITIONS` rather than restating it,
+so `progress_after_annotating` cannot drift into a move the table forbids.
+"""
+
+from __future__ import annotations
+
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+from uuid import UUID, uuid4
+
+import pytest
+from pydantic import ValidationError
+from sqlalchemy import text
+
+from visionset.kernel import (
+    AnnotationNotFound,
+    AssetNotInJob,
+    BatchNotInAnnotation,
+    DisallowedGeometry,
+    InvalidAnnotation,
+    InvalidAttributeValue,
+    JobNotFound,
+    LabelClassNotInSchema,
+    MissingRequiredAttribute,
+    UnknownAttribute,
+)
+from visionset.kernel.domain import (
+    ASSET_PROGRESS_TRANSITIONS,
+    Annotation,
+    AnnotationJob,
+    Asset,
+    AssetProgress,
+    Attribute,
+    BatchState,
+    BboxGeometry,
+    ClassificationGeometry,
+    GeometryType,
+    LabelClass,
+    PolygonGeometry,
+    progress_after_annotating,
+)
+from visionset.kernel.services import (
+    AnnotationService,
+    BatchService,
+    JobService,
+    ProjectService,
+    SchemaService,
+    WorkspaceService,
+)
+
+SIGN = LabelClass(
+    name="sign",
+    geometry=GeometryType.BBOX,
+    attributes=(
+        Attribute(name="occluded", kind="boolean", required=True),
+        Attribute(name="weather", kind="select", options=("dry", "wet")),
+    ),
+)
+LANE = LabelClass(name="lane", geometry=GeometryType.POLYGON)
+KIOSK = LabelClass(
+    name="kiosk",
+    geometry=GeometryType.CLASSIFICATION_TAG,
+    attributes=(
+        Attribute(name="operator", kind="string"),
+        Attribute(name="height", kind="number"),
+        Attribute(name="lit", kind="boolean"),
+        Attribute(name="condition", kind="select", options=("new", "worn")),
+    ),
+)
+#: A class the project only learns about in schema version 2.
+GHOST = LabelClass(name="ghost", geometry=GeometryType.BBOX)
+
+UNANNOTATED = AssetProgress.UNANNOTATED
+ANNOTATED = AssetProgress.ANNOTATED
+SKIPPED = AssetProgress.SKIPPED
+REVIEW_PENDING = AssetProgress.REVIEW_PENDING
+ACCEPTED = AssetProgress.ACCEPTED
+
+#: The shortest legal walk from ``unannotated`` to each state, as in #9's tests.
+_ROUTES: dict[AssetProgress, tuple[AssetProgress, ...]] = {
+    UNANNOTATED: (),
+    ANNOTATED: (ANNOTATED,),
+    SKIPPED: (SKIPPED,),
+    REVIEW_PENDING: (ANNOTATED, REVIEW_PENDING),
+    ACCEPTED: (ANNOTATED, REVIEW_PENDING, ACCEPTED),
+}
+
+
+def _box(asset_id: UUID, **overrides: Any) -> Annotation:
+    """A valid ``sign``: a bbox carrying the one attribute that class requires."""
+    fields: dict[str, Any] = {
+        "asset_id": asset_id,
+        "label_class": "sign",
+        "schema_version": 1,
+        "geometry": BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+        "attributes": {"occluded": False},
+        "provenance": "human",
+    }
+    return Annotation(**{**fields, **overrides})
+
+
+class Fixture:
+    """A workspace with one three-asset batch, ready to be approved and worked."""
+
+    def __init__(self, tmp_path: Path, name: str = "ws", *, assets: int = 3) -> None:
+        self.workspace = WorkspaceService.init(tmp_path / name)
+        self.batches = BatchService(self.workspace)
+        self.jobs = JobService(self.workspace)
+        self.schemas = SchemaService(self.workspace)
+        self.annotations = AnnotationService(self.workspace)
+        self.project = ProjectService(self.workspace).create(f"{name}-project")
+        self.schemas.create_version(self.project.id, [SIGN, LANE, KIOSK])
+        self.assets = [self._asset(f"{name}-{index}") for index in range(assets)]
+        self.batch = self.batches.create(self.project.id, "first", self.assets)
+
+    def _asset(self, seed: str) -> UUID:
+        content_hash = self.workspace.blob_store.put(BytesIO(seed.encode()))
+        with self.workspace.unit_of_work() as uow:
+            return uow.assets.add(
+                Asset(
+                    project_id=self.project.id,
+                    content_hash=content_hash,
+                    uri=f"/tmp/{seed}.png",
+                )
+            ).id
+
+    def approved(self) -> AnnotationJob:
+        """Approve the batch into one job, and stop there — nobody opened it."""
+        self.batches.approve(self.batch.id)
+        return self.batches.jobs(self.batch.id)[0]
+
+    def working(self) -> AnnotationJob:
+        """Approve, open the batch, and start its one job: annotation can happen."""
+        job = self.approved()
+        self.batches.start(self.batch.id)
+        self.jobs.start(job.id)
+        return self.jobs.get(job.id)
+
+    def close_the_batch(self, job: AnnotationJob) -> None:
+        """Settle every asset, finish the job, and complete the batch."""
+        for asset_id in self.assets:
+            self.jobs.mark(job.id, asset_id, ANNOTATED)
+        self.jobs.complete(job.id)
+        self.batches.complete(self.batch.id)
+
+    def asset_in(self, job: AnnotationJob, progress: AssetProgress, index: int = 0) -> UUID:
+        """One asset, walked to ``progress`` through JobService's real moves."""
+        asset_id = self.assets[index]
+        for step in _ROUTES[progress]:
+            self.jobs.mark(job.id, asset_id, step)
+        return asset_id
+
+    def progress_of(self, job: AnnotationJob, asset_id: UUID) -> AssetProgress:
+        return self.jobs.get(job.id).progress[asset_id]
+
+    def close(self) -> None:
+        self.workspace.close()
+
+
+# --- reading ------------------------------------------------------------------
+
+
+def test_an_annotation_comes_back_as_it_went_in(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    assert fixture.annotations.get(stored.id) == stored
+    fixture.close()
+
+
+def test_for_asset_lists_the_annotations_of_that_asset_alone(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    mine = fixture.annotations.add(job.id, [_box(fixture.assets[0]), _box(fixture.assets[0])])
+    fixture.annotations.add(job.id, [_box(fixture.assets[1])])
+
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == mine
+    fixture.close()
+
+
+def test_an_asset_nobody_has_labeled_yet_reads_as_empty(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == []
+    fixture.close()
+
+
+def test_reading_is_not_gated_on_the_batch_being_open(tmp_path: Path) -> None:
+    """A label outlives the work that produced it; only writes need an open batch."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    fixture.close_the_batch(job)
+    assert fixture.batches.get(fixture.batch.id).state is BatchState.COMPLETED
+
+    assert fixture.annotations.get(stored.id) == stored
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == [stored]
+    fixture.close()
+
+
+def test_an_unknown_job_or_asset_is_refused_on_read(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    with pytest.raises(JobNotFound):
+        fixture.annotations.for_asset(uuid4(), fixture.assets[0])
+    with pytest.raises(AssetNotInJob, match="fixed"):
+        fixture.annotations.for_asset(job.id, uuid4())
+    fixture.close()
+
+
+# --- schema violations are a hard reject --------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error", "match"),
+    [
+        pytest.param(
+            {"label_class": "unicorn"},
+            LabelClassNotInSchema,
+            "not in schema version 1",
+            id="class-not-in-the-version",
+        ),
+        pytest.param(
+            {"label_class": "lane", "attributes": {}},
+            DisallowedGeometry,
+            "is a polygon .* carries a bbox",
+            id="geometry-the-class-did-not-declare",
+        ),
+        pytest.param(
+            {"attributes": {}},
+            MissingRequiredAttribute,
+            "requires attribute 'occluded'",
+            id="required-attribute-missing",
+        ),
+        pytest.param(
+            {"attributes": {"occluded": False, "colour": "red"}},
+            UnknownAttribute,
+            "does not declare 'colour'",
+            id="attribute-the-class-does-not-declare",
+        ),
+        pytest.param(
+            {"attributes": {"occluded": "yes"}},
+            InvalidAttributeValue,
+            "is a boolean but got str",
+            id="value-of-the-wrong-type",
+        ),
+        pytest.param(
+            {"attributes": {"occluded": True, "weather": "foggy"}},
+            InvalidAttributeValue,
+            "'foggy' is not one of its options",
+            id="select-value-outside-its-options",
+        ),
+    ],
+)
+def test_an_annotation_the_pinned_version_rejects_is_not_stored(
+    tmp_path: Path, overrides: dict[str, Any], error: type[InvalidAnnotation], match: str
+) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+
+    with pytest.raises(error, match=match):
+        fixture.annotations.add(job.id, [_box(asset_id, **overrides)])
+    # one base for the family, so a surface answers 422 without naming five classes
+    with pytest.raises(InvalidAnnotation):
+        fixture.annotations.add(job.id, [_box(asset_id, **overrides)])
+
+    assert fixture.annotations.for_asset(job.id, asset_id) == []
+    assert fixture.progress_of(job, asset_id) is UNANNOTATED
+    fixture.close()
+
+
+def test_the_geometry_rule_is_per_class_not_the_versions_union(tmp_path: Path) -> None:
+    """The version allows polygons — but not under a class bound to bboxes."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    assert fixture.schemas.allowed_geometries(fixture.project.id) >= {
+        GeometryType.BBOX,
+        GeometryType.POLYGON,
+    }
+
+    with pytest.raises(DisallowedGeometry, match="is a bbox .* carries a polygon"):
+        fixture.annotations.add(
+            job.id,
+            [
+                _box(
+                    fixture.assets[0],
+                    geometry=PolygonGeometry(points=[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]),
+                )
+            ],
+        )
+    fixture.close()
+
+
+def test_an_optional_attribute_may_simply_be_absent(tmp_path: Path) -> None:
+    """`required` and `default` are independent — nothing is filled in for you."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    assert stored.attributes == {"occluded": False}
+    fixture.close()
+
+
+def test_a_class_with_no_attributes_takes_none(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    lane = Annotation(
+        asset_id=fixture.assets[0],
+        label_class="lane",
+        schema_version=1,
+        geometry=PolygonGeometry(points=[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0)]),
+        provenance="human",
+    )
+    (stored,) = fixture.annotations.add(job.id, [lane])
+
+    assert stored.attributes == {}
+    fixture.close()
+
+
+def test_an_annotation_naming_an_asset_outside_the_job_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    with pytest.raises(AssetNotInJob, match="fixed"):
+        fixture.annotations.add(job.id, [_box(uuid4())])
+    fixture.close()
+
+
+# --- provenance is the model's own rule, never the service's ------------------
+
+
+def test_a_model_annotation_without_a_model_ref_cannot_be_built() -> None:
+    """It never reaches a service, which is why there is no `InvalidProvenance`."""
+    with pytest.raises(ValidationError, match="model_ref"):
+        _box(uuid4(), provenance="model")
+
+    assert _box(uuid4(), provenance="model", model_ref="yolo@3").model_ref == "yolo@3"
+
+
+@pytest.mark.parametrize("confidence", [-0.1, 1.5])
+def test_a_confidence_outside_the_unit_interval_cannot_be_built(confidence: float) -> None:
+    with pytest.raises(ValidationError):
+        _box(uuid4(), confidence=confidence)
+
+
+# --- identity: the id is the annotation's, the version is the batch's ---------
+
+
+def test_the_id_is_generated_server_side_and_echoed_back(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    proposed = _box(fixture.assets[0])
+    (stored,) = fixture.annotations.add(job.id, [proposed])
+
+    assert stored.id == proposed.id
+    assert fixture.annotations.get(stored.id).id == stored.id
+    fixture.close()
+
+
+def test_the_stored_version_is_the_batch_pin_not_the_projects_active_one(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE, KIOSK, GHOST])
+    assert fixture.schemas.get_active(fixture.project.id).version == 2
+
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0], schema_version=99)])
+    assert stored.schema_version == 1
+    assert fixture.annotations.get(stored.id).schema_version == 1
+
+    # and the pin is what judges, too: a class only version 2 knows is refused
+    with pytest.raises(LabelClassNotInSchema, match="version 1"):
+        fixture.annotations.add(
+            job.id, [_box(fixture.assets[1], label_class="ghost", attributes={})]
+        )
+    fixture.close()
+
+
+def test_update_addresses_by_uuid_and_keeps_the_stored_asset(tmp_path: Path) -> None:
+    """Moving a label to another asset is a delete and an add, never an edit."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    (replaced,) = fixture.annotations.update(
+        job.id,
+        [
+            _box(
+                fixture.assets[1],  # ignored: the stored asset wins
+                id=stored.id,
+                geometry=BboxGeometry(x=9.0, y=9.0, width=1.0, height=1.0),
+                attributes={"occluded": True},
+            )
+        ],
+    )
+
+    assert replaced.id == stored.id
+    assert replaced.asset_id == fixture.assets[0]
+    assert replaced.attributes == {"occluded": True}
+    assert fixture.annotations.for_asset(job.id, fixture.assets[1]) == []
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == [replaced]
+    fixture.close()
+
+
+def test_an_update_the_version_rejects_leaves_the_stored_one_alone(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    with pytest.raises(InvalidAttributeValue):
+        fixture.annotations.update(
+            job.id, [_box(fixture.assets[0], id=stored.id, attributes={"occluded": 3.0})]
+        )
+    assert fixture.annotations.get(stored.id) == stored
+    fixture.close()
+
+
+@pytest.mark.parametrize("operation", ["update", "delete"])
+def test_an_id_that_is_not_stored_is_refused(tmp_path: Path, operation: str) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    stranger = uuid4()
+
+    with pytest.raises(AnnotationNotFound, match="no annotation"):
+        if operation == "update":
+            fixture.annotations.update(job.id, [_box(fixture.assets[0], id=stranger)])
+        else:
+            fixture.annotations.delete(job.id, [stranger])
+    fixture.close()
+
+
+def test_an_annotation_from_another_workspace_reads_as_missing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    stranger = Fixture(tmp_path, "two")
+    theirs_job = stranger.working()
+    (theirs,) = stranger.annotations.add(theirs_job.id, [_box(stranger.assets[0])])
+
+    with pytest.raises(AnnotationNotFound):
+        fixture.annotations.get(theirs.id)
+    fixture.close()
+    stranger.close()
+
+
+# --- progress follows the annotations, and only two edges of it ---------------
+
+
+@pytest.mark.parametrize("has_annotations", [True, False], ids=["with", "without"])
+@pytest.mark.parametrize("current", list(AssetProgress), ids=lambda s: f"from-{s.value}")
+def test_every_move_annotating_can_make_is_one_the_table_allows(
+    current: AssetProgress, has_annotations: bool
+) -> None:
+    """Read against `ASSET_PROGRESS_TRANSITIONS`, so the rule cannot drift from it."""
+    target = progress_after_annotating(current, has_annotations=has_annotations)
+    if target is None:
+        return
+    assert target in ASSET_PROGRESS_TRANSITIONS[current]
+
+
+def test_annotations_only_ever_move_the_two_states_they_are_evidence_of() -> None:
+    """The other three are people's decisions, and stay with `JobService.mark`."""
+    moved = {
+        current
+        for current in AssetProgress
+        for has in (True, False)
+        if progress_after_annotating(current, has_annotations=has) is not None
+    }
+    assert moved == {UNANNOTATED, ANNOTATED}
+
+
+def test_the_first_annotation_moves_the_asset_to_annotated(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    assert fixture.progress_of(job, fixture.assets[0]) is UNANNOTATED
+
+    fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    assert fixture.progress_of(job, fixture.assets[0]) is ANNOTATED
+    fixture.close()
+
+
+def test_deleting_the_last_annotation_moves_it_back(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    assert fixture.annotations.delete(job.id, [stored.id]) == 1
+    assert fixture.progress_of(job, fixture.assets[0]) is UNANNOTATED
+    fixture.close()
+
+
+def test_deleting_one_of_two_leaves_the_asset_annotated(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    first, _second = fixture.annotations.add(
+        job.id, [_box(fixture.assets[0]), _box(fixture.assets[0])]
+    )
+
+    fixture.annotations.delete(job.id, [first.id])
+    assert fixture.progress_of(job, fixture.assets[0]) is ANNOTATED
+    fixture.close()
+
+
+def test_deleting_the_same_id_twice_in_one_call_is_one_deletion(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    assert fixture.annotations.delete(job.id, [stored.id, stored.id]) == 1
+    fixture.close()
+
+
+def test_updating_an_annotation_does_not_disturb_progress(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    fixture.annotations.update(
+        job.id, [_box(fixture.assets[0], id=stored.id, attributes={"occluded": True})]
+    )
+    assert fixture.progress_of(job, fixture.assets[0]) is ANNOTATED
+    fixture.close()
+
+
+@pytest.mark.parametrize("decided", [SKIPPED, REVIEW_PENDING, ACCEPTED], ids=lambda s: str(s.value))
+def test_a_decision_somebody_made_is_not_overwritten_by_a_label(
+    tmp_path: Path, decided: AssetProgress
+) -> None:
+    """Skipping, submitting and accepting are people's calls, not consequences."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.asset_in(job, decided)
+
+    (stored,) = fixture.annotations.add(job.id, [_box(asset_id)])
+    assert fixture.progress_of(job, asset_id) is decided
+
+    fixture.annotations.delete(job.id, [stored.id])
+    assert fixture.progress_of(job, asset_id) is decided
+    fixture.close()
+
+
+def test_progress_keeps_the_stored_order_when_annotations_move_it(tmp_path: Path) -> None:
+    """The dict is rewritten one key at a time, so `position` — and paging — hold."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    fixture.annotations.add(job.id, [_box(fixture.assets[1])])
+
+    assert list(fixture.jobs.get(job.id).progress) == fixture.assets
+    assert [a.id for a in fixture.jobs.next_pending(job.id, 9)] == [
+        fixture.assets[0],
+        fixture.assets[2],
+    ]
+    fixture.close()
+
+
+# --- work only happens inside an open batch -----------------------------------
+
+
+@pytest.mark.parametrize("closed", [False, True], ids=["approved-not-opened", "completed"])
+def test_no_annotation_is_written_outside_an_open_batch(tmp_path: Path, closed: bool) -> None:
+    fixture = Fixture(tmp_path)
+    if closed:
+        job = fixture.working()
+        (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+        fixture.close_the_batch(job)
+    else:
+        job = fixture.approved()
+        stored = _box(fixture.assets[0])
+
+    with pytest.raises(BatchNotInAnnotation, match="nobody opened"):
+        fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    with pytest.raises(BatchNotInAnnotation):
+        fixture.annotations.update(job.id, [_box(fixture.assets[0], id=stored.id)])
+    with pytest.raises(BatchNotInAnnotation):
+        fixture.annotations.delete(job.id, [stored.id])
+    fixture.close()
+
+
+def test_the_batch_gate_fires_before_the_payload_is_looked_at(tmp_path: Path) -> None:
+    """A write into a closed batch is a bug whether or not the payload is also wrong."""
+    fixture = Fixture(tmp_path)
+    job = fixture.approved()
+
+    with pytest.raises(BatchNotInAnnotation):
+        fixture.annotations.add(job.id, [_box(fixture.assets[0], label_class="unicorn")])
+    with pytest.raises(BatchNotInAnnotation):
+        fixture.annotations.delete(job.id, [uuid4()])
+    fixture.close()
+
+
+# --- all or nothing -----------------------------------------------------------
+
+
+def test_one_bad_annotation_stores_none_of_them(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+
+    with pytest.raises(MissingRequiredAttribute):
+        fixture.annotations.add(
+            job.id,
+            [_box(fixture.assets[0]), _box(fixture.assets[1], attributes={})],
+        )
+
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == []
+    assert fixture.progress_of(job, fixture.assets[0]) is UNANNOTATED
+    fixture.close()
+
+
+def test_one_unknown_id_deletes_none_of_them(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    with pytest.raises(AnnotationNotFound):
+        fixture.annotations.delete(job.id, [stored.id, uuid4()])
+
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == [stored]
+    assert fixture.progress_of(job, fixture.assets[0]) is ANNOTATED
+    fixture.close()
+
+
+# --- attribute values round-trip through the store ----------------------------
+
+
+def test_every_attribute_kind_survives_a_close_and_a_reopen(tmp_path: Path) -> None:
+    """Read back from a genuinely re-opened file, not from an in-memory copy."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    values: dict[str, Any] = {
+        "operator": "city",
+        "height": 2.5,
+        "lit": True,
+        "condition": "worn",
+    }
+    (stored,) = fixture.annotations.add(
+        job.id,
+        [
+            Annotation(
+                asset_id=fixture.assets[0],
+                label_class="kiosk",
+                schema_version=1,
+                geometry=ClassificationGeometry(),
+                attributes=values,
+                provenance="human",
+            )
+        ],
+    )
+    root = fixture.workspace.root
+    fixture.close()
+
+    reopened = WorkspaceService.open(root)
+    again = AnnotationService(reopened).get(stored.id)
+    assert again.attributes == values
+    assert again.geometry == ClassificationGeometry()
+    reopened.close()
+
+
+def test_a_row_written_without_attributes_reads_as_none_recorded(tmp_path: Path) -> None:
+    """What migration 5 does to the annotations that were already on disk.
+
+    Their column arrives by `ALTER TABLE`, and its `server_default` is what makes
+    them mean "no values recorded" rather than break on the next read.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.working()
+    legacy = uuid4()
+
+    store = fixture.workspace.metadata_store
+    with store.engine.begin() as connection:  # type: ignore[attr-defined]
+        connection.execute(
+            text(
+                "insert into annotation (id, asset_id, label_class, schema_version, "
+                "geometry, provenance) "
+                "values (:id, :asset, 'lane', 1, :geometry, 'import')"
+            ),
+            {
+                "id": legacy.hex,
+                "asset": fixture.assets[0].hex,
+                "geometry": '{"type": "polygon", "points": [[0, 0], [4, 0], [4, 4]]}',
+            },
+        )
+
+    assert fixture.annotations.get(legacy).attributes == {}
+    fixture.close()
+
+
+# --- the loop closes ----------------------------------------------------------
+
+
+def test_annotating_every_asset_carries_the_batch_to_completed(tmp_path: Path) -> None:
+    """The M1 exit criterion in miniature: no `mark`, and nothing reaches past a service."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+
+    for asset in fixture.jobs.next_pending(job.id, 99):
+        fixture.annotations.add(job.id, [_box(asset.id)])
+
+    assert fixture.jobs.job_progress(job.id)[ANNOTATED] == len(fixture.assets)
+    assert fixture.jobs.complete(job.id).state.value == "completed"
+    assert fixture.batches.complete(fixture.batch.id).state is BatchState.COMPLETED
+    fixture.close()

@@ -51,6 +51,7 @@ from visionset.kernel.domain.task import (
     AnnotationJobState,
     AssetProgress,
     TaskGroup,
+    progress_after_annotating,
 )
 from visionset.kernel.domain.workspace import Workspace
 
@@ -98,4 +99,5 @@ __all__ = [
     "diff_classes",
     "normalize_name",
     "partition_assets",
+    "progress_after_annotating",
 ]
