@@ -1,0 +1,91 @@
+"""No media binary enters git again — v1's history carries 929 MB of fixture images.
+
+`.gitignore` blocks `**/workspace-data/` and CONTRIBUTING.md says never to commit fixture
+media, but prose does not fail a build. This does. Fixtures are generated at runtime instead;
+`tests/fixtures/media.py` is the sanctioned way to get one.
+
+`git ls-files` reads the *index*, so a binary that is merely staged already trips the guard —
+it fires before the commit lands, which is the whole point.
+"""
+
+import subprocess
+from collections.abc import Mapping
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+MAX_TRACKED_BYTES = 200 * 1024
+
+ALLOWLIST: dict[str, int] = {
+    # The resolved dependency graph for the whole workspace: text, machine-generated, and being
+    # large is the file's job. Bounded anyway, so it cannot balloon unnoticed.
+    "uv.lock": 1024 * 1024,
+}
+"""Path -> its own ceiling. An entry here is a deliberate exception and owes a reason above it;
+an exemption raises the limit for one file, it never removes it."""
+
+
+def tracked_file_sizes() -> dict[str, int]:
+    result = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    paths = [line for line in result.stdout.split("\0") if line]
+    return {
+        path: (REPO_ROOT / path).stat().st_size for path in paths if (REPO_ROOT / path).is_file()
+    }
+
+
+def oversized(sizes: Mapping[str, int]) -> dict[str, tuple[int, int]]:
+    """The rule itself, as a pure function, so it can be proven without touching git."""
+    return {
+        path: (size, ALLOWLIST.get(path, MAX_TRACKED_BYTES))
+        for path, size in sizes.items()
+        if size > ALLOWLIST.get(path, MAX_TRACKED_BYTES)
+    }
+
+
+def _report(offenders: Mapping[str, tuple[int, int]]) -> str:
+    lines = [
+        f"  {path}: {size:,} bytes (limit {ceiling:,})"
+        for path, (size, ceiling) in sorted(offenders.items())
+    ]
+    return "\n".join([f"{len(offenders)} tracked file(s) over the size limit:", *lines])
+
+
+def test_no_tracked_file_exceeds_the_size_limit() -> None:
+    if not (REPO_ROOT / ".git").exists():
+        pytest.skip("not a git checkout, so there is no index to inspect")
+    offenders = oversized(tracked_file_sizes())
+    assert not offenders, (
+        f"{_report(offenders)}\n"
+        "Generate media at runtime with tests/fixtures/media.py instead of committing it. "
+        "If the file genuinely belongs in git, add it to ALLOWLIST with a reason."
+    )
+
+
+def test_the_guard_reports_a_file_that_exceeds_the_limit() -> None:
+    """The issue asks for proof the guard fails on a deliberately added binary. This is that
+    proof in permanent form — no binary needed, and it cannot rot out of the suite."""
+    offenders = oversized({"README.md": 2_764, "tests/fixtures/cat.jpg": 5 * 1024 * 1024})
+    assert list(offenders) == ["tests/fixtures/cat.jpg"]
+    assert offenders["tests/fixtures/cat.jpg"] == (5 * 1024 * 1024, MAX_TRACKED_BYTES)
+
+
+def test_an_allowlisted_file_is_still_bounded() -> None:
+    """An exemption is a higher ceiling, not a blank cheque."""
+    ceiling = ALLOWLIST["uv.lock"]
+    assert not oversized({"uv.lock": ceiling})
+    assert oversized({"uv.lock": ceiling + 1}) == {"uv.lock": (ceiling + 1, ceiling)}
+
+
+def test_every_allowlist_entry_is_still_tracked() -> None:
+    """An entry naming a file nobody tracks any more is rot, and rot hides the next exception."""
+    if not (REPO_ROOT / ".git").exists():
+        pytest.skip("not a git checkout, so there is no index to inspect")
+    tracked = tracked_file_sizes()
+    assert not [path for path in ALLOWLIST if path not in tracked]

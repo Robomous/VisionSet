@@ -26,6 +26,10 @@ dependencies = [
     "typer>=0.12",
     "mcp>=1.2",
     "sqlalchemy>=2.0",
+    # Image decoding for the media processor (#16). A third-party library, not a framework,
+    # so it is allowed inside kernel/adapters/ and needs no import-linter change. The 11.0
+    # floor is the first release with Python 3.13 wheels, which the classifiers promise.
+    "pillow>=11.0",
 ]
 
 [project.urls]
@@ -94,6 +98,10 @@ strict_equality = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Puts the repo root on sys.path so `tests.fixtures.media` resolves as a namespace package.
+# The alternative — `tests/__init__.py` — would change how every existing test module is
+# named, for no gain.
+pythonpath = ["."]
 
 # --- Import Linter: the kernel boundary is machine-enforced ---
 [tool.importlinter]

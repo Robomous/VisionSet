@@ -88,3 +88,13 @@ increments; every commit should leave the checks above green.
   needed).
 - Never commit fixture media. `**/workspace-data/` is git-ignored for a reason (v1 shipped
   929 MB of images into git history; we do not repeat that).
+- Generate media instead: `tests/fixtures/media.py` writes tiny images (Pillow) and tiny
+  `testsrc` clips (ffmpeg) into a `tmp_path`. Equal arguments produce byte-identical output, so
+  dedup and content-addressing tests can rely on it.
+- `tests/architecture/test_tracked_file_sizes.py` enforces the rule: any tracked file over
+  200 KB fails the build unless it is in that module's `ALLOWLIST`, which grants a *higher
+  ceiling*, never an unbounded one. `git ls-files` reads the index, so a merely staged binary
+  already trips it.
+- Video tests need the **ffmpeg** binary (`brew install ffmpeg` / `sudo apt-get install
+  ffmpeg`). Without it they skip locally; CI installs it and sets `VISIONSET_REQUIRE_FFMPEG=1`,
+  which turns that skip into a hard failure so a broken install cannot pass unnoticed.

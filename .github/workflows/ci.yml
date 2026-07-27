@@ -8,8 +8,18 @@ on:
 jobs:
   python:
     runs-on: ubuntu-latest
+    env:
+      # ffmpeg is installed below. If that ever breaks, the video tests must go red — a
+      # silently skipped video test looks exactly like a passing one.
+      VISIONSET_REQUIRE_FFMPEG: "1"
     steps:
       - uses: actions/checkout@v4
+
+      # ffmpeg is a binary, not a Python dependency: the video fixtures shell out to it.
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
