@@ -78,7 +78,7 @@ class DatasetService:
             DatasetNotFound: no such dataset in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return self._require_dataset(uow, dataset_id)
+            return self.require_dataset(uow, dataset_id)
 
     def assets(self, dataset_id: UUID) -> list[Asset]:
         """Everything currently in the trunk, in the order it was promoted.
@@ -92,11 +92,7 @@ class DatasetService:
             WorkspaceCorrupt: a member names an asset that is not stored.
         """
         with self._workspace.unit_of_work() as uow:
-            dataset = self._require_dataset(uow, dataset_id)
-            return [
-                _require_asset(uow, dataset, member.asset_id)
-                for member in uow.dataset_members.list(dataset.id)
-            ]
+            return assets_of(uow, self.require_dataset(uow, dataset_id))
 
     def changes(self, dataset_id: UUID) -> list[DatasetChange]:
         """The mutation log, oldest entry first.
@@ -108,7 +104,7 @@ class DatasetService:
             DatasetNotFound: no such dataset in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            dataset = self._require_dataset(uow, dataset_id)
+            dataset = self.require_dataset(uow, dataset_id)
             return uow.dataset_changes.list(dataset.id)
 
     # --- mutating the trunk ------------------------------------------------
@@ -215,7 +211,7 @@ class DatasetService:
             DatasetNotFound: no such dataset in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            dataset = self._require_dataset(uow, dataset_id)
+            dataset = self.require_dataset(uow, dataset_id)
             member = next(
                 (m for m in uow.dataset_members.list(dataset.id) if m.asset_id == asset_id),
                 None,
@@ -236,13 +232,19 @@ class DatasetService:
 
     # --- lookups shared by the operations above ----------------------------
 
-    def _require_dataset(self, uow: UnitOfWork, dataset_id: UUID) -> Dataset:
+    def require_dataset(self, uow: UnitOfWork, dataset_id: UUID) -> Dataset:
         """The dataset, checked through its project so workspaces stay separate.
 
         A dataset belonging to another workspace reads as missing rather than as
         forbidden — the rule every other service here follows. A *stored* dataset
         whose project is gone is neither: that is an ``ON DELETE CASCADE``
         guarantee failing, so it is reported as corruption.
+
+        Public, and taking a ``uow``, for the reason ``BatchService.require_batch``
+        is: ``ReleaseService`` resolves a dataset id inside its own transaction
+        before reading the trunk out of it. Note that this is a *different*
+        question from ``ProjectService.require_dataset``, which goes the other
+        way — from a project to the one dataset it must have.
         """
         dataset = uow.datasets.get(dataset_id)
         if dataset is None:
@@ -259,6 +261,21 @@ class DatasetService:
                 f"no dataset {dataset_id} in workspace {self._workspace.workspace.name!r}"
             )
         return dataset
+
+
+def assets_of(uow: UnitOfWork, dataset: Dataset) -> list[Asset]:
+    """Everything in a dataset's trunk, in the order it was promoted.
+
+    Module-level and public, beside the service that owns membership, for the
+    reason ``jobs_of`` sits beside ``BatchService``: ``ReleaseService`` has to
+    read the trunk inside its own transaction, and a second walk of
+    ``dataset_member`` would be a second chance to disagree with this one about
+    order — or about what to do with a member whose asset is gone.
+    """
+    return [
+        _require_asset(uow, dataset, member.asset_id)
+        for member in uow.dataset_members.list(dataset.id)
+    ]
 
 
 def _promotable(batch: Batch, jobs: Iterable[AnnotationJob]) -> list[UUID]:

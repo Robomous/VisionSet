@@ -10,9 +10,12 @@ Storage decisions, and why (see ``docs/persistence.md`` for the long form):
   ``annotation_job_asset``. They are mutated one element at a time and queried
   from the asset side, which a JSON blob cannot serve.
 - Collections that are *immutable value objects* get JSON columns —
-  ``annotation_schema.classes``, ``annotation.geometry``, ``release.manifest``.
-  A schema version must rehydrate byte-identical, and nothing ever queries a
-  single ``LabelClass`` by name in SQL.
+  ``annotation_schema.classes``, ``annotation.geometry``, ``annotation.attributes``,
+  ``release.split``. A schema version must rehydrate byte-identical, and nothing
+  ever queries a single ``LabelClass`` by name in SQL.
+- A value object too large to belong in a row at all goes in the blob store, and
+  the row keeps its hash — that is ``release.manifest_hash``. The line between
+  the two is size and verifiability, not shape.
 - Timestamps are TEXT holding an ISO-8601 string WITH its offset. SQLite's
   DATETIME storage format drops the timezone, and a timestamp that silently
   loses its offset is worse than no timestamp at all.
@@ -269,11 +272,42 @@ class DatasetChangeRow(Base):
 
 
 class ReleaseRow(Base):
+    """A published release: a pointer at its manifest, plus how it was made.
+
+    The manifest itself is NOT here. It is canonical JSON in the blob store,
+    named by ``manifest_hash`` — content-addressed like every other blob, which
+    is what makes it verifiable and what lets two releases of identical content
+    share one document. A megabyte of inventory in a column would also have to be
+    read to list a dataset's releases, which is the operation that must stay
+    cheap.
+
+    ``schema_version``, ``asset_count`` and ``annotation_count`` duplicate facts
+    from inside that document on purpose: they are the read cache a listing
+    renders from. ``ReleaseService.verify`` cross-checks them against the parsed
+    manifest, so the duplication is checkable rather than trusted.
+
+    No column here carries a ``server_default``, and that is the payoff of
+    migration 6 rebuilding this table rather than ``ALTER``-ing it: none of these
+    values has an honest default, and inventing three would have baked the
+    fictions into every fresh database forever.
+    """
+
     __tablename__ = "release"
+    __table_args__ = (UniqueConstraint("dataset_id", "tag", name="uq_release_dataset_tag"),)
 
     id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
     dataset_id: Mapped[UUID] = mapped_column(
         SaUuid, ForeignKey("dataset.id", ondelete="CASCADE"), index=True, nullable=False
     )
     tag: Mapped[str] = mapped_column(String, nullable=False)
-    manifest: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    manifest_hash: Mapped[str] = mapped_column(String, nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    asset_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    annotation_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: A JSON column stores Python ``None`` as the JSON literal ``null`` rather
+    #: than as SQL ``NULL``. It reads back as ``None``, which is all any caller
+    #: needs; nothing queries this column, and ``WHERE split IS NULL`` would not
+    #: be the way to ask if anything ever did.
+    split: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    visionset_version: Mapped[str] = mapped_column(String, nullable=False)

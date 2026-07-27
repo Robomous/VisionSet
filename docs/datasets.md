@@ -7,7 +7,7 @@ training data?". Every project has exactly one, created with it and named after 
 It is mutable by design. Assets arrive from batch after batch as work finishes, and a curator
 takes them back out again. What makes that safe to trust is not immutability but the **change
 log**: every mutation appends an entry nobody can edit or remove. `ReleaseService` is what turns
-a moment of the trunk into something immutable.
+a moment of the trunk into something immutable — see [releases.md](releases.md).
 
 ```python
 from visionset.kernel.services import DatasetService, ProjectService, WorkspaceService

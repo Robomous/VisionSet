@@ -1,0 +1,577 @@
+"""ReleaseService: freezing the trunk, and proving the freeze held.
+
+Every release here is published through the real path — a batch approved,
+annotated, completed and promoted — because the thing under test is what a
+snapshot of *that* looks like, and a hand-written membership row would prove
+nothing about it.
+
+Tampering is done by writing to the blob file directly. That is the only way to
+produce the fault ``verify`` exists to find: nothing in the kernel can corrupt a
+blob, which is exactly why nothing in the kernel can be trusted to notice.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from io import BytesIO
+from pathlib import Path
+from uuid import UUID, uuid4
+
+import pytest
+
+from visionset import __version__
+from visionset.kernel import (
+    ConfirmationRequired,
+    DatasetNotFound,
+    EmptyRelease,
+    InvalidName,
+    NoSplitRecipe,
+    ReleaseNotFound,
+    ReleaseTagTaken,
+    SchemaNotFound,
+    WorkspaceCorrupt,
+)
+from visionset.kernel.domain import (
+    Annotation,
+    AnnotationJob,
+    Asset,
+    AssetProgress,
+    BboxGeometry,
+    GeometryType,
+    LabelClass,
+    Manifest,
+    SplitRecipe,
+    canonical_bytes,
+)
+from visionset.kernel.services import (
+    AnnotationService,
+    BatchService,
+    DatasetService,
+    JobService,
+    ProjectService,
+    ReleaseService,
+    SchemaService,
+    WorkspaceService,
+)
+
+SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
+RECIPE = SplitRecipe(train=0.6, val=0.2, test=0.2, seed=42)
+
+
+class Fixture:
+    """A workspace whose one batch can be walked to ``completed`` and promoted."""
+
+    def __init__(self, tmp_path: Path, name: str = "ws", *, assets: int = 5) -> None:
+        self.root = tmp_path / name
+        self.workspace = WorkspaceService.init(self.root)
+        self.projects = ProjectService(self.workspace)
+        self.schemas = SchemaService(self.workspace)
+        self.batches = BatchService(self.workspace)
+        self.jobs = JobService(self.workspace)
+        self.annotations = AnnotationService(self.workspace)
+        self.datasets = DatasetService(self.workspace)
+        self.releases = ReleaseService(self.workspace)
+        self.project = self.projects.create(f"{name}-project")
+        self.asset_ids = [self._asset(f"{name}-{index}") for index in range(assets)]
+
+    @property
+    def dataset_id(self) -> UUID:
+        return self.projects.get_dataset(self.project.id).id
+
+    def _asset(self, seed: str) -> UUID:
+        content_hash = self.workspace.blob_store.put(BytesIO(seed.encode()))
+        with self.workspace.unit_of_work() as uow:
+            return uow.assets.add(
+                Asset(
+                    project_id=self.project.id,
+                    content_hash=content_hash,
+                    uri=f"/tmp/{seed}.png",
+                    width=640,
+                    height=480,
+                )
+            ).id
+
+    def promote(self, asset_ids: list[UUID] | None = None, *, name: str = "first") -> AnnotationJob:
+        """Take one batch all the way from draft to a promoted, labeled trunk."""
+        chosen = self.asset_ids if asset_ids is None else asset_ids
+        batch = self.batches.create(self.project.id, name, chosen)
+        self.batches.approve(batch.id)
+        (job,) = self.batches.jobs(batch.id)
+        self.batches.start(batch.id)
+        self.jobs.start(job.id)
+        for asset_id in chosen:
+            self.annotations.add(job.id, [_box(asset_id)])
+        self.jobs.complete(job.id)
+        self.batches.complete(batch.id)
+        self.datasets.promote(batch.id)
+        return job
+
+    def ready(self) -> UUID:
+        """A schema, a promoted batch, and the dataset id to publish from."""
+        self.schemas.create_version(self.project.id, [SIGN])
+        self.promote()
+        return self.dataset_id
+
+    def blob_path(self, content_hash: str) -> Path:
+        return self.root / "blobs" / content_hash[:2] / content_hash[2:4] / content_hash
+
+    def close(self) -> None:
+        self.workspace.close()
+
+
+def _box(asset_id: UUID) -> Annotation:
+    return Annotation(
+        asset_id=asset_id,
+        label_class="sign",
+        schema_version=1,
+        geometry=BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+        provenance="human",
+    )
+
+
+# --- what publishing freezes --------------------------------------------------
+
+
+def test_publishing_writes_the_manifest_into_the_blob_store_and_points_at_it(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    assert fixture.workspace.blob_store.exists(release.manifest_hash)
+    manifest = fixture.releases.manifest(release.id)
+    assert isinstance(manifest, Manifest)
+    assert fixture.blob_path(release.manifest_hash).read_bytes() == canonical_bytes(manifest)
+    fixture.close()
+
+
+def test_publishing_twice_from_an_unchanged_dataset_yields_byte_identical_manifests(
+    tmp_path: Path,
+) -> None:
+    """The acceptance criterion, and a consequence of what the document omits."""
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    first = fixture.releases.publish(dataset_id, "v1")
+    second = fixture.releases.publish(dataset_id, "v2")
+
+    assert first.manifest_hash == second.manifest_hash
+    assert canonical_bytes(fixture.releases.manifest(first.id)) == canonical_bytes(
+        fixture.releases.manifest(second.id)
+    )
+    fixture.close()
+
+
+def test_publishing_twice_from_an_unchanged_dataset_reuses_the_one_manifest_blob(
+    tmp_path: Path,
+) -> None:
+    """Content-addressed storage makes the byte-identity visible on disk."""
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    fixture.releases.publish(dataset_id, "v1")
+    fixture.releases.publish(dataset_id, "v2")
+
+    stored = {path.name for path in (fixture.root / "blobs").rglob("*") if path.is_file()}
+    assert len(stored) == len(fixture.asset_ids) + 1  # the assets, and one manifest
+    fixture.close()
+
+
+def test_a_release_records_the_date_and_the_visionset_version_that_made_it(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    before = datetime.now(UTC)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    assert release.visionset_version == __version__
+    assert release.created_at.tzinfo is not None
+    assert before <= release.created_at <= datetime.now(UTC)
+    fixture.close()
+
+
+def test_the_manifest_lists_every_promoted_asset_with_its_content_hash(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    manifest = fixture.releases.manifest(release.id)
+    assert {asset.asset_id for asset in manifest.assets} == set(fixture.asset_ids)
+    for asset in manifest.assets:
+        assert fixture.workspace.blob_store.exists(asset.content_hash)
+        assert asset.width == 640 and asset.height == 480
+    assert release.asset_count == len(fixture.asset_ids)
+    fixture.close()
+
+
+def test_the_manifest_copies_the_annotations_rather_than_pointing_at_them(
+    tmp_path: Path,
+) -> None:
+    """Labeling the same asset again afterwards must not reach into the release.
+
+    A second batch over an asset already in the trunk is the only way to change
+    its labels once the first batch closed — which is the point: the live set
+    moves on, and the frozen one does not.
+    """
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    release = fixture.releases.publish(dataset_id, "v1")
+    assert release.annotation_count == len(fixture.asset_ids)
+
+    frozen = fixture.releases.manifest(release.id)
+    revisited = frozen.assets[0].asset_id
+    (label,) = frozen.assets[0].annotations
+    assert label.label_class == "sign"
+
+    fixture.promote([revisited], name="second pass")
+    later = fixture.releases.publish(dataset_id, "v2")
+    assert later.annotation_count == len(fixture.asset_ids) + 1
+
+    assert fixture.releases.manifest(release.id) == frozen
+    assert fixture.releases.get(release.id).annotation_count == len(fixture.asset_ids)
+    fixture.close()
+
+
+def test_the_manifest_pins_the_schema_version_in_force_when_it_was_published(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    fixture.schemas.create_version(
+        fixture.project.id, [SIGN, LabelClass(name="lane", geometry=GeometryType.POLYGON)]
+    )
+    release = fixture.releases.publish(dataset_id, "v1")
+
+    manifest = fixture.releases.manifest(release.id)
+    assert manifest.schema_version == 2
+    assert {label_class.name for label_class in manifest.classes} == {"sign", "lane"}
+    assert release.schema_version == 2
+    fixture.close()
+
+
+def test_curating_an_asset_out_of_the_trunk_leaves_a_published_manifest_alone(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    release = fixture.releases.publish(dataset_id, "v1")
+    frozen = fixture.releases.manifest(release.id)
+
+    fixture.datasets.remove_asset(dataset_id, fixture.asset_ids[0])
+    assert len(fixture.datasets.assets(dataset_id)) == len(fixture.asset_ids) - 1
+    assert fixture.releases.manifest(release.id) == frozen
+    assert fixture.releases.get(release.id).asset_count == len(fixture.asset_ids)
+    fixture.close()
+
+
+def test_promoting_a_second_batch_does_not_change_an_earlier_release(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN])
+    fixture.promote(fixture.asset_ids[:3], name="first")
+    release = fixture.releases.publish(fixture.dataset_id, "v1")
+    assert release.asset_count == 3
+
+    fixture.promote(fixture.asset_ids[3:], name="second")
+    assert fixture.releases.manifest(release.id).assets != ()
+    assert len(fixture.releases.manifest(release.id).assets) == 3
+    assert (
+        len(fixture.releases.manifest(fixture.releases.publish(fixture.dataset_id, "v2").id).assets)
+        == 5
+    )
+    fixture.close()
+
+
+# --- what publishing refuses --------------------------------------------------
+
+
+def test_publishing_a_dataset_with_nothing_in_it_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN])
+    with pytest.raises(EmptyRelease, match="no assets"):
+        fixture.releases.publish(fixture.dataset_id, "v1")
+    fixture.close()
+
+
+def test_publishing_from_a_project_that_has_no_schema_is_refused(tmp_path: Path) -> None:
+    """The schema gate fires before the emptiness one, and an empty trunk proves it."""
+    fixture = Fixture(tmp_path)
+    with pytest.raises(SchemaNotFound):
+        fixture.releases.publish(fixture.dataset_id, "v1")
+    fixture.close()
+
+
+def test_a_dataset_cannot_have_two_releases_under_one_tag(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    fixture.releases.publish(dataset_id, "v1")
+    with pytest.raises(ReleaseTagTaken, match="already has a release tagged"):
+        fixture.releases.publish(dataset_id, "v1")
+    fixture.close()
+
+
+def test_two_tags_differing_only_in_case_are_two_releases(tmp_path: Path) -> None:
+    """A tag is an identifier, like a git tag — not a display name."""
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    fixture.releases.publish(dataset_id, "v1.0")
+    assert fixture.releases.publish(dataset_id, "V1.0").tag == "V1.0"
+    fixture.close()
+
+
+def test_the_same_tag_in_two_datasets_is_two_different_releases(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    first = fixture.ready()
+
+    other = fixture.projects.create("second-project")
+    fixture.schemas.create_version(other.id, [SIGN])
+    content_hash = fixture.workspace.blob_store.put(BytesIO(b"other"))
+    with fixture.workspace.unit_of_work() as uow:
+        asset = uow.assets.add(
+            Asset(project_id=other.id, content_hash=content_hash, uri="/tmp/other.png")
+        )
+    batch = fixture.batches.create(other.id, "b", [asset.id])
+    fixture.batches.approve(batch.id)
+    (job,) = fixture.batches.jobs(batch.id)
+    fixture.batches.start(batch.id)
+    fixture.jobs.start(job.id)
+    fixture.jobs.mark(job.id, asset.id, AssetProgress.ANNOTATED)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(batch.id)
+    fixture.datasets.promote(batch.id)
+    second = fixture.projects.get_dataset(other.id).id
+
+    assert fixture.releases.publish(first, "v1").id != fixture.releases.publish(second, "v1").id
+    fixture.close()
+
+
+def test_a_release_tag_is_normalized_the_way_every_other_name_is(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    assert fixture.releases.publish(dataset_id, "  v1  ").tag == "v1"
+    with pytest.raises(InvalidName):
+        fixture.releases.publish(dataset_id, "   ")
+    fixture.close()
+
+
+def test_a_published_release_cannot_be_edited(tmp_path: Path) -> None:
+    """The refusal is the type's; there is no service method here to guard."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    with pytest.raises(ValueError, match="frozen"):
+        release.tag = "v2"  # type: ignore[misc]
+    assert not hasattr(fixture.releases, "delete")
+    assert not hasattr(fixture.releases, "update")
+    fixture.close()
+
+
+def test_publishing_does_not_take_a_confirmation(tmp_path: Path) -> None:
+    """``confirm=`` guards destroying data, and publishing destroys nothing."""
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    try:
+        fixture.releases.publish(dataset_id, "v1")
+    except ConfirmationRequired:  # pragma: no cover - the point is that it does not
+        pytest.fail("publishing asked for a confirmation it has no business asking for")
+    fixture.close()
+
+
+def test_publishing_writes_no_entry_into_the_dataset_change_log(tmp_path: Path) -> None:
+    """The log records mutations of the trunk, and a release mutates nothing."""
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    before = len(fixture.datasets.changes(dataset_id))
+    fixture.releases.publish(dataset_id, "v1")
+    assert len(fixture.datasets.changes(dataset_id)) == before
+    fixture.close()
+
+
+# --- verification -------------------------------------------------------------
+
+
+def test_verify_passes_for_a_release_nobody_has_touched(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    report = fixture.releases.verify(fixture.releases.publish(fixture.ready(), "v1").id)
+
+    assert report.ok
+    assert report.manifest_intact
+    assert report.checked == len(fixture.asset_ids)
+    assert report.missing == () and report.corrupt == () and report.cache_mismatches == ()
+    fixture.close()
+
+
+def test_verify_reports_a_tampered_asset_blob_as_corrupt(tmp_path: Path) -> None:
+    """The acceptance criterion: a rewritten blob is caught, not assumed intact."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    victim = fixture.releases.manifest(release.id).assets[0].content_hash
+    fixture.blob_path(victim).write_bytes(b"not what it says it is")
+
+    report = fixture.releases.verify(release.id)
+    assert not report.ok
+    assert report.corrupt == (victim,)
+    assert report.missing == ()
+    assert report.checked == len(fixture.asset_ids)
+    fixture.close()
+
+
+def test_verify_reports_an_absent_asset_blob_as_missing_not_as_corrupt(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    victim = fixture.releases.manifest(release.id).assets[0].content_hash
+    fixture.blob_path(victim).unlink()
+
+    report = fixture.releases.verify(release.id)
+    assert not report.ok
+    assert report.missing == (victim,)
+    assert report.corrupt == ()
+    fixture.close()
+
+
+def test_verify_reports_a_tampered_manifest_and_stops_before_trusting_it(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    fixture.blob_path(release.manifest_hash).write_bytes(b'{"schema_version": 1}')
+
+    report = fixture.releases.verify(release.id)
+    assert not report.ok
+    assert not report.manifest_intact
+    assert report.checked == 0
+    assert report.missing == () and report.corrupt == ()
+    fixture.close()
+
+
+def test_reading_a_manifest_whose_blob_is_gone_is_corruption_not_a_file_error(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    fixture.blob_path(release.manifest_hash).unlink()
+
+    with pytest.raises(WorkspaceCorrupt, match="not in the blob store"):
+        fixture.releases.manifest(release.id)
+    with pytest.raises(WorkspaceCorrupt):
+        fixture.releases.verify(release.id)
+    fixture.close()
+
+
+def test_reading_a_manifest_that_is_not_a_manifest_is_corruption(tmp_path: Path) -> None:
+    """A ``JSONDecodeError`` reaching a caller would break the kernel's vocabulary."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    fixture.blob_path(release.manifest_hash).write_bytes(b"not json at all")
+
+    with pytest.raises(WorkspaceCorrupt, match="not a readable manifest"):
+        fixture.releases.manifest(release.id)
+    fixture.close()
+
+
+# --- the split ----------------------------------------------------------------
+
+
+def test_the_split_is_taken_from_the_frozen_asset_set_not_from_the_trunk_today(
+    tmp_path: Path,
+) -> None:
+    """Curating after publication must not move a published release's folds."""
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    release = fixture.releases.publish(dataset_id, "v1", split=RECIPE)
+    before = fixture.releases.assignment(release.id)
+
+    fixture.datasets.remove_asset(dataset_id, fixture.asset_ids[0])
+    assert fixture.releases.assignment(release.id) == before
+    everywhere = [*before.train, *before.val, *before.test]
+    assert set(everywhere) == set(fixture.asset_ids)
+    fixture.close()
+
+
+def test_the_same_release_hands_back_the_same_split_every_time_it_is_asked(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1", split=RECIPE)
+    assert fixture.releases.assignment(release.id) == fixture.releases.assignment(release.id)
+    fixture.close()
+
+
+def test_two_releases_of_one_asset_set_under_one_seed_split_it_the_same_way(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    first = fixture.releases.publish(dataset_id, "v1", split=RECIPE)
+    second = fixture.releases.publish(dataset_id, "v2", split=RECIPE)
+    assert fixture.releases.assignment(first.id) == fixture.releases.assignment(second.id)
+    fixture.close()
+
+
+def test_a_release_published_without_a_recipe_has_no_split_to_give(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    assert release.split is None
+    with pytest.raises(NoSplitRecipe, match="undivided"):
+        fixture.releases.assignment(release.id)
+    fixture.close()
+
+
+def test_a_split_recipe_survives_the_round_trip_through_storage(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1", split=RECIPE)
+    assert fixture.releases.get(release.id).split == RECIPE
+    fixture.close()
+
+
+# --- reading, scoping and lifecycle -------------------------------------------
+
+
+def test_listing_a_datasets_releases_gives_them_oldest_first(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    for tag in ("v1", "v2", "v3"):
+        fixture.releases.publish(dataset_id, tag)
+    assert [release.tag for release in fixture.releases.list(dataset_id)] == ["v1", "v2", "v3"]
+    fixture.close()
+
+
+def test_a_dataset_with_no_releases_lists_nothing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    assert fixture.releases.list(fixture.dataset_id) == []
+    fixture.close()
+
+
+def test_a_release_id_that_is_not_stored_reads_as_missing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(ReleaseNotFound):
+        fixture.releases.get(uuid4())
+    fixture.close()
+
+
+def test_another_workspaces_release_reads_as_missing(tmp_path: Path) -> None:
+    """Not forbidden — the rule every cross-scope reference in the kernel follows."""
+    here, there = Fixture(tmp_path, "here"), Fixture(tmp_path, "there")
+    stranger = there.releases.publish(there.ready(), "v1")
+
+    with pytest.raises(ReleaseNotFound):
+        here.releases.get(stranger.id)
+    with pytest.raises(DatasetNotFound):
+        here.releases.list(there.dataset_id)
+    here.close()
+    there.close()
+
+
+def test_deleting_the_project_takes_its_releases_with_it(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    release = fixture.releases.publish(dataset_id, "v1")
+    fixture.projects.delete(fixture.project.id, confirm=True)
+
+    with pytest.raises(ReleaseNotFound):
+        fixture.releases.get(release.id)
+    fixture.close()
+
+
+def test_a_manifest_blob_outlives_the_release_that_named_it(tmp_path: Path) -> None:
+    """Blobs are never deleted; deleting metadata frees rows, not disk."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    fixture.projects.delete(fixture.project.id, confirm=True)
+    assert fixture.workspace.blob_store.exists(release.manifest_hash)
+    fixture.close()

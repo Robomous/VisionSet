@@ -1,3 +1,12 @@
+"""ProjectService: CRUD, the atomic 1:1 dataset, and what deletion does not destroy.
+
+`_populate` writes one row of everything a project owns straight through the unit
+of work, `Release` included. Going through `ReleaseService` for that would mean
+running a whole batch to completion first — a precondition, not the door under
+test — and the release here exists only to be cascaded away and to name a blob
+that must survive it.
+"""
+
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -22,7 +31,6 @@ from visionset.kernel.domain import (
     DatasetMember,
     GeometryType,
     LabelClass,
-    Manifest,
     Release,
     Source,
 )
@@ -77,7 +85,10 @@ def _populate(workspace: WorkspaceService, project_id: UUID, dataset_id: UUID) -
             Release(
                 dataset_id=dataset_id,
                 tag="v1",
-                manifest=Manifest(schema_version=1, content_hashes=[content_hash]),
+                manifest_hash=content_hash,
+                schema_version=1,
+                asset_count=1,
+                annotation_count=1,
             )
         )
     return content_hash
