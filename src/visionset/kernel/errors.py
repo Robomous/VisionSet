@@ -216,6 +216,46 @@ class BatchNotComplete(VisionSetError):
     """
 
 
+class JobNotFound(VisionSetError):
+    """No annotation job with that id lives in this workspace.
+
+    Like ``BatchNotFound`` and ``ProjectNotFound``: a job belonging to another
+    workspace reads as missing rather than as forbidden.
+    """
+
+
+class BatchNotInAnnotation(VisionSetError):
+    """Work was attempted on a job whose batch is not open for annotation.
+
+    A batch is open only while it is ``in_annotation``. Before that it is still
+    being curated or has only just been approved; after it, the work is closed.
+    Either way, recording progress would be describing work on a batch nobody is
+    working on.
+
+    ``AnnotationService`` raises this too — writing an annotation into a job
+    whose batch is not ``in_annotation`` is the same refusal, and there should be
+    one error for it rather than two.
+    """
+
+
+class JobNotComplete(VisionSetError):
+    """A job was told to complete while one of its assets is still unsettled.
+
+    Sibling of ``BatchNotComplete``, and separate from it because the remedy
+    differs: there, finish the jobs; here, deal with the assets — label them,
+    skip them, or get the outstanding reviews done. ``SETTLED_PROGRESS`` names
+    what counts as dealt with.
+    """
+
+
+class AssetNotInJob(VisionSetError):
+    """An asset id was addressed in a job that does not carry it.
+
+    A job's assets are fixed at approval, when the batch was partitioned. An
+    asset outside that segment belongs to a different job, or to no job at all.
+    """
+
+
 class InvalidPartition(VisionSetError):
     """The proposed segments are not an exact partition of the batch.
 

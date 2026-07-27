@@ -8,6 +8,7 @@ is port-typed, so nothing above it can reach SQLAlchemy by accident.
 """
 
 from visionset.kernel.services.batch_service import BatchService
+from visionset.kernel.services.job_service import JobService
 from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import (
@@ -20,6 +21,7 @@ __all__ = [
     "BLOBS_DIRNAME",
     "DB_FILENAME",
     "BatchService",
+    "JobService",
     "ProjectService",
     "SchemaService",
     "WorkspaceService",

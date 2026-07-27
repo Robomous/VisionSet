@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy import Uuid as SaUuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON, Float
@@ -189,6 +189,15 @@ class AnnotationJobAssetRow(Base):
         SaUuid, ForeignKey("asset.id", ondelete="CASCADE"), primary_key=True
     )
     progress: Mapped[str] = mapped_column(String, nullable=False)
+    #: The asset's place in the batch, i.e. ingest order. What makes
+    #: ``JobService.next_pending`` deterministic.
+    #:
+    #: Carries a ``server_default`` where ``BatchAssetRow.position`` does not,
+    #: and that difference is load-bearing: this column arrives by ``ALTER
+    #: TABLE`` in migration 4, and SQLite refuses ``ADD COLUMN ... NOT NULL``
+    #: without one. Both the ``create_all`` path and the ``ALTER`` path read
+    #: this same object, so they cannot disagree.
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
 
 class AnnotationRow(Base):

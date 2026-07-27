@@ -38,6 +38,7 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
     with store.engine.begin() as connection:
         connection.execute(text("drop index if exists uq_project_workspace_name"))
         connection.execute(text("alter table batch drop column schema_version"))
+        connection.execute(text("alter table annotation_job_asset drop column position"))
         connection.execute(text("update _visionset_meta set format_version = 1"))
 
 
@@ -54,6 +55,15 @@ def test_migration_three_gives_a_batch_its_schema_version_pin(tmp_path: Path) ->
     with store.engine.connect() as connection:
         columns = {c["name"] for c in inspect(connection).get_columns("batch")}
     assert "schema_version" in columns
+    store.close()
+
+
+def test_migration_four_gives_per_asset_progress_an_explicit_order(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.connect() as connection:
+        columns = {c["name"] for c in inspect(connection).get_columns("annotation_job_asset")}
+    assert "position" in columns
     store.close()
 
 

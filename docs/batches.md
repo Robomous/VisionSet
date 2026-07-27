@@ -48,7 +48,7 @@ asset must belong to the batch's project, else `AssetNotFound`.
 Excluding an asset after approval is a different act: it is marked **`skipped`**, a per-asset
 progress decision the record keeps rather than a membership edit that erases it. Somebody
 decided not to label that asset, and that decision is worth more than a tidy list. The
-progress states themselves belong to the job service.
+progress states themselves belong to the job service — see [jobs.md](jobs.md).
 
 ## Approval pins the schema version
 
@@ -120,7 +120,7 @@ batches.complete(batch.id)  # BatchNotComplete: 2 of 5 jobs still unfinished
 `complete` reads the jobs and refuses if any is outstanding. Derived does not mean automatic
 — it means the service recomputes rather than taking the caller's word, because a completed
 batch is what lets its annotated assets be promoted into the Dataset. Moving a job to
-`completed` is the job service's business; this service only reads it.
+`completed` is the job service's business — see [jobs.md](jobs.md); this service only reads it.
 
 ## Deleting a batch
 
