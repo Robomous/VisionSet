@@ -1,4 +1,42 @@
 {
+  "components": {
+    "schemas": {
+      "ErrorBody": {
+        "description": "The one error shape this API emits, at every status.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable code. Branch on this, not on the status.",
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Extra structure whose shape depends on the code; absent when there is none.",
+            "title": "Detail"
+          },
+          "message": {
+            "description": "Human-readable sentence. Wording is not part of the contract.",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      }
+    }
+  },
   "info": {
     "description": "REST surface of the VisionSet SDK. The committed openapi.json is the contract.",
     "title": "Robomous VisionSet API",
@@ -24,6 +62,36 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
           }
         },
         "summary": "Health"
