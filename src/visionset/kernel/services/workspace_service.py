@@ -13,7 +13,14 @@ two functions here and to nowhere else.
 The layout is flat, and the database is the marker::
 
     <root>/visionset.db     the metadata store; holds format_version
+    <root>/visionset.db-wal SQLite's write-ahead log, only while open
+    <root>/visionset.db-shm its shared-memory index, only while open
     <root>/blobs/           the content-addressed blob store
+
+The store runs in WAL mode, so those two sidecars exist for as long as the
+workspace is open and are checkpointed away by ``close()``. They still belong to
+the workspace while they are there: a copy taken mid-run that includes only
+``visionset.db`` is missing whatever has not been checkpointed yet.
 
 Three of the five ports have no line in that layout, and that is the point: the
 event bus is in-process and the two media processors are decoders, so none of
@@ -76,6 +83,13 @@ from visionset.kernel.ports import (
 
 #: The metadata store. Its presence is what makes a directory a workspace.
 DB_FILENAME = "visionset.db"
+
+#: SQLite's WAL sidecars, named after the database file. A clean ``close()``
+#: checkpoints and removes them, so they are only ever found beside a workspace
+#: that is open right now or was killed while open — but they are part of the
+#: workspace either way, which is why everything that enumerates its contents
+#: has to know about them.
+DB_SIDECAR_FILENAMES = (f"{DB_FILENAME}-wal", f"{DB_FILENAME}-shm")
 
 #: Root of the content-addressed blob store, relative to the workspace directory.
 BLOBS_DIRNAME = "blobs"
@@ -452,6 +466,8 @@ def _undo_init(root: Path, *, created_root: bool) -> None:
             shutil.rmtree(root, ignore_errors=True)
             return
         (root / DB_FILENAME).unlink(missing_ok=True)
+        for sidecar in DB_SIDECAR_FILENAMES:
+            (root / sidecar).unlink(missing_ok=True)
         shutil.rmtree(root / BLOBS_DIRNAME, ignore_errors=True)
     except OSError:
         pass

@@ -7,13 +7,19 @@ happens in the context of exactly one, so `WorkspaceService` is both the way in 
 ```
 <root>/
   visionset.db      the metadata store — its presence is what makes a directory a workspace
+  visionset.db-wal  SQLite's write-ahead log — present only while the workspace is open
+  visionset.db-shm  its shared-memory index — likewise
   blobs/            FilesystemBlobStore root, sharded <hh>/<hh>/<hash>
 ```
 
-Nothing else is written. WAL is deliberately **not** enabled in M1, so those two entries
-are the whole format — if WAL is ever adopted, `visionset.db-wal` and `-shm` become part
-of it and this page has to say so, because a user who copies only `visionset.db` under WAL
-loses committed data.
+Nothing else is written. The store runs in **WAL mode**, which is why the two sidecars are
+part of the format: `close()` checkpoints them into `visionset.db` and removes them, so a
+workspace at rest is still just the database and the blobs — but a workspace that is *open*,
+or one whose process was killed, is all four entries.
+
+**Copying a workspace that is open loses committed data** if you take only `visionset.db`.
+Everything written since the last checkpoint lives in `visionset.db-wal` until then. Close the
+workspace first, or copy all three files together.
 
 Three of the five ports have no line in that layout, and that is the point: the [event
 bus](events.md) is in-process and the two [media processors](media.md) are decoders, so none of
@@ -177,27 +183,46 @@ than the index, so nothing slips through.
 
 ## Concurrency, plainly
 
-One SQLite file, rollback-journal mode, no cross-process lock, one engine per open
-`WorkspaceService`.
+One SQLite file in **WAL mode**, a **5 s `busy_timeout`** on every connection, no cross-process
+lock, one engine per open `WorkspaceService`.
 
 **Guaranteed, under any number of processes:** a workspace can never contain two `project`
 rows whose names are equal under ASCII case folding. That holds because the guarantee is an
 index evaluated inside SQLite's write transaction, not the service's `SELECT`. Every write
 is a transaction, so no half-finished operation can be observed.
 
-**Not guaranteed:** which error the loser of a race sees. Two processes can both pass the
-pre-check; then either the second insert hits the index and raises `ConstraintViolated` — a
-caller re-raises that as `ProjectNameTaken`, so user-visible behavior stays correct — or the
-writes interleave and the loser eventually gets `database is locked` as an untranslated
-SQLAlchemy `OperationalError`. That leak is a known M1 gap: mapping it to `WorkspaceCorrupt`
-would be a lie, and inventing an error for transient failure with no caller would be
-speculative.
+**Readers never block, and are never blocked.** That is what WAL buys, and it is the reason
+this milestone adopted it: a background ingest holding a write transaction does not stall the
+request handlers reading beside it. A reader sees the last committed state, not the writer's
+work in progress.
+
+**Writers are serialized, and wait up to `busy_timeout` for their turn.** SQLite permits one
+writer at a time regardless of journal mode. A write that waits the timeout out raises
+`WorkspaceBusy` — a domain error, translated in the adapter like every other (see
+[persistence.md](persistence.md#connection-posture)), and transient: the remedy is to retry.
+It is deliberately *not* `WorkspaceCorrupt`, which is
+where the adapter files the failures retrying cannot fix.
+
+**Still not guaranteed:** which error the loser of a name race sees. Two processes can both
+pass the pre-check; then either the second insert hits the index and raises
+`ConstraintViolated` — a caller re-raises that as `ProjectNameTaken`, so user-visible
+behavior stays correct — or one of them waits out the timeout and gets `WorkspaceBusy`. Both
+are honest answers, and both are now domain errors.
 
 Opening the same path twice yields two independent engines with no shared cache and no
-in-process lock: **VisionSet is single-writer by convention, not by enforcement.** Hardenings
-in the order they would be taken: `PRAGMA busy_timeout`, `BEGIN IMMEDIATE` for write
-transactions (which removes the race entirely), WAL (changes the on-disk format), an advisory
-lock file.
+in-process lock: **VisionSet is single-writer by convention, not by enforcement.** A long
+write transaction is therefore still a thing to avoid rather than a thing the store defends
+against — which is why, for example, `SourceService` probes a clip *outside* its write
+transaction. `busy_timeout` shortens the window; it does not make holding a transaction
+across a subprocess acceptable.
+
+Two hardenings remain untaken, and one of them is declined rather than merely pending.
+`BEGIN IMMEDIATE` for write transactions would make every contended write wait instead of
+ever failing fast — but `unit_of_work()` serves reads and writes alike, with no read-only
+variant, so an immediate transaction would take the write lock for *every* read and serialize
+exactly the concurrency WAL was adopted for. It stays off unless the unit of work grows a
+read-only form. An advisory lock file, which would turn "single-writer by convention" into
+enforcement, is still open.
 
 ## How later services are composed
 

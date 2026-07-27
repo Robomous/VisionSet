@@ -89,6 +89,48 @@ Foreign keys are declared `ON DELETE CASCADE` — and the store issues
 `PRAGMA foreign_keys = ON` for every connection, because SQLite ships with foreign keys
 **off**. Without that pragma every constraint here would be decorative.
 
+## Connection posture
+
+Three settings, and they are applied in two different places for one reason:
+
+| Setting | Where | Why there |
+| --- | --- | --- |
+| `PRAGMA foreign_keys = ON` | every connection | Per connection, and SQLite forgets it on close. Reads nothing, writes nothing. |
+| `PRAGMA busy_timeout = 5000` | every connection | Likewise per connection. Configurable: `SqliteMetadataStore(path, busy_timeout_ms=…)`. |
+| `PRAGMA journal_mode = WAL` | `initialize()` only | **Switching to WAL writes the file header.** |
+
+That last row is the interesting one. WAL is recorded in the database header and persists, so
+it only ever needs setting once — but turning it on *grows an empty file to a full page*, and
+`WorkspaceService.open` reads `format_version` before it has decided the file is a workspace
+at all. A connect-time pragma would therefore leave a 4 KB mark on any stranger's file merely
+inspected, breaking the invariant that **`open` creates nothing when it refuses**. Setting it
+in `initialize()` puts it exactly where the caller has already established the file is ours to
+write to, and re-running it there is how a workspace written before WAL converts on its next
+open. It also has to sit outside the migration transaction: SQLite refuses to change journal
+mode inside one.
+
+The consequences for callers are in
+[workspaces.md § Concurrency, plainly](workspaces.md#concurrency-plainly): readers never
+block, writers are serialized and wait up to the timeout, and a wait that runs out is
+`WorkspaceBusy`.
+
+### No SQLAlchemy exception escapes
+
+Every `DatabaseError` the engine raises goes through one function in the adapter, and the
+order of its tests is the dispatch:
+
+| SQLAlchemy raises | Becomes | Because |
+| --- | --- | --- |
+| `IntegrityError` | `ConstraintViolated` | A constraint refused the write. Ends the transaction. |
+| `OperationalError` with a `SQLITE_BUSY` / `SQLITE_LOCKED` result code | `WorkspaceBusy` | Contention. Transient — retry. |
+| any other `DatabaseError`, including the rest of `OperationalError` | `WorkspaceCorrupt` | Cannot open the file, disk I/O error, disk full, not a database. Waiting will not fix it. |
+
+Contention is told apart from damage by SQLite's **result code** (`sqlite_errorname`), not by
+the wording of the message, so a reworded SQLite release cannot silently reroute a lock into
+`WorkspaceCorrupt`. `WorkspaceCorrupt` is the widest of the three deliberately: it is where
+everything unusable-for-a-reason-you-cannot-wait-out lands, and splitting it further would
+invent errors nobody catches.
+
 `CASCADE` is the rule because the child is normally *part of* the parent. `ingest_job.batch_id`
 is the exception and states the other case: a run is a record of work done, not a child of the
 batch it filled, so deleting the batch nulls the link rather than erasing the run. The same
@@ -131,10 +173,10 @@ missing:
 | lower | the pending migrations run; the file is restamped |
 | higher | `WorkspaceFormatTooNew` — migrations only run forward |
 | not a readable database | `WorkspaceCorrupt` |
+| held by another writer past the timeout | `WorkspaceBusy` |
 
-`OperationalError` — "database is locked", "unable to open database file" — is deliberately
-*not* translated. Those are environmental, not structural, and calling them corruption would
-be a lie. It is a known gap: a SQLAlchemy exception can still escape on a locked file.
+`initialize()` also switches the file to WAL, for the reason given under
+[Connection posture](#connection-posture).
 
 **Adding a migration:** append a `Migration` with the next version and an `upgrade` taking a
 live `Connection`. Never edit an existing migration — a workspace already stamped at that

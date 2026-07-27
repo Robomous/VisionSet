@@ -605,6 +605,25 @@ def test_a_file_that_is_not_a_database_is_reported_as_corrupt(tmp_path: Path) ->
     store.close()
 
 
+def test_a_database_that_cannot_be_opened_is_corrupt_rather_than_busy(tmp_path: Path) -> None:
+    """The other half of the `OperationalError` split.
+
+    SQLite answers a directory where a database was wanted with `SQLITE_CANTOPEN`
+    — an `OperationalError`, same class as the lock, told apart only by its
+    result code. It is not contention and retrying will not help, so it belongs
+    with the damage rather than with `WorkspaceBusy`.
+    """
+    db_path = tmp_path / "visionset.db"
+    db_path.mkdir()
+
+    store = SqliteMetadataStore(db_path)
+    with pytest.raises(WorkspaceCorrupt) as caught:
+        _ = store.format_version
+    assert "sqlalchemy" not in type(caught.value).__module__
+    assert "unable to open database file" in str(caught.value)
+    store.close()
+
+
 def test_deleting_a_parent_cascades_to_its_children(tmp_path: Path) -> None:
     store = _store(tmp_path)
     with store.unit_of_work() as uow:
