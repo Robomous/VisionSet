@@ -59,6 +59,23 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
             )
         )
         connection.execute(text("CREATE INDEX ix_release_dataset_id ON release (dataset_id)"))
+        # Migration 7 rebuilt ``source`` for the same kind of reason, so its undo
+        # is hand-written too. ``ingest_job`` keeps a ``REFERENCES source (id)``
+        # across this window; SQLite resolves foreign-key targets at DML time,
+        # not at DDL time, so the gap between the drop and the create is safe.
+        connection.execute(text("drop table source"))
+        connection.execute(
+            text(
+                "CREATE TABLE source ("
+                " id CHAR(32) NOT NULL,"
+                " project_id CHAR(32) NOT NULL,"
+                " kind VARCHAR NOT NULL,"
+                " uri VARCHAR NOT NULL,"
+                " PRIMARY KEY (id),"
+                " FOREIGN KEY(project_id) REFERENCES project (id) ON DELETE CASCADE)"
+            )
+        )
+        connection.execute(text("CREATE INDEX ix_source_project_id ON source (project_id)"))
         connection.execute(text("update _visionset_meta set format_version = 1"))
 
 
@@ -143,6 +160,76 @@ def test_migration_six_refuses_a_workspace_that_still_holds_a_pre_release_row(
 
     with pytest.raises(WorkspaceCorrupt, match="before ReleaseService existed"):
         store.initialize()
+    store.close()
+
+
+def test_migration_seven_gives_a_source_its_provenance(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.connect() as connection:
+        columns = {c["name"] for c in inspect(connection).get_columns("source")}
+    assert {"path", "registered_at", "capture_params", "video"} <= columns
+    assert "uri" not in columns
+    store.close()
+
+
+def test_migration_seven_keeps_the_source_project_index(tmp_path: Path) -> None:
+    """The rebuild re-creates the table from ``_tables``, indexes included.
+
+    Worth its own test: migration 6 dropped a table carrying a
+    ``UniqueConstraint``, not an ``Index``, so this path was never exercised.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    assert any("ix_source_project_id" in sql for sql in _schema(store))
+    store.close()
+
+
+@pytest.mark.parametrize(
+    ("table", "insert"),
+    [
+        (
+            "source",
+            "insert into source (id, project_id, kind, uri) "
+            "values ('s', 'p', 'local_folder', '/in')",
+        ),
+        (
+            "ingest_job",
+            "insert into source (id, project_id, kind, uri) "
+            "values ('s', 'p', 'local_folder', '/in');"
+            "insert into ingest_job (id, source_id, state) values ('j', 's', 'pending')",
+        ),
+    ],
+)
+def test_migration_seven_refuses_a_workspace_that_still_holds_pre_provenance_rows(
+    tmp_path: Path, table: str, insert: str
+) -> None:
+    """Neither the source nor its children are dropped on the quiet.
+
+    ``ingest_job.source_id`` is ``ON DELETE CASCADE`` and the store turns foreign
+    keys on for every connection, so ``DROP TABLE source`` would take the jobs
+    with it *without raising*. Counting only ``source`` would let a workspace
+    with jobs slip through, which is why the migration counts both — and why the
+    second case here exists at all.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    _downgrade_to_version_one(store)
+    with store.engine.begin() as connection:
+        # A real parent chain, because foreign keys are on.
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
+        )
+        for statement in insert.split(";"):
+            connection.execute(text(statement))
+
+    with pytest.raises(WorkspaceCorrupt, match="before SourceService existed"):
+        store.initialize()
+
+    # And the rows are still there — refused, not emptied.
+    with store.engine.connect() as connection:
+        assert connection.execute(text(f"select count(*) from {table}")).scalar_one() == 1
     store.close()
 
 

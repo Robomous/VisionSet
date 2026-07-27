@@ -98,6 +98,15 @@ class AnnotationSchemaRow(Base):
 
 
 class SourceRow(Base):
+    """Registered origins. Rebuilt by migration 7, so column order is free here.
+
+    Every other table with a migrated column declares it last, because SQLite's
+    ``ALTER TABLE ... ADD COLUMN`` appends and the two creation paths would
+    otherwise emit different DDL. Migration 7 drops and re-creates this table
+    from this class instead, so both paths run the same ``CREATE TABLE`` and the
+    rule has nothing to bite on.
+    """
+
     __tablename__ = "source"
 
     id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
@@ -105,7 +114,13 @@ class SourceRow(Base):
         SaUuid, ForeignKey("project.id", ondelete="CASCADE"), index=True, nullable=False
     )
     kind: Mapped[str] = mapped_column(String, nullable=False)
-    uri: Mapped[str] = mapped_column(String, nullable=False)
+    #: The canonical absolute path of the origin — see ``domain.canonical_path``.
+    path: Mapped[str] = mapped_column(String, nullable=False)
+    #: ISO-8601 with offset, never SQLite ``DATETIME``. See the module docstring.
+    registered_at: Mapped[str] = mapped_column(String, nullable=False)
+    capture_params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    #: A ``VideoProvenance``, or NULL for anything that is not a clip.
+    video: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 class IngestJobRow(Base):

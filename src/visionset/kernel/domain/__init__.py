@@ -74,7 +74,12 @@ from visionset.kernel.domain.schema_diff import (
     SchemaDiff,
     diff_classes,
 )
-from visionset.kernel.domain.source import Source
+from visionset.kernel.domain.source import (
+    Source,
+    SourceKind,
+    VideoProvenance,
+    canonical_path,
+)
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
@@ -142,14 +147,17 @@ __all__ = [
     "SchemaDiff",
     "SingleJob",
     "Source",
+    "SourceKind",
     "SplitAssignment",
     "SplitRecipe",
     "TaskGroup",
     "VideoFrame",
     "VideoMetadata",
+    "VideoProvenance",
     "Workspace",
     "assign_split",
     "canonical_bytes",
+    "canonical_path",
     "diff_classes",
     "normalize_name",
     "partition_assets",
