@@ -23,6 +23,11 @@ empty directory to a hash-verified release in one pass, generating its own image
 no CLI, nothing to download. Run it with `uv run python examples/sdk_end_to_end.py`; the
 walkthrough is in [docs/examples.md](docs/examples.md).
 
+For where the assets themselves come from,
+[`examples/ingest_end_to_end.py`](examples/ingest_end_to_end.py) turns a generated ten-second clip
+into 50 deduplicated assets in an approved batch, then shows a re-run creating nothing. It needs
+ffmpeg.
+
 ## Monorepo map
 
 ```
