@@ -18,6 +18,11 @@ pip install visionset   # coming soon
 visionset ui
 ```
 
+Prefer to see the SDK first? [`examples/sdk_end_to_end.py`](examples/sdk_end_to_end.py) drives an
+empty directory to a hash-verified release in one pass, generating its own images — no server,
+no CLI, nothing to download. Run it with `uv run python examples/sdk_end_to_end.py`; the
+walkthrough is in [docs/examples.md](docs/examples.md).
+
 ## Monorepo map
 
 ```

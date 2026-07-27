@@ -16,3 +16,4 @@ contracts (kernel purity, headless annotator) are described there and enforced i
 | [releases.md](releases.md) | The immutable artifact: what a manifest is and is not, why two publishes agree byte for byte, hash verification, and the seeded split recipe |
 | [events.md](events.md) | Domain events: subscribing by type, why emission follows the commit, at-most-once delivery, and what an isolated subscriber failure does |
 | [persistence.md](persistence.md) | The metadata store: repositories, unit of work, table layout, migrations and `format_version` |
+| [examples.md](examples.md) | The runnable end-to-end example: the whole cycle in one pass, what it is built to demonstrate, and the one step that has no service yet |
