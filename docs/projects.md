@@ -36,6 +36,11 @@ consequences, and all three are enforced rather than documented:
   `WorkspaceCorrupt` rather than picking one: the invariant is broken on disk, and guessing
   would hide it.
 
+What *fills* that dataset is `DatasetService`, not this one: assets enter it by promotion from
+a completed batch and leave it by curation, each mutation appending to an audit log. See
+[datasets.md](datasets.md). `ProjectService` keeps only the parts that are the project's — the
+row's existence and its name.
+
 Names follow the workspace rule — unique per workspace, ignoring case and surrounding
 whitespace, NFC-normalized on the way in. See
 [workspaces.md § Project names](workspaces.md#project-names) for why that rule is enforced

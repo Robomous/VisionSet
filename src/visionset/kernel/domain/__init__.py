@@ -10,7 +10,12 @@ Convention reminders encoded here:
 from visionset.kernel.domain.annotation import Annotation, Provenance
 from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.batch import BATCH_TRANSITIONS, Batch, BatchState
-from visionset.kernel.domain.dataset import Dataset, DatasetChange, DatasetMember
+from visionset.kernel.domain.dataset import (
+    Dataset,
+    DatasetChange,
+    DatasetMember,
+    DatasetOperation,
+)
 from visionset.kernel.domain.geometry import (
     IMPLEMENTED_GEOMETRIES,
     BboxGeometry,
@@ -46,6 +51,7 @@ from visionset.kernel.domain.source import Source
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
+    PROMOTABLE_PROGRESS,
     SETTLED_PROGRESS,
     AnnotationJob,
     AnnotationJobState,
@@ -60,6 +66,7 @@ __all__ = [
     "BATCH_TRANSITIONS",
     "IMPLEMENTED_GEOMETRIES",
     "JOB_TRANSITIONS",
+    "PROMOTABLE_PROGRESS",
     "SETTLED_PROGRESS",
     "Annotation",
     "AnnotationJob",
@@ -79,6 +86,7 @@ __all__ = [
     "Dataset",
     "DatasetChange",
     "DatasetMember",
+    "DatasetOperation",
     "Geometry",
     "GeometryType",
     "IngestJob",

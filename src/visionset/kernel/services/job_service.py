@@ -20,7 +20,10 @@ Three things shape this module:
   job to batch, one wording of ``BatchNotInAnnotation``, in both services.
 - **Nothing here completes a batch.** ``BatchService.complete`` derives that from
   its jobs when asked. Cascading upward from here would put the batch's machine
-  in two places, and the two would eventually disagree.
+  in two places, and the two would eventually disagree. The ladder *down* to a
+  batch is borrowed rather than rewritten: ``BatchService.require_batch`` and the
+  module-level ``jobs_of`` beside it, because the service that creates the jobs
+  is the one that should say how they are found.
 
 Composition follows the rule in ``docs/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and never names an adapter.
@@ -45,7 +48,6 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.errors import (
     AssetNotInJob,
-    BatchNotFound,
     BatchNotInAnnotation,
     InvalidTransition,
     JobNotComplete,
@@ -54,6 +56,7 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
+from visionset.kernel.services.batch_service import BatchService, jobs_of
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 
@@ -62,6 +65,7 @@ class JobService:
 
     def __init__(self, workspace: WorkspaceService) -> None:
         self._workspace = workspace
+        self._batches = BatchService(workspace)
 
     # --- reading -----------------------------------------------------------
 
@@ -123,7 +127,7 @@ class JobService:
             BatchNotFound: no such batch in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return _tally(_jobs_of(uow, self._require_batch(uow, batch_id)))
+            return _tally(jobs_of(uow, self._batches.require_batch(uow, batch_id)))
 
     def project_progress(self, project_id: UUID) -> dict[AssetProgress, int]:
         """The same tally across every batch of one project.
@@ -141,7 +145,7 @@ class JobService:
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             return _tally(
-                [job for batch in uow.batches.list(project_id) for job in _jobs_of(uow, batch)]
+                [job for batch in uow.batches.list(project_id) for job in jobs_of(uow, batch)]
             )
 
     # --- the job's own lifecycle -------------------------------------------
@@ -253,16 +257,6 @@ class JobService:
                 f"no project {project_id} in workspace {self._workspace.workspace.name!r}"
             )
 
-    def _require_batch(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
-        """The batch, checked through its project so workspaces stay separate."""
-        batch = uow.batches.get(batch_id)
-        if batch is None:
-            raise BatchNotFound(
-                f"no batch {batch_id} in workspace {self._workspace.workspace.name!r}"
-            )
-        self._require_project(uow, batch.project_id)
-        return batch
-
     def require_job(self, uow: UnitOfWork, job_id: UUID) -> AnnotationJob:
         """The job, reached through its task group and batch.
 
@@ -296,7 +290,7 @@ class JobService:
             raise WorkspaceCorrupt(
                 f"job {job.id} points at task group {job.task_group_id}, which does not exist"
             )
-        return self._require_batch(uow, group.batch_id)
+        return self._batches.require_batch(uow, group.batch_id)
 
     def require_open_batch(self, uow: UnitOfWork, job: AnnotationJob) -> Batch:
         """The job's batch, refused unless it is open for annotation.
@@ -348,15 +342,6 @@ def _require_asset(uow: UnitOfWork, job: AnnotationJob, asset_id: UUID) -> Asset
     if asset is None:
         raise WorkspaceCorrupt(f"job {job.id} tracks asset {asset_id}, which is not stored")
     return asset
-
-
-def _jobs_of(uow: UnitOfWork, batch: Batch) -> list[AnnotationJob]:
-    """Every job under the batch, task group by task group, in segment order."""
-    return [
-        job
-        for group in uow.task_groups.list(batch.id)
-        for job in uow.annotation_jobs.list(group.id)
-    ]
 
 
 def _tally(jobs: list[AnnotationJob]) -> dict[AssetProgress, int]:
