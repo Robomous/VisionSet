@@ -4,7 +4,8 @@
 Every kernel operation happens in the context of exactly one workspace, so this
 module is also the **single composition point** for the default adapters. It is
 the only place in the kernel that names ``SqliteMetadataStore``,
-``FilesystemBlobStore`` or ``InProcessEventBus``; everything above it — later
+``FilesystemBlobStore``, ``InProcessEventBus`` or ``PillowImageProcessor``;
+everything above it — later
 services, the REST surface, the CLI, MCP — receives an open ``WorkspaceService``
 and reaches the ports through it. Swapping an adapter is therefore a change to
 two functions here and to nowhere else.
@@ -14,9 +15,10 @@ The layout is flat, and the database is the marker::
     <root>/visionset.db     the metadata store; holds format_version
     <root>/blobs/           the content-addressed blob store
 
-The third port has no line in that layout, and that is the point: the event bus
-is in-process and leaves nothing behind. It is composed here anyway, because a
-workspace is what services are handed and the bus has to arrive with it.
+Two of the four ports have no line in that layout, and that is the point: the
+event bus is in-process and the image processor is a decoder, so neither leaves
+anything behind. They are composed here anyway, because a workspace is what
+services are handed and every port has to arrive with it.
 
 There is no sidecar file carrying the format version. It lives inside the
 database it describes, for the same reason there is no alembic ledger: a second
@@ -50,6 +52,7 @@ from uuid import UUID
 from visionset.kernel.adapters import (
     FilesystemBlobStore,
     InProcessEventBus,
+    PillowImageProcessor,
     SqliteMetadataStore,
 )
 from visionset.kernel.domain import Workspace, normalize_name
@@ -64,6 +67,7 @@ from visionset.kernel.ports import (
     UNINITIALIZED,
     BlobStore,
     EventBus,
+    ImageProcessor,
     MetadataStore,
     UnitOfWork,
 )
@@ -79,9 +83,13 @@ _PREVIEW = 3
 
 type MetadataStoreFactory = Callable[[Path], MetadataStore]
 type BlobStoreFactory = Callable[[Path], BlobStore]
-#: Zero-argument, unlike the other two: a bus is not derived from the workspace
-#: path, because it has nothing on disk to be derived from.
+#: Zero-argument, unlike the two store factories: a bus is not derived from the
+#: workspace path, because it has nothing on disk to be derived from.
 type EventBusFactory = Callable[[], EventBus]
+#: Zero-argument for the same reason, and with even less to say for itself: a
+#: decoder has no state at all. It is composed here anyway, because this module is
+#: the only one allowed to name an adapter.
+type ImageProcessorFactory = Callable[[], ImageProcessor]
 
 
 def _resolved(path: Path | str) -> Path:
@@ -95,7 +103,7 @@ def _resolved(path: Path | str) -> Path:
 
 
 class WorkspaceService:
-    """One open workspace: its identity, its directory, and its three ports.
+    """One open workspace: its identity, its directory, and its four ports.
 
     Instances come from :meth:`init` and :meth:`open`. Constructing one directly
     is the injection seam — hand it ports and nothing here touches a disk.
@@ -105,11 +113,11 @@ class WorkspaceService:
     *factories* on ``init``/``open`` carry them instead: no module-level
     singleton, no import from a delivery module, and each default named once.
 
-    The event bus has no path to be derived from and could have been a plain
-    default, but it takes the same shape anyway — one place naming the default,
-    one bus per open workspace. A module-level default would be a singleton
-    shared by every workspace in the process, which is precisely the thing two
-    workspaces open at once must not have.
+    The event bus and the image processor have no path to be derived from and
+    could have been plain defaults, but they take the same shape anyway — one
+    place naming each default, one of each per open workspace. A module-level
+    default would be a singleton shared by every workspace in the process, which
+    is precisely the thing two workspaces open at once must not have.
     """
 
     def __init__(
@@ -119,12 +127,14 @@ class WorkspaceService:
         metadata_store: MetadataStore,
         blob_store: BlobStore,
         event_bus: EventBus,
+        image_processor: ImageProcessor,
     ) -> None:
         self._root = root
         self._workspace = workspace
         self._metadata_store = metadata_store
         self._blob_store = blob_store
         self._event_bus = event_bus
+        self._image_processor = image_processor
 
     # --- composition: the only two ways to get one ------------------------
 
@@ -137,6 +147,7 @@ class WorkspaceService:
         metadata_store_factory: MetadataStoreFactory = SqliteMetadataStore,
         blob_store_factory: BlobStoreFactory = FilesystemBlobStore,
         event_bus_factory: EventBusFactory = InProcessEventBus,
+        image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
     ) -> WorkspaceService:
         """Create a workspace at ``path`` and return it open.
 
@@ -184,7 +195,17 @@ class WorkspaceService:
                 metadata_store.close()
             _undo_init(root, created_root=created_root)
             raise
-        return cls(root, workspace, metadata_store, blob_store, event_bus_factory())
+        # Both remaining factories are zero-argument and cannot touch the disk, so
+        # they run outside the block that would undo a half-made workspace. A
+        # future port whose construction can fail moves inside it.
+        return cls(
+            root,
+            workspace,
+            metadata_store,
+            blob_store,
+            event_bus_factory(),
+            image_processor_factory(),
+        )
 
     @classmethod
     def open(
@@ -194,6 +215,7 @@ class WorkspaceService:
         metadata_store_factory: MetadataStoreFactory = SqliteMetadataStore,
         blob_store_factory: BlobStoreFactory = FilesystemBlobStore,
         event_bus_factory: EventBusFactory = InProcessEventBus,
+        image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
     ) -> WorkspaceService:
         """Open the workspace at ``path``, migrating it forward if it is behind.
 
@@ -241,7 +263,14 @@ class WorkspaceService:
         except BaseException:
             metadata_store.close()
             raise
-        return cls(root, rows[0], metadata_store, blob_store, event_bus_factory())
+        return cls(
+            root,
+            rows[0],
+            metadata_store,
+            blob_store,
+            event_bus_factory(),
+            image_processor_factory(),
+        )
 
     # --- what the surfaces and the later services read --------------------
 
@@ -274,10 +303,27 @@ class WorkspaceService:
     def event_bus(self) -> EventBus:
         """Where the services announce what they did, once it has committed.
 
-        Reached through the handle like the other two ports, so a service takes a
+        Reached through the handle like every other port, so a service takes a
         ``WorkspaceService`` and still needs no second dependency to emit.
         """
         return self._event_bus
+
+    @property
+    def image_processor(self) -> ImageProcessor:
+        """Decoding, dimensions and thumbnails for still images.
+
+        Reached through the handle like the other three ports, which is what lets
+        an ingest service take a ``WorkspaceService`` and still name no adapter —
+        the rule this module exists to keep, and the reason a decoder is composed
+        here rather than defaulted in the service that uses it.
+
+        Nothing in the workspace layout corresponds to it. Like the event bus it
+        leaves nothing on disk, and unlike the event bus it holds no state at all,
+        so one per workspace is uniformity rather than isolation: two workspaces
+        sharing a decoder would be harmless, and giving each its own costs nothing
+        and means every port arrives the same way.
+        """
+        return self._image_processor
 
     @property
     def format_version(self) -> int:
@@ -340,9 +386,10 @@ class WorkspaceService:
     def close(self) -> None:
         """Release the metadata store's connections. Safe to call twice.
 
-        The blob store and the event bus are not closed and have nothing to
-        close: one addresses files by hash and opens them per call, the other
-        holds a list of callables. Only the database keeps a connection.
+        The other three ports are not closed and have nothing to close: the blob
+        store addresses files by hash and opens them per call, the event bus holds
+        a list of callables, and the image processor holds nothing whatsoever.
+        Only the database keeps a connection.
         """
         self._metadata_store.close()
 

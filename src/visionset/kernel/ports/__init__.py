@@ -8,8 +8,12 @@ from visionset.kernel.ports.auth_provider import AuthProvider
 from visionset.kernel.ports.blob_store import BlobStore
 from visionset.kernel.ports.event_bus import EventBus
 from visionset.kernel.ports.exporter import Exporter
+from visionset.kernel.ports.image_processor import (
+    DEFAULT_THUMBNAIL_MAX_EDGE,
+    THUMBNAIL_FORMAT,
+    ImageProcessor,
+)
 from visionset.kernel.ports.importer import Importer
-from visionset.kernel.ports.media_processor import MediaProcessor
 from visionset.kernel.ports.metadata_store import (
     UNINITIALIZED,
     MetadataStore,
@@ -19,13 +23,15 @@ from visionset.kernel.ports.metadata_store import (
 from visionset.kernel.ports.model_provider import ModelProvider
 
 __all__ = [
+    "DEFAULT_THUMBNAIL_MAX_EDGE",
+    "THUMBNAIL_FORMAT",
     "UNINITIALIZED",
     "AuthProvider",
     "BlobStore",
     "EventBus",
     "Exporter",
+    "ImageProcessor",
     "Importer",
-    "MediaProcessor",
     "MetadataStore",
     "ModelProvider",
     "Repository",
