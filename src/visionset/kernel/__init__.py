@@ -7,13 +7,20 @@ and by the architecture tests in ``tests/architecture/``.
 """
 
 from visionset.kernel.errors import (
+    AssetNotFound,
+    BatchNotComplete,
+    BatchNotEditable,
+    BatchNotFound,
     ConfirmationRequired,
     ConstraintViolated,
     DestructiveSchemaChange,
+    EmptyBatch,
     EntityAlreadyExists,
     EntityNotFound,
     InvalidName,
+    InvalidPartition,
     InvalidSchema,
+    InvalidTransition,
     NotAWorkspace,
     ProjectNameTaken,
     ProjectNotFound,
@@ -29,13 +36,20 @@ from visionset.kernel.errors import (
 )
 
 __all__ = [
+    "AssetNotFound",
+    "BatchNotComplete",
+    "BatchNotEditable",
+    "BatchNotFound",
     "ConfirmationRequired",
     "ConstraintViolated",
     "DestructiveSchemaChange",
+    "EmptyBatch",
     "EntityAlreadyExists",
     "EntityNotFound",
     "InvalidName",
+    "InvalidPartition",
     "InvalidSchema",
+    "InvalidTransition",
     "NotAWorkspace",
     "ProjectNameTaken",
     "ProjectNotFound",

@@ -6,8 +6,8 @@ surface can translate the whole family to an HTTP status or an exit code with a
 single ``except`` clause. The kernel NEVER raises a framework exception —
 ``HTTPException`` and friends belong to the boundary, not here.
 
-Persistence and workspace errors live here today; later services add their own
-(``ProjectNotFound``, ``InvalidTransition``, ...) as they land.
+Persistence, workspace, project, schema and batch errors live here; later
+services add their own as they land.
 """
 
 from __future__ import annotations
@@ -167,6 +167,69 @@ class SchemaChangeWouldOrphan(VisionSetError):
     onto a new version is out of scope for M1, and until it exists the kernel
     refuses rather than leaving labels pointing at a class the contract no
     longer describes.
+    """
+
+
+class InvalidTransition(VisionSetError):
+    """A state machine was asked to make a move that is not in its table.
+
+    The legal moves are data — ``BATCH_TRANSITIONS`` and its siblings — so this
+    is raised by consulting the table, never by a chain of hand-written guards
+    that could disagree with it.
+    """
+
+
+class BatchNotFound(VisionSetError):
+    """No batch with that id lives in this workspace.
+
+    Like ``ProjectNotFound``, and for the same reason: a batch belonging to
+    another workspace reads as missing rather than as forbidden, and a delivery
+    surface turns it into a 404 rather than a 500.
+    """
+
+
+class BatchNotEditable(VisionSetError):
+    """Membership was changed on a batch that is no longer a draft.
+
+    Deliberately not an ``InvalidTransition``: nothing is transitioning, and the
+    remedy is different. After approval the batch is partitioned into jobs
+    against a pinned schema, so adding or removing an asset would leave a job
+    describing work that no longer exists. Excluding an asset from that point on
+    is a per-asset ``skipped`` decision, which is recorded rather than erased.
+    """
+
+
+class EmptyBatch(VisionSetError):
+    """Approval was asked for on a batch with no assets.
+
+    It would partition into no jobs at all, and a batch completes when all its
+    jobs complete — so an empty approved batch is one that can never finish.
+    """
+
+
+class BatchNotComplete(VisionSetError):
+    """A batch was told to complete while at least one of its jobs is not.
+
+    Completion is *derived*: the service recomputes it from the jobs rather than
+    taking the caller's word, because a batch marked complete is what lets its
+    annotated assets be promoted into the Dataset.
+    """
+
+
+class InvalidPartition(VisionSetError):
+    """The proposed segments are not an exact partition of the batch.
+
+    An asset in two jobs is two annotators labeling it unaware of each other; an
+    asset in no job is a batch that can never complete. Both are silent failures,
+    so the segments are checked against the batch rather than trusted.
+    """
+
+
+class AssetNotFound(VisionSetError):
+    """An asset id does not belong to the project it was used in.
+
+    Same rule as every other cross-scope reference in the kernel: an asset in a
+    different project reads as missing, not as forbidden.
     """
 
 

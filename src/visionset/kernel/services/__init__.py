@@ -7,6 +7,7 @@ them, and one place is better than every place. Every public surface it exposes
 is port-typed, so nothing above it can reach SQLAlchemy by accident.
 """
 
+from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import (
@@ -18,6 +19,7 @@ from visionset.kernel.services.workspace_service import (
 __all__ = [
     "BLOBS_DIRNAME",
     "DB_FILENAME",
+    "BatchService",
     "ProjectService",
     "SchemaService",
     "WorkspaceService",

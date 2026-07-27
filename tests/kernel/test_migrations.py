@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
@@ -30,9 +30,14 @@ def _schema(store: SqliteMetadataStore) -> set[str]:
 
 
 def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
-    """Undo everything migration 2 did, and restamp the file as generation 1."""
+    """Undo everything after migration 1, and restamp the file as generation 1.
+
+    Every migration added here needs its undo added here too — the fresh-versus-
+    migrated test below is only as strong as how far back this walks.
+    """
     with store.engine.begin() as connection:
         connection.execute(text("drop index if exists uq_project_workspace_name"))
+        connection.execute(text("alter table batch drop column schema_version"))
         connection.execute(text("update _visionset_meta set format_version = 1"))
 
 
@@ -43,12 +48,22 @@ def test_migration_two_creates_the_project_name_index(tmp_path: Path) -> None:
     store.close()
 
 
+def test_migration_three_gives_a_batch_its_schema_version_pin(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.connect() as connection:
+        columns = {c["name"] for c in inspect(connection).get_columns("batch")}
+    assert "schema_version" in columns
+    store.close()
+
+
 def test_a_fresh_database_and_a_migrated_one_have_the_same_schema(tmp_path: Path) -> None:
     """Migration 1 is ``create_all`` of *current* metadata, so the two paths differ.
 
-    A fresh file gets migration 2's change from migration 1; an existing file gets
-    it from migration 2 itself. If those ever disagree, a workspace's behavior
-    depends on when it was created — which is the bug this test exists to catch.
+    A fresh file gets every later migration's change from migration 1; an
+    existing file gets each one from the migration itself. If those ever
+    disagree, a workspace's behavior depends on when it was created — which is
+    the bug this test exists to catch.
     """
     fresh = SqliteMetadataStore(tmp_path / "fresh.db")
     fresh.initialize()
