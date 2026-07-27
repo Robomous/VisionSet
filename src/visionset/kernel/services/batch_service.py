@@ -40,6 +40,8 @@ from visionset.kernel.domain import (
     AnnotationJobState,
     AssetProgress,
     Batch,
+    BatchApproved,
+    BatchCompleted,
     BatchState,
     Partition,
     Project,
@@ -178,7 +180,9 @@ class BatchService:
 
         Everything lands in one transaction, so a refusal anywhere leaves a
         ``draft`` batch with no task group and no jobs — never a half-partitioned
-        one.
+        one. :class:`BatchApproved` is announced once that transaction has
+        committed, so a subscriber can never see a partition that was rolled
+        back, and one that raises cannot roll this one back.
 
         Raises:
             BatchNotFound: no such batch in this workspace.
@@ -204,16 +208,29 @@ class BatchService:
             )
 
             group = uow.task_groups.add(TaskGroup(batch_id=batch.id, name=FIRST_ROUND))
-            for segment in segments:
+            job_ids = [
                 uow.annotation_jobs.add(
                     AnnotationJob(
                         task_group_id=group.id,
                         progress={asset_id: AssetProgress.UNANNOTATED for asset_id in segment},
                     )
-                )
-            return uow.batches.update(
+                ).id
+                for segment in segments
+            ]
+            approved = uow.batches.update(
                 batch.model_copy(update={"state": BatchState.APPROVED, "schema_version": pinned})
             )
+
+        self._workspace.event_bus.publish(
+            BatchApproved(
+                batch_id=approved.id,
+                project_id=approved.project_id,
+                schema_version=pinned,
+                job_ids=tuple(job_ids),
+                asset_count=len(approved.asset_ids),
+            )
+        )
+        return approved
 
     def start(self, batch_id: UUID) -> Batch:
         """Open the batch for annotation.
@@ -230,7 +247,8 @@ class BatchService:
         Completion is derived rather than declared: this reads the jobs and
         refuses if any is outstanding. A completed batch is what lets its
         annotated assets be promoted into the Dataset, so the kernel does not
-        take a caller's word for it.
+        take a caller's word for it. :class:`BatchCompleted` follows the commit,
+        and is the announcement that this batch is now promotable.
 
         Raises:
             BatchNotFound: no such batch in this workspace.
@@ -247,7 +265,16 @@ class BatchService:
                     f"batch {batch.name!r} has {len(outstanding)} of {len(jobs)} jobs still "
                     f"unfinished; a batch completes only when all of its jobs do"
                 )
-            return uow.batches.update(batch.model_copy(update={"state": BatchState.COMPLETED}))
+            completed = uow.batches.update(batch.model_copy(update={"state": BatchState.COMPLETED}))
+
+        self._workspace.event_bus.publish(
+            BatchCompleted(
+                batch_id=completed.id,
+                project_id=completed.project_id,
+                asset_count=len(completed.asset_ids),
+            )
+        )
+        return completed
 
     def delete(self, batch_id: UUID, *, confirm: bool = False) -> None:
         """Remove a batch, its task groups, its jobs and its membership rows.

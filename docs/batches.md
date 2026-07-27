@@ -122,6 +122,14 @@ batches.complete(batch.id)  # BatchNotComplete: 2 of 5 jobs still unfinished
 batch is what lets its annotated assets be promoted into the Dataset. Moving a job to
 `completed` is the job service's business — see [jobs.md](jobs.md); this service only reads it.
 
+## What approval and completion announce
+
+`approve` and `complete` each publish a [domain event](events.md) — `BatchApproved`, carrying
+the pin and the job ids, and `BatchCompleted`, which is the announcement that this batch is now
+promotable. Both fire *after* the transaction commits, so a subscriber never sees a partition
+that was rolled back and a subscriber that raises cannot roll one back. `start` announces
+nothing: no work is frozen or finished by it.
+
 ## Deleting a batch
 
 Guarded by a parameter, like every destructive operation in the kernel:
