@@ -15,10 +15,16 @@ are the whole format — if WAL is ever adopted, `visionset.db-wal` and `-shm` b
 of it and this page has to say so, because a user who copies only `visionset.db` under WAL
 loses committed data.
 
-`WorkspaceService` is the only place in the kernel that names `SqliteMetadataStore` or
-`FilesystemBlobStore`. Everything above it — later services, the REST surface, the CLI,
-MCP — gets an open service and reaches the ports through it, so swapping an adapter is a
-change to two functions and to nowhere else.
+A third port has no line in that layout, and that is the point: the [event bus](events.md)
+is in-process and leaves nothing behind. It is composed here anyway, because a workspace is
+what services are handed and the bus has to arrive with it. One bus per open workspace,
+built by `event_bus_factory` — never a module-level singleton, which two workspaces open at
+once must not share.
+
+`WorkspaceService` is the only place in the kernel that names `SqliteMetadataStore`,
+`FilesystemBlobStore` or `InProcessEventBus`. Everything above it — later services, the REST
+surface, the CLI, MCP — gets an open service and reaches the ports through it, so swapping
+an adapter is a change to two functions and to nowhere else.
 
 ## Creating and opening
 
@@ -211,11 +217,15 @@ class ProjectService:
             return project
 ```
 
-Three habits that keep the boundary honest:
+Four habits that keep the boundary honest:
 
 - Take a `WorkspaceService`, not a store and a path. One dependency, and it carries the
   workspace-level rules with it.
 - One `unit_of_work()` per operation, and do the whole operation inside it.
-- Reach the ports through the handle. No service other than `workspace_service` should name
-  `SqliteMetadataStore` or `FilesystemBlobStore` — if a second one does, the composition
-  point has stopped being single.
+- Reach the ports through the handle — `workspace.metadata_store`, `workspace.blob_store`,
+  `workspace.event_bus`. No service other than `workspace_service` should name
+  `SqliteMetadataStore`, `FilesystemBlobStore` or `InProcessEventBus` — if a second one
+  does, the composition point has stopped being single.
+- Publish [events](events.md) *after* the `unit_of_work()` block, never inside it. An
+  announcement is about work that committed, and a subscriber that raises must have nothing
+  left to roll back.

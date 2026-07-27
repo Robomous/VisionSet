@@ -139,7 +139,8 @@ error that loses it, and no asset can go missing to an argument about arithmetic
 - **No `confirm=`.** That guard is for destroying data, and publishing destroys nothing. This is
   not a third exemption from `ConfirmationRequired`.
 - **No change-log entry.** The [dataset log](datasets.md) records mutations of the trunk, and
-  publishing mutates nothing in it. "A release happened" is a domain event, not a curation entry.
+  publishing mutates nothing in it. "A release happened" is a [domain event](events.md) —
+  `ReleasePublished`, carrying the manifest hash — not a curation entry.
 - **No mutation at all.** `Release` is a frozen model, so the refusal belongs to the type rather
   than to a service method that could be forgotten.
 
