@@ -9,11 +9,12 @@ fourteen times against fourteen tables.
 Most entities are flat — every field is a column — and share
 ``_flat_mapping``. The six that are not say so explicitly:
 
-- ``AnnotationSchema``, ``Annotation`` and ``Release`` hold immutable nested
-  values, encoded as JSON.
+- ``AnnotationSchema`` and ``Annotation`` hold immutable nested values, encoded
+  as JSON.
 - ``Batch`` and ``AnnotationJob`` own child tables, so their mappings carry a
   ``sync_children`` hook and rebuild their collections on read.
-- ``DatasetChange`` encodes its UUID list and its timezone-aware timestamp.
+- ``DatasetChange`` and ``Release`` encode a timezone-aware timestamp, which a
+  ``String`` column must be handed as text rather than as a ``datetime``.
 """
 
 from __future__ import annotations
@@ -42,10 +43,10 @@ from visionset.kernel.domain import (
     Geometry,
     IngestJob,
     LabelClass,
-    Manifest,
     Project,
     Release,
     Source,
+    SplitRecipe,
     TaskGroup,
     Workspace,
 )
@@ -149,24 +150,6 @@ def _annotation_to_domain(_: Session, row: Any) -> Annotation:
     )
 
 
-def _release_to_row(entity: Release) -> t.Base:
-    return t.ReleaseRow(
-        id=entity.id,
-        dataset_id=entity.dataset_id,
-        tag=entity.tag,
-        manifest=entity.manifest.model_dump(mode="json"),
-    )
-
-
-def _release_to_domain(_: Session, row: Any) -> Release:
-    return Release(
-        id=row.id,
-        dataset_id=row.dataset_id,
-        tag=row.tag,
-        manifest=Manifest.model_validate(row.manifest),
-    )
-
-
 def _change_to_row(entity: DatasetChange) -> t.Base:
     return t.DatasetChangeRow(
         id=entity.id,
@@ -186,6 +169,40 @@ def _change_to_domain(_: Session, row: Any) -> DatasetChange:
         subject_ids=[UUID(s) for s in row.subject_ids],
         actor=row.actor,
         occurred_at=datetime.fromisoformat(row.occurred_at),
+    )
+
+
+def _release_to_row(entity: Release) -> t.Base:
+    return t.ReleaseRow(
+        id=entity.id,
+        dataset_id=entity.dataset_id,
+        tag=entity.tag,
+        manifest_hash=entity.manifest_hash,
+        schema_version=entity.schema_version,
+        asset_count=entity.asset_count,
+        annotation_count=entity.annotation_count,
+        split=None if entity.split is None else entity.split.model_dump(mode="json"),
+        # Spelled out rather than left to ``_flat_mapping``, which dumps in
+        # python mode and would hand a ``datetime`` object to a ``String``
+        # column. sqlite3 would take it, via a deprecated adapter, and write a
+        # second timestamp format alongside ``dataset_change.occurred_at``.
+        created_at=entity.created_at.isoformat(),
+        visionset_version=entity.visionset_version,
+    )
+
+
+def _release_to_domain(_: Session, row: Any) -> Release:
+    return Release(
+        id=row.id,
+        dataset_id=row.dataset_id,
+        tag=row.tag,
+        manifest_hash=row.manifest_hash,
+        schema_version=row.schema_version,
+        asset_count=row.asset_count,
+        annotation_count=row.annotation_count,
+        split=None if row.split is None else SplitRecipe.model_validate(row.split),
+        created_at=datetime.fromisoformat(row.created_at),
+        visionset_version=row.visionset_version,
     )
 
 

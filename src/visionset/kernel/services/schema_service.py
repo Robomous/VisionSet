@@ -93,7 +93,7 @@ class SchemaService:
         """
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
-            return self._require_active(uow, project_id)
+            return self.require_active(uow, project_id)
 
     def list_versions(self, project_id: UUID) -> list[AnnotationSchema]:
         """Every version of the project's schema, oldest first.
@@ -257,7 +257,18 @@ class SchemaService:
     def _active(self, uow: UnitOfWork, project_id: UUID) -> AnnotationSchema | None:
         return max(uow.schemas.list(project_id), key=lambda schema: schema.version, default=None)
 
-    def _require_active(self, uow: UnitOfWork, project_id: UUID) -> AnnotationSchema:
+    def require_active(self, uow: UnitOfWork, project_id: UUID) -> AnnotationSchema:
+        """The version in force, resolved inside a transaction the caller owns.
+
+        Public, and taking a ``uow``, for the reason ``BatchService.require_batch``
+        is: ``ReleaseService`` pins the active version while it is already inside
+        its own ``unit_of_work``, and calling :meth:`get_active` there would open
+        a second session against the same file. It does NOT check the project —
+        every caller has already resolved one.
+
+        Raises:
+            SchemaNotFound: the project has no schema yet.
+        """
         active = self._active(uow, project_id)
         if active is None:
             raise SchemaNotFound(

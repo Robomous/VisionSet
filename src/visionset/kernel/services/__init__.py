@@ -12,6 +12,7 @@ from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.dataset_service import DatasetService
 from visionset.kernel.services.job_service import JobService
 from visionset.kernel.services.project_service import ProjectService
+from visionset.kernel.services.release_service import ReleaseService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import (
     BLOBS_DIRNAME,
@@ -27,6 +28,7 @@ __all__ = [
     "DatasetService",
     "JobService",
     "ProjectService",
+    "ReleaseService",
     "SchemaService",
     "WorkspaceService",
 ]

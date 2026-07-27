@@ -73,7 +73,8 @@ the operation and not the individual write.
 | Kind | Storage | Why |
 | --- | --- | --- |
 | Relations that get mutated element by element | Child table — `batch_asset`, `annotation_job_asset` | Membership and per-asset progress are edited one row at a time and queried from the asset side. `batch_asset.position` preserves order. |
-| Immutable nested values | JSON column — `annotation_schema.classes`, `annotation.geometry`, `annotation.attributes`, `release.manifest` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
+| Immutable nested values | JSON column — `annotation_schema.classes`, `annotation.geometry`, `annotation.attributes`, `release.split` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
+| An immutable value too large for a row | The **blob store**, with the row keeping its hash — `release.manifest_hash` | A release manifest lists every asset and every label; megabytes of it in a column would have to be read just to list a dataset's releases. Content-addressed, so it is verifiable and two identical releases share one document. See [releases.md](releases.md). |
 | Timestamps | TEXT holding ISO-8601 **with offset** | SQLite's `DATETIME` storage drops the timezone. Domain timestamps are timezone-aware UTC and a naive value is rejected at construction. |
 
 Foreign keys are declared `ON DELETE CASCADE` — and the store issues
@@ -93,8 +94,9 @@ MIGRATIONS: list[Migration] = [
     Migration(version=3, name="batch_schema_version_pin", upgrade=...),
     Migration(version=4, name="annotation_job_asset_position", upgrade=...),
     Migration(version=5, name="annotation_attributes", upgrade=...),
+    Migration(version=6, name="release_manifest_pointer", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 5
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 6
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -140,8 +142,20 @@ all sit at the end of their tables for that reason alone. Declared anywhere else
 `create_all` path and the `ALTER` path emit different `CREATE TABLE` text and the
 fresh-versus-migrated test fails — which is exactly what it is for.
 
+**Migration 006 is the one that drops a table**, and the bar it had to clear is worth writing
+down. `release` gained three `NOT NULL` columns with no honest default — an `ALTER` would have
+baked `manifest_hash DEFAULT ''` into every fresh database forever — and, decisively, a pre-#12
+release row carries its manifest as a JSON column with *no blob behind it*, so there is no value
+`manifest_hash` could be given that `verify` would ever accept. Adding the columns would have
+manufactured rows that are broken by construction. It is idempotent the same way 003–005 are (an
+inspector check for `manifest_hash`), and the emptiness it relies on is **checked** rather than
+argued: a workspace that somehow holds a release row raises `WorkspaceCorrupt` instead of being
+quietly emptied. A migration that would lose real data does not clear this bar.
+
 The fresh-versus-migrated test is only as strong as how far back
 `_downgrade_to_version_one` walks, so every migration added there needs its undo added too.
+Migration 006 is the one place that undo cannot borrow its DDL from `_tables`, because `_tables`
+no longer describes the shape it is restoring.
 
 `format_version` here is the *database* generation. Validating the on-disk workspace layout
 around it — directories, the blob-store root, what makes a directory a workspace at all —
