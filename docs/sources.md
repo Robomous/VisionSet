@@ -27,8 +27,8 @@ anything used it.
 
 `register_video` probes the file through the workspace's `VideoProcessor` and stores the answer.
 The probe runs **before** the transaction opens: it is an out-of-process decoder, and holding a
-write transaction open across a subprocess is how a single-writer SQLite store ends up reporting
-"database is locked".
+write transaction open across a subprocess is how a single-writer SQLite store ends up making
+every other writer wait out its `busy_timeout` and fail with `WorkspaceBusy`.
 
 ## What a source records
 
@@ -98,8 +98,8 @@ mistaken for a real rate: `extraction_fps` is `gt=0`.
 The two layers do what they do everywhere else in this store. The pre-check is what produces a
 friendly answer; the index is the guarantee. A caller that loses the race sees a raw
 `ConstraintViolated`, and the remedy is to call the same method again, which finds the winner's
-row and returns it. The store's other known concurrency gap — the untranslated `OperationalError`
-— is still open.
+row and returns it. A caller that instead waits out the store's `busy_timeout` sees
+`WorkspaceBusy`, and the remedy is the same.
 
 ## Paths are canonicalized once
 

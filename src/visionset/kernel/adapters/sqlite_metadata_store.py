@@ -5,19 +5,21 @@ generation (``format_version``), and a repository per entity type; the
 row/model translation lives in ``_mappers`` so that nothing SQLAlchemy-shaped
 escapes this package.
 
-That last part includes exceptions. SQLAlchemy's ``IntegrityError`` and
-``DatabaseError`` are translated here into ``ConstraintViolated`` and
-``WorkspaceCorrupt``, because a service that had to catch them would need a
-SQLAlchemy import to do it — which is exactly the leak this package exists to
-prevent.
+That last part includes exceptions. Every ``DatabaseError`` SQLAlchemy raises is
+translated by :func:`_translated` — into ``ConstraintViolated``,
+``WorkspaceBusy`` or ``WorkspaceCorrupt`` — because a service that had to catch
+the originals would need a SQLAlchemy import to do it, which is exactly the leak
+this package exists to prevent. There is one such function and every entry point
+routes through it, so "no SQLAlchemy exception escapes" is a property of one
+place rather than a habit spread across several.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from sqlalchemy import (
@@ -42,10 +44,25 @@ from visionset.kernel.errors import (
     ConstraintViolated,
     EntityAlreadyExists,
     EntityNotFound,
+    VisionSetError,
+    WorkspaceBusy,
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
 )
 from visionset.kernel.ports.metadata_store import UNINITIALIZED, UnitOfWork
+
+#: How long a connection waits for a lock before giving up, in milliseconds.
+#: Long enough to absorb the write bursts of a background ingest running beside
+#: request handlers, short enough that a wedged writer surfaces as an error
+#: rather than as a request that never returns.
+DEFAULT_BUSY_TIMEOUT_MS: Final = 5_000
+
+#: SQLite's own names for "someone else has it". ``sqlite_errorname`` reports
+#: the *extended* result code, so a prefix test covers ``SQLITE_BUSY_SNAPSHOT``
+#: and ``SQLITE_BUSY_TIMEOUT`` without listing them. Matching the name rather
+#: than the message text means a reworded SQLite release cannot silently reroute
+#: contention into ``WorkspaceCorrupt``.
+_BUSY_ERROR_NAMES: Final = ("SQLITE_BUSY", "SQLITE_LOCKED")
 
 
 def _constraint_violated(exc: IntegrityError) -> ConstraintViolated:
@@ -59,36 +76,65 @@ def _constraint_violated(exc: IntegrityError) -> ConstraintViolated:
     return ConstraintViolated(str(exc.orig))
 
 
+def _is_busy(exc: OperationalError) -> bool:
+    """Whether this is contention rather than damage."""
+    name = getattr(exc.orig, "sqlite_errorname", "")
+    if name:
+        return name.startswith(_BUSY_ERROR_NAMES)
+    # A DBAPI that does not carry the result code — nothing does today, but the
+    # engine URL is not a promise — leaves only the wording to go on.
+    return "is locked" in str(exc.orig)
+
+
+def _translated(exc: DatabaseError, db_path: Path) -> VisionSetError:
+    """The adapter's entire exception vocabulary, in one place.
+
+    ``IntegrityError`` and ``OperationalError`` are both ``DatabaseError``
+    subclasses, so the order of these tests *is* the dispatch. Everything that
+    reaches the last line is a database this build cannot work with, which is
+    what ``WorkspaceCorrupt`` means — including the environmental failures
+    (cannot open the file, disk I/O error, disk full) that waiting will not fix.
+    """
+    if isinstance(exc, IntegrityError):
+        return _constraint_violated(exc)
+    if isinstance(exc, OperationalError) and _is_busy(exc):
+        return WorkspaceBusy(
+            f"{db_path} is held by another writer and the wait ran out: {exc.orig}"
+        )
+    return WorkspaceCorrupt(f"{db_path} is not a readable VisionSet metadata store: {exc.orig}")
+
+
 @contextmanager
 def _readable(db_path: Path) -> Iterator[None]:
-    """Report an unreadable database as ``WorkspaceCorrupt``, not as SQLAlchemy.
-
-    ``OperationalError`` is re-raised untranslated on purpose: "database is
-    locked" and "unable to open database file" are environmental, and calling
-    them corruption would be a lie. Surfacing them as a domain error needs a
-    port vocabulary for transient failure, which nothing needs yet.
-    """
+    """Let no SQLAlchemy exception out of a read or a schema change."""
     try:
         yield
-    except OperationalError:
-        raise
-    except IntegrityError as exc:
-        raise _constraint_violated(exc) from exc
     except DatabaseError as exc:
-        raise WorkspaceCorrupt(
-            f"{db_path} is not a readable VisionSet metadata store: {exc.orig}"
-        ) from exc
+        raise _translated(exc, db_path) from exc
 
 
-def _enable_foreign_keys(dbapi_connection: Any, _: Any) -> None:
-    """SQLite ships with foreign keys OFF, per connection.
+def _connection_posture(busy_timeout_ms: int) -> Callable[[Any, Any], None]:
+    """Build the ``connect`` listener that says what a connection is.
 
-    Without this every ``ForeignKey`` in ``_tables`` is decorative: orphan rows
-    would insert happily and cascades would never fire.
+    Both pragmas are per connection — SQLite forgets them on close — so they are
+    re-issued on every connection the engine opens, including the one that runs
+    migrations, since that is the same engine. Neither writes to the file, which
+    is what lets them run against a database this build has not yet vouched for.
+
+    ``journal_mode`` is deliberately *not* here; see :meth:`SqliteMetadataStore.
+    initialize`.
     """
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys = ON")
-    cursor.close()
+
+    def listener(dbapi_connection: Any, _: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        # Without this every ``ForeignKey`` in ``_tables`` is decorative: SQLite
+        # ships with foreign keys off, so orphan rows would insert happily and
+        # cascades would never fire.
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.execute(f"PRAGMA busy_timeout = {busy_timeout_ms}")
+        cursor.close()
+
+    return listener
 
 
 def _stored_format_version(connection: Connection) -> int | None:
@@ -123,6 +169,11 @@ class SqlRepository[T: m.Entity]:
             self._mapping.sync_children(self._session, entity)
 
     def _flush(self) -> None:
+        # Only the constraint case is caught here, so that a caller wrapping a
+        # single ``add()`` sees the right type at the point of the call. Anything
+        # broader — a lock, an unusable file — propagates to ``unit_of_work``,
+        # which translates it on the way out; there is nothing to gain from
+        # naming those twice.
         try:
             self._session.flush()
         except IntegrityError as exc:
@@ -192,14 +243,26 @@ class SqlUnitOfWork:
 
 
 class SqliteMetadataStore:
-    def __init__(self, db_path: Path) -> None:
+    """One SQLite file, in WAL mode, with a bounded wait for contention.
+
+    ``busy_timeout_ms`` is keyword-only with a default so that the class itself
+    still satisfies ``MetadataStoreFactory`` — a plain ``Callable[[Path],
+    MetadataStore]`` — and can go on being passed to ``WorkspaceService.init``
+    and ``open`` as a bare class reference. A caller who wants a different wait
+    supplies ``partial(SqliteMetadataStore, busy_timeout_ms=...)`` as the
+    factory rather than growing the port's signature for a tuning knob.
+    """
+
+    def __init__(self, db_path: Path, *, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db_path = db_path
         #: Built through ``URL.create`` rather than an f-string: a path containing
         #: ``#`` or ``?`` parses as a URL fragment or query and the engine would
         #: silently target a *different* file (a truncated sibling of this one).
         self._engine: Engine = create_engine(URL.create("sqlite", database=str(db_path)))
-        event.listen(self._engine, "connect", _enable_foreign_keys)
+        #: Registered on this engine, never on the ``Engine`` class: a global
+        #: listener would reach engines this store knows nothing about.
+        event.listen(self._engine, "connect", _connection_posture(busy_timeout_ms))
 
     @property
     def engine(self) -> Engine:
@@ -218,7 +281,20 @@ class SqliteMetadataStore:
         A fresh file gets every migration and is stamped at ``FORMAT_VERSION``;
         an existing one gets only what it is missing. A file stamped ahead of
         this build raises rather than being opened on a guess.
+
+        Journal mode is set here rather than on every connection, and the reason
+        is an invariant one file up: ``WorkspaceService.open`` creates nothing
+        when it refuses. Switching a database to WAL *writes its header* — an
+        empty file grows to a full page — so a connect-time pragma would leave a
+        4 KB mark on any stranger's file merely inspected by ``format_version``.
+        By the time this method runs, the caller has established that the file is
+        ours to write to. WAL is recorded in the header and persists, so setting
+        it once is what it takes, and re-running it is how a workspace written
+        before WAL converts on its next open. It also has to sit outside the
+        migration transaction: SQLite refuses to change journal mode inside one.
         """
+        with _readable(self._db_path), self._engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA journal_mode = WAL")
         with _readable(self._db_path), self._engine.begin() as connection:
             stored = _stored_format_version(connection)
             if stored is not None and stored > FORMAT_VERSION:
@@ -240,10 +316,13 @@ class SqliteMetadataStore:
             try:
                 with session.begin():
                     yield SqlUnitOfWork(session)
-            except IntegrityError as exc:
-                # A constraint can also fire at commit time, i.e. after the last
-                # repository call has already returned.
-                raise _constraint_violated(exc) from exc
+            except DatabaseError as exc:
+                # Broader than the repositories' own translation, because this is
+                # the last place anything can be caught: a constraint and a lock
+                # can both fire at commit time, i.e. after the final repository
+                # call has already returned cleanly.
+                raise _translated(exc, self._db_path) from exc
 
     def close(self) -> None:
+        """Dispose the engine, which checkpoints and removes the WAL sidecars."""
         self._engine.dispose()

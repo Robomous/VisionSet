@@ -150,7 +150,8 @@ emitter in this kernel follows.
 
 Step 2 is outside a transaction because decoding is a Pillow pass over thousands of files or an
 out-of-process ffmpeg, and holding a write transaction open across either is how a single-writer
-SQLite store starts reporting "database is locked". The blob writes are out there too, before any
+SQLite store starts making every other writer wait out its `busy_timeout` and fail with
+`WorkspaceBusy`. The blob writes are out there too, before any
 row exists: `BlobStore.put` is not transactional and a rollback cannot unwrite it — but a blob
 nothing points at is harmless (content-addressed, shared, never deleted), while a row naming bytes
 that were never stored is not.

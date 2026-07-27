@@ -268,7 +268,7 @@ class AnnotationService:
 
         A nested read, which is why every caller does it before its first write:
         ``unit_of_work()`` opens a fresh session per call, and a second *writer*
-        on the same file is how "database is locked" happens.
+        on the same file is how a ``WorkspaceBusy`` happens.
 
         ``Batch.schema_version`` is ``None`` only while a batch is a draft, and
         the caller has already established that this one is ``in_annotation``.

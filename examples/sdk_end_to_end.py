@@ -438,7 +438,11 @@ def _clear_previous_run(dest: Path) -> None:
         return
     if not dest.is_dir():
         raise SystemExit(f"refusing to run: {dest} exists and is not a directory")
-    stray = {entry.name for entry in dest.iterdir()} - {"visionset.db", "blobs", "incoming"}
+    # The two ``-wal``/``-shm`` entries are SQLite's WAL sidecars. A clean close
+    # removes them, so they are only here if a previous run was killed — which
+    # is exactly when this function has to be able to clean up.
+    ours = {"visionset.db", "visionset.db-wal", "visionset.db-shm", "blobs", "incoming"}
+    stray = {entry.name for entry in dest.iterdir()} - ours
     if stray:
         raise SystemExit(
             f"refusing to remove {dest}: it holds {', '.join(sorted(stray))}, "

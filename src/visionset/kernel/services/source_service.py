@@ -32,8 +32,8 @@ the winner of such a race would decide an asset's recorded origin — and
 do everywhere else in this store: the pre-check below is what produces a friendly
 answer, and the index is the guarantee. A caller that loses the race sees a raw
 ``ConstraintViolated``, and the remedy is to call the same method again, which
-finds the winner's row and returns it. The store's other known concurrency gap
-(#80, the untranslated ``OperationalError``) is still open.
+finds the winner's row and returns it. A caller that instead waits out the
+store's ``busy_timeout`` sees ``WorkspaceBusy``, and the remedy is the same.
 
 Composition follows the rule in ``docs/workspaces.md``: this service takes an
 open ``WorkspaceService`` and nothing else, and reaches ``video_processor``
@@ -116,9 +116,10 @@ class SourceService:
 
         The probe runs **before** the transaction opens. It is an out-of-process
         decoder, and holding a write transaction open across a subprocess is how
-        a single-writer SQLite store ends up reporting "database is locked" —
-        the same reason ``examples/sdk_end_to_end.py`` puts its blob writes
-        outside the ``unit_of_work``.
+        a single-writer SQLite store ends up making every other writer wait out
+        its ``busy_timeout`` and fail with ``WorkspaceBusy`` — the same reason
+        ``examples/sdk_end_to_end.py`` puts its blob writes outside the
+        ``unit_of_work``.
 
         The consequence is worth knowing: re-registering an already-known clip
         still needs ffmpeg, because the freshly probed metadata is what keeps the
