@@ -50,6 +50,11 @@ jobs:
       - name: SDK end-to-end example
         run: uv run python examples/sdk_end_to_end.py
 
+      # The ingest half of the same argument, and the one that needs the ffmpeg
+      # installed above: this example generates its own clip.
+      - name: Ingest end-to-end example
+        run: uv run python examples/ingest_end_to_end.py
+
   frontend:
     runs-on: ubuntu-latest
     steps:
