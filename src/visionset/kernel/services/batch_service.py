@@ -49,6 +49,7 @@ from visionset.kernel.domain import (
     TaskGroup,
     normalize_name,
     partition_assets,
+    require_move,
 )
 from visionset.kernel.errors import (
     AssetNotFound,
@@ -57,7 +58,6 @@ from visionset.kernel.errors import (
     BatchNotFound,
     ConfirmationRequired,
     EmptyBatch,
-    InvalidTransition,
     ProjectNotFound,
 )
 from visionset.kernel.ports import UnitOfWork
@@ -193,7 +193,7 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
-            self._require_move(batch, BatchState.APPROVED)
+            require_move(BATCH_TRANSITIONS, batch.state, BatchState.APPROVED, _subject(batch))
             if not batch.asset_ids:
                 raise EmptyBatch(
                     f"batch {batch.name!r} has no assets; an approved empty batch has no jobs "
@@ -257,7 +257,7 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
-            self._require_move(batch, BatchState.COMPLETED)
+            require_move(BATCH_TRANSITIONS, batch.state, BatchState.COMPLETED, _subject(batch))
             jobs = jobs_of(uow, batch)
             outstanding = [j for j in jobs if j.state is not AnnotationJobState.COMPLETED]
             if outstanding:
@@ -298,20 +298,14 @@ class BatchService:
             uow.batches.delete(batch.id)
 
     # --- the transition table, consulted rather than restated ---------------
+    # ``require_move`` lives in ``domain/transitions.py``; every machine in this
+    # kernel asks it the same question, so the refusal reads the same way.
 
     def _move(self, batch_id: UUID, to: BatchState) -> Batch:
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
-            self._require_move(batch, to)
+            require_move(BATCH_TRANSITIONS, batch.state, to, _subject(batch))
             return uow.batches.update(batch.model_copy(update={"state": to}))
-
-    def _require_move(self, batch: Batch, to: BatchState) -> None:
-        if to not in BATCH_TRANSITIONS[batch.state]:
-            legal = ", ".join(sorted(s.value for s in BATCH_TRANSITIONS[batch.state])) or "nothing"
-            raise InvalidTransition(
-                f"batch {batch.name!r} is {batch.state.value!r} and cannot become {to.value!r}; "
-                f"from here it can only become {legal}"
-            )
 
     # --- lookups shared by the operations above ----------------------------
 
@@ -366,6 +360,11 @@ class BatchService:
                 f"after approval an asset is excluded by marking it skipped, never by removing it"
             )
         return batch
+
+
+def _subject(batch: Batch) -> str:
+    """How a refused move names the batch. One spelling, so refusals read alike."""
+    return f"batch {batch.name!r}"
 
 
 def jobs_of(uow: UnitOfWork, batch: Batch) -> list[AnnotationJob]:
