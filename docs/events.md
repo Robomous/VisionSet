@@ -94,7 +94,7 @@ custom encoder — which is what makes a webhook a subscriber rather than a rewr
 | `BatchCompleted` | `BatchService.complete` | `batch_id`, `project_id`, `asset_count` |
 | `AnnotationsWritten` | `AnnotationService.add` / `update` / `delete` | `job_id`, `batch_id`, `operation`, `asset_ids`, `annotation_ids` |
 | `ReleasePublished` | `ReleaseService.publish` | `release_id`, `dataset_id`, `project_id`, `tag`, `manifest_hash`, `schema_version`, `asset_count`, `annotation_count` |
-| `IngestCompleted` | nobody yet — M2 | `ingest_job_id`, `project_id`, `source_id`, `asset_count` |
+| `IngestCompleted` | `IngestService.ingest` | `ingest_job_id`, `project_id`, `source_id`, `asset_count` |
 
 `AnnotationsWritten` is one per **call**, not one per box: the three writes are all-or-nothing
 over a whole payload, so one call is one thing that happened. Its `asset_ids` are deduplicated —
@@ -105,10 +105,11 @@ out of the blob store without being handed it. It is also why publishing writes 
 [dataset change-log](datasets.md) entry: the log records mutations of the trunk, and publishing
 mutates nothing in it. "A release happened" is an event.
 
-`IngestCompleted` is declared and emitted by nothing. Ingest is M2's; the vocabulary was settled
-in one pass so that a subscriber written today already compiles against the shape it will be
-handed, and a test asserts nothing in M1 emits it — so it cannot quietly acquire a caller before
-M2 wires one deliberately.
+`IngestCompleted` was declared in M1 and emitted by nothing until [ingest](ingest.md) wired it —
+the vocabulary was settled in one pass so a subscriber written then already compiled against the
+shape it would be handed, and a test held the line until the emitter arrived deliberately. Its
+`asset_count` is what the run **put in the batch**: assets it created plus assets whose content
+the project already held. A run that fails announces nothing at all.
 
 ### `name`, and why it is two types
 

@@ -312,6 +312,15 @@ class SourceNotFound(VisionSetError):
     """
 
 
+class IngestJobNotFound(VisionSetError):
+    """No ingest job with that id lives in this workspace.
+
+    Deliberately **not** ``JobNotFound``, which is an *annotation* job. The two
+    are different entities with different lifecycles, and a single ``except``
+    catching both would be catching two things because they share a word.
+    """
+
+
 class SchemaVersionConflict(VisionSetError):
     """Two writers raced for the same next version number, and this one lost.
 

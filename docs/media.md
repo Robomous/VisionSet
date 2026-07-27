@@ -333,12 +333,12 @@ kernel — FastAPI, Typer, MCP, uvicorn — not third-party libraries, and ffmpe
 
 ## What is deliberately not here yet
 
-- **No `Asset` field.** `ImageMetadata` and `VideoMetadata` are returned, not stored; putting
-  `format` and origin on the asset row belongs with the ingest pipeline.
-- **No blob write.** `thumbnail()` and `frames()` hand back bytes. Storing them
-  content-addressed, recording a `thumbnail_hash` and writing a frame's `index`/`timestamp` onto
-  an asset are the ingest and thumbnail-cache tasks.
+- **No thumbnail write.** `thumbnail()` hands back bytes. Storing them content-addressed and
+  recording an `asset.thumbnail_hash` is the thumbnail-cache task, for the M5 gallery.
 
-`Source` used to be on that list and no longer is: registering a clip records its original rate
-and the decomposition parameters chosen for it, built on `VideoMetadata` exactly as anticipated.
-See [sources.md](sources.md).
+Two things used to be on that list and no longer are. `Source` came off it with registration,
+which records a clip's original rate and the decomposition parameters chosen for it, built on
+`VideoMetadata` exactly as anticipated — see [sources.md](sources.md). The `Asset` fields came off
+it with [ingest](ingest.md): what a probe reported is now stored as `asset.format`, and a frame's
+`index`/`timestamp` land on the asset as `frame_index`/`frame_timestamp` beside the source it was
+cut from. Both ports are called from exactly one place, and that is where.

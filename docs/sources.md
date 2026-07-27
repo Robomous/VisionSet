@@ -80,16 +80,26 @@ Two things the key deliberately leaves out:
 That second rule has a corollary worth knowing: re-registering an already-known clip still needs
 ffmpeg, because the fresh probe is what keeps the record honest.
 
-### The gap this leaves, and when to close it
+### The gap this left, and how it was closed
 
-`docs/persistence.md` says a rule with no backstop is a wish, and every other uniqueness rule in
-this store has a unique index behind it. This one does not. Two concurrent registrations of one
-folder can both pass the pre-check and both insert.
+This rule shipped without a backstop, which `docs/persistence.md` calls a wish: two concurrent
+registrations of one folder could both pass the pre-check and both insert. It was tolerable only
+because nothing referenced a source, so a duplicate was inert — and [ingest](ingest.md) ended
+that, by giving `asset.source_id` a target and letting the winner of a race decide an asset's
+recorded origin.
 
-That is tolerated today because no row references a source, so a duplicate is inert. It stops
-being tolerable when ingest gives `asset.source_id` a target and the winner of a race starts
-deciding an asset's recorded origin — **that is when this needs an index under it**. It sits
-alongside the store's other known concurrency gap, the untranslated `OperationalError`.
+`uq_source_project_kind_path_fps` went in with it, over
+`(project_id, kind, path, coalesce(json_extract(video, '$.extraction_fps'), 0))`. The fourth term
+is an expression rather than a column, and it is `coalesce`d rather than left to be NULL, because
+SQLite treats NULLs in a unique index as **distinct** — an image directory, whose `video` is NULL,
+would otherwise never collide with itself, which is most of what the index is for. `0` cannot be
+mistaken for a real rate: `extraction_fps` is `gt=0`.
+
+The two layers do what they do everywhere else in this store. The pre-check is what produces a
+friendly answer; the index is the guarantee. A caller that loses the race sees a raw
+`ConstraintViolated`, and the remedy is to call the same method again, which finds the winner's
+row and returns it. The store's other known concurrency gap — the untranslated `OperationalError`
+— is still open.
 
 ## Paths are canonicalized once
 
@@ -116,11 +126,14 @@ successful registration as proof the file will decode is wrong.
 
 ## What is deliberately not here yet
 
-- **No delete.** A source disappears with its project's cascade and no sooner. Nothing yet
-  references one, so there is no orphan to reason about; when ingest gives `asset.source_id` a
-  target, deletion becomes a real question with a real answer.
+- **No delete.** A source disappears with its project's cascade and no sooner. The question ingest
+  raised does now have an answer, though: an asset **outlives** the receipt it came from. Deleting
+  a source must not take the asset, its annotations, its dataset membership or the releases naming
+  it, so a future `SourceService.delete` clears `asset.source_id` rather than cascading through it
+  — and it has to do that itself, because that column is deliberately not a foreign key (see
+  `adapters/_tables.py` for why, and what it costs).
 - **No event.** Registering a source announces nothing. `IngestCompleted` is the event this area
-  will emit, and the ingest pipeline owns it.
+  emits, and [the ingest pipeline](ingest.md) owns it.
 - **No remote kinds.** `SourceKind` has two members and grows by a deliberate kernel change with
   a service method behind it — see the enum's own docstring for why it is an enum where
   `DatasetChange.operation` is a plain `str`.

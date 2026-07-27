@@ -29,7 +29,9 @@ the argument on trust. That is the bar; a migration that would lose real data
 does not clear it — and note that under ``PRAGMA foreign_keys = ON``, which this
 store sets on every connection, ``DROP TABLE`` runs an implicit ``DELETE`` that
 cascades to children *silently*. A rebuild of a table with children has to count
-those too. Migration 7 does; migration 6 had none to count.
+those too. Migration 7 does; migration 6 had none to count. Migration 8 is the
+worked example of the other answer: ``asset`` has four cascading children *and*
+rows that are perfectly legitimate, so it alters and keeps them.
 
 Migrations only run forward. A workspace stamped ahead of this build is
 rejected (``WorkspaceFormatTooNew``) rather than silently downgraded.
@@ -42,14 +44,18 @@ from dataclasses import dataclass
 from typing import cast
 
 from sqlalchemy import Column, Connection, Table, inspect, text
-from sqlalchemy.schema import CreateColumn
+from sqlalchemy.schema import CreateColumn, CreateIndex
 
 from visionset.kernel.adapters._tables import (
+    ASSET_CONTENT_UNIQUE,
     PROJECT_NAME_UNIQUE,
+    SOURCE_ORIGIN_UNIQUE,
     AnnotationJobAssetRow,
     AnnotationRow,
+    AssetRow,
     Base,
     BatchRow,
+    IngestJobRow,
     ReleaseRow,
     SourceRow,
 )
@@ -222,6 +228,119 @@ def _rebuild_source_with_provenance(connection: Connection) -> None:
     table.create(connection)
 
 
+#: What a workspace written before the ingest pipeline may hold that the two new
+#: unique indexes will not accept. Raw text, because these are *duplicate*
+#: groups rather than rows and the mapped columns cannot express the grouping.
+_DUPLICATE_COUNTS = {
+    "asset": (
+        "SELECT count(*) FROM (SELECT project_id, content_hash FROM asset "
+        "GROUP BY project_id, content_hash HAVING count(*) > 1)"
+    ),
+    "source": (
+        "SELECT count(*) FROM (SELECT project_id, kind, path, "
+        "coalesce(json_extract(video, '$.extraction_fps'), 0) AS fps FROM source "
+        "GROUP BY project_id, kind, path, fps HAVING count(*) > 1)"
+    ),
+}
+
+
+def _rebuild_ingest_job_with_its_batch_link(connection: Connection) -> None:
+    """Re-create ``ingest_job`` so its new ``batch_id`` can carry a real key.
+
+    The third rebuild in this file, and the cheapest: no children to cascade to,
+    and nothing has ever written a row here. Migration 7 refuses any workspace
+    that holds one, and no build before this one had an ``IngestService``, so at
+    this point the table is empty on every path. "Nothing could" is a claim about
+    a build rather than about a file, so it is counted, and a workspace that
+    somehow holds one is refused rather than quietly emptied.
+    """
+    # ``__table__`` is declared as the general ``FromClause``; for a mapped class
+    # it is always the ``Table``, which is what ``drop``/``create`` need.
+    table = cast(Table, IngestJobRow.__table__)
+    stored = {existing["name"] for existing in inspect(connection).get_columns(table.name)}
+    if "batch_id" in stored:
+        return
+    if connection.execute(text("SELECT count(*) FROM ingest_job")).scalar_one():
+        raise WorkspaceCorrupt(
+            "this workspace holds ingest job rows written before IngestService existed. They "
+            "record no batch, and the assets they claim to have produced cannot be identified; "
+            "there is nothing to migrate them to, so run the ingests again instead."
+        )
+    table.drop(connection)
+    table.create(connection)
+
+
+def _add_ingest_origin_and_uniqueness(connection: Connection) -> None:
+    """Give an asset its origin, a run its batch, and both rules an index.
+
+    **``asset`` is altered and ``ingest_job`` is rebuilt**, and the split is not
+    arbitrary. A key added by ``ALTER TABLE ... ADD COLUMN`` is spelled inline on
+    the column, while ``create_all`` spells one as a table constraint: the two
+    texts differ, so any column carrying a foreign key has to arrive by a
+    rebuild or not carry one at all. ``ingest_job.batch_id`` needs its key —
+    batches *are* deleted, and a run pointing at one that is gone is a lie — and
+    that table has no children and is provably empty here, so it is rebuilt (and
+    counted rather than assumed, on migrations 6 and 7's terms).
+    ``asset.source_id`` cannot have either: ``asset`` has four ``ON DELETE
+    CASCADE`` children (``batch_asset``, ``annotation``, ``dataset_member``,
+    ``annotation_job_asset``) and under ``PRAGMA foreign_keys = ON`` a
+    ``DROP TABLE`` runs an implicit ``DELETE`` that takes all four *silently*,
+    and unlike a pre-#12 release or a pre-#18 source its rows are perfectly
+    legitimate — M1's example wrote them through the same public port a service
+    uses. So it is altered, and the column is a plain reference; see
+    ``_tables.AssetRow`` for what that costs and why it is little.
+
+    Every added column is nullable and honest: NULL means "this row predates the
+    ingest pipeline", which is true, where a ``server_default`` would invent a
+    format nobody probed.
+
+    Idempotent the way 3 to 5 are for the columns (the inspector check inside
+    ``_add_column`` *is* the ``checkfirst``), the way 6 and 7 are for the rebuild
+    (an inspector check ahead of it), and the way 2 is for the indexes, which
+    share one object each with ``_tables`` rather than restating DDL.
+
+    **Two duplicate pre-checks, because an index can fail on data already on
+    disk.** Both uniqueness rules existed before this migration as service-level
+    pre-checks with nothing underneath them — ``docs/persistence.md`` calls such
+    a rule a wish — so a workspace written by an earlier build may hold rows the
+    index refuses. It is refused with a sentence naming both counts rather than
+    letting an ``IntegrityError`` escape from ``initialize()``. Nothing is
+    dropped on that path, so it is a stop rather than a rescue: duplicate assets
+    cannot be merged automatically, because each may carry its own annotations.
+    """
+    counts = {
+        name: connection.execute(text(query)).scalar_one()
+        for name, query in _DUPLICATE_COUNTS.items()
+    }
+    if any(counts.values()):
+        raise WorkspaceCorrupt(
+            f"this workspace holds {counts['asset']} group(s) of duplicate assets (one project, "
+            f"one content hash) and {counts['source']} group(s) of duplicate sources (one "
+            "project, kind, path and extraction rate). Ingest makes content the identity of an "
+            "asset and an origin the identity of a source, so neither set can be kept as it "
+            "stands; each duplicate may carry its own annotations, so merge or remove them by "
+            "hand first."
+        )
+    # ``.c`` is typed as the generic column collection; each entry is a real
+    # ``Column``, which is what ``CreateColumn`` needs.
+    for column in (
+        AssetRow.__table__.c.format,
+        AssetRow.__table__.c.source_id,
+        AssetRow.__table__.c.frame_index,
+        AssetRow.__table__.c.frame_timestamp,
+    ):
+        _add_column(connection, cast(Column[object], column))
+    _rebuild_ingest_job_with_its_batch_link(connection)
+    ASSET_CONTENT_UNIQUE.create(connection, checkfirst=True)
+    # Not ``checkfirst``, unlike every other index here, and the reason is worth
+    # the two lines: ``checkfirst`` asks the inspector, and SQLAlchemy cannot
+    # reflect an **expression-based** index — it skips it with a warning, reports
+    # the index as absent and re-issues the ``CREATE``, which then fails on
+    # every fresh database. ``IF NOT EXISTS`` asks SQLite instead. The DDL is
+    # still compiled from the one object in ``_tables``, so nothing is restated.
+    connection.execute(CreateIndex(SOURCE_ORIGIN_UNIQUE, if_not_exists=True))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -253,6 +372,11 @@ MIGRATIONS: list[Migration] = [
         version=7,
         name="source_provenance",
         upgrade=_rebuild_source_with_provenance,
+    ),
+    Migration(
+        version=8,
+        name="ingest_pipeline",
+        upgrade=_add_ingest_origin_and_uniqueness,
     ),
 ]
 
