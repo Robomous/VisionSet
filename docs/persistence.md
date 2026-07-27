@@ -89,8 +89,10 @@ second ledger by hand. Instead:
 ```python
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
+    Migration(version=2, name="project_name_unique_per_workspace", upgrade=...),
+    Migration(version=3, name="batch_schema_version_pin", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 3
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -121,6 +123,13 @@ change. Migration 002 is the worked example — it creates the project-name inde
 `checkfirst=True`, and it shares the one `Index` object with `_tables` rather than repeating
 the DDL, so the fresh path and the upgrade path cannot drift apart.
 `test_a_fresh_database_and_a_migrated_one_have_the_same_schema` proves they agree.
+
+A **column** has no `checkfirst`, and SQLite has no `ADD COLUMN IF NOT EXISTS`, so migration
+003 asks the inspector instead — that check *is* its idempotency. It still compiles the DDL
+from the `Column` object in `_tables` (via `CreateColumn`) rather than typing the type out,
+for the same anti-drift reason. The fresh-versus-migrated test is only as strong as how far
+back `_downgrade_to_version_one` walks, so every migration added there needs its undo added
+too.
 
 `format_version` here is the *database* generation. Validating the on-disk workspace layout
 around it — directories, the blob-store root, what makes a directory a workspace at all —

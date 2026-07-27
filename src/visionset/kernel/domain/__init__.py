@@ -9,7 +9,7 @@ Convention reminders encoded here:
 
 from visionset.kernel.domain.annotation import Annotation, Provenance
 from visionset.kernel.domain.asset import Asset
-from visionset.kernel.domain.batch import Batch, BatchState
+from visionset.kernel.domain.batch import BATCH_TRANSITIONS, Batch, BatchState
 from visionset.kernel.domain.dataset import Dataset, DatasetChange, DatasetMember
 from visionset.kernel.domain.geometry import (
     IMPLEMENTED_GEOMETRIES,
@@ -19,6 +19,14 @@ from visionset.kernel.domain.geometry import (
     PolygonGeometry,
 )
 from visionset.kernel.domain.ingest import IngestJob, IngestState
+from visionset.kernel.domain.names import normalize_name
+from visionset.kernel.domain.partition import (
+    BySegments,
+    BySize,
+    Partition,
+    SingleJob,
+    partition_assets,
+)
 from visionset.kernel.domain.project import Project
 from visionset.kernel.domain.release import Manifest, Release
 from visionset.kernel.domain.schema import (
@@ -39,6 +47,7 @@ from visionset.kernel.domain.task import AnnotationJob, AnnotationJobState, Asse
 from visionset.kernel.domain.workspace import Workspace
 
 __all__ = [
+    "BATCH_TRANSITIONS",
     "IMPLEMENTED_GEOMETRIES",
     "Annotation",
     "AnnotationJob",
@@ -51,6 +60,8 @@ __all__ = [
     "Batch",
     "BatchState",
     "BboxGeometry",
+    "BySegments",
+    "BySize",
     "ChangeKind",
     "ClassificationGeometry",
     "Dataset",
@@ -62,14 +73,18 @@ __all__ = [
     "IngestState",
     "LabelClass",
     "Manifest",
+    "Partition",
     "PolygonGeometry",
     "Project",
     "Provenance",
     "Release",
     "SchemaChange",
     "SchemaDiff",
+    "SingleJob",
     "Source",
     "TaskGroup",
     "Workspace",
     "diff_classes",
+    "normalize_name",
+    "partition_assets",
 ]

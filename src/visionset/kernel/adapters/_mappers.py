@@ -192,7 +192,11 @@ def _change_to_domain(_: Session, row: Any) -> DatasetChange:
 
 def _batch_to_row(entity: Batch) -> t.Base:
     return t.BatchRow(
-        id=entity.id, project_id=entity.project_id, name=entity.name, state=entity.state
+        id=entity.id,
+        project_id=entity.project_id,
+        name=entity.name,
+        state=entity.state,
+        schema_version=entity.schema_version,
     )
 
 
@@ -207,6 +211,7 @@ def _batch_to_domain(session: Session, row: Any) -> Batch:
         project_id=row.project_id,
         name=row.name,
         state=row.state,
+        schema_version=row.schema_version,
         asset_ids=list(members),
     )
 
