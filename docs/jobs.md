@@ -50,6 +50,20 @@ Underneath it, each asset moves through `ASSET_PROGRESS_TRANSITIONS`:
 
 Anything outside the table raises `InvalidTransition`, naming what the asset *can* become.
 
+### Two of those edges are derived from the annotations
+
+Progress is still deliberately not the annotations — the paragraph at the top of this page
+holds. The two just share one derived edge each way: writing the first annotation on an asset
+moves it `unannotated → annotated`, and deleting its last one moves it back.
+`AnnotationService` does that itself, in the same transaction as the write, so no caller has to
+remember to `mark` after labeling.
+
+The other three states are exactly the ones no annotation can justify. `skipped` means somebody
+chose not to label this; `review_pending` means somebody submitted it; `accepted` means a
+reviewer took it. A box being drawn or erased contradicts none of them, so annotations leave
+them where they are, and `mark` stays the only door to a decision. The rule is
+`progress_after_annotating` in `kernel/domain/task.py`; see [annotations.md](annotations.md).
+
 ### Marking a state it is already in is a no-op
 
 ```python
@@ -95,7 +109,10 @@ Before that the batch is still being curated or has only just been approved; aft
 is closed.
 
 `AnnotationService` raises the same error for the same reason — writing an annotation into a
-job whose batch is not open is the same refusal, and one error for it beats two.
+job whose batch is not open is the same refusal, and one error for it beats two. It does not
+restate the check either: `JobService.require_job` and `JobService.require_open_batch` are
+public and take a unit of work, so the caller runs them inside its own transaction and there is
+one ladder from job to batch rather than two that can drift.
 
 ## `next_pending` is ordered, and the order is stored
 

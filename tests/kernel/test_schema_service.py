@@ -1,8 +1,12 @@
 """SchemaService: monotonic immutable versions, and the two gates on narrowing.
 
-No AnnotationService exists yet, so the tests that need existing labels write
-assets and annotations straight through the unit of work. That is setup, not
-usage — every schema in here still comes through the one door.
+The tests that need existing labels write assets and annotations straight
+through the unit of work, and keep doing so now that `AnnotationService` exists.
+That is deliberate rather than left over: those labels have to sit under classes
+the *next* version is about to remove, and the service would first demand an
+approved batch pinned at the very schema the test is trying to narrow. Setting
+up the precondition is not the same as exercising the door — every schema in
+here still comes through `SchemaService`.
 """
 
 from __future__ import annotations

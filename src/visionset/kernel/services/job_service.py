@@ -13,8 +13,11 @@ Three things shape this module:
   ``ASSET_PROGRESS_TRANSITIONS`` live in ``domain/task.py``; this service
   consults them and never restates them. Adding a state is one edit there.
 - **Work only happens inside an open batch.** Every write here requires the
-  job's batch to be ``in_annotation``. ``AnnotationService`` will need the same
-  gate, and it should reuse ``BatchNotInAnnotation`` rather than invent a second.
+  job's batch to be ``in_annotation``. ``AnnotationService`` needs the same gate,
+  and rather than restate it, it calls :meth:`JobService.require_job` and
+  :meth:`JobService.require_open_batch` — public, and taking a unit of work,
+  because the caller has to run them inside its own transaction. One ladder from
+  job to batch, one wording of ``BatchNotInAnnotation``, in both services.
 - **Nothing here completes a batch.** ``BatchService.complete`` derives that from
   its jobs when asked. Cascading upward from here would put the batch's machine
   in two places, and the two would eventually disagree.
@@ -69,7 +72,7 @@ class JobService:
             JobNotFound: no such job in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return self._require_job(uow, job_id)
+            return self.require_job(uow, job_id)
 
     def next_pending(self, job_id: UUID, count: int) -> list[Asset]:
         """The next assets waiting to be annotated, in the batch's own order.
@@ -91,7 +94,7 @@ class JobService:
         if count <= 0:
             raise ValueError(f"count must be positive; got {count}")
         with self._workspace.unit_of_work() as uow:
-            job = self._require_job(uow, job_id)
+            job = self.require_job(uow, job_id)
             waiting = [
                 asset_id
                 for asset_id, progress in job.progress.items()
@@ -111,7 +114,7 @@ class JobService:
             JobNotFound: no such job in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return _tally([self._require_job(uow, job_id)])
+            return _tally([self.require_job(uow, job_id)])
 
     def batch_progress(self, batch_id: UUID) -> dict[AssetProgress, int]:
         """The same tally across every job of one batch.
@@ -171,8 +174,8 @@ class JobService:
             JobNotComplete: an asset is still unsettled.
         """
         with self._workspace.unit_of_work() as uow:
-            job = self._require_job(uow, job_id)
-            self._require_open_batch(uow, job)
+            job = self.require_job(uow, job_id)
+            self.require_open_batch(uow, job)
             _require_move(JOB_TRANSITIONS, job.state, AnnotationJobState.COMPLETED, f"job {job.id}")
 
             unsettled = _unsettled(job)
@@ -211,7 +214,7 @@ class JobService:
             InvalidTransition: the asset cannot move from where it is to there.
         """
         with self._workspace.unit_of_work() as uow:
-            job = self._require_job(uow, job_id)
+            job = self.require_job(uow, job_id)
             current = job.progress.get(asset_id)
             if current is None:
                 raise AssetNotInJob(
@@ -221,7 +224,7 @@ class JobService:
             # The gate comes before the no-op check on purpose: a caller writing
             # into a closed batch has a bug whether or not the value would change,
             # and hearing about it only when it happens to differ would hide it.
-            self._require_open_batch(uow, job)
+            self.require_open_batch(uow, job)
             if current is progress:
                 return job
 
@@ -238,8 +241,8 @@ class JobService:
 
     def _move(self, job_id: UUID, to: AnnotationJobState) -> AnnotationJob:
         with self._workspace.unit_of_work() as uow:
-            job = self._require_job(uow, job_id)
-            self._require_open_batch(uow, job)
+            job = self.require_job(uow, job_id)
+            self.require_open_batch(uow, job)
             _require_move(JOB_TRANSITIONS, job.state, to, f"job {job.id}")
             return uow.annotation_jobs.update(job.model_copy(update={"state": to}))
 
@@ -260,11 +263,20 @@ class JobService:
         self._require_project(uow, batch.project_id)
         return batch
 
-    def _require_job(self, uow: UnitOfWork, job_id: UUID) -> AnnotationJob:
+    def require_job(self, uow: UnitOfWork, job_id: UUID) -> AnnotationJob:
         """The job, reached through its task group and batch.
 
         A job in another workspace reads as missing rather than as forbidden —
         the rule every other service here follows.
+
+        Public, and taking a ``uow``, for the reason
+        ``WorkspaceService.require_project_name`` is: ``AnnotationService``
+        needs this exact lookup *inside its own transaction*, and a second
+        spelling of it in a second service is the drift this codebase refuses.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            WorkspaceCorrupt: the job's task group is gone.
         """
         job = uow.annotation_jobs.get(job_id)
         if job is None:
@@ -286,8 +298,17 @@ class JobService:
             )
         return self._require_batch(uow, group.batch_id)
 
-    def _require_open_batch(self, uow: UnitOfWork, job: AnnotationJob) -> Batch:
-        """The job's batch, refused unless it is open for annotation."""
+    def require_open_batch(self, uow: UnitOfWork, job: AnnotationJob) -> Batch:
+        """The job's batch, refused unless it is open for annotation.
+
+        Public alongside :meth:`require_job`, and for the same reason: this is
+        the gate ``AnnotationService`` has to pass too, and there should be one
+        wording of "no work happens in a batch nobody opened", not two.
+
+        Raises:
+            BatchNotInAnnotation: the batch is not ``in_annotation``.
+            WorkspaceCorrupt: the job's task group is gone.
+        """
         batch = self._batch_of(uow, job)
         if batch.state is not BatchState.IN_ANNOTATION:
             raise BatchNotInAnnotation(

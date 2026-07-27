@@ -188,6 +188,13 @@ Rules that need the *whole* version — duplicate class names, an unimplemented 
 are `SchemaService`'s, and both raise `InvalidSchema` (`UnsupportedGeometry` is a subclass,
 so one `except` covers every way a version can be malformed).
 
+What is validated here is attribute **definitions**. Attribute **values** are validated
+somewhere else and at a different time: at annotation write time, by `AnnotationService`,
+against the version the annotation's batch pinned at approval — not against the project's
+active version. The judgement itself is shared rather than reimplemented: `Attribute.rejects`
+is the one method that answers "does this attribute take this value", and both a default and
+a label go through it. See [annotations.md](annotations.md).
+
 ## Concurrency
 
 The next version number is computed from the versions already stored, so two writers can

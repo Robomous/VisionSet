@@ -11,4 +11,5 @@ contracts (kernel purity, headless annotator) are described there and enforced i
 | [schemas.md](schemas.md) | The annotation schema: immutable monotonic versions, additive vs destructive change, and the two gates on narrowing |
 | [batches.md](batches.md) | The unit of annotation work: the state machine, membership frozen at approval, the schema pin, and the exact partition into jobs |
 | [jobs.md](jobs.md) | Annotation jobs: the job and per-asset progress machines, what counts as settled, ordered `next_pending`, and derived progress |
+| [annotations.md](annotations.md) | The labels themselves: the one door, the batch's pinned version, the five hard rejects, attribute values, and progress derived from the annotations |
 | [persistence.md](persistence.md) | The metadata store: repositories, unit of work, table layout, migrations and `format_version` |

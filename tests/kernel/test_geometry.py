@@ -118,8 +118,11 @@ def test_discriminator_values_are_geometry_type_members() -> None:
 
 
 def test_geometry_type_is_comparable_to_a_label_class_without_translation() -> None:
-    # This is the check AnnotationService (#7) performs against allowed_geometries;
-    # the union is designed so it needs no adapter layer.
+    # This is the check AnnotationService performs, and it is per class: a LabelClass
+    # declares one geometry, so the rule is equality against `LabelClass.geometry`, not
+    # membership in `SchemaService.allowed_geometries` (which is the union across a
+    # version's classes, and would let a polygon through under a bbox class). The union
+    # is designed so either comparison needs no adapter layer.
     label_class = LabelClass(name="car", geometry=GeometryType.BBOX)
     annotation = _annotation(BboxGeometry(x=1.0, y=2.0, width=10.0, height=20.0))
     assert annotation.geometry.type == label_class.geometry
