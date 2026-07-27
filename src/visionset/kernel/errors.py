@@ -6,8 +6,8 @@ surface can translate the whole family to an HTTP status or an exit code with a
 single ``except`` clause. The kernel NEVER raises a framework exception —
 ``HTTPException`` and friends belong to the boundary, not here.
 
-Persistence, workspace, project, schema, batch, job, annotation, dataset and
-release errors live here; later services add their own as they land.
+Persistence, workspace, project, schema, batch, job, annotation, dataset, release
+and media errors live here; later services add their own as they land.
 """
 
 from __future__ import annotations
@@ -447,4 +447,76 @@ class UnserializableManifest(VisionSetError):
     written as ``null`` or as the token ``NaN`` — the first loses data silently
     and the second produces a document no other tool can parse, in a file whose
     whole purpose is to be verifiable.
+    """
+
+
+class MediaError(VisionSetError):
+    """A media file could not be turned into an asset, and this says which one.
+
+    The base of the two refusals below, so an ingest run can catch the family
+    once, record the failure against the item it was reading, and carry on with
+    the next file — which is the whole point of a *per-file* error. Catching the
+    base is safe in the way catching ``InvalidAnnotation`` is safe and catching
+    ``DestructiveSchemaChange`` is not: neither child has a flag that overrides
+    it, so nothing here can be retried into a loop.
+
+    Structured, unlike every other error in this module, and the only one with a
+    constructor. Two concrete reasons. An ingest job persists a per-file error
+    report, and rebuilding one by re-parsing ``str(exc)`` means parsing a
+    sentence written for a human. And ``Exception.args[0]`` is ``Any``, so under
+    mypy-strict a typed report needs typed attributes to read.
+
+    ``name`` is whatever the caller called the stream — a path for a file on
+    disk, something like ``clip.mp4#frame=42`` for a decoded video frame,
+    ``None`` for bytes nobody named. It is **reporting, never identity**: nothing
+    looks a file up by it, and a caller that already knows which item it was
+    iterating should key its report on that rather than on this. ``reason`` never
+    repeats the name; the name is a field, and a report that spelled it into every
+    sentence would be a list of strings rather than a table.
+
+    Named for media rather than for images because the video processor raises the
+    same two: a codec ffmpeg will not open is ``UnsupportedMedia`` and a truncated
+    clip is ``CorruptMedia``. The split is by *remedy*, not by modality — a
+    modality split would have produced four errors describing two situations.
+    """
+
+    def __init__(self, reason: str, *, name: str | None = None) -> None:
+        super().__init__(f"{name or '<unnamed stream>'}: {reason}")
+        self.name = name
+        self.reason = reason
+
+
+class UnsupportedMedia(MediaError):
+    """The bytes are not something VisionSet accepts, and never will be as they are.
+
+    Three readings, one refusal: not an image at all (a README that happened to
+    be in the folder), an image in a format outside ``ImageFormat``, and an image
+    declaring so many pixels that decoding it is a denial of service rather than
+    an ingest. All three end the same way — the file does not enter the dataset —
+    and all three are the operator's to fix, by not pointing at it, by converting
+    it, or by asking for the format to be accepted.
+
+    Deliberately not split into ``NotAnImage`` and ``UnsupportedFormat``. A
+    decoder cannot reliably tell them apart: an unidentifiable container and an
+    exotic one both come back as "I do not know what this is", so the split would
+    be a distinction the kernel guesses at and a caller cannot act on.
+
+    Distinct from ``CorruptMedia`` because the remedies are opposite. This one
+    says the file is intact and is not for us; that one says the file is for us
+    and is broken. An ingest report that could not separate the two would bury
+    real data loss under ordinary operator noise.
+    """
+
+
+class CorruptMedia(MediaError):
+    """An accepted format whose bytes will not decode.
+
+    A truncated download, a half-written copy, a bad sector. The header is
+    convincing enough to identify — which is why this is not ``UnsupportedMedia``
+    — and the pixels are what fail.
+
+    Raised by *decoding*, never by inspecting. A header says what a file claims
+    to be, and admitting a file on that claim is how a dataset acquires an asset
+    whose bytes nobody can read until a training run trips over it. That is why
+    probing pays for a full decode per file instead of sniffing.
     """

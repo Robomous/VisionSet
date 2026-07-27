@@ -21,7 +21,9 @@ from tests.fixtures.media import (
     write_corrupt_image,
     write_exif_rotated_image,
     write_image,
+    write_image_in_unsupported_format,
     write_images,
+    write_multi_picture_jpeg,
     write_unsupported_file,
     write_video,
 )
@@ -93,6 +95,33 @@ def test_an_unsupported_file_is_not_an_image_at_all(tmp_path: Path) -> None:
     path = write_unsupported_file(tmp_path / "notes.txt")
     with pytest.raises(UnidentifiedImageError):
         Image.open(path)
+
+
+@pytest.mark.parametrize("image_format", ["BMP", "GIF", "TIFF"], ids=str.lower)
+def test_an_unaccepted_format_is_a_perfectly_good_image(tmp_path: Path, image_format: str) -> None:
+    """The third refusal: decodable, and still declined. #16 must not confuse it with garbage."""
+    path = write_image_in_unsupported_format(tmp_path / "photo.bin", image_format=image_format)
+    with Image.open(path) as image:
+        assert image.format == image_format
+        assert image.size == DEFAULT_IMAGE_SIZE
+
+
+def test_a_multi_picture_jpeg_announces_itself_as_mpo(tmp_path: Path) -> None:
+    """What a phone writes. #16 accepts it as a JPEG, which it can only do by knowing the name."""
+    path = write_multi_picture_jpeg(tmp_path / "burst.jpg")
+    with Image.open(path) as image:
+        assert image.format == "MPO"
+        assert image.n_frames == 2
+        assert image.size == DEFAULT_IMAGE_SIZE
+
+
+def test_the_generators_added_for_the_image_processor_are_deterministic(tmp_path: Path) -> None:
+    assert _digest(write_image_in_unsupported_format(tmp_path / "a.bmp")) == _digest(
+        write_image_in_unsupported_format(tmp_path / "b.bmp")
+    )
+    assert _digest(write_multi_picture_jpeg(tmp_path / "a.jpg")) == _digest(
+        write_multi_picture_jpeg(tmp_path / "b.jpg")
+    )
 
 
 # --- video ----------------------------------------------------------------------------------
