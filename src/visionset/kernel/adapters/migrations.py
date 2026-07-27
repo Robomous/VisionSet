@@ -21,11 +21,15 @@ runs against the fresh one that already has its change — hence ``checkfirst`` 
 migration (rather than repeating the DDL) is what keeps the two paths from
 drifting; ``tests/kernel/test_migrations.py`` proves they agree.
 
-**A migration may drop, but it has to earn it.** Migration 6 rebuilds the
-``release`` table instead of altering it, because the columns it needed could
-not be added honestly and because the rows it discards could not have been made
-correct. It checks that there are none rather than taking the argument on trust.
-That is the bar; a migration that would lose real data does not clear it.
+**A migration may drop, but it has to earn it.** Migrations 6 and 7 rebuild the
+``release`` and ``source`` tables instead of altering them, because the columns
+they needed could not be added honestly and because the rows they discard could
+not have been made correct. Both check that there are none rather than taking
+the argument on trust. That is the bar; a migration that would lose real data
+does not clear it — and note that under ``PRAGMA foreign_keys = ON``, which this
+store sets on every connection, ``DROP TABLE`` runs an implicit ``DELETE`` that
+cascades to children *silently*. A rebuild of a table with children has to count
+those too. Migration 7 does; migration 6 had none to count.
 
 Migrations only run forward. A workspace stamped ahead of this build is
 rejected (``WorkspaceFormatTooNew``) rather than silently downgraded.
@@ -47,6 +51,7 @@ from visionset.kernel.adapters._tables import (
     Base,
     BatchRow,
     ReleaseRow,
+    SourceRow,
 )
 from visionset.kernel.errors import WorkspaceCorrupt
 
@@ -125,9 +130,9 @@ def _add_annotation_attributes(connection: Connection) -> None:
 def _repoint_release_at_its_manifest_blob(connection: Connection) -> None:
     """Rebuild ``release`` around a manifest that lives in the blob store.
 
-    The only migration here that drops a table, and the only one that could not
-    have been an ``ALTER``. Three of the columns it adds are ``NOT NULL`` with no
-    honest default — SQLite refuses such a column without one, so the ``ALTER``
+    The first migration here that drops a table (migration 7 is the other), and
+    it could not have been an ``ALTER``. Three of the columns it adds are
+    ``NOT NULL`` with no honest default — SQLite refuses such a column without one, so the ``ALTER``
     route would have baked ``manifest_hash DEFAULT ''`` and two more fictions
     into every fresh database forever. And decisively: a pre-#12 row carries its
     manifest as a JSON column with *no blob behind it*, so there is no value
@@ -162,6 +167,61 @@ def _repoint_release_at_its_manifest_blob(connection: Connection) -> None:
     table.create(connection)
 
 
+def _rebuild_source_with_provenance(connection: Connection) -> None:
+    """Rebuild ``source`` around real provenance: where, when, and at what rate.
+
+    Before this, a source was ``(kind, uri)`` and nothing else — a placeholder
+    with no service behind it. It gains a registration timestamp, the capture
+    parameters an operator supplied, and for a clip the probe result plus the
+    decomposition rate; ``uri`` becomes ``path``, which is what it always held.
+
+    A rebuild rather than five ``ALTER``s, on migration 6's terms.
+    ``registered_at`` is ``NOT NULL`` with no honest default — SQLite refuses
+    such a column without one, so the ``ALTER`` route would bake a fictional
+    epoch into every fresh database forever. And decisively: ``kind`` on a
+    pre-#18 row reads ``'local_folder'``, which is not a value ``SourceKind``
+    has, so those rows would come back as validation errors rather than as
+    sources. Adding the columns would manufacture rows that are broken by
+    construction.
+
+    Idempotent the way migrations 3 to 6 are: the inspector check *is* the
+    ``checkfirst``, because migration 1 is ``create_all`` of current metadata.
+    That check comes first so the fresh path never reaches the counts below.
+
+    **Two counts, not one.** ``ingest_job.source_id`` is ``ON DELETE CASCADE``
+    and the store sets ``PRAGMA foreign_keys = ON`` on every connection, so
+    ``DROP TABLE source`` performs an implicit ``DELETE FROM source`` that takes
+    the ingest jobs with it — silently, without an error. Migration 6 dropped a
+    table with no children and so never met this. Counting only ``source`` would
+    let a workspace with orphan-parented jobs pass the check and lose them.
+
+    Nothing could write either row before ``SourceService`` existed, but "nothing
+    could" is a claim about a build, not about a file on disk — so a workspace
+    that somehow holds one is refused rather than quietly emptied.
+    """
+    # ``__table__`` is declared as the general ``FromClause``; for a mapped class
+    # it is always the ``Table``, which is what ``drop``/``create`` need.
+    table = cast(Table, SourceRow.__table__)
+    stored = {existing["name"] for existing in inspect(connection).get_columns(table.name)}
+    if "registered_at" in stored:
+        return
+    # Raw text: the table still has its pre-#18 shape here, so the mapped columns
+    # in ``_tables`` no longer describe the thing being counted.
+    counts = {
+        name: connection.execute(text(f"SELECT count(*) FROM {name}")).scalar_one()
+        for name in ("source", "ingest_job")
+    }
+    if any(counts.values()):
+        raise WorkspaceCorrupt(
+            "this workspace holds source rows written before SourceService existed "
+            f"({counts['source']} sources, {counts['ingest_job']} ingest jobs). They record no "
+            "registration date and their 'local_folder' kind no longer exists, so there is "
+            "nothing to migrate them to; register the sources again instead."
+        )
+    table.drop(connection)
+    table.create(connection)
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -188,6 +248,11 @@ MIGRATIONS: list[Migration] = [
         version=6,
         name="release_manifest_pointer",
         upgrade=_repoint_release_at_its_manifest_blob,
+    ),
+    Migration(
+        version=7,
+        name="source_provenance",
+        upgrade=_rebuild_source_with_provenance,
     ),
 ]
 

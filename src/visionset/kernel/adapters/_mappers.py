@@ -7,14 +7,15 @@ directions of the conversion; the repository in
 fourteen times against fourteen tables.
 
 Most entities are flat — every field is a column — and share
-``_flat_mapping``. The six that are not say so explicitly:
+``_flat_mapping``. The seven that are not say so explicitly:
 
 - ``AnnotationSchema`` and ``Annotation`` hold immutable nested values, encoded
   as JSON.
 - ``Batch`` and ``AnnotationJob`` own child tables, so their mappings carry a
   ``sync_children`` hook and rebuild their collections on read.
-- ``DatasetChange`` and ``Release`` encode a timezone-aware timestamp, which a
-  ``String`` column must be handed as text rather than as a ``datetime``.
+- ``DatasetChange``, ``Release`` and ``Source`` encode a timezone-aware
+  timestamp, which a ``String`` column must be handed as text rather than as a
+  ``datetime``. ``Source`` also carries a nested ``VideoProvenance`` as JSON.
 """
 
 from __future__ import annotations
@@ -46,8 +47,10 @@ from visionset.kernel.domain import (
     Project,
     Release,
     Source,
+    SourceKind,
     SplitRecipe,
     TaskGroup,
+    VideoProvenance,
     Workspace,
 )
 
@@ -172,6 +175,34 @@ def _change_to_domain(_: Session, row: Any) -> DatasetChange:
     )
 
 
+def _source_to_row(entity: Source) -> t.Base:
+    return t.SourceRow(
+        id=entity.id,
+        project_id=entity.project_id,
+        kind=entity.kind,
+        path=entity.path,
+        # Spelled out for the reason ``_release_to_row`` is: ``_flat_mapping``
+        # dumps in python mode and would hand a ``datetime`` to a ``String``
+        # column, which sqlite3 accepts through a deprecated adapter and writes
+        # in a second timestamp format.
+        registered_at=entity.registered_at.isoformat(),
+        capture_params=dict(entity.capture_params),
+        video=None if entity.video is None else entity.video.model_dump(mode="json"),
+    )
+
+
+def _source_to_domain(_: Session, row: Any) -> Source:
+    return Source(
+        id=row.id,
+        project_id=row.project_id,
+        kind=SourceKind(row.kind),
+        path=row.path,
+        registered_at=datetime.fromisoformat(row.registered_at),
+        capture_params=row.capture_params,
+        video=None if row.video is None else VideoProvenance.model_validate(row.video),
+    )
+
+
 def _release_to_row(entity: Release) -> t.Base:
     return t.ReleaseRow(
         id=entity.id,
@@ -278,7 +309,6 @@ def _job_sync_children(session: Session, entity: AnnotationJob) -> None:
 
 WORKSPACES = _flat_mapping(Workspace, t.WorkspaceRow, None)
 PROJECTS = _flat_mapping(Project, t.ProjectRow, "workspace_id")
-SOURCES = _flat_mapping(Source, t.SourceRow, "project_id")
 INGEST_JOBS = _flat_mapping(IngestJob, t.IngestJobRow, "source_id")
 ASSETS = _flat_mapping(Asset, t.AssetRow, "project_id")
 TASK_GROUPS = _flat_mapping(TaskGroup, t.TaskGroupRow, "batch_id")
@@ -296,6 +326,12 @@ ANNOTATIONS: EntityMapping[Annotation] = EntityMapping(
     parent_column="asset_id",
     to_row=_annotation_to_row,
     to_domain=_annotation_to_domain,
+)
+SOURCES: EntityMapping[Source] = EntityMapping(
+    row=t.SourceRow,
+    parent_column="project_id",
+    to_row=_source_to_row,
+    to_domain=_source_to_domain,
 )
 RELEASES: EntityMapping[Release] = EntityMapping(
     row=t.ReleaseRow,

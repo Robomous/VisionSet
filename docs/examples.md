@@ -51,9 +51,10 @@ comparing folds by content hash, never by id.
 
 ## The one place it reaches below a service
 
-Creating an `Asset` has no door yet. Ingest is M2 — `SourceService` (#18), `IngestJob` (#19), and
-the pipeline that hashes, deduplicates, extracts dimensions and materializes assets into a batch
-(#20) — so `_add_assets` writes, by hand, the row that ingest will write:
+Creating an `Asset` has no door yet. `SourceService` (#18) has landed, but it registers *where*
+data comes from, not the assets themselves; the pipeline that hashes, deduplicates, extracts
+dimensions and materializes assets into a batch is #20, with `IngestJob` (#19) around it. Until
+#20 lands, `_add_assets` writes, by hand, the row that ingest will write:
 
 ```python
 hashes = [workspace.blob_store.put(BytesIO(frame_bytes(i))) for i in range(count)]

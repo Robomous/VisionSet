@@ -338,5 +338,7 @@ kernel — FastAPI, Typer, MCP, uvicorn — not third-party libraries, and ffmpe
 - **No blob write.** `thumbnail()` and `frames()` hand back bytes. Storing them
   content-addressed, recording a `thumbnail_hash` and writing a frame's `index`/`timestamp` onto
   an asset are the ingest and thumbnail-cache tasks.
-- **No `Source`.** Nothing yet records that a clip was registered, at what original rate, or with
-  what decomposition parameters. `VideoMetadata.fps` is what that record will be built from.
+
+`Source` used to be on that list and no longer is: registering a clip records its original rate
+and the decomposition parameters chosen for it, built on `VideoMetadata` exactly as anticipated.
+See [sources.md](sources.md).

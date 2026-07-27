@@ -95,8 +95,9 @@ MIGRATIONS: list[Migration] = [
     Migration(version=4, name="annotation_job_asset_position", upgrade=...),
     Migration(version=5, name="annotation_attributes", upgrade=...),
     Migration(version=6, name="release_manifest_pointer", upgrade=...),
+    Migration(version=7, name="source_provenance", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 6
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 7
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -138,24 +139,35 @@ one, where `batch_asset.position`, which was there from migration 001, does not.
 
 And a column arriving by `ALTER` must be declared **last** on its row class, because SQLite
 appends it: `batch.schema_version`, `annotation_job_asset.position` and `annotation.attributes`
-all sit at the end of their tables for that reason alone. Declared anywhere else, the
+all sit at the end of their tables for that reason alone. `source` is exempt — migration 007
+rebuilds it from `_tables` rather than altering it, so both paths run the same `CREATE TABLE` and
+the rule has nothing to bite on. Declared anywhere else, the
 `create_all` path and the `ALTER` path emit different `CREATE TABLE` text and the
 fresh-versus-migrated test fails — which is exactly what it is for.
 
-**Migration 006 is the one that drops a table**, and the bar it had to clear is worth writing
-down. `release` gained three `NOT NULL` columns with no honest default — an `ALTER` would have
-baked `manifest_hash DEFAULT ''` into every fresh database forever — and, decisively, a pre-#12
-release row carries its manifest as a JSON column with *no blob behind it*, so there is no value
-`manifest_hash` could be given that `verify` would ever accept. Adding the columns would have
-manufactured rows that are broken by construction. It is idempotent the same way 003–005 are (an
-inspector check for `manifest_hash`), and the emptiness it relies on is **checked** rather than
-argued: a workspace that somehow holds a release row raises `WorkspaceCorrupt` instead of being
-quietly emptied. A migration that would lose real data does not clear this bar.
+**Migrations 006 and 007 drop a table**, and the bar they had to clear is worth writing down.
+`release` gained three `NOT NULL` columns with no honest default — an `ALTER` would have baked
+`manifest_hash DEFAULT ''` into every fresh database forever — and, decisively, a pre-#12 release
+row carries its manifest as a JSON column with *no blob behind it*, so there is no value
+`manifest_hash` could be given that `verify` would ever accept. `source` is the same shape of
+argument twice over: `registered_at` is `NOT NULL` with no honest default, and a pre-#18 row's
+`kind` reads `'local_folder'`, which is not a value `SourceKind` has — those rows would come back
+as validation errors rather than as sources. Adding the columns would have manufactured rows that
+are broken by construction. Both are idempotent the same way 003–005 are (an inspector check for
+the new column), and the emptiness each relies on is **checked** rather than argued: a workspace
+that somehow holds such a row raises `WorkspaceCorrupt` instead of being quietly emptied. A
+migration that would lose real data does not clear this bar.
+
+Migration 007 carries one extra obligation that 006 did not. `ingest_job.source_id` is
+`ON DELETE CASCADE`, and this store sets `PRAGMA foreign_keys = ON` for every connection — so
+`DROP TABLE source` runs an implicit `DELETE FROM source` that takes the ingest jobs with it,
+**silently, without raising**. A rebuild of a table with children has to count the children too.
+`release` had none, which is why the precedent alone was not enough.
 
 The fresh-versus-migrated test is only as strong as how far back
 `_downgrade_to_version_one` walks, so every migration added there needs its undo added too.
-Migration 006 is the one place that undo cannot borrow its DDL from `_tables`, because `_tables`
-no longer describes the shape it is restoring.
+Migrations 006 and 007 are the two places that undo cannot borrow its DDL from `_tables`,
+because `_tables` no longer describes the shape it is restoring.
 
 `format_version` here is the *database* generation. Validating the on-disk workspace layout
 around it — directories, the blob-store root, what makes a directory a workspace at all —
