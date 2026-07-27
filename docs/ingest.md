@@ -5,6 +5,9 @@ the bytes once, records what the decoder made of them, and puts the result in a 
 [batch](batches.md) somebody can approve. Nothing else in the kernel creates an `Asset` —
 `examples/sdk_end_to_end.py` used to, and no longer does.
 
+Everything below is executed by [`examples/ingest_end_to_end.py`](../examples/ingest_end_to_end.py),
+which is walked through in [examples.md](examples.md).
+
 ```python
 source = sources.register_images(project.id, Path("~/dashcam/monday").expanduser())
 result = ingest.ingest(source.id, batch_name="monday")
