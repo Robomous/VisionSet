@@ -182,6 +182,65 @@ A missing ffmpeg is not a file's fault at all. `MediaToolUnavailable` is recorde
 `failed`, and it is re-raised, which is precisely why it sits outside the `MediaError` family.
 One broken machine is not five thousand broken files.
 
+## A preview per asset, and it is allowed to fail
+
+Every item also gets a thumbnail, stored content-addressed beside its content and named by
+`asset.thumbnail_hash`. The M5 gallery is the reason: drawing a grid of hundreds of tiles by
+decoding full-resolution images at request time is the wrong shape, and the cost is naturally
+amortized here, where the bytes are already open and already decoded once.
+
+**A thumbnail hash is a cache key, not an identity.** It is absent from every release manifest,
+`ReleaseService.verify` never recomputes it, and two machines may legitimately hold different
+preview bytes for one image — [media.md](media.md) has the determinism argument. Losing every
+thumbnail blob loses only the time to render them again.
+
+Everything else follows from that sentence.
+
+**A preview that will not render is not an `IngestFailure`.** That error means "this file did not
+become an asset, so fix the file"; here the asset exists, its bytes are stored and nothing was
+lost. So the hash stays NULL and the run carries on with no entry in the report. Putting it there
+would tell an operator that data was lost when it was not, and would bury real loss under it. The
+NULL *is* the record, which is why nothing is logged: it is exactly what the backfill looks for.
+
+**Frames get previews too.** The frames of a clip are deliberately never re-probed — the port
+guarantees each one, and re-decoding would put our own encoder's output into an operator's
+report. That argument is about metadata a caller reads back as fact, and a preview is reported to
+nobody, so it does not carry over. A gallery with tiles for stills and blanks for frames would be
+the worse outcome.
+
+**One edge, one cache.** `DEFAULT_THUMBNAIL_MAX_EDGE` is pinned at the port and is not a
+parameter on ingest or on the backfill. A per-call edge would fork the cache into variants
+nothing can tell apart from a hash, and the column holds one pointer.
+
+**A deduplicated asset has its NULL filled, and a value is never replaced.** Origin fields record
+the first sighting and are never rewritten; a preview is not provenance, so filling an empty one
+from whoever first held the bytes is not a rewrite. That is what makes re-ingesting a source
+enough to give assets written before the cache existed their previews.
+
+### The backfill
+
+`IngestService.backfill_thumbnails(project_id)` renders a preview for every asset in a project
+that has none — the remedy for all three things a NULL can mean, and idempotent, so a second pass
+over a healthy project examines nothing.
+
+It reads the **blob**, never `asset.uri`: that path may be gone, renamed, or on another machine,
+while `blob_store.get(asset.content_hash)` is what the workspace actually holds.
+
+Three phases, and the rendering is in none of them — the same rule as a run. The first
+transaction collects ids and hashes, the rendering happens outside any transaction, and the last
+re-reads each asset before writing so an ingest that filled a preview meanwhile is not clobbered.
+
+It reports rather than raises, on `ReleaseService.verify`'s terms: someone repairing a damaged
+workspace needs the list, and one asset nobody can render must not abandon the other five
+thousand. `ThumbnailBackfill` keeps `missing` (the content blob is gone — damage a preview pass
+cannot repair) apart from `unreadable` (the bytes are there and will not decode). The second
+reuses `IngestFailure` because the `UNSUPPORTED`/`CORRUPT` split says exactly the right thing
+about stored bytes; the first does not, because `IngestFailureKind` answers "what is wrong with
+this file" and a blob that is not there is not a file.
+
+There is no progress to poll: a backfill has no `IngestJob` row. If that is ever wanted it is a
+task of its own, not a flag on this one.
+
 ## The target batch
 
 With no `batch_id`, the run creates a draft named `batch_name` or, failing that, after the
@@ -194,8 +253,6 @@ order for a directory and frame order for a clip.
 
 ## What is deliberately not here yet
 
-- **No thumbnails.** Generating one per asset at ingest and recording `asset.thumbnail_hash` is
-  #21, for the M5 gallery.
 - **No background execution.** A run is synchronous and in-process. The service API is shaped so
   that moving it behind a queue changes the caller's waiting, not its vocabulary — which is why
   a job is created `pending` and why progress is read off the row rather than off a callback.

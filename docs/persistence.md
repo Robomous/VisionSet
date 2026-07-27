@@ -82,7 +82,7 @@ the operation and not the individual write.
 | --- | --- | --- |
 | Relations that get mutated element by element | Child table — `batch_asset`, `annotation_job_asset` | Membership and per-asset progress are edited one row at a time and queried from the asset side. `batch_asset.position` preserves order. |
 | Immutable nested values | JSON column — `annotation_schema.classes`, `annotation.geometry`, `annotation.attributes`, `release.split` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
-| An immutable value too large for a row | The **blob store**, with the row keeping its hash — `release.manifest_hash` | A release manifest lists every asset and every label; megabytes of it in a column would have to be read just to list a dataset's releases. Content-addressed, so it is verifiable and two identical releases share one document. See [releases.md](releases.md). |
+| An immutable value too large for a row | The **blob store**, with the row keeping its hash — `release.manifest_hash`, `asset.thumbnail_hash` | A release manifest lists every asset and every label; megabytes of it in a column would have to be read just to list a dataset's releases. Content-addressed, so it is verifiable and two identical releases share one document. See [releases.md](releases.md). A thumbnail is the same storage decision for a different reason: it is a *cache*, so the row keeps a pointer that may be NULL and losing the bytes costs only the time to render them again. |
 | Timestamps | TEXT holding ISO-8601 **with offset** | SQLite's `DATETIME` storage drops the timezone. Domain timestamps are timezone-aware UTC and a naive value is rejected at construction. |
 
 Foreign keys are declared `ON DELETE CASCADE` — and the store issues
@@ -116,8 +116,9 @@ MIGRATIONS: list[Migration] = [
     Migration(version=7, name="source_provenance", upgrade=...),
     Migration(version=8, name="ingest_pipeline", upgrade=...),
     Migration(version=9, name="ingest_job_progress", upgrade=...),
+    Migration(version=10, name="asset_thumbnail", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 9
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 10
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -221,12 +222,22 @@ which is exactly what `0` and `[]` say; NULL is what a run that named no batch m
 child table on the criteria above: a per-file report is an immutable value read whole, and
 nothing queries a single failed file in SQL.
 
+Migration 010 is plainer still: one nullable column, `asset.thumbnail_hash`, pointing at a cached
+preview in the blob store. No foreign key, so 008's "a column carrying a key cannot arrive by
+`ALTER` at all" limit does not bite, and no data pre-check to make — the column is a *cache*, so
+NULL is not a legacy value something has to tolerate but the ordinary state of an asset nobody
+has rendered a preview for yet. `IngestService.backfill_thumbnails` reads exactly that state.
+
 The fresh-versus-migrated test is only as strong as how far back
 `_downgrade_to_version_one` walks, so every migration added there needs its undo added too.
 Migrations 006 and 007 are the two places that undo cannot borrow its DDL from `_tables`,
 because `_tables` no longer describes the shape it is restoring. Migration 009 is the one
 place that needs no undo of its own: its columns live on `ingest_job`, which 008's undo rebuilds
 from scratch, so restoring the generation-1 shape removes them along with everything else.
+Migration 010 gets no such ride and has its own `DROP COLUMN` line — `asset` is only ever
+altered, for the reasons 008 gives, so nothing later rebuilds it. The compensation is that 010's
+real `ALTER` runs on the way back up from generation 1, which is why it needs no generation twin
+of `test_migration_nine_alters_a_table_migration_eight_rebuilt`.
 
 `format_version` here is the *database* generation. Validating the on-disk workspace layout
 around it — directories, the blob-store root, what makes a directory a workspace at all —

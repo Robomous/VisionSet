@@ -224,11 +224,11 @@ class AssetRow(Base):
     uri: Mapped[str] = mapped_column(String, nullable=False)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # The four below arrive by ``ALTER TABLE`` in migration 8 and are therefore
-    # declared last, in the order that migration adds them. #21's
-    # ``thumbnail_hash`` goes after them, for the same reason.
+    # The five below arrive by ``ALTER TABLE`` and are therefore declared last,
+    # in the order the migrations add them: four in migration 8, then
+    # ``thumbnail_hash`` in migration 10.
     #
-    # All four are nullable, and that is not a shortcut. ``asset`` could not be
+    # All are nullable, and that is not a shortcut. ``asset`` could not be
     # rebuilt the way migrations 6 and 7 rebuilt their tables: four tables carry
     # ``ON DELETE CASCADE`` keys into it (``batch_asset``, ``annotation``,
     # ``dataset_member``, ``annotation_job_asset``), and under
@@ -258,6 +258,18 @@ class AssetRow(Base):
     frame_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Seconds into the clip. The locator that survives a different rate.
     frame_timestamp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: A cached preview in the blob store, added by migration 10.
+    #:
+    #: Nullable for a reason the four above do not share: this one is a *cache*,
+    #: so NULL is the ordinary state rather than a legacy one. It means "no
+    #: preview yet" whether the row predates migration 10, holds bytes that will
+    #: not render, or simply has not been reached — and
+    #: ``IngestService.backfill_thumbnails`` reads it to find all three.
+    #:
+    #: Unindexed, and deliberately: the one query over it walks a project's
+    #: assets and filters in Python, which is the shape ``Repository.list``
+    #: already has. No foreign key either — it names a blob, not a row.
+    thumbnail_hash: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: The same bytes are the same asset: the backstop under the ingest pipeline's

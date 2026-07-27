@@ -5,7 +5,7 @@ import re
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from visionset.kernel.domain.media import ImageFormat
 
@@ -33,6 +33,9 @@ class Asset(BaseModel):
     clip. ``format`` and ``source_id`` are absent on a row written before the
     ingest pipeline existed, and no default could be honest: the store cannot
     invent a format nobody probed.
+
+    ``thumbnail_hash`` is optional for a different reason again, and it is the
+    one field here that is **not** provenance — see its own note below.
     """
 
     id: UUID = Field(default_factory=uuid4)
@@ -50,12 +53,34 @@ class Asset(BaseModel):
     frame_index: int | None = Field(default=None, ge=0)
     #: Seconds into the clip — the locator that survives a re-decomposition.
     frame_timestamp: float | None = Field(default=None, ge=0)
+    #: A cached preview in the blob store, or NULL when none has been rendered.
+    #:
+    #: **A cache key, not an identity**, which is the whole reason this can sit
+    #: beside the provenance fields without being one. It never enters a release
+    #: manifest and ``ReleaseService.verify`` never recomputes it: two machines
+    #: may hold different thumbnail bytes for one image, because determinism is
+    #: promised within a Pillow build rather than across them. Losing every
+    #: thumbnail blob loses only the CPU time to render them again.
+    #:
+    #: NULL therefore has one meaning with three causes — an asset written
+    #: before the cache existed, one whose bytes would not render, or one a run
+    #: has not reached yet. ``IngestService.backfill_thumbnails`` is the remedy
+    #: for all three, and reads exactly this state. Declared last, after the
+    #: columns migration 8 added, because it arrives by ``ALTER TABLE`` too.
+    thumbnail_hash: str | None = None
 
-    @field_validator("content_hash")
+    @field_validator("content_hash", "thumbnail_hash")
     @classmethod
-    def _content_hash_is_sha256_hex(cls, value: str) -> str:
-        if not _SHA256_HEX.fullmatch(value):
-            raise ValueError("content_hash must be 64 lowercase hex chars (SHA-256)")
+    def _is_sha256_hex(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """Both fields name a blob, so both are checked by the one rule.
+
+        A second regex for the second field is how the two drift apart. ``None``
+        passes through because ``thumbnail_hash`` is optional and
+        ``content_hash`` is not — pydantic has already refused a missing one by
+        the time a validator runs.
+        """
+        if value is not None and not _SHA256_HEX.fullmatch(value):
+            raise ValueError(f"{info.field_name} must be 64 lowercase hex chars (SHA-256)")
         return value
 
     @model_validator(mode="after")

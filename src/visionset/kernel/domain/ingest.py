@@ -185,3 +185,45 @@ class IngestResult(BaseModel):
     def failed(self) -> int:
         """How many items could not be read at all."""
         return len(self.failures)
+
+
+class ThumbnailBackfill(BaseModel):
+    """What one pass of ``IngestService.backfill_thumbnails`` found and repaired.
+
+    A report rather than a count or an exception, on ``ReleaseVerification``'s
+    terms: someone running a repair over a damaged workspace needs the list and
+    not the verdict, and one asset nobody can render must not abort the other
+    five thousand.
+
+    ``missing`` and ``unreadable`` are different faults with different remedies
+    and are never merged. A content blob that is gone is workspace damage a
+    thumbnail pass cannot repair and must not hide; a blob that is present and
+    will not decode is an asset that will simply never have a preview.
+
+    That ``unreadable`` reuses ``IngestFailure`` is deliberate — the
+    ``UNSUPPORTED``/``CORRUPT`` split says exactly the right thing about stored
+    bytes, and the remedy is identical. That ``missing`` does **not** is equally
+    deliberate: ``IngestFailureKind`` answers "what is wrong with this file",
+    and a blob that is not there is not a file. Nothing here is a
+    ``WorkspaceCorrupt``, because raising would abandon the repair of every
+    healthy asset over one bad row.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    project_id: UUID
+    #: Assets that now have a preview they did not have before this pass.
+    filled: tuple[UUID, ...] = ()
+    #: Assets whose content blob is gone from the store.
+    missing: tuple[UUID, ...] = ()
+    #: Assets whose stored bytes are present and will not render.
+    unreadable: tuple[IngestFailure, ...] = ()
+
+    @property
+    def examined(self) -> int:
+        """How many assets this pass found without a preview.
+
+        Derived rather than stored, so it cannot disagree with the three lists
+        it counts — the rule ``IngestResult.created`` already follows.
+        """
+        return len(self.filled) + len(self.missing) + len(self.unreadable)
