@@ -39,6 +39,7 @@ from visionset.kernel.domain.ingest import (
     IngestJob,
     IngestResult,
     IngestState,
+    ThumbnailBackfill,
 )
 from visionset.kernel.domain.media import (
     ImageFormat,
@@ -163,6 +164,7 @@ __all__ = [
     "SplitAssignment",
     "SplitRecipe",
     "TaskGroup",
+    "ThumbnailBackfill",
     "VideoFrame",
     "VideoMetadata",
     "VideoProvenance",

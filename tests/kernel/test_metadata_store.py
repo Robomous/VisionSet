@@ -105,8 +105,17 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
             ),
         )
     )
+    # `thumbnail_hash` on one and not the other: the flat mapper has to carry a
+    # cached preview and an absent one through the same round trip.
     first = uow.assets.add(
-        Asset(project_id=project.id, content_hash="a" * 64, uri="file:///1.png", width=8, height=6)
+        Asset(
+            project_id=project.id,
+            content_hash="a" * 64,
+            uri="file:///1.png",
+            width=8,
+            height=6,
+            thumbnail_hash="c" * 64,
+        )
     )
     second = uow.assets.add(
         Asset(project_id=project.id, content_hash="b" * 64, uri="file:///2.png")
