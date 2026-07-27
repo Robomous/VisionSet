@@ -21,6 +21,12 @@ runs against the fresh one that already has its change — hence ``checkfirst`` 
 migration (rather than repeating the DDL) is what keeps the two paths from
 drifting; ``tests/kernel/test_migrations.py`` proves they agree.
 
+**A migration may drop, but it has to earn it.** Migration 6 rebuilds the
+``release`` table instead of altering it, because the columns it needed could
+not be added honestly and because the rows it discards could not have been made
+correct. It checks that there are none rather than taking the argument on trust.
+That is the bar; a migration that would lose real data does not clear it.
+
 Migrations only run forward. A workspace stamped ahead of this build is
 rejected (``WorkspaceFormatTooNew``) rather than silently downgraded.
 """
@@ -40,7 +46,9 @@ from visionset.kernel.adapters._tables import (
     AnnotationRow,
     Base,
     BatchRow,
+    ReleaseRow,
 )
+from visionset.kernel.errors import WorkspaceCorrupt
 
 
 @dataclass(frozen=True)
@@ -114,6 +122,46 @@ def _add_annotation_attributes(connection: Connection) -> None:
     _add_column(connection, cast(Column[object], AnnotationRow.__table__.c.attributes))
 
 
+def _repoint_release_at_its_manifest_blob(connection: Connection) -> None:
+    """Rebuild ``release`` around a manifest that lives in the blob store.
+
+    The only migration here that drops a table, and the only one that could not
+    have been an ``ALTER``. Three of the columns it adds are ``NOT NULL`` with no
+    honest default — SQLite refuses such a column without one, so the ``ALTER``
+    route would have baked ``manifest_hash DEFAULT ''`` and two more fictions
+    into every fresh database forever. And decisively: a pre-#12 row carries its
+    manifest as a JSON column with *no blob behind it*, so there is no value
+    ``manifest_hash`` could be given that ``verify`` would ever accept. Adding
+    the columns would manufacture rows that are broken by construction; dropping
+    the table is the honest answer.
+
+    Idempotent the way migrations 3 to 5 are: the inspector check *is* the
+    ``checkfirst``, because migration 1 is ``create_all`` of current metadata.
+    That check comes first so the fresh path never reaches the count below.
+
+    The emptiness this all rests on is checked rather than asserted in a
+    comment. Nothing could write a release before ``ReleaseService`` existed, but
+    "nothing could" is a claim about a build, not about a file on disk — so a
+    workspace that somehow holds one is refused rather than quietly emptied.
+    """
+    # ``__table__`` is declared as the general ``FromClause``; for a mapped class
+    # it is always the ``Table``, which is what ``drop``/``create`` need.
+    table = cast(Table, ReleaseRow.__table__)
+    stored = {existing["name"] for existing in inspect(connection).get_columns(table.name)}
+    if "manifest_hash" in stored:
+        return
+    # Raw text: the table still has its pre-#12 shape here, so the mapped columns
+    # in ``_tables`` no longer describe the thing being counted.
+    if connection.execute(text("SELECT count(*) FROM release")).scalar_one():
+        raise WorkspaceCorrupt(
+            "this workspace holds release rows written before ReleaseService existed. Their "
+            "manifests were never stored in the blob store, so there is nothing to migrate "
+            "them to; publish new releases instead."
+        )
+    table.drop(connection)
+    table.create(connection)
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -135,6 +183,11 @@ MIGRATIONS: list[Migration] = [
         version=5,
         name="annotation_attributes",
         upgrade=_add_annotation_attributes,
+    ),
+    Migration(
+        version=6,
+        name="release_manifest_pointer",
+        upgrade=_repoint_release_at_its_manifest_blob,
     ),
 ]
 

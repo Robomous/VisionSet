@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from visionset.kernel.domain import Release
+from visionset.kernel.domain import Manifest, Release
 
 
 class DummyExporter:
@@ -15,5 +15,5 @@ class DummyExporter:
 
     format_name = "dummy"
 
-    def export(self, release: Release, dest: Path) -> None:
+    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
         return None

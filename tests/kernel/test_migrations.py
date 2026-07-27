@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
 from sqlalchemy import inspect, text
 
+from visionset.kernel import WorkspaceCorrupt
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 
@@ -40,6 +42,23 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
         connection.execute(text("alter table batch drop column schema_version"))
         connection.execute(text("alter table annotation_job_asset drop column position"))
         connection.execute(text("alter table annotation drop column attributes"))
+        # Migration 6 rebuilt this table rather than altering it, so undoing it
+        # means writing the old shape out by hand. This is the only DDL in the
+        # file that cannot be borrowed from ``_tables``, for the good reason that
+        # ``_tables`` no longer describes it.
+        connection.execute(text("drop table release"))
+        connection.execute(
+            text(
+                "CREATE TABLE release ("
+                " id CHAR(32) NOT NULL,"
+                " dataset_id CHAR(32) NOT NULL,"
+                " tag VARCHAR NOT NULL,"
+                " manifest JSON NOT NULL,"
+                " PRIMARY KEY (id),"
+                " FOREIGN KEY(dataset_id) REFERENCES dataset (id) ON DELETE CASCADE)"
+            )
+        )
+        connection.execute(text("CREATE INDEX ix_release_dataset_id ON release (dataset_id)"))
         connection.execute(text("update _visionset_meta set format_version = 1"))
 
 
@@ -74,6 +93,56 @@ def test_migration_five_gives_an_annotation_its_attribute_values(tmp_path: Path)
     with store.engine.connect() as connection:
         columns = {c["name"] for c in inspect(connection).get_columns("annotation")}
     assert "attributes" in columns
+    store.close()
+
+
+def test_migration_six_repoints_a_release_at_a_manifest_in_the_blob_store(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.connect() as connection:
+        columns = {c["name"] for c in inspect(connection).get_columns("release")}
+    assert "manifest_hash" in columns
+    assert "manifest" not in columns
+    store.close()
+
+
+def test_migration_six_makes_a_release_tag_unique_within_its_dataset(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    assert any("uq_release_dataset_tag" in sql for sql in _schema(store))
+    store.close()
+
+
+def test_migration_six_refuses_a_workspace_that_still_holds_a_pre_release_row(
+    tmp_path: Path,
+) -> None:
+    """A row it cannot make correct is refused, never silently dropped.
+
+    Nothing could write one before ``ReleaseService`` existed, which is what
+    licences the drop — but that is a claim about a build, not about a file, so
+    the migration checks rather than assumes.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    _downgrade_to_version_one(store)
+    with store.engine.begin() as connection:
+        # A real parent chain, because foreign keys are on: the point of the test
+        # is the row in ``release``, not a way around the constraints.
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
+        )
+        connection.execute(
+            text("insert into dataset (id, project_id, name) values ('d', 'p', 'proj')")
+        )
+        connection.execute(
+            text(
+                "insert into release (id, dataset_id, tag, manifest) values ('r', 'd', 'v1', '{}')"
+            )
+        )
+
+    with pytest.raises(WorkspaceCorrupt, match="before ReleaseService existed"):
+        store.initialize()
     store.close()
 
 

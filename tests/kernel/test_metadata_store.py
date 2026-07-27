@@ -1,3 +1,12 @@
+"""The metadata store: one row of every entity, written and read back.
+
+The seed writes a `Release` straight through the unit of work rather than through
+`ReleaseService`, and that is the point of this file: what is under test is the
+adapter's round trip, not publication. A real release would also need a manifest
+in the blob store, which this file has no business owning — its `manifest_hash`
+here names nothing, deliberately.
+"""
+
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -31,11 +40,11 @@ from visionset.kernel.domain import (
     GeometryType,
     IngestJob,
     LabelClass,
-    Manifest,
     PolygonGeometry,
     Project,
     Release,
     Source,
+    SplitRecipe,
     TaskGroup,
     Workspace,
 )
@@ -102,7 +111,13 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
         Release(
             dataset_id=dataset.id,
             tag="v1",
-            manifest=Manifest(schema_version=1, asset_count=1, content_hashes=["a" * 64]),
+            manifest_hash="a" * 64,
+            schema_version=1,
+            asset_count=1,
+            annotation_count=1,
+            split=SplitRecipe(train=0.8, val=0.1, test=0.1, seed=7),
+            created_at=datetime(2026, 7, 27, 9, 0, tzinfo=UTC),
+            visionset_version="0.0.1.dev0",
         )
     )
     return [
@@ -264,13 +279,64 @@ def test_schema_classes_and_attributes_round_trip(tmp_path: Path) -> None:
     store.close()
 
 
-def test_release_manifest_round_trips(tmp_path: Path) -> None:
+def test_a_release_points_at_its_manifest_rather_than_carrying_it(tmp_path: Path) -> None:
+    """The document is in the blob store; the row keeps its hash and a read cache."""
     store = _store(tmp_path)
     with store.unit_of_work() as uow:
         release = uow.releases.get(_seed(uow)[14][1])
         assert release is not None
-        assert release.manifest == Manifest(
-            schema_version=1, asset_count=1, content_hashes=["a" * 64]
+        assert release.manifest_hash == "a" * 64
+        assert (release.schema_version, release.asset_count, release.annotation_count) == (1, 1, 1)
+        assert release.visionset_version == "0.0.1.dev0"
+    store.close()
+
+
+def test_a_release_split_recipe_and_timestamp_round_trip(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        release = uow.releases.get(_seed(uow)[14][1])
+        assert release is not None
+        assert release.split == SplitRecipe(train=0.8, val=0.1, test=0.1, seed=7)
+        assert release.created_at == datetime(2026, 7, 27, 9, 0, tzinfo=UTC)
+        assert release.created_at.tzinfo is not None
+    store.close()
+
+
+def test_a_release_published_without_a_split_recipe_round_trips_as_none(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        dataset_id = _seed(uow)[11][1]
+        stored = uow.releases.add(
+            Release(
+                dataset_id=dataset_id,
+                tag="v2",
+                manifest_hash="b" * 64,
+                schema_version=1,
+                asset_count=0,
+                annotation_count=0,
+            )
+        )
+        assert uow.releases.get(stored.id) is not None
+        assert uow.releases.get(stored.id).split is None  # type: ignore[union-attr]
+    store.close()
+
+
+def test_two_releases_of_one_dataset_cannot_share_a_tag(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with (
+        pytest.raises(ConstraintViolated, match="release.dataset_id, release.tag"),
+        store.unit_of_work() as uow,
+    ):
+        dataset_id = _seed(uow)[11][1]
+        uow.releases.add(
+            Release(
+                dataset_id=dataset_id,
+                tag="v1",
+                manifest_hash="c" * 64,
+                schema_version=1,
+                asset_count=0,
+                annotation_count=0,
+            )
         )
     store.close()
 

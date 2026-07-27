@@ -6,8 +6,8 @@ surface can translate the whole family to an HTTP status or an exit code with a
 single ``except`` clause. The kernel NEVER raises a framework exception —
 ``HTTPException`` and friends belong to the boundary, not here.
 
-Persistence, workspace, project, schema, batch, job and annotation errors live
-here; later services add their own as they land.
+Persistence, workspace, project, schema, batch, job, annotation, dataset and
+release errors live here; later services add their own as they land.
 """
 
 from __future__ import annotations
@@ -391,4 +391,60 @@ class AnnotationNotFound(VisionSetError):
 
     Like ``ProjectNotFound`` and ``JobNotFound``: an annotation belonging to
     another workspace reads as missing rather than as forbidden.
+    """
+
+
+class ReleaseNotFound(VisionSetError):
+    """No release with that id lives in this workspace.
+
+    Like ``DatasetNotFound`` and its siblings: a release belonging to another
+    workspace reads as missing rather than as forbidden.
+    """
+
+
+class ReleaseTagTaken(VisionSetError):
+    """Another release of this dataset already carries that tag.
+
+    The ``ProjectNameTaken`` rule, one scope down, and enforced twice for the
+    same reason: the service checks before writing so the caller gets a sentence,
+    and a unique index refuses the write so a race cannot slip past the check.
+
+    Case-sensitive, unlike a project name. A tag is an identifier a person types
+    once and a script repeats — closer to a git tag than to a display name — so
+    ``v1.0`` and ``V1.0`` are two releases, and the pre-check compares exactly
+    what the index compares.
+    """
+
+
+class EmptyRelease(VisionSetError):
+    """Publication was asked for on a dataset with nothing in it.
+
+    The ``EmptyBatch`` sibling: a release of no assets is an artifact nobody can
+    train on, and the remedy is to promote a completed batch first.
+
+    A release with assets but no *annotations* is a different matter and is
+    allowed — unlabeled images are legitimate training data, and refusing them
+    would rule out the background-and-negatives set on purpose.
+    """
+
+
+class NoSplitRecipe(VisionSetError):
+    """A split was asked of a release that was published without a recipe.
+
+    Not an error in the release: a release with no recipe is the ordinary
+    default, and it means the whole snapshot is one undivided set. Inventing an
+    all-train assignment here would answer a question nobody asked, and the
+    caller cannot tell the invention from a real recipe afterwards.
+    """
+
+
+class UnserializableManifest(VisionSetError):
+    """A manifest holds a value canonical JSON cannot express.
+
+    In practice that is a NaN or infinite coordinate: ``Geometry`` accepts any
+    float, so such an annotation can be written and stored, and it is only when
+    a release tries to freeze it that the problem surfaces. Refused rather than
+    written as ``null`` or as the token ``NaN`` — the first loses data silently
+    and the second produces a document no other tool can parse, in a file whose
+    whole purpose is to be verifiable.
     """
