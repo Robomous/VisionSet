@@ -73,6 +73,17 @@ jobs:
       - name: Version sync gate
         run: pnpm version:check
 
+      # The spec this reads is kept fresh by the `openapi` job and by the pytest gate in the
+      # `python` job, so this one needs no Python. Two independent links: spec matches the app,
+      # client matches the spec.
+      - name: Generated client drift gate
+        run: |
+          pnpm generate:client
+          git diff --exit-code frontend/ui-core/src/generated || {
+            echo "::error::The generated API client is stale — run 'pnpm generate:client' and commit the result."
+            exit 1
+          }
+
       - name: Lint
         run: pnpm -r lint
 

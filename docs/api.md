@@ -389,3 +389,60 @@ inside its own `unit_of_work()`.
 cannot 401, so the guard and its documented response travel together on the router —
 `protected_router()` in `server/dependencies.py`. Build every non-public router with it rather
 than repeating `Depends(require_token)` per route; see [auth.md](auth.md).
+
+## The generated client
+
+Nobody writes a VisionSet HTTP call by hand. `frontend/ui-core/src/generated/api.ts` is generated
+from the committed `openapi.json` by [`openapi-typescript`](https://openapi-ts.dev), pinned to an
+**exact** version in the root `package.json`, and `@visionset/ui-core` wraps it in a typed client:
+
+```ts
+import { createApiClient } from "@visionset/ui-core";
+
+const api = createApiClient({ baseUrl: "http://127.0.0.1:8000", token });
+
+const { data, error } = await api.GET("/projects/{project_id}", {
+  params: { path: { project_id: id } },
+});
+```
+
+The URL, its path parameters, the query, the request body and both response shapes are all typed
+off the contract. A misspelled route or a wrong parameter type fails to compile.
+
+Regenerate with `pnpm generate:client` and **commit the result** — never hand-edit it. The output
+is a tracked artifact for the same reason the spec is: a contract change then shows up in the pull
+request as a reviewable type diff instead of appearing silently on somebody's next install.
+
+### Two gates, deliberately separate
+
+| Gate | Where | Answers |
+| --- | --- | --- |
+| Spec matches the app | the `openapi` CI job, and `tests/server/test_openapi_contract.py` | did somebody change a route and forget to export? |
+| Client matches the spec | the `frontend` CI job, and `tests/scripts/generate_client.test.mjs` | did somebody change the contract and forget to regenerate? |
+
+The frontend job installs no Python: it reads the *committed* spec, which the first gate has
+already established is current. Each half also runs inside the test suite of its own language, so
+the failure arrives where the mistake was made rather than on a pushed branch.
+
+The pin is exact rather than a caret range because the output is committed — a routine minor bump
+would otherwise regenerate different bytes and fail the drift gate for a reason nobody chose.
+
+One consequence worth knowing: `openapi.json` embeds `info.version` from the repo-root `VERSION`,
+but the generated client contains only `paths`, `components` and `operations`. A version bump moves
+the spec and leaves the client byte-identical. The two gates are genuinely independent.
+
+### Binary responses type as `unknown`
+
+Four operations answer with bytes rather than JSON — asset content, thumbnails, the release
+manifest and the export archive — and the spec declares them with an empty schema, OpenAPI's way
+of saying "bytes, and there is nothing more to say about their shape". The generator is run with
+`emptyObjectsUnknown`, so they come out as `unknown`.
+
+That is deliberate, and it should not be "fixed" by declaring `{"type": "string", "format":
+"binary"}` on the Python side. That would make the generated type `string`, which is a lie in a
+browser where the value is a `Blob`. Read those responses through `response.blob()`.
+
+Every media type a route can actually send is declared, though — `get_asset_content` lists
+`application/octet-stream` beside the two image types, because an asset ingested before the
+pipeline probed formats really is served that way, and a response the contract omits is a lie the
+generated client inherits.
