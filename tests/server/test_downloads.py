@@ -252,7 +252,13 @@ def test_the_binary_routes_declare_their_content_type_in_the_spec(client: TestCl
     spec = client.app.openapi()
 
     content = spec["paths"]["/projects/{project_id}/assets/{asset_id}/content"]["get"]
-    assert set(content["responses"]["200"]["content"]) == {"image/jpeg", "image/png"}
+    assert set(content["responses"]["200"]["content"]) == {
+        "image/jpeg",
+        "image/png",
+        # An asset ingested before the pipeline probed formats really is served this way, and a
+        # generated client believes exactly what the contract declares.
+        "application/octet-stream",
+    }
 
     thumbnail = spec["paths"]["/projects/{project_id}/assets/{asset_id}/thumbnail"]["get"]
     assert set(thumbnail["responses"]["200"]["content"]) == {"image/jpeg"}
