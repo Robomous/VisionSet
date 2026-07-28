@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib import resources
+from pathlib import Path
+from typing import Final
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, HTTPException, status
+from fastapi.responses import RedirectResponse
 from fastapi.routing import APIRoute
+from fastapi.staticfiles import StaticFiles
 
 from visionset import __version__
 from visionset.server.dependencies import WorkspaceHandle
@@ -17,6 +22,49 @@ from visionset.server.runner import IngestRunner
 DESCRIPTION = "REST surface of the VisionSet SDK. The committed openapi.json is the contract."
 
 router = APIRouter()
+
+UI_PREFIX: Final = "/ui"
+"""Where the compiled bundle lives in the URL space.
+
+A prefix rather than the root, and the reason is that **the API already owns the
+root**. ``/projects/{project_id}`` is a route in ``openapi.json``, so a
+single-page app served from ``/`` could never own ``/projects/abc`` as one of its
+*own* client routes: the API route matches first and answers
+``404 PROJECT_NOT_FOUND``. That is not a limitation a later milestone can lift —
+it is the consequence of an unprefixed API, which is a shipped contract. Picking
+the prefix now costs one ``base`` line in ``frontend/app/vite.config.ts``;
+picking it after the bundle ships costs a public URL migration.
+"""
+
+_STATIC_DIRNAME: Final = "_static"
+
+INDEX_FILENAME: Final = "index.html"
+
+BUNDLE_COMMAND: Final = "pnpm bundle:static"
+"""What builds the bundle, named in the 404 that says nobody ever ran it."""
+
+
+def static_root() -> Path:
+    """The directory ``pnpm bundle:static`` copies the compiled UI into.
+
+    A function rather than a module-level constant, and that is the test seam:
+    ``_static/`` holds only ``README.md`` and ``.gitkeep`` in a fresh checkout —
+    the bundle is a git-ignored build artifact and CI never builds one — so a
+    test that needs a real bundle monkeypatches this and *then* calls
+    :func:`create_app`. A constant would have frozen the answer at import time,
+    where no test can reach it.
+
+    ``importlib.resources`` rather than ``__file__`` arithmetic, because the
+    directory is package *data*: ``[tool.hatch.build] artifacts`` in
+    ``pyproject.toml`` is what puts it in the wheel. ``visionset`` is a regular
+    package on a real filesystem, so ``files()`` hands back a ``Path`` and
+    ``str()`` round-trips it exactly; the conversion exists because the
+    *declared* return type is ``Traversable``, which ``StaticFiles`` will not
+    accept and mypy is right to reject. A zipapp would need ``as_file`` — and a
+    mount cannot live inside a temporary extraction — so if this distribution
+    ever ships as one, this function is where that argument goes.
+    """
+    return Path(str(resources.files("visionset"))) / _STATIC_DIRNAME
 
 
 def operation_id(route: APIRoute) -> str:
@@ -57,6 +105,65 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     handle.close()
 
 
+def _install_ui(app: FastAPI, root: Path) -> None:
+    """Serve the compiled UI bundle under ``/ui``, and land ``/`` on it.
+
+    **One mount, on a directory that always exists.** ``_static/`` is tracked
+    (``README.md`` and ``.gitkeep``); only its *contents* are git-ignored. That is
+    what makes this mount unconditional. Mounting ``_static/assets`` instead would
+    need an ``if .is_dir()`` guard, because that directory is absent everywhere a
+    bundle was never built — and ``check_dir=False`` does **not** rescue it:
+    Starlette re-checks on the first *request* and raises ``RuntimeError``, which
+    this package's own catch-all handler turns into a 500 with an incident id. A
+    missing bundle is not an incident.
+
+    **Never a ``Mount("/")``.** A mount at the root returns ``Match.FULL`` for
+    every path, so it wins over the *partial* match that produces a 405 — and,
+    worse, it shadows every route added after :func:`create_app` returns, which is
+    how every probe application in ``tests/server/`` is built. ``POST /health``
+    stays a 405 ``METHOD_NOT_ALLOWED`` and ``/probe/whoami`` stays reachable
+    precisely because this mount claims one prefix and nothing else.
+
+    **Nothing here reaches ``openapi.json``.** A ``Mount`` is not an operation,
+    and ``/`` is declared ``include_in_schema=False``: the spec is the *REST*
+    contract, and where a browser finds HTML is not part of it. That is also what
+    keeps the CI drift gate and ``pnpm generate:client`` still.
+
+    **No single-page deep-link fallback, deliberately.** ``html=True`` serves
+    ``index.html`` for ``/ui/`` and nothing more, so ``/ui/projects/abc`` is a 404
+    in the one error body. The fallback the product shell will eventually want is
+    an ``HTTPException`` handler returning the index for a 404 when the method is
+    ``GET`` *and* ``Accept`` literally contains ``text/html`` — httpx sends
+    ``*/*``, so the API's JSON 404 survives untouched — and it belongs to the
+    milestone that owns a client-side router, not to the command that starts a
+    server.
+    """
+    app.mount(UI_PREFIX, StaticFiles(directory=root, html=True), name="ui")
+
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def index() -> RedirectResponse:
+        """Send a browser that typed the bare host to the bundle.
+
+        A redirect rather than a second copy of ``index.html`` served here, so the
+        application is loaded from exactly one URL and :data:`UI_PREFIX` can move
+        without leaving a stale twin behind. ``GET`` and ``HEAD`` only — ``POST /``
+        stays a 405 like every other wrong method.
+
+        The 404 is the one thing a bare redirect could not do. In a source
+        checkout nobody has run ``pnpm bundle:static`` in, ``/ui/`` answers an
+        anonymous "Not Found"; here the remedy *is* the message.
+        """
+        if not (root / INDEX_FILENAME).is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"No UI bundle in this installation. Run `{BUNDLE_COMMAND}` in a source "
+                    "checkout, or install the published wheel, which ships one."
+                ),
+            )
+        return RedirectResponse(f"{UI_PREFIX}/")
+
+
 def create_app() -> FastAPI:
     """Build the application.
 
@@ -75,7 +182,9 @@ def create_app() -> FastAPI:
 
     Building the workspace handle touches no disk: it is opened by the first
     request that needs it, so importing this module in a checkout with no
-    workspace stays free.
+    workspace stays free. Mounting the UI does stat one directory that ships
+    inside the package, which is a different thing from reaching for state a
+    checkout may not have.
 
     ``responses=`` is applied here rather than route by route on purpose. It
     puts ``ErrorBody`` in ``components.schemas`` and displaces FastAPI's
@@ -100,6 +209,10 @@ def create_app() -> FastAPI:
     app.include_router(router)
     for resource in ROUTERS:
         app.include_router(resource)
+    # Last, and the ordering is documentation rather than a requirement: a mount
+    # claiming one prefix collides with nothing above it. That independence is
+    # the whole property _install_ui exists to buy.
+    _install_ui(app, static_root())
     return app
 
 

@@ -200,6 +200,35 @@ have to fake.
 written out field by field, so a field reaches a client because somebody published it and never
 because somebody added it to an entity.
 
+## Where the UI lives
+
+The compiled application is mounted at **`/ui`** and `/` redirects to it. `visionset ui` starts
+both halves with one command; see [cli.md](cli.md#visionset-ui).
+
+**The API owns the root, and that is why the app does not.** `/projects/{project_id}` is a shipped
+route, so an application served from `/` could never claim `/projects/abc` as one of its *own*
+client routes — the API route matches first and answers 404 `PROJECT_NOT_FOUND`. That is not
+something a later milestone can lift; it is the consequence of an unprefixed API. The prefix costs
+one `base` line in `frontend/app/vite.config.ts` today and a public URL migration if left later.
+
+**Neither is in `openapi.json`, deliberately.** A static mount is not an operation, and `/` is
+declared `include_in_schema=False`. The spec is the *REST* contract; where a browser finds HTML is
+not part of it, and keeping it out is also what keeps the drift gate and the generated client still
+across a change to how the UI is served.
+
+**Nothing about the mount changes the API's answers.** A root-level catch-all would have — it
+matches every path, so it beats the *partial* match that produces a 405, and it shadows any route
+registered after the application is built. `POST /health` is still 405 `METHOD_NOT_ALLOWED`, and an
+unknown path under the prefix is still a 404 in the one error body below.
+
+**No deep-link fallback yet.** `/ui/` serves the index and nothing else does; `/ui/projects/abc` is
+a 404. The fallback belongs to the milestone that owns a client-side router, and its shape is
+already argued in `_install_ui`'s docstring — return the index for a 404 only when the method is
+`GET` *and* `Accept` literally contains `text/html`, so an API client's JSON 404 is untouched.
+
+In a source checkout the bundle is absent until `pnpm bundle:static` runs, and `/` then answers a
+404 naming that command. The API is unaffected.
+
 ## The error body
 
 Every failure — a domain refusal, a missing route, a malformed payload, an unhandled bug —

@@ -128,6 +128,11 @@ branches it can only reach two: **`VISIONSET_WORKSPACE`**, then the nearest work
 the working directory. The precedence table and the argument for why only that last case walks
 upward live in [workspaces.md](workspaces.md#which-workspace-when-nobody-said).
 
+A server started by **`visionset ui`** always lands on the first of those. That command applies the
+full precedence itself — including `--workspace`, which no server can see — and then exports the
+answer, so the two resolvers cannot disagree about a workspace one of them was told about and the
+other was not. See [cli.md](cli.md#visionset-ui).
+
 It is opened by the first request that needs it and kept for the life of the process — never at
 import time, because `scripts/export_openapi.py` imports the application in a checkout that has no
 workspace.
