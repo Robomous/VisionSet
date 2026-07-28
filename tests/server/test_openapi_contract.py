@@ -1,18 +1,23 @@
 """The acceptance walk: every documented operation but `/health` needs a token.
 
-**Vacuous today, and deliberately committed anyway.** `/health` is the only
-operation in the contract, so the walk takes its public branch once and asserts
-nothing about authentication. It is a tripwire, not a check: it fires the moment
-a route lands that did not come from `protected_router()`. The tests that prove
-the walk can *fail* are what make a vacuous assertion worth having — without
-them, "it passes" would be indistinguishable from "it looks at nothing".
+It was vacuous when #25 committed it — `/health` was the only operation, so the
+walk took its public branch once and asserted nothing about authentication. #27
+landed nine protected operations and it now has something to say. The tests that
+prove the walk can *fail* stay regardless: without them, "it passes" would be
+indistinguishable from "it looks at nothing".
 
 The walk only sees *documented* operations. `/docs`, `/redoc` and
 `/openapi.json` are `include_in_schema=False` and stay public by decision: the
 spec is already a committed artifact in a public repository, and a contract you
 must authenticate to read is a contract nobody generates a client from.
+
+This module also pins the parts of the contract that no single endpoint owns:
+the security scheme, the page envelope's naming, and the fact that the committed
+`openapi.json` is the application's own output.
 """
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -23,20 +28,74 @@ from tests.server._probe import probe_app
 from visionset.server.dependencies import require_token
 from visionset.server.main import app, create_app
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 def test_every_documented_operation_except_health_requires_a_token() -> None:
     assert_every_operation_is_protected(app.openapi())
 
 
-def test_the_committed_contract_has_no_security_scheme_yet() -> None:
-    """Nothing is protected yet, so the scheme is not in the spec — by design.
+def test_the_committed_contract_declares_the_bearer_scheme() -> None:
+    """#27's first protected route put it there, exactly as #25 predicted.
 
     FastAPI collects security definitions per *route*, from its dependency tree.
-    Declaring ``bearer_scheme`` at module level emits nothing; the scheme enters
-    ``components`` with the first route that depends on it, which is why this PR
-    moves ``openapi.json`` not at all and the first endpoint task moves it twice.
+    Declaring ``bearer_scheme`` at module level emits nothing, so the scheme was
+    absent for as long as zero routes depended on it — which is why #25's export
+    was byte-identical and this was the first task to move ``openapi.json``.
+    The shape is the one the probe app pinned a task earlier.
     """
-    assert "securitySchemes" not in app.openapi().get("components", {})
+    schemes = app.openapi()["components"]["securitySchemes"]
+    assert set(schemes) == {"HTTPBearer"}
+    assert (
+        schemes["HTTPBearer"]
+        == probe_app().openapi()["components"]["securitySchemes"]["HTTPBearer"]
+    )
+
+
+def test_the_committed_openapi_matches_the_application() -> None:
+    """The drift gate, run where the mistake is actually made.
+
+    CI has its own job for this. Duplicating it here is deliberate: this one
+    fails during ``uv run pytest``, in the same command a contributor was already
+    running, instead of ten minutes later on a push.
+    """
+    committed = json.loads((REPO_ROOT / "openapi.json").read_text())
+
+    assert committed == json.loads(json.dumps(app.openapi())), (
+        "openapi.json is stale — run 'uv run python scripts/export_openapi.py'"
+    )
+
+
+def test_the_page_envelope_is_named_for_its_item_type() -> None:
+    """Never ``Page_ProjectOut_``, which is what a parametrised generic emits.
+
+    A component name becomes a type name in a generated client, so the concrete
+    subclasses in ``server/models.py`` exist for exactly this line.
+    """
+    schemas = app.openapi()["components"]["schemas"]
+
+    assert {"ProjectPage", "SchemaVersionPage"} <= set(schemas)
+    assert not [name for name in schemas if name.startswith("Page")]
+
+
+def test_no_operation_id_is_used_twice() -> None:
+    """``generate_unique_id_function`` uses the handler name, so this is not free.
+
+    FastAPI's default is path-derived and unique by construction; the handler
+    name is stable across a path change, which is what a generated client wants,
+    at the cost of needing this assertion.
+    """
+    ids = [operation["operationId"] for _, _, operation in operations(app.openapi())]
+
+    assert len(ids) == len(set(ids)), sorted(ids)
+
+
+def test_every_documented_operation_but_health_is_tagged() -> None:
+    """Tags group a generated client's methods, so an untagged route is homeless."""
+    for path, method, operation in operations(app.openapi()):
+        if path == "/health":
+            continue
+        assert operation.get("tags"), f"{method.upper()} {path}"
 
 
 def test_a_protected_route_declares_the_bearer_scheme_and_its_401() -> None:
@@ -48,7 +107,12 @@ def test_a_protected_route_declares_the_bearer_scheme_and_its_401() -> None:
 
 
 def test_the_bearer_scheme_enters_the_spec_with_this_exact_shape() -> None:
-    """Pinned here so the diff #27 commits is a decision already reviewed."""
+    """The definition of the shape, still proven without touching the real app.
+
+    Written in #25 so the diff #27 committed was a decision already reviewed. It
+    stays on the probe app: this is what the scheme *is*, and the assertion above
+    is that the shipped contract agrees.
+    """
     schemes = probe_app().openapi()["components"]["securitySchemes"]
     assert set(schemes) == {"HTTPBearer"}
     assert schemes["HTTPBearer"]["type"] == "http"

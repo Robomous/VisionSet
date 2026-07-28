@@ -22,6 +22,65 @@ workspace named by `VISIONSET_WORKSPACE`, and one pointed at something else answ
 `NOT_A_WORKSPACE`. See [auth.md](auth.md) for the whole picture, including how to build a
 protected route.
 
+## Conventions
+
+Decided once, by the project and schema endpoints, and inherited by every endpoint after them.
+
+**Paths.** Plural collection nouns, and a sub-resource nested under whatever owns it:
+
+```
+POST   /projects
+GET    /projects
+GET    /projects/{project_id}
+PATCH  /projects/{project_id}
+DELETE /projects/{project_id}
+GET    /projects/{project_id}/schema                      the version in force
+POST   /projects/{project_id}/schema/versions
+GET    /projects/{project_id}/schema/versions
+GET    /projects/{project_id}/schema/versions/{version}
+```
+
+The active schema is the collection's **parent**, not a member of it, because "in force" is a
+property of the schema rather than a version number a client could guess.
+
+**Ids are UUIDs**, canonical hyphenated form, in the path. One deliberate exception: a **schema
+version is an integer 1..N**, because that is the handle the domain itself uses — an annotation
+records `schema_version`, and a batch pins one at approval. A malformed UUID never reaches a
+service, so it is a **422 `VALIDATION_ERROR`** and not a 404: the request could not have named
+anything.
+
+**Collections answer with an envelope**, never a bare array:
+
+```json
+{ "items": [ { "id": "…", "name": "road-signs", "description": null } ], "total": 1 }
+```
+
+An array cannot grow a field without breaking every client that parsed it. There are no paging
+parameters yet — the kernel has no windowed read, and a `limit` implemented by slicing a full
+read would be a window that lies about its cost. `total` already means *matching the query*
+rather than *in this page*, so `limit` and `offset` can be added beside it later without a
+breaking change. An empty collection is `{"items": [], "total": 0}` and a 200, never a 404.
+
+**Gates are query parameters; bodies carry content.** Destroying data needs `?confirm=true`, and
+narrowing a schema needs `?allow_destructive=true`. Neither is a body field, so recovering from
+the 409 is resending the *identical* request with one extra parameter. The route does not
+pre-check either one: the flag goes to the SDK and the SDK's refusal is what carries
+`CONFIRMATION_REQUIRED` or `DESTRUCTIVE_SCHEMA_CHANGE`.
+
+**Statuses.** 201 with the created resource in the body; 200 for a read or an update; 204 with an
+empty body for a delete.
+
+**Request bodies forbid unknown fields.** A misspelled key is a 422 `VALIDATION_ERROR`, never a
+silently ignored one — a typo that looked like it worked is worse than a refusal.
+
+**Only what a service can honour is on the wire.** `PATCH /projects/{id}` takes a name and nothing
+else, because the SDK has no way to update a description. The API does not grow a field it would
+have to fake.
+
+**Response shapes are wire models, not domain models.** They live in `server/models.py` and are
+written out field by field, so a field reaches a client because somebody published it and never
+because somebody added it to an entity.
+
 ## The error body
 
 Every failure — a domain refusal, a missing route, a malformed payload, an unhandled bug —
@@ -60,6 +119,11 @@ dataset, annotation or release that was never created, was deleted, or belongs t
 workspace. Cross-scope references read as *missing*, never as *forbidden*: an asset in another
 project is a 404, not a 403. `NO_SPLIT_RECIPE` is here too — a release published without a
 recipe has no split sub-resource, and never will, because a release is immutable.
+
+One status covers more than one situation, which is the whole reason to branch on `code`:
+`GET /projects/{id}/schema` answers 404 `PROJECT_NOT_FOUND` when the project is unknown and 404
+`SCHEMA_NOT_FOUND` when the project is real and simply has no schema yet. Only the code separates
+"you named nothing" from "there is nothing to name".
 
 **409 — the request is well-formed; the resource's state refuses it.** The remedy is to change
 that state and resubmit the identical request: finish the outstanding jobs, approve the batch,
