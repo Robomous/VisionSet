@@ -7,6 +7,21 @@ endpoint — what a failure looks like, and how to read one.
 The routes themselves are described by [`openapi.json`](../openapi.json) at the repo root, which
 is generated (`uv run python scripts/export_openapi.py`) and diffed in CI. Never hand-edit it.
 
+## Authentication
+
+Every endpoint except `/health` requires a workspace API token:
+
+```
+Authorization: Bearer vst_hK3n...
+```
+
+Missing, malformed, unknown and revoked are one identical **401** with a `WWW-Authenticate:
+Bearer` challenge — deliberately indistinguishable, so a client cannot use the response to probe
+which credentials exist. Tokens come from `visionset token create`; the server serves the single
+workspace named by `VISIONSET_WORKSPACE`, and one pointed at something else answers 500
+`NOT_A_WORKSPACE`. See [auth.md](auth.md) for the whole picture, including how to build a
+protected route.
+
 ## The error body
 
 Every failure — a domain refusal, a missing route, a malformed payload, an unhandled bug —
@@ -170,3 +185,8 @@ inside its own `unit_of_work()`.
 **422 is declared at app level, and that is load-bearing.** It displaces FastAPI's generated
 `HTTPValidationError`, keeping that model — and the second error shape it implies — out of
 `openapi.json` entirely. A test asserts it never comes back.
+
+**401 is *not* declared at app level, and that is load-bearing too.** `/health` is public and
+cannot 401, so the guard and its documented response travel together on the router —
+`protected_router()` in `server/dependencies.py`. Build every non-public router with it rather
+than repeating `Depends(require_token)` per route; see [auth.md](auth.md).

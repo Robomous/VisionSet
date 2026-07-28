@@ -1,11 +1,14 @@
-from typing import Annotated
+"""`/health`: the one public operation, and the one that must never need a token.
 
-import pytest
-from fastapi import Depends, FastAPI
+The auth tests this file used to carry moved to `test_auth.py` when the provider
+stopped being a module global. What is left is the liveness probe itself, and the
+claim that it stays reachable without a credential.
+"""
+
 from fastapi.testclient import TestClient
 
 from visionset import __version__
-from visionset.server.main import app, require_token
+from visionset.server.main import app
 
 client = TestClient(app)
 
@@ -20,28 +23,11 @@ def test_health_is_in_openapi_contract() -> None:
     assert "/health" in app.openapi()["paths"]
 
 
-@pytest.fixture()
-def protected_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("VISIONSET_DEV_TOKEN", "dev-secret")
-    probe = FastAPI()
+def test_health_needs_no_workspace() -> None:
+    """Answered without opening anything, which is what makes it a liveness probe.
 
-    @probe.get("/protected")
-    async def protected(token: Annotated[str, Depends(require_token)]) -> dict[str, bool]:
-        return {"ok": True}
-
-    return TestClient(probe)
-
-
-def test_auth_dependency_rejects_missing_token(protected_client: TestClient) -> None:
-    assert protected_client.get("/protected").status_code == 401
-
-
-def test_auth_dependency_rejects_wrong_token(protected_client: TestClient) -> None:
-    response = protected_client.get("/protected", headers={"Authorization": "Bearer nope"})
-    assert response.status_code == 401
-
-
-def test_auth_dependency_accepts_dev_token(protected_client: TestClient) -> None:
-    response = protected_client.get("/protected", headers={"Authorization": "Bearer dev-secret"})
-    assert response.status_code == 200
-    assert response.json() == {"ok": True}
+    A container is healthy before ``visionset init`` has ever run inside it, and
+    a probe that opened the workspace would report a deployment fault as death.
+    """
+    client.get("/health")
+    assert app.state.workspace_handle.is_open is False

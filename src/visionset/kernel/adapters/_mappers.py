@@ -4,18 +4,19 @@ This module is the reason the domain never sees a SQLAlchemy type. Each entity
 gets one ``EntityMapping`` describing its table, its parent column, and the two
 directions of the conversion; the repository in
 ``sqlite_metadata_store`` is written once against that description rather than
-fourteen times against fourteen tables.
+fifteen times against fifteen tables.
 
 Most entities are flat — every field is a column — and share
-``_flat_mapping``. The eight that are not say so explicitly:
+``_flat_mapping``. The nine that are not say so explicitly:
 
 - ``AnnotationSchema``, ``Annotation`` and ``IngestJob`` hold immutable nested
   values, encoded as JSON.
 - ``Batch`` and ``AnnotationJob`` own child tables, so their mappings carry a
   ``sync_children`` hook and rebuild their collections on read.
-- ``DatasetChange``, ``Release`` and ``Source`` encode a timezone-aware
-  timestamp, which a ``String`` column must be handed as text rather than as a
-  ``datetime``. ``Source`` also carries a nested ``VideoProvenance`` as JSON.
+- ``DatasetChange``, ``Release``, ``Source`` and ``Token`` encode a
+  timezone-aware timestamp, which a ``String`` column must be handed as text
+  rather than as a ``datetime``. ``Source`` also carries a nested
+  ``VideoProvenance`` as JSON.
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ from visionset.kernel.domain import (
     SourceKind,
     SplitRecipe,
     TaskGroup,
+    Token,
     VideoProvenance,
     Workspace,
 )
@@ -236,6 +238,30 @@ def _source_to_domain(_: Session, row: Any) -> Source:
     )
 
 
+def _token_to_row(entity: Token) -> t.Base:
+    return t.TokenRow(
+        id=entity.id,
+        workspace_id=entity.workspace_id,
+        name=entity.name,
+        secret_hash=entity.secret_hash,
+        # Spelled out for ``_source_to_row``'s reason: ``_flat_mapping`` dumps in
+        # python mode and would hand a ``datetime`` to a ``String`` column.
+        created_at=entity.created_at.isoformat(),
+        revoked_at=None if entity.revoked_at is None else entity.revoked_at.isoformat(),
+    )
+
+
+def _token_to_domain(_: Session, row: Any) -> Token:
+    return Token(
+        id=row.id,
+        workspace_id=row.workspace_id,
+        name=row.name,
+        secret_hash=row.secret_hash,
+        created_at=datetime.fromisoformat(row.created_at),
+        revoked_at=None if row.revoked_at is None else datetime.fromisoformat(row.revoked_at),
+    )
+
+
 def _release_to_row(entity: Release) -> t.Base:
     return t.ReleaseRow(
         id=entity.id,
@@ -370,6 +396,12 @@ SOURCES: EntityMapping[Source] = EntityMapping(
     parent_column="project_id",
     to_row=_source_to_row,
     to_domain=_source_to_domain,
+)
+TOKENS: EntityMapping[Token] = EntityMapping(
+    row=t.TokenRow,
+    parent_column="workspace_id",
+    to_row=_token_to_row,
+    to_domain=_token_to_domain,
 )
 RELEASES: EntityMapping[Release] = EntityMapping(
     row=t.ReleaseRow,

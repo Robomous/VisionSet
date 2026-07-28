@@ -6,8 +6,8 @@ surface can translate the whole family to an HTTP status or an exit code with a
 single ``except`` clause. The kernel NEVER raises a framework exception —
 ``HTTPException`` and friends belong to the boundary, not here.
 
-Persistence, workspace, project, schema, batch, job, annotation, dataset, release
-and media errors live here; later services add their own as they land.
+Persistence, workspace, project, schema, batch, job, annotation, dataset, release,
+media and token errors live here; later services add their own as they land.
 """
 
 from __future__ import annotations
@@ -582,4 +582,34 @@ class MediaToolUnavailable(VisionSetError):
     name. The message is where that lands, and it carries an install hint — the
     remedy here is a package manager, so an error that merely says "unavailable"
     has told the operator nothing they did not already suspect.
+    """
+
+
+class TokenNotFound(VisionSetError):
+    """No API token with that id or name lives in this workspace.
+
+    The ``ProjectNotFound`` rule at workspace scope: a token belonging to a
+    different workspace reads as *missing*, never as forbidden.
+
+    Note what this is **not**. Presenting a token that does not verify — unknown,
+    malformed or revoked — raises nothing at all: ``AuthProvider.verify`` answers
+    ``False`` and the surface decides what that means. This error is for
+    *administering* a token an operator named, not for failing to authenticate
+    with one. Conflating the two would let a 404 on this error become an oracle
+    for which secrets exist.
+    """
+
+
+class TokenNameTaken(VisionSetError):
+    """Another token in this workspace already uses that name.
+
+    The ``ProjectNameTaken`` rule, one entity over, and enforced twice for the
+    same reason: the service checks before writing so the caller gets a sentence,
+    and a unique index refuses the write so a race cannot slip past the check.
+
+    Case-insensitive, like a project name and unlike a release tag. A token name
+    is a label an operator reads back in a list and types into ``token revoke``,
+    so ``ci`` and ``CI`` naming two credentials is a trap rather than a feature —
+    and the name has to resolve to exactly one token for revocation by name to
+    mean anything.
     """

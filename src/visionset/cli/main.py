@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
 from typing import Annotated
 
 import typer
@@ -55,7 +54,17 @@ def mcp() -> None:
 def token_create(
     name: Annotated[str, typer.Option("--name", help="Human-readable token name.")],
 ) -> None:
-    """Generate an API token (no persistence yet)."""
-    token = f"vst_{secrets.token_urlsafe(32)}"
-    typer.echo(f"Created token '{name}' (not persisted yet):")
-    typer.echo(token)
+    """Issue an API token (stub — see issue #26).
+
+    Persistence landed with the kernel's ``TokenService``; wiring this command to
+    it needs workspace resolution, which issue #26 owns along with ``token list``
+    and ``token revoke``.
+
+    Until then this refuses rather than printing something. It used to echo a
+    plausible ``vst_...`` string that was never stored — harmless while nothing
+    could authenticate, and actively misleading now that real tokens exist and
+    that one would not be among them.
+    """
+    typer.echo(f"Cannot issue token {name!r} yet: the CLI has no workspace to write it to.")
+    typer.echo("Token issuance lands in issue #26 (visionset token create/list/revoke).")
+    raise typer.Exit(code=1)

@@ -20,7 +20,7 @@ mapping layer is the thing to extend.
 
 Every persisted entity has a UUID primary key and **at most one parent** — a Project
 belongs to a Workspace, an Annotation to an Asset. That regularity is why a single
-generic repository serves all fourteen entity types:
+generic repository serves all fifteen entity types:
 
 ```python
 with store.unit_of_work() as uow:
@@ -48,7 +48,8 @@ never raises `ProjectNameTaken`.
 But a rule with no backstop is a wish, so the store carries the constraint too:
 `uq_project_workspace_name` on `project (workspace_id, name COLLATE NOCASE)`, alongside
 `uq_schema_project_version`, `uq_member_dataset_asset`, `uq_release_dataset_tag`,
-`uq_asset_project_content_hash` and `uq_source_project_kind_path_fps`. The invariant then survives
+`uq_asset_project_content_hash`, `uq_source_project_kind_path_fps` and
+`uq_token_workspace_name`. The invariant then survives
 a service bug, a forgotten code path, and a second process.
 
 The last of those is the only index here whose terms are not all columns: its fourth is
@@ -159,8 +160,9 @@ MIGRATIONS: list[Migration] = [
     Migration(version=8, name="ingest_pipeline", upgrade=...),
     Migration(version=9, name="ingest_job_progress", upgrade=...),
     Migration(version=10, name="asset_thumbnail", upgrade=...),
+    Migration(version=11, name="api_tokens", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 10
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 11
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -270,6 +272,14 @@ preview in the blob store. No foreign key, so 008's "a column carrying a key can
 NULL is not a legacy value something has to tolerate but the ordinary state of an asset nobody
 has rendered a preview for yet. `IngestService.backfill_thumbnails` reads exactly that state.
 
+Migration 011 is the first since 001 to create a **table** rather than alter one, and that
+changes which tool does the idempotency: `checkfirst=True` on the `Table` asks `has_table`, a
+plain catalogue lookup, and brings both of `token`'s indexes with it — so neither is issued
+separately and 008's expression-index trap cannot be met here at all. Nothing to refuse and
+nothing to count, which is a claim rather than an oversight: the table existed on no earlier
+generation, so there is no legacy row to be honest about, and nothing references it, so
+`PRAGMA foreign_keys = ON` has nothing to cascade.
+
 The fresh-versus-migrated test is only as strong as how far back
 `_downgrade_to_version_one` walks, so every migration added there needs its undo added too.
 Migrations 006 and 007 are the two places that undo cannot borrow its DDL from `_tables`,
@@ -280,6 +290,12 @@ Migration 010 gets no such ride and has its own `DROP COLUMN` line — `asset` i
 altered, for the reasons 008 gives, so nothing later rebuilds it. The compensation is that 010's
 real `ALTER` runs on the way back up from generation 1, which is why it needs no generation twin
 of `test_migration_nine_alters_a_table_migration_eight_rebuilt`.
+
+Migration 011's undo is a single `DROP TABLE`, and it carries a sharper obligation than 010's:
+**without it the fresh-versus-migrated test would still pass.** The table would simply survive the
+downgrade and 011 would `checkfirst`-skip, so the `CREATE` nobody ran would be reported as
+agreeing with itself. The undo is not what keeps an existing test honest — it is the only thing
+that exercises the migration at all.
 
 `format_version` here is the *database* generation. Validating the on-disk workspace layout
 around it — directories, the blob-store root, what makes a directory a workspace at all —

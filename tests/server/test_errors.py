@@ -10,12 +10,13 @@ from __future__ import annotations
 import inspect
 import re
 from collections.abc import Iterator
-from typing import Annotated
 
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from tests.server._openapi import operations
+from tests.server._probe import PROBE_PATH, StubAuthProvider, stubbed_app
 
 from visionset.kernel import (
     AssetNotInJob,
@@ -38,7 +39,7 @@ from visionset.server.errors import (
     install_error_handlers,
     rule_for,
 )
-from visionset.server.main import app, require_token
+from visionset.server.main import app
 
 # --- the table ------------------------------------------------------------
 
@@ -56,11 +57,13 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "DatasetNotFound": (404, "DATASET_NOT_FOUND"),
     "AnnotationNotFound": (404, "ANNOTATION_NOT_FOUND"),
     "ReleaseNotFound": (404, "RELEASE_NOT_FOUND"),
+    "TokenNotFound": (404, "TOKEN_NOT_FOUND"),
     "AssetNotInJob": (404, "ASSET_NOT_IN_JOB"),
     "NoSplitRecipe": (404, "NO_SPLIT_RECIPE"),
     # 409 — well-formed request, the resource's state refuses it
     "ProjectNameTaken": (409, "PROJECT_NAME_TAKEN"),
     "ReleaseTagTaken": (409, "RELEASE_TAG_TAKEN"),
+    "TokenNameTaken": (409, "TOKEN_NAME_TAKEN"),
     "WorkspaceAlreadyExists": (409, "WORKSPACE_ALREADY_EXISTS"),
     "WorkspaceNotEmpty": (409, "WORKSPACE_NOT_EMPTY"),
     "SchemaVersionConflict": (409, "SCHEMA_VERSION_CONFLICT"),
@@ -341,14 +344,19 @@ def test_a_wrong_method_speaks_the_same_schema(probe: TestClient) -> None:
 
 
 def test_a_401_carries_the_error_body_and_keeps_its_challenge() -> None:
-    probe_app = FastAPI()
-    install_error_handlers(probe_app)
+    """Unchanged from when the provider was a module global, and asserted so.
 
-    @probe_app.get("/protected")
-    async def protected(token: Annotated[str, Depends(require_token)]) -> dict[str, bool]:
-        return {"ok": True}
+    Built on a real ``create_app()`` probe now that ``require_token`` resolves
+    its provider through the dependency graph; every assertion below is verbatim
+    what this test made before that move, which is what proves the reshuffle
+    changed no behaviour.
 
-    response = TestClient(probe_app).get("/protected")
+    The provider is stubbed rather than real because ``get_auth_provider``
+    depends on ``get_workspace``: with no workspace configured the sub-dependency
+    fails first and the answer is a 500, not a 401. ``test_auth.py`` covers that
+    ordering deliberately; here it would only be in the way.
+    """
+    response = TestClient(stubbed_app(StubAuthProvider())).get(PROBE_PATH)
     assert response.status_code == 401
     assert response.json() == {
         "code": "UNAUTHORIZED",
@@ -373,7 +381,14 @@ def test_the_error_body_is_the_only_error_schema_in_the_contract() -> None:
 
 
 def test_every_route_documents_the_universal_error_responses() -> None:
-    for path, operations in app.openapi()["paths"].items():
-        for method, operation in operations.items():
-            declared = set(operation["responses"])
-            assert {"422", "500", "503"} <= declared, f"{method.upper()} {path}"
+    """Walked through the shared helper, which knows what an operation is.
+
+    The hand-rolled loop this replaced iterated *every* key under a path item.
+    OpenAPI allows non-operation keys there — ``parameters``, ``summary`` — and
+    FastAPI emits none of them today, so it passed; the day one appeared it would
+    have raised ``KeyError`` instead of failing with a sentence. ``_openapi.py``
+    now owns that definition for both walks over this table.
+    """
+    for path, method, operation in operations(app.openapi()):
+        declared = set(operation["responses"])
+        assert {"422", "500", "503"} <= declared, f"{method.upper()} {path}"

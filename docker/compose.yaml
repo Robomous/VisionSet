@@ -12,7 +12,15 @@ services:
       - ..:/workspace
       - api-venv:/workspace/.venv # keep the container venv off the host checkout
     environment:
-      VISIONSET_DEV_TOKEN: dev-token
+      # Which workspace this server serves. Inside the bind mount, and
+      # **/workspace-data/ is already git-ignored, so nothing it writes can be
+      # committed by accident.
+      #
+      # Compose does not create it — `WorkspaceService.init` does. Until it
+      # exists, /health answers normally and every protected route answers
+      # 500 NOT_A_WORKSPACE, which is the intended legible failure rather than
+      # a server that silently serves nothing.
+      VISIONSET_WORKSPACE: /workspace/workspace-data/dev
     command: uv run uvicorn visionset.server.main:app --reload --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
