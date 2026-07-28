@@ -19,10 +19,8 @@ already gives sync routes, which is what the synchronous kernel wants anyway.
 
 from __future__ import annotations
 
-import os
 import threading
 from collections.abc import Callable, Sequence
-from pathlib import Path
 from typing import Annotated, Final
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -30,15 +28,32 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.requests import Request
 
 from visionset.kernel.ports import AuthProvider
-from visionset.kernel.services import WorkspaceService
+from visionset.kernel.services import (
+    WORKSPACE_ENV_VAR as WORKSPACE_ENV_VAR,
+)
+from visionset.kernel.services import (
+    WorkspaceService,
+)
+from visionset.kernel.services import (
+    resolve_workspace_root as resolve_workspace_root,
+)
 from visionset.server.errors import ERROR_RESPONSES
 
-WORKSPACE_ENV_VAR: Final = "VISIONSET_WORKSPACE"
-"""Which workspace this server serves.
-
-Not a server-specific name on purpose: the CLI writes the tokens the server
-reads, so the two have to agree on one spelling of "the workspace".
-"""
+# ``WORKSPACE_ENV_VAR`` and ``resolve_workspace_root`` are re-exported above
+# rather than defined here — the redundant ``as`` aliases are the explicit
+# re-export form, and are what keeps the unreferenced constant off ruff's F401.
+#
+# #26 promoted the rule into the kernel, beside ``DB_FILENAME``: import-linter
+# forbids ``visionset.server`` importing ``visionset.cli``, so the one resolver
+# the server and the CLI share can live in neither of them. Both names stay
+# importable from this module because this is where the server's "which
+# workspace do I serve?" question is documented, and a reader of the server
+# should not have to know the answer moved.
+#
+# The rule the server inherited along with the promotion: with no
+# ``VISIONSET_WORKSPACE`` set, a server started *below* a workspace now serves
+# that workspace instead of answering 500 ``NOT_A_WORKSPACE``. See
+# ``docs/workspaces.md`` for the precedence and for why only that case walks.
 
 bearer_scheme: Final = HTTPBearer(
     auto_error=False,
@@ -61,31 +76,14 @@ route lands.
 """
 
 
-def resolve_workspace_root() -> Path:
-    """The workspace root this server was pointed at.
-
-    **Provisional. Issue #26 owns the real rule** — the ``--workspace`` flag, the
-    environment variable and cwd detection, with a documented precedence that
-    ``visionset ui`` and the flow commands all reuse. This is the smallest thing
-    #26 can promote: it already reads the variable #26 will keep, so #26 replaces
-    the *body* of this function and nothing importing it changes.
-
-    Deliberately missing until then: the flag, because a server started by import
-    string has no argv of its own; and the upward walk for a ``visionset.db`` in a
-    parent directory.
-
-    A constraint #26 should not discover late: import-linter forbids
-    ``visionset.server`` importing ``visionset.cli``, so the promoted resolver
-    cannot live in the CLI. It belongs beside ``DB_FILENAME`` in
-    ``kernel/services/workspace_service.py``, which already owns the rule that the
-    database file is what marks a directory as a workspace.
-
-    Read once per open rather than per request: the workspace is opened once.
-    """
-    return Path(os.environ.get(WORKSPACE_ENV_VAR) or Path.cwd())
-
-
 def _open_configured_workspace() -> WorkspaceService:
+    """The workspace this server was pointed at, resolved once and opened.
+
+    A server started by import string has no argv of its own, so it never passes
+    an explicit path: the environment variable and the upward walk are the two
+    branches it can reach. Read once per open rather than per request — the
+    workspace is opened once.
+    """
     return WorkspaceService.open(resolve_workspace_root())
 
 
@@ -119,7 +117,9 @@ class WorkspaceHandle:
         """The open workspace, opening it on the first call.
 
         Raises:
-            NotAWorkspace: ``VISIONSET_WORKSPACE`` does not name a workspace.
+            NotAWorkspace: nothing resolved to a workspace — neither
+                ``VISIONSET_WORKSPACE`` nor the walk up from the working
+                directory found one.
             WorkspaceCorrupt: it names one that cannot be read.
             WorkspaceFormatTooNew: it was written by a later VisionSet.
         """
