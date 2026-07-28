@@ -21,6 +21,11 @@ with WorkspaceService.open("./road-signs") as workspace:
     projects.delete(project.id, confirm=True)
 ```
 
+**Over HTTP:** `POST`/`GET /projects`, `GET`/`PATCH`/`DELETE /projects/{project_id}`, where
+`PATCH` renames and `DELETE` needs `?confirm=true`. The semantics below are the same ones — the
+REST surface is a thin client of this service. See [api.md](api.md) for the conventions and
+`openapi.json` for the exact shapes.
+
 ## The project–dataset relation is 1:1
 
 The dataset **is** the curated state of the project, not a thing kept beside it. Three
