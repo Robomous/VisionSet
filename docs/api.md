@@ -46,6 +46,9 @@ POST   /sources/{source_id}/ingest-jobs                   launch
 GET    /sources/{source_id}/ingest-jobs
 GET    /ingest-jobs/{job_id}                              poll
 POST   /ingest-jobs/{job_id}/resume
+GET    /projects/{project_id}/assets/{asset_id}
+GET    /projects/{project_id}/assets/{asset_id}/content   bytes
+GET    /projects/{project_id}/assets/{asset_id}/thumbnail bytes
 GET    /projects/{project_id}/batches
 GET    /batches/{batch_id}
 POST   /batches/{batch_id}/approve                        with a partition spec
@@ -63,7 +66,28 @@ GET    /jobs/{job_id}/assets/{asset_id}/annotations
 POST   /jobs/{job_id}/annotations                         bulk, all-or-nothing
 PATCH  /jobs/{job_id}/annotations                         bulk, all-or-nothing
 DELETE /jobs/{job_id}/annotations                         ?id=&id=
+GET    /projects/{project_id}/dataset                     the one trunk
+GET    /datasets/{dataset_id}
+GET    /datasets/{dataset_id}/stats
+GET    /datasets/{dataset_id}/assets                      paged
+DELETE /datasets/{dataset_id}/assets/{asset_id}           curation, not deletion
+GET    /datasets/{dataset_id}/changes
+POST   /batches/{batch_id}/promote                        the one gate into the trunk
+POST   /datasets/{dataset_id}/releases
+GET    /datasets/{dataset_id}/releases
+GET    /releases/{release_id}
+GET    /releases/{release_id}/manifest                    bytes
+GET    /releases/{release_id}/verify
+GET    /releases/{release_id}/assignment
+POST   /releases/{release_id}/export                      ?format=&allow_lossy=, bytes
+GET    /formats
 ```
+
+A project's dataset is reached at a **singular** path, because the relation is 1:1 and there is
+no collection to list. `POST /batches/{id}/promote` sits under the batch rather than the dataset
+because `DatasetService.promote` takes a batch id and derives everything else from it — a
+`dataset_id` in front would be a segment no service ever checks, and a path parameter nobody
+validates is a lie a client will eventually rely on.
 
 The active schema is the collection's **parent**, not a member of it, because "in force" is a
 property of the schema rather than a version number a client could guess.
@@ -91,7 +115,9 @@ An array cannot grow a field without breaking every client that parsed it. `tota
 route without moving the shape everything else already spoke. An empty collection is
 `{"items": [], "total": 0}` and a 200, never a 404.
 
-**Paging is on `GET /batches/{id}/assets` and nowhere else**, and it bounds the *response*, not
+**Paging is on the two large collections and nowhere else** — `GET /batches/{id}/assets` and
+`GET /datasets/{id}/assets`, the batch that an ingest can fill with fifty thousand frames and
+the trunk that accumulates every batch a project ever completed. It bounds the *response*, not
 the read. The kernel has no windowed read, so `limit` and `offset` slice a list that was fetched
 whole — worth doing, because a batch of fifty thousand frames must not be sent to a gallery in
 one body, but not a cheap query and not advertised as one. Every other collection is small by
@@ -138,6 +164,30 @@ are your reverse proxy's (`client_max_body_size` in nginx) and free disk. Upload
 staged under `<workspace>/uploads/<digest>/` and, like blobs, are **never deleted**: a workspace
 grows with what was offered to it, not only with what it kept. Re-uploading identical files
 under identical names is free — it stages to the same path and returns the same source.
+
+**Bytes are streamed, and their URLs are immutable.** Four responses are not JSON: an asset's
+content and its thumbnail, a release's manifest, and an export's archive. Nothing is buffered
+whole — the blob store hands back an open handle and the response walks it — so serving a
+fifty-megapixel frame costs no more memory than serving a thumbnail.
+
+All four are named by something content-addressed, so all four carry
+`Cache-Control: public, max-age=31536000, immutable` and an `ETag` holding the hash. That is not
+optimism: identity *is* content in VisionSet, so the bytes behind one of these URLs cannot
+change. A client that cached one never needs to revalidate it.
+
+The two asset routes take an **asset id**, not a content hash, and the issue that asked for them
+said hash. A hash names bytes and says nothing about what they are, so a route keyed on one
+could only answer `application/octet-stream` — which a gallery cannot put in an `<img>`.
+Resolving a hash back to its asset would fix that and needs a query the persistence port
+deliberately does not have: its whole surface is one `parent_id` filter, so *no query language
+leaks into the port*. Widening it for a download route would be the tail wagging the dog, so the
+hash ships as the `ETag` instead, which is where it was doing the real work anyway.
+
+`Content-Type` on the content route is whatever the ingest actually probed. An asset written
+before the pipeline recorded a format is served as `application/octet-stream`, because inventing
+one would be worse than admitting it. A thumbnail is always `image/jpeg`. An asset with no
+cached preview is `404 THUMBNAIL_NOT_CACHED` rather than an empty success — a preview is a cache
+and reading one never renders one, so the remedy is a backfill and the code says so.
 
 **Request bodies forbid unknown fields.** A misspelled key is a 422 `VALIDATION_ERROR`, never a
 silently ignored one — a typo that looked like it worked is worse than a refusal.
@@ -266,17 +316,20 @@ and no amount of retrying installs ffmpeg.
 | `SCHEMA_VERSION_CONFLICT` | 409 | Immediately. Two writers computed the same next version and this one lost; a retry re-reads the maximum and lands on the one after. No `Retry-After`, because there is nothing to wait for. |
 | `DESTRUCTIVE_SCHEMA_CHANGE` | 409 | With `allow_destructive=true`, if narrowing the contract is what you meant. |
 | `CONFIRMATION_REQUIRED` | 409 | With `confirm=true`, after asking whoever is destroying the data. |
+| `LOSSY_EXPORT_NOT_CONSENTED` | 409 | With `allow_lossy=true`, if an incomplete copy is what you want. A third gate word beside the two above, because it guards a third thing: not destroying data and not narrowing a contract, but emitting a copy that leaves the original intact. |
 
-Nothing else is retryable as-is.
+Nothing else is retryable as-is. Note that three of these four are 409s and one of the 409s in
+the table above — `SCHEMA_CHANGE_WOULD_ORPHAN` — is not retryable at all, which is the whole
+argument for branching on `code`.
 
 ## The full table
 
 | Status | Codes |
 | --- | --- |
-| **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `NO_SPLIT_RECIPE` · `NOT_FOUND` (no such route) |
+| **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `NOT_FOUND` (no such route) |
 | **405** | `METHOD_NOT_ALLOWED` |
 | **401** | `UNAUTHORIZED` — with a `WWW-Authenticate: Bearer` challenge |
-| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `BATCH_NOT_EDITABLE` · `BATCH_NOT_IN_ANNOTATION` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `UNSERIALIZABLE_MANIFEST` |
+| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `BATCH_NOT_EDITABLE` · `BATCH_NOT_IN_ANNOTATION` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` |
 | **422** | `VALIDATION_ERROR` · `INVALID_NAME` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` |
 | **503** | `WORKSPACE_BUSY` |
 | **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `INTERNAL_ERROR` |

@@ -11,14 +11,28 @@ happens in the context of exactly one, so `WorkspaceService` is both the way in 
   visionset.db-shm  its shared-memory index — likewise
   blobs/            FilesystemBlobStore root, sharded <hh>/<hh>/<hash>
   uploads/          written only by the REST server — see below
+  exports/          likewise
 ```
 
-Nothing the kernel writes is outside those four entries. `uploads/` is the exception and it
-belongs to somebody else: the [REST API](api.md) stages multipart uploads there, named by a
-digest of the part set, so that `SourceService` — which registers a source by *path* — has a
-path to be given. The kernel neither writes nor reads it, `open` simply tolerates it the way it
-tolerates anything else beside the database and `blobs/`, and the CLI and MCP surfaces never
-create one because they already hold real paths. Like blobs, staged uploads are never deleted.
+Nothing the kernel writes is outside the first four entries. `uploads/` and `exports/` are the
+exceptions and both belong to somebody else — the [REST API](api.md) — for the same underlying
+reason: HTTP has bytes where the kernel has paths.
+
+`uploads/` is where multipart uploads are staged, named by a digest of the part set, so that
+`SourceService` — which registers a source by *path* — has a path to be given.
+
+`exports/<release_id>/<format>/` is where a format plugin writes, and `<format>.zip` beside it
+is the archive the export route streams back. The kernel does not choose the location:
+`ReleaseService.export` writes into whatever directory it is handed, and this one is the REST
+surface's choice because the REST surface is the caller that has to turn the result into a
+response. The route clears the directory before each run, which it can do safely precisely
+because it built the path out of the workspace root, a release id and a format name.
+
+The kernel neither writes nor reads either, `open` simply tolerates them the way it tolerates
+anything else beside the database and `blobs/`, and the CLI and MCP surfaces create neither —
+they already hold real paths. Like blobs, staged uploads and finished exports are never
+deleted: a workspace grows with what was offered to it and with what was asked of it, not only
+with what it kept.
 
 The store runs in **WAL mode**, which is why the two sidecars are
 part of the format: `close()` checkpoints them into `visionset.db` and removes them, so a

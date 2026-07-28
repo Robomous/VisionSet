@@ -497,6 +497,52 @@ class NoSplitRecipe(VisionSetError):
     """
 
 
+class ExportFormatNotFound(VisionSetError):
+    """No exporter is registered under that format name.
+
+    Raised by the plugin registry in ``visionset.formats``, which is a *delivery*
+    module and not the kernel — the kernel may not import it, and takes an
+    ``Exporter`` instance rather than a name for exactly that reason. The class
+    lives here anyway, with every other refusal, because a surface that invented
+    its own error shape for this would be a second error contract.
+
+    A missing format is the caller naming something that is not there, not a
+    machine that is missing a tool: the sibling to compare it with is
+    ``SourceNotFound``, not ``MediaToolUnavailable``. Installing a distribution
+    that registers the format is what fixes it.
+    """
+
+
+class LossyExportNotConsented(VisionSetError):
+    """The chosen format cannot carry everything this release holds.
+
+    A format declares ``lossy`` once, on the ``Exporter`` port, because it is a
+    property of the format and not of a particular release — a bbox-only format
+    drops a polygon whether or not today's dataset happens to contain one.
+
+    Overridable, and the flag is ``allow_lossy`` rather than ``confirm``. Those
+    two words guard different things and are never one ``except``: ``confirm=``
+    guards destroying data and ``allow_destructive=`` guards narrowing a
+    contract, while this guards *emitting an incomplete copy* of something that
+    stays intact. Nothing in the workspace changes either way.
+    """
+
+
+class ThumbnailNotCached(VisionSetError):
+    """No preview has been rendered for this asset.
+
+    Not damage. ``Asset.thumbnail_hash`` is a cache key, so NULL has one meaning
+    with three causes — an asset written before the cache existed, one whose
+    bytes would not render, and one no run has reached yet — and none of them
+    says anything about whether the content is still there.
+
+    A 404 rather than an empty success because a caller asked for a specific
+    thing that is not there, and because the remedy is a real one:
+    ``IngestService.backfill_thumbnails`` reads exactly this state and fills what
+    it can.
+    """
+
+
 class UnserializableManifest(VisionSetError):
     """A manifest holds a value canonical JSON cannot express.
 

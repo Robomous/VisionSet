@@ -97,12 +97,15 @@ from visionset.kernel.domain import (
     require_move,
 )
 from visionset.kernel.errors import (
+    AssetNotFound,
     CorruptMedia,
     IngestJobNotFound,
     MediaError,
     ProjectNotFound,
+    ThumbnailNotCached,
+    WorkspaceCorrupt,
 )
-from visionset.kernel.ports import FRAME_FORMAT, UnitOfWork
+from visionset.kernel.ports import FRAME_FORMAT, BlobStore, UnitOfWork
 from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -131,6 +134,67 @@ class IngestService:
         """
         with self._workspace.unit_of_work() as uow:
             return self.require_job(uow, job_id)
+
+    def asset(self, project_id: UUID, asset_id: UUID) -> Asset:
+        """One asset of that project.
+
+        The read side of "one door to an ``Asset``": the service that writes them
+        is where a caller holding an id comes to look one up, rather than each
+        surface opening a unit of work of its own.
+
+        An asset belonging to a different project reads as missing, not as
+        forbidden — the rule every cross-scope reference in the kernel follows.
+        The project is resolved first so an unknown project is ``ProjectNotFound``
+        rather than a puzzling ``AssetNotFound``.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+            AssetNotFound: no such asset in that project.
+        """
+        with self._workspace.unit_of_work() as uow:
+            project = self._require_project(uow, project_id)
+            asset = uow.assets.get(asset_id)
+            if asset is None or asset.project_id != project.id:
+                raise AssetNotFound(f"no asset {asset_id} in project {project.name!r}")
+            return asset
+
+    def open_content(self, asset: Asset) -> BinaryIO:
+        """The asset's own bytes, as a handle the caller reads and closes.
+
+        A handle rather than the bytes, so a fifty-megapixel frame does not have
+        to sit in memory to be served. ``BlobStore.get`` streams; anything here
+        that called ``read()`` would undo that in one line.
+
+        A recorded ``content_hash`` with no blob behind it is ``WorkspaceCorrupt``
+        and not a missing entity: content is written before the row that names it
+        and blobs are never deleted, so this is a guarantee failing. Translating
+        it is the point of the method — a bare ``FileNotFoundError`` is outside
+        the ``VisionSetError`` tree and would surface as an unexplained 500.
+
+        Raises:
+            WorkspaceCorrupt: the blob this asset names is gone.
+        """
+        return _open_blob(self._workspace.blob_store, asset.content_hash, f"asset {asset.id}")
+
+    def open_thumbnail(self, asset: Asset) -> BinaryIO:
+        """The asset's cached preview, in ``THUMBNAIL_FORMAT``.
+
+        Refuses rather than rendering one on demand. A thumbnail is a cache and
+        this is a read; making a reader pay for an encode would put a decode on
+        whatever path happens to ask first, and ``backfill_thumbnails`` already
+        exists to fill the gap deliberately.
+
+        Raises:
+            ThumbnailNotCached: no preview has been rendered for this asset.
+            WorkspaceCorrupt: the blob the preview names is gone.
+        """
+        if asset.thumbnail_hash is None:
+            raise ThumbnailNotCached(
+                f"asset {asset.id} has no cached preview; run backfill_thumbnails on its project"
+            )
+        return _open_blob(
+            self._workspace.blob_store, asset.thumbnail_hash, f"thumbnail of asset {asset.id}"
+        )
 
     # --- ingesting ---------------------------------------------------------
 
@@ -794,6 +858,22 @@ class IngestService:
 def _subject(job_id: UUID) -> str:
     """How a refused move names the run. One spelling, so refusals read alike."""
     return f"ingest job {job_id}"
+
+
+def _open_blob(blobs: BlobStore, content_hash: str, subject: str) -> BinaryIO:
+    """A readable handle on one blob, or say the workspace is damaged.
+
+    The streaming sibling of ``ReleaseService._read_blob``, which loads a
+    manifest whole because it is about to parse it. Nothing here reads a byte:
+    a caller that wanted the content in memory would still have to ask for it,
+    and one serving a download must not be made to.
+    """
+    try:
+        return blobs.get(content_hash)
+    except FileNotFoundError as exc:
+        raise WorkspaceCorrupt(
+            f"{subject} names blob {content_hash}, which is not in the blob store"
+        ) from exc
 
 
 def _failure(name: str, exc: MediaError) -> IngestFailure:

@@ -27,7 +27,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.requests import Request
 
-from visionset.kernel.ports import AuthProvider
+from visionset.formats.registry import exporters
+from visionset.kernel.ports import AuthProvider, Exporter
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR as WORKSPACE_ENV_VAR,
 )
@@ -161,6 +162,28 @@ def get_ingest_runner(request: Request) -> IngestRunner:
     return runner
 
 
+def get_exporters() -> dict[str, Exporter]:
+    """Every export format installed alongside this server, by name.
+
+    The server resolves plugins because the kernel structurally cannot:
+    import-linter forbids ``visionset.kernel`` from importing
+    ``visionset.formats``, which is why ``ReleaseService.export`` takes an
+    ``Exporter`` instance rather than a format name. This is the composition
+    point for that, the way ``WorkspaceService`` is for the store adapters.
+
+    A dependency rather than a direct call in the route, and for the reason
+    :func:`get_auth_provider` is one: the only installed format writes nothing,
+    so a test that could not substitute an exporter could not tell an export that
+    worked from one that silently did nothing.
+
+    Not held on ``app.state`` beside the workspace, because there is no resource
+    here to keep — the scan reads installed metadata and holds no handle, and one
+    per request is what makes a format installed into a running environment
+    visible without a restart.
+    """
+    return exporters()
+
+
 def get_auth_provider(
     workspace: Annotated[WorkspaceService, Depends(get_workspace)],
 ) -> AuthProvider:
@@ -200,6 +223,9 @@ WorkspaceDep = Annotated[WorkspaceService, Depends(get_workspace)]
 
 RunnerDep = Annotated[IngestRunner, Depends(get_ingest_runner)]
 """The background worker, for a route that launches a run rather than doing it."""
+
+ExportersDep = Annotated[dict[str, Exporter], Depends(get_exporters)]
+"""The installed export formats, for a route that lists or runs one."""
 
 TokenDep = Annotated[str, Depends(require_token)]
 """The presented token, for the rare route that needs the credential itself.

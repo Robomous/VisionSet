@@ -25,6 +25,7 @@ from visionset.kernel import (
     DatasetNotFound,
     EmptyRelease,
     InvalidName,
+    LossyExportNotConsented,
     NoSplitRecipe,
     ReleaseNotFound,
     ReleaseTagTaken,
@@ -40,8 +41,10 @@ from visionset.kernel.domain import (
     GeometryType,
     LabelClass,
     Manifest,
+    Release,
     SplitRecipe,
     canonical_bytes,
+    sha256_hex,
 )
 from visionset.kernel.services import (
     AnnotationService,
@@ -574,4 +577,230 @@ def test_a_manifest_blob_outlives_the_release_that_named_it(tmp_path: Path) -> N
     release = fixture.releases.publish(fixture.ready(), "v1")
     fixture.projects.delete(fixture.project.id, confirm=True)
     assert fixture.workspace.blob_store.exists(release.manifest_hash)
+    fixture.close()
+
+
+# --- handing the snapshot to a format plugin ----------------------------------
+
+
+class _Recording:
+    """An exporter that writes two files and remembers what it was handed."""
+
+    format_name = "recording"
+    lossy = False
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[UUID, int, Path]] = []
+
+    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+        self.calls.append((release.id, len(manifest.assets), dest))
+        (dest / "top.txt").write_text("x" * 10)
+        # ``exist_ok`` because the port says so: ``dest`` may already hold an
+        # earlier run's output, and the kernel will not delete under a path a
+        # caller named.
+        (dest / "nested").mkdir(exist_ok=True)
+        (dest / "nested" / "deep.txt").write_text("y" * 5)
+
+
+class _Lossy:
+    """Declares itself lossy, so the consent gate has something to refuse."""
+
+    format_name = "lossy"
+    lossy = True
+
+    def __init__(self) -> None:
+        self.called = False
+
+    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+        self.called = True
+        (dest / "partial.txt").write_text("boxes only")
+
+
+def test_export_hands_the_plugin_the_release_and_its_resolved_manifest(tmp_path: Path) -> None:
+    """The manifest arrives beside the release, because a release only names one."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    exporter = _Recording()
+    dest = tmp_path / "out"
+
+    fixture.releases.export(release.id, exporter, dest)
+
+    assert exporter.calls == [(release.id, len(fixture.asset_ids), dest)]
+    fixture.close()
+
+
+def test_export_creates_the_destination_it_was_given(tmp_path: Path) -> None:
+    """Including its parents: a caller naming a nested path does not have to mkdir first."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    dest = tmp_path / "exports" / str(release.id) / "recording"
+
+    fixture.releases.export(release.id, _Recording(), dest)
+
+    assert (dest / "top.txt").is_file()
+    fixture.close()
+
+
+def test_export_counts_what_was_written_rather_than_asking_the_plugin(tmp_path: Path) -> None:
+    """Walked with rglob, so an exporter using subdirectories is counted correctly."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    result = fixture.releases.export(release.id, _Recording(), tmp_path / "out")
+
+    assert result.file_count == 2
+    assert result.total_bytes == 15
+    assert result.format_name == "recording"
+    assert result.release_id == release.id
+    assert result.directory == tmp_path / "out"
+    fixture.close()
+
+
+def test_an_exporter_that_writes_nothing_reports_zero(tmp_path: Path) -> None:
+    """``DummyExporter``'s shape. Reporting zero is the honest answer, not a failure."""
+
+    class _Silent:
+        format_name = "silent"
+        lossy = False
+
+        def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+            return None
+
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    result = fixture.releases.export(release.id, _Silent(), tmp_path / "out")
+
+    assert (result.file_count, result.total_bytes) == (0, 0)
+    fixture.close()
+
+
+def test_a_lossy_format_is_refused_without_consent(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    exporter = _Lossy()
+
+    with pytest.raises(LossyExportNotConsented, match="lossy"):
+        fixture.releases.export(release.id, exporter, tmp_path / "out")
+    fixture.close()
+
+
+def test_a_refused_lossy_export_leaves_nothing_behind(tmp_path: Path) -> None:
+    """Checked before anything is created, so a retry does not find a half-written run."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    exporter = _Lossy()
+    dest = tmp_path / "out"
+
+    with pytest.raises(LossyExportNotConsented):
+        fixture.releases.export(release.id, exporter, dest)
+
+    assert not dest.exists()
+    assert exporter.called is False
+    fixture.close()
+
+
+def test_a_lossy_format_exports_once_the_caller_consents(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    result = fixture.releases.export(release.id, _Lossy(), tmp_path / "out", allow_lossy=True)
+
+    assert result.file_count == 1
+    fixture.close()
+
+
+def test_consenting_to_loss_is_harmless_for_a_lossless_format(tmp_path: Path) -> None:
+    """The flag permits, it does not request — so it changes nothing when nothing is lost."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    with_flag = fixture.releases.export(release.id, _Recording(), tmp_path / "a", allow_lossy=True)
+    without = fixture.releases.export(release.id, _Recording(), tmp_path / "b")
+
+    assert (with_flag.file_count, with_flag.total_bytes) == (
+        without.file_count,
+        without.total_bytes,
+    )
+    fixture.close()
+
+
+def test_exporting_an_unknown_release_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(ReleaseNotFound):
+        fixture.releases.export(uuid4(), _Recording(), tmp_path / "out")
+    fixture.close()
+
+
+def test_exporting_twice_into_one_directory_agrees_with_itself(tmp_path: Path) -> None:
+    """Nothing is recorded, so a release is not changed by having been exported.
+
+    Re-running into the same directory is the case the port's ``exist_ok`` note
+    exists for, and here it is exercised rather than described.
+    """
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    first = fixture.releases.export(release.id, _Recording(), tmp_path / "out")
+    second = fixture.releases.export(release.id, _Recording(), tmp_path / "out")
+
+    assert first == second
+    assert fixture.releases.get(release.id) == release
+    fixture.close()
+
+
+def test_a_stale_file_in_the_destination_is_counted_and_not_deleted(tmp_path: Path) -> None:
+    """The kernel does not empty a directory a caller named, and says so in the counts.
+
+    Clearing it belongs to whoever owns the path — the REST route does exactly
+    that, which is why its archive describes one run and this does not.
+    """
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    (dest / "left-over.txt").write_text("from an earlier format")
+
+    result = fixture.releases.export(release.id, _Recording(), dest)
+
+    assert result.file_count == 3
+    assert (dest / "left-over.txt").is_file()
+    fixture.close()
+
+
+def test_export_reads_the_manifest_and_says_so_when_it_is_gone(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    fixture.blob_path(release.manifest_hash).unlink()
+
+    with pytest.raises(WorkspaceCorrupt):
+        fixture.releases.export(release.id, _Recording(), tmp_path / "out")
+    fixture.close()
+
+
+# --- the manifest as bytes, not as a parsed document --------------------------
+
+
+def test_open_manifest_hands_back_exactly_what_the_hash_names(tmp_path: Path) -> None:
+    """The byte-identical round trip: what comes out re-hashes to ``manifest_hash``."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    with fixture.releases.open_manifest(release) as stream:
+        raw = stream.read()
+
+    assert sha256_hex(raw) == release.manifest_hash
+    assert raw == canonical_bytes(fixture.releases.manifest(release.id))
+    fixture.close()
+
+
+def test_open_manifest_says_the_workspace_is_damaged_when_the_blob_is_gone(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    fixture.blob_path(release.manifest_hash).unlink()
+
+    with pytest.raises(WorkspaceCorrupt):
+        fixture.releases.open_manifest(release)
     fixture.close()
