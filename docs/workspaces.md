@@ -90,7 +90,9 @@ directory is also non-empty, and "open it instead" is the useful message.
 Emptiness is strict — a stray `.DS_Store` is enough to refuse. That matches the contract
 literally and keeps `init` from ever writing into, say, a git repository root. Worth
 revisiting when the `visionset init` CLI command lands, where a friendlier rule may earn
-its keep.
+its keep — that command is also the one that will have to decide whether `init` with no
+path means "here" or means the resolver's answer, since the resolver deliberately walks
+upward and `init` must not.
 
 If anything fails midway, `init` removes what it created and nothing else: the whole
 directory if `init` made it, otherwise just the database and `blobs/`. "Fails safely" means
@@ -134,6 +136,44 @@ later; backup-before-migrate belongs with the CLI.
 on open would break opening a workspace on a read-only mount — a shared dataset over NFS, a
 read-only bind mount in a container — and would make `open` non-idempotent for no invariant
 gain. Read `root`; treat `root_dir` as a possibly-stale hint.
+
+## Which workspace, when nobody said
+
+`init` and `open` are handed a path. Deciding *which* path is a separate question, and it has one
+answer for every surface: `resolve_workspace_root(explicit=None)`, beside `DB_FILENAME` in
+`kernel/services/workspace_service.py`. It lives there because it is the same fact read from the
+other end — the database file is what marks a directory as a workspace, and this is what goes
+looking for the mark. It cannot live in either caller: import-linter forbids `visionset.server`
+importing `visionset.cli`, so the rule the two share has to sit above both.
+
+Precedence, first match wins:
+
+| | Source | Walks up? |
+| --- | --- | --- |
+| 1 | `explicit` — the CLI's `--workspace` / `-w` | no |
+| 2 | `VISIONSET_WORKSPACE`, when set to something non-empty | no |
+| 3 | the nearest directory at or above the working directory holding a `visionset.db` | **yes** |
+| 4 | the working directory | — |
+
+A server started by import string has no argv, so it reaches only 2, 3 and 4.
+
+**Only case 3 walks, and that asymmetry is the whole rule.** A flag and an environment variable are
+somebody *stating* which workspace. If the stated directory holds none, walking to its parent and
+quietly minting a credential into whatever workspace lives up there is the worst thing this
+function could do. Git draws the line in the same place — discovery walks up, `--git-dir` and
+`GIT_DIR` do not — and for the same reason.
+
+**Finding nothing is not an error here.** This names a directory; `open` owns "is this a
+workspace?" and already raises `NotAWorkspace` naming the path it was given. A refusal here would
+be two errors for one condition, and would make the function non-total for the server, which calls
+it inside a lazily opened handle that expects exactly one failure mode.
+
+**Nothing is normalized.** `_resolved` is the one place a path becomes canonical and it runs inside
+`init`/`open`; expanding `~` twice is how two spellings of one workspace start looking like two
+workspaces.
+
+An empty `VISIONSET_WORKSPACE` falls through to case 3 rather than resolving to `Path("")`, because
+a shell cannot tell `VISIONSET_WORKSPACE=` from an unset variable.
 
 ## `format_version` lives in one place
 

@@ -6,7 +6,7 @@ contracts (kernel purity, headless annotator) are described there and enforced i
 
 | Doc | Covers |
 | --- | --- |
-| [workspaces.md](workspaces.md) | The workspace on disk: layout, `init`/`open`, project-name uniqueness, and how services are composed |
+| [workspaces.md](workspaces.md) | The workspace on disk: layout, `init`/`open`, which workspace a surface resolves to, project-name uniqueness, and how services are composed |
 | [projects.md](projects.md) | The project lifecycle: the 1:1 dataset, renaming, and what deletion does and does not destroy |
 | [sources.md](sources.md) | Where raw data comes from: the two registration methods, what a video source records from the probe, why decomposition parameters live on the source, and the idempotency rule and its named uniqueness gap |
 | [ingest.md](ingest.md) | Turning a source into rows: content identity versus recorded origin, the two source paths, why the decode happens outside a transaction, the run's lifecycle and pollable progress, and the per-file report |
@@ -21,4 +21,4 @@ contracts (kernel purity, headless annotator) are described there and enforced i
 | [persistence.md](persistence.md) | The metadata store: repositories, unit of work, table layout, migrations and `format_version` |
 | [examples.md](examples.md) | The two runnable examples: the whole cycle in one pass, ingest on its own, and what each is built to demonstrate |
 | [api.md](api.md) | The REST surface: the one error body, why clients branch on `code` and not on the status, what decides 404 / 409 / 422, what a 5xx does and does not tell you, and which codes are worth retrying |
-| [auth.md](auth.md) | Who may call it: per-workspace API tokens, why only a digest is stored, why every refusal is one identical 401, immediate revocation, and how a protected route is built |
+| [auth.md](auth.md) | Who may call it: per-workspace API tokens, why only a digest is stored, why every refusal is one identical 401, immediate revocation, the `visionset token` commands, and how a protected route is built |
