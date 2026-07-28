@@ -106,3 +106,44 @@ def a_box(asset_id: str, **overrides: Any) -> dict[str, Any]:
         "provenance": "human",
     }
     return {**body, **overrides}
+
+
+def annotated_batch(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path, *, images: int = 3
+) -> tuple[str, str]:
+    """A completed batch whose assets all carry a label, ready to be promoted.
+
+    Where `open_job` stops at "an annotator could start", this goes all the way
+    to "there is finished work to curate" — which is where every dataset and
+    release test begins.
+
+    Returns ``(project_id, batch_id)``.
+    """
+    project_id = project_with_schema(client)
+    batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=images)
+    client.post(f"/batches/{batch_id}/approve")
+    client.post(f"/batches/{batch_id}/start")
+    job_id: str = client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
+    client.post(f"/jobs/{job_id}/start")
+    client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[a_box(asset_id) for asset_id in asset_ids(client, batch_id)],
+    )
+    client.post(f"/jobs/{job_id}/complete")
+    client.post(f"/batches/{batch_id}/complete")
+    return project_id, batch_id
+
+
+def dataset_of(client: TestClient, project_id: str) -> str:
+    """The project's one dataset id."""
+    found: str = client.get(f"/projects/{project_id}/dataset").json()["id"]
+    return found
+
+
+def promoted_dataset(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path, *, images: int = 3
+) -> str:
+    """A dataset with a completed batch's labeled assets already in it."""
+    project_id, batch_id = annotated_batch(client, runner, tmp_path, images=images)
+    client.post(f"/batches/{batch_id}/promote")
+    return dataset_of(client, project_id)

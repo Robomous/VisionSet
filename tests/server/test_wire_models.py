@@ -15,21 +15,33 @@ from visionset.kernel.domain import (
     AssetProgress,
     Attribute,
     BboxGeometry,
+    ClassCount,
     ClassificationGeometry,
+    DatasetChange,
+    DatasetStats,
     Geometry,
     GeometryType,
     LabelClass,
     Partition,
     PolygonGeometry,
+    Release,
+    ReleaseVerification,
+    SplitRecipe,
 )
 from visionset.server.models import (
     AnnotationCreate,
     AnnotationOut,
     AttributeBody,
+    ClassCountOut,
+    DatasetChangeOut,
+    DatasetStatsOut,
     GeometryBody,
     LabelClassBody,
     PartitionBody,
     ProgressCounts,
+    ReleaseOut,
+    ReleaseVerificationOut,
+    SplitRecipeBody,
     geometry_of,
 )
 
@@ -165,3 +177,137 @@ def test_an_annotation_the_domain_cannot_hold_is_refused_at_construction() -> No
             provenance="human",
             confidence=2.0,
         )
+
+
+def test_the_split_recipe_body_carries_every_field_the_domain_has() -> None:
+    """A recipe missing a field would publish an incomplete cut as a complete one."""
+    assert set(SplitRecipeBody.model_fields) == set(SplitRecipe.model_fields)
+
+
+def test_a_split_recipe_the_domain_refuses_is_refused_at_construction() -> None:
+    """#27's trap again: without the validator this is a 500, not a 422.
+
+    The fractions rule lives in ``SplitRecipe`` and is not restated on the wire,
+    so what this really asserts is that the wire model still asks the domain.
+    """
+    with pytest.raises(ValueError, match="1.0"):
+        SplitRecipeBody(train=0.5, val=0.2, test=0.2)
+
+
+def test_a_split_recipe_round_trips_through_the_wire_and_back() -> None:
+    recipe = SplitRecipe(train=0.6, val=0.2, test=0.2, seed=42)
+
+    assert SplitRecipeBody(**recipe.model_dump()).to_domain() == recipe
+
+
+def test_the_verification_out_publishes_every_field_and_the_derived_verdict() -> None:
+    """``ok`` is a property on the domain model, and a client must not re-derive it."""
+    verification = ReleaseVerification(
+        release_id=uuid4(),
+        manifest_hash="a" * 64,
+        manifest_intact=True,
+        checked=3,
+    )
+
+    published = ReleaseVerificationOut.of(verification)
+
+    assert set(ReleaseVerificationOut.model_fields) == set(ReleaseVerification.model_fields) | {
+        "ok"
+    }
+    assert published.ok is verification.ok
+
+
+def test_a_damaged_release_publishes_its_two_lists_apart() -> None:
+    """Merging them would hide which fault a caller is actually looking at."""
+    published = ReleaseVerificationOut.of(
+        ReleaseVerification(
+            release_id=uuid4(),
+            manifest_hash="a" * 64,
+            manifest_intact=True,
+            checked=2,
+            missing=("b" * 64,),
+            corrupt=("c" * 64,),
+        )
+    )
+
+    assert published.ok is False
+    assert published.missing == ["b" * 64]
+    assert published.corrupt == ["c" * 64]
+
+
+def test_the_stats_out_names_every_number_the_domain_counted() -> None:
+    stats = DatasetStats(
+        dataset_id=uuid4(),
+        asset_count=3,
+        annotated_asset_count=2,
+        annotation_count=5,
+        per_class=(ClassCount(label_class="sign", annotations=5, assets=2),),
+    )
+
+    published = DatasetStatsOut.of(stats)
+
+    assert (published.asset_count, published.annotated_asset_count) == (3, 2)
+    assert published.annotation_count == 5
+    assert published.classes == [ClassCountOut(label_class="sign", annotations=5, assets=2)]
+
+
+def test_per_class_counts_are_ordered_by_the_domain_and_not_by_the_caller() -> None:
+    """Canonical ordering belongs to the artifact — the ``Manifest`` rule."""
+    stats = DatasetStats(
+        dataset_id=uuid4(),
+        asset_count=1,
+        annotated_asset_count=1,
+        annotation_count=2,
+        per_class=(
+            ClassCount(label_class="zebra", annotations=1, assets=1),
+            ClassCount(label_class="alpha", annotations=1, assets=1),
+        ),
+    )
+
+    assert [row.label_class for row in DatasetStatsOut.of(stats).classes] == ["alpha", "zebra"]
+
+
+def test_the_class_counts_are_rows_rather_than_an_open_mapping() -> None:
+    """``dict[str, int]`` would generate as ``Record<string, number>`` for #32's client."""
+    assert DatasetStatsOut.model_fields["classes"].annotation == list[ClassCountOut]
+
+
+def test_the_change_log_entry_keeps_operation_open() -> None:
+    """An entry naming an operation this build never heard of must still be readable.
+
+    The domain makes the same call for the same reason; typing it as an enum on
+    the wire would put the narrowing back one layer up.
+    """
+    assert DatasetChangeOut.model_fields["operation"].annotation is str
+    assert DatasetChange.model_fields["operation"].annotation is str
+
+
+def test_a_release_without_a_recipe_publishes_a_null_split() -> None:
+    release = Release(
+        dataset_id=uuid4(),
+        tag="v1",
+        manifest_hash="a" * 64,
+        schema_version=1,
+        asset_count=1,
+        annotation_count=0,
+    )
+
+    assert ReleaseOut.of(release).split is None
+
+
+def test_a_release_with_a_recipe_publishes_it_unchanged() -> None:
+    recipe = SplitRecipe(train=0.6, val=0.2, test=0.2, seed=7)
+    release = Release(
+        dataset_id=uuid4(),
+        tag="v1",
+        manifest_hash="a" * 64,
+        schema_version=1,
+        asset_count=1,
+        annotation_count=0,
+        split=recipe,
+    )
+
+    published = ReleaseOut.of(release)
+
+    assert published.split is not None
+    assert published.split.to_domain() == recipe

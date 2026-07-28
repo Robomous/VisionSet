@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Dataset(BaseModel):
@@ -94,3 +94,52 @@ class DatasetChange(BaseModel):
         if value.tzinfo is None:
             raise ValueError("occurred_at must be timezone-aware (UTC)")
         return value.astimezone(UTC)
+
+
+class ClassCount(BaseModel):
+    """How much of one label class a Dataset holds.
+
+    Two numbers rather than one, because they answer different questions. A
+    thousand ``sign`` annotations spread over a thousand images and the same
+    thousand crammed into ten are the same ``annotations`` and a very different
+    dataset, and it is ``assets`` that tells them apart.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label_class: str
+    annotations: int = Field(ge=0)
+    #: Distinct member assets carrying at least one annotation of this class.
+    assets: int = Field(ge=0)
+
+
+class DatasetStats(BaseModel):
+    """What the curated trunk currently holds, counted.
+
+    A snapshot rather than a stored aggregate: the trunk is the live set, and a
+    cached count is a second source of truth for a number that is cheap enough
+    to derive. ``Release.asset_count`` is the frozen counterpart, and it belongs
+    to the release rather than to the dataset for exactly that reason.
+
+    ``per_class`` is ordered by class name here rather than wherever the walk
+    happened to visit the annotations — the ``Manifest`` rule, that canonical
+    ordering belongs to the artifact and not to the caller that built it. It
+    lists only classes that appear at least once; a schema class nobody has used
+    is a fact about the *schema*, and reading it off the stats would be reading
+    it off the wrong document.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    dataset_id: UUID
+    asset_count: int = Field(ge=0)
+    #: Members carrying at least one annotation. The rest are unlabeled, which
+    #: is legitimate — ``EmptyRelease`` refuses zero assets, never zero labels.
+    annotated_asset_count: int = Field(ge=0)
+    annotation_count: int = Field(ge=0)
+    per_class: tuple[ClassCount, ...] = ()
+
+    @field_validator("per_class")
+    @classmethod
+    def _in_canonical_order(cls, value: tuple[ClassCount, ...]) -> tuple[ClassCount, ...]:
+        return tuple(sorted(value, key=lambda count: count.label_class))

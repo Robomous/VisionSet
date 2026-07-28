@@ -11,10 +11,12 @@ from visionset.kernel.domain.annotation import Annotation, Provenance
 from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.batch import BATCH_TRANSITIONS, Batch, BatchState
 from visionset.kernel.domain.dataset import (
+    ClassCount,
     Dataset,
     DatasetChange,
     DatasetMember,
     DatasetOperation,
+    DatasetStats,
 )
 from visionset.kernel.domain.events import (
     AnnotationOperation,
@@ -58,6 +60,7 @@ from visionset.kernel.domain.partition import (
 from visionset.kernel.domain.project import Project
 from visionset.kernel.domain.release import (
     MANIFEST_VERSION,
+    ExportResult,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -139,12 +142,15 @@ __all__ = [
     "BySegments",
     "BySize",
     "ChangeKind",
+    "ClassCount",
     "ClassificationGeometry",
     "Dataset",
     "DatasetChange",
     "DatasetMember",
     "DatasetOperation",
+    "DatasetStats",
     "DomainEvent",
+    "ExportResult",
     "Geometry",
     "GeometryType",
     "ImageFormat",

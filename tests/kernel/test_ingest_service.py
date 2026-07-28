@@ -12,6 +12,7 @@ counted on disk because that is the acceptance criterion in the issue, and "the
 same asset" compares ids rather than row counts.
 """
 
+from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID, uuid4
@@ -31,6 +32,7 @@ from tests.fixtures.media import (
 )
 
 from visionset.kernel import (
+    AssetNotFound,
     BatchNotEditable,
     BatchNotFound,
     IngestJobNotFound,
@@ -39,7 +41,9 @@ from visionset.kernel import (
     MediaToolUnavailable,
     ProjectNotFound,
     SourceNotFound,
+    ThumbnailNotCached,
     UnsupportedMedia,
+    WorkspaceCorrupt,
 )
 from visionset.kernel.adapters import PillowImageProcessor
 from visionset.kernel.domain import (
@@ -1758,3 +1762,120 @@ def test_a_thumbnail_hash_is_held_to_the_same_rule_as_a_content_hash() -> None:
 def test_an_asset_may_carry_no_thumbnail_hash_at_all() -> None:
     """NULL is the ordinary state of a cache, not a violation to tolerate."""
     assert _asset().thumbnail_hash is None
+
+
+# --- reading one asset, and reaching its bytes ----------------------------
+
+
+def test_an_asset_is_read_back_by_id_within_its_project(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    stored = fixture.assets()[0]
+
+    assert fixture.ingest.asset(fixture.project.id, stored.id) == stored
+    fixture.close()
+
+
+def test_an_unknown_asset_id_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(AssetNotFound):
+        fixture.ingest.asset(fixture.project.id, uuid4())
+    fixture.close()
+
+
+def test_an_asset_of_another_project_reads_as_missing_rather_than_forbidden(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    stored = fixture.assets()[0]
+    elsewhere = fixture.projects.create("elsewhere")
+
+    with pytest.raises(AssetNotFound):
+        fixture.ingest.asset(elsewhere.id, stored.id)
+    fixture.close()
+
+
+def test_an_unknown_project_is_refused_before_the_asset_is_looked_at(tmp_path: Path) -> None:
+    """So a caller mistyping the project hears about the project, not the asset."""
+    fixture = Fixture(tmp_path)
+    with pytest.raises(ProjectNotFound):
+        fixture.ingest.asset(uuid4(), uuid4())
+    fixture.close()
+
+
+def test_an_assets_content_is_the_bytes_that_were_ingested(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    written = write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    stored = fixture.assets()[0]
+
+    with fixture.ingest.open_content(stored) as stream:
+        served = stream.read()
+
+    assert served == written[0].read_bytes()
+    fixture.close()
+
+
+def test_a_missing_content_blob_is_damage_rather_than_a_missing_entity(tmp_path: Path) -> None:
+    """A hash on a row with no blob behind it is a guarantee failing, not a 404."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    stored = fixture.assets()[0]
+    digest = stored.content_hash
+    (fixture.root / "blobs" / digest[:2] / digest[2:4] / digest).unlink()
+
+    with pytest.raises(WorkspaceCorrupt):
+        fixture.ingest.open_content(stored)
+    fixture.close()
+
+
+def test_an_assets_thumbnail_is_the_cached_preview(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    stored = fixture.assets()[0]
+
+    assert stored.thumbnail_hash is not None
+    with fixture.ingest.open_thumbnail(stored) as stream:
+        preview = stream.read()
+
+    assert PillowImageProcessor().probe(BytesIO(preview)).format is THUMBNAIL_FORMAT
+    fixture.close()
+
+
+def test_an_asset_with_no_cached_preview_is_refused_by_name(tmp_path: Path) -> None:
+    """NULL is an ordinary state with a real remedy, so it is its own refusal."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    stored = fixture.assets()[0]
+
+    with pytest.raises(ThumbnailNotCached, match="backfill"):
+        fixture.ingest.open_thumbnail(stored.model_copy(update={"thumbnail_hash": None}))
+    fixture.close()
+
+
+def test_reading_a_preview_never_renders_one(tmp_path: Path) -> None:
+    """A read must not put an encode on whichever path happens to ask first."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    stored = fixture.assets()[0]
+    before = fixture.blob_count()
+
+    with fixture.ingest.open_thumbnail(stored) as stream:
+        stream.read()
+
+    assert fixture.blob_count() == before
+    fixture.close()

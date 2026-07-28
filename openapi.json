@@ -980,6 +980,30 @@
         "title": "BySizeBody",
         "type": "object"
       },
+      "ClassCountOut": {
+        "description": "How much of one label class the trunk holds.",
+        "properties": {
+          "annotations": {
+            "title": "Annotations",
+            "type": "integer"
+          },
+          "assets": {
+            "title": "Assets",
+            "type": "integer"
+          },
+          "label_class": {
+            "title": "Label Class",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label_class",
+          "annotations",
+          "assets"
+        ],
+        "title": "ClassCountOut",
+        "type": "object"
+      },
       "ClassificationBody": {
         "additionalProperties": false,
         "description": "A whole-asset tag: a class with no coordinates.",
@@ -994,6 +1018,157 @@
           "type"
         ],
         "title": "ClassificationBody",
+        "type": "object"
+      },
+      "DatasetChangeOut": {
+        "description": "One entry in the trunk's append-only log.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "subject_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Subject Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "dataset_id",
+          "operation",
+          "subject_ids",
+          "actor",
+          "occurred_at"
+        ],
+        "title": "DatasetChangeOut",
+        "type": "object"
+      },
+      "DatasetChangePage": {
+        "description": "A page of change-log entries.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetChangeOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DatasetChangePage",
+        "type": "object"
+      },
+      "DatasetOut": {
+        "description": "A project's curated trunk of training data.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "description"
+        ],
+        "title": "DatasetOut",
+        "type": "object"
+      },
+      "DatasetStatsOut": {
+        "description": "What the trunk currently holds, counted.",
+        "properties": {
+          "annotated_asset_count": {
+            "title": "Annotated Asset Count",
+            "type": "integer"
+          },
+          "annotation_count": {
+            "title": "Annotation Count",
+            "type": "integer"
+          },
+          "asset_count": {
+            "title": "Asset Count",
+            "type": "integer"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/ClassCountOut"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "asset_count",
+          "annotated_asset_count",
+          "annotation_count",
+          "classes"
+        ],
+        "title": "DatasetStatsOut",
         "type": "object"
       },
       "ErrorBody": {
@@ -1028,6 +1203,47 @@
           "message"
         ],
         "title": "ErrorBody",
+        "type": "object"
+      },
+      "FormatOut": {
+        "description": "An installed export format.",
+        "properties": {
+          "lossy": {
+            "title": "Lossy",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "lossy"
+        ],
+        "title": "FormatOut",
+        "type": "object"
+      },
+      "FormatPage": {
+        "description": "A page of export formats.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FormatOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "FormatPage",
         "type": "object"
       },
       "GeometryType": {
@@ -1495,6 +1711,180 @@
         "title": "ProjectRename",
         "type": "object"
       },
+      "ReleaseCreate": {
+        "additionalProperties": false,
+        "description": "What publishing a release needs.",
+        "properties": {
+          "split": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SplitRecipeBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tag": {
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag"
+        ],
+        "title": "ReleaseCreate",
+        "type": "object"
+      },
+      "ReleaseOut": {
+        "description": "An immutable, exportable snapshot of a dataset.",
+        "properties": {
+          "annotation_count": {
+            "title": "Annotation Count",
+            "type": "integer"
+          },
+          "asset_count": {
+            "title": "Asset Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "split": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SplitRecipeBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tag": {
+            "title": "Tag",
+            "type": "string"
+          },
+          "visionset_version": {
+            "title": "Visionset Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "dataset_id",
+          "tag",
+          "manifest_hash",
+          "schema_version",
+          "asset_count",
+          "annotation_count",
+          "split",
+          "created_at",
+          "visionset_version"
+        ],
+        "title": "ReleaseOut",
+        "type": "object"
+      },
+      "ReleasePage": {
+        "description": "A page of releases.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ReleasePage",
+        "type": "object"
+      },
+      "ReleaseVerificationOut": {
+        "description": "What re-hashing everything a release names turned up.",
+        "properties": {
+          "cache_mismatches": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cache Mismatches",
+            "type": "array"
+          },
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "corrupt": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Corrupt",
+            "type": "array"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "manifest_intact": {
+            "title": "Manifest Intact",
+            "type": "boolean"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_id",
+          "manifest_hash",
+          "manifest_intact",
+          "ok",
+          "checked",
+          "missing",
+          "corrupt",
+          "cache_mismatches"
+        ],
+        "title": "ReleaseVerificationOut",
+        "type": "object"
+      },
       "SchemaVersionCreate": {
         "additionalProperties": false,
         "description": "The whole proposed version. There is no partial edit of a schema.",
@@ -1653,6 +2043,72 @@
           "total"
         ],
         "title": "SourcePage",
+        "type": "object"
+      },
+      "SplitAssignmentOut": {
+        "description": "The folds a release's recipe produces over its frozen asset set.",
+        "properties": {
+          "test": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Test",
+            "type": "array"
+          },
+          "train": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Train",
+            "type": "array"
+          },
+          "val": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Val",
+            "type": "array"
+          }
+        },
+        "required": [
+          "train",
+          "val",
+          "test"
+        ],
+        "title": "SplitAssignmentOut",
+        "type": "object"
+      },
+      "SplitRecipeBody": {
+        "additionalProperties": false,
+        "description": "Train/val/test fractions and the seed that makes the cut reproducible.",
+        "properties": {
+          "seed": {
+            "default": 0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "test": {
+            "title": "Test",
+            "type": "number"
+          },
+          "train": {
+            "title": "Train",
+            "type": "number"
+          },
+          "val": {
+            "title": "Val",
+            "type": "number"
+          }
+        },
+        "required": [
+          "train",
+          "val",
+          "test"
+        ],
+        "title": "SplitRecipeBody",
         "type": "object"
       },
       "VideoProvenanceOut": {
@@ -1917,7 +2373,7 @@
     },
     "/batches/{batch_id}/assets": {
       "get": {
-        "description": "Everything in the batch, in membership order, with where each asset has got to.\n\nThe order is stored, so reading twice gives the same sequence and an ingest\ninto an existing batch appends rather than reshuffles. `total` is the size of\nthe whole batch and not of the page; an offset past the end is an empty list\nand a 200, never a 404.\n\n`job_id` and `progress` are null while the batch is a draft, because a draft\nhas no jobs. Bytes are not here: an asset is named by its `content_hash` and\nits `thumbnail_hash`, and downloading either is a later capability.",
+        "description": "Everything in the batch, in membership order, with where each asset has got to.\n\nThe order is stored, so reading twice gives the same sequence and an ingest\ninto an existing batch appends rather than reshuffles. `total` is the size of\nthe whole batch and not of the page; an offset past the end is an empty list\nand a 200, never a 404.\n\n`job_id` and `progress` are null while the batch is a draft, because a draft\nhas no jobs. Bytes are not here: an asset is named by its hashes, and\n`GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.",
         "operationId": "list_batch_assets",
         "parameters": [
           {
@@ -2224,6 +2680,105 @@
         ]
       }
     },
+    "/batches/{batch_id}/promote": {
+      "post": {
+        "description": "Move the batch's labeled assets into its project's dataset.\n\nThe one gate into the trunk. Which assets go in is derived, not chosen: those\nan annotator left `annotated` or a reviewer left `accepted`. A `skipped`\nasset stays out by design, and the decision stays on the record rather than\nbeing erased from the batch.\n\nIdempotent, and a union rather than a replacement. Promoting the same batch\ntwice returns an empty list the second time and writes no change-log entry,\nbecause nothing happened \u2014 and re-promoting after a curator removed an asset\nputs it back, since the trunk keeps no memory of removals.\n\nA batch that has not reached `completed` is 409 `BATCH_NOT_COMPLETE`.",
+        "operationId": "promote_batch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Promote Batch",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
     "/batches/{batch_id}/start": {
       "post": {
         "description": "Open the batch for annotation. Nothing may be written into it before this.",
@@ -2320,6 +2875,749 @@
         "summary": "Start Batch",
         "tags": [
           "batches"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}": {
+      "get": {
+        "description": "The dataset with that id.",
+        "operationId": "get_dataset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/assets": {
+      "get": {
+        "description": "Everything in the trunk, in the order it was promoted.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.",
+        "operationId": "list_dataset_assets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "How many items to return. Everything from `offset` on by default.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many items to return. Everything from `offset` on by default.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "How many items to skip. Counts from the start of the collection.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "How many items to skip. Counts from the start of the collection.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Dataset Assets",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/assets/{asset_id}": {
+      "delete": {
+        "description": "Take one asset out of the trunk.\n\nCuration, not deletion: the asset, its annotations and its bytes all stay\nexactly where they were, and only the membership row goes. That is why there\nis no `confirm` gate here \u2014 there is nothing to destroy.\n\n204 whether or not the asset was a member. An id that was never in the trunk\nleaves it in the state the caller asked for, and reporting that as a 404\nwould make a retry of a successful request look like a failure. The change\nlog records only the calls that actually changed something.\n\nNot permanent, either: re-promoting the batch the asset came from puts it\nback, because the trunk keeps no memory of removals.",
+        "operationId": "remove_dataset_asset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Dataset Asset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/changes": {
+      "get": {
+        "description": "The trunk's append-only mutation log, oldest entry first.\n\nEvery line is a change somebody can point at: a promote that added nothing\nwrites no entry, and neither does removing an asset that was not there.\nEntries are never updated or deleted.\n\n`subject_ids` is shaped by the operation \u2014 for `promote` it is the batch\nfollowed by the assets it contributed, and for `remove_asset` it is the one\nasset. `operation` is an open string rather than an enum, so an entry written\nby a later VisionSet naming an operation this build has not heard of is still\nreadable.",
+        "operationId": "list_dataset_changes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetChangePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Dataset Changes",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/releases": {
+      "get": {
+        "description": "Every release of that dataset, oldest first.",
+        "operationId": "list_releases",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleasePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Releases",
+        "tags": [
+          "releases"
+        ]
+      },
+      "post": {
+        "description": "Freeze the trunk as it stands into an immutable, named snapshot.\n\nWhat is frozen is the content: every member asset, every annotation on it as\nit was, and the schema version those labels were judged against. Deleting an\nannotation afterwards cannot reach backwards into a published release.\n\nPublishing twice from an unchanged dataset produces byte-identical manifests\nand therefore the same `manifest_hash`, because nothing time-, machine- or\nidentity-specific goes inside the document. The tag, the timestamp and the\nbuild live on the release row instead.\n\n`split` is stored as a recipe, not materialized. `GET\n/releases/{release_id}/assignment` cuts the folds on demand, deterministically\nand from the frozen asset set. Fractions must sum to 1.0.\n\nTags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and\n`V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`. A dataset\nwith no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since\nunlabeled images are legitimate training data. A project with no schema is 404\n`SCHEMA_NOT_FOUND`, because there is no version to pin.",
+        "operationId": "publish_release",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Publish Release",
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/datasets/{dataset_id}/stats": {
+      "get": {
+        "description": "What the trunk currently holds, counted overall and per label class.\n\nCounted on every call rather than cached, so it always describes the trunk as\nit stands. `classes` lists only classes that appear at least once \u2014 which\nclasses *exist* is a property of the schema, and `GET\n/projects/{project_id}/schema` is where to read that.\n\nPer class you get both numbers because they answer different questions: a\nthousand `sign` boxes over a thousand images and the same thousand over ten\nare the same `annotations` and a very different dataset.\n\n`asset_count` minus `annotated_asset_count` is how many members carry no\nlabels at all, which is legitimate \u2014 unlabeled images are training data, and\nonly a release of *zero* assets is refused.",
+        "operationId": "dataset_stats",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetStatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dataset Stats",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/formats": {
+      "get": {
+        "description": "Every export format installed on this server, by name.\n\n`name` is what `POST /releases/{release_id}/export?format=` takes.\n\n`lossy` says the format cannot carry everything the kernel can represent \u2014\nsome geometry, attribute kind, or per-annotation provenance is dropped. It is\na property of the format rather than of any one release, so it is answered\nhere and not per export, and exporting in one requires `allow_lossy=true`.\n\nNever empty in practice: a built-in no-op format ships with VisionSet so the\nplugin path is exercised even before a real exporter is installed.",
+        "operationId": "list_formats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormatPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Formats",
+        "tags": [
+          "formats"
         ]
       }
     },
@@ -4039,6 +5337,302 @@
         ]
       }
     },
+    "/projects/{project_id}/assets/{asset_id}": {
+      "get": {
+        "description": "One ingested item, by id.\n\nAn asset belonging to a different project reads as 404 rather than 403, like\nevery cross-scope reference here.\n\n`content_hash` identifies the bytes and `thumbnail_hash` the cached preview,\nbut neither is a URL \u2014 the two routes below are, and they take this asset's\nid.",
+        "operationId": "get_asset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Asset",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/projects/{project_id}/assets/{asset_id}/content": {
+      "get": {
+        "description": "The asset's own bytes, streamed.\n\nThe original that was ingested, not a re-encode \u2014 for a video frame that is\nthe PNG extraction wrote, which is the picture an annotator drew on and the\npicture an exporter ships.\n\n`Content-Type` comes from what the ingest actually probed. An asset written\nbefore the pipeline recorded a format is served as\n`application/octet-stream`, because inventing one would be worse than\nadmitting it.\n\nCached forever and never revalidated: identity is content, so these bytes\ncannot change. The `ETag` is the content hash.\n\n404 `WORKSPACE_CORRUPT` is not among the answers \u2014 a recorded hash with no\nblob behind it is a guarantee failing, and is 500.",
+        "operationId": "get_asset_content",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {}
+              },
+              "image/png": {
+                "schema": {}
+              }
+            },
+            "description": "The bytes, streamed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Asset Content",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/projects/{project_id}/assets/{asset_id}/thumbnail": {
+      "get": {
+        "description": "The asset's cached preview, streamed. Always JPEG.\n\nA preview is a cache, so this reads one and never renders one. An asset with\nno preview is 404 `THUMBNAIL_NOT_CACHED` \u2014 which has three causes with one\nremedy: the asset predates the cache, its bytes would not render, or no run\nhas reached it yet. A backfill fills what it can.\n\nCached the same way `content` is, and for the same reason. The `ETag` is the\nthumbnail hash, which is a cache key and not an identity: two machines may\nhold different preview bytes for one image, so never compare these across\nworkspaces.",
+        "operationId": "get_asset_thumbnail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {}
+              }
+            },
+            "description": "The cached preview, streamed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Asset Thumbnail",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/projects/{project_id}/batches": {
       "get": {
         "description": "Every batch of that project, in the order they were created.",
@@ -4125,6 +5719,95 @@
         "summary": "List Batches",
         "tags": [
           "batches"
+        ]
+      }
+    },
+    "/projects/{project_id}/dataset": {
+      "get": {
+        "description": "The project's dataset.\n\nSingular, and there is never a second one: the dataset is created with the\nproject and its name moves with it. This is the route that turns a project id\ninto the dataset id everything under `/datasets` needs.",
+        "operationId": "get_project_dataset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Project Dataset",
+        "tags": [
+          "datasets"
         ]
       }
     },
@@ -4810,6 +6493,480 @@
         "summary": "Register Video Source",
         "tags": [
           "sources"
+        ]
+      }
+    },
+    "/releases/{release_id}": {
+      "get": {
+        "description": "The release with that id.\n\n`schema_version`, `asset_count` and `annotation_count` are a read cache of\nfacts that also live inside the manifest, kept out here so listing a\ndataset's releases does not open a blob per row. `verify` is what cross-checks\nthem.",
+        "operationId": "get_release",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Release",
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/releases/{release_id}/assignment": {
+      "get": {
+        "description": "Materialize the release's split recipe into train/val/test folds.\n\nComputed from the frozen manifest, never from the dataset as it stands today \u2014\nreading live membership would let a curator change a published release's folds\nby editing the trunk afterwards.\n\nDeterministic, and keyed on each asset's *content hash* rather than its id, so\nidentical bytes land in the same fold and cannot straddle a train/test\nboundary. Nothing is stored; asking twice gives the same answer.\n\nA release published without a recipe is 404 `NO_SPLIT_RECIPE`. That is not a\ndefect in the release: no recipe means one undivided set, and answering\nall-train would be indistinguishable from a real recipe that said so.",
+        "operationId": "get_release_assignment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SplitAssignmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Release Assignment",
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/releases/{release_id}/export": {
+      "post": {
+        "description": "Write the release in the named format and send back the result as one archive.\n\nWhich formats exist is a property of this deployment, not of this document \u2014\n`GET /formats` lists what is installed, and a distribution registering into\nthe `visionset.formats` entry-point group adds to it. An unknown name is 404\n`EXPORT_FORMAT_NOT_FOUND`.\n\nA format that cannot carry everything the kernel can represent declares itself\nlossy, and exporting in one is 409 `LOSSY_EXPORT_NOT_CONSENTED` until the\nrequest repeats with `allow_lossy=true`. Retrying is the identical request\nplus that one parameter. Nothing is written before the refusal.\n\nA POST because it does work and writes files, though it changes nothing a\nlater read can see: the release is immutable, and re-exporting simply\noverwrites the previous archive. There is no job to poll \u2014 this answers when\nthe exporter is done.",
+        "operationId": "export_release",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which installed format to write. `GET /formats` lists them.",
+            "in": "query",
+            "name": "format",
+            "required": true,
+            "schema": {
+              "description": "Which installed format to write. `GET /formats` lists them.",
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required when the format cannot carry everything the release holds.",
+            "in": "query",
+            "name": "allow_lossy",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Required when the format cannot carry everything the release holds.",
+              "title": "Allow Lossy",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {}
+              }
+            },
+            "description": "Everything the exporter wrote, as one archive."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Release",
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/releases/{release_id}/manifest": {
+      "get": {
+        "description": "The frozen document itself, byte for byte.\n\nStreamed straight off the blob store rather than parsed and re-serialized, so\nwhat arrives hashes to `manifest_hash` \u2014 which is the point of a hash-pinned\nartifact and would not survive a round trip through this build's JSON encoder.\n\nCached forever and never revalidated: the document is named by its own digest,\nso these bytes cannot change. The `ETag` is that digest.",
+        "operationId": "get_release_manifest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "The canonical manifest document, byte for byte."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Release Manifest",
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/releases/{release_id}/verify": {
+      "get": {
+        "description": "Re-read and re-hash everything this release names.\n\nA report rather than a verdict, because \"is this still intact?\" has more than\ntwo useful answers and somebody looking at a damaged workspace needs the list.\n`missing` and `corrupt` are never merged: a blob that is gone was deleted out\nfrom under us, while one whose bytes no longer hash to its own name was\naltered in place, and the remedies differ.\n\n`manifest_intact` is settled first. When it is false, `checked` is zero and\nevery list is empty \u2014 an altered document is not an inventory worth walking.\n\n`cache_mismatches` is where the release row disagrees with the document it\nnames. Anything in it is a bug in this build rather than damage.\n\nA GET because it changes nothing, but it is not free: it reads every blob the\nrelease names.",
+        "operationId": "verify_release",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseVerificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Verify Release",
+        "tags": [
+          "releases"
         ]
       }
     },

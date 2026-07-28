@@ -42,6 +42,8 @@ from __future__ import annotations
 
 import json
 from io import BytesIO
+from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -51,6 +53,7 @@ from visionset.kernel.domain import (
     Annotation,
     Asset,
     Dataset,
+    ExportResult,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -67,12 +70,13 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     ConstraintViolated,
     EmptyRelease,
+    LossyExportNotConsented,
     NoSplitRecipe,
     ReleaseNotFound,
     ReleaseTagTaken,
     WorkspaceCorrupt,
 )
-from visionset.kernel.ports import BlobStore, UnitOfWork
+from visionset.kernel.ports import BlobStore, Exporter, UnitOfWork
 from visionset.kernel.services.dataset_service import DatasetService, assets_of
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -298,6 +302,73 @@ class ReleaseService:
             )
         return assign_split(release.split, self._read_manifest(release).assets)
 
+    # --- handing the snapshot to a format plugin ---------------------------
+
+    def export(
+        self,
+        release_id: UUID,
+        exporter: Exporter,
+        dest: Path,
+        *,
+        allow_lossy: bool = False,
+    ) -> ExportResult:
+        """Write this release into ``dest`` in the exporter's format.
+
+        Takes an ``Exporter`` **instance**, never a format name, and that is the
+        one place this service differs from every other read here. Plugins are
+        discovered through an entry-point group that lives in
+        ``visionset.formats``, which the kernel may not import — so resolving a
+        name to an implementation belongs to whoever composed the call, and this
+        method depends on the port the way every service depends on a port.
+
+        ``allow_lossy`` is checked **before** anything is created, so a refused
+        export leaves no half-written directory behind. It is a third word beside
+        ``confirm=`` and ``allow_destructive=`` rather than a reuse of either:
+        those guard destroying data and narrowing a contract, and this guards
+        emitting an incomplete copy of something that stays exactly as it was.
+
+        The plugin runs outside any transaction. It is third-party code doing
+        file I/O over what may be a very large manifest, and holding the
+        workspace's single writer open across it is how a store starts reporting
+        "database is locked" — the rule ``IngestService`` follows for a decode.
+
+        Nothing here is recorded. An export produces no row, no event and no
+        change-log entry: it reads a frozen artifact and writes outside the
+        workspace's own files, so there is no state to keep in step. Re-running
+        one is therefore free and always agrees with itself.
+
+        ``dest`` is created if it is not there and is **not** emptied if it is.
+        Deleting files under a path a caller named is not this service's to do,
+        so the counts describe the directory once the plugin has run rather than
+        the run alone — identical for a fresh directory, and different for one
+        holding an older export. A caller that needs the stricter reading clears
+        the directory first, which is what the REST surface does with the path it
+        owns.
+
+        Raises:
+            ReleaseNotFound: no such release in this workspace.
+            LossyExportNotConsented: the format drops information and the caller
+                has not said that is acceptable.
+            WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
+        """
+        release = self.get(release_id)
+        if exporter.lossy and not allow_lossy:
+            raise LossyExportNotConsented(
+                f"format {exporter.format_name!r} cannot carry everything release "
+                f"{release.tag!r} holds; re-run with allow_lossy to accept the loss"
+            )
+        manifest = self._read_manifest(release)
+        dest.mkdir(parents=True, exist_ok=True)
+        exporter.export(release, manifest, dest)
+        written = [path for path in dest.rglob("*") if path.is_file()]
+        return ExportResult(
+            release_id=release.id,
+            format_name=exporter.format_name,
+            directory=dest,
+            file_count=len(written),
+            total_bytes=sum(path.stat().st_size for path in written),
+        )
+
     # --- the blob store side ----------------------------------------------
 
     def _store_manifest(self, manifest: Manifest) -> str:
@@ -307,6 +378,29 @@ class ReleaseService:
         thing, so the row cannot name a blob the store does not agree with.
         """
         return self._workspace.blob_store.put(BytesIO(canonical_bytes(manifest)))
+
+    def open_manifest(self, release: Release) -> BinaryIO:
+        """The document this release names, as raw bytes on an open handle.
+
+        The unparsed sibling of :meth:`manifest`, and the difference is the whole
+        point. A manifest is hash-pinned evidence: a caller forwarding it —
+        writing it to a file, sending it over the wire — must send exactly what
+        ``manifest_hash`` is the digest of, and a round trip through parse and
+        re-serialize puts this build's JSON encoder between the two.
+
+        Takes the release rather than an id because the caller reading a manifest
+        is invariably one that already resolved it and wants the hash for an
+        ``ETag`` beside the bytes.
+
+        Raises:
+            WorkspaceCorrupt: the manifest blob is gone.
+        """
+        try:
+            return self._workspace.blob_store.get(release.manifest_hash)
+        except FileNotFoundError as exc:
+            raise WorkspaceCorrupt(
+                f"{_manifest_subject(release)} is not in the blob store"
+            ) from exc
 
     def _read_manifest(self, release: Release) -> Manifest:
         """The document this release names, parsed."""

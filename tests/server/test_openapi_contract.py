@@ -79,9 +79,12 @@ def test_the_page_envelope_is_named_for_its_item_type() -> None:
         "AssetPage",
         "BatchAssetPage",
         "BatchPage",
+        "DatasetChangePage",
+        "FormatPage",
         "IngestJobPage",
         "JobPage",
         "ProjectPage",
+        "ReleasePage",
         "SchemaVersionPage",
         "SourcePage",
     } <= set(schemas)
