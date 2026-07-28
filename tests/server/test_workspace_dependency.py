@@ -120,7 +120,13 @@ def test_closing_twice_is_safe(workspace_root: Path) -> None:
     handle.close()
 
 
-# --- resolution (provisional; #26 owns the real rule) ------------------------
+# --- resolution: the rule lives in the kernel now, re-exported here ----------
+#
+# These stay in the server's test file rather than moving to the kernel's with
+# the rule. They pin two things at once now: that resolution still answers what
+# the server needs, and that both names are still importable from
+# ``visionset.server.dependencies`` — which is the half a refactor would break
+# silently. The rule's own coverage lives in ``tests/kernel/test_workspace_service.py``.
 
 
 def test_the_environment_variable_names_the_workspace_root(
@@ -145,6 +151,23 @@ def test_an_empty_environment_variable_falls_back_to_the_working_directory(
     monkeypatch.setenv(WORKSPACE_ENV_VAR, "")
     monkeypatch.chdir(tmp_path)
     assert resolve_workspace_root() == tmp_path
+
+
+def test_the_server_finds_a_workspace_above_its_working_directory(
+    monkeypatch: pytest.MonkeyPatch, workspace_root: Path
+) -> None:
+    """The one behaviour the promotion gave the server, and it is deliberate.
+
+    Before #26 this answered 500 ``NOT_A_WORKSPACE``. One resolver means the
+    server discovers a workspace the same way the CLI does; the asymmetry that
+    keeps it safe is that a *stated* root — the variable here, ``--workspace``
+    there — never walks.
+    """
+    monkeypatch.delenv(WORKSPACE_ENV_VAR, raising=False)
+    below = workspace_root / "logs"
+    below.mkdir()
+    monkeypatch.chdir(below)
+    assert resolve_workspace_root() == Path.cwd().parent
 
 
 def test_the_configured_workspace_is_the_one_that_is_served(

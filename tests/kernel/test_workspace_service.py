@@ -20,7 +20,13 @@ from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters.migrations import FORMAT_VERSION
 from visionset.kernel.domain import Project, Workspace
 from visionset.kernel.ports import BlobStore, MetadataStore, UnitOfWork
-from visionset.kernel.services import BLOBS_DIRNAME, DB_FILENAME, WorkspaceService
+from visionset.kernel.services import (
+    BLOBS_DIRNAME,
+    DB_FILENAME,
+    WORKSPACE_ENV_VAR,
+    WorkspaceService,
+    resolve_workspace_root,
+)
 
 
 def _init(tmp_path: Path, name: str = "ws") -> WorkspaceService:
@@ -556,3 +562,94 @@ def test_projects_are_listed_in_the_order_they_were_created(tmp_path: Path) -> N
         _add_project(workspace, name)
     assert [p.name for p in _projects_of(workspace)] == ["first", "second", "third"]
     workspace.close()
+
+
+# --- which workspace, when nobody said ----------------------------------------
+#
+# These tests assume no ancestor of ``tmp_path`` holds a ``visionset.db``. That
+# holds under pytest's temporary root; if one of them ever fails on a machine
+# where somebody made a workspace of ``/tmp``, this is the reason.
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A developer with ``VISIONSET_WORKSPACE`` exported gets CI's results."""
+    monkeypatch.delenv(WORKSPACE_ENV_VAR, raising=False)
+
+
+def test_an_explicit_path_is_returned_unchanged(tmp_path: Path) -> None:
+    """Not resolved, not expanded: ``init``/``open`` own canonicalization."""
+    assert resolve_workspace_root(tmp_path / "nowhere") == tmp_path / "nowhere"
+
+
+def test_an_explicit_path_wins_over_the_environment_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(WORKSPACE_ENV_VAR, str(tmp_path / "from-the-environment"))
+    assert resolve_workspace_root(tmp_path / "from-the-flag") == tmp_path / "from-the-flag"
+
+
+def test_the_environment_variable_is_used_when_no_path_is_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(WORKSPACE_ENV_VAR, str(tmp_path / "elsewhere"))
+    assert resolve_workspace_root() == tmp_path / "elsewhere"
+
+
+def test_an_empty_environment_variable_is_treated_as_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shell cannot tell ``VISIONSET_WORKSPACE=`` from an unset variable."""
+    monkeypatch.setenv(WORKSPACE_ENV_VAR, "")
+    monkeypatch.chdir(tmp_path)
+    assert resolve_workspace_root() == Path.cwd()
+
+
+def test_a_workspace_in_a_parent_directory_is_found_from_a_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _init(tmp_path).close()
+    below = tmp_path / "ws" / "assets" / "raw"
+    below.mkdir(parents=True)
+    monkeypatch.chdir(below)
+    assert resolve_workspace_root() == Path.cwd().parents[1]
+
+
+def test_the_nearest_workspace_wins_when_two_are_nested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outer = WorkspaceService.init(tmp_path / "outer")
+    outer.close()
+    inner = WorkspaceService.init(tmp_path / "outer" / "inner")
+    inner.close()
+    monkeypatch.chdir(tmp_path / "outer" / "inner")
+    assert resolve_workspace_root() == Path.cwd()
+
+
+def test_the_working_directory_is_the_answer_when_nothing_above_it_is_a_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert resolve_workspace_root() == Path.cwd()
+
+
+def test_an_explicit_path_does_not_walk_upward(tmp_path: Path) -> None:
+    """The load-bearing negative: a stated directory is never traded for its parent.
+
+    Walking here would mint a credential into whatever workspace happens to live
+    above the directory somebody actually named.
+    """
+    _init(tmp_path).close()
+    below = tmp_path / "ws" / "assets"
+    below.mkdir()
+    assert resolve_workspace_root(below) == below
+
+
+def test_the_environment_variable_does_not_walk_upward(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _init(tmp_path).close()
+    below = tmp_path / "ws" / "assets"
+    below.mkdir()
+    monkeypatch.setenv(WORKSPACE_ENV_VAR, str(below))
+    assert resolve_workspace_root() == below

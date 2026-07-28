@@ -5,7 +5,9 @@ scoped to one workspace, and holding a valid one means holding the whole workspa
 permissions are deliberately not here.
 
 ```
-visionset token create --name ci     # prints the secret once — issue #26
+visionset token create --name ci     # prints the secret once, on stdout
+visionset token list                 # names, created, revoked — never secrets
+visionset token revoke ci            # asks first, unless you pass --yes
 ```
 
 ```
@@ -63,6 +65,41 @@ Nothing caches a verdict. "Revoked, therefore refused" has to mean *now*, so the
 the workspace on every call. That read is cheap: WAL readers never block a writer, and a
 read-only unit of work takes no lock at all.
 
+### At a terminal
+
+`ConfirmationRequired` exists because the kernel has no terminal and no user; each surface asks in
+its own idiom and passes the answer down. The CLI's idiom is a prompt, skipped by `--yes`:
+
+```
+$ visionset token create --name ci
+Created token 'ci' in /srv/vision.                                   ← stderr
+vst_YnYwMfhwzqRqfg5VjaoHwvoUFb6bx42GVYeTaICVCwI                      ← stdout
+This secret is shown once and cannot be recovered. Store it now.     ← stderr
+
+$ visionset token list
+NAME  CREATED               REVOKED
+ci    2026-07-28T01:43:47Z  -
+
+$ visionset token revoke ci
+Revoke token 'ci'? Every client holding its secret stops working, and this cannot be undone. [y/N]:
+```
+
+**Stdout is data; stderr is everything a person reads.** The secret is the only thing on stdout, so
+`TOKEN=$(visionset token create --name ci)` is exactly the secret and the warning survives the
+redirection that most needs it. `token list` names its three columns one at a time rather than
+dumping the model, so neither the secret nor its digest can reach the terminal by accident — a
+digest is not a secret, but it verifies a guess offline.
+
+Revoking is resolved **by name**, which is why token names are unique case-insensitively. Revoking
+an already-revoked token exits 0, says when it died, and does not prompt: a retried command must be
+safe, and asking somebody to re-confirm a thing already done invites a "yes" that means nothing.
+A token that does not exist exits 1 with the kernel's own sentence.
+
+Exit codes are the whole error contract at a terminal: **0** success, **1** any domain refusal as
+one sentence on stderr, **2** a usage error Click raises itself. There is no per-error code — a
+shell branches on zero versus non-zero, and a person reads the sentence. That is the deliberate
+difference from the REST surface, where a client branches on `code` because it is a program.
+
 ## What a refusal looks like
 
 A missing header, a non-bearer scheme, an empty credential, an unknown token and a revoked token
@@ -85,21 +122,26 @@ wrong thing.
 
 ## Which workspace the server serves
 
-One, named by **`VISIONSET_WORKSPACE`**, defaulting to the process's working directory. It is
-opened by the first request that needs it and kept for the life of the process — never at import
-time, because `scripts/export_openapi.py` imports the application in a checkout that has no
+One, resolved by the same rule the CLI uses — `kernel/services/workspace_service.py::
+resolve_workspace_root`. A server started by import string has no argv of its own, so of the four
+branches it can only reach two: **`VISIONSET_WORKSPACE`**, then the nearest workspace at or above
+the working directory. The precedence table and the argument for why only that last case walks
+upward live in [workspaces.md](workspaces.md#which-workspace-when-nobody-said).
+
+It is opened by the first request that needs it and kept for the life of the process — never at
+import time, because `scripts/export_openapi.py` imports the application in a checkout that has no
 workspace.
+
+> **Changed in #26.** A server started *below* a workspace with no `VISIONSET_WORKSPACE` set now
+> serves that workspace, where it used to answer 500 `NOT_A_WORKSPACE`. That is the cost of one
+> resolver instead of two, and the asymmetry that keeps it safe is that a *stated* root — the
+> variable here, `--workspace` at the CLI — is never traded for its parent.
 
 A server pointed at something that is not a workspace answers **500 `NOT_A_WORKSPACE`**, opaque
 body plus an `incident_id`, with the path in the log only. That is a deployment fault, not a
 client error. It arrives *instead of* a 401 even when no token was sent, because the workspace is
 resolved before the credential is looked at — the ordering is what keeps authentication
 overridable in tests.
-
-> The full resolution rule — a `--workspace` flag, the environment variable, cwd detection, and a
-> documented precedence shared with the CLI — belongs to issue #26.
-> `server/dependencies.py::resolve_workspace_root` is the provisional half, reading the variable
-> #26 will keep.
 
 ## For contributors
 
