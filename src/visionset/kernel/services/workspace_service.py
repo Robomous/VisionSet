@@ -50,6 +50,7 @@ never exist without the dataset it is supposed to be created with.
 
 from __future__ import annotations
 
+import os
 import shutil
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -97,6 +98,13 @@ DB_SIDECAR_FILENAMES = (f"{DB_FILENAME}-wal", f"{DB_FILENAME}-shm")
 #: Root of the content-addressed blob store, relative to the workspace directory.
 BLOBS_DIRNAME = "blobs"
 
+#: Which workspace a surface operates on when its command line says nothing.
+#:
+#: Deliberately not a server- or CLI-specific name: the CLI writes the tokens the
+#: server reads, so the two have to agree on one spelling of "the workspace", and
+#: ``docker/compose.yaml`` already sets this one.
+WORKSPACE_ENV_VAR = "VISIONSET_WORKSPACE"
+
 #: How many entries a "this directory is not empty" message names.
 _PREVIEW = 3
 
@@ -129,6 +137,65 @@ def _resolved(path: Path | str) -> Path:
     symlink) must not look like two different places.
     """
     return Path(path).expanduser().resolve()
+
+
+def resolve_workspace_root(explicit: Path | str | None = None) -> Path:
+    """Which workspace a surface was pointed at. Never checks that one is there.
+
+    One rule, shared by every surface. It lives beside ``DB_FILENAME`` because it
+    is the same fact read from the other end — the database file is what marks a
+    directory as a workspace, and this is what goes looking for the mark. It
+    cannot live in either caller: import-linter forbids ``visionset.server``
+    importing ``visionset.cli``, so the resolver the two share belongs above both.
+
+    Precedence, first match wins:
+
+    1. ``explicit`` — the CLI's ``--workspace``. Somebody named a directory.
+    2. ``VISIONSET_WORKSPACE``, when it is set to something non-empty. An unset
+       variable and one set to ``""`` are the same thing to a shell, so both fall
+       through rather than resolving to the filesystem root's idea of ``Path("")``.
+    3. The working directory, or the nearest directory **above** it holding a
+       ``visionset.db`` — so ``cd assets/raw && visionset token list`` works.
+    4. The working directory, when the walk finds nothing.
+
+    **Only case 3 walks, and that asymmetry is the whole rule.** A flag and an
+    environment variable are somebody *stating* which workspace; if the stated
+    directory holds none, walking to its parent and quietly minting a credential
+    into whatever workspace lives up there is the worst thing this function could
+    do. Git draws the line in the same place — discovery walks up, ``--git-dir``
+    and ``GIT_DIR`` do not — and for the same reason.
+
+    **Finding nothing is not an error here.** This names a directory;
+    :meth:`WorkspaceService.open` owns "is this a workspace?" and already raises
+    ``NotAWorkspace`` naming the path it was given. A refusal here would be two
+    errors for one condition, and would make this function non-total for the
+    server, which calls it inside a lazily opened handle that expects exactly one
+    failure mode.
+
+    **Nothing is normalized.** :func:`_resolved` is the one place a path becomes
+    canonical, and it runs inside ``init``/``open``; expanding ``~`` twice is how
+    two spellings of one workspace start looking like two workspaces.
+    """
+    if explicit is not None:
+        return Path(explicit)
+    named = os.environ.get(WORKSPACE_ENV_VAR)
+    if named:
+        return Path(named)
+    cwd = Path.cwd()
+    return _workspace_above(cwd) or cwd
+
+
+def _workspace_above(start: Path) -> Path | None:
+    """The nearest directory at or above ``start`` holding a ``DB_FILENAME``.
+
+    Walks to the filesystem root. Private because
+    :func:`resolve_workspace_root` is its only caller and "how far does discovery
+    reach?" is that function's rule to state, not a second public knob.
+    """
+    for candidate in (start, *start.parents):
+        if (candidate / DB_FILENAME).is_file():
+            return candidate
+    return None
 
 
 class WorkspaceService:

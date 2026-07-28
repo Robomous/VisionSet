@@ -20,12 +20,15 @@ from visionset.kernel.services.token_service import TokenService
 from visionset.kernel.services.workspace_service import (
     BLOBS_DIRNAME,
     DB_FILENAME,
+    WORKSPACE_ENV_VAR,
     WorkspaceService,
+    resolve_workspace_root,
 )
 
 __all__ = [
     "BLOBS_DIRNAME",
     "DB_FILENAME",
+    "WORKSPACE_ENV_VAR",
     "AnnotationService",
     "BatchService",
     "DatasetService",
@@ -37,4 +40,5 @@ __all__ = [
     "SourceService",
     "TokenService",
     "WorkspaceService",
+    "resolve_workspace_root",
 ]
