@@ -21,6 +21,11 @@ services:
       # 500 NOT_A_WORKSPACE, which is the intended legible failure rather than
       # a server that silently serves nothing.
       VISIONSET_WORKSPACE: /workspace/workspace-data/dev
+    # Raw uvicorn rather than `uv run visionset ui`, and deliberately so: that
+    # command opens the workspace before starting anything, so it would refuse to
+    # boot until somebody had created one — which is exactly the state described
+    # above that this stack is meant to survive. It also serves the app itself on
+    # :5173, so it needs nothing from the /ui mount.
     command: uv run uvicorn visionset.server.main:app --reload --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
