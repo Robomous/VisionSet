@@ -143,3 +143,36 @@ whether or not the annotation is also wrong, and hearing about it only sometimes
 
 Reads are not gated: `get` and `for_asset` work long after the batch closed, because a label
 outlives the work that produced it.
+
+## Over HTTP
+
+The [API](api.md) is this service's four methods, under the job that owns the work.
+
+```
+GET    /jobs/{id}/assets/{asset_id}/annotations     → 200 AnnotationPage
+POST   /jobs/{id}/annotations   [AnnotationCreate]  → 201 AnnotationPage
+PATCH  /jobs/{id}/annotations   [AnnotationUpdate]  → 200 AnnotationPage
+DELETE /jobs/{id}/annotations?id=&id=               → 204
+```
+
+Bulk delete takes **repeated `id` query parameters** rather than one id per request, and that is
+the all-or-nothing rule showing through: three DELETEs would be three transactions, so a partial
+failure would be reachable over HTTP that the SDK refuses to allow. A request body on DELETE is
+legal in OpenAPI 3.1 and stripped by enough proxies to be a bad thing to require.
+
+`schema_version` is on neither request body. The pinned version is stamped onto whatever is
+sent, so a field a client could set and never observe would be a lie; it comes back on the
+response. `asset_id` is likewise absent from `AnnotationUpdate` — the stored one wins.
+
+**A refusal that is about one item carries `detail.index`**, the position in the array the
+client sent. Nothing was written, and `LABEL_CLASS_NOT_IN_SCHEMA` on its own cannot say which
+of forty boxes meant it. That index is `VisionSetError.index`, set by this service on the way
+out of its per-item loop and published by the API — it is a fact about the call, so it lives in
+the kernel rather than being reconstructed at the boundary.
+
+The wire models re-spell the geometries rather than publishing the domain's, and each request
+body converts through `to_domain()` inside a **parsing-time validator**. That is not decoration:
+`provenance='model'` with no `model_ref`, a confidence outside [0, 1] and a zero-area box are
+refused by pydantic, and a `ValidationError` raised from a route body is neither a
+`VisionSetError` nor a `RequestValidationError` — without the validator it reaches the catch-all
+handler and answers **500** to a plainly malformed payload.

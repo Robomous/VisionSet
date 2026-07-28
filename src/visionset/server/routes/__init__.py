@@ -10,25 +10,50 @@ Every router in here is built with ``protected_router()``. ``/health`` is the on
 public operation and it lives on ``main``'s own router;
 ``tests/server/_openapi.py`` keeps the list of public operations and the spec
 walk that enforces it.
-"""
 
-from __future__ import annotations
+**No ``from __future__ import annotations`` here, and that is not an oversight.**
+This package has a module called ``annotations``, and the future import binds
+that very name to a ``__future__._Feature`` — so importing the submodule shadows
+it and mypy reports the collision. Nothing in this file needs the deferred
+evaluation anyway.
+"""
 
 from typing import Final
 
 from fastapi import APIRouter
 
-from visionset.server.routes import batches, ingest, projects, schemas, sources
+from visionset.server.routes import (
+    annotations,
+    batches,
+    ingest,
+    jobs,
+    projects,
+    schemas,
+    sources,
+)
 
-# A module may contribute more than one router: ``sources`` has a collection
-# under its owning project and a resource of its own, which is two prefixes.
+# A module may contribute more than one router: ``sources`` and ``batches`` each
+# have a collection under an owning project and a resource of their own, which is
+# two prefixes.
 ROUTERS: Final[tuple[APIRouter, ...]] = (
     projects.router,
     schemas.router,
     sources.project_router,
     sources.router,
     ingest.router,
+    batches.project_router,
     batches.router,
+    jobs.router,
+    annotations.router,
 )
 
-__all__ = ["ROUTERS", "batches", "ingest", "projects", "schemas", "sources"]
+__all__ = [
+    "ROUTERS",
+    "annotations",
+    "batches",
+    "ingest",
+    "jobs",
+    "projects",
+    "schemas",
+    "sources",
+]

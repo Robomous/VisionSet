@@ -46,7 +46,23 @@ POST   /sources/{source_id}/ingest-jobs                   launch
 GET    /sources/{source_id}/ingest-jobs
 GET    /ingest-jobs/{job_id}                              poll
 POST   /ingest-jobs/{job_id}/resume
-GET    /batches/{batch_id}/assets
+GET    /projects/{project_id}/batches
+GET    /batches/{batch_id}
+POST   /batches/{batch_id}/approve                        with a partition spec
+POST   /batches/{batch_id}/start
+POST   /batches/{batch_id}/complete
+GET    /batches/{batch_id}/jobs
+GET    /batches/{batch_id}/assets                         paged
+GET    /jobs/{job_id}
+GET    /jobs/{job_id}/progress
+POST   /jobs/{job_id}/start
+POST   /jobs/{job_id}/complete
+GET    /jobs/{job_id}/next                                the next n waiting assets
+PUT    /jobs/{job_id}/assets/{asset_id}/progress
+GET    /jobs/{job_id}/assets/{asset_id}/annotations
+POST   /jobs/{job_id}/annotations                         bulk, all-or-nothing
+PATCH  /jobs/{job_id}/annotations                         bulk, all-or-nothing
+DELETE /jobs/{job_id}/annotations                         ?id=&id=
 ```
 
 The active schema is the collection's **parent**, not a member of it, because "in force" is a
@@ -70,11 +86,19 @@ anything.
 { "items": [ { "id": "…", "name": "road-signs", "description": null } ], "total": 1 }
 ```
 
-An array cannot grow a field without breaking every client that parsed it. There are no paging
-parameters yet — the kernel has no windowed read, and a `limit` implemented by slicing a full
-read would be a window that lies about its cost. `total` already means *matching the query*
-rather than *in this page*, so `limit` and `offset` can be added beside it later without a
-breaking change. An empty collection is `{"items": [], "total": 0}` and a 200, never a 404.
+An array cannot grow a field without breaking every client that parsed it. `total` means
+*matching the query* rather than *in this page*, which is exactly what let paging arrive on one
+route without moving the shape everything else already spoke. An empty collection is
+`{"items": [], "total": 0}` and a 200, never a 404.
+
+**Paging is on `GET /batches/{id}/assets` and nowhere else**, and it bounds the *response*, not
+the read. The kernel has no windowed read, so `limit` and `offset` slice a list that was fetched
+whole — worth doing, because a batch of fifty thousand frames must not be sent to a gallery in
+one body, but not a cheap query and not advertised as one. Every other collection is small by
+construction and gets these parameters when a caller shows up rather than in advance. Because
+`total` is the size of the whole collection, a client pages until it has seen `total` items; an
+offset past the end is an empty page and a 200. When the read itself starts to cost, the fix is
+a windowed method on the persistence port and none of this contract moves.
 
 **Gates are query parameters; bodies carry content.** Destroying data needs `?confirm=true`, and
 narrowing a schema needs `?allow_destructive=true`. Neither is a body field, so recovering from
@@ -198,6 +222,19 @@ Both are reachable on the same route, and they differ in `detail`:
 
 Most malformed input arrives as the first: a `LabelClass` that cannot be constructed never
 reaches a service to be refused by one.
+
+A refusal from a **bulk write** carries `detail.index` — the position in the array you sent of
+the item that caused it:
+
+```json
+{ "code": "LABEL_CLASS_NOT_IN_SCHEMA", "message": "class 'ghost' is not in schema version 1, …",
+  "detail": { "index": 2 } }
+```
+
+Bulk writes are all-or-nothing, so *nothing was stored* and the code alone cannot say which of
+forty annotations meant it. The `message` is the reason; the index is the handle. It appears
+only where it means something — a refusal about the call rather than about one item (a closed
+batch, an unknown job) has no index and no `detail`.
 
 ## The 5xx contract
 

@@ -322,6 +322,12 @@ def _detail_for(exc: BaseException) -> dict[str, Any] | None:
         # directory the *operator* pointed at, not the client — putting it in a
         # response body hands out server filesystem layout. Do not add it back.
         return {"reason": exc.reason}
+    if isinstance(exc, VisionSetError) and exc.index is not None:
+        # Which item of a bulk request was refused. The kernel sets this on the
+        # way out of a per-item loop; everything else leaves it ``None``, so the
+        # key appears only where it means something. The *reason* is already the
+        # message — repeating it here would be two spellings of one sentence.
+        return {"index": exc.index}
     return None
 
 

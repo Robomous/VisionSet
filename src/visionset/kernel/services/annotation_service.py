@@ -13,7 +13,9 @@ Four things shape this module:
   class is not in the version, whose geometry is not the one that class declares,
   or whose attributes do not match what it asks for, is refused and the whole
   call rolls back. The five refusals share a base, ``InvalidAnnotation``, so one
-  ``except`` covers the family.
+  ``except`` covers the family — and each carries ``index``, the position of the
+  offending annotation in the sequence the caller passed, because nothing was
+  written and the message alone cannot say which one it was.
 - **The version is the batch's, not the project's.** Every write is judged
   against ``Batch.schema_version`` — pinned at approval and never moved — so a
   ``create_version`` while annotators are working does not change the rules under
@@ -43,7 +45,8 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -63,6 +66,7 @@ from visionset.kernel.errors import (
     LabelClassNotInSchema,
     MissingRequiredAttribute,
     UnknownAttribute,
+    VisionSetError,
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
@@ -140,9 +144,10 @@ class AnnotationService:
                 annotation.model_copy(update={"schema_version": schema.version})
                 for annotation in annotations
             ]
-            for annotation in proposed:
-                _require_asset_in_job(job, annotation.asset_id)
-                _validate(annotation, schema)
+            for index, annotation in enumerate(proposed):
+                with _blaming(index):
+                    _require_asset_in_job(job, annotation.asset_id)
+                    _validate(annotation, schema)
 
             stored = [uow.annotations.add(annotation) for annotation in proposed]
             _refresh_progress(uow, job, (a.asset_id for a in proposed))
@@ -175,13 +180,14 @@ class AnnotationService:
             schema = self._pinned_schema(batch)
 
             replacements = []
-            for annotation in annotations:
-                current = self._require_annotation(uow, annotation.id)
-                _require_asset_in_job(job, current.asset_id)
-                replacement = annotation.model_copy(
-                    update={"asset_id": current.asset_id, "schema_version": schema.version}
-                )
-                _validate(replacement, schema)
+            for index, annotation in enumerate(annotations):
+                with _blaming(index):
+                    current = self._require_annotation(uow, annotation.id)
+                    _require_asset_in_job(job, current.asset_id)
+                    replacement = annotation.model_copy(
+                        update={"asset_id": current.asset_id, "schema_version": schema.version}
+                    )
+                    _validate(replacement, schema)
                 replacements.append(replacement)
 
             stored = [uow.annotations.update(annotation) for annotation in replacements]
@@ -217,12 +223,22 @@ class AnnotationService:
             # No schema is read: removing a label never has to satisfy a
             # contract, and a version that has since been narrowed must not stop
             # somebody deleting the annotations that narrowing would orphan.
-            doomed = [
-                self._require_annotation(uow, annotation_id)
-                for annotation_id in dict.fromkeys(annotation_ids)
-            ]
-            for annotation in doomed:
-                _require_asset_in_job(job, annotation.asset_id)
+            #
+            # ``first_seen`` is ``dict.fromkeys`` with the caller's own position
+            # kept alongside each id, so a refusal blames the argument the
+            # caller wrote rather than its offset in the deduplicated list —
+            # which for ``[a, a, b]`` are two different numbers.
+            first_seen: dict[UUID, int] = {}
+            for index, annotation_id in enumerate(annotation_ids):
+                first_seen.setdefault(annotation_id, index)
+
+            doomed = []
+            for annotation_id, index in first_seen.items():
+                with _blaming(index):
+                    doomed.append(self._require_annotation(uow, annotation_id))
+            for annotation, index in zip(doomed, first_seen.values(), strict=True):
+                with _blaming(index):
+                    _require_asset_in_job(job, annotation.asset_id)
 
             for annotation in doomed:
                 uow.annotations.delete(annotation.id)
@@ -313,6 +329,26 @@ class AnnotationService:
                 f"no annotation {annotation_id} in workspace {self._workspace.workspace.name!r}"
             )
         return annotation
+
+
+@contextmanager
+def _blaming(index: int) -> Iterator[None]:
+    """Name item ``index`` as the one at fault in whatever escapes this block.
+
+    All three writes here are all-or-nothing over a ``Sequence``, so a caller
+    that gets a refusal has no way to work out *which* annotation caused it —
+    nothing was written, and the message names a class or an attribute rather
+    than a position. ``VisionSetError.index`` is that position, and setting it
+    here rather than at each raise site keeps the five refusals in ``_validate``
+    ignorant of the loop they happen to be called from.
+
+    A no-op on success, and it re-raises rather than swallowing.
+    """
+    try:
+        yield
+    except VisionSetError as exc:
+        exc.index = index
+        raise
 
 
 def _require_asset_in_job(job: AnnotationJob, asset_id: UUID) -> None:
