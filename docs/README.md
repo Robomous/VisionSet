@@ -20,5 +20,5 @@ contracts (kernel purity, headless annotator) are described there and enforced i
 | [events.md](events.md) | Domain events: subscribing by type, why emission follows the commit, at-most-once delivery, and what an isolated subscriber failure does |
 | [persistence.md](persistence.md) | The metadata store: repositories, unit of work, table layout, migrations and `format_version` |
 | [examples.md](examples.md) | The two runnable examples: the whole cycle in one pass, ingest on its own, and what each is built to demonstrate |
-| [api.md](api.md) | The REST surface: the one error body, why clients branch on `code` and not on the status, what decides 404 / 409 / 422, what a 5xx does and does not tell you, and which codes are worth retrying |
+| [api.md](api.md) | The REST surface: the conventions every endpoint follows (paths, UUID ids, the list envelope, gates as query parameters), the one error body, why clients branch on `code` and not on the status, what decides 404 / 409 / 422, what a 5xx does and does not tell you, and which codes are worth retrying |
 | [auth.md](auth.md) | Who may call it: per-workspace API tokens, why only a digest is stored, why every refusal is one identical 401, immediate revocation, the `visionset token` commands, and how a protected route is built |

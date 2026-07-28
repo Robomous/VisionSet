@@ -289,6 +289,18 @@ by every future route remembering.
 """
 
 
+def documented(*statuses: int) -> dict[int | str, dict[str, Any]]:
+    """The responses to declare on a route, for the statuses it can produce.
+
+    The sentence in :data:`ERROR_RESPONSES`' docstring, made executable — a route
+    spreads exactly the statuses it can actually answer with, so a 404 in the
+    contract means some caller really can name a thing that is not there. 401
+    arrives from ``protected_router()`` and 422/500/503 from the app, so neither
+    belongs in a call to this.
+    """
+    return {status: ERROR_RESPONSES[status] for status in statuses}
+
+
 def rule_for(exc: BaseException) -> ErrorRule | None:
     """The rule for ``exc``, or ``None`` if nothing in the table covers it.
 

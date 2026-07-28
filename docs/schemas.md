@@ -35,6 +35,12 @@ with WorkspaceService.open("./road-signs") as workspace:
     schemas.allowed_geometries(project.id)  # {BBOX, POLYGON}
 ```
 
+**Over HTTP:** `POST`/`GET /projects/{project_id}/schema/versions`,
+`GET /projects/{project_id}/schema/versions/{version}`, and `GET /projects/{project_id}/schema`
+for the version in force. Narrowing needs `?allow_destructive=true`, exactly as
+`allow_destructive=` does here. `preview`, `compare` and `allowed_geometries` have no route yet —
+they will get one when a surface needs them. See [api.md](api.md).
+
 ## Versions are 1..N, and none of them changes
 
 The next version is one past the highest stored, so the numbers have no gaps and no reuse.

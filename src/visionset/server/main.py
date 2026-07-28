@@ -6,14 +6,30 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
+from fastapi.routing import APIRoute
 
 from visionset import __version__
 from visionset.server.dependencies import WorkspaceHandle
 from visionset.server.errors import UNIVERSAL_ERROR_RESPONSES, install_error_handlers
+from visionset.server.routes import ROUTERS
 
 DESCRIPTION = "REST surface of the VisionSet SDK. The committed openapi.json is the contract."
 
 router = APIRouter()
+
+
+def operation_id(route: APIRoute) -> str:
+    """The handler's own name, as the operation id.
+
+    FastAPI's default is derived from the path
+    (``get_schema_version_projects__project_id__schema_versions__version__get``),
+    and an operation id becomes a *method name* in a generated client — so under
+    the default, moving a path silently renames somebody's client method. The
+    handler name is the stable thing, and it is what a reader of the spec would
+    guess. ``tests/server/test_openapi_contract.py`` asserts no two collide,
+    since uniqueness is no longer structural.
+    """
+    return route.name
 
 
 @router.get("/health")
@@ -68,10 +84,13 @@ def create_app() -> FastAPI:
         description=DESCRIPTION,
         responses=UNIVERSAL_ERROR_RESPONSES,
         lifespan=_lifespan,
+        generate_unique_id_function=operation_id,
     )
     app.state.workspace_handle = WorkspaceHandle()
     install_error_handlers(app)
     app.include_router(router)
+    for resource in ROUTERS:
+        app.include_router(resource)
     return app
 
 
