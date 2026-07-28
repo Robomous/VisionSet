@@ -74,7 +74,13 @@ def test_the_page_envelope_is_named_for_its_item_type() -> None:
     """
     schemas = app.openapi()["components"]["schemas"]
 
-    assert {"ProjectPage", "SchemaVersionPage"} <= set(schemas)
+    assert {
+        "AssetPage",
+        "IngestJobPage",
+        "ProjectPage",
+        "SchemaVersionPage",
+        "SourcePage",
+    } <= set(schemas)
     assert not [name for name in schemas if name.startswith("Page")]
 
 

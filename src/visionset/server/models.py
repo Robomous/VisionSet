@@ -37,6 +37,8 @@ columns one at a time — applied to the wire.
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
@@ -45,10 +47,19 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from visionset.kernel.domain import (
     AnnotationSchema,
+    Asset,
     Attribute,
     GeometryType,
+    ImageFormat,
+    IngestFailure,
+    IngestFailureKind,
+    IngestJob,
+    IngestState,
     LabelClass,
     Project,
+    Source,
+    SourceKind,
+    VideoProvenance,
 )
 
 # A gate is a query parameter and never a body field, so a client that gets a 409
@@ -256,3 +267,179 @@ class SchemaVersionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     classes: tuple[LabelClassBody, ...] = ()
+
+
+# --- sources -----------------------------------------------------------------
+
+
+# Flattened rather than nesting the domain's own ``VideoMetadata``, which would
+# publish a kernel model under its kernel docstring — the module rule above. The
+# two rates are the reason this type exists at all: ``fps`` is what the file was
+# *shot* at and ``extraction_fps`` is what we chose to *cut* it at, and a client
+# that confuses them decomposes at the wrong rate. See ``docs/sources.md``.
+class VideoProvenanceOut(BaseModel):
+    """What a clip turned out to be, and the rate it is decomposed at."""
+
+    width: int
+    height: int
+    fps: float
+    duration_seconds: float
+    codec: str
+    extraction_fps: float
+
+    @classmethod
+    def of(cls, provenance: VideoProvenance) -> Self:
+        return cls(
+            width=provenance.metadata.width,
+            height=provenance.metadata.height,
+            fps=provenance.metadata.fps,
+            duration_seconds=provenance.metadata.duration_seconds,
+            codec=provenance.metadata.codec,
+            extraction_fps=provenance.extraction_fps,
+        )
+
+
+# ``Source.path`` is deliberately absent, and this is the one omission worth
+# stating twice. It is an absolute path on the server's own filesystem, inside
+# the workspace's staging area — a client can do nothing with it, and publishing
+# it hands every token holder the layout of the machine. ``name`` is the part a
+# client recognises: the filename it uploaded.
+class SourceOut(BaseModel):
+    """A registered origin: a folder of stills, or a clip."""
+
+    id: UUID
+    project_id: UUID
+    kind: SourceKind
+    name: str
+    registered_at: datetime
+    video: VideoProvenanceOut | None
+
+    @classmethod
+    def of(cls, source: Source) -> Self:
+        return cls(
+            id=source.id,
+            project_id=source.project_id,
+            kind=source.kind,
+            name=Path(source.path).name,
+            registered_at=source.registered_at,
+            video=None if source.video is None else VideoProvenanceOut.of(source.video),
+        )
+
+
+class SourcePage(Page[SourceOut]):
+    """A page of sources."""
+
+
+# --- ingest ------------------------------------------------------------------
+
+
+class IngestFailureOut(BaseModel):
+    """One item a run could not read, and why."""
+
+    name: str
+    kind: IngestFailureKind
+    reason: str
+
+    @classmethod
+    def of(cls, failure: IngestFailure) -> Self:
+        return cls(name=failure.name, kind=failure.kind, reason=failure.reason)
+
+
+# The polling contract. ``processed``/``total``/``failures`` are written to the
+# row as the run goes, so this says where a run *is* rather than where it ended;
+# ``total`` is null for a clip, because ``VideoMetadata`` carries no frame count
+# by design and a guess is worse than an honest absence. ``error`` is the fatal
+# cause and is a different field from ``failures`` on purpose — one broken
+# machine is not five thousand broken files.
+class IngestJobOut(BaseModel):
+    """One run of one source, and how far it has got."""
+
+    id: UUID
+    source_id: UUID
+    state: IngestState
+    error: str | None
+    batch_id: UUID | None
+    batch_name: str | None
+    processed: int
+    total: int | None
+    failures: tuple[IngestFailureOut, ...]
+
+    @classmethod
+    def of(cls, job: IngestJob) -> Self:
+        return cls(
+            id=job.id,
+            source_id=job.source_id,
+            state=job.state,
+            error=job.error,
+            batch_id=job.batch_id,
+            batch_name=job.batch_name,
+            processed=job.processed,
+            total=job.total,
+            failures=tuple(IngestFailureOut.of(failure) for failure in job.failures),
+        )
+
+
+class IngestJobPage(Page[IngestJobOut]):
+    """A page of ingest jobs."""
+
+
+# Targeting an existing draft batch by id is deliberately not here. Batches have
+# no endpoints until #29, so there is nothing for a client to name — and leaving
+# it out is what keeps this launch free of any refusal that would leave the
+# caller a 202 pointing at a job row that was never written.
+#
+# And there is deliberately **no** ``_the_domain_accepts_it`` validator, which is
+# the interesting half. ``LabelClassBody`` needs one because ``LabelClass``
+# refuses with a *pydantic* ``ValidationError``, which is neither a
+# ``VisionSetError`` nor a ``RequestValidationError`` and so answers 500. A blank
+# batch name refuses with ``InvalidName`` — a domain error, already in
+# ``ERROR_RULES`` at 422 ``INVALID_NAME`` — so the kernel's own refusal arrives
+# correctly on its own and a validator here would only restate it, less precisely.
+class IngestStart(BaseModel):
+    """What launching a run needs, which is almost nothing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_name: str | None = None
+
+
+# --- assets ------------------------------------------------------------------
+
+
+# ``Asset.uri`` is absent for the reason ``Source.path`` is: it is a server-side
+# path, and for a frame it is that path plus ``#frame=N``. Reaching the bytes is
+# #30's blob download, keyed by the hashes already on this model.
+class AssetOut(BaseModel):
+    """One ingested item."""
+
+    id: UUID
+    project_id: UUID
+    modality: Literal["image"]
+    content_hash: str
+    width: int | None
+    height: int | None
+    format: ImageFormat | None
+    source_id: UUID | None
+    frame_index: int | None
+    frame_timestamp: float | None
+    thumbnail_hash: str | None
+
+    @classmethod
+    def of(cls, asset: Asset) -> Self:
+        return cls(
+            id=asset.id,
+            project_id=asset.project_id,
+            modality=asset.modality,
+            content_hash=asset.content_hash,
+            width=asset.width,
+            height=asset.height,
+            format=asset.format,
+            source_id=asset.source_id,
+            frame_index=asset.frame_index,
+            frame_timestamp=asset.frame_timestamp,
+            thumbnail_hash=asset.thumbnail_hash,
+        )
+
+
+class AssetPage(Page[AssetOut]):
+    """A page of assets."""

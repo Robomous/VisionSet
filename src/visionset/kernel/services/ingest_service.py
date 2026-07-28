@@ -62,11 +62,14 @@ and :meth:`backfill_thumbnails` is the remedy. That method is the same
 four-transaction discipline applied to a different job — read the ids, render
 outside any transaction, write once at the end.
 
-**What is still deliberately not here.** No background execution: a run is
-synchronous and in-process, and the API is shaped
-so that putting it behind a queue changes the caller's waiting rather than its
-vocabulary — which is why a job is created ``pending`` and moved to ``running``
-by whoever picks it up, even though today that is the same call.
+**Asking for a run and doing it are two calls.** ``enqueue`` refuses everything
+refusable and returns a ``pending`` job; ``resume`` picks that job up and does
+the work; ``ingest`` is the two composed, for a caller that can wait. The split
+is what the ``pending`` state was reserved for from the start, and it is what
+lets the HTTP surface hand back a job id before the first byte is read. **What
+is still not here is a scheduler**: nothing in this module decides *when* the
+second half runs, and a caller that wants it off the calling thread supplies
+that itself.
 """
 
 from __future__ import annotations
@@ -131,6 +134,45 @@ class IngestService:
 
     # --- ingesting ---------------------------------------------------------
 
+    def enqueue(
+        self,
+        source_id: UUID,
+        *,
+        batch_id: UUID | None = None,
+        batch_name: str | None = None,
+    ) -> IngestJob:
+        """Record that a run was asked for, and refuse it now if it cannot happen.
+
+        Everything :meth:`ingest` can refuse before reading a byte is refused
+        here — an unknown source, a project this workspace does not have, a
+        frozen target batch, a blank name — so a run that fails fast leaves **no
+        job row at all** and a caller that got a row got one it can poll.
+
+        What comes back is ``pending``. Whoever picks the work up moves it to
+        ``running``, which today is :meth:`resume`; that vocabulary was written
+        into ``INGEST_TRANSITIONS`` from the start for a queue that did not exist
+        yet, and this is the half of it that was missing. A caller wanting the
+        whole run in one call still uses :meth:`ingest`.
+
+        ``batch_id`` is stored on the row rather than held by the caller,
+        because between here and the run there is no caller to hold it: the row
+        is the only thing that crosses. :meth:`resume` already reads it as "the
+        batch this attempt was headed for".
+
+        Raises:
+            SourceNotFound: no such source in this workspace.
+            BatchNotFound: ``batch_id`` names no batch in this workspace.
+            BatchNotEditable: the target batch is past ``draft``.
+            InvalidName: ``batch_name`` is blank once stripped.
+        """
+        with self._workspace.unit_of_work() as uow:
+            source = self._sources.require_source(uow, source_id)
+            self._require_project(uow, source.project_id)
+            name = self._target_name(uow, source, batch_id, batch_name)
+            return uow.ingest_jobs.add(
+                IngestJob(source_id=source.id, batch_id=batch_id, batch_name=name)
+            )
+
     def ingest(
         self,
         source_id: UUID,
@@ -171,17 +213,12 @@ class IngestService:
                 job records it and is marked failed before it is re-raised — one
                 broken machine is not five thousand broken files.
         """
-        with self._workspace.unit_of_work() as uow:
-            source = self._sources.require_source(uow, source_id)
-            self._require_project(uow, source.project_id)
-            name = self._target_name(uow, source, batch_id, batch_name)
-            # ``pending``, not ``running``: the row exists before anybody picks
-            # the work up, which is the vocabulary a queue will need and costs
-            # nothing today. Every refusal above happens before the insert, so a
-            # run that fails fast leaves no job row at all.
-            job = uow.ingest_jobs.add(IngestJob(source_id=source.id, batch_name=name))
-
-        return self._run(job.id, source, name, batch_id)
+        # Enqueue then pick it straight back up. The two halves are spelled
+        # separately because a caller that cannot wait — the HTTP surface, a
+        # queue — needs the row before the work, and one composed call is how
+        # this one keeps having no second code path to get wrong.
+        job = self.enqueue(source_id, batch_id=batch_id, batch_name=batch_name)
+        return self.resume(job.id)
 
     def resume(self, job_id: UUID) -> IngestResult:
         """Run a failed job again, on the same row and into the same batch.
@@ -198,8 +235,9 @@ class IngestService:
         would be a lie. The fatal ``error`` is cleared for the same reason.
 
         What may be resumed is whatever ``INGEST_TRANSITIONS`` says can reach
-        ``running``: a ``failed`` job, and a ``pending`` one, which a synchronous
-        run never leaves behind but a queued one would. A ``completed`` job
+        ``running``: a ``failed`` job, and a ``pending`` one — which is what
+        :meth:`enqueue` leaves, so this is also how a run is *started* by
+        whoever picked it up. A ``completed`` job
         cannot, and neither can one stuck at ``running`` — that is a process that
         died without reporting anything, so ingest the source again instead,
         which creates nothing and leaves the crashed row as the record it is.
@@ -214,16 +252,45 @@ class IngestService:
             plus everything :meth:`ingest` raises.
         """
         with self._workspace.unit_of_work() as uow:
-            job = self.require_job(uow, job_id)
-            source = self._sources.require_source(uow, job.source_id)
-            self._require_project(uow, source.project_id)
-            # The friendly pre-check, so a completed job is refused before the
-            # target batch is resolved. The real one is inside ``_run``, in the
-            # transaction that actually moves the row.
-            require_move(INGEST_TRANSITIONS, job.state, IngestState.RUNNING, _subject(job.id))
+            job, source = self._resolve_for_run(uow, job_id)
             name = self._target_name(uow, source, job.batch_id, job.batch_name)
 
         return self._run(job.id, source, name, job.batch_id)
+
+    def resumable(self, job_id: UUID) -> IngestJob:
+        """The job, if :meth:`resume` would take it — otherwise refuse now.
+
+        The same refusals :meth:`resume` makes before it reads anything, without
+        the reading. A caller that runs the work somewhere else needs them
+        *here*, on the calling thread: a launch that answered "accepted" and then
+        discovered in a worker that the job was already ``completed`` would give
+        a client no way to tell a redo from a no-op.
+
+        It does not move the row. What it reports is that the move is legal at
+        this moment; ``_begin`` inside the run is still the one that makes it.
+
+        Raises:
+            IngestJobNotFound: no such ingest job in this workspace.
+            InvalidTransition: the job is ``completed``, or stuck at ``running``.
+            SourceNotFound: the source has since been deleted.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job, _ = self._resolve_for_run(uow, job_id)
+            return job
+
+    def _resolve_for_run(self, uow: UnitOfWork, job_id: UUID) -> tuple[IngestJob, Source]:
+        """The job and its source, once this workspace agrees it may run again.
+
+        One spelling of the friendly pre-check, shared by the method that does
+        the work and the one that only asks. The *real* check is inside ``_run``,
+        in the transaction that actually moves the row — this one exists so a
+        refusal arrives before a target batch is resolved or a file is opened.
+        """
+        job = self.require_job(uow, job_id)
+        source = self._sources.require_source(uow, job.source_id)
+        self._require_project(uow, source.project_id)
+        require_move(INGEST_TRANSITIONS, job.state, IngestState.RUNNING, _subject(job.id))
+        return job, source
 
     # --- the thumbnail cache -----------------------------------------------
 

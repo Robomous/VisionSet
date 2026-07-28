@@ -10,9 +10,17 @@ happens in the context of exactly one, so `WorkspaceService` is both the way in 
   visionset.db-wal  SQLite's write-ahead log — present only while the workspace is open
   visionset.db-shm  its shared-memory index — likewise
   blobs/            FilesystemBlobStore root, sharded <hh>/<hh>/<hash>
+  uploads/          written only by the REST server — see below
 ```
 
-Nothing else is written. The store runs in **WAL mode**, which is why the two sidecars are
+Nothing the kernel writes is outside those four entries. `uploads/` is the exception and it
+belongs to somebody else: the [REST API](api.md) stages multipart uploads there, named by a
+digest of the part set, so that `SourceService` — which registers a source by *path* — has a
+path to be given. The kernel neither writes nor reads it, `open` simply tolerates it the way it
+tolerates anything else beside the database and `blobs/`, and the CLI and MCP surfaces never
+create one because they already hold real paths. Like blobs, staged uploads are never deleted.
+
+The store runs in **WAL mode**, which is why the two sidecars are
 part of the format: `close()` checkpoints them into `visionset.db` and removes them, so a
 workspace at rest is still just the database and the blobs — but a workspace that is *open*,
 or one whose process was killed, is all four entries.
