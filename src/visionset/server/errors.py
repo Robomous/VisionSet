@@ -84,6 +84,8 @@ from visionset.kernel import (
     SchemaNotFound,
     SchemaVersionConflict,
     SourceNotFound,
+    TokenNameTaken,
+    TokenNotFound,
     UnknownAttribute,
     UnserializableManifest,
     UnsupportedGeometry,
@@ -172,6 +174,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     DatasetNotFound: ErrorRule(404, "DATASET_NOT_FOUND"),
     AnnotationNotFound: ErrorRule(404, "ANNOTATION_NOT_FOUND"),
     ReleaseNotFound: ErrorRule(404, "RELEASE_NOT_FOUND"),
+    # Administering a token an operator named, never failing to authenticate
+    # with one: a token that does not verify raises nothing at all, so this 404
+    # can never become an oracle for which secrets exist.
+    TokenNotFound: ErrorRule(404, "TOKEN_NOT_FOUND"),
     # A job's assets are fixed at approval, so an asset outside the segment is
     # a sub-resource that does not exist — the "reads as missing, not as
     # forbidden" rule one scope down. A route that takes the asset id in a
@@ -185,6 +191,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # --- 409: well-formed request, the resource's state refuses it ---------
     ProjectNameTaken: ErrorRule(409, "PROJECT_NAME_TAKEN"),
     ReleaseTagTaken: ErrorRule(409, "RELEASE_TAG_TAKEN"),
+    TokenNameTaken: ErrorRule(409, "TOKEN_NAME_TAKEN"),
     WorkspaceAlreadyExists: ErrorRule(409, "WORKSPACE_ALREADY_EXISTS"),
     WorkspaceNotEmpty: ErrorRule(409, "WORKSPACE_NOT_EMPTY"),
     # Retryable, but immediately rather than after a wait — a re-read lands on

@@ -25,6 +25,7 @@ from visionset.kernel.domain import (
     Release,
     Source,
     TaskGroup,
+    Token,
     Workspace,
 )
 
@@ -131,6 +132,17 @@ class UnitOfWork(Protocol):
 
     @property
     def releases(self) -> Repository[Release]: ...
+
+    @property
+    def tokens(self) -> Repository[Token]:
+        """API credentials, parented on the workspace rather than on a project.
+
+        The only repository here whose parent is the workspace itself, which is
+        why ``list(workspace_id)`` and not ``list()`` is the correct read: a
+        ``parent_id`` of ``None`` is not an error on a scoped entity, it means
+        *every row in the table*.
+        """
+        ...
 
 
 @runtime_checkable

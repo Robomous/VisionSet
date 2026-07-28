@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from visionset.kernel import WorkspaceCorrupt
 from visionset.kernel.adapters import SqliteMetadataStore
@@ -117,6 +118,14 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
             )
         )
         connection.execute(text("CREATE INDEX ix_ingest_job_source_id ON ingest_job (source_id)"))
+        # Migration 11's undo. One line, because SQLite drops a table's indexes
+        # with it, and order-free, because nothing references ``token``.
+        #
+        # This line is also the only thing that exercises migration 11. Without
+        # it the fresh-versus-migrated test below would still pass: the table
+        # would survive the downgrade and migration 11 would ``checkfirst``-skip,
+        # so the ``CREATE`` nobody ran would be reported as agreeing with itself.
+        connection.execute(text("drop table token"))
         connection.execute(text("update _visionset_meta set format_version = 1"))
 
 
@@ -586,6 +595,83 @@ def test_migration_ten_leaves_an_asset_it_did_not_render_alone(tmp_path: Path) -
         ).scalar_one()
     assert row is None
     assert store.format_version == FORMAT_VERSION
+    store.close()
+
+
+def test_migration_eleven_gives_a_workspace_somewhere_to_keep_its_tokens(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.connect() as connection:
+        columns = {c["name"] for c in inspect(connection).get_columns("token")}
+    assert columns == {"id", "workspace_id", "name", "secret_hash", "created_at", "revoked_at"}
+    store.close()
+
+
+def test_migration_eleven_brings_its_indexes_with_it(tmp_path: Path) -> None:
+    """``Table.create`` emits the indexes too, which is why none is issued alone.
+
+    Migration 8 had to learn the hard way that an index can go missing from a
+    creation path — it re-issued a ``CREATE`` for one SQLAlchemy could not
+    reflect. Here the claim is the opposite one and it is worth pinning: if
+    ``checkfirst`` on a table ever stopped carrying its indexes, uniqueness would
+    quietly stop being enforced and every name collision would land in the store.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.connect() as connection:
+        indexes = {i["name"] for i in inspect(connection).get_indexes("token")}
+    assert {"ix_token_workspace_id", "uq_token_workspace_name"} <= indexes
+    store.close()
+
+
+def test_migration_eleven_creates_the_table_on_a_database_that_predates_it(
+    tmp_path: Path,
+) -> None:
+    """The real exercise: from generation 1 the table is gone, so this one builds it.
+
+    ``_downgrade_to_version_one`` drops ``token``, and that line is the only
+    thing that makes this migration run at all — see the comment there. Without
+    it the fresh-versus-migrated test would compare a table nobody re-created
+    against itself.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    _downgrade_to_version_one(store)
+    with store.engine.connect() as connection:
+        assert not inspect(connection).has_table("token")
+
+    store.initialize()
+
+    with store.engine.connect() as connection:
+        assert inspect(connection).has_table("token")
+        indexes = {i["name"] for i in inspect(connection).get_indexes("token")}
+    assert {"ix_token_workspace_id", "uq_token_workspace_name"} <= indexes
+    assert store.format_version == FORMAT_VERSION
+    store.close()
+
+
+def test_migration_eleven_makes_a_token_name_unique_within_its_workspace(tmp_path: Path) -> None:
+    """The index is the guarantee; ``TokenService`` supplies the sentence.
+
+    Case-insensitively, so that ``token revoke ci`` cannot find two credentials.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text(
+                "insert into token (id, workspace_id, name, secret_hash, created_at) "
+                f"values ('t1', 'w', 'ci', '{'a' * 64}', '2026-07-27T08:00:00+00:00')"
+            )
+        )
+    with pytest.raises(IntegrityError), store.engine.begin() as connection:
+        connection.execute(
+            text(
+                "insert into token (id, workspace_id, name, secret_hash, created_at) "
+                f"values ('t2', 'w', 'CI', '{'b' * 64}', '2026-07-27T08:00:00+00:00')"
+            )
+        )
     store.close()
 
 

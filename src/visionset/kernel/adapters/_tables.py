@@ -465,3 +465,55 @@ class ReleaseRow(Base):
     split: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
     visionset_version: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class TokenRow(Base):
+    """API credentials, hashed. Created whole by migration 11, so order is free.
+
+    Every other table with a migrated column declares it last, because SQLite's
+    ``ALTER TABLE ... ADD COLUMN`` appends and the two creation paths would
+    otherwise emit different ``CREATE TABLE`` text. This table is exempt for the
+    reason ``SourceRow`` is: migration 11 builds it with ``Table.create``, from
+    this same class, so both paths compile identical DDL whatever the order here.
+
+    **That exemption expires for any column added after migration 11.** A
+    database already stamped at 11 has the table, so a later column reaches it by
+    ``ALTER`` and must be declared last — the rule ``AssetRow`` and
+    ``IngestJobRow`` already live under.
+
+    ``secret_hash`` holds a SHA-256 digest and never a plaintext; ``domain.token``
+    argues why a digest rather than a KDF is the right call here. It carries no
+    index: verification hashes the presentation and scans the workspace's tokens,
+    which is a handful of rows, and an index on a credential-derived value buys a
+    lookup nothing measures.
+    """
+
+    __tablename__ = "token"
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    workspace_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("workspace.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    secret_hash: Mapped[str] = mapped_column(String, nullable=False)
+    #: ISO-8601 with offset, never SQLite ``DATETIME``. See the module docstring.
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    #: When the credential was burned, or NULL while it still works.
+    revoked_at: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+#: Token names are unique per workspace, case-insensitively.
+#:
+#: The ``PROJECT_NAME_UNIQUE`` reasoning one entity over, and the same division
+#: of labour: ``COLLATE NOCASE`` folds ASCII at the storage layer while
+#: ``TokenService`` handles Unicode folding and whitespace where the normalized
+#: string is in hand. The service reports the error; this index is the guarantee.
+#:
+#: It is load-bearing rather than tidy: ``visionset token revoke <name>`` can only
+#: mean something if a name resolves to exactly one credential.
+TOKEN_NAME_UNIQUE = Index(
+    "uq_token_workspace_name",
+    TokenRow.workspace_id,
+    TokenRow.name.collate("NOCASE"),
+    unique=True,
+)
