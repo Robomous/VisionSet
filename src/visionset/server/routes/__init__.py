@@ -18,8 +18,17 @@ from typing import Final
 
 from fastapi import APIRouter
 
-from visionset.server.routes import projects, schemas
+from visionset.server.routes import batches, ingest, projects, schemas, sources
 
-ROUTERS: Final[tuple[APIRouter, ...]] = (projects.router, schemas.router)
+# A module may contribute more than one router: ``sources`` has a collection
+# under its owning project and a resource of its own, which is two prefixes.
+ROUTERS: Final[tuple[APIRouter, ...]] = (
+    projects.router,
+    schemas.router,
+    sources.project_router,
+    sources.router,
+    ingest.router,
+    batches.router,
+)
 
-__all__ = ["ROUTERS", "projects", "schemas"]
+__all__ = ["ROUTERS", "batches", "ingest", "projects", "schemas", "sources"]

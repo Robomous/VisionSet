@@ -30,6 +30,12 @@ dependencies = [
     # so it is allowed inside kernel/adapters/ and needs no import-linter change. The 11.0
     # floor is the first release with Python 3.13 wheels, which the classifiers promise.
     "pillow>=11.0",
+    # Multipart parsing for the upload routes (#28). FastAPI requires it for
+    # `UploadFile` and raises at import time without it. It is already installed
+    # here as a transitive dependency of `mcp` — which is exactly why it is
+    # declared: an upload surface resting on somebody else's dependency tree
+    # breaks the day that tree changes.
+    "python-multipart>=0.0.9",
 ]
 
 [project.urls]

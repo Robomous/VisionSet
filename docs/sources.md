@@ -117,6 +117,27 @@ where a directory was wanted is a `NotADirectoryError`. Both are about the machi
 the workspace, so both stay outside the `VisionSetError` tree — the same line
 `MediaToolUnavailable` sits on.
 
+## Over HTTP, a path is an upload
+
+`SourceService` registers by path, and an HTTP client has bytes rather than a path. So the
+[REST API](api.md) takes multipart — one `files` part per image, or one `file` part plus an
+`extraction_fps` field for a clip — writes the parts under `<workspace>/uploads/`, and registers
+what it wrote. There is **no route that accepts a server-side path**: it would hand every token
+holder an arbitrary-directory read, and the two surfaces that legitimately hold real paths, the
+CLI and MCP, call the SDK in-process and never go through HTTP.
+
+The staging directory is named by a **digest of the whole part set** — sha-256 over the sorted
+`name:sha256` lines — which is what makes the idempotency above survive the trip. The same files
+under the same names stage to the same path, so a repeated upload returns the *same* `Source`
+instead of a second one over a second copy on disk. Different bytes, or the same bytes under a
+different filename, are a different offer and stage apart.
+
+That upload-only choice has a quiet dividend: because the server just wrote the file, the
+`FileNotFoundError` and `NotADirectoryError` below are unreachable from HTTP. Neither is a
+`VisionSetError`, so neither has an entry in the API's error table — and neither needs one.
+
+A client never sees `path`. `SourceOut` publishes the filename and nothing about the machine.
+
 ## Registration is not a validation pass
 
 `register_video` probes; it does not decode. A clip whose tail has been truncated still has a

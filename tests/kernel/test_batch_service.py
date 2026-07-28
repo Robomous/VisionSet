@@ -204,6 +204,31 @@ def test_removing_an_asset_the_batch_does_not_hold_is_a_no_op(tmp_path: Path) ->
     fixture.close()
 
 
+def test_reading_a_batchs_assets_gives_them_in_membership_order(tmp_path: Path) -> None:
+    """The read behind "what did that ingest gather" — order is the stored position,
+    so a caller reading twice sees one sequence and `add_assets` appends."""
+    fixture = Fixture(tmp_path)
+    batch = fixture.batches.create(fixture.project.id, "first", fixture.assets[:2])
+    fixture.batches.add_assets(batch.id, fixture.assets[2:])
+
+    assert [asset.id for asset in fixture.batches.assets(batch.id)] == fixture.assets
+    fixture.close()
+
+
+def test_an_empty_batch_has_no_assets_rather_than_no_answer(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    batch = fixture.batches.create(fixture.project.id, "empty")
+    assert fixture.batches.assets(batch.id) == []
+    fixture.close()
+
+
+def test_reading_the_assets_of_an_unknown_batch_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(BatchNotFound):
+        fixture.batches.assets(uuid4())
+    fixture.close()
+
+
 def test_an_asset_from_another_project_cannot_join_the_batch(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     stranger = Fixture(tmp_path, "other")
