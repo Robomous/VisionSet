@@ -177,7 +177,11 @@ Precedence, first match wins:
 | 3 | the nearest directory at or above the working directory holding a `visionset.db` | **yes** |
 | 4 | the working directory | — |
 
-A server started by import string has no argv, so it reaches only 2, 3 and 4.
+A server started by import string has no argv, so it reaches only 2, 3 and 4. When `visionset ui`
+started it, it reaches only 2: that command resolves through all four branches, opens the result,
+and then *states* it in `VISIONSET_WORKSPACE` — one decision, made once, at the surface a person is
+standing at. It has to travel that way rather than as an argument, because `create_app()` takes no
+parameters and `--reload` runs the application in a separate process.
 
 **Only case 3 walks, and that asymmetry is the whole rule.** A flag and an environment variable are
 somebody *stating* which workspace. If the stated directory holds none, walking to its parent and

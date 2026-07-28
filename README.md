@@ -15,8 +15,15 @@ plain `pip` package.
 
 ```bash
 pip install visionset   # coming soon
-visionset ui
+
+python -c "from visionset.kernel.services import WorkspaceService; WorkspaceService.init('.').close()"
+visionset ui            # API at http://127.0.0.1:8000, app at /ui
 ```
+
+Creating the workspace is a Python call for now — there is no `visionset init` yet. `visionset ui`
+run outside a workspace refuses with one sentence and exit 1; it never creates one, because a
+command that silently made a workspace out of whatever directory you were standing in is how data
+ends up somewhere nobody chose. See [docs/cli.md](docs/cli.md).
 
 Prefer to see the SDK first? [`examples/sdk_end_to_end.py`](examples/sdk_end_to_end.py) drives an
 empty directory to a hash-verified release in one pass, generating its own images — no server,

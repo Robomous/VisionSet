@@ -8,6 +8,7 @@ import typer
 
 from visionset import __version__
 from visionset.cli.tokens import token_app
+from visionset.cli.ui import ui
 
 app = typer.Typer(
     name="visionset",
@@ -15,6 +16,11 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(token_app, name="token")
+# Registered here rather than decorated at its definition site: a ``@app.command()``
+# in ``ui.py`` would have to import this module, which imports ``ui.py``. Typer
+# reads a command's annotations out of its *defining* module's globals either
+# way, which is what lets the shared ``WorkspaceOption`` alias resolve there.
+app.command()(ui)
 
 
 def _version_callback(value: bool) -> None:
@@ -36,12 +42,6 @@ def main(
     ] = False,
 ) -> None:
     """Robomous VisionSet CLI."""
-
-
-@app.command()
-def ui() -> None:
-    """Start the VisionSet server and open the UI (stub)."""
-    typer.echo("server would start here")
 
 
 @app.command()
