@@ -622,6 +622,74 @@ def test_one_unknown_id_deletes_none_of_them(tmp_path: Path) -> None:
     fixture.close()
 
 
+# --- which one was at fault ---------------------------------------------------
+
+
+def test_a_refusal_names_the_position_of_the_annotation_that_caused_it(tmp_path: Path) -> None:
+    """Nothing was written, so the position is the only handle on the culprit."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+
+    with pytest.raises(MissingRequiredAttribute) as refusal:
+        fixture.annotations.add(
+            job.id,
+            [
+                _box(fixture.assets[0]),
+                _box(fixture.assets[1]),
+                _box(fixture.assets[2], attributes={}),
+            ],
+        )
+
+    assert refusal.value.index == 2
+    fixture.close()
+
+
+def test_the_position_is_the_callers_own_on_update(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    first, second = fixture.annotations.add(
+        job.id, [_box(fixture.assets[0]), _box(fixture.assets[1])]
+    )
+
+    with pytest.raises(LabelClassNotInSchema) as refusal:
+        fixture.annotations.update(
+            job.id,
+            [
+                first.model_copy(update={"attributes": {"occluded": True}}),
+                second.model_copy(update={"label_class": "ghost"}),
+            ],
+        )
+
+    assert refusal.value.index == 1
+    fixture.close()
+
+
+def test_a_repeated_id_does_not_shift_the_position_a_deletion_blames(tmp_path: Path) -> None:
+    """``[a, a, b]`` deduplicates to two, but ``b`` is still the caller's index 2."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    stranger = uuid4()
+
+    with pytest.raises(AnnotationNotFound) as refusal:
+        fixture.annotations.delete(job.id, [stored.id, stored.id, stranger])
+
+    assert refusal.value.index == 2
+    fixture.close()
+
+
+def test_a_refusal_that_is_about_no_particular_item_has_no_position(tmp_path: Path) -> None:
+    """The batch gate refuses the call, not one annotation in it."""
+    fixture = Fixture(tmp_path)
+    job = fixture.approved()
+
+    with pytest.raises(BatchNotInAnnotation) as refusal:
+        fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    assert refusal.value.index is None
+    fixture.close()
+
+
 # --- attribute values round-trip through the store ----------------------------
 
 

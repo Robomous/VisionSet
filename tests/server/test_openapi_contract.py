@@ -75,8 +75,12 @@ def test_the_page_envelope_is_named_for_its_item_type() -> None:
     schemas = app.openapi()["components"]["schemas"]
 
     assert {
+        "AnnotationPage",
         "AssetPage",
+        "BatchAssetPage",
+        "BatchPage",
         "IngestJobPage",
+        "JobPage",
         "ProjectPage",
         "SchemaVersionPage",
         "SourcePage",

@@ -16,6 +16,21 @@ from __future__ import annotations
 class VisionSetError(Exception):
     """Base class for every error the kernel raises."""
 
+    index: int | None = None
+    """Which item of a sequence the caller passed is the one at fault.
+
+    A typed class-level default rather than a constructor parameter, so every
+    error in this module is still constructible from one message and nothing in
+    the hierarchy has to opt in. A service that takes a ``Sequence`` — today
+    only ``AnnotationService.add``/``update``/``delete`` — sets it on the way
+    out of its per-item loop; everything else leaves it ``None``.
+
+    It is a kernel fact, not a delivery one: "the third annotation you gave me"
+    is about the call, and a surface reporting a bulk write cannot recover the
+    position afterwards because the refusal is raised before anything is
+    written. ``server/errors.py`` publishes it as ``detail.index``.
+    """
+
 
 class EntityNotFound(VisionSetError):
     """An operation addressed an entity id that is not in the store."""

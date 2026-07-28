@@ -77,6 +77,21 @@ class JobService:
         with self._workspace.unit_of_work() as uow:
             return self.require_job(uow, job_id)
 
+    def batch(self, job_id: UUID) -> Batch:
+        """The batch this job is a segment of.
+
+        An ``AnnotationJob`` records only its task group, so a caller holding a
+        job id and nothing else cannot find the batch — and therefore cannot
+        find the schema version its work is judged against. One read rather than
+        a task-group lookup on every surface that needs it.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            WorkspaceCorrupt: the job's task group is gone.
+        """
+        with self._workspace.unit_of_work() as uow:
+            return self.batch_of(uow, self.require_job(uow, job_id))
+
     def next_pending(self, job_id: UUID, count: int) -> list[Asset]:
         """The next assets waiting to be annotated, in the batch's own order.
 
@@ -274,15 +289,23 @@ class JobService:
         job = uow.annotation_jobs.get(job_id)
         if job is None:
             raise JobNotFound(f"no job {job_id} in workspace {self._workspace.workspace.name!r}")
-        self._batch_of(uow, job)
+        self.batch_of(uow, job)
         return job
 
-    def _batch_of(self, uow: UnitOfWork, job: AnnotationJob) -> Batch:
+    def batch_of(self, uow: UnitOfWork, job: AnnotationJob) -> Batch:
         """The batch this job belongs to, via its task group.
 
         A job whose task group is gone is not a missing job — it is a job that
         should have been cascaded away with its group and was not. That is broken
         on disk, so it is reported as such rather than as a 404.
+
+        Public, and taking a ``uow``, for the reason :meth:`require_job` is:
+        :meth:`batch` needs it and so does anything else that has a job in hand
+        inside a transaction of its own. Promoted rather than copied.
+
+        Raises:
+            BatchNotFound: the batch is not in this workspace.
+            WorkspaceCorrupt: the job's task group is gone.
         """
         group = uow.task_groups.get(job.task_group_id)
         if group is None:
@@ -302,7 +325,7 @@ class JobService:
             BatchNotInAnnotation: the batch is not ``in_annotation``.
             WorkspaceCorrupt: the job's task group is gone.
         """
-        batch = self._batch_of(uow, job)
+        batch = self.batch_of(uow, job)
         if batch.state is not BatchState.IN_ANNOTATION:
             raise BatchNotInAnnotation(
                 f"batch {batch.name!r} is {batch.state.value!r}, not "
