@@ -569,3 +569,142 @@ def test_a_member_whose_asset_vanished_is_corruption_not_a_short_dataset(
     with pytest.raises(WorkspaceCorrupt, match="not stored"):
         fixture.datasets.assets(dataset_id)
     fixture.close()
+
+
+# --- stats: what the trunk holds, counted -------------------------------------
+
+
+def test_an_empty_trunk_counts_zero_of_everything(tmp_path: Path) -> None:
+    """A project nobody has promoted into is the ordinary starting state."""
+    fixture = Fixture(tmp_path)
+    stats = fixture.datasets.stats(fixture.dataset.id)
+
+    assert stats.dataset_id == fixture.dataset.id
+    assert (stats.asset_count, stats.annotated_asset_count, stats.annotation_count) == (0, 0, 0)
+    assert stats.per_class == ()
+    fixture.close()
+
+
+def test_stats_count_the_members_and_their_labels(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    (job,) = fixture.working()
+    for asset_id in fixture.assets:
+        fixture.annotations.add(job.id, [_box(asset_id)])
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+
+    stats = fixture.datasets.stats(fixture.dataset.id)
+
+    assert stats.asset_count == 3
+    assert stats.annotated_asset_count == 3
+    assert stats.annotation_count == 3
+    assert [(count.label_class, count.annotations, count.assets) for count in stats.per_class] == [
+        ("sign", 3, 1 + 1 + 1)
+    ]
+    fixture.close()
+
+
+def test_an_unlabeled_member_counts_as_an_asset_and_not_as_an_annotated_one(
+    tmp_path: Path,
+) -> None:
+    """A promoted asset carrying no labels is legitimate — only a release of zero refuses."""
+    fixture = Fixture(tmp_path)
+    (job,) = fixture.working()
+    fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    for asset_id in fixture.assets[1:]:
+        fixture.jobs.mark(job.id, asset_id, ANNOTATED)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+
+    stats = fixture.datasets.stats(fixture.dataset.id)
+
+    assert stats.asset_count == 3
+    assert stats.annotated_asset_count == 1
+    assert stats.annotation_count == 1
+    fixture.close()
+
+
+def test_the_two_per_class_numbers_tell_spread_apart_from_volume(tmp_path: Path) -> None:
+    """Four boxes on one asset and four across four are the same total, not the same data."""
+    fixture = Fixture(tmp_path)
+    (job,) = fixture.working()
+    crowded = fixture.assets[0]
+    fixture.annotations.add(job.id, [_box(crowded) for _ in range(4)])
+    for asset_id in fixture.assets[1:]:
+        fixture.jobs.mark(job.id, asset_id, ANNOTATED)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+
+    (count,) = fixture.datasets.stats(fixture.dataset.id).per_class
+
+    assert (count.annotations, count.assets) == (4, 1)
+    fixture.close()
+
+
+def test_per_class_counts_come_back_in_class_name_order(tmp_path: Path) -> None:
+    """Canonical ordering belongs to the artifact, not to whatever the walk visited first."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(
+        fixture.project.id,
+        [SIGN, LabelClass(name="alpha", geometry=GeometryType.BBOX)],
+        allow_destructive=True,
+    )
+    (job,) = fixture.working()
+    fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    fixture.annotations.add(
+        job.id,
+        [
+            Annotation(
+                asset_id=fixture.assets[1],
+                label_class="alpha",
+                schema_version=1,
+                geometry=BboxGeometry(x=0.0, y=0.0, width=5.0, height=5.0),
+                provenance="human",
+            )
+        ],
+    )
+    fixture.jobs.mark(job.id, fixture.assets[2], ANNOTATED)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+
+    stats = fixture.datasets.stats(fixture.dataset.id)
+
+    assert [count.label_class for count in stats.per_class] == ["alpha", "sign"]
+    fixture.close()
+
+
+def test_a_class_nobody_used_is_absent_from_the_counts(tmp_path: Path) -> None:
+    """Which classes exist is a fact about the schema, read from the schema."""
+    fixture = Fixture(tmp_path)
+    fixture.completed(ANNOTATED, ANNOTATED, ANNOTATED)
+    fixture.datasets.promote(fixture.batch.id)
+
+    assert fixture.datasets.stats(fixture.dataset.id).per_class == ()
+    fixture.close()
+
+
+def test_removing_an_asset_takes_its_labels_out_of_the_counts(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    (job,) = fixture.working()
+    for asset_id in fixture.assets:
+        fixture.annotations.add(job.id, [_box(asset_id)])
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+    fixture.datasets.remove_asset(fixture.dataset.id, fixture.assets[0])
+
+    stats = fixture.datasets.stats(fixture.dataset.id)
+
+    assert (stats.asset_count, stats.annotation_count) == (2, 2)
+    fixture.close()
+
+
+def test_stats_of_an_unknown_dataset_are_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(DatasetNotFound):
+        fixture.datasets.stats(uuid4())
+    fixture.close()

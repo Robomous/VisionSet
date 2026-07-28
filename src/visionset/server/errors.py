@@ -61,6 +61,7 @@ from visionset.kernel import (
     EmptyRelease,
     EntityAlreadyExists,
     EntityNotFound,
+    ExportFormatNotFound,
     IngestJobNotFound,
     InvalidAnnotation,
     InvalidAttributeValue,
@@ -71,6 +72,7 @@ from visionset.kernel import (
     JobNotComplete,
     JobNotFound,
     LabelClassNotInSchema,
+    LossyExportNotConsented,
     MediaError,
     MediaToolUnavailable,
     MissingRequiredAttribute,
@@ -84,6 +86,7 @@ from visionset.kernel import (
     SchemaNotFound,
     SchemaVersionConflict,
     SourceNotFound,
+    ThumbnailNotCached,
     TokenNameTaken,
     TokenNotFound,
     UnknownAttribute,
@@ -188,6 +191,16 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # docstring's remedy is a *different* release. The code is what tells this
     # apart from RELEASE_NOT_FOUND, which is the case codes exist for.
     NoSplitRecipe: ErrorRule(404, "NO_SPLIT_RECIPE"),
+    # The caller named a format nothing is installed for — the SOURCE_NOT_FOUND
+    # reading, not the MEDIA_TOOL_UNAVAILABLE one. This is not "the machine is
+    # missing a tool it should have"; it is "there is no such thing here", and
+    # ``GET /formats`` is what says which things there are.
+    ExportFormatNotFound: ErrorRule(404, "EXPORT_FORMAT_NOT_FOUND"),
+    # A preview that was never rendered, which is not damage: a thumbnail hash is
+    # a cache key, so NULL is an ordinary state with three causes and one remedy.
+    # A 404 rather than an empty 200 because the caller asked for a specific
+    # thing that is not there, and because the remedy is real — a backfill.
+    ThumbnailNotCached: ErrorRule(404, "THUMBNAIL_NOT_CACHED"),
     # --- 409: well-formed request, the resource's state refuses it ---------
     ProjectNameTaken: ErrorRule(409, "PROJECT_NAME_TAKEN"),
     ReleaseTagTaken: ErrorRule(409, "RELEASE_TAG_TAKEN"),
@@ -213,6 +226,12 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # release tries to freeze it. The remedy is "fix the annotation and publish
     # again", which is change-the-state-and-resubmit.
     UnserializableManifest: ErrorRule(409, "UNSERIALIZABLE_MANIFEST"),
+    # Retryable with a flag, like DESTRUCTIVE_SCHEMA_CHANGE and unlike
+    # SCHEMA_CHANGE_WOULD_ORPHAN — which is precisely why a client must branch on
+    # the code and never on the 409. Not a 422: the request is well formed and the
+    # format is genuinely installed; what refuses is the pairing of this format
+    # with a caller who has not said the loss is acceptable.
+    LossyExportNotConsented: ErrorRule(409, "LOSSY_EXPORT_NOT_CONSENTED"),
     # --- 422: the payload itself is wrong ----------------------------------
     InvalidName: ErrorRule(422, "INVALID_NAME"),
     InvalidSchema: ErrorRule(422, "INVALID_SCHEMA"),

@@ -45,10 +45,12 @@ from visionset.kernel.domain import (
     Asset,
     Batch,
     BatchState,
+    ClassCount,
     Dataset,
     DatasetChange,
     DatasetMember,
     DatasetOperation,
+    DatasetStats,
 )
 from visionset.kernel.errors import (
     BatchNotComplete,
@@ -106,6 +108,57 @@ class DatasetService:
         with self._workspace.unit_of_work() as uow:
             dataset = self.require_dataset(uow, dataset_id)
             return uow.dataset_changes.list(dataset.id)
+
+    def stats(self, dataset_id: UUID) -> DatasetStats:
+        """What the trunk currently holds, counted — overall and per label class.
+
+        Derived on every call rather than cached on the row. The counts are of
+        the *live* set, and a stored aggregate would be a second source of truth
+        for something a walk already answers; the frozen counterpart exists and
+        belongs to a release, which is a different question ("what did we train
+        on?") asked of a different artifact.
+
+        Per class, both the annotations and the distinct assets carrying them,
+        because those tell apart a thousand labels over a thousand images from a
+        thousand over ten. Classes nobody has used do not appear: which classes
+        *exist* is a fact about the schema, and reading it off the trunk would be
+        reading it off the wrong document.
+
+        One walk per member asset, the N+1 ``ReleaseService._manifest_assets``
+        and ``JobService.project_progress`` already accept at this scale. The fix
+        when it bites is a method on the port (``annotations.list_for_dataset``),
+        never a SQLAlchemy import in a service.
+
+        Raises:
+            DatasetNotFound: no such dataset in this workspace.
+            WorkspaceCorrupt: a member names an asset that is not stored.
+        """
+        with self._workspace.unit_of_work() as uow:
+            dataset = self.require_dataset(uow, dataset_id)
+            assets = assets_of(uow, dataset)
+            annotations = 0
+            annotated_assets = 0
+            per_class: dict[str, list[int]] = {}
+            for asset in assets:
+                found = uow.annotations.list(asset.id)
+                if not found:
+                    continue
+                annotated_assets += 1
+                annotations += len(found)
+                for label_class in {annotation.label_class for annotation in found}:
+                    per_class.setdefault(label_class, [0, 0])[1] += 1
+                for annotation in found:
+                    per_class[annotation.label_class][0] += 1
+        return DatasetStats(
+            dataset_id=dataset.id,
+            asset_count=len(assets),
+            annotated_asset_count=annotated_assets,
+            annotation_count=annotations,
+            per_class=tuple(
+                ClassCount(label_class=name, annotations=counts[0], assets=counts[1])
+                for name, counts in per_class.items()
+            ),
+        )
 
     # --- mutating the trunk ------------------------------------------------
 

@@ -60,6 +60,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "TokenNotFound": (404, "TOKEN_NOT_FOUND"),
     "AssetNotInJob": (404, "ASSET_NOT_IN_JOB"),
     "NoSplitRecipe": (404, "NO_SPLIT_RECIPE"),
+    "ExportFormatNotFound": (404, "EXPORT_FORMAT_NOT_FOUND"),
+    "ThumbnailNotCached": (404, "THUMBNAIL_NOT_CACHED"),
     # 409 — well-formed request, the resource's state refuses it
     "ProjectNameTaken": (409, "PROJECT_NAME_TAKEN"),
     "ReleaseTagTaken": (409, "RELEASE_TAG_TAKEN"),
@@ -78,6 +80,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "DestructiveSchemaChange": (409, "DESTRUCTIVE_SCHEMA_CHANGE"),
     "SchemaChangeWouldOrphan": (409, "SCHEMA_CHANGE_WOULD_ORPHAN"),
     "UnserializableManifest": (409, "UNSERIALIZABLE_MANIFEST"),
+    "LossyExportNotConsented": (409, "LOSSY_EXPORT_NOT_CONSENTED"),
     # 422 — the payload itself is wrong
     "InvalidName": (422, "INVALID_NAME"),
     "InvalidSchema": (422, "INVALID_SCHEMA"),

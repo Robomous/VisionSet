@@ -146,6 +146,51 @@ takes everything, dataset included — see [projects.md](projects.md).
 `DatasetService` never names a dataset. `Dataset.name` mirrors its project's and moves with it
 under `ProjectService.rename`, in one transaction. One door per entity.
 
+## Over HTTP
+
+The [API](api.md) is this service, plus one route that lives elsewhere.
+
+```
+GET    /projects/{id}/dataset                        → 200 DatasetOut
+GET    /datasets/{id}                                → 200 DatasetOut
+GET    /datasets/{id}/stats                          → 200 DatasetStatsOut
+GET    /datasets/{id}/assets?limit=&offset=          → 200 AssetPage
+DELETE /datasets/{id}/assets/{asset_id}              → 204
+GET    /datasets/{id}/changes                        → 200 DatasetChangePage
+POST   /batches/{id}/promote                         → 200 AssetPage
+```
+
+**The collection route is singular**, because the relation is. A project has exactly one
+dataset, created in the same transaction as the project, and `GET /projects/{id}/dataset` is a
+*discovery* route rather than a listing — the way a client holding a project id gets the dataset
+id every other route wants.
+
+**Promotion hangs off the batch, not off the dataset.** `promote` takes a batch id and derives
+the dataset from it, so a `dataset_id` in the path would be a segment no service ever checks —
+and a path parameter nobody validates is a lie a client will eventually rely on. It is also
+where the refusal lives: promoting is what a completed batch is *for*.
+
+**The asset listing is the API's second paged collection**, after the batch one. The trunk
+accumulates every batch a project ever completed, so it is the other collection that can hold
+fifty thousand items. The same caveat applies: `limit`/`offset` bound the **response, not the
+read** — `total` is the size of the whole trunk, so a client pages until it has seen `total`
+items rather than until `total` moves, and an offset past the end is `200` with an empty list.
+
+**`DELETE` answers 204 whether or not the asset was a member.** An id that was never in the
+trunk leaves it in exactly the state the caller asked for, and reporting that as a 404 would
+make a retry of a successful request look like a failure. It is also the one delete in the API
+with **no `confirm` gate**, for the reason above: curation destroys nothing.
+
+`DatasetStatsOut.classes` is a list of rows rather than an open object, so a generated client
+gets a real type instead of a `Record<string, number>` — the `ProgressCounts` reason, except
+that the fixed-field trick is unavailable here because the classes come from a schema somebody
+authored. A class the schema declares but nobody used is **absent**: which classes exist is a
+fact about the schema, and `GET /projects/{id}/schema` is where to read it.
+
+`DatasetChangeOut.operation` stays an open `str` on the wire as well as in the domain. An entry
+written by a later VisionSet, naming an operation this build has never heard of, must still be
+readable; typing it as an enum here would put the narrowing back one layer up.
+
 ## Errors
 
 | Error | When |

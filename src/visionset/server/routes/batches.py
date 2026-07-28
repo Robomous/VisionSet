@@ -5,6 +5,9 @@ Two routers, for the reason ``sources.py`` has two: the collection hangs off the
 project that owns it, and the batch itself is addressable on its own — so what
 hangs off *it* (its assets, its jobs) does not sit four segments deep.
 
+``promote`` also lives here, and its path is the argument for it — see the
+comment on the handler.
+
 **A batch is born from an ingest**, not from a POST. There is deliberately no
 create, delete or membership route here: an ingest run puts what it gathered into
 a batch, and curating one out of an arbitrary subset of assets has no caller
@@ -25,10 +28,12 @@ from __future__ import annotations
 from uuid import UUID
 
 from visionset.kernel.domain import AssetProgress
-from visionset.kernel.services import BatchService, JobService
+from visionset.kernel.services import BatchService, DatasetService, JobService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
+    AssetOut,
+    AssetPage,
     BatchApprove,
     BatchAssetOut,
     BatchAssetPage,
@@ -141,8 +146,8 @@ def list_batch_assets(
     and a 200, never a 404.
 
     `job_id` and `progress` are null while the batch is a draft, because a draft
-    has no jobs. Bytes are not here: an asset is named by its `content_hash` and
-    its `thumbnail_hash`, and downloading either is a later capability.
+    has no jobs. Bytes are not here: an asset is named by its hashes, and
+    `GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.
     """
     batches = BatchService(workspace)
     found = batches.assets(batch_id)
@@ -160,3 +165,29 @@ def list_batch_assets(
         job_id, progress = placement.get(asset.id, (None, None))
         items.append(BatchAssetOut.in_batch(asset, job_id=job_id, progress=progress))
     return BatchAssetPage(items=items, total=len(found))
+
+
+# The one dataset operation that lives here rather than in ``datasets.py``, and
+# the path is the argument: ``DatasetService.promote`` takes a *batch* id and
+# derives everything else from it, so a ``dataset_id`` in front would be a segment
+# no service ever checks — a path parameter nobody validates is a lie a client
+# will eventually rely on. The batch is also where the refusal lives, which is the
+# other half of it: promoting is what a completed batch is *for*.
+@router.post("/{batch_id}/promote", responses=documented(404, 409))
+def promote_batch(workspace: WorkspaceDep, batch_id: UUID) -> AssetPage:
+    """Move the batch's labeled assets into its project's dataset.
+
+    The one gate into the trunk. Which assets go in is derived, not chosen: those
+    an annotator left `annotated` or a reviewer left `accepted`. A `skipped`
+    asset stays out by design, and the decision stays on the record rather than
+    being erased from the batch.
+
+    Idempotent, and a union rather than a replacement. Promoting the same batch
+    twice returns an empty list the second time and writes no change-log entry,
+    because nothing happened — and re-promoting after a curator removed an asset
+    puts it back, since the trunk keeps no memory of removals.
+
+    A batch that has not reached `completed` is 409 `BATCH_NOT_COMPLETE`.
+    """
+    promoted = DatasetService(workspace).promote(batch_id)
+    return AssetPage(items=[AssetOut.of(asset) for asset in promoted], total=len(promoted))

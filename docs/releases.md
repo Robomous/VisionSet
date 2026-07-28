@@ -151,6 +151,92 @@ it: a `Release` only *names* its document, so an exporter given the release alon
 hash and no way to resolve it. `ReleaseService.manifest` is what a caller resolves it with.
 Coordinate normalization a format requires happens in the exporter, never in the domain.
 
+### The kernel takes a plugin; it does not find one
+
+`ReleaseService.export(release_id, exporter, dest, *, allow_lossy=False)` takes an **`Exporter`
+instance**, never a format name, and that is structural rather than stylistic: import-linter
+forbids `visionset.kernel` from importing `visionset.formats` at all. Resolving a name to an
+implementation therefore belongs to whoever composed the call.
+
+`visionset.formats.registry` is where that happens — `exporters()` scans the
+`visionset.formats` entry-point group and `pick(installed, name)` refuses an unknown one with
+`ExportFormatNotFound`. Discovery is `importlib.metadata`, never a hardcoded map and never an
+`if fmt == "coco"` chain, because that is the whole plugin promise: a third-party distribution
+registers into the same group and is indistinguishable from a built-in. The group carries
+importers too, so what comes back is filtered by `isinstance(plugin, Exporter)` rather than by a
+naming convention.
+
+### `lossy` is declared by the format, once
+
+`Exporter.lossy` says the format drops information the kernel can represent — a geometry
+variant, an attribute kind, per-annotation provenance. It is a property of the **format** and
+not of a particular release: a bbox-only format loses a polygon whether or not today's dataset
+happens to hold one, and asking per release would mean re-answering on every export and getting
+a different answer as the data drifted.
+
+Exporting in a lossy format raises `LossyExportNotConsented` unless the caller passes
+`allow_lossy=True`. That is a third word beside `confirm=` and `allow_destructive=`, and the
+three are never one `except`: `confirm=` guards destroying data, `allow_destructive=` guards
+narrowing a contract, and this guards emitting an incomplete *copy* of something that stays
+exactly as it was. The refusal happens before anything is created, so a refused export leaves no
+half-written directory behind.
+
+### The destination is the caller's
+
+`dest` is created if it is not there and is **not** emptied if it is — deleting files under a
+path a caller named is not the kernel's to do. So `ExportResult`'s counts describe the directory
+once the plugin has run, which is the same thing as "this run" for a fresh directory and not for
+one holding an older export. A caller that needs the stricter reading clears the directory
+first; the REST route does, because it built the path itself.
+
+Counting is `ReleaseService`'s rather than the plugin's, deliberately: a number reported by the
+thing it describes is not checkable, and an exporter that writes nothing must report zero rather
+than say what it meant to do.
+
+## Over HTTP
+
+The [API](api.md) is this service, one route per method, plus the format listing.
+
+```
+POST /datasets/{id}/releases  { "tag": …, "split"? }  → 201 ReleaseOut
+GET  /datasets/{id}/releases                          → 200 ReleasePage
+GET  /releases/{id}                                   → 200 ReleaseOut
+GET  /releases/{id}/manifest                          → 200 application/json, raw
+GET  /releases/{id}/verify                            → 200 ReleaseVerificationOut
+GET  /releases/{id}/assignment                        → 200 SplitAssignmentOut
+POST /releases/{id}/export?format=&allow_lossy=       → 200 application/zip
+GET  /formats                                         → 200 FormatPage
+```
+
+**The manifest download is raw bytes off the blob store**, not `ReleaseService.manifest()`
+re-serialized, and that is the point of the route rather than an optimization. A manifest is
+hash-pinned evidence: what arrives must hash to `manifest_hash`, and a round trip through this
+build's JSON encoder would put a second serializer between a client and the bytes the hash is
+*of*. The `ETag` is that digest and the response is `Cache-Control: …, immutable`, both honest
+because a document named by its own hash cannot change.
+
+**`verify` is a GET and is not free.** It changes nothing, which is what decides the method, but
+it re-reads and re-hashes every blob the release names. `missing` and `corrupt` stay separate
+lists because they are different faults with different remedies, and `ok` is published as a
+plain field so a client does not re-derive the conjunction slightly differently from us.
+
+**A release with no split recipe has no assignment**, and that is a `404 NO_SPLIT_RECIPE` rather
+than an empty answer. No recipe means one undivided set; answering all-train would be
+indistinguishable from a real recipe that said so.
+
+**Export is synchronous**, and that is a stated limit. The launch-and-poll pattern the ingest
+routes use needs a row to poll and a row needs a table, and M3's migration ledger is spent —
+inventing a second place to keep job state would be exactly the logic leaking upward this
+milestone watches for. The only installed format writes nothing today, so the wait is nil; M6
+brings real exporters and, with them, the case for a job. The archive comes back inline as
+`application/zip`, built from `<workspace>/exports/<release_id>/<format>/`, which is a
+server-owned directory like `uploads/`. The route clears it before each run so the archive
+describes *this* export and not the last one.
+
+**Which formats exist is a property of the deployment**, so `GET /formats` answers it rather
+than this document. `lossy` is on the row so a client knows before it POSTs whether the export
+will need `allow_lossy=true`, instead of discovering it by getting a 409.
+
 ## Errors
 
 | Error | When |
@@ -164,3 +250,5 @@ Coordinate normalization a format requires happens in the exporter, never in the
 | `NoSplitRecipe` | `assignment` was asked of a release published without one. Not an error in the release: no recipe means one undivided set, and inventing an all-train answer would be indistinguishable from a real one. |
 | `UnserializableManifest` | An annotation carries a NaN or infinite coordinate. `Geometry` accepts any float, so such a label can be stored; canonical JSON cannot express it, and writing `null` or the bare token `NaN` would lose data or produce a document no other tool can parse. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
+| `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service — the kernel never sees a name. |
+| `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Retryable with the flag, which is why a client must branch on the code and never on the 409. |

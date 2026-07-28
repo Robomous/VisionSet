@@ -58,7 +58,11 @@ from visionset.kernel.domain import (
     BboxGeometry,
     BySegments,
     BySize,
+    ClassCount,
     ClassificationGeometry,
+    Dataset,
+    DatasetChange,
+    DatasetStats,
     Geometry,
     GeometryType,
     ImageFormat,
@@ -70,11 +74,16 @@ from visionset.kernel.domain import (
     Partition,
     PolygonGeometry,
     Project,
+    Release,
+    ReleaseVerification,
     SingleJob,
     Source,
     SourceKind,
+    SplitAssignment,
+    SplitRecipe,
     VideoProvenance,
 )
+from visionset.kernel.ports import Exporter
 
 # A gate is a query parameter and never a body field, so a client that gets a 409
 # resubmits the *identical* request with one extra parameter — which is what
@@ -453,8 +462,11 @@ class IngestStart(BaseModel):
 
 
 # ``Asset.uri`` is absent for the reason ``Source.path`` is: it is a server-side
-# path, and for a frame it is that path plus ``#frame=N``. Reaching the bytes is
-# #30's blob download, keyed by the hashes already on this model.
+# path, and for a frame it is that path plus ``#frame=N``. The bytes are reached
+# through the download routes instead, which address an asset by *id* and carry
+# the hashes below as their ``ETag`` — a hash names bytes and not a media type,
+# and resolving one back to its asset would need a query the persistence port
+# deliberately does not have.
 class AssetOut(BaseModel):
     """One ingested item."""
 
@@ -890,3 +902,248 @@ class AnnotationOut(BaseModel):
 
 class AnnotationPage(Page[AnnotationOut]):
     """A page of annotations."""
+
+
+# --- datasets ----------------------------------------------------------------
+
+
+# ``project_id`` is here where ``ProjectOut.workspace_id`` was left out, and the
+# difference is that a project genuinely has many datasets' worth of siblings on
+# this server while a workspace has exactly one value. It is also the only way
+# back up: a client that got here through ``/datasets/{id}`` has no other route
+# to the project the trunk belongs to.
+class DatasetOut(BaseModel):
+    """A project's curated trunk of training data."""
+
+    id: UUID
+    project_id: UUID
+    name: str
+    description: str | None
+
+    @classmethod
+    def of(cls, dataset: Dataset) -> Self:
+        return cls(
+            id=dataset.id,
+            project_id=dataset.project_id,
+            name=dataset.name,
+            description=dataset.description,
+        )
+
+
+class ClassCountOut(BaseModel):
+    """How much of one label class the trunk holds."""
+
+    label_class: str
+    annotations: int
+    assets: int
+
+    @classmethod
+    def of(cls, count: ClassCount) -> Self:
+        return cls(
+            label_class=count.label_class,
+            annotations=count.annotations,
+            assets=count.assets,
+        )
+
+
+# A list of objects rather than ``dict[str, int]``, for ``ProgressCounts``' reason
+# — an open object generates as ``Record<string, number>``, which tells a client
+# nothing about what it will find. The fixed-field trick ``ProgressCounts`` uses
+# is unavailable here because the classes come from a schema somebody authored,
+# so the shape that stays honest is a row per class.
+class DatasetStatsOut(BaseModel):
+    """What the trunk currently holds, counted."""
+
+    dataset_id: UUID
+    asset_count: int
+    annotated_asset_count: int
+    annotation_count: int
+    classes: list[ClassCountOut]
+
+    @classmethod
+    def of(cls, stats: DatasetStats) -> Self:
+        return cls(
+            dataset_id=stats.dataset_id,
+            asset_count=stats.asset_count,
+            annotated_asset_count=stats.annotated_asset_count,
+            annotation_count=stats.annotation_count,
+            classes=[ClassCountOut.of(count) for count in stats.per_class],
+        )
+
+
+# ``operation`` is a plain ``str`` here for the same reason it is one on the
+# domain model: a log outlives the build that wrote it, and an entry naming an
+# operation this build has never heard of must still be readable. Typing it as an
+# enum would make a client refuse a line it could simply have shown.
+class DatasetChangeOut(BaseModel):
+    """One entry in the trunk's append-only log."""
+
+    id: UUID
+    dataset_id: UUID
+    operation: str
+    subject_ids: list[UUID]
+    actor: str | None
+    occurred_at: datetime
+
+    @classmethod
+    def of(cls, change: DatasetChange) -> Self:
+        return cls(
+            id=change.id,
+            dataset_id=change.dataset_id,
+            operation=change.operation,
+            subject_ids=list(change.subject_ids),
+            actor=change.actor,
+            occurred_at=change.occurred_at,
+        )
+
+
+class DatasetChangePage(Page[DatasetChangeOut]):
+    """A page of change-log entries."""
+
+
+# --- releases ----------------------------------------------------------------
+
+
+# The one place a fractions-must-sum-to-one rule could reach a route body, so it
+# carries the validator #27 found the need for: ``SplitRecipe`` refuses with a
+# pydantic ``ValidationError``, which from a request body is neither a
+# ``VisionSetError`` nor a ``RequestValidationError`` and answers **500** to a
+# plainly wrong payload. Converting during parsing makes it a 422 carrying the
+# domain's own message. The bounds are not restated here; the domain keeps them.
+class SplitRecipeBody(BaseModel):
+    """Train/val/test fractions and the seed that makes the cut reproducible."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    train: float
+    val: float
+    test: float
+    seed: int = 0
+
+    @model_validator(mode="after")
+    def _the_domain_accepts_it(self) -> Self:
+        self.to_domain()
+        return self
+
+    def to_domain(self) -> SplitRecipe:
+        return SplitRecipe(train=self.train, val=self.val, test=self.test, seed=self.seed)
+
+
+class ReleaseCreate(BaseModel):
+    """What publishing a release needs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tag: str
+    split: SplitRecipeBody | None = None
+
+
+# ``manifest_hash`` is published rather than hidden: it is how a client knows two
+# releases froze identical content, and it is the ``ETag`` the manifest download
+# answers with. The counts beside it are the release row's read cache, and
+# ``GET /releases/{id}/verify`` is what cross-checks them against the document.
+class ReleaseOut(BaseModel):
+    """An immutable, exportable snapshot of a dataset."""
+
+    id: UUID
+    dataset_id: UUID
+    tag: str
+    manifest_hash: str
+    schema_version: int
+    asset_count: int
+    annotation_count: int
+    split: SplitRecipeBody | None
+    created_at: datetime
+    visionset_version: str
+
+    @classmethod
+    def of(cls, release: Release) -> Self:
+        return cls(
+            id=release.id,
+            dataset_id=release.dataset_id,
+            tag=release.tag,
+            manifest_hash=release.manifest_hash,
+            schema_version=release.schema_version,
+            asset_count=release.asset_count,
+            annotation_count=release.annotation_count,
+            split=None
+            if release.split is None
+            else SplitRecipeBody(
+                train=release.split.train,
+                val=release.split.val,
+                test=release.split.test,
+                seed=release.split.seed,
+            ),
+            created_at=release.created_at,
+            visionset_version=release.visionset_version,
+        )
+
+
+class ReleasePage(Page[ReleaseOut]):
+    """A page of releases."""
+
+
+# ``ok`` is a computed property on the domain model and is published as a plain
+# field, because a client should not have to re-derive "is anything wrong" from
+# four collections and get the conjunction subtly different from ours.
+class ReleaseVerificationOut(BaseModel):
+    """What re-hashing everything a release names turned up."""
+
+    release_id: UUID
+    manifest_hash: str
+    manifest_intact: bool
+    ok: bool
+    checked: int
+    missing: list[str]
+    corrupt: list[str]
+    cache_mismatches: list[str]
+
+    @classmethod
+    def of(cls, verification: ReleaseVerification) -> Self:
+        return cls(
+            release_id=verification.release_id,
+            manifest_hash=verification.manifest_hash,
+            manifest_intact=verification.manifest_intact,
+            ok=verification.ok,
+            checked=verification.checked,
+            missing=list(verification.missing),
+            corrupt=list(verification.corrupt),
+            cache_mismatches=list(verification.cache_mismatches),
+        )
+
+
+class SplitAssignmentOut(BaseModel):
+    """The folds a release's recipe produces over its frozen asset set."""
+
+    train: list[UUID]
+    val: list[UUID]
+    test: list[UUID]
+
+    @classmethod
+    def of(cls, assignment: SplitAssignment) -> Self:
+        return cls(
+            train=list(assignment.train),
+            val=list(assignment.val),
+            test=list(assignment.test),
+        )
+
+
+# --- formats -----------------------------------------------------------------
+
+
+# Discoverable rather than documented, because what is installed is a property of
+# this deployment: a distribution registering into the ``visionset.formats``
+# entry-point group adds a row here and no line to any contract.
+class FormatOut(BaseModel):
+    """An installed export format."""
+
+    name: str
+    lossy: bool
+
+    @classmethod
+    def of(cls, exporter: Exporter) -> Self:
+        return cls(name=exporter.format_name, lossy=exporter.lossy)
+
+
+class FormatPage(Page[FormatOut]):
+    """A page of export formats."""
