@@ -50,9 +50,11 @@ from visionset.kernel.domain import (
     SourceKind,
     SplitRecipe,
     TaskGroup,
+    Token,
     VideoMetadata,
     VideoProvenance,
     Workspace,
+    hash_secret,
 )
 from visionset.kernel.ports import UNINITIALIZED, MetadataStore, UnitOfWork
 
@@ -171,6 +173,20 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
             visionset_version="0.0.1.dev0",
         )
     )
+    # Revoked, and with an explicit ``created_at``, for the reason the source
+    # above is a video one: leaving ``revoked_at`` at its default would leave
+    # that column NULL in every store test and the nullable timestamp untested.
+    token = uow.tokens.add(
+        Token(
+            workspace_id=workspace.id,
+            name="ci",
+            secret_hash=hash_secret("vst_seed"),
+            created_at=datetime(2026, 7, 27, 8, 30, tzinfo=UTC),
+            revoked_at=datetime(2026, 7, 27, 9, 30, tzinfo=UTC),
+        )
+    )
+    # Appended LAST, and it has to be: the tests below index into this list by
+    # position, so inserting anywhere else renames every entity after it.
     return [
         ("workspaces", workspace.id),
         ("projects", project.id),
@@ -187,6 +203,7 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
         ("dataset_members", member.id),
         ("dataset_changes", change.id),
         ("releases", release.id),
+        ("tokens", token.id),
     ]
 
 

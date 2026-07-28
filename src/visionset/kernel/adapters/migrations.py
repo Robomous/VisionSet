@@ -58,6 +58,7 @@ from visionset.kernel.adapters._tables import (
     IngestJobRow,
     ReleaseRow,
     SourceRow,
+    TokenRow,
 )
 from visionset.kernel.errors import WorkspaceCorrupt
 
@@ -411,6 +412,37 @@ def _add_asset_thumbnail(connection: Connection) -> None:
     _add_column(connection, cast(Column[object], AssetRow.__table__.c.thumbnail_hash))
 
 
+def _add_api_tokens(connection: Connection) -> None:
+    """Give a workspace somewhere to keep the credentials that reach it.
+
+    The first migration since 1 that creates a **table** rather than altering
+    one, and that changes which tool does the idempotency. ``checkfirst`` on a
+    ``Table`` asks ``has_table`` — a plain catalogue lookup — where migration 8
+    had to reach for ``CREATE INDEX IF NOT EXISTS`` because SQLAlchemy cannot
+    *reflect* an expression-based index and re-issued a ``CREATE`` that failed on
+    every fresh database. Nothing here can meet that trap: the two indexes on
+    this table come along inside ``Table.create`` and are never issued
+    separately.
+
+    Nothing to refuse and nothing to count, and that is a claim rather than an
+    oversight. Migrations 6, 7 and 8 each had to prove a table was empty before
+    dropping or rebuilding it; this table existed on no earlier generation, so
+    there is no legacy row to be honest or dishonest about, and no child table
+    references it, so ``PRAGMA foreign_keys = ON`` has nothing to cascade. The
+    one thing ``checkfirst`` does *not* check is the shape of a table that is
+    already there — and on the only path that can reach this migration with one,
+    it was written by migration 1 from this same class.
+
+    Unlike migration 9 and like migration 10, this one **needs its own undo** in
+    the tests' ``_downgrade_to_version_one``, and the reason is sharper here:
+    without a ``drop table token`` line the fresh-versus-migrated test would
+    still *pass*, because the table would survive the downgrade and this
+    migration would ``checkfirst``-skip. The undo is what gives it a real
+    exercise, not what keeps a test honest that was already watching.
+    """
+    cast(Table, TokenRow.__table__).create(connection, checkfirst=True)
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -457,6 +489,11 @@ MIGRATIONS: list[Migration] = [
         version=10,
         name="asset_thumbnail",
         upgrade=_add_asset_thumbnail,
+    ),
+    Migration(
+        version=11,
+        name="api_tokens",
+        upgrade=_add_api_tokens,
     ),
 ]
 

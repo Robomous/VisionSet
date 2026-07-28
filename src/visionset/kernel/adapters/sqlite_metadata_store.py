@@ -240,6 +240,7 @@ class SqlUnitOfWork:
         self.dataset_members = SqlRepository(session, m.DATASET_MEMBERS)
         self.dataset_changes = SqlRepository(session, m.DATASET_CHANGES)
         self.releases = SqlRepository(session, m.RELEASES)
+        self.tokens = SqlRepository(session, m.TOKENS)
 
 
 class SqliteMetadataStore:

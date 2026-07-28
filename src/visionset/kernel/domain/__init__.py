@@ -99,6 +99,14 @@ from visionset.kernel.domain.task import (
     TaskGroup,
     progress_after_annotating,
 )
+from visionset.kernel.domain.token import (
+    SECRET_BYTES,
+    SECRET_PREFIX,
+    IssuedToken,
+    Token,
+    generate_secret,
+    hash_secret,
+)
 from visionset.kernel.domain.transitions import require_move
 from visionset.kernel.domain.workspace import Workspace
 
@@ -110,6 +118,8 @@ __all__ = [
     "JOB_TRANSITIONS",
     "MANIFEST_VERSION",
     "PROMOTABLE_PROGRESS",
+    "SECRET_BYTES",
+    "SECRET_PREFIX",
     "SETTLED_PROGRESS",
     "Annotation",
     "AnnotationJob",
@@ -145,6 +155,7 @@ __all__ = [
     "IngestJob",
     "IngestResult",
     "IngestState",
+    "IssuedToken",
     "LabelClass",
     "Manifest",
     "ManifestAnnotation",
@@ -165,6 +176,7 @@ __all__ = [
     "SplitRecipe",
     "TaskGroup",
     "ThumbnailBackfill",
+    "Token",
     "VideoFrame",
     "VideoMetadata",
     "VideoProvenance",
@@ -173,6 +185,8 @@ __all__ = [
     "canonical_bytes",
     "canonical_path",
     "diff_classes",
+    "generate_secret",
+    "hash_secret",
     "normalize_name",
     "partition_assets",
     "progress_after_annotating",

@@ -4,8 +4,8 @@
 Every kernel operation happens in the context of exactly one workspace, so this
 module is also the **single composition point** for the default adapters. It is
 the only place in the kernel that names ``SqliteMetadataStore``,
-``FilesystemBlobStore``, ``InProcessEventBus``, ``PillowImageProcessor`` or
-``FfmpegVideoProcessor``; everything above it — later
+``FilesystemBlobStore``, ``InProcessEventBus``, ``PillowImageProcessor``,
+``FfmpegVideoProcessor`` or ``StoredTokenAuthProvider``; everything above it — later
 services, the REST surface, the CLI, MCP — receives an open ``WorkspaceService``
 and reaches the ports through it. Swapping an adapter is therefore a change to
 two functions here and to nowhere else.
@@ -22,10 +22,11 @@ workspace is open and are checkpointed away by ``close()``. They still belong to
 the workspace while they are there: a copy taken mid-run that includes only
 ``visionset.db`` is missing whatever has not been checkpointed yet.
 
-Three of the five ports have no line in that layout, and that is the point: the
-event bus is in-process and the two media processors are decoders, so none of
-them leaves anything behind. They are composed here anyway, because a workspace
-is what services are handed and every port has to arrive with it.
+Four of the six ports have no line in that layout, and that is the point: the
+event bus is in-process, the two media processors are decoders, and the auth
+provider reads a table inside the database above, so none of them leaves
+anything behind. They are composed here anyway, because a workspace is what
+services are handed and every port has to arrive with it.
 
 There is no sidecar file carrying the format version. It lives inside the
 database it describes, for the same reason there is no alembic ledger: a second
@@ -62,6 +63,7 @@ from visionset.kernel.adapters import (
     InProcessEventBus,
     PillowImageProcessor,
     SqliteMetadataStore,
+    StoredTokenAuthProvider,
 )
 from visionset.kernel.domain import Workspace, normalize_name
 from visionset.kernel.errors import (
@@ -73,6 +75,7 @@ from visionset.kernel.errors import (
 )
 from visionset.kernel.ports import (
     UNINITIALIZED,
+    AuthProvider,
     BlobStore,
     EventBus,
     ImageProcessor,
@@ -111,6 +114,11 @@ type ImageProcessorFactory = Callable[[], ImageProcessor]
 #: workspace's: a missing ffmpeg is discovered by the call that needs it, so a
 #: machine without one still opens workspaces and still ingests images.
 type VideoProcessorFactory = Callable[[], VideoProcessor]
+#: Two arguments, unlike every factory above, and the first port that is derived
+#: from another one: verifying a token means reading the workspace's own ``token``
+#: table, scoped to the workspace that owns it. ``StoredTokenAuthProvider`` binds
+#: both positionally, so the bare class reference still satisfies this type.
+type AuthProviderFactory = Callable[[MetadataStore, UUID], AuthProvider]
 
 
 def _resolved(path: Path | str) -> Path:
@@ -124,7 +132,7 @@ def _resolved(path: Path | str) -> Path:
 
 
 class WorkspaceService:
-    """One open workspace: its identity, its directory, and its five ports.
+    """One open workspace: its identity, its directory, and its six ports.
 
     Instances come from :meth:`init` and :meth:`open`. Constructing one directly
     is the injection seam — hand it ports and nothing here touches a disk.
@@ -154,6 +162,7 @@ class WorkspaceService:
         event_bus: EventBus,
         image_processor: ImageProcessor,
         video_processor: VideoProcessor,
+        auth_provider: AuthProvider,
     ) -> None:
         self._root = root
         self._workspace = workspace
@@ -162,6 +171,7 @@ class WorkspaceService:
         self._event_bus = event_bus
         self._image_processor = image_processor
         self._video_processor = video_processor
+        self._auth_provider = auth_provider
 
     # --- composition: the only two ways to get one ------------------------
 
@@ -176,6 +186,7 @@ class WorkspaceService:
         event_bus_factory: EventBusFactory = InProcessEventBus,
         image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
         video_processor_factory: VideoProcessorFactory = FfmpegVideoProcessor,
+        auth_provider_factory: AuthProviderFactory = StoredTokenAuthProvider,
     ) -> WorkspaceService:
         """Create a workspace at ``path`` and return it open.
 
@@ -223,9 +234,11 @@ class WorkspaceService:
                 metadata_store.close()
             _undo_init(root, created_root=created_root)
             raise
-        # The three remaining factories are zero-argument and cannot touch the
-        # disk, so they run outside the block that would undo a half-made
-        # workspace. A future port whose construction can fail moves inside it.
+        # The four remaining factories cannot touch the disk — three take no
+        # arguments at all, and the auth provider only stores the two references
+        # it is handed — so they run outside the block that would undo a
+        # half-made workspace. A future port whose construction can fail moves
+        # inside it.
         return cls(
             root,
             workspace,
@@ -234,6 +247,7 @@ class WorkspaceService:
             event_bus_factory(),
             image_processor_factory(),
             video_processor_factory(),
+            auth_provider_factory(metadata_store, workspace.id),
         )
 
     @classmethod
@@ -246,6 +260,7 @@ class WorkspaceService:
         event_bus_factory: EventBusFactory = InProcessEventBus,
         image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
         video_processor_factory: VideoProcessorFactory = FfmpegVideoProcessor,
+        auth_provider_factory: AuthProviderFactory = StoredTokenAuthProvider,
     ) -> WorkspaceService:
         """Open the workspace at ``path``, migrating it forward if it is behind.
 
@@ -301,6 +316,7 @@ class WorkspaceService:
             event_bus_factory(),
             image_processor_factory(),
             video_processor_factory(),
+            auth_provider_factory(metadata_store, rows[0].id),
         )
 
     # --- what the surfaces and the later services read --------------------
@@ -374,6 +390,27 @@ class WorkspaceService:
         return self._video_processor
 
     @property
+    def auth_provider(self) -> AuthProvider:
+        """Whether a presented token may operate this workspace.
+
+        The narrow seam all three delivery surfaces authenticate through, and the
+        one port here that no kernel service uses: it exists for the layers above.
+        It is composed here anyway, and has to be, because the alternative is a
+        surface constructing ``StoredTokenAuthProvider`` itself — a delivery module
+        naming a kernel adapter, which is exactly what this module exists to
+        prevent.
+
+        The first port derived from another rather than from the path: the default
+        adapter reads the ``token`` table through the metadata store above, scoped
+        to this workspace's id. It holds those two references and nothing else, so
+        :meth:`close` has nothing to do here — closing the store closes what this
+        reads through.
+
+        Credentials are minted and revoked by ``TokenService``, never here.
+        """
+        return self._auth_provider
+
+    @property
     def format_version(self) -> int:
         return self._metadata_store.format_version
 
@@ -434,10 +471,11 @@ class WorkspaceService:
     def close(self) -> None:
         """Release the metadata store's connections. Safe to call twice.
 
-        The other four ports are not closed and have nothing to close: the blob
+        The other five ports are not closed and have nothing to close: the blob
         store addresses files by hash and opens them per call, the event bus holds
-        a list of callables, and the two media processors hold nothing whatsoever.
-        Only the database keeps a connection. A frame iterator does own a running
+        a list of callables, the two media processors hold nothing whatsoever, and
+        the auth provider holds a reference to the store this line closes. Only
+        the database keeps a connection. A frame iterator does own a running
         decoder, but it belongs to whoever asked for it, not to the workspace.
         """
         self._metadata_store.close()
