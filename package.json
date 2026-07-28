@@ -9,6 +9,8 @@
     "lint": "pnpm -r lint",
     "version:sync": "node scripts/sync_versions.mjs",
     "version:check": "node scripts/sync_versions.mjs --check",
+    "generate:client": "node scripts/generate_client.mjs",
+    "generate:client:check": "node scripts/generate_client.mjs --check",
     "bundle:static": "node scripts/bundle_static.mjs"
   },
   "packageManager": "pnpm@10.30.2",
@@ -16,5 +18,8 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0"
   }
 }

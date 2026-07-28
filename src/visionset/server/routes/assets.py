@@ -67,9 +67,18 @@ _OCTET_STREAM: Final = "application/octet-stream"
 # app-level ``UNIVERSAL_ERROR_RESPONSES`` only covers 422/500/503 — so the binary
 # content type is declared per route. ``{}`` as the schema is OpenAPI's way of
 # saying "bytes, and there is nothing more to say about their shape".
+#
+# Every type ``_media_type`` can return is listed, ``_OCTET_STREAM`` included. A
+# response the route really sends and the contract does not declare is a lie a
+# generated client inherits — and the pre-pipeline rows that produce it are
+# exactly the ones a caller is least prepared for.
 _IMAGE_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
     200: {
-        "content": {"image/jpeg": {"schema": {}}, "image/png": {"schema": {}}},
+        "content": {
+            "image/jpeg": {"schema": {}},
+            "image/png": {"schema": {}},
+            _OCTET_STREAM: {"schema": {}},
+        },
         "description": "The bytes, streamed.",
     }
 }
