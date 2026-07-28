@@ -45,6 +45,13 @@ Membership is a **set** — adding an asset the batch already holds changes noth
 removing one it does not hold is a no-op. Order is the order assets were first added. Every
 asset must belong to the batch's project, else `AssetNotFound`.
 
+Reading it back is `batches.assets(batch_id)`, which answers with the `Asset` rows in that
+stored order — `DatasetService.assets` over the trunk, applied to a batch. It is how "what did
+that ingest actually gather" is answered, and a member whose asset is not stored is
+`WorkspaceCorrupt` rather than a silently shorter list: `batch_asset.asset_id` cascades from
+`asset`, so that cannot happen while foreign keys are on, and a batch quietly holding less than
+it says is worse than a refusal.
+
 Excluding an asset after approval is a different act: it is marked **`skipped`**, a per-asset
 progress decision the record keeps rather than a membership edit that erases it. Somebody
 decided not to label that asset, and that decision is worth more than a tidy list. The

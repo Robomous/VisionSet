@@ -38,6 +38,7 @@ from visionset.kernel.domain import (
     BATCH_TRANSITIONS,
     AnnotationJob,
     AnnotationJobState,
+    Asset,
     AssetProgress,
     Batch,
     BatchApproved,
@@ -59,6 +60,7 @@ from visionset.kernel.errors import (
     ConfirmationRequired,
     EmptyBatch,
     ProjectNotFound,
+    WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.schema_service import SchemaService
@@ -97,6 +99,22 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             return jobs_of(uow, self.require_batch(uow, batch_id))
+
+    def assets(self, batch_id: UUID) -> list[Asset]:
+        """Everything in the batch, in membership order.
+
+        The read behind "what did that ingest actually gather" — membership
+        order is the stored ``batch_asset.position``, so a caller reading the
+        batch twice sees the same sequence and an ``add_assets`` appends rather
+        than reshuffles. ``DatasetService.assets`` is the same method over the
+        trunk, and answers to the same rule about a member that is not there.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            WorkspaceCorrupt: the batch holds an asset that is not stored.
+        """
+        with self._workspace.unit_of_work() as uow:
+            return assets_of(uow, self.require_batch(uow, batch_id))
 
     # ``list`` shadows the builtin for every annotation after it in this class
     # body, so it comes last here and the helpers that need ``list[...]`` live
@@ -365,6 +383,27 @@ class BatchService:
 def _subject(batch: Batch) -> str:
     """How a refused move names the batch. One spelling, so refusals read alike."""
     return f"batch {batch.name!r}"
+
+
+def assets_of(uow: UnitOfWork, batch: Batch) -> list[Asset]:
+    """Every asset in the batch, in membership order.
+
+    Module-level and public beside ``jobs_of``, for the same reason: the read is
+    one line and the *rule about a member that is not stored* is the part worth
+    having one copy of. ``batch_asset.asset_id`` cascades from ``asset``, so a
+    deleted asset takes its membership row with it and this cannot happen while
+    foreign keys are on — dropping the id quietly would turn that guarantee
+    failing into a batch that silently holds less than it says.
+    """
+    assets = []
+    for asset_id in batch.asset_ids:
+        asset = uow.assets.get(asset_id)
+        if asset is None:
+            raise WorkspaceCorrupt(
+                f"batch {batch.name!r} holds asset {asset_id}, which is not stored"
+            )
+        assets.append(asset)
+    return assets
 
 
 def jobs_of(uow: UnitOfWork, batch: Batch) -> list[AnnotationJob]:

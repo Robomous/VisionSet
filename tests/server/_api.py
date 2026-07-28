@@ -22,18 +22,23 @@ from tests.server._probe import handle_for
 
 from visionset.kernel.services import TokenService, WorkspaceService
 from visionset.server.main import create_app
+from visionset.server.runner import IngestRunner
 
 TOKEN_NAME: Final = "api-tests"
 
 
-def served_app(root: Path) -> FastAPI:
+def served_app(root: Path, *, runner: IngestRunner | None = None) -> FastAPI:
     """The shipped application, serving the workspace at ``root``.
 
     The handle is replaced rather than the environment patched, so the test says
-    which workspace it means instead of relying on process-wide state.
+    which workspace it means instead of relying on process-wide state. A
+    ``runner`` is replaced the same way and for the same reason; the one
+    ``create_app`` built has started no thread, so dropping it costs nothing.
     """
     app = create_app()
     app.state.workspace_handle = handle_for(root)
+    if runner is not None:
+        app.state.ingest_runner = runner
     return app
 
 
@@ -46,11 +51,14 @@ def api_workspace(root: Path) -> str:
         workspace.close()
 
 
-def api_client(root: Path) -> TestClient:
+def api_client(root: Path, *, runner: IngestRunner | None = None) -> TestClient:
     """A client for a fresh workspace at ``root``, authenticated on every request.
 
-    Use it as a context manager: the lifespan is what closes the workspace, and
-    a `visionset.db-wal` left behind would outlive the test's ``tmp_path``.
+    Use it as a context manager: the lifespan is what closes the workspace and
+    stops the ingest worker, and a `visionset.db-wal` left behind would outlive
+    the test's ``tmp_path``.
     """
     secret = api_workspace(root)
-    return TestClient(served_app(root), headers={"Authorization": f"Bearer {secret}"})
+    return TestClient(
+        served_app(root, runner=runner), headers={"Authorization": f"Bearer {secret}"}
+    )

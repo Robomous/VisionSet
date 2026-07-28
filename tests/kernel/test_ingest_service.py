@@ -252,16 +252,18 @@ class Fixture:
     def job_in(self, state: IngestState) -> IngestJob:
         """A job in `state`, over a source of two images that is readable now.
 
-        `completed` and `failed` are walked to through real operations — a run
-        that works, and a run whose directory was taken away and put back. The
-        other two are written directly, and this is the only place in this file
-        that plants a state rather than reaching it: a synchronous run passes
-        through `pending` and `running` inside a single call and never leaves
-        one behind, so there is nothing to walk to. Leaving them out instead
-        would leave half the table unswept.
+        Three of the four are walked to through real operations — `pending` is
+        what `enqueue` leaves, `completed` is a run that works, and `failed` is a
+        run whose directory was taken away and put back. Only `running` is
+        written directly, and it is the one state no operation leaves behind: a
+        run that reaches it either finishes or fails inside the same call, and a
+        row stuck there is by definition a process that died. Leaving it out
+        would leave a quarter of the table unswept.
         """
         write_images(self.stills, count=2)
         source = self.sources.register_images(self.project.id, self.stills)
+        if state is IngestState.PENDING:
+            return self.ingest.enqueue(source.id)
         if state is IngestState.COMPLETED:
             return self.ingest.get(self.ingest.ingest(source.id).job_id)
         if state is IngestState.FAILED:
@@ -1069,6 +1071,114 @@ def test_a_failed_run_keeps_the_progress_it_had_made(tmp_path: Path) -> None:
     assert job.state is IngestState.FAILED
     assert (job.processed, job.total) == (2, 4)
     workspace.close()
+
+
+# --- asking for a run without doing it -------------------------------------
+
+
+def test_enqueue_leaves_a_pending_job_and_reads_nothing(tmp_path: Path) -> None:
+    """The half a caller needs when the work happens somewhere else."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    job = fixture.ingest.enqueue(source.id)
+
+    assert job.state is IngestState.PENDING
+    assert (job.processed, job.total, job.failures) == (0, None, ())
+    assert fixture.assets() == []
+    assert fixture.batches.list(fixture.project.id) == []
+    fixture.close()
+
+
+def test_resume_is_how_an_enqueued_run_is_started(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    job = fixture.ingest.enqueue(source.id, batch_name="monday")
+
+    result = fixture.ingest.resume(job.id)
+
+    assert result.job_id == job.id
+    assert fixture.ingest.get(job.id).state is IngestState.COMPLETED
+    assert fixture.batches.get(result.batch_id).name == "monday"
+    assert len(result.created_asset_ids) == 2
+    fixture.close()
+
+
+def test_enqueue_refuses_before_it_writes_a_row(tmp_path: Path) -> None:
+    """The point of the split: a refused launch leaves nothing to poll."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    with pytest.raises(SourceNotFound):
+        fixture.ingest.enqueue(uuid4())
+    with pytest.raises(InvalidName, match="batch name"):
+        fixture.ingest.enqueue(source.id, batch_name="   ")
+
+    assert fixture.ingest.list(source.id) == []
+    fixture.close()
+
+
+def test_enqueue_records_the_batch_the_run_is_headed_for(tmp_path: Path) -> None:
+    """`resume` reads it back, so it has to be on the row rather than in a caller."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    target = fixture.batches.create(fixture.project.id, "waiting")
+
+    job = fixture.ingest.enqueue(source.id, batch_id=target.id)
+    assert job.batch_id == target.id
+
+    result = fixture.ingest.resume(job.id)
+    assert result.batch_id == target.id
+    assert len(fixture.batches.get(target.id).asset_ids) == 2
+    fixture.close()
+
+
+def test_enqueue_refuses_a_frozen_target_batch(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    batch = fixture.batches.create(
+        fixture.project.id, "frozen", fixture.ingest.ingest(source.id).asset_ids
+    )
+    fixture.freeze(batch.id)
+
+    with pytest.raises(BatchNotEditable):
+        fixture.ingest.enqueue(source.id, batch_id=batch.id)
+    fixture.close()
+
+
+def test_resumable_reports_a_job_that_may_run_without_moving_it(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(IngestState.FAILED)
+
+    assert fixture.ingest.resumable(job.id).id == job.id
+    assert fixture.ingest.get(job.id).state is IngestState.FAILED
+    fixture.close()
+
+
+@pytest.mark.parametrize("state", [IngestState.COMPLETED, IngestState.RUNNING])
+def test_resumable_refuses_exactly_what_resume_refuses(tmp_path: Path, state: IngestState) -> None:
+    """One spelling of the pre-check, so a caller that runs the work elsewhere
+    gets the same refusal on its own thread."""
+    fixture = Fixture(tmp_path)
+    job = fixture.job_in(state)
+
+    with pytest.raises(InvalidTransition):
+        fixture.ingest.resumable(job.id)
+    with pytest.raises(InvalidTransition):
+        fixture.ingest.resume(job.id)
+    fixture.close()
+
+
+def test_resumable_needs_a_job_that_exists(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(IngestJobNotFound):
+        fixture.ingest.resumable(uuid4())
+    fixture.close()
 
 
 # --- resuming a failed run ------------------------------------------------

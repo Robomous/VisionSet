@@ -38,6 +38,7 @@ from visionset.kernel.services import (
     resolve_workspace_root as resolve_workspace_root,
 )
 from visionset.server.errors import ERROR_RESPONSES
+from visionset.server.runner import IngestRunner
 
 # ``WORKSPACE_ENV_VAR`` and ``resolve_workspace_root`` are re-exported above
 # rather than defined here — the redundant ``as`` aliases are the explicit
@@ -148,6 +149,18 @@ def get_workspace(request: Request) -> WorkspaceService:
     return handle.get()
 
 
+def get_ingest_runner(request: Request) -> IngestRunner:
+    """The background worker this application launches ingests on.
+
+    Read off ``app.state`` and reached through a dependency rather than by
+    routes touching ``request.app`` themselves, for the reason
+    :func:`get_auth_provider` is its own dependency: this is the seam a test
+    replaces, and ``dependency_overrides`` only reaches what the graph resolves.
+    """
+    runner: IngestRunner = request.app.state.ingest_runner
+    return runner
+
+
 def get_auth_provider(
     workspace: Annotated[WorkspaceService, Depends(get_workspace)],
 ) -> AuthProvider:
@@ -184,6 +197,9 @@ def require_token(
 
 WorkspaceDep = Annotated[WorkspaceService, Depends(get_workspace)]
 """The workspace, for a route that needs to build a service over it."""
+
+RunnerDep = Annotated[IngestRunner, Depends(get_ingest_runner)]
+"""The background worker, for a route that launches a run rather than doing it."""
 
 TokenDep = Annotated[str, Depends(require_token)]
 """The presented token, for the rare route that needs the credential itself.

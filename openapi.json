@@ -1,6 +1,144 @@
 {
   "components": {
     "schemas": {
+      "AssetOut": {
+        "description": "One ingested item.",
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "frame_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Index"
+          },
+          "frame_timestamp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Timestamp"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "modality": {
+            "const": "image",
+            "title": "Modality",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "thumbnail_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Hash"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "modality",
+          "content_hash",
+          "width",
+          "height",
+          "format",
+          "source_id",
+          "frame_index",
+          "frame_timestamp",
+          "thumbnail_hash"
+        ],
+        "title": "AssetOut",
+        "type": "object"
+      },
+      "AssetPage": {
+        "description": "A page of assets.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssetOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AssetPage",
+        "type": "object"
+      },
       "AttributeBody": {
         "additionalProperties": false,
         "description": "A typed attribute on a label class.",
@@ -63,6 +201,46 @@
         "title": "AttributeBody",
         "type": "object"
       },
+      "Body_register_image_source": {
+        "properties": {
+          "files": {
+            "description": "The images, as one multipart part each.",
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_register_image_source",
+        "type": "object"
+      },
+      "Body_register_video_source": {
+        "properties": {
+          "extraction_fps": {
+            "default": 1.0,
+            "description": "Frames per second to cut the clip at. One per second by default.",
+            "exclusiveMinimum": 0.0,
+            "title": "Extraction Fps",
+            "type": "number"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The clip.",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_register_video_source",
+        "type": "object"
+      },
       "ErrorBody": {
         "description": "The one error shape this API emits, at every status.",
         "properties": {
@@ -110,6 +288,186 @@
           "classification_tag"
         ],
         "title": "GeometryType",
+        "type": "string"
+      },
+      "ImageFormat": {
+        "description": "Every still-image encoding VisionSet accepts. See the module docstring.\n\nA ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one\nhas a single member, where an enum would be ceremony, and this one is a\nclosed set whose whole purpose is to grow deliberately. It costs the\npersistence layer nothing \u2014 a ``StrEnum`` member *is* a ``str``, and the\ntables already store every other enum as ``String``.",
+        "enum": [
+          "jpeg",
+          "png"
+        ],
+        "title": "ImageFormat",
+        "type": "string"
+      },
+      "IngestFailureKind": {
+        "description": "Why one item did not become an asset, split by what to do about it.\n\nAn enum rather than a plain ``str``, on exactly ``SourceKind``'s terms: the\nset is closed, no writer outside this build produces a value, and the kernel\nbranches on it. What makes it worth a type at all is that a report has to be\n**grouped**, not read \u2014 ``CorruptMedia``'s docstring is explicit that a\nreport unable to separate the two would bury real data loss under ordinary\noperator noise, and a reason sentence cannot be grouped on.",
+        "enum": [
+          "unsupported",
+          "corrupt"
+        ],
+        "title": "IngestFailureKind",
+        "type": "string"
+      },
+      "IngestFailureOut": {
+        "description": "One item a run could not read, and why.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/IngestFailureKind"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "reason"
+        ],
+        "title": "IngestFailureOut",
+        "type": "object"
+      },
+      "IngestJobOut": {
+        "description": "One run of one source, and how far it has got.",
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "batch_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Name"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/IngestFailureOut"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/IngestState"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "state",
+          "error",
+          "batch_id",
+          "batch_name",
+          "processed",
+          "total",
+          "failures"
+        ],
+        "title": "IngestJobOut",
+        "type": "object"
+      },
+      "IngestJobPage": {
+        "description": "A page of ingest jobs.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IngestJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "IngestJobPage",
+        "type": "object"
+      },
+      "IngestStart": {
+        "additionalProperties": false,
+        "description": "What launching a run needs, which is almost nothing.",
+        "properties": {
+          "batch_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Name"
+          }
+        },
+        "title": "IngestStart",
+        "type": "object"
+      },
+      "IngestState": {
+        "description": "Lifecycle: pending -> running -> (completed | failed) -> running.\n\n``IngestService`` owns the moves; ``INGEST_TRANSITIONS`` below is the whole\nof what is legal.",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "IngestState",
         "type": "string"
       },
       "LabelClassBody": {
@@ -310,6 +668,123 @@
         ],
         "title": "SchemaVersionPage",
         "type": "object"
+      },
+      "SourceKind": {
+        "description": "The shapes of raw input VisionSet accepts.\n\nAn enum, where ``DatasetChange.operation`` and ``VideoMetadata.codec`` are\nplain ``str``. That doctrine turns on one question \u2014 *can something outside\nthis build write the value?* A change-log entry outlives the release that\nwrote it and a codec name is whatever ffmpeg decides to call it, so both have\nto stay readable when they name something this build never heard of.\n\nNeither applies here. ``SourceService`` is the only door to a ``Source``, so\nno foreign writer exists; the kernel **branches** on this value, in the two\nregistration methods and in the invariant tying :attr:`Source.video` to\n:attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this\ncodebase replaces with a table; and the set grows by a deliberate kernel\nchange with a service method behind it. That is ``ImageFormat`` /\n``BatchState`` / ``IngestState`` territory, and it costs persistence nothing\n\u2014 a ``StrEnum`` member *is* a ``str``.",
+        "enum": [
+          "image_directory",
+          "video"
+        ],
+        "title": "SourceKind",
+        "type": "string"
+      },
+      "SourceOut": {
+        "description": "A registered origin: a folder of stills, or a clip.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "registered_at": {
+            "format": "date-time",
+            "title": "Registered At",
+            "type": "string"
+          },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoProvenanceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "kind",
+          "name",
+          "registered_at",
+          "video"
+        ],
+        "title": "SourceOut",
+        "type": "object"
+      },
+      "SourcePage": {
+        "description": "A page of sources.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "SourcePage",
+        "type": "object"
+      },
+      "VideoProvenanceOut": {
+        "description": "What a clip turned out to be, and the rate it is decomposed at.",
+        "properties": {
+          "codec": {
+            "title": "Codec",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "extraction_fps": {
+            "title": "Extraction Fps",
+            "type": "number"
+          },
+          "fps": {
+            "title": "Fps",
+            "type": "number"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "fps",
+          "duration_seconds",
+          "codec",
+          "extraction_fps"
+        ],
+        "title": "VideoProvenanceOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -327,6 +802,95 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/batches/{batch_id}/assets": {
+      "get": {
+        "description": "Everything in the batch, in membership order.\n\nThe order is stored, so reading twice gives the same sequence and an ingest\ninto an existing batch appends rather than reshuffles. An empty batch is a\n200 with an empty list, never a 404.\n\nBytes are not here: an asset is named by its `content_hash` and its\n`thumbnail_hash`, and downloading either is a later capability.",
+        "operationId": "list_batch_assets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Batch Assets",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Liveness probe. Public \u2014 no token required.",
@@ -378,6 +942,194 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/ingest-jobs/{job_id}": {
+      "get": {
+        "description": "Where a run is now.\n\n`processed` and `total` are written as the run goes, so this answers \"where\nis it\" rather than \"where did it end\". `total` is null for a clip \u2014 a video's\nframe count is a guess before extraction, so it is not reported.\n\nTerminal states are `completed` and `failed`. A `failed` job keeps its\ncounters exactly where they stopped, and `error` says why; unreadable\nindividual items are in `failures` and never fail a run on their own.",
+        "operationId": "get_ingest_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Ingest Job",
+        "tags": [
+          "ingest"
+        ]
+      }
+    },
+    "/ingest-jobs/{job_id}/resume": {
+      "post": {
+        "description": "Run a failed job again, on the same row and into the same batch.\n\nA redo, not a skip: the whole source is read again. That creates nothing it\ncreated before \u2014 content is addressed by hash and assets are deduplicated \u2014\nso the cost is re-reading and the gain is that resume has no second code path.\n\nA `completed` job cannot be resumed, and neither can one stuck at `running`:\nthat is a process that died without reporting, so ingest the source again\ninstead, which creates nothing and leaves the stuck row as the record it is.\nBoth answer 409 `INVALID_TRANSITION`.",
+        "operationId": "resume_ingest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resume Ingest",
+        "tags": [
+          "ingest"
+        ]
       }
     },
     "/projects": {
@@ -1225,6 +1977,575 @@
         "summary": "Get Schema Version",
         "tags": [
           "schemas"
+        ]
+      }
+    },
+    "/projects/{project_id}/sources": {
+      "get": {
+        "description": "Every source of that project, in registration order.",
+        "operationId": "list_sources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Sources",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/projects/{project_id}/sources/images": {
+      "post": {
+        "description": "Offer a project a folder of stills.\n\nThe parts are staged as one directory and that directory becomes the source.\nUploading the same files again returns the **same** source rather than a\nsecond one: staging is content-addressed, so identical bytes under identical\nfilenames land on the same path, and registration is idempotent on that path.\n\nNothing is decoded here \u2014 what the files turn out to be is read at ingest,\nand a file that is not an image is reported there rather than refused now.",
+        "operationId": "register_image_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_register_image_source"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Image Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/projects/{project_id}/sources/video": {
+      "post": {
+        "description": "Offer a project a clip, to be cut at `extraction_fps`.\n\nThe clip is probed on the way in, so a file that is not a video, or one\nwhose bytes will not decode, is 422 here rather than a run that fails later.\n\nThe rate is part of what the source *is*: the same clip registered at 1 fps\nand again at 5 fps is two sources over one file, which is what makes \"the\nsame source yields the same assets\" mean anything.",
+        "operationId": "register_video_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_register_video_source"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Video Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}": {
+      "get": {
+        "description": "The source with that id.",
+        "operationId": "get_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}/ingest-jobs": {
+      "get": {
+        "description": "Every run of that source, in the order they were asked for.",
+        "operationId": "list_ingest_jobs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestJobPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Ingest Jobs",
+        "tags": [
+          "sources"
+        ]
+      },
+      "post": {
+        "description": "Launch a run over the source and answer at once with the job to poll.\n\n**202, not 201**: the row exists, the work does not. Poll\n`GET /ingest-jobs/{id}` \u2014 the `Location` header names it \u2014 and watch\n`processed` climb until `state` is `completed` or `failed`.\n\nA run that could not even be recorded is refused here; everything that goes\nwrong afterwards is reported *on the job*, which is the whole point of the\nshape. Unreadable files land in `failures` and do not fail the run; a\nmissing ffmpeg does, in `error`.",
+        "operationId": "start_ingest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/IngestStart"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Ingest",
+        "tags": [
+          "sources"
         ]
       }
     }

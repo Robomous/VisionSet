@@ -67,6 +67,29 @@ offer is a policy the kernel would be inventing.
 tests. Decoding each one again to re-confirm it would also route our own encoder's output into an
 operator's per-file report — a failure nobody could act on.
 
+## Asking for a run and doing it are two calls
+
+```python
+job = ingest.enqueue(source.id, batch_name="monday")  # refuses now, reads nothing
+result = ingest.resume(job.id)  # does the work
+```
+
+`ingest(...)` is those two composed, and that is all it is. The split exists because a caller
+that cannot wait — the [REST API](api.md), and one day a queue — needs the **row before the
+work**: the id it hands back has to name something the next request can find. Every refusal
+`enqueue` can make it makes before the insert, so a launch that fails leaves no job at all and
+a launch that succeeds leaves one that is already pollable.
+
+`resume` is what picks a `pending` job up, which is why `pending → running` was in the
+transition table from the start. `resumable(job_id)` is the same friendly pre-check without the
+work, for a caller that runs the second half elsewhere and needs the refusal on its own thread —
+a launch that answered "accepted" and only discovered in a worker that the job was already
+`completed` would give nobody a way to tell a redo from a no-op.
+
+Nothing here decides *when* the second half runs. That is deliberately not the kernel's
+business: the API supplies a single background worker (`server/runner.py`), the CLI just calls
+`ingest`, and neither arrangement is visible in this module.
+
 ## The run has a lifecycle, and it is a table
 
 `INGEST_TRANSITIONS` in `domain/ingest.py` is the whole of what is legal. `IngestService`
@@ -78,9 +101,11 @@ pending ──▶ running ──▶ completed
    └────────▶ failed ──▶ running        (resume)
 ```
 
-A job is created `pending` and moved to `running` by whoever picks the work up. Today that is
-the same call, and the state is over in microseconds — it is spelled out anyway because it is
-the vocabulary a queue needs, and adding it later would mean changing what a stored row means.
+A job is created `pending` and moved to `running` by whoever picks the work up. Through
+`ingest(...)` those are the same call and the state is over in microseconds; through
+`enqueue` + `resume` they are not, and a `pending` row is a run somebody asked for that has not
+started. That is why the state was spelled out before anything left one behind — adding it later
+would have meant changing what a stored row means.
 
 **`failed → running` is the only backward edge in this kernel**, and the argument against
 reopening a [batch](batches.md) does not carry over. A batch pins a schema version at approval
@@ -98,8 +123,8 @@ stuck row as the only evidence the crash left.
 
 `processed` and `total` are written to the row **as the run goes**, so
 `IngestService.get(job_id)` answers "where is it now" rather than "where did it end". That is
-the contract the HTTP API and the UI will reuse; nothing about it is specific to being in the
-same process.
+what `GET /ingest-jobs/{id}` returns and what the UI will poll; nothing about it is specific to
+being in the same process.
 
 | | what it means |
 | --- | --- |
@@ -255,10 +280,38 @@ Membership is everything the run ingested, deduplicated assets included: a dupli
 data, but it is part of what the run was asked to gather. Order is ingest order, which is filename
 order for a directory and frame order for a clip.
 
+## Over HTTP
+
+The [API](api.md) is `enqueue` and `resume` with a worker between them.
+
+```
+POST /projects/{id}/sources/video   multipart: the clip + extraction_fps   → 201 SourceOut
+POST /sources/{id}/ingest-jobs                                             → 202 IngestJobOut
+GET  /ingest-jobs/{id}                                                     → 200 IngestJobOut
+GET  /batches/{id}/assets                                                  → 200 the assets
+```
+
+The launch calls `enqueue` on the request thread and hands the `pending` job to a **single
+background worker** — one, so that runs serialize against a single-writer store rather than
+racing each other. What that buys the *reader* is what [#80's concurrency posture](workspaces.md)
+was for: a client polling while the worker holds a write transaction reads through WAL instead
+of waiting on it.
+
+**Where a refusal appears depends on when it can be known.** An unknown source or a blank batch
+name is refused synchronously, with a 404 or a 422 — the launch never returns 202 pointing at a
+job row nobody wrote. Everything after that is on the job: `state` becomes `failed` and `error`
+carries the cause, while individual unreadable items sit in `failures` and do not fail the run
+at all. That split is the same one this service already makes; HTTP just changes where you read
+it.
+
+Registration over HTTP is **upload-only**, and the bytes are staged content-addressed — see
+[sources.md](sources.md). Targeting an existing draft batch is not on the wire yet: batches have
+no endpoints until the batch and job API lands, so there is nothing for a client to name.
+
 ## What is deliberately not here yet
 
-- **No background execution.** A run is synchronous and in-process. The service API is shaped so
-  that moving it behind a queue changes the caller's waiting, not its vocabulary — which is why
-  a job is created `pending` and why progress is read off the row rather than off a callback.
+- **No scheduler.** `enqueue` and `resume` are two calls; nothing in the kernel decides when the
+  second one runs. The API supplies one background worker, the CLI supplies the calling thread,
+  and a queue would be a third arrangement neither of them would notice.
 - **No cross-attempt history.** The report and the counters describe the current attempt. A
   resumed run overwrites them, and a log of every attempt would be its own table.

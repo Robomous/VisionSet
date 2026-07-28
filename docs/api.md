@@ -38,10 +38,25 @@ GET    /projects/{project_id}/schema                      the version in force
 POST   /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions/{version}
+POST   /projects/{project_id}/sources/images              multipart
+POST   /projects/{project_id}/sources/video               multipart
+GET    /projects/{project_id}/sources
+GET    /sources/{source_id}
+POST   /sources/{source_id}/ingest-jobs                   launch
+GET    /sources/{source_id}/ingest-jobs
+GET    /ingest-jobs/{job_id}                              poll
+POST   /ingest-jobs/{job_id}/resume
+GET    /batches/{batch_id}/assets
 ```
 
 The active schema is the collection's **parent**, not a member of it, because "in force" is a
 property of the schema rather than a version number a client could guess.
+
+A **collection** hangs off whatever owns it; an individually addressable **resource** does not.
+A source belongs to one project, so listing and creating happen under it — but a source has an
+id of its own, and nesting `/projects/{p}/sources/{s}/ingest-jobs/{j}` would put four segments
+in front of a job that one id already identifies. A schema version has no such id, which is why
+it stays nested all the way down.
 
 **Ids are UUIDs**, canonical hyphenated form, in the path. One deliberate exception: a **schema
 version is an integer 1..N**, because that is the handle the domain itself uses — an annotation
@@ -68,7 +83,37 @@ pre-check either one: the flag goes to the SDK and the SDK's refusal is what car
 `CONFIRMATION_REQUIRED` or `DESTRUCTIVE_SCHEMA_CHANGE`.
 
 **Statuses.** 201 with the created resource in the body; 200 for a read or an update; 204 with an
-empty body for a delete.
+empty body for a delete. And **202 when the work has not happened yet** — see below.
+
+**A long operation is launched and then polled.** Ingest is the first one, and the shape it set
+is the one every later long operation uses:
+
+```
+POST /sources/{id}/ingest-jobs   →  202 Accepted
+                                    Location: /ingest-jobs/{job_id}
+                                    { "id": …, "state": "pending", "processed": 0, … }
+
+GET  /ingest-jobs/{job_id}       →  200 { "state": "running",   "processed": 12, … }
+GET  /ingest-jobs/{job_id}       →  200 { "state": "completed", "batch_id": …,   … }
+```
+
+**202, not 201**: the row exists, the work does not. The row is what makes the id worth handing
+back — it is written and committed before the response is sent, so the first poll always finds
+something. That is also why anything the request can refuse is refused *synchronously*: an
+unknown source is a 404 here rather than a 202 pointing at a job nobody wrote, and resuming a
+`completed` run is a 409 here rather than a background no-op a client could not distinguish from
+a redo. Everything that goes wrong *after* the launch is reported on the job — `error` for the
+one fatal cause, `failures` for the per-item report — because by then there is no request left
+to answer.
+
+**Uploads are multipart, and the only non-JSON request shape.** Registering a source means
+sending the bytes: one `files` part per image, or one `file` part plus an `extraction_fps` field
+for a clip. VisionSet sets **no size limit of its own** — parts are spooled to disk past 1 MiB
+and streamed from there, so memory does not grow with the file — which means the real ceilings
+are your reverse proxy's (`client_max_body_size` in nginx) and free disk. Uploaded bytes are
+staged under `<workspace>/uploads/<digest>/` and, like blobs, are **never deleted**: a workspace
+grows with what was offered to it, not only with what it kept. Re-uploading identical files
+under identical names is free — it stages to the same path and returns the same source.
 
 **Request bodies forbid unknown fields.** A misspelled key is a 422 `VALIDATION_ERROR`, never a
 silently ignored one — a typo that looked like it worked is worse than a refusal.
