@@ -2,8 +2,10 @@
 """Where a launched ingest actually runs.
 
 Ingest is the first operation this API exposes that outlives its request, and
-the pattern set here is the one #29's jobs, #33's UI and #35's tools all reuse:
-**the launch returns an id, the client polls that id.** For the id to be worth
+the pattern set here is the one every later long operation reuses — #30's export
+is next: **the launch returns an id, the client polls that id.** (#29's annotation
+jobs are *not* one of them, despite the name: a job is a unit of human work, and
+every route that touches one answers inside its own request.) For the id to be worth
 handing back, the row has to exist before the work starts — which is what
 `IngestService.enqueue` is for — and the work has to happen somewhere other than
 the request that asked for it. This is that somewhere.

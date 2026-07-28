@@ -486,3 +486,24 @@ def test_a_batch_reaches_completed_through_its_jobs(tmp_path: Path) -> None:
     assert fixture.batches.complete(fixture.batch.id).state is BatchState.COMPLETED
     assert fixture.jobs.batch_progress(fixture.batch.id)[ANNOTATED] == 4
     fixture.close()
+
+
+# --- the ladder from a job back to its batch ----------------------------------
+
+
+def test_a_job_id_alone_resolves_to_the_batch_it_is_a_segment_of(tmp_path: Path) -> None:
+    """An AnnotationJob records only its task group, so this is the only route."""
+    fixture = Fixture(tmp_path, assets=4)
+    fixture.batches.approve(fixture.batch.id, BySize(size=2))
+    fixture.batches.start(fixture.batch.id)
+
+    for job in fixture.batches.jobs(fixture.batch.id):
+        assert fixture.jobs.batch(job.id).id == fixture.batch.id
+    fixture.close()
+
+
+def test_the_batch_of_an_unknown_job_is_a_missing_job(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(JobNotFound):
+        fixture.jobs.batch(uuid4())
+    fixture.close()

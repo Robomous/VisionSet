@@ -40,15 +40,26 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal, Self
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Query
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from visionset.kernel.domain import (
+    Annotation,
+    AnnotationJob,
+    AnnotationJobState,
     AnnotationSchema,
     Asset,
+    AssetProgress,
     Attribute,
+    Batch,
+    BatchState,
+    BboxGeometry,
+    BySegments,
+    BySize,
+    ClassificationGeometry,
+    Geometry,
     GeometryType,
     ImageFormat,
     IngestFailure,
@@ -56,7 +67,10 @@ from visionset.kernel.domain import (
     IngestJob,
     IngestState,
     LabelClass,
+    Partition,
+    PolygonGeometry,
     Project,
+    SingleJob,
     Source,
     SourceKind,
     VideoProvenance,
@@ -80,10 +94,9 @@ DestructiveQuery = Annotated[
 
 # Every collection answers with this envelope rather than a bare JSON array,
 # because an array cannot grow a field without breaking every client that parsed
-# it. There are no paging parameters yet — the kernel has no windowed read, and a
-# ``limit`` implemented by slicing a full read is a window that lies about its
-# cost. ``total`` already means "matching the query" rather than "in this page",
-# so #29 adds ``limit``/``offset`` beside it without a breaking change.
+# it. ``total`` means "matching the query" rather than "in this page", which is
+# exactly what let #29 add ``limit``/``offset`` to one route without moving the
+# shape a client already parsed.
 #
 # This class is never a response model itself; a concrete subclass is. FastAPI
 # names a parametrised generic ``Page_ProjectOut_`` in the spec, which is not a
@@ -94,6 +107,36 @@ class Page[T](BaseModel):
 
     items: list[T]
     total: int
+
+
+# Paging is on the batch asset listing and nowhere else, because that is the one
+# collection that can hold fifty thousand frames — M5's gallery is the caller.
+# The others are small by construction and get these when a caller appears.
+#
+# Say the honest thing out loud: **this bounds the response, not the read.** The
+# kernel has no windowed read, so ``window`` slices a full list and ``total`` is
+# the full count. That is worth doing anyway — a gallery must not be sent every
+# frame at once — but it is not a cheap query, and pretending otherwise is what
+# ``docs/api.md`` warned against. When the *read* starts to cost, ``window`` is
+# replaced by a port method and none of this moves.
+LimitQuery = Annotated[
+    int | None,
+    Query(ge=1, description="How many items to return. Everything from `offset` on by default."),
+]
+
+OffsetQuery = Annotated[
+    int,
+    Query(ge=0, description="How many items to skip. Counts from the start of the collection."),
+]
+
+
+def window[T](items: list[T], *, limit: int | None, offset: int) -> list[T]:
+    """The slice ``limit`` and ``offset`` ask for, out of everything that matched.
+
+    An offset past the end is an empty window, never an error: a client walking
+    a collection that shrank under it should stop, not fail.
+    """
+    return items[offset:] if limit is None else items[offset : offset + limit]
 
 
 # --- projects ----------------------------------------------------------------
@@ -383,10 +426,12 @@ class IngestJobPage(Page[IngestJobOut]):
     """A page of ingest jobs."""
 
 
-# Targeting an existing draft batch by id is deliberately not here. Batches have
-# no endpoints until #29, so there is nothing for a client to name — and leaving
-# it out is what keeps this launch free of any refusal that would leave the
-# caller a 202 pointing at a job row that was never written.
+# ``batch_id`` waited for #29 and arrives with it. The objection was never the
+# feature: it was that a refusal must not leave a caller holding a 202 that
+# points at a job row nobody wrote. It does not. ``IngestService.enqueue`` checks
+# the batch in the same transaction that inserts the job, so an unknown batch is
+# a 404 and a batch past ``draft`` is a 409 — both *before* the row, both
+# answered on the request that asked for them.
 #
 # And there is deliberately **no** ``_the_domain_accepts_it`` validator, which is
 # the interesting half. ``LabelClassBody`` needs one because ``LabelClass``
@@ -400,6 +445,7 @@ class IngestStart(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    batch_id: UUID | None = None
     batch_name: str | None = None
 
 
@@ -443,3 +489,404 @@ class AssetOut(BaseModel):
 
 class AssetPage(Page[AssetOut]):
     """A page of assets."""
+
+
+# --- batches -----------------------------------------------------------------
+
+
+# Five explicit fields rather than ``dict[AssetProgress, int]``, which would emit
+# an open object and generate as a ``Record<string, number>`` — a type that
+# cannot tell a client which keys it will actually find. ``JobService`` already
+# guarantees every state is present, so the fields are honest, and the price is
+# ``test_wire_models.py`` asserting they are still the enum's own members.
+class ProgressCounts(BaseModel):
+    """How many assets sit in each annotation state."""
+
+    unannotated: int
+    annotated: int
+    skipped: int
+    review_pending: int
+    accepted: int
+    total: int
+
+    @classmethod
+    def of(cls, counts: dict[AssetProgress, int]) -> Self:
+        return cls(
+            unannotated=counts[AssetProgress.UNANNOTATED],
+            annotated=counts[AssetProgress.ANNOTATED],
+            skipped=counts[AssetProgress.SKIPPED],
+            review_pending=counts[AssetProgress.REVIEW_PENDING],
+            accepted=counts[AssetProgress.ACCEPTED],
+            total=sum(counts.values()),
+        )
+
+
+# ``asset_ids`` is deliberately absent: membership is the paged listing's job,
+# and a batch of fifty thousand frames would otherwise ship its whole roll call
+# on every read of its name. ``schema_version`` is null exactly while the batch
+# is a draft — approval is what pins one, and it never moves after.
+class BatchOut(BaseModel):
+    """A curated slice of a project's assets that moves through annotation together."""
+
+    id: UUID
+    project_id: UUID
+    name: str
+    state: BatchState
+    schema_version: int | None
+    asset_count: int
+    progress: ProgressCounts
+
+    @classmethod
+    def of(cls, batch: Batch, counts: dict[AssetProgress, int]) -> Self:
+        return cls(
+            id=batch.id,
+            project_id=batch.project_id,
+            name=batch.name,
+            state=batch.state,
+            schema_version=batch.schema_version,
+            asset_count=len(batch.asset_ids),
+            progress=ProgressCounts.of(counts),
+        )
+
+
+class BatchPage(Page[BatchOut]):
+    """A page of batches."""
+
+
+# The three partition strategies are re-spelled rather than reused, for the
+# reason at the top of this module: ``BySize``'s docstring carries RST
+# double-backticks and ``BySegments``' carries a ``:func:`` role, and both would
+# ship verbatim into the contract. The discriminator values are the domain's own,
+# so a payload that parses here parses there.
+#
+# **The discriminator carries no default**, unlike the domain models these
+# mirror, and that is deliberate: pydantic reads the tag out of the *input* to
+# pick a variant, so a payload omitting it is refused however the field is
+# declared. A default would emit ``kind`` as optional in the contract while the
+# parser still required it — a schema that says a client may leave out the one
+# field it must send.
+class SingleJobBody(BaseModel):
+    """One job for the whole batch."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["single"]
+
+    def to_domain(self) -> SingleJob:
+        return SingleJob()
+
+
+class BySizeBody(BaseModel):
+    """Jobs of a fixed number of assets each; the last one takes the remainder."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["by_size"]
+    size: int
+
+    def to_domain(self) -> BySize:
+        return BySize(size=self.size)
+
+
+class BySegmentsBody(BaseModel):
+    """Exactly these segments, which must reproduce the batch with nothing over."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["by_segments"]
+    segments: tuple[tuple[UUID, ...], ...]
+
+    def to_domain(self) -> BySegments:
+        return BySegments(segments=self.segments)
+
+
+# A plain assignment, not a PEP 695 ``type`` alias — the latter emits a named
+# component, which is reason 2 in this module's docstring.
+PartitionBody = Annotated[SingleJobBody | BySizeBody | BySegmentsBody, Field(discriminator="kind")]
+
+
+class BatchApprove(BaseModel):
+    """How to cut the batch into jobs. One job for the whole batch by default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    partition: PartitionBody | None = None
+
+    @model_validator(mode="after")
+    def _the_domain_accepts_it(self) -> Self:
+        # Parsing-time construction, for the reason in ``AttributeBody``: a
+        # ``by_size`` of 0 is refused by ``BySize``'s own ``gt=0``, and a
+        # pydantic ``ValidationError`` raised from a route body answers 500.
+        self.to_domain()
+        return self
+
+    def to_domain(self) -> Partition | None:
+        return None if self.partition is None else self.partition.to_domain()
+
+
+# --- jobs --------------------------------------------------------------------
+
+
+# ``task_group_id`` is absent: no route reaches a task group, so publishing the
+# id would be contract surface that could never be removed — the rule that keeps
+# a schema version's own UUID off ``SchemaVersionOut``. ``batch_id`` is here
+# instead, because it is the handle a client actually needs: it leads to the
+# pinned schema its work is judged against. The per-asset progress map is absent
+# too; a job of fifty thousand assets must not ship one on every read, and the
+# paged batch listing is where per-asset detail lives.
+class JobOut(BaseModel):
+    """One annotator's unit of work over a segment of a batch."""
+
+    id: UUID
+    batch_id: UUID
+    state: AnnotationJobState
+    asset_count: int
+
+    @classmethod
+    def of(cls, job: AnnotationJob, *, batch_id: UUID) -> Self:
+        return cls(
+            id=job.id,
+            batch_id=batch_id,
+            state=job.state,
+            asset_count=len(job.progress),
+        )
+
+
+class JobPage(Page[JobOut]):
+    """A page of annotation jobs."""
+
+
+# Inherits rather than repeats ``AssetOut``'s eleven fields, so a field published
+# there is published here too — the one place in this module where a widening
+# should propagate, because these are the same asset seen from inside a batch.
+class BatchAssetOut(AssetOut):
+    """One item of a batch, with the job that carries it and where it has got to."""
+
+    job_id: UUID | None
+    progress: AssetProgress | None
+
+    @classmethod
+    def in_batch(cls, asset: Asset, *, job_id: UUID | None, progress: AssetProgress | None) -> Self:
+        # Both are null exactly while the batch is a draft, which is honest
+        # rather than lossy: a draft has no jobs, so no asset in it has progress.
+        return cls(**AssetOut.of(asset).model_dump(), job_id=job_id, progress=progress)
+
+
+class BatchAssetPage(Page[BatchAssetOut]):
+    """A page of the assets in a batch."""
+
+
+class AssetProgressOut(BaseModel):
+    """Where one asset of a job has got to."""
+
+    asset_id: UUID
+    progress: AssetProgress
+
+
+class AssetProgressSet(BaseModel):
+    """The state to record for one asset."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    progress: AssetProgress
+
+
+# --- annotations -------------------------------------------------------------
+
+
+# Re-spelled rather than reused, like the partition bodies above and for the same
+# reason: every domain geometry docstring carries RST markup. The ``type`` values
+# are ``GeometryType`` members, exactly as in the domain, so the discriminator is
+# one vocabulary and not two parallel lists of strings.
+#
+# None of the domain's own bounds are restated here — a zero-width box, a polygon
+# of two points, a confidence of 2.0. They are refused by the domain models when
+# ``to_domain()`` runs inside the validator below, which is what carries the
+# kernel's own wording into the 422. Restating them would be a second copy of a
+# rule that already has an owner.
+class BboxBody(BaseModel):
+    """An axis-aligned rectangle: top-left corner plus size, in asset pixels."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.BBOX]
+    x: float
+    y: float
+    width: float
+    height: float
+
+    def to_domain(self) -> BboxGeometry:
+        return BboxGeometry(x=self.x, y=self.y, width=self.width, height=self.height)
+
+    @classmethod
+    def of(cls, geometry: BboxGeometry) -> Self:
+        return cls(
+            type=GeometryType.BBOX,
+            x=geometry.x,
+            y=geometry.y,
+            width=geometry.width,
+            height=geometry.height,
+        )
+
+
+class PolygonBody(BaseModel):
+    """A closed polygon of at least three points. The closing edge is implicit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.POLYGON]
+    points: list[tuple[float, float]]
+
+    def to_domain(self) -> PolygonGeometry:
+        return PolygonGeometry(points=self.points)
+
+    @classmethod
+    def of(cls, geometry: PolygonGeometry) -> Self:
+        return cls(type=GeometryType.POLYGON, points=list(geometry.points))
+
+
+class ClassificationBody(BaseModel):
+    """A whole-asset tag: a class with no coordinates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.CLASSIFICATION_TAG]
+
+    def to_domain(self) -> ClassificationGeometry:
+        return ClassificationGeometry()
+
+    @classmethod
+    def of(cls, geometry: ClassificationGeometry) -> Self:
+        return cls(type=GeometryType.CLASSIFICATION_TAG)
+
+
+GeometryBody = Annotated[BboxBody | PolygonBody | ClassificationBody, Field(discriminator="type")]
+
+
+def geometry_of(geometry: Geometry) -> BboxBody | PolygonBody | ClassificationBody:
+    """The wire form of a stored geometry, matched on the same discriminator."""
+    match geometry:
+        case BboxGeometry():
+            return BboxBody.of(geometry)
+        case PolygonGeometry():
+            return PolygonBody.of(geometry)
+        case ClassificationGeometry():
+            return ClassificationBody.of(geometry)
+
+
+# ``schema_version`` is deliberately not on either request: ``AnnotationService``
+# stamps the version its batch pinned over whatever a caller passes, so a field
+# here would be one a client could set and never observe. ``to_domain`` passes 1
+# as the placeholder the SDK docs already use.
+#
+# ``attributes`` is spelled inline rather than through the domain's
+# ``AttributeValue``, which is a PEP 695 alias and would land in ``components``.
+class AnnotationCreate(BaseModel):
+    """One annotation to store, judged against the version its batch pinned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: UUID
+    label_class: str
+    geometry: GeometryBody
+    attributes: dict[str, bool | float | str] = {}
+    provenance: Literal["human", "model", "import"]
+    model_ref: str | None = None
+    confidence: float | None = None
+
+    @model_validator(mode="after")
+    def _the_domain_accepts_it(self) -> Self:
+        # Load-bearing, and the same trap ``AttributeBody`` documents.
+        # ``provenance='model'`` with no ``model_ref``, a confidence outside
+        # [0, 1] and a zero-area box are all refused by ``Annotation`` and its
+        # geometries with a *pydantic* ``ValidationError`` — which is neither a
+        # ``VisionSetError`` nor a ``RequestValidationError``, so without this it
+        # reaches the catch-all handler and answers 500 to a malformed payload.
+        self.to_domain()
+        return self
+
+    def to_domain(self) -> Annotation:
+        return Annotation(
+            asset_id=self.asset_id,
+            label_class=self.label_class,
+            schema_version=1,
+            geometry=self.geometry.to_domain(),
+            attributes=dict(self.attributes),
+            provenance=self.provenance,
+            model_ref=self.model_ref,
+            confidence=self.confidence,
+        )
+
+
+# Addressed by ``id`` and by nothing else — annotations are never reached by
+# index or position. ``asset_id`` is absent because the stored one wins: moving a
+# label to another asset is a delete and an add, not an edit, and the SDK would
+# silently discard the field anyway.
+class AnnotationUpdate(BaseModel):
+    """One stored annotation, replaced whole."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    label_class: str
+    geometry: GeometryBody
+    attributes: dict[str, bool | float | str] = {}
+    provenance: Literal["human", "model", "import"]
+    model_ref: str | None = None
+    confidence: float | None = None
+
+    @model_validator(mode="after")
+    def _the_domain_accepts_it(self) -> Self:
+        self.to_domain()
+        return self
+
+    def to_domain(self) -> Annotation:
+        # ``asset_id`` is a throwaway. ``Annotation`` requires one and the payload
+        # has none, and ``AnnotationService.update`` overwrites whatever it is
+        # given with the *stored* asset — which is the rule this body exists to
+        # honour, not a detail to work around. Generating one here rather than
+        # taking a parameter keeps every caller from having to invent a value
+        # whose only property is that it is discarded.
+        return Annotation(
+            id=self.id,
+            asset_id=uuid4(),
+            label_class=self.label_class,
+            schema_version=1,
+            geometry=self.geometry.to_domain(),
+            attributes=dict(self.attributes),
+            provenance=self.provenance,
+            model_ref=self.model_ref,
+            confidence=self.confidence,
+        )
+
+
+class AnnotationOut(BaseModel):
+    """One stored annotation, in the asset's own pixel frame."""
+
+    id: UUID
+    asset_id: UUID
+    label_class: str
+    schema_version: int
+    geometry: GeometryBody
+    attributes: dict[str, bool | float | str]
+    provenance: Literal["human", "model", "import"]
+    model_ref: str | None
+    confidence: float | None
+
+    @classmethod
+    def of(cls, annotation: Annotation) -> Self:
+        return cls(
+            id=annotation.id,
+            asset_id=annotation.asset_id,
+            label_class=annotation.label_class,
+            schema_version=annotation.schema_version,
+            geometry=geometry_of(annotation.geometry),
+            attributes=dict(annotation.attributes),
+            provenance=annotation.provenance,
+            model_ref=annotation.model_ref,
+            confidence=annotation.confidence,
+        )
+
+
+class AnnotationPage(Page[AnnotationOut]):
+    """A page of annotations."""

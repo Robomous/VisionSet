@@ -146,3 +146,36 @@ The project-level walk goes batches → task groups → jobs, because the persis
 cross-table query: `Repository.list` takes a single `parent_id`. That is N + 1 reads,
 deliberately — see [persistence.md](persistence.md). When it starts to cost, the fix is a
 method on the port, never a SQLAlchemy import in a service.
+
+## Over HTTP
+
+The [API](api.md) is this service, one route per method.
+
+```
+GET  /jobs/{id}                                   → 200 JobOut
+GET  /jobs/{id}/progress                          → 200 ProgressCounts
+POST /jobs/{id}/start                             → 200 JobOut
+POST /jobs/{id}/complete                          → 200 JobOut
+GET  /jobs/{id}/next?n=                           → 200 AssetPage
+PUT  /jobs/{id}/assets/{asset_id}/progress        → 200 AssetProgressOut
+```
+
+`JobOut` carries **`batch_id`**, which an `AnnotationJob` does not: the model records only its
+task group, and a client holding a job id would otherwise have no route to the schema version
+its work is judged against. `JobService.batch` is the read behind it. `task_group_id` is
+deliberately absent — no route reaches a task group, so publishing the id would be contract
+surface that could never be removed.
+
+`ProgressCounts` is five named integers plus a total rather than an open map, so a generated
+client gets a real type instead of a `Record<string, number>`. Every state is a field, including
+the ones nobody is in.
+
+`n` carries **`ge=1` in the signature**, and that is load-bearing rather than tidy: this service
+refuses a non-positive count with a bare `ValueError`, which is outside the `VisionSetError` tree
+and would reach the API's catch-all handler as a **500**. The bound makes it unreachable, the
+same job `gt=0` does for a source's `extraction_fps`.
+
+One route sets progress rather than five intent-named ones, because
+`ASSET_PROGRESS_TRANSITIONS` is the whole of what is legal and a second spelling of it would
+drift. An asset the job does not carry is a **404** here, where the id is a path segment; the
+same error is a **422** when it arrives inside an annotation body.

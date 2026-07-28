@@ -115,7 +115,7 @@ def get_source(workspace: WorkspaceDep, source_id: UUID) -> SourceOut:
 @router.post(
     "/{source_id}/ingest-jobs",
     status_code=status.HTTP_202_ACCEPTED,
-    responses=documented(404),
+    responses=documented(404, 409),
 )
 def start_ingest(
     workspace: WorkspaceDep,
@@ -134,9 +134,20 @@ def start_ingest(
     wrong afterwards is reported *on the job*, which is the whole point of the
     shape. Unreadable files land in `failures` and do not fail the run; a
     missing ffmpeg does, in `error`.
+
+    `batch_id` puts what this run gathers into a batch that already exists,
+    which is how a second source joins the first one's batch. It has to be a
+    draft — an approved batch has been cut into jobs already, so adding to it is
+    409 `BATCH_NOT_EDITABLE` — and an unknown one is a 404. Both are answered
+    here, before the job row is written. `batch_name` names a new batch instead;
+    passing neither uses the source's own name.
     """
     ingest = IngestService(workspace)
-    job = ingest.enqueue(source_id, batch_name=None if body is None else body.batch_name)
+    job = ingest.enqueue(
+        source_id,
+        batch_id=None if body is None else body.batch_id,
+        batch_name=None if body is None else body.batch_name,
+    )
     # ``resume``, not ``ingest``: the row is already there and ``pending`` is
     # exactly what ``resume`` picks up. Doing the whole call in the worker would
     # mean creating a second job.

@@ -153,3 +153,36 @@ progress and the membership rows.
 **Annotations are not touched.** They hang off assets, not off batches, so deleting the unit
 of work never deletes the work. Neither the assets nor any blob are touched either — see
 [projects.md](projects.md) for why blobs are never deleted.
+
+## Over HTTP
+
+The [API](api.md) is this service with the curation half left off.
+
+```
+GET  /projects/{id}/batches                          → 200 BatchPage
+GET  /batches/{id}                                   → 200 BatchOut, with per-state counts
+POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
+POST /batches/{id}/start                             → 200 BatchOut
+POST /batches/{id}/complete                          → 200 BatchOut
+GET  /batches/{id}/jobs                              → 200 JobPage
+GET  /batches/{id}/assets?limit=&offset=             → 200 BatchAssetPage
+```
+
+**A batch is born from an ingest, not from a POST.** There is no create, no delete and no
+membership route: an ingest run puts what it gathered into a batch (`batch_name` for a new one,
+`batch_id` to join an existing draft — see [ingest.md](ingest.md)), and curating a batch out of
+an arbitrary subset of assets has no caller yet. `create`, `delete`, `add_assets` and
+`remove_assets` are still on the SDK; the API grows a route when somebody needs one.
+
+The lifecycle *is* on the wire, because nothing downstream is reachable without it — an
+annotation may only be written into a batch that is `in_annotation`. Each move keeps the
+refusal this service already makes: a non-draft approve and an unapproved start are 409
+`INVALID_TRANSITION`, an empty batch is 409 `EMPTY_BATCH`, a project with no schema to pin is
+404 `SCHEMA_NOT_FOUND`, and a batch with an unfinished job is 409 `BATCH_NOT_COMPLETE`.
+
+The **asset listing is the only paged collection in the API**, and M5's gallery is why. `limit`
+and `offset` bound the *response*, never the read: `total` is the size of the whole batch, so a
+client pages until it has seen `total` items rather than until the total moves. Each item
+carries the job that holds it and where it has got to, both null while the batch is a draft —
+because a draft has no jobs. That pair is a projection over `assets` and `jobs`, not a new
+query; the partition is exact, so every asset appears under exactly one job.

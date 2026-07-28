@@ -305,8 +305,14 @@ at all. That split is the same one this service already makes; HTTP just changes
 it.
 
 Registration over HTTP is **upload-only**, and the bytes are staged content-addressed — see
-[sources.md](sources.md). Targeting an existing draft batch is not on the wire yet: batches have
-no endpoints until the batch and job API lands, so there is nothing for a client to name.
+[sources.md](sources.md).
+
+`batch_id` on the launch body is how a second source joins the first one's batch, and it waited
+for batches to have endpoints. The objection was never the feature: it was that a refusal must
+not leave a caller holding a 202 pointing at a job row nobody wrote. It does not — `enqueue`
+resolves the batch in the same transaction that inserts the job, so an unknown batch is a **404**
+and one past `draft` is a **409 `BATCH_NOT_EDITABLE`**, both answered on the request that asked
+for them. See [batches.md](batches.md).
 
 ## What is deliberately not here yet
 
