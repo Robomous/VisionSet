@@ -147,6 +147,35 @@ cross-table query: `Repository.list` takes a single `parent_id`. That is N + 1 r
 deliberately — see [persistence.md](persistence.md). When it starts to cost, the fix is a
 method on the port, never a SQLAlchemy import in a service.
 
+## At a terminal
+
+```bash
+visionset job list --batch "$BATCH"
+visionset job start "$JOB"
+visionset job next "$JOB" -n 50
+visionset job mark "$JOB" "$ASSET" --progress annotated
+visionset job progress "$JOB"
+visionset job complete "$JOB"
+```
+
+Each is one `JobService` call. `next` and `mark` are what make the lifecycle drivable from a script
+at all — a batch cannot be completed until every asset has settled, and nothing else settles one.
+`JobService.mark`'s own docstring invites the second by name.
+
+**Say the wart out loud: `--progress annotated` records that somebody labeled an asset, and the CLI
+writes no labels.** Geometry comes from a canvas or a model, not from typing. A release published
+off a batch driven entirely this way carries `annotation_count: 0`, and its manifest honestly says
+so. These commands exist because the *lifecycle* must be reachable from a terminal, not because this
+is how labelling is meant to happen.
+
+`--progress` is rendered from `AssetProgress` itself, so a wrong value exits 2 listing every legal
+one, and `job progress`'s columns are read off the same enum — a sixth state cannot be silently
+missing from the table. `-n` carries `min=1`, because `next_pending` refuses a non-positive count
+with a bare `ValueError`.
+
+Jobs and assets are addressed by **id only**: neither has a name, and both ids come off the previous
+command's stdout.
+
 ## Over HTTP
 
 The [API](api.md) is this service, one route per method.

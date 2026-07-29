@@ -37,6 +37,22 @@ from visionset.kernel.services import WORKSPACE_ENV_VAR
 EXIT_DOMAIN_ERROR: Final = 1
 """Every ``VisionSetError``. See the module docstring for why it is not a table."""
 
+EXIT_ANSWER_IS_NO: Final = 1
+"""A command that asked a question and got "no" — ``release verify`` on damage.
+
+The **same number** as ``EXIT_DOMAIN_ERROR``, and named separately so that the
+second meaning is written down rather than inferred from a literal. This is
+``grep``'s and ``diff``'s convention, and it is the only way a script can branch
+on the answer without grepping the output — which is exactly the coupling
+``--json`` exists to avoid. It does not stretch the contract: such a command
+still prints one sentence on stderr and no traceback, which is what code 1 has
+always described.
+
+Merging the two constants would lose the distinction the day a caller wants
+"could not check" told apart from "checked, and it is broken"; splitting the
+*values* would mean a shell had to learn a table to answer "did that work?".
+"""
+
 _HINTS: Final[dict[type[BaseException], str]] = {
     # The kernel's sentence ends in "use WorkspaceService.init to create one",
     # which is a Python API a person at a terminal has no way to call. Rewriting

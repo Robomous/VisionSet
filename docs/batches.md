@@ -154,6 +154,36 @@ progress and the membership rows.
 of work never deletes the work. Neither the assets nor any blob are touched either — see
 [projects.md](projects.md) for why blobs are never deleted.
 
+## At a terminal
+
+```bash
+visionset batch list --project road-signs
+visionset batch approve "$BATCH" --jobs-of 100
+visionset batch start "$BATCH"
+visionset batch complete "$BATCH"
+visionset batch promote "$BATCH"
+```
+
+Each is one service call, and the listing carries the progress counts because a batch's name and
+state do not say whether anybody has started on it.
+
+**`--jobs-of N` is `BySize`; with no flag the batch becomes one job.** There is no flag for
+`BySegments`, and that is a decision rather than an omission: its own contract is that the caller
+has already decided the split, and the only caller that ever holds an exact partition is a program —
+which has the SDK and the API. It is also the one partition that can be *wrong*, with four distinct
+refusals, and putting it behind a shell's quoting of tuples of UUIDs is a way to meet all of them.
+If it is ever wanted it arrives as `--segments FILE.json`.
+
+`--jobs-of` carries `min=1` at the Click layer, because `BySize.size` is `gt=0` and a pydantic error
+is not a `VisionSetError` — it would print a traceback rather than a sentence.
+
+**There is no `batch create`, and no membership editing**, for the reason there is none over HTTP: a
+batch is born from an ingest. `BatchService` still has all four methods; this is a decision about
+the surfaces.
+
+`promote` is here rather than under a dataset group because `DatasetService.promote` takes a *batch*
+id and derives the dataset from it — the same argument its route makes.
+
 ## Over HTTP
 
 The [API](api.md) is this service with the curation half left off.

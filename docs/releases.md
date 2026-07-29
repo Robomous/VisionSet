@@ -193,6 +193,42 @@ Counting is `ReleaseService`'s rather than the plugin's, deliberately: a number 
 thing it describes is not checkable, and an exporter that writes nothing must report zero rather
 than say what it meant to do.
 
+## At a terminal
+
+```bash
+visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15 --seed 42
+visionset release list --project road-signs
+visionset release verify v1.0 --project road-signs
+visionset export --project road-signs --release v1.0 --format dummy --out ./out
+```
+
+`--split` is **one** option rather than three, because a split is one concept, `0.7,0.15,0.15` is
+how it is written everywhere, and one flag means one refusal to word. `--seed` stays separate; it is
+not a fraction. Fractions that do not add up are exit 2 — `SplitRecipe` refuses them with a pydantic
+error, which is not a `VisionSetError` — so the CLI parses the recipe before the call.
+
+**A tag is case-sensitive where a project name is not.** Both comparisons live in the kernel beside
+the index that enforces them (`ReleaseService.get_by_tag`, `ProjectService.get_by_name`), because
+they are opposites and a surface re-deriving either would eventually pick the wrong one.
+
+**`release verify` exits 1 when the answer is no.** Nothing refused — the check ran and found
+damage — but a non-zero exit is what `grep` and `diff` already mean, and the only way a script
+branches on the result without parsing output:
+
+```bash
+visionset release verify v1.0 --project road-signs && ./train.sh
+```
+
+For `export`, the CLI resolves the format name through the plugin registry and hands the *instance*
+to `ReleaseService.export`, because the kernel is forbidden from importing the registry. It resolves
+it with `pick`, never a dict lookup: a `KeyError` is outside the `VisionSetError` tree and a typo
+would answer with a traceback instead of the list of installed formats. `visionset format list`
+prints that list without opening a workspace at all.
+
+`--allow-lossy` is the third gate word, never folded into `--yes` or `--allow-destructive`. And
+`dummy` — the only exporter this repository ships — writes nothing, so a `file_count` of 0 in its
+report is an export that ran, not one that failed.
+
 ## Over HTTP
 
 The [API](api.md) is this service, one route per method, plus the format listing.

@@ -86,6 +86,11 @@ make the audit record load-bearing for behaviour, so that reading it wrong and d
 thing become the same bug. Promotion answers only *what does this batch have that the trunk does
 not*.
 
+At a terminal that gate is `visionset batch promote BATCH_ID`, which prints the ids of the assets it
+admitted — none, when there were none to admit, because promotion is a union and a second call is a
+no-op. The rest of curation is deliberately not on the CLI: `remove_asset` is a gallery's operation,
+and the log above is what makes it reviewable.
+
 ## Curating: `remove_asset`
 
 ```python

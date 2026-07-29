@@ -270,6 +270,10 @@ this file" and a blob that is not there is not a file.
 There is no progress to poll: a backfill has no `IngestJob` row. If that is ever wanted it is a
 task of its own, not a flag on this one.
 
+At a terminal this is `visionset backfill-thumbnails --project P`; its report is the
+`ThumbnailBackfill` above, printed as counts on stderr with the unreadable files in a table. It is
+the only command for a kernel read that no route exposes.
+
 ## The target batch
 
 With no `batch_id`, the run creates a draft named `batch_name` or, failing that, after the
@@ -279,6 +283,41 @@ anything is decoded, because finding out afterwards would mean finding out after
 Membership is everything the run ingested, deduplicated assets included: a duplicate is not new
 data, but it is part of what the run was asked to gather. Order is ingest order, which is filename
 order for a directory and frame order for a clip.
+
+## At a terminal
+
+```bash
+BATCH=$(visionset ingest ./incoming --project road-signs --batch-name day-one)
+visionset ingest ./clip.mp4 --project road-signs --fps 5
+```
+
+**One command where registration has two methods**, dispatched on whether the path is a directory.
+That is the ergonomic mirror of the split above: the *caller* does not have to say which of the two
+they have, because the filesystem already knows, and the source they end up with carries the kind,
+the path and the rate from then on.
+
+It is the only command in the CLI that is two SDK calls, and its module says so. Both are safe to
+repeat: registration is idempotent on `(kind, path, extraction_fps)`, and content addressing means a
+second run creates nothing the first already did.
+
+The batch id goes to stdout alone, so `BATCH=$(visionset ingest …)` is the whole idiom. The per-file
+report goes to stderr, one line per refused file, so a redirected stdout stays a single id.
+
+**`--fps` is video-only, and a usage error on a folder.** Silently ignoring it would let somebody
+believe they had chosen a rate. It is also checked for being positive before the call, because
+`register_video` refuses a non-positive rate with a bare `ValueError` — not a `VisionSetError`, so
+it would print a traceback rather than a sentence. A missing path is exit 2 for the same reason
+(`FileNotFoundError`), which is why the argument carries Click's own `exists=True`.
+
+**The run is synchronous, and the CLI never calls `enqueue`.** A queued job needs a worker to pick
+it up, and a CLI process has none — a detached job would simply never run. Polling is what the
+server is for: `visionset ui`, then `GET /ingest-jobs/{id}`.
+
+**Interrupting a run leaves the job row at `running`, and there is no `--resume`.** The remedy needs
+no new vocabulary: run the same line again. Registration finds the same source, `enqueue` does not
+consult other jobs, and content addressing means the new run creates nothing the old one already
+created. The stuck row stays as the only evidence that something was interrupted, which is the same
+posture the kernel takes about a crashed process.
 
 ## Over HTTP
 

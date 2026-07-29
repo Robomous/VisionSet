@@ -228,6 +228,59 @@ def test_a_project_from_another_workspace_reads_as_missing(tmp_path: Path) -> No
     second_workspace.close()
 
 
+def test_a_project_reads_back_by_name(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    assert projects.get_by_name("signs") == project
+    workspace.close()
+
+
+@pytest.mark.parametrize("spelling", ["SIGNS", "Signs", "sIgNs"])
+def test_a_name_resolves_ignoring_case(tmp_path: Path, spelling: str) -> None:
+    # The comparison the unique index makes. It lives here rather than in a
+    # surface because it is not obvious and it is not the only one: a release tag
+    # is unique per dataset and case-*sensitive*, so a caller re-deriving either
+    # rule from prose would eventually get one of them wrong.
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    assert projects.get_by_name(spelling) == project
+    workspace.close()
+
+
+def test_a_name_resolves_after_normalization(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    assert projects.get_by_name("  signs  ") == project
+    workspace.close()
+
+
+def test_getting_an_unknown_name_is_refused(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    with pytest.raises(ProjectNotFound, match="no project named"):
+        projects.get_by_name("signs")
+    workspace.close()
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+def test_getting_a_blank_name_is_refused_as_a_name(tmp_path: Path, blank: str) -> None:
+    # ``InvalidName`` rather than ``ProjectNotFound``: a blank string never named
+    # anything, which is a different answer from naming something absent.
+    workspace, projects = _service(tmp_path)
+    with pytest.raises(InvalidName):
+        projects.get_by_name(blank)
+    workspace.close()
+
+
+def test_a_project_from_another_workspace_does_not_resolve_by_name(tmp_path: Path) -> None:
+    first_workspace, first = _service(tmp_path, "one")
+    second_workspace, second = _service(tmp_path, "two")
+    second.create("signs")
+    with pytest.raises(ProjectNotFound):
+        first.get_by_name("signs")
+    first_workspace.close()
+    second_workspace.close()
+
+
 def test_a_fresh_workspace_has_no_projects(tmp_path: Path) -> None:
     workspace, projects = _service(tmp_path)
     assert projects.list() == []
