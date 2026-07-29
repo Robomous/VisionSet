@@ -214,6 +214,28 @@ class ReleaseService:
         with self._workspace.unit_of_work() as uow:
             return self._require_release(uow, release_id)
 
+    def get_by_tag(self, dataset_id: UUID, tag: str) -> Release:
+        """The release published under that tag in that dataset.
+
+        **Case-sensitive**, matching ``publish``: a tag is an identifier, not a
+        label somebody reads, and ``uq_release_dataset_tag`` compares it exactly.
+        That is the whole reason this lives here rather than in a surface — it is
+        the *opposite* rule to ``ProjectService.get_by_name``'s, and a caller
+        re-deriving either from prose would eventually get one of them wrong.
+
+        Raises:
+            DatasetNotFound: no such dataset in this workspace.
+            InvalidName: the tag is blank once stripped.
+            ReleaseNotFound: that dataset has no release under that tag.
+        """
+        cleaned = normalize_name(tag, what="release tag")
+        with self._workspace.unit_of_work() as uow:
+            dataset = self._datasets.require_dataset(uow, dataset_id)
+            for release in uow.releases.list(dataset.id):
+                if release.tag == cleaned:
+                    return release
+        raise ReleaseNotFound(f"dataset {dataset.name!r} has no release tagged {cleaned!r}")
+
     def manifest(self, release_id: UUID) -> Manifest:
         """The frozen document this release names, read back out of the blob store.
 

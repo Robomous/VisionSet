@@ -60,6 +60,23 @@ class ProjectService:
         with self._workspace.unit_of_work() as uow:
             return self._require(uow, project_id)
 
+    def get_by_name(self, name: str) -> Project:
+        """The project an operator would name, resolved case-insensitively.
+
+        Here rather than in a surface, on ``TokenService.get_by_name``'s
+        precedent, because the comparison is not obvious and it is not the only
+        one: a project name is unique **case-insensitively** while a release tag
+        is case-sensitive. A CLI or an MCP tool that re-derived either rule from
+        prose would be a second spelling of it, free to drift from the index that
+        actually enforces it.
+
+        Raises:
+            InvalidName: the name is blank once stripped.
+            ProjectNotFound: no project in this workspace holds that name.
+        """
+        with self._workspace.unit_of_work() as uow:
+            return self.require_project_named(uow, name)
+
     def list(self) -> list[Project]:
         """Every project in this workspace, in the order they were created."""
         with self._workspace.unit_of_work() as uow:
@@ -164,6 +181,27 @@ class ProjectService:
                 f"no project {project_id} in workspace {self._workspace.workspace.name!r}"
             )
         return project
+
+    def require_project_named(self, uow: UnitOfWork, name: str) -> Project:
+        """The project holding that name, compared the way the index compares.
+
+        Unicode case folding here, ASCII ``COLLATE NOCASE`` in the index — the
+        service is where the normalized string is in hand, so it is the stricter
+        of the two. ``require_project_name`` is its opposite number and answers a
+        different question: that one refuses a name because it is *taken*, this
+        one resolves a name because it is.
+
+        Public, and taking a ``uow``, for the reason ``JobService.require_job``
+        is: a caller resolving a project inside its own transaction must not have
+        to spell the comparison a second time.
+        """
+        wanted = self._workspace.normalize_project_name(name).casefold()
+        for project in uow.projects.list(self._workspace.workspace_id):
+            if project.name.casefold() == wanted:
+                return project
+        raise ProjectNotFound(
+            f"no project named {name!r} in workspace {self._workspace.workspace.name!r}"
+        )
 
     def require_dataset(self, uow: UnitOfWork, project_id: UUID) -> Dataset:
         """The project's one dataset.

@@ -7,21 +7,26 @@ files that do several of them at once. There are two, one per milestone:
 | --- | --- | --- |
 | [`sdk_end_to_end.py`](../examples/sdk_end_to_end.py) | an empty directory to a release whose every byte can be re-hashed and checked | M1 |
 | [`ingest_end_to_end.py`](../examples/ingest_end_to_end.py) | a ten-second clip and a folder of stills to an approved, partitioned batch | M2 |
+| [`cli_end_to_end.sh`](../examples/cli_end_to_end.sh) | the same cycle again, from a shell, using nothing but the `visionset` command | M3 |
 
 ```bash
 uv run python examples/sdk_end_to_end.py
 uv run python examples/ingest_end_to_end.py     # needs ffmpeg
+uv run bash examples/cli_end_to_end.sh
 ```
 
 Each is its milestone's exit criterion made executable, and each runs in CI **twice**: once as a
 pytest smoke test ([M1](../tests/examples/test_sdk_end_to_end.py),
-[M2](../tests/examples/test_ingest_end_to_end.py)) that asserts on outcomes, and once as a plain
+[M2](../tests/examples/test_ingest_end_to_end.py),
+[M3](../tests/examples/test_cli_end_to_end.py)) that asserts on outcomes, and once as a plain
 script, which is the only way to prove it still works from a clean checkout.
 
-The two overlap by design and neither subsumes the other. The SDK example walks the whole cycle
+They overlap by design and none subsumes another. The SDK example walks the whole cycle
 and treats ingest as one stage of thirteen; the ingest example stops at an approved batch and
 spends its length on where assets come from — two sources over one file, dedup, progress and the
-per-file report.
+per-file report. The CLI example walks the whole cycle a second time, and what it proves is not the
+cycle but the *surface*: that the installed console script reaches every stage of it, that ids
+travel on stdout, and that `--json` is stable enough to assert on.
 
 ---
 
@@ -174,3 +179,52 @@ The generation command is `tests/fixtures/media.write_video`'s, duplicated rathe
 that module is a test fixture, it imports pytest, and its answer to a missing binary is
 `pytest.skip`, which means nothing in a script. The stills, by contrast, are Pillow's work — a
 real dependency since #16, so a second hand-rolled PNG encoder beside it would be archaeology.
+
+
+---
+
+# The CLI example
+
+## What it does
+
+`examples/cli_end_to_end.sh` is M3's exit criterion — *the full cycle without touching Python* —
+written as the thing that criterion describes. It runs `visionset init`, `project create`,
+`schema apply`, `ingest`, `batch approve/start/complete/promote`, a `job` loop, `release
+publish/verify`, `format list` and `export`, and then asserts.
+
+## Three things it is built to demonstrate
+
+**Ids travel on stdout.** `WS=$(visionset init "$DEST/ws")`, `BATCH=$(visionset ingest …)`, and
+every listing read with `tail -n +2 | awk '{print $1}'` — which works because a header always
+prints and the first column is always an id. Nothing here parses prose.
+
+**The workspace is stated once.** `export VISIONSET_WORKSPACE="$WS"` after `init`, and no command
+after that carries `-w`. That is the environment-variable branch of the resolution rule, and it is
+the branch a script should use: the flag is for a one-off, and the upward walk is for a person
+standing in a project directory.
+
+**`--json` is stable enough to assert on.** Step 9 pipes `release list --json` through `python3`
+and checks the envelope, the tag, the asset count and the split recipe — which *is* the "`--json`
+outputs stable, documented shapes" acceptance criterion, tested rather than promised.
+
+There is a fourth, at the end: a deliberate refusal. Publishing `v1.0` twice exits 1 with one
+sentence on stderr, and the script asserts that it did. A command inside an `if` condition does not
+trip `set -e`, which is what makes demonstrating a failure safe.
+
+## What it deliberately does not need
+
+**No ffmpeg**, so it runs anywhere the package installs — stills only, six of them plus one
+`notes.txt` that is deliberately not an image, so the per-file report has something in it. **No
+`jq`**, because the column format is designed to be read with `awk`. **No `curl` and no server**:
+the CLI calls the SDK in-process, which is the whole point of it being a sibling of the REST API
+rather than a client of it.
+
+`python3` appears twice — once to write PNGs, because a shell cannot, and once to assert on a JSON
+document. Neither touches the SDK.
+
+## The honest note it carries
+
+Every asset in this run is marked `annotated` and carries **no labels**. Drawing a box is the app's
+job; `visionset job mark` records that somebody did it. So the release reports
+`annotation_count: 0`, the manifest says so, and the smoke test asserts it — rather than the script
+quietly leaving the impression that a terminal can label images.

@@ -281,6 +281,61 @@ def test_promoting_a_second_batch_does_not_change_an_earlier_release(tmp_path: P
     fixture.close()
 
 
+# --- reading a release back by its tag ----------------------------------------
+
+
+def test_a_release_reads_back_by_its_tag(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    assert fixture.releases.get_by_tag(fixture.dataset_id, "v1") == release
+    fixture.close()
+
+
+def test_a_tag_resolves_after_normalization(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    assert fixture.releases.get_by_tag(fixture.dataset_id, "  v1  ") == release
+    fixture.close()
+
+
+def test_a_tag_is_matched_case_sensitively(tmp_path: Path) -> None:
+    # The opposite of ``ProjectService.get_by_name``, and deliberately so: a tag
+    # is an identifier rather than a label somebody reads, and the unique index
+    # compares it exactly. Both rules live beside the index that enforces them so
+    # that no surface has to re-derive either.
+    fixture = Fixture(tmp_path)
+    upper = fixture.releases.publish(fixture.ready(), "V1")
+    with pytest.raises(ReleaseNotFound):
+        fixture.releases.get_by_tag(fixture.dataset_id, "v1")
+    assert fixture.releases.get_by_tag(fixture.dataset_id, "V1") == upper
+    fixture.close()
+
+
+def test_getting_an_unknown_tag_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.releases.publish(fixture.ready(), "v1")
+    with pytest.raises(ReleaseNotFound, match="no release tagged"):
+        fixture.releases.get_by_tag(fixture.dataset_id, "v2")
+    fixture.close()
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_getting_a_blank_tag_is_refused_as_a_name(tmp_path: Path, blank: str) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.releases.publish(fixture.ready(), "v1")
+    with pytest.raises(InvalidName):
+        fixture.releases.get_by_tag(fixture.dataset_id, blank)
+    fixture.close()
+
+
+def test_getting_a_tag_from_an_unknown_dataset_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.releases.publish(fixture.ready(), "v1")
+    with pytest.raises(DatasetNotFound):
+        fixture.releases.get_by_tag(uuid4(), "v1")
+    fixture.close()
+
+
 # --- what publishing refuses --------------------------------------------------
 
 

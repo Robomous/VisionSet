@@ -21,31 +21,25 @@ badly.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Annotated, Final
 
 import typer
 
+from visionset.cli._output import moment, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.services import TokenService
 
 token_app = typer.Typer(help="Manage API tokens.", no_args_is_help=True)
 
 _COLUMNS: Final = ("NAME", "CREATED", "REVOKED")
+"""NAME first, unlike every other listing, which leads with an id.
 
-_TIMESTAMP_FORMAT: Final = "%Y-%m-%dT%H:%M:%SZ"
-"""Seconds, UTC, no offset. A listing is read by a person; microseconds are not."""
-
-_NEVER: Final = "-"
-"""What a live token shows in the REVOKED column."""
-
-
-def _moment(when: datetime | None) -> str:
-    return _NEVER if when is None else when.astimezone(UTC).strftime(_TIMESTAMP_FORMAT)
-
-
-def _row(cells: tuple[str, ...], widths: list[int]) -> str:
-    return "  ".join(cell.ljust(w) for cell, w in zip(cells, widths, strict=True)).rstrip()
+Kept as it is because a token has no id a person would ever type — ``revoke``
+takes the name — and moving the column would break scripts for no gain. The
+consequence is that ``awk '{print $1}'`` is not safe *here*, since a token name
+may hold internal whitespace; ``docs/cli.md`` says so where it states the
+id-first rule for the flow listings.
+"""
 
 
 @token_app.command("create")
@@ -57,7 +51,7 @@ def token_create(
     with opened_workspace(workspace) as service:
         issued = TokenService(service).create(name)
         root = service.root
-    typer.echo(f"Created token {issued.token.name!r} in {root}.", err=True)
+    note(f"Created token {issued.token.name!r} in {root}.")
     typer.echo(issued.secret)
     typer.secho(
         "This secret is shown once and cannot be recovered. Store it now.",
@@ -69,8 +63,8 @@ def token_create(
 @token_app.command("revoke")
 def token_revoke(
     name: Annotated[str, typer.Argument(help="The token to burn.")],
-    workspace: WorkspaceOption = None,
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Do not ask.")] = False,
+    workspace: WorkspaceOption = None,
 ) -> None:
     """Burn a token. Every client holding its secret stops working.
 
@@ -88,10 +82,7 @@ def token_revoke(
             # The kernel's no-op, surfaced. Exit 0, and do not ask: a retried
             # ``token revoke ci`` must be safe, and prompting to redo something
             # already done invites a "yes" that means nothing.
-            typer.echo(
-                f"Token {token.name!r} was already revoked at {_moment(token.revoked_at)}.",
-                err=True,
-            )
+            note(f"Token {token.name!r} was already revoked at {moment(token.revoked_at)}.")
             return
         if not yes:
             # ``ConfirmationRequired`` exists because the kernel has no terminal;
@@ -105,7 +96,7 @@ def token_revoke(
             )
         tokens.revoke(token.id, confirm=True)
         burned = token.name
-    typer.echo(f"Revoked token {burned!r}.", err=True)
+    note(f"Revoked token {burned!r}.")
 
 
 @token_app.command("list")
@@ -113,17 +104,12 @@ def token_list(workspace: WorkspaceOption = None) -> None:
     """List this workspace's tokens, revoked ones included. Never their secrets."""
     with opened_workspace(workspace) as service:
         rows = [
-            (token.name, _moment(token.created_at), _moment(token.revoked_at))
+            (token.name, moment(token.created_at), moment(token.revoked_at))
             for token in TokenService(service).list()
         ]
         root = service.root
-    widths = [
-        max([len(header), *(len(row[i]) for row in rows)]) for i, header in enumerate(_COLUMNS)
-    ]
     # The header prints whether or not there are rows, so ``| tail -n +2`` is
     # stable; the "none" note goes to stderr, where notes go.
-    typer.echo(_row(_COLUMNS, widths))
-    for row in rows:
-        typer.echo(_row(row, widths))
+    table(_COLUMNS, rows)
     if not rows:
-        typer.echo(f"No tokens in {root}.", err=True)
+        note(f"No tokens in {root}.")

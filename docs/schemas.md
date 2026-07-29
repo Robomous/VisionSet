@@ -201,6 +201,49 @@ active version. The judgement itself is shared rather than reimplemented: `Attri
 is the one method that answers "does this attribute take this value", and both a default and
 a label go through it. See [annotations.md](annotations.md).
 
+## At a terminal
+
+```bash
+visionset schema apply schema.json --project road-signs
+visionset schema list --project road-signs
+```
+
+The file is **JSON**, and it is byte-for-byte the same document
+`POST /projects/{id}/schema/versions` takes:
+
+```json
+{
+  "classes": [
+    {
+      "name": "sign",
+      "geometry": "bbox",
+      "color": "#ff0000",
+      "attributes": [
+        {"name": "occluded", "kind": "boolean", "required": false, "default": false}
+      ]
+    }
+  ]
+}
+```
+
+That is a tested claim rather than a promise: `tests/cli/test_json_contract.py` asserts the CLI's
+`label_class` and `attribute` projections have exactly `LabelClassBody`'s and `AttributeBody`'s
+fields, and `tests/cli/test_schemas.py` validates the example document as a request body.
+
+**JSON and not YAML.** A second format means a runtime dependency in every wheel, a second parser
+to keep honest, and two shapes that can disagree — while the surface a schema file has to
+interoperate with speaks JSON already. `yq . schema.yaml | visionset schema apply /dev/stdin` is one
+pipe away for whoever wants one.
+
+**The document parses through the domain models themselves**, so `LabelClass`'s and `Attribute`'s
+own validators do the refusing and no rule here is restated in the CLI. Those refusals are **exit
+2**, not 1: a pydantic `ValidationError` is not a `VisionSetError`, and a malformed file is a usage
+error in the same sense a malformed request body is a 422. The message carries the domain's own
+words and the path to the offending field (`classes.0.name`).
+
+`--allow-destructive` is the flag for the first of the two gates above. The second — a change that
+would orphan annotations — has no flag, here as everywhere.
+
 ## Concurrency
 
 The next version number is computed from the versions already stored, so two writers can

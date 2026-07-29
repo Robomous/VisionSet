@@ -52,6 +52,31 @@ whitespace, NFC-normalized on the way in. See
 in two places. `rename` passes `exclude=project_id`, so correcting only the capitalization
 of a name is not a collision with itself.
 
+## At a terminal
+
+```bash
+visionset project create road-signs --description "Motorway signage"
+visionset project list
+```
+
+`create` writes the project and its dataset in one transaction, and prints the new id on stdout
+alone. `list` leads with the id, so `awk '{print $1}'` is stable even for a name holding internal
+whitespace.
+
+**Every downstream command takes `--project` / `-p`, and it accepts a name or an id.** A
+well-formed UUID is treated as an id; anything else is a name, matched case-insensitively through
+`ProjectService.get_by_name`. That method is a kernel read rather than a scan written in the CLI
+because the comparison is not obvious and it is not the only one — a release tag is unique per
+dataset and **case-sensitive**, the opposite rule — so a surface re-deriving either from prose would
+eventually get one of them wrong.
+
+A project whose *name* is a well-formed UUID string is unreachable by name. Harmless: the same
+string reaches it as an id.
+
+There is deliberately no `visionset project rename` and no `visionset project delete`. Both are
+administration rather than flow, and a delete wants the prompt and the cascade above spelled out at
+the point of use; landing them together is how that gets written once.
+
 ## Deleting a project
 
 Deletion is guarded by a parameter, not by a prompt:

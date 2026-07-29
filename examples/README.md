@@ -7,6 +7,7 @@ and `**/workspace-data/` is git-ignored by design.
 | --- | --- |
 | [`sdk_end_to_end.py`](sdk_end_to_end.py) | The whole cycle in one pass: workspace → project → schema → synthetic frames → batch → jobs → annotations → curated trunk → verified release |
 | [`ingest_end_to_end.py`](ingest_end_to_end.py) | Where assets come from: a generated 10 s clip → source at 5 fps → 50 deduplicated assets → approved batch of 2 jobs, plus a re-run that creates nothing, the same clip at a second rate, and a folder of stills with one unreadable file. **Needs ffmpeg.** |
+| [`cli_end_to_end.sh`](cli_end_to_end.sh) | The same cycle from a shell, using nothing but the `visionset` command: init → project → schema → ingest → batch → jobs → release → export, with the `--json` shapes asserted and one deliberate refusal. No ffmpeg, no `jq`, no server. |
 
 ## Running the SDK end-to-end example
 
@@ -67,5 +68,25 @@ with WorkspaceService.open("examples/workspace-data/ingest-e2e") as workspace:
             print(source.kind.value, job.state.value, job.processed, job.total, job.failures)
 ```
 
-[`docs/examples.md`](../docs/examples.md) walks through what each stage of both examples does and
-why.
+## Running the CLI end-to-end example
+
+```bash
+uv run bash examples/cli_end_to_end.sh            # into examples/workspace-data/cli-e2e
+uv run bash examples/cli_end_to_end.sh ./scratch  # or wherever you like
+```
+
+Same destination rules as above. `uv run bash` rather than plain `bash` is the one requirement: it
+puts the virtualenv's `bin/` on `PATH`, so `visionset` and `python3` are the same installation.
+
+It leaves a workspace at `<destination>/ws` — beside its inputs rather than over them, because
+`init` refuses a directory that already holds something — with one project, one schema version, six
+assets in a completed batch, and a verified `v1.0` release carrying no annotations.
+
+```bash
+export VISIONSET_WORKSPACE=examples/workspace-data/cli-e2e/ws
+visionset release list --project road-signs --json | python3 -m json.tool
+visionset release verify v1.0 --project road-signs && echo "still intact"
+```
+
+[`docs/examples.md`](../docs/examples.md) walks through what each stage of all three examples does
+and why.
