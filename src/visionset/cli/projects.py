@@ -23,7 +23,7 @@ from typing import Annotated, Final
 
 import typer
 
-from visionset.cli import _json
+from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.services import ProjectService
@@ -49,7 +49,7 @@ def project_create(
     with opened_workspace(workspace) as service:
         created = ProjectService(service).create(name, description)
     if json_out:
-        document(_json.project(created))
+        document(wire.project(created))
         return
     note(f"Created project {created.name!r}.")
     typer.echo(str(created.id))
@@ -65,7 +65,7 @@ def project_list(
         projects = ProjectService(service).list()
         root = service.root
     if json_out:
-        document(_json.page([_json.project(p) for p in projects]))
+        document(wire.page([wire.project(p) for p in projects]))
         return
     table(_COLUMNS, [(str(p.id), p.name, p.description or _NONE) for p in projects])
     if not projects:

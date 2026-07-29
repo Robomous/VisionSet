@@ -1,31 +1,41 @@
-# usage: from visionset.cli import _json
-"""What ``--json`` publishes: one hand-written projection per resource.
+# usage: from visionset import wire
+"""What a surface publishes as JSON: one hand-written projection per resource.
 
-**A field reaches a script because somebody wrote it here.** That is
+**A field reaches a caller because somebody wrote it here.** That is
 ``tokens.py``'s rule — its listing names three columns one at a time rather than
 dumping the model — promoted to the shape a program parses. The alternative,
 ``model_dump()`` on a domain model, would publish whatever the domain happens to
 hold today and silently republish whatever it holds tomorrow. Three fields make
 the point, and each is already absent from the wire model the server publishes:
 
-- ``Asset.uri`` and ``Source.path`` are absolute paths on this machine. A script
+- ``Asset.uri`` and ``Source.path`` are absolute paths on this machine. A caller
   reading them learns the layout of somebody's disk and nothing it can use.
 - ``Batch.asset_ids`` is a batch's whole roll call, which for fifty thousand
   frames must not travel on every read of its name.
 
-**These shapes deliberately agree, key for key, with the REST API's wire models.**
-Not by importing them — import-linter forbids ``visionset.cli`` importing
-``visionset.server``, and rightly: the surfaces are siblings — but by
-``tests/cli/test_json_contract.py``, which imports both and asserts each pair has
-the same keys *and* that the projection round-trips through the wire model. A
-test may do what neither package may. What that buys is one shape for one
-concept, so a script moves between ``curl | jq`` and ``visionset --json | jq``
-without relearning the field names.
+**This module is its own package rather than ``cli/_json.py`` because it has two
+callers.** It arrived with the CLI (#34) and #35 gave MCP the same need; a second
+hand-written spelling of the same twenty shapes is exactly what "promoted, not
+copied" exists to prevent, and the two would have been free to drift with only
+prose holding them together. The import direction is one-way and machine-enforced:
+the surfaces import ``visionset.wire``, and the kernel-purity contract forbids
+``visionset.kernel`` importing it, alongside the three delivery packages. The
+server keeps its own pydantic models because ``openapi.json`` is generated from
+them, which a dict cannot do.
 
-Two things here have no wire partner and are the CLI's own: an export report
-(the API returns the archive itself, not a description of it) and a thumbnail
-backfill (no route reaches it). Both are named in the docs as the CLI defining
-the shape first, for #35 to follow.
+**These shapes deliberately agree, key for key, with the REST API's wire models.**
+Not by importing them — import-linter's independence contract keeps the surfaces
+siblings — but by ``tests/cli/test_json_contract.py``, which imports both and
+asserts each pair has the same keys *and* that the projection round-trips through
+the wire model. A test may do what neither package may. What that buys is one
+shape for one concept, so a caller moves between ``curl | jq``,
+``visionset --json | jq`` and an MCP tool result without relearning the field
+names — and there are still **two** spellings to keep in step, not three.
+
+Three things here have no wire partner, because no route publishes them: an
+export report (the API returns the archive itself, not a description of it), a
+thumbnail backfill, and a schema diff. They are gated only for encoding, at the
+bottom of the parity test.
 
 Leaf encoding is explicit everywhere: UUIDs as strings, enums as ``.value``,
 paths as strings, and timestamps in **pydantic's** format — microseconds, ``Z``
@@ -43,20 +53,29 @@ from typing import Any
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    Annotation,
     AnnotationJob,
     AnnotationSchema,
     Asset,
     AssetProgress,
     Attribute,
     Batch,
+    BboxGeometry,
+    ClassCount,
+    ClassificationGeometry,
     Dataset,
+    DatasetStats,
     ExportResult,
+    Geometry,
     IngestFailure,
     IngestJob,
     LabelClass,
+    PolygonGeometry,
     Project,
     Release,
     ReleaseVerification,
+    SchemaChange,
+    SchemaDiff,
     Source,
     SplitRecipe,
     ThumbnailBackfill,
@@ -130,6 +149,31 @@ def schema_version(value: AnnotationSchema) -> dict[str, Any]:
     }
 
 
+def schema_change(value: SchemaChange) -> dict[str, Any]:
+    """One difference between two schema versions, and which kind it is."""
+    return {
+        "kind": value.kind.value,
+        "label_class": value.label_class,
+        "attribute": value.attribute,
+        "detail": value.detail,
+    }
+
+
+def schema_diff(value: SchemaDiff) -> dict[str, Any]:
+    """A proposed or actual schema change, classified. **Surface-defined**: no route reaches this.
+
+    ``is_destructive`` and ``destructive_classes`` are domain ``@property``
+    values materialized here, the way ``ReleaseVerification.ok`` is: a caller
+    deciding whether it needs ``allow_destructive`` must not have to re-derive
+    the answer from the ``changes`` list and get it subtly wrong.
+    """
+    return {
+        "is_destructive": value.is_destructive,
+        "destructive_classes": sorted(value.destructive_classes),
+        "changes": [schema_change(c) for c in value.changes],
+    }
+
+
 # --- sources, ingest and assets ----------------------------------------------
 
 
@@ -194,8 +238,25 @@ def asset(value: Asset) -> dict[str, Any]:
     }
 
 
+def batch_asset(
+    value: Asset, *, job_id: UUID | None, progress: AssetProgress | None
+) -> dict[str, Any]:
+    """One asset seen from inside a batch: the asset, plus where the work stands.
+
+    Widens :func:`asset` rather than replacing it, which is what the wire model
+    does by inheriting ``AssetOut`` — they are the same asset from a different
+    vantage point, and a field added to one belongs to both. Both extra fields
+    are null exactly while the batch is a draft, because a draft has no jobs.
+    """
+    return {
+        **asset(value),
+        "job_id": None if job_id is None else str(job_id),
+        "progress": None if progress is None else progress.value,
+    }
+
+
 def thumbnail_backfill(value: ThumbnailBackfill) -> dict[str, Any]:
-    """A preview pass over a project. **CLI-defined**: no route reaches this."""
+    """A preview pass over a project. **Surface-defined**: no route reaches this."""
     return {
         "project_id": str(value.project_id),
         "examined": value.examined,
@@ -248,6 +309,84 @@ def asset_progress(asset_id: UUID, progress: AssetProgress) -> dict[str, Any]:
     return {"asset_id": str(asset_id), "progress": progress.value}
 
 
+# --- annotations -------------------------------------------------------------
+
+
+def geometry(value: Geometry) -> dict[str, Any]:
+    """One shape, tagged by ``type``. Coordinates are the asset's own pixels.
+
+    Never normalized, at any surface — the domain's rule, and the one thing a
+    caller reading a scaled-down preview has to know. ``match`` on the concrete
+    class rather than on ``value.type``, so a variant added to the union without
+    a projection is a mypy error here instead of a ``KeyError`` at a caller.
+    """
+    match value:
+        case BboxGeometry():
+            return {
+                "type": value.type.value,
+                "x": value.x,
+                "y": value.y,
+                "width": value.width,
+                "height": value.height,
+            }
+        case PolygonGeometry():
+            return {"type": value.type.value, "points": [list(p) for p in value.points]}
+        case ClassificationGeometry():
+            return {"type": value.type.value}
+
+
+def annotation(value: Annotation) -> dict[str, Any]:
+    """One label on one asset. ``schema_version`` is published on the way out only.
+
+    A caller never sets it — the service stamps the batch's pinned version over
+    whatever it was handed — but reading it back is how a caller knows which
+    contract the label was judged against.
+    """
+    return {
+        "id": str(value.id),
+        "asset_id": str(value.asset_id),
+        "label_class": value.label_class,
+        "schema_version": value.schema_version,
+        "geometry": geometry(value.geometry),
+        "attributes": dict(value.attributes),
+        "provenance": value.provenance,
+        "model_ref": value.model_ref,
+        "confidence": value.confidence,
+    }
+
+
+# --- datasets ----------------------------------------------------------------
+
+
+def class_count(value: ClassCount) -> dict[str, Any]:
+    """How much of one class a dataset holds — both totals, deliberately.
+
+    A thousand labels over a thousand images and the same thousand over ten are
+    the same ``annotations`` and a very different dataset.
+    """
+    return {
+        "label_class": value.label_class,
+        "annotations": value.annotations,
+        "assets": value.assets,
+    }
+
+
+def dataset_stats(value: DatasetStats) -> dict[str, Any]:
+    """What is in the trunk right now. Derived per call; a release freezes its own.
+
+    ``classes`` rather than the domain's ``per_class``, matching the wire model:
+    a class the schema declares but nobody used is **absent**, so this is what
+    was counted and not what could be.
+    """
+    return {
+        "dataset_id": str(value.dataset_id),
+        "asset_count": value.asset_count,
+        "annotated_asset_count": value.annotated_asset_count,
+        "annotation_count": value.annotation_count,
+        "classes": [class_count(c) for c in value.per_class],
+    }
+
+
 # --- releases, exports and formats -------------------------------------------
 
 
@@ -292,7 +431,7 @@ def export_format(value: Exporter) -> dict[str, Any]:
 
 
 def export_result(value: ExportResult) -> dict[str, Any]:
-    """What an export left on disk. **CLI-defined**: the API returns the archive.
+    """What an export left on disk. **Surface-defined**: the API returns the archive.
 
     ``directory`` is here where ``Asset.uri`` is not, and the difference is who
     chose it: this is the path the caller typed on ``--out``, so echoing it tells

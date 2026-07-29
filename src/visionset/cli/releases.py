@@ -27,7 +27,7 @@ from typing import Annotated, Final
 
 import typer
 
-from visionset.cli import _json
+from visionset import wire
 from visionset.cli._errors import EXIT_ANSWER_IS_NO
 from visionset.cli._output import JsonOption, document, moment, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project, resolve_release
@@ -96,7 +96,7 @@ def release_publish(
         dataset = ProjectService(service).get_dataset(resolved.id)
         published = ReleaseService(service).publish(dataset.id, tag, split=recipe)
     if json_out:
-        document(_json.release(published))
+        document(wire.release(published))
         return
     note(
         f"Published {published.tag!r}: {published.asset_count} asset(s), "
@@ -118,7 +118,7 @@ def release_list(
         dataset = ProjectService(service).get_dataset(resolved.id)
         releases = ReleaseService(service).list(dataset.id)
     if json_out:
-        document(_json.page([_json.release(r) for r in releases]))
+        document(wire.page([wire.release(r) for r in releases]))
         return
     table(
         _COLUMNS,
@@ -158,7 +158,7 @@ def release_verify(
         release = resolve_release(service, project, tag)
         report = ReleaseService(service).verify(release.id)
     if json_out:
-        document(_json.release_verification(report))
+        document(wire.release_verification(report))
     elif report.ok:
         note(f"Release {release.tag!r} verifies: {report.checked} blob(s) intact.")
     else:

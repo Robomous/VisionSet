@@ -1,135 +1,133 @@
-"""MCP server over stdio. Run with: python -m visionset.mcp.main
+"""MCP server over stdio. Run with: ``visionset mcp``, or ``python -m visionset.mcp.main``.
 
-Every tool is a stub returning a structured `not_implemented` error until the
-kernel SDK lands. Convention (starts now): tools that mutate or write anything
-declare `confirm: bool = False` and refuse to act while it is false.
+The fourth client of the kernel SDK, beside the REST API, the CLI and the SDK
+itself. Every tool is a thin mapping onto one or two service calls; nothing is
+decided here that the kernel has not already decided.
+
+**Thirty-three tools, out of fifty candidates.** Each REST task from #27 to #30
+recorded which MCP tools its capability implied, and this is the sweep that
+settled them one by one. The parity rule means *evaluated*, not *implemented*:
+tool-selection accuracy degrades with count, so a tool ships only when an agent
+has a reason to reach for it that no neighbouring tool already covers. What
+folded, what was dropped and why is argued in ``docs/mcp.md`` and in each
+module's own docstring.
+
+**Registration is this table, not a decorator at each definition site.** The CLI's
+rule, for the CLI's reason: ``@server.tool()`` inside ``projects.py`` would make
+that module import this one, which imports it. Doing it here also puts every
+shipped tool on one screen, and gives the three cross-cutting decisions exactly
+one place to live —
+
+* ``guarded`` wraps every body, so a kernel refusal arrives as the error envelope
+  rather than as an exception whose text FastMCP would ship to the client anyway,
+  prefixed and unstructured;
+* ``inspect.cleandoc`` is passed as ``description=`` because FastMCP otherwise
+  ships ``__doc__`` **raw** — indentation and all — into the listing an agent
+  reads;
+* ``ToolAnnotations`` says whether a tool reads or writes. They are *hints* and
+  enforce nothing; ``confirm`` is what enforces. So
+  ``tests/mcp/test_registration.py`` asserts the two agree rather than trusting
+  that they do.
+
+A duplicate name would not raise: FastMCP logs a warning and silently discards
+the second registration. That same test asserts the server lists exactly as many
+tools as this table holds.
+
+**No ``from __future__ import annotations`` here**, and it is not an oversight.
+That import binds the name ``annotations`` to a ``__future__._Feature``, which
+``from visionset.mcp import annotations`` below would then shadow — reported by
+mypy as an incompatible import, exactly as it was for ``server/routes``. Nothing
+in this module needs deferred evaluation.
 """
 
-from __future__ import annotations
-
-from typing import Any
+import inspect
+from collections.abc import Callable
+from typing import Any, Final
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+
+from visionset.mcp import (
+    annotations,
+    assets,
+    batches,
+    datasets,
+    formats,
+    jobs,
+    projects,
+    releases,
+    schemas,
+    sources,
+)
+from visionset.mcp._errors import guarded
 
 server = FastMCP("visionset")
 
+READS: Final = ToolAnnotations(readOnlyHint=True)
+"""Reads rows and changes nothing."""
 
-def _not_implemented(tool: str) -> dict[str, Any]:
-    return {
-        "error": {
-            "code": "not_implemented",
-            "message": f"'{tool}' is not implemented yet; the kernel SDK lands in a later session.",
-        }
-    }
+WRITES: Final = ToolAnnotations(readOnlyHint=False, destructiveHint=False)
+"""Changes state, but only ever adds to it or advances it."""
 
+DESTROYS: Final = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+"""Removes something that cannot be recovered. Carries ``confirm``."""
 
-def _confirmation_required(tool: str) -> dict[str, Any]:
-    return {
-        "error": {
-            "code": "confirmation_required",
-            "message": f"'{tool}' mutates state; call again with confirm=true to proceed.",
-        }
-    }
+TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
+    # Registration is in cycle order — make a project, give it a schema, put
+    # images in it, work through them, promote, publish, export — because that is
+    # the order an agent meets them in, and a listing that reads as the workflow
+    # is one a model can plan against.
+    (projects.create_project, WRITES),
+    (projects.list_projects, READS),
+    (projects.get_project, READS),
+    (projects.delete_project, DESTROYS),
+    (schemas.get_schema, READS),
+    (schemas.preview_schema_change, READS),
+    (schemas.create_schema_version, WRITES),
+    (sources.ingest, WRITES),
+    (sources.list_sources, READS),
+    (sources.backfill_thumbnails, WRITES),
+    (batches.list_batches, READS),
+    (batches.get_batch, READS),
+    (batches.approve_batch, WRITES),
+    (batches.start_batch, WRITES),
+    (batches.list_batch_assets, READS),
+    (jobs.get_job, READS),
+    (jobs.start_job, WRITES),
+    (jobs.next_pending_assets, READS),
+    (assets.get_asset_image, READS),
+    (annotations.list_asset_annotations, READS),
+    (annotations.add_annotations, WRITES),
+    (annotations.update_annotations, WRITES),
+    (annotations.delete_annotations, WRITES),
+    (jobs.set_asset_progress, WRITES),
+    (jobs.complete_job, WRITES),
+    (batches.complete_batch, WRITES),
+    (batches.promote_batch, WRITES),
+    (datasets.dataset_stats, READS),
+    (releases.publish_release, WRITES),
+    (releases.list_releases, READS),
+    (releases.verify_release, READS),
+    (formats.list_formats, READS),
+    (releases.export_release, WRITES),
+)
+"""Every shipped tool, with what it does to the workspace.
 
-
-# --- read-only tools ---------------------------------------------------------
-
-
-@server.tool()
-def list_projects() -> dict[str, Any]:
-    """List all projects in the workspace."""
-    return _not_implemented("list_projects")
-
-
-@server.tool()
-def get_project_status(project_id: str) -> dict[str, Any]:
-    """Get the status summary of a project."""
-    return _not_implemented("get_project_status")
-
-
-@server.tool()
-def get_schema(project_id: str) -> dict[str, Any]:
-    """Get the current annotation schema of a project."""
-    return _not_implemented("get_schema")
-
-
-@server.tool()
-def get_ingest_progress(ingest_job_id: str) -> dict[str, Any]:
-    """Get the progress of an ingest job."""
-    return _not_implemented("get_ingest_progress")
-
-
-@server.tool()
-def list_jobs(project_id: str) -> dict[str, Any]:
-    """List annotation jobs in a project."""
-    return _not_implemented("list_jobs")
-
-
-@server.tool()
-def get_annotation_progress(job_id: str) -> dict[str, Any]:
-    """Get per-asset annotation progress for a job."""
-    return _not_implemented("get_annotation_progress")
-
-
-@server.tool()
-def dataset_stats(dataset_id: str) -> dict[str, Any]:
-    """Get statistics (class balance, counts) for a dataset."""
-    return _not_implemented("dataset_stats")
+``delete_annotations`` is ``WRITES`` rather than ``DESTROYS``, on purpose: it
+takes no ``confirm``, because removing a label is the annotator edit loop and the
+guard is the batch gate. In this surface ``destructiveHint`` and ``confirm`` mean
+the same thing, and the registration test holds them to it.
+"""
 
 
-# --- mutating tools: the confirm-parameter convention starts here ------------
+def _register() -> None:
+    for tool, hints in TOOLS:
+        server.tool(description=inspect.cleandoc(tool.__doc__ or ""), annotations=hints)(
+            guarded(tool)
+        )
 
 
-@server.tool()
-def create_project(name: str, confirm: bool = False) -> dict[str, Any]:
-    """Create a new project. Requires confirm=true."""
-    if not confirm:
-        return _confirmation_required("create_project")
-    return _not_implemented("create_project")
-
-
-@server.tool()
-def ingest_source(project_id: str, uri: str, confirm: bool = False) -> dict[str, Any]:
-    """Ingest a source (e.g. a local folder) into a project. Requires confirm=true."""
-    if not confirm:
-        return _confirmation_required("ingest_source")
-    return _not_implemented("ingest_source")
-
-
-@server.tool()
-def partition_batch(batch_id: str, task_count: int, confirm: bool = False) -> dict[str, Any]:
-    """Partition a batch into task groups. Requires confirm=true."""
-    if not confirm:
-        return _confirmation_required("partition_batch")
-    return _not_implemented("partition_batch")
-
-
-@server.tool()
-def add_annotations(
-    job_id: str, annotations: list[dict[str, Any]], confirm: bool = False
-) -> dict[str, Any]:
-    """Add annotations to a job (provenance will be 'model' or 'import'). Requires confirm=true."""
-    if not confirm:
-        return _confirmation_required("add_annotations")
-    return _not_implemented("add_annotations")
-
-
-@server.tool()
-def publish_release(dataset_id: str, tag: str, confirm: bool = False) -> dict[str, Any]:
-    """Publish an immutable release of a dataset. Requires confirm=true."""
-    if not confirm:
-        return _confirmation_required("publish_release")
-    return _not_implemented("publish_release")
-
-
-@server.tool()
-def export_release(
-    release_id: str, format_name: str, dest: str, confirm: bool = False
-) -> dict[str, Any]:
-    """Export a release to disk in the given format. Requires confirm=true."""
-    if not confirm:
-        return _confirmation_required("export_release")
-    return _not_implemented("export_release")
+_register()
 
 
 def main() -> None:

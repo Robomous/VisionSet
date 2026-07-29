@@ -40,7 +40,7 @@ from typing import Annotated, Final
 
 import typer
 
-from visionset.cli import _json
+from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
@@ -131,13 +131,13 @@ def ingest(
     if json_out:
         document(
             {
-                "source": _json.source(registered),
+                "source": wire.source(registered),
                 "job_id": str(result.job_id),
                 "batch_id": str(result.batch_id),
                 "created": result.created,
                 "deduplicated": result.deduplicated,
                 "failed": result.failed,
-                "failures": [_json.ingest_failure(f) for f in result.failures],
+                "failures": [wire.ingest_failure(f) for f in result.failures],
             }
         )
         return
@@ -165,7 +165,7 @@ def backfill_thumbnails(
         resolved = resolve_project(service, project)
         report = IngestService(service).backfill_thumbnails(resolved.id)
     if json_out:
-        document(_json.thumbnail_backfill(report))
+        document(wire.thumbnail_backfill(report))
         return
     note(
         f"Examined {report.examined} asset(s) without a preview in {resolved.name!r}: "
