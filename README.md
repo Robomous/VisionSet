@@ -66,6 +66,14 @@ For where the assets themselves come from,
 into 50 deduplicated assets in an approved batch, then shows a re-run creating nothing. It needs
 ffmpeg.
 
+The same cycle runs over each of the other two surfaces, and both start the shipped command for
+real: [`examples/http_end_to_end.py`](examples/http_end_to_end.py) starts `visionset ui` on a free
+port and drives the API with `urllib` and a bearer token — multipart upload, 202-and-poll ingest,
+hash-checked manifest and a 401 it asserts — while
+[`examples/mcp_end_to_end.py`](examples/mcp_end_to_end.py) spawns `visionset mcp` and talks
+JSON-RPC down its pipe, scaling every box out of the preview it saw and into the asset's own
+pixels.
+
 ## Monorepo map
 
 ```

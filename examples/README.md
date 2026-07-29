@@ -1,13 +1,18 @@
 # VisionSet examples
 
-Runnable SDK examples. Never commit example media — every image here is generated at runtime,
+Runnable examples. Never commit example media — every image here is generated at runtime,
 and `**/workspace-data/` is git-ignored by design.
+
+The first two drive the SDK. The last three drive the same cycle over each of the three
+surfaces, which is M3's exit criterion: one kernel, reachable three ways.
 
 | Example | What it shows |
 | --- | --- |
 | [`sdk_end_to_end.py`](sdk_end_to_end.py) | The whole cycle in one pass: workspace → project → schema → synthetic frames → batch → jobs → annotations → curated trunk → verified release |
 | [`ingest_end_to_end.py`](ingest_end_to_end.py) | Where assets come from: a generated 10 s clip → source at 5 fps → 50 deduplicated assets → approved batch of 2 jobs, plus a re-run that creates nothing, the same clip at a second rate, and a folder of stills with one unreadable file. **Needs ffmpeg.** |
+| [`http_end_to_end.py`](http_end_to_end.py) | The same cycle over HTTP, against a real server on a real port with a bearer token — including the multipart upload and the launch-and-poll ingest. `urllib` only: no `httpx`, no `requests`, no `curl`. |
 | [`cli_end_to_end.sh`](cli_end_to_end.sh) | The same cycle from a shell, using nothing but the `visionset` command: init → project → schema → ingest → batch → jobs → release → export, with the `--json` shapes asserted and one deliberate refusal. No ffmpeg, no `jq`, no server. |
+| [`mcp_end_to_end.py`](mcp_end_to_end.py) | The same cycle over MCP stdio, spawning `visionset mcp` and speaking JSON-RPC down its pipe — including looking at a preview and scaling the box back into the asset's own pixels. |
 
 ## Running the SDK end-to-end example
 
@@ -68,6 +73,29 @@ with WorkspaceService.open("examples/workspace-data/ingest-e2e") as workspace:
             print(source.kind.value, job.state.value, job.processed, job.total, job.failures)
 ```
 
+## Running the HTTP end-to-end example
+
+```bash
+uv run python examples/http_end_to_end.py            # into examples/workspace-data/http-e2e
+uv run python examples/http_end_to_end.py ./scratch  # or wherever you like
+```
+
+Same destination rules as above. It creates a workspace, mints one token, then starts
+`visionset ui` on an unused loopback port and does everything else through `urllib` — four
+images uploaded as multipart, an ingest launched with 202 and polled to completion, two jobs
+annotated, a release published and verified, an archive downloaded, and one request sent
+without the token to prove it is refused.
+
+It leaves a workspace at `<destination>/ws` and two downloads at `<destination>/downloads/`:
+the release manifest, whose bytes hash to the release's own `manifest_hash`, and the export
+archive. Serve it again yourself and keep going:
+
+```bash
+visionset ui --workspace examples/workspace-data/http-e2e/ws
+curl -s -H "Authorization: Bearer $(visionset token create --name scratch \
+  --workspace examples/workspace-data/http-e2e/ws)" localhost:8000/projects
+```
+
 ## Running the CLI end-to-end example
 
 ```bash
@@ -88,5 +116,28 @@ visionset release list --project road-signs --json | python3 -m json.tool
 visionset release verify v1.0 --project road-signs && echo "still intact"
 ```
 
-[`docs/examples.md`](../docs/examples.md) walks through what each stage of all three examples does
+## Running the MCP end-to-end example
+
+```bash
+uv run python examples/mcp_end_to_end.py            # into examples/workspace-data/mcp-e2e
+uv run python examples/mcp_end_to_end.py ./scratch  # or wherever you like
+```
+
+Same destination rules as above, and the same one requirement as the CLI example: `visionset`
+has to be on `PATH`, because this spawns `visionset mcp --workspace <root>` — the exact command
+you would put in an MCP client's configuration — and talks to it over its stdin and stdout.
+
+The frames are 640×480 on purpose. `get_asset_image` sends a preview capped at 256 pixels on
+its long edge, so what the client sees is 256×192 and the `scale` it gets back is 2.5. Every
+box the example submits is multiplied by it; a client that skipped that step would write
+annotations that are individually plausible and uniformly wrong.
+
+It leaves a workspace at `<destination>/ws`, its inputs at `<destination>/incoming/` and the
+export at `<destination>/export/`. Point a real agent at it:
+
+```bash
+visionset mcp --workspace examples/workspace-data/mcp-e2e/ws
+```
+
+[`docs/examples.md`](../docs/examples.md) walks through what each stage of all five examples does
 and why.

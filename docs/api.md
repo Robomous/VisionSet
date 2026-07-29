@@ -7,6 +7,12 @@ endpoint — what a failure looks like, and how to read one.
 The routes themselves are described by [`openapi.json`](../openapi.json) at the repo root, which
 is generated (`uv run python scripts/export_openapi.py`) and diffed in CI. Never hand-edit it.
 
+For a worked external client, [`examples/http_end_to_end.py`](../examples/http_end_to_end.py)
+starts `visionset ui` on a free port and drives the whole cycle — upload, launch-and-poll ingest,
+annotate, promote, publish, verify, export — with `urllib` and a bearer token, and nothing else.
+It is deliberately dependency-free: a contract only a smart client can drive is not really a
+contract.
+
 ## Authentication
 
 Every endpoint except `/health` requires a workspace API token:
