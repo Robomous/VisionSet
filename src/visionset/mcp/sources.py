@@ -82,6 +82,11 @@ def ingest(
     The `batch_id` it returns is what `approve_batch` takes next. A long video
     can make this call take minutes; there is no progress to poll from here.
 
+    `ingest_job_id` names *this run* and nothing else — there is no tool that
+    reads it back, and it is not an annotation job. Annotation jobs do not exist
+    yet at this point: `approve_batch` is what cuts them, and the ids it returns
+    are the ones `get_job` and the rest of the loop take.
+
     Refuses before doing any work if the path does not exist, if `fps` is not
     positive, or if `fps` was given for a directory of stills.
     """
@@ -113,7 +118,10 @@ def ingest(
         result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
     return {
         "source": wire.source(registered),
-        "job_id": str(result.job_id),
+        # Not `job_id`: an agent that read that key tried it on `get_job` and was
+        # refused, because the two words name different things and only one of
+        # them is reachable. #36's transcript, s1/opus/2.
+        "ingest_job_id": str(result.job_id),
         "batch_id": str(result.batch_id),
         "created": result.created,
         "deduplicated": result.deduplicated,

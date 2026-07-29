@@ -35,6 +35,10 @@ labelling:
     "env": { "VISIONSET_WORKSPACE": "/path/to/workspace" } } } }
 ```
 
+Thirty-three tools; see [docs/mcp.md](docs/mcp.md) for what each is for, or
+[docs/mcp-walkthrough.md](docs/mcp-walkthrough.md) for a session start to finish — including what
+twelve real agent runs actually did with it.
+
 Or drive the whole cycle from the terminal, without a server:
 
 ```bash

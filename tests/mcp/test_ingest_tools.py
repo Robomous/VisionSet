@@ -35,6 +35,26 @@ def test_a_directory_of_stills_becomes_one_batch(
     assert result["batch_id"]
 
 
+def test_the_run_id_is_not_called_job_id_because_no_tool_can_read_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#36's transcript, s1/opus/2: an agent took `job_id` straight to `get_job`.
+
+    It was refused, correctly and unhelpfully — the two words named different
+    things and only one of them was reachable, since `get_ingest_job` was
+    deliberately dropped. The id still travels, because it is what a support
+    conversation about a run is about, but under a name that cannot be mistaken
+    for the annotation job `approve_batch` has not cut yet.
+    """
+    named = schema(monkeypatch, tmp_path)
+    write_images(tmp_path / "incoming", count=1)
+    result = payload(call("ingest", project=named, path=str(tmp_path / "incoming")))
+
+    assert "job_id" not in result
+    assert UUID(result["ingest_job_id"])
+    assert error(call("get_job", job_id=result["ingest_job_id"]))["message"]
+
+
 def test_ingesting_the_same_directory_again_creates_nothing_new(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.mcp._flow import BBOX, call, error, ingested, open_batch, payload
+from tests.mcp._flow import BBOX, call, error, ingested, open_batch, payload, tool_schemas
 
 
 def _annotate(job_id: str, asset_id: str) -> None:
@@ -80,6 +80,50 @@ def test_a_job_cannot_be_completed_while_an_asset_is_unsettled(
     _, _, job_id = open_batch(monkeypatch, tmp_path, count=2)
     payload(call("start_job", job_id=job_id))
     assert error(call("complete_job", job_id=job_id))["message"]
+
+
+def test_a_job_nobody_started_cannot_be_completed_even_with_every_asset_settled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The friction #36 found, and the two descriptions that now warn about it.
+
+    Two of twelve real agent runs wrote every label and then called
+    `complete_job` on a job still `pending`, because writing is gated on the
+    *batch* and nothing forces `start_job` until the very end. Both recovered —
+    the refusal names `in_progress` as the only reachable state — but the call
+    was wasted, so `start_job` and `complete_job` now both say so.
+    """
+    _, _, job_id = open_batch(monkeypatch, tmp_path, count=1)
+    asset_id = payload(call("next_pending_assets", job_id=job_id, count=1))["items"][0]["id"]
+    _annotate(job_id, asset_id)
+
+    refused = error(call("complete_job", job_id=job_id))
+    assert "in_progress" in refused["message"]
+    assert refused["retry_with"] is None
+
+    payload(call("start_job", job_id=job_id))
+    assert payload(call("complete_job", job_id=job_id))["state"] == "completed"
+
+
+@pytest.mark.parametrize(
+    ("tool", "names"),
+    [("start_job", "complete_job"), ("complete_job", "start_job")],
+)
+def test_both_ends_of_the_loop_point_at_each_other(tool: str, names: str) -> None:
+    """Each end names the other: one the consequence of skipping it, one the remedy.
+
+    Stated in both directions because an agent reads whichever it reaches first,
+    and the two runs that hit this reached them in opposite orders.
+    """
+    described = tool_schemas()[tool].description or ""
+    assert names in described
+
+
+def test_get_job_says_which_id_it_takes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`ingest` also answers with an id, and it is not this one."""
+    described = tool_schemas()["get_job"].description or ""
+    assert "approve_batch" in described
+    assert "ingest_job_id" in described
 
 
 def test_skipping_an_asset_settles_it_without_writing_anything(
