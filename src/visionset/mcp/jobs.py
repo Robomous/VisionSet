@@ -52,13 +52,23 @@ def get_job(job_id: JobRef) -> dict[str, Any]:
 
     `progress.unannotated` is how much is left; when it and `review_pending` are
     both zero the job can be completed.
+
+    `job_id` comes from `approve_batch`, `get_batch` or `list_batch_assets`. It
+    is not the `ingest_job_id` an `ingest` run returns — that names the run that
+    read the files in, and nothing here reads it.
     """
     with opened_workspace() as workspace:
         return _job_payload(JobService(workspace), identifier(job_id, what="job_id"))
 
 
 def start_job(job_id: JobRef) -> dict[str, Any]:
-    """Mark a job as being worked on.
+    """Mark a job as being worked on. Call this before you write anything.
+
+    Nothing forces it at the time: annotations may be written into a job that
+    was never started, because the gate on a write is the *batch* being
+    `in_annotation`, not the job. What refuses is `complete_job` — a job still
+    `pending` cannot become `completed` — so skipping this costs a wasted call
+    at the end of the loop rather than at the start of it.
 
     Refuses unless the job's batch is already `in_annotation`. Starting a job
     does not start its batch — that is `start_batch`, and it comes first.
@@ -75,6 +85,11 @@ def complete_job(job_id: JobRef) -> dict[str, Any]:
     Settled means `annotated`, `skipped` or `accepted`. An asset still
     `unannotated` or `review_pending` blocks this, and the remedy is either to
     annotate it or to `set_asset_progress` it to `skipped`.
+
+    The job must also have been started. Writing annotations does not start it,
+    so a job whose labels are all in place is still `pending` unless `start_job`
+    was called — and this refuses it, naming `in_progress` as the only state it
+    can reach from there.
 
     Completing a job does not complete its batch: `complete_batch` derives that
     from all the jobs, and is a separate call.

@@ -45,6 +45,10 @@ are no token-administration tools either, for the reason [auth.md](auth.md) give
 credential is a privilege-escalation primitive pointed at the agent's own sandbox, and an agent's
 "shown exactly once" is a transcript.
 
+For the same cycle as a session rather than a reference — every call in the order an agent meets
+it, and what twelve real agent runs did with it — see
+[mcp-walkthrough.md](mcp-walkthrough.md).
+
 ## The tools
 
 Thirty-three, listed in the order an agent meets them.

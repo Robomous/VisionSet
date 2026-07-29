@@ -1,7 +1,7 @@
 # Examples
 
 Every other document here explains one thing the kernel does. This one is about the runnable
-files that do several of them at once. There are two, one per milestone:
+files that do several of them at once. There are three, one per milestone:
 
 | Example | What it drives | Milestone |
 | --- | --- | --- |
