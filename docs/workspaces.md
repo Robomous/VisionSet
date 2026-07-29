@@ -201,6 +201,30 @@ workspaces.
 An empty `VISIONSET_WORKSPACE` falls through to case 3 rather than resolving to `Path("")`, because
 a shell cannot tell `VISIONSET_WORKSPACE=` from an unset variable.
 
+## At a terminal
+
+```bash
+visionset init ./datasets/robots          # or `visionset init` for the working directory
+```
+
+Three decisions worth stating, because they are the opposite of every other command's:
+
+- **A positional `PATH`, not `--workspace`.** Every other command takes a workspace that exists;
+  this one names where to make one. The flag would read as "operate on this", which is not what is
+  being said.
+- **It does not use `resolve_workspace_root`.** Walking upward to find a place to *create*
+  something is precisely the failure mode the resolver's precedence argues against — and here it
+  would be irreversible, since the answer is a new workspace in somebody else's directory rather
+  than a command that touched the wrong one. It does not read `$VISIONSET_WORKSPACE` either.
+- **It closes the workspace it just made.** `WorkspaceService.init` hands one back *open*; a command
+  that returned without closing would strand `visionset.db-wal` beside it for the next reader to
+  recover.
+
+The root goes to stdout alone, so `WS=$(visionset init ./robots)` is exactly the path — resolved,
+which is the useful answer when you typed `.`. `WorkspaceNotEmpty` and `WorkspaceAlreadyExists` both
+arrive as one sentence at exit 1, and neither earns a hint: their own messages already name the
+remedy.
+
 ## `format_version` lives in one place
 
 The database stamp in `_visionset_meta` is the sole authority. There is no sidecar marker

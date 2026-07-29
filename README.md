@@ -16,14 +16,31 @@ plain `pip` package.
 ```bash
 pip install visionset   # coming soon
 
-python -c "from visionset.kernel.services import WorkspaceService; WorkspaceService.init('.').close()"
+visionset init          # a workspace here
 visionset ui            # API at http://127.0.0.1:8000, app at /ui
 ```
 
-Creating the workspace is a Python call for now — there is no `visionset init` yet. `visionset ui`
-run outside a workspace refuses with one sentence and exit 1; it never creates one, because a
-command that silently made a workspace out of whatever directory you were standing in is how data
-ends up somewhere nobody chose. See [docs/cli.md](docs/cli.md).
+`init` is the only command that creates a workspace, and it refuses a directory that already holds
+something. `visionset ui` run outside one refuses with one sentence and exit 1; it never creates
+one, because a command that silently made a workspace out of whatever directory you were standing
+in is how data ends up somewhere nobody chose.
+
+Or drive the whole cycle from the terminal, without a server:
+
+```bash
+visionset project create road-signs
+visionset schema apply schema.json --project road-signs
+BATCH=$(visionset ingest ./incoming --project road-signs)
+visionset batch approve "$BATCH" --jobs-of 100 && visionset batch start "$BATCH"
+# …annotate, then…
+visionset batch complete "$BATCH" && visionset batch promote "$BATCH"
+visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
+visionset export --project road-signs --release v1.0 --format dummy --out ./out
+```
+
+Every command takes `--json` for scripting, and the shapes are the REST API's. See
+[docs/cli.md](docs/cli.md), or [`examples/cli_end_to_end.sh`](examples/cli_end_to_end.sh) for that
+walk with its assertions still in it.
 
 Prefer to see the SDK first? [`examples/sdk_end_to_end.py`](examples/sdk_end_to_end.py) drives an
 empty directory to a hash-verified release in one pass, generating its own images — no server,
