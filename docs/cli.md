@@ -37,7 +37,7 @@ visionset token create --name NAME
 visionset token list
 visionset token revoke NAME [--yes]
 visionset ui  [--host] [--port] [--reload]               # no --json
-visionset mcp                                            # not implemented yet
+visionset mcp                                            # stdio; no --json
 ```
 
 ## The cycle, as a script
@@ -358,9 +358,24 @@ digest is stored, and why revocation does not free the name — in [auth.md](aut
 
 ## `visionset mcp`
 
-A stub. The MCP server is a fourth sibling client of the same SDK; the command that starts it names
-its target by import string or subprocess for the same reason `ui` does — import-linter forbids
-`visionset.cli` importing `visionset.mcp`.
+Starts the MCP server on stdio, serving this workspace to an agent. Thirty-three tools covering
+the whole cycle; [mcp.md](mcp.md) has the list, how to configure a client, and what a tool refusal
+looks like.
+
+```
+visionset mcp [--workspace PATH]
+```
+
+Normally a client spawns it rather than a person running it. Like `ui`, it resolves the workspace
+with the full precedence and then **states** the answer in `VISIONSET_WORKSPACE`, so the server it
+starts cannot disagree with it, and it opens the workspace first so that `NotAWorkspace` is one
+sentence at exit 1 rather than a refusal inside the agent's first tool call.
+
+The target is named as a module for a subprocess rather than imported, for the reason `ui` names
+uvicorn's app by import string — import-linter forbids `visionset.cli` importing `visionset.mcp`.
+The subprocess inherits stdin and stdout, because those two streams *are* the transport, which is
+also why this is the one command that prints **nothing at all** on stdout: a stray line would
+corrupt the JSON-RPC stream before the first message.
 
 ## For contributors
 

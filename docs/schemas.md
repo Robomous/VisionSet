@@ -38,8 +38,13 @@ with WorkspaceService.open("./road-signs") as workspace:
 **Over HTTP:** `POST`/`GET /projects/{project_id}/schema/versions`,
 `GET /projects/{project_id}/schema/versions/{version}`, and `GET /projects/{project_id}/schema`
 for the version in force. Narrowing needs `?allow_destructive=true`, exactly as
-`allow_destructive=` does here. `preview`, `compare` and `allowed_geometries` have no route yet —
-they will get one when a surface needs them. See [api.md](api.md).
+`allow_destructive=` does here. `compare` and `allowed_geometries` have no route yet — they will
+get one when a surface needs them. See [api.md](api.md).
+
+**Over MCP:** `get_schema`, `create_schema_version` and `preview_schema_change`. The last is
+`preview`'s first caller anywhere: plan-before-apply matters most for the surface that cannot see
+the consequences of a change until it has made one, so an agent gets the diff before it decides
+whether it needs `allow_destructive`. See [mcp.md](mcp.md).
 
 ## Versions are 1..N, and none of them changes
 

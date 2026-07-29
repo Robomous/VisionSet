@@ -181,4 +181,7 @@ that outlives the session. The secret is shown exactly once, and an agent's "onc
 transcript: `confirm: true` guards accidental mutation, not exfiltration. Whoever launched
 `visionset mcp` already had workspace access, so a second credential adds capability and subtracts
 accountability. `list_tokens` is the only defensible candidate and is still operator surface
-rather than dataset surface.
+rather than dataset surface. That held when #35 shipped the surface: none of its thirty-three
+tools touches a token, and none needs one — an agent reaching the MCP server is already inside the
+sandbox the workspace defines, so there is nothing further to prove. Authentication is what an
+*HTTP* client owes, because the network is what a token is for.
