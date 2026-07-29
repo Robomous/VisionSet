@@ -30,7 +30,7 @@ from uuid import UUID
 
 import typer
 
-from visionset.cli import _json
+from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
@@ -79,7 +79,7 @@ def batch_list(
         # do not say whether anybody has started on it.
         counts = [jobs.batch_progress(batch.id) for batch in batches]
     if json_out:
-        document(_json.page([_json.batch(b, c) for b, c in zip(batches, counts, strict=True)]))
+        document(wire.page([wire.batch(b, c) for b, c in zip(batches, counts, strict=True)]))
         return
     table(
         _COLUMNS,
@@ -130,7 +130,7 @@ def batch_approve(
         counts = JobService(service).batch_progress(approved.id)
         job_count = len(batches.jobs(approved.id))
     if json_out:
-        document(_json.batch(approved, counts))
+        document(wire.batch(approved, counts))
         return
     note(
         f"Approved batch {approved.name!r} against schema version "
@@ -149,7 +149,7 @@ def batch_start(
     with opened_workspace(workspace) as service:
         started = BatchService(service).start(batch)
         counts = JobService(service).batch_progress(started.id)
-    _echo(started.id, started.state.value, json_out, _json.batch(started, counts))
+    _echo(started.id, started.state.value, json_out, wire.batch(started, counts))
 
 
 @batch_app.command("complete")
@@ -166,7 +166,7 @@ def batch_complete(
     with opened_workspace(workspace) as service:
         completed = BatchService(service).complete(batch)
         counts = JobService(service).batch_progress(completed.id)
-    _echo(completed.id, completed.state.value, json_out, _json.batch(completed, counts))
+    _echo(completed.id, completed.state.value, json_out, wire.batch(completed, counts))
 
 
 @batch_app.command("promote")
@@ -184,7 +184,7 @@ def batch_promote(
     with opened_workspace(workspace) as service:
         promoted = DatasetService(service).promote(batch, actor=_ACTOR)
     if json_out:
-        document(_json.page([_json.asset(a) for a in promoted]))
+        document(wire.page([wire.asset(a) for a in promoted]))
         return
     note(f"Promoted {len(promoted)} asset(s) into the dataset.")
     for asset in promoted:

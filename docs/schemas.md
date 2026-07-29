@@ -226,9 +226,9 @@ The file is **JSON**, and it is byte-for-byte the same document
 }
 ```
 
-That is a tested claim rather than a promise: `tests/cli/test_json_contract.py` asserts the CLI's
-`label_class` and `attribute` projections have exactly `LabelClassBody`'s and `AttributeBody`'s
-fields, and `tests/cli/test_schemas.py` validates the example document as a request body.
+That is a tested claim rather than a promise: `tests/cli/test_json_contract.py` asserts that
+`visionset.wire`'s `label_class` and `attribute` projections have exactly `LabelClassBody`'s and
+`AttributeBody`'s fields, and `tests/cli/test_schemas.py` validates the example document as a request body.
 
 **JSON and not YAML.** A second format means a runtime dependency in every wheel, a second parser
 to keep honest, and two shapes that can disagree — while the surface a schema file has to

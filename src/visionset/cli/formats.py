@@ -22,7 +22,7 @@ from typing import Final
 
 import typer
 
-from visionset.cli import _json
+from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.formats.registry import exporters
 
@@ -37,7 +37,7 @@ def format_list(json_out: JsonOption = False) -> None:
     found = exporters()
     installed = [found[name] for name in sorted(found)]
     if json_out:
-        document(_json.page([_json.export_format(p) for p in installed]))
+        document(wire.page([wire.export_format(p) for p in installed]))
         return
     table(_COLUMNS, [(p.format_name, "yes" if p.lossy else "no") for p in installed])
     if not installed:

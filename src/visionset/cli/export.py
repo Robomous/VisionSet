@@ -28,7 +28,7 @@ from typing import Annotated
 
 import typer
 
-from visionset.cli import _json
+from visionset import wire
 from visionset.cli._output import JsonOption, document, note
 from visionset.cli._resolve import ProjectOption, resolve_release
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
@@ -77,7 +77,7 @@ def export(
         found = resolve_release(service, project, release)
         result = ReleaseService(service).export(found.id, plugin, out, allow_lossy=allow_lossy)
     if json_out:
-        document(_json.export_result(result))
+        document(wire.export_result(result))
         return
     note(
         f"Exported {found.tag!r} as {result.format_name}: "

@@ -47,7 +47,7 @@ rather than ``json``, which would shadow the module every caller imports.
 TIMESTAMP_FORMAT: Final = "%Y-%m-%dT%H:%M:%SZ"
 """Seconds, UTC, no offset. A listing is read by a person; microseconds are not.
 
-Deliberately **not** the format ``_json.py`` uses. That one has to agree with
+Deliberately **not** the format ``visionset.wire`` uses. That one has to agree with
 pydantic's, because the JSON shapes are gated against the server's wire models;
 this one has to be readable in a column. Sharing them would break the parity gate
 in a way key-set comparison cannot see.
@@ -93,7 +93,7 @@ def document(payload: Mapping[str, Any]) -> None:
     ``| jq '.items[]'`` works and a partial read is never mistaken for a whole one.
 
     ``json.dumps`` is called with **no** ``default=``, on purpose. A ``UUID``, a
-    ``datetime`` or a ``Path`` reaching this function is a projection in ``_json``
+    ``datetime`` or a ``Path`` reaching this function is a projection in ``visionset.wire``
     that forgot to encode a leaf, and that must be a ``TypeError`` a test catches
     rather than a silent ``str()`` nobody re-reads.
     """

@@ -29,7 +29,7 @@ from uuid import UUID
 
 import typer
 
-from visionset.cli import _json
+from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.domain import AssetProgress
@@ -61,7 +61,7 @@ def job_list(
     with opened_workspace(workspace) as service:
         jobs = BatchService(service).jobs(batch)
     if json_out:
-        document(_json.page([_json.job(j, batch_id=batch) for j in jobs]))
+        document(wire.page([wire.job(j, batch_id=batch) for j in jobs]))
         return
     table(_COLUMNS, [(str(j.id), j.state.value, str(len(j.progress))) for j in jobs])
     if not jobs:
@@ -88,7 +88,7 @@ def job_next(
     with opened_workspace(workspace) as service:
         assets = JobService(service).next_pending(job, count)
     if json_out:
-        document(_json.page([_json.asset(a) for a in assets]))
+        document(wire.page([wire.asset(a) for a in assets]))
         return
     table(
         _ASSET_COLUMNS,
@@ -116,7 +116,7 @@ def job_progress(
     with opened_workspace(workspace) as service:
         counts = JobService(service).job_progress(job)
     if json_out:
-        document(_json.progress_counts(counts))
+        document(wire.progress_counts(counts))
         return
     table(
         _PROGRESS_COLUMNS,
@@ -136,7 +136,7 @@ def job_start(
         started = service_jobs.start(job)
         batch = service_jobs.batch(started.id)
     if json_out:
-        document(_json.job(started, batch_id=batch.id))
+        document(wire.job(started, batch_id=batch.id))
         return
     note(f"Job {started.id} is now {started.state.value}.")
     typer.echo(str(started.id))
@@ -162,7 +162,7 @@ def job_mark(
     with opened_workspace(workspace) as service:
         JobService(service).mark(job, asset, progress)
     if json_out:
-        document(_json.asset_progress(asset, progress))
+        document(wire.asset_progress(asset, progress))
         return
     note(f"Asset {asset} is now {progress.value}.")
 
@@ -184,7 +184,7 @@ def job_complete(
         completed = service_jobs.complete(job)
         batch = service_jobs.batch(completed.id)
     if json_out:
-        document(_json.job(completed, batch_id=batch.id))
+        document(wire.job(completed, batch_id=batch.id))
         return
     note(f"Job {completed.id} is now {completed.state.value}.")
     typer.echo(str(completed.id))
