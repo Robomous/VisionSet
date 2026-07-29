@@ -13,6 +13,7 @@ from visionset.cli.formats import format_app
 from visionset.cli.ingest import backfill_thumbnails, ingest
 from visionset.cli.init import init
 from visionset.cli.jobs import job_app
+from visionset.cli.mcp import mcp
 from visionset.cli.projects import project_app
 from visionset.cli.releases import release_app
 from visionset.cli.schemas import schema_app
@@ -51,6 +52,7 @@ app.add_typer(format_app, name="format")
 app.command("backfill-thumbnails")(backfill_thumbnails)
 app.add_typer(token_app, name="token")
 app.command()(ui)
+app.command()(mcp)
 
 
 def _version_callback(value: bool) -> None:
@@ -72,9 +74,3 @@ def main(
     ] = False,
 ) -> None:
     """Robomous VisionSet CLI."""
-
-
-@app.command()
-def mcp() -> None:
-    """Start the MCP server on stdio (stub)."""
-    typer.echo("server would start here")

@@ -183,6 +183,20 @@ and then *states* it in `VISIONSET_WORKSPACE` — one decision, made once, at th
 standing at. It has to travel that way rather than as an argument, because `create_app()` takes no
 parameters and `--reload` runs the application in a separate process.
 
+**The MCP server is the same story with a different reason.** `visionset mcp` resolves through all
+four branches and states the answer, so the child it spawns reaches only 2; the child takes no
+arguments because stdin and stdout are the transport and there is nowhere else to put one. An MCP
+client that spawns `visionset` directly sets `VISIONSET_WORKSPACE` in the server entry's own `env`
+— see [mcp.md](mcp.md).
+
+**How long a workspace stays open differs by surface, deliberately.** The HTTP server builds one
+handle in `create_app()` and keeps it for the process's life, because it is one long-lived reader
+of many requests. The CLI and the MCP server open and close per command and per *tool call*: there
+is then no module-level state to tear down between tests, and — since SQLite has one writer — a
+stdio server that held the file between calls would keep `visionset ui` and a second agent out of
+a workspace nobody is using. `close()` checkpoints the WAL, so neither leaves a `visionset.db-wal`
+behind.
+
 **Only case 3 walks, and that asymmetry is the whole rule.** A flag and an environment variable are
 somebody *stating* which workspace. If the stated directory holds none, walking to its parent and
 quietly minting a credential into whatever workspace lives up there is the worst thing this

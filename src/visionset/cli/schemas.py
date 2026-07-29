@@ -39,7 +39,7 @@ from typing import Annotated, Final
 import typer
 from pydantic import TypeAdapter, ValidationError
 
-from visionset.cli import _json
+from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
@@ -111,7 +111,7 @@ def schema_apply(
             resolved.id, classes, allow_destructive=allow_destructive
         )
     if json_out:
-        document(_json.schema_version(version))
+        document(wire.schema_version(version))
         return
     note(f"Applied schema version {version.version} to {resolved.name!r}.")
     typer.echo(str(version.version))
@@ -128,7 +128,7 @@ def schema_list(
         resolved = resolve_project(service, project)
         versions = SchemaService(service).list_versions(resolved.id)
     if json_out:
-        document(_json.page([_json.schema_version(v) for v in versions]))
+        document(wire.page([wire.schema_version(v) for v in versions]))
         return
     table(
         _COLUMNS,

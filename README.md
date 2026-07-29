@@ -25,6 +25,16 @@ something. `visionset ui` run outside one refuses with one sentence and exit 1; 
 one, because a command that silently made a workspace out of whatever directory you were standing
 in is how data ends up somewhere nobody chose.
 
+Or hand the workspace to an agent — the same cycle, over
+[MCP](https://modelcontextprotocol.io), with the tools an agent needs to *look* at what it is
+labelling:
+
+```json
+{ "mcpServers": { "visionset": {
+    "command": "visionset", "args": ["mcp"],
+    "env": { "VISIONSET_WORKSPACE": "/path/to/workspace" } } } }
+```
+
 Or drive the whole cycle from the terminal, without a server:
 
 ```bash
@@ -57,9 +67,10 @@ ffmpeg.
 ```
 src/visionset/          Single Python distribution (one wheel, one import namespace)
   kernel/               Hexagonal core: domain + ports + default adapters (framework-free)
+  wire/                 The JSON shapes the CLI and MCP publish (gated against the REST models)
   server/               FastAPI — exposes the SDK via REST; openapi.json is a committed contract
   cli/                  Typer CLI (`visionset` console script)
-  mcp/                  MCP server (stdio) — thin mapping of tools to SDK calls
+  mcp/                  MCP server (stdio) — 33 agent tools over the same SDK
   formats/              Importer/exporter plugins (entry-point group `visionset.formats`)
   _static/              Compiled UI bundle lands here at build time (ships in the wheel)
 frontend/

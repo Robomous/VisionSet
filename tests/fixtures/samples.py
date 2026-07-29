@@ -3,8 +3,8 @@
 
 The `tests/fixtures/media.py` precedent: a plain module of module-level values,
 no pytest import and no fixtures, so anything may reach for it. It exists for
-`tests/cli/test_json_contract.py`, which compares the CLI's JSON projections
-against the server's wire models field by field.
+`tests/cli/test_json_contract.py`, which compares `visionset.wire`'s JSON
+projections against the server's wire models field by field.
 
 **Every optional field is populated.** A sample carrying `None` where a nested
 model belongs would let the projection of that nested model go unchecked, which
@@ -18,6 +18,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from visionset.kernel.domain import (
+    Annotation,
     AnnotationJob,
     AnnotationJobState,
     AnnotationSchema,
@@ -26,6 +27,12 @@ from visionset.kernel.domain import (
     Attribute,
     Batch,
     BatchState,
+    BboxGeometry,
+    ChangeKind,
+    ClassCount,
+    ClassificationGeometry,
+    Dataset,
+    DatasetStats,
     ExportResult,
     GeometryType,
     ImageFormat,
@@ -34,9 +41,12 @@ from visionset.kernel.domain import (
     IngestJob,
     IngestState,
     LabelClass,
+    PolygonGeometry,
     Project,
     Release,
     ReleaseVerification,
+    SchemaChange,
+    SchemaDiff,
     Source,
     SourceKind,
     SplitRecipe,
@@ -69,6 +79,27 @@ SCHEMA_VERSION = AnnotationSchema(
                     default="clean",
                 ),
             ),
+        ),
+    ),
+)
+
+DATASET = Dataset(
+    id=uuid4(), project_id=PROJECT.id, name="road-signs", description="a sample project"
+)
+
+SCHEMA_DIFF = SchemaDiff(
+    changes=(
+        SchemaChange(
+            kind=ChangeKind.ADDITIVE,
+            label_class="pedestrian",
+            attribute=None,
+            detail="class added",
+        ),
+        SchemaChange(
+            kind=ChangeKind.DESTRUCTIVE,
+            label_class="sign",
+            attribute="condition",
+            detail="attribute removed",
         ),
     ),
 )
@@ -135,6 +166,34 @@ JOB = AnnotationJob(
     task_group_id=uuid4(),
     state=AnnotationJobState.IN_PROGRESS,
     progress=dict.fromkeys(BATCH.asset_ids, AssetProgress.UNANNOTATED),
+)
+
+BBOX = BboxGeometry(x=1.5, y=2.5, width=30.0, height=40.0)
+POLYGON = PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)])
+CLASSIFICATION = ClassificationGeometry()
+
+# Every geometry variant gets its own sample rather than one standing for the
+# union: they are three components on the wire, and a projection that dropped
+# `points` would still round-trip through the bbox model.
+GEOMETRIES = (BBOX, POLYGON, CLASSIFICATION)
+
+ANNOTATION = Annotation(
+    asset_id=ASSET.id,
+    label_class="sign",
+    schema_version=3,
+    geometry=BBOX,
+    attributes={"condition": "faded"},
+    provenance="model",
+    model_ref="yolo-v8n@1",
+    confidence=0.87,
+)
+
+DATASET_STATS = DatasetStats(
+    dataset_id=DATASET.id,
+    asset_count=2,
+    annotated_asset_count=1,
+    annotation_count=5,
+    per_class=(ClassCount(label_class="sign", annotations=5, assets=1),),
 )
 
 SPLIT = SplitRecipe(train=0.7, val=0.15, test=0.15, seed=42)
