@@ -1,0 +1,99 @@
+{
+  "annotations": [
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {
+        "condition": "faded"
+      },
+      "confidence": 0.87,
+      "geometry": {
+        "height": 40.0,
+        "type": "bbox",
+        "width": 30.0,
+        "x": 1.5,
+        "y": 2.5
+      },
+      "id": "917b5101-2e62-5aee-8af6-359bfc1e7a8b",
+      "label_class": "sign",
+      "model_ref": "yolo-v8n@1",
+      "provenance": "model",
+      "schema_version": 3
+    },
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {
+        "condition": "faded"
+      },
+      "confidence": 0.87,
+      "geometry": {
+        "points": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0
+          ],
+          [
+            10.0,
+            10.0
+          ]
+        ],
+        "type": "polygon"
+      },
+      "id": "b3ee6159-46a8-5f4f-9091-375c5b25d60a",
+      "label_class": "sign",
+      "model_ref": "yolo-v8n@1",
+      "provenance": "model",
+      "schema_version": 3
+    },
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {
+        "condition": "faded"
+      },
+      "confidence": 0.87,
+      "geometry": {
+        "type": "classification_tag"
+      },
+      "id": "0c4afc30-255b-5ea9-88d6-42020efb3c28",
+      "label_class": "sign",
+      "model_ref": "yolo-v8n@1",
+      "provenance": "model",
+      "schema_version": 3
+    },
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {},
+      "confidence": null,
+      "geometry": {
+        "height": 40.0,
+        "type": "bbox",
+        "width": 30.0,
+        "x": 1.5,
+        "y": 2.5
+      },
+      "id": "6a81b8c7-69b7-5cfb-abb6-a5f8fc10c5f2",
+      "label_class": "sign",
+      "model_ref": null,
+      "provenance": "human",
+      "schema_version": 1
+    }
+  ],
+  "geometry_types": [
+    "bbox",
+    "classification_tag",
+    "cuboid_3d",
+    "keypoints",
+    "mask",
+    "polygon",
+    "polyline",
+    "polyline_3d"
+  ],
+  "implemented_geometry_types": [
+    "bbox",
+    "classification_tag",
+    "polygon"
+  ]
+}
