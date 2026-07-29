@@ -55,12 +55,45 @@ jobs:
       - name: Ingest end-to-end example
         run: uv run python examples/ingest_end_to_end.py
 
-      # The CLI half, and the only one that proves the *installed console script*
-      # works from a real shell — which CliRunner, running in-process, cannot.
-      # `uv run bash` puts the virtualenv's bin/ on PATH so `visionset` and
-      # `python3` are the same installation. Stills only, so no ffmpeg needed.
-      - name: CLI end-to-end example
-        run: uv run bash examples/cli_end_to_end.sh
+  # M3's exit criterion: the same cycle — ingest, annotate, release — driven three
+  # ways from outside the process. One job per surface rather than three steps in
+  # one, so a red X names the surface that broke; `fail-fast: false` is what keeps
+  # one broken leg from cancelling the other two and reporting on a third of the
+  # criterion. Stills only in all three, so none of them needs ffmpeg.
+  #
+  # Each Python leg also runs inside `uv run pytest` above, as a smoke test
+  # asserting on the frozen Summary it returns. This is the other half of that
+  # pair: the only thing that proves the *installed console script* works from a
+  # clean checkout, which an in-process runner cannot.
+  e2e:
+    name: e2e (${{ matrix.surface }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - surface: http
+            run: uv run python examples/http_end_to_end.py
+          - surface: cli
+            run: uv run bash examples/cli_end_to_end.sh
+          - surface: mcp
+            run: uv run python examples/mcp_end_to_end.py
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync environment
+        run: uv sync
+
+      # `uv run` puts the virtualenv's bin/ on PATH, so `visionset` is the
+      # installation under test — which the HTTP leg starts a server with and the
+      # MCP leg spawns a server with.
+      - name: Drive the cycle over ${{ matrix.surface }}
+        run: ${{ matrix.run }}
 
   frontend:
     runs-on: ubuntu-latest
