@@ -1,0 +1,108 @@
+"""Export kernel-produced annotation payloads to tests/fixtures/wire_annotations.json.
+
+The committed fixture is how the TypeScript annotator proves its hand-written
+mirror of the geometry union still matches this one. It cannot read the Python
+models, and `frontend/annotator` must not depend on `@visionset/ui-core` to
+reach the generated client — that package carries `openapi-fetch` as a runtime
+dependency, and the annotator's contract is "no HTTP, no fetching". So the
+contract travels as bytes, the way `openapi.json` already does.
+
+Two gates, sharing no toolchain, exactly like the spec and its client:
+`tests/server/test_wire_fixtures.py` keeps this file matching the application;
+`frontend/annotator/src/core/wire.test.ts` keeps the TypeScript matching this
+file. The frontend CI job installs no Python and reads only what is committed.
+
+Usage: uv run python scripts/export_wire_fixtures.py
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Any
+from uuid import NAMESPACE_URL, UUID, uuid5
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# The samples live in `tests/` and stay there — they are test fixtures, not part
+# of the distribution — so reaching them from a script needs the repo root on the
+# path. Under pytest `pythonpath = ["."]` has already put it there.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tests.fixtures.samples import ANNOTATION, GEOMETRIES  # noqa: E402
+
+from visionset.kernel.domain import (  # noqa: E402
+    IMPLEMENTED_GEOMETRIES,
+    Annotation,
+    GeometryType,
+)
+from visionset.server.models import AnnotationOut  # noqa: E402
+
+OUTPUT_PATH = "tests/fixtures/wire_annotations.json"
+
+# `Annotation.id` defaults to `uuid4()` and `samples.ASSET.id` is one too, so
+# reusing them verbatim would make this file different on every run and the
+# drift gate would fail for a reason nobody chose. Derived rather than typed out,
+# so "these are fixed deliberately" is structural.
+_ASSET_ID = uuid5(NAMESPACE_URL, "visionset/wire-fixture/asset")
+
+
+def _annotation_id(name: str) -> UUID:
+    return uuid5(NAMESPACE_URL, f"visionset/wire-fixture/annotation/{name}")
+
+
+def build_fixture() -> dict[str, Any]:
+    """The payload, as a pure function of the models. Imported by the gate."""
+    annotations = [
+        # One per implemented geometry: three components on the wire, and a
+        # mirror that dropped `points` would still round-trip through the bbox.
+        Annotation(
+            id=_annotation_id(geometry.type.value),
+            asset_id=_ASSET_ID,
+            label_class=ANNOTATION.label_class,
+            schema_version=ANNOTATION.schema_version,
+            geometry=geometry,
+            attributes=dict(ANNOTATION.attributes),
+            provenance=ANNOTATION.provenance,
+            model_ref=ANNOTATION.model_ref,
+            confidence=ANNOTATION.confidence,
+        )
+        for geometry in GEOMETRIES
+    ]
+    # And one with every nullable field null and no attributes, so the mirror's
+    # `string | null` and its empty-object case are both exercised. A fixture
+    # where nothing is ever null leaves half of each optional field unproven.
+    annotations.append(
+        Annotation(
+            id=_annotation_id("bare"),
+            asset_id=_ASSET_ID,
+            label_class=ANNOTATION.label_class,
+            schema_version=1,
+            geometry=GEOMETRIES[0],
+            attributes={},
+            provenance="human",
+            model_ref=None,
+            confidence=None,
+        )
+    )
+    return {
+        # Built through the server's wire model, not `visionset.wire`: the
+        # annotator talks HTTP, and `AnnotationOut` is what `openapi.json` is
+        # generated from, so this fixture and the generated client cannot
+        # disagree about a field name.
+        "annotations": [AnnotationOut.of(a).model_dump(mode="json") for a in annotations],
+        "geometry_types": sorted(g.value for g in GeometryType),
+        "implemented_geometry_types": sorted(g.value for g in IMPLEMENTED_GEOMETRIES),
+    }
+
+
+def main() -> None:
+    out = REPO_ROOT / OUTPUT_PATH
+    out.write_text(json.dumps(build_fixture(), indent=2, sort_keys=True) + "\n")
+    print(f"wrote {out}")
+
+
+if __name__ == "__main__":
+    main()

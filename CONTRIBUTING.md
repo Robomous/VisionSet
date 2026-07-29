@@ -23,6 +23,7 @@ artifact is always the pip package).
 | Version sync | `pnpm version:check` |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
 | Generated API client | `pnpm generate:client` (commit the diff) |
+| Annotator wire fixture | `uv run python scripts/export_wire_fixtures.py` (commit the diff) |
 
 ## The two machine-enforced boundaries
 

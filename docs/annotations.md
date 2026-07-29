@@ -176,3 +176,36 @@ body converts through `to_domain()` inside a **parsing-time validator**. That is
 refused by pydantic, and a `ValidationError` raised from a route body is neither a
 `VisionSetError` nor a `RequestValidationError` — without the validator it reaches the catch-all
 handler and answers **500** to a plainly malformed payload.
+
+## In the editor
+
+`@visionset/annotator` mirrors this contract in TypeScript, and mirrors it **exactly**:
+`snake_case` fields, geometry nested under its own key, points as `[x, y]` pairs. There is no
+mapping layer, deliberately — a second spelling of twenty fields is free to drift, and a host
+would pay the conversion whoever wrote it. What comes back from
+`GET /jobs/{id}/assets/{asset_id}/annotations` is what the editor takes; what the editor emits is
+what `POST`/`PATCH` accept.
+
+The annotator cannot read the pydantic models, and it must not depend on `@visionset/ui-core` to
+reach the generated client — that package carries `openapi-fetch`, and the editor's contract is
+"no HTTP, no fetching". So the contract travels as bytes, the way `openapi.json` already does.
+`tests/fixtures/wire_annotations.json` is written by `scripts/export_wire_fixtures.py` from
+`AnnotationOut` itself, and two independent gates hold it in place: a pytest one keeps the file
+matching the application, and a vitest one keeps the TypeScript parsing the file. The frontend CI
+job installs no Python and reads only what is committed. Regenerate with:
+
+```
+uv run python scripts/export_wire_fixtures.py
+```
+
+**Two vocabularies, one union — and the editor keeps both.** `GeometryType` names eight
+geometries because that is what a `LabelClass` declares (see [schemas](schemas.md)); `Geometry`
+has three variants because that is what an annotation can carry. So `parseGeometry` tells a
+`polyline` apart from a typo: the first is a declared geometry with no model, refused in the
+kernel's own words (`UNSUPPORTED_GEOMETRY`), and the remedy is to wait for a variant rather than
+to fix the caller.
+
+The parser is strict about unknown keys as well as missing ones. That is not fussiness: the editor
+hands back what it was given, so a key it silently dropped would be a field the kernel wrote and
+the editor erased. It does **not** re-check bounds — a zero-area box and a two-point polygon are
+refused above, by the models that own the rule, and a second copy would drift.
