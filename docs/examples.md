@@ -1,32 +1,59 @@
 # Examples
 
 Every other document here explains one thing the kernel does. This one is about the runnable
-files that do several of them at once. There are three, one per milestone:
+files that do several of them at once. There are five:
 
 | Example | What it drives | Milestone |
 | --- | --- | --- |
 | [`sdk_end_to_end.py`](../examples/sdk_end_to_end.py) | an empty directory to a release whose every byte can be re-hashed and checked | M1 |
 | [`ingest_end_to_end.py`](../examples/ingest_end_to_end.py) | a ten-second clip and a folder of stills to an approved, partitioned batch | M2 |
-| [`cli_end_to_end.sh`](../examples/cli_end_to_end.sh) | the same cycle again, from a shell, using nothing but the `visionset` command | M3 |
+| [`http_end_to_end.py`](../examples/http_end_to_end.py) | the same cycle over HTTP, against a real server on a real port, with a bearer token | M3 |
+| [`cli_end_to_end.sh`](../examples/cli_end_to_end.sh) | the same cycle from a shell, using nothing but the `visionset` command | M3 |
+| [`mcp_end_to_end.py`](../examples/mcp_end_to_end.py) | the same cycle over MCP stdio, spawning `visionset mcp` and talking down its pipe | M3 |
 
 ```bash
 uv run python examples/sdk_end_to_end.py
 uv run python examples/ingest_end_to_end.py     # needs ffmpeg
+uv run python examples/http_end_to_end.py
 uv run bash examples/cli_end_to_end.sh
+uv run python examples/mcp_end_to_end.py
 ```
 
-Each is its milestone's exit criterion made executable, and each runs in CI **twice**: once as a
-pytest smoke test ([M1](../tests/examples/test_sdk_end_to_end.py),
-[M2](../tests/examples/test_ingest_end_to_end.py),
-[M3](../tests/examples/test_cli_end_to_end.py)) that asserts on outcomes, and once as a plain
+**Why M3 has three.** The standing rule is one example per milestone. M3's exit criterion is
+*the same flow three ways* — REST, CLI, MCP — so for this milestone the count is the
+deliverable rather than an exception to it. The three run as a matrix in CI, one job each, so
+a failure names the surface that broke.
+
+Each example runs in CI **twice**: once as a pytest smoke test
+([M1](../tests/examples/test_sdk_end_to_end.py), [M2](../tests/examples/test_ingest_end_to_end.py),
+[HTTP](../tests/examples/test_http_end_to_end.py), [CLI](../tests/examples/test_cli_end_to_end.py),
+[MCP](../tests/examples/test_mcp_end_to_end.py)) that asserts on outcomes, and once as a plain
 script, which is the only way to prove it still works from a clean checkout.
 
 They overlap by design and none subsumes another. The SDK example walks the whole cycle
 and treats ingest as one stage of thirteen; the ingest example stops at an approved batch and
 spends its length on where assets come from — two sources over one file, dedup, progress and the
-per-file report. The CLI example walks the whole cycle a second time, and what it proves is not the
-cycle but the *surface*: that the installed console script reaches every stage of it, that ids
-travel on stdout, and that `--json` is stable enough to assert on.
+per-file report. The three surface examples walk the whole cycle again, and what they prove is not
+the cycle but the *surface*.
+
+## What the three surfaces do not share
+
+Driving one cycle three ways is what makes the differences legible, and they are all deliberate:
+
+- **Ingest is asynchronous over HTTP and synchronous over MCP.** The API answers 202 with a job
+  row and hands the work to a background worker, so a client polls; the MCP tool returns when the
+  work is done. A stdio server has no worker to hand anything to, so a job an agent had to poll
+  would block for exactly as long as doing the work. Same capability, two honest shapes — and the
+  remedy for an interrupted MCP run is to call `ingest` again, which is free.
+- **Only HTTP uploads bytes.** Registration over the API is upload-only, because an HTTP client
+  has bytes and not a path on the server's filesystem; the CLI and MCP both hand over a path,
+  because both run beside the workspace. The server's content-addressed staging area exists for
+  exactly that gap and has no other caller.
+- **Only MCP has to scale its coordinates.** `get_asset_image` sends a preview capped at 256
+  pixels on its long edge while annotation geometry is always in the asset's own pixels, so an
+  agent measures in one frame and writes in another. No other surface shows an image at all.
+- **Only the CLI writes no labels.** Drawing a box is an application's job, not a terminal's, so
+  its release honestly reports `annotation_count: 0`.
 
 ---
 
@@ -183,6 +210,57 @@ real dependency since #16, so a second hand-rolled PNG encoder beside it would b
 
 ---
 
+# The HTTP example
+
+## What it does
+
+| Stage | What happens |
+| --- | --- |
+| Setup | `WorkspaceService.init` then `TokenService.create` — the last SDK lines in the file |
+| Serve | `visionset ui --host 127.0.0.1 --port <free> --workspace <root>` as a subprocess, polled at `/health` until it answers |
+| Project | `POST /projects`, `POST /projects/{p}/schema/versions` |
+| Upload | `POST /projects/{p}/sources/images` — four PNGs as `multipart/form-data`, built by hand |
+| Ingest | `POST /sources/{s}/ingest-jobs` → **202** + `Location`, then `GET /ingest-jobs/{id}` until it settles |
+| Batch | `approve` with `{"kind": "by_size", "size": 2}` → `start` → `GET /batches/{b}/jobs` |
+| Annotate | per job: `start`, `GET /jobs/{j}/next?n=10`, `POST …/annotations`, read them back, `PUT …/progress`, `complete` |
+| Trunk | `complete` → `promote` → `GET /datasets/{d}/stats` |
+| Release | `POST /datasets/{d}/releases`, `GET …/manifest`, `GET …/verify` |
+| Export | `GET /formats` → `POST /releases/{r}/export?format=dummy` → a zip on disk |
+| Pixels | `GET /projects/{p}/assets/{a}/content`, hashed against the asset's `content_hash` |
+| Refusal | the same request with no `Authorization` header → **401 `UNAUTHORIZED`** |
+
+## Four things it is built to demonstrate
+
+**The contract is reachable from anything that speaks HTTP.** The walk uses `urllib.request` and
+nothing else — not `httpx`, not `requests`, not `curl`. That is two arguments at once: `httpx` is a
+*development* dependency, so an example using it could not run from an installed wheel; and a
+contract only a smart client can drive is not really a contract. The multipart body is twenty-odd
+lines in the file, written out rather than delegated, and it is the price of the claim.
+
+**The server actually starts.** [`tests/cli/test_ui.py`](../tests/cli/test_ui.py) patches
+`uvicorn.run` and asserts the arguments, which is right for a unit test and says nothing about
+whether the process comes up. This example binds an ephemeral port, spawns the shipped command
+against it, and waits for `/health` — the one unauthenticated route, and therefore the readiness
+probe. If the process dies at startup the example reports its exit code rather than timing out and
+reading like a slow machine.
+
+**Launch-and-poll, which no other example shows.** Ingest over HTTP returns before the work does,
+so the client watches a job row. The example counts its polls and puts the number in its summary,
+which is a small way of saying out loud that at least one round trip happened after the launch.
+
+**The manifest arrives byte for byte.** `sha256(body) == release["manifest_hash"]` is the single
+best assertion in the walk: the route streams the stored blob, and a build that parsed and re-dumped
+the document would put its own JSON encoder between a client and the bytes the hash is *of*. Nothing
+else in the walk would notice.
+
+## What it deliberately does not need
+
+No HTTP client library, no `jq`, no ffmpeg, and no file on disk for its inputs — the four PNGs are
+built in memory and uploaded as bytes, because that is what an HTTP client has. Its one requirement
+is that `visionset` is on `PATH`, which `uv run` arranges.
+
+---
+
 # The CLI example
 
 ## What it does
@@ -228,3 +306,60 @@ Every asset in this run is marked `annotated` and carries **no labels**. Drawing
 job; `visionset job mark` records that somebody did it. So the release reports
 `annotation_count: 0`, the manifest says so, and the smoke test asserts it — rather than the script
 quietly leaving the impression that a terminal can label images.
+
+---
+
+# The MCP example
+
+## What it does
+
+| Stage | What happens |
+| --- | --- |
+| Setup | `WorkspaceService.init` — the only SDK line, and it has to be one: creating a workspace is deliberately not a tool |
+| Connect | `stdio_client(StdioServerParameters(command="visionset", args=["mcp", "--workspace", root]))` → `ClientSession` → `initialize()` |
+| Discover | `list_tools()` → 33, then `list_projects` on an empty workspace |
+| Project | `create_project`, `create_schema_version`, `get_schema` |
+| Ingest | `ingest` with a **local path** — one call, and it returns when the work is done |
+| Batch | `approve_batch(jobs_of=2)` → `start_batch` |
+| Look | per asset: `get_asset_image` → a base64 image block beside `width`/`height`/`image_width`/`image_height`/`scale` |
+| Annotate | `add_annotations` with every edge multiplied by `scale`, then `set_asset_progress` for the rest, then `complete_job` |
+| Trunk | `complete_batch` → `promote_batch` → `dataset_stats` |
+| Release | `publish_release`, `list_releases`, `verify_release` |
+| Export | `list_formats` → `export_release(dest=…)` — a directory, not an archive |
+| Refusal | `publish_release` on the same tag → a **result** carrying an error envelope, `retry_with` null |
+
+## Four things it is built to demonstrate
+
+**The transport, which nothing else proved.** Every test under
+[`tests/mcp/`](../tests/mcp/) drives the protocol over a paired in-memory stream inside one
+process. That proves the thirty-three tools and says nothing about the pipe. Meanwhile
+[`tests/cli/test_mcp_command.py`](../tests/cli/test_mcp_command.py) pins `visionset mcp`
+thoroughly — and mocks `subprocess.run`, so before this example no JSON-RPC byte had ever crossed
+that command. Here the client spawns exactly what an MCP configuration spawns, and the workspace
+travels the way it really travels: resolved by the CLI, opened once to run any migration, stated in
+`VISIONSET_WORKSPACE`, and inherited by the server it starts.
+
+**One session for the whole walk.** `tests/mcp/_flow.py` opens a fresh session per call, which is
+convenient for a test and is not what a client does. Holding one open is safe because the server
+opens and closes the workspace *inside each tool call* — so a long-lived session holds no SQLite
+handle and locks nobody out of `visionset ui`.
+
+**The pixels an agent sees are not the frame its coordinates live in.** The frames are 640×480 on
+purpose. The preview is capped at 256 pixels on its long edge, so what arrives is 256×192 and
+`scale` is 2.5. Every box the example submits is multiplied by it, and the smoke test asserts
+`scale > 1` — because if a future change made previews full size, the example would still pass
+while demonstrating nothing. An unscaled box would be individually plausible and uniformly wrong,
+and nothing downstream could detect it: every number would be in range and every shape well formed.
+
+**A refusal is a result, not an error.** There are two failure shapes over MCP. A malformed
+*request* comes back with `isError` set and the validator's field path; a domain refusal comes back
+as an ordinary result whose payload is an error envelope, because the call was well formed and the
+answer is no. The example ends on the second kind and checks all four keys — and that `retry_with`
+is **null**, because a release is immutable and no flag makes a reused tag work. That is the
+distinction a status code could not carry, and the reason the envelope has no `code`.
+
+## What it deliberately does not need
+
+No development dependency: `mcp` is a runtime dependency, so its client half ships with the
+package, and the async bridge is `asyncio.run` from the standard library rather than the `anyio.run`
+the tests use. No server, no port, no ffmpeg. Its one requirement is `visionset` on `PATH`.
