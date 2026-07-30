@@ -45,6 +45,18 @@ export {
   type Selection,
 } from "./core/state/selection";
 export { CommandLog, type Command } from "./core/state/commandLog";
+export {
+  addAnnotationCommand,
+  composeCommands,
+  documentCommand,
+  removeAnnotationsCommand,
+  replaceAnnotationCommand,
+} from "./core/state/commands";
+export {
+  AnnotatorStore,
+  type Projection,
+  type StoreSnapshot,
+} from "./core/state/store";
 export { clamp } from "./core/geometry/clamp";
 
 // Host adapters — each needs a capability the headless core may not name
