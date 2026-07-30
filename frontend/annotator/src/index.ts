@@ -71,6 +71,7 @@ export {
   bboxContains,
   bboxCorners,
   bboxHandlePositions,
+  isDrawnBox,
   moveBbox,
   normalizeBbox,
   resizeBbox,
@@ -100,6 +101,7 @@ export {
   CLOSE_POLYGON_TOLERANCE_PX,
   EDGE_TOLERANCE_PX,
   HANDLE_TOLERANCE_PX,
+  MIN_DRAW_SIZE_PX,
   SHAPE_TOLERANCE_PX,
   VERTEX_TOLERANCE_PX,
   assetTolerances,
@@ -131,6 +133,13 @@ export {
   type Scene,
   type Target,
 } from "./core/interaction/target";
+// The bbox tool (#43) — what the pointer would do here, for a renderer to show
+export {
+  HANDLE_CURSORS,
+  affordanceAt,
+  type Affordance,
+  type Cursor,
+} from "./core/interaction/affordance";
 export { draftAnnotation } from "./core/interaction/draft";
 export {
   TRANSITIONS,

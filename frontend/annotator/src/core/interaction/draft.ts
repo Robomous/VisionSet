@@ -14,13 +14,27 @@
  * is exactly what makes inventing them safe. `state/document.ts` argues at length
  * why there is deliberately no rebase when the server's id comes back.
  *
- * ## What it does not do, and who does
+ * ## The attributes it fills, and the one it cannot
  *
- * `attributes` is `{}` and `provenance` is `"human"`. Filling defaults from
- * `LabelClass.attributes` is #43's — a required attribute with a default is the
- * kind of thing a tool offers and a panel edits, and `document.ts` is explicit
- * that required-attribute rules stay the kernel's while *"the tools refuse at
- * draw time, where a user can be told"*.
+ * Every attribute the class declares with a `default` is seeded here, so a box
+ * arrives carrying what its class says a box carries. The class is read with
+ * `classNamed` — the document's own lookup, not a second walk of `schema.classes`.
+ * A class the schema does not declare contributes nothing rather than throwing:
+ * `toolFor` has already refused to hand out a drawing tool for one, so reaching
+ * this with an unknown name means the host changed the document mid-gesture, and
+ * an empty attribute map is a better answer to that than a crash.
+ *
+ * **A required attribute with no default is drawn anyway, and that is deliberate.**
+ * `document.ts` says required-attribute rules stay the kernel's while *"the tools
+ * refuse at draw time, where a user can be told"* — but there is nobody to tell
+ * yet. Refusing here would make a class with one unsatisfiable required attribute
+ * simply undrawable, with no panel in existence to satisfy it and no channel to
+ * explain why the pointer did nothing. So the annotation exists locally, the
+ * kernel's `MissingRequiredAttribute` is the backstop on write, and M5's
+ * attributes panel is what turns "refuse at draw time" into something a user can
+ * act on.
+ *
+ * `provenance` is `"human"`: this function is only ever reached from a gesture.
  *
  * It also does not check that the class it was given declares this geometry.
  * `toolFor` has already answered that question from the other end — a bbox
@@ -29,8 +43,28 @@
  */
 
 import type { IdFactory } from "../ids";
+import { classNamed } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
-import type { Annotation, Geometry } from "../types";
+import type { Annotation, AttributeValue, Geometry } from "../types";
+
+/**
+ * What the class says a new annotation of it carries.
+ *
+ * Declaration order, so an object literal a test compares against reads the way
+ * the schema does. An attribute with a `null` default contributes no key at all
+ * rather than a `null` value — the wire's `AttributeValue` has no null, and a key
+ * present with nothing in it would be a third state nobody asked for.
+ */
+function defaultAttributes(
+  document: AnnotationDocument,
+  labelClass: string,
+): Record<string, AttributeValue> {
+  const attributes: Record<string, AttributeValue> = {};
+  for (const attribute of classNamed(document, labelClass)?.attributes ?? []) {
+    if (attribute.default !== null) attributes[attribute.name] = attribute.default;
+  }
+  return attributes;
+}
 
 /**
  * A fresh annotation on this document's asset, carrying this class and this
@@ -54,7 +88,7 @@ export function draftAnnotation(
     label_class: labelClass,
     schema_version: document.schema.version,
     geometry,
-    attributes: {},
+    attributes: defaultAttributes(document, labelClass),
     provenance: "human",
     model_ref: null,
     confidence: null,

@@ -13,6 +13,7 @@ import {
   bboxContains,
   bboxCorners,
   bboxHandlePositions,
+  isDrawnBox,
   moveBbox,
   normalizeBbox,
   resizeBbox,
@@ -274,5 +275,66 @@ describe("resizing from a handle", () => {
         expect(answer.y + answer.height).toBeLessThanOrEqual(FRAME.height);
       }
     }
+  });
+});
+
+describe("whether a drag was a drawing at all", () => {
+  // #43's gate. The number is the caller's — `Tolerances.minDraw`, in the same
+  // pixels as the box by the time it arrives — so these pass 3 explicitly rather
+  // than importing a constant, which keeps the predicate usable in either frame
+  // and stops this file re-asserting a value `tolerance.ts` owns.
+  const MINIMUM = 3;
+
+  it("takes a box that clears the minimum on both axes", () => {
+    expect(isDrawnBox(box(10, 10, 40, 30), MINIMUM, FRAME)).toBe(true);
+  });
+
+  it("takes a box exactly at the minimum, so the boundary is written down", () => {
+    // v1 wrote `> 3` here and `< 3` in its resize clamp: one boundary, spelled
+    // twice and differently. This is the spelling, and the next test is its other
+    // side.
+    expect(isDrawnBox(box(10, 10, MINIMUM, MINIMUM), MINIMUM, FRAME)).toBe(true);
+  });
+
+  it("refuses a box one pixel under the minimum, on either axis alone", () => {
+    expect(isDrawnBox(box(10, 10, MINIMUM - 1, MINIMUM), MINIMUM, FRAME)).toBe(false);
+    expect(isDrawnBox(box(10, 10, MINIMUM, MINIMUM - 1), MINIMUM, FRAME)).toBe(false);
+  });
+
+  it("refuses the box a click makes, which has no extent at all", () => {
+    expect(isDrawnBox(box(10, 10, 0, 0), MINIMUM, FRAME)).toBe(false);
+  });
+
+  it("reads a negative width off the wire as the extent it describes", () => {
+    // `bboxContains` reads its edges through min/max and `moveBbox` its size
+    // through abs, for the same reason: a negative width is a real box, and this
+    // is exported from the package root so it can be asked about one. The naive
+    // `bbox.width >= minimum` test answers false for a perfectly good 50 × 50.
+    expect(isDrawnBox(box(100, 100, -50, -50), MINIMUM, FRAME)).toBe(true);
+    expect(isDrawnBox(box(100, 100, -1, -50), MINIMUM, FRAME)).toBe(false);
+  });
+
+  it("refuses a long thin sliver, which is what a click plus drift makes", () => {
+    // v1 refused this too, and it is the case a single area or diagonal test
+    // would let through: 200 × 2 is 400 square pixels and 200 pixels of travel.
+    expect(isDrawnBox(box(10, 10, 200, 2), MINIMUM, FRAME)).toBe(false);
+    expect(isDrawnBox(box(10, 10, 2, 200), MINIMUM, FRAME)).toBe(false);
+  });
+
+  it("lets the frame win where the frame is smaller than the minimum", () => {
+    // The same collision `resizeBbox` resolves the same way. An asset two pixels
+    // wide must not be a surface on which nothing at all can be drawn.
+    const narrow: Bounds = { width: 2, height: 480 };
+    expect(isDrawnBox(box(0, 10, 2, 40), MINIMUM, narrow)).toBe(true);
+    // The other axis is unaffected by the frame's width, and still gated.
+    expect(isDrawnBox(box(0, 10, 2, 1), MINIMUM, narrow)).toBe(false);
+  });
+
+  it("is not MIN_BBOX_SIZE, however equal the two numbers happen to be", () => {
+    // They answer different questions — `tolerance.ts` sets out all three — and a
+    // caller reaching for `MIN_BBOX_SIZE` here would be measuring a gesture in
+    // asset pixels, which is the frame inversion #41 exists to have fixed. A
+    // minimum larger than the stored floor is legal and this shows it working.
+    expect(isDrawnBox(box(10, 10, MIN_BBOX_SIZE, MIN_BBOX_SIZE), 8, FRAME)).toBe(false);
   });
 });
