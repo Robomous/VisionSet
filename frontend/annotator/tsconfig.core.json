@@ -1,0 +1,37 @@
+{
+  // The headless boundary's type half, machine-enforced — the frontend mirror of the backend's
+  // import-linter kernel contracts. It emits nothing: this project exists in order to fail.
+  //
+  // Dropping DOM from `lib` is what catches a DOM type in a *signature* —
+  // `getSvgSize(svg: SVGSVGElement)`, the shape that leaked into v1's supposedly-pure layer — which
+  // eslint's no-restricted-globals structurally cannot see, because a type is not a value
+  // reference. The two halves of the rule are described together in eslint.config.js.
+  //
+  // It extends the BUILD config, so it inherits that config's `*.test.ts` exclusion. The boundary is
+  // a claim about the engine that ships, not about its vitest harness: `src/core/wire.test.ts` reads
+  // a kernel-written fixture through `node:fs`, `URL` and `import.meta.url`, which is a Node host and
+  // is correct. Admitting those would take `types: ["node"]`, and @types/node re-declares
+  // `setTimeout`, `console`, `fetch` and `AbortController` — so buying the harness would cost the
+  // timer ban on the engine. The value half of the rule covers those files instead.
+  //
+  // `types: []` is load-bearing rather than tidiness: tsconfig.json names no `types`, so every
+  // installed @types package is ambient. Without this line, adding @types/node for the harness would
+  // silently re-admit the ambient host into the engine's own compile.
+  //
+  // `jsx: "preserve"` is load-bearing too, and it is the trap in this file. `types: []` blocks the
+  // *automatic* @types inclusion but not the one `jsx: "react-jsx"` performs: that setting makes the
+  // compiler import `react/jsx-runtime`'s types into every file of the program, which drags in
+  // @types/react/global.d.ts — a file that declares `interface KeyboardEvent {}`,
+  // `interface PointerEvent {}`, `interface Element {}` and `interface SVGSVGElement {}` as empty
+  // stand-ins so React's types compile without lib.dom. With them in scope,
+  // `function onKey(e: KeyboardEvent)` inside core compiles CLEAN and this whole project proves
+  // nothing. `preserve` costs nothing here: core holds no .tsx and emits nothing.
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": [],
+    "jsx": "preserve",
+    "noEmit": true
+  },
+  "include": ["src/core"]
+}
