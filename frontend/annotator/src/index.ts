@@ -57,7 +57,52 @@ export {
   type Projection,
   type StoreSnapshot,
 } from "./core/state/store";
+// Geometry (#41) — asset-pixel math: predicates, hit-testing, transforms
 export { clamp } from "./core/geometry/clamp";
+export {
+  clampPoint,
+  closestPointOnSegment,
+  distance,
+  type Bounds,
+} from "./core/geometry/primitives";
+export {
+  BBOX_HANDLES,
+  MIN_BBOX_SIZE,
+  bboxContains,
+  bboxCorners,
+  bboxHandlePositions,
+  moveBbox,
+  normalizeBbox,
+  resizeBbox,
+  type BboxHandle,
+} from "./core/geometry/bbox";
+export {
+  MIN_POLYGON_POINTS,
+  insertPolygonVertex,
+  movePolygonVertex,
+  polygonBbox,
+  polygonContains,
+  removePolygonVertex,
+  translatePolygon,
+} from "./core/geometry/polygon";
+export {
+  geometryContains,
+  nearestEdge,
+  nearestHandle,
+  nearestVertex,
+  topmostAnnotationAt,
+  type EdgeHit,
+  type HandleHit,
+  type VertexHit,
+} from "./core/geometry/hitTest";
+export {
+  CLOSE_POLYGON_TOLERANCE_PX,
+  EDGE_TOLERANCE_PX,
+  HANDLE_TOLERANCE_PX,
+  SHAPE_TOLERANCE_PX,
+  VERTEX_TOLERANCE_PX,
+  toleranceInAssetPixels,
+} from "./core/geometry/tolerance";
 
 // Host adapters — each needs a capability the headless core may not name
 export { randomUuid } from "./adapters/ids";

@@ -7,18 +7,12 @@
  * excludes `src/**\/_*.ts`, so this is out of the shipped engine and out of the
  * headless boundary's type gate, which inherits that exclusion.
  *
- * ## Why a hand-written PRNG rather than a property-testing library
- *
- * `fast-check` would bring shrinking, which is the real thing a library buys.
- * It would also be the annotator's first test dependency, and the package ships
- * zero. Sixteen lines of `mulberry32` swept over a fixed list of seeds gets the
- * coverage; what it does not get is a *minimal* counterexample, so a failure
- * arrives at full length with its seed in the test name and is replayed by
- * running that one test. The trade is recorded here rather than left implicit.
- *
- * `Math.random` is not usable for this even ignoring the seed: a test that fails
- * on one run in fifty and passes on re-run is worse than no test, which is the
- * same standard `tests/kernel/test_concurrency.py` holds itself to.
+ * The PRNG itself and the seed list live in `../_random`, promoted there by #41
+ * once a second property test needed them. What stays here is what is about
+ * *commands*: this module reaches for `commands`, `document` and `commandLog`,
+ * and a geometry test importing it for sixteen lines of arithmetic would drag the
+ * whole state layer into the stack trace of a failing clamp. The reasoning behind
+ * a hand-written PRNG rather than `fast-check` moved with it.
  */
 
 import {
@@ -31,23 +25,6 @@ import { annotationsInDrawOrder } from "./document";
 import type { AnnotationDocument } from "./document";
 import type { Command } from "./commandLog";
 import type { Annotation } from "../types";
-
-/**
- * The mulberry32 PRNG: one 32-bit state word, uniform in `[0, 1)`.
- *
- * Small, well-distributed enough for choosing among four branches, and — the
- * point — identical on every machine and every run for a given seed.
- */
-export function mulberry32(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /** What a run needs to invent an annotation the document will accept. */
 export interface RandomWorld {
