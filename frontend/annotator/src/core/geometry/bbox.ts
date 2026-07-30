@@ -36,11 +36,23 @@
  * `MIN_BBOX_SIZE` — **bounds win and the minimum yields**. The criterion is
  * unconditional; a minimum size is a nicety.
  *
- * ## What is deliberately not here
+ * ## The creation threshold is a different number, and it is not here
  *
- * No creation threshold. v1 refused a drawn box with `width > 3` *strictly*, a
- * subtly different test from the `< 3` it used while resizing; the drawing tool
- * (#43) owns that one and should choose it knowingly rather than inherit it.
+ * `isDrawnBox` is below, but the *number* it compares against is not: it arrives
+ * as an argument, from `Tolerances.minDraw`. v1 refused a drawn box with
+ * `width > 3` strictly and pushed a resized one back out at `< 3` — two spellings
+ * of one boundary, disagreeing. They are two questions, and `tolerance.ts` sets
+ * out all three of them in a table. This file owns only the third: `MIN_BBOX_SIZE`
+ * is the floor a *resize* stops at, in the asset's pixels. Whether a *gesture* was
+ * a drawing at all is a fact about hands, so it is measured on the screen and
+ * `resizeBbox` must never consult it.
+ *
+ * A consequence, stated because it reads like an inconsistency and is not: at a
+ * zoom above 1 the drawing gate admits a box smaller than `MIN_BBOX_SIZE`, so
+ * `MIN_BBOX_SIZE` is an invariant of `resizeBbox` and not of the document. That is
+ * the right way round. Somebody who zoomed to 400% and drew a two-pixel box
+ * demonstrably meant to; the same two pixels produced by a resize at 100% is a
+ * grip that got away from them.
  */
 
 import type { BboxGeometry, Point } from "../types";
@@ -131,6 +143,45 @@ export function normalizeBbox(start: Point, end: Point): BboxGeometry {
     width: Math.abs(end[0] - start[0]),
     height: Math.abs(end[1] - start[1]),
   };
+}
+
+/**
+ * Did the drag describe a box, or was it a click that moved a little?
+ *
+ * `minimum` is in the same pixels as the box — the caller converts, which is what
+ * lets the threshold be chosen on a screen and applied in the asset. #43's
+ * `drawing-bbox` row is the caller; nothing else may be.
+ *
+ * **Both axes must clear it.** v1 refused a 200×2 sliver as well as a 2×2 speck,
+ * and it was right to: a sliver is the shape a click plus a flick of drift
+ * actually makes, and a two-pixel-tall box in a dataset is indistinguishable from
+ * a mistake. The cost is stated rather than hidden — a genuinely thin object, a
+ * mast or a wire, has to be drawn to at least the minimum on its short axis and
+ * resized after, and `resizeBbox` will take it down to `MIN_BBOX_SIZE`.
+ *
+ * **`>=`, so exactly the minimum is drawn.** v1 wrote `> 3` here and `< 3` in its
+ * resize clamp, which is one boundary written twice and differently; a test pins
+ * this one from both sides so it cannot drift again.
+ *
+ * **Where the frame is smaller than the minimum, bounds win and the minimum
+ * yields** — the same collision `resizeBbox` already resolves that way. A 2-px
+ * asset must not be a surface on which nothing can be drawn.
+ *
+ * **The extents are read through `Math.abs`**, like `bboxContains` reads its edges
+ * through min/max and `moveBbox` its size: a negative width off the wire describes
+ * a real box, and this is exported from the package root, so it may be asked about
+ * one. Its only in-repo caller hands it `normalizeBbox` output and would never
+ * notice.
+ */
+export function isDrawnBox(
+  bbox: BboxGeometry,
+  minimum: number,
+  bounds: Bounds,
+): boolean {
+  return (
+    Math.abs(bbox.width) >= Math.min(minimum, bounds.width) &&
+    Math.abs(bbox.height) >= Math.min(minimum, bounds.height)
+  );
 }
 
 /**

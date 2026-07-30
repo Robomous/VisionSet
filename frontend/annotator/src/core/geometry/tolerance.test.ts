@@ -10,6 +10,7 @@ import {
   CLOSE_POLYGON_TOLERANCE_PX,
   EDGE_TOLERANCE_PX,
   HANDLE_TOLERANCE_PX,
+  MIN_DRAW_SIZE_PX,
   SHAPE_TOLERANCE_PX,
   VERTEX_TOLERANCE_PX,
   assetTolerances,
@@ -79,9 +80,18 @@ describe("the tolerances themselves", () => {
   it("keeps v1's click slop, which is what tells a click from a pan", () => {
     expect(CLICK_SLOP_PX).toBe(3);
   });
+
+  it("keeps v1's draw threshold too, and keeps it a separate number", () => {
+    // v1's `width > 3` on creation. The value is the same as the click slop and
+    // the two are deliberately not one constant: they answer different questions
+    // (see the table in `tolerance.ts`) and must stay independently tunable. The
+    // assertion is on the value, not on the identity, precisely so raising one
+    // later is a one-line edit here rather than a surprise somewhere else.
+    expect(MIN_DRAW_SIZE_PX).toBe(3);
+  });
 });
 
-describe("all six at once, which is the call an adapter actually makes", () => {
+describe("all seven at once, which is the call an adapter actually makes", () => {
   /** Every field, so a constant added without a conversion fails to compile. */
   const SCREEN: Record<keyof Tolerances, number> = {
     handle: HANDLE_TOLERANCE_PX,
@@ -90,6 +100,7 @@ describe("all six at once, which is the call an adapter actually makes", () => {
     closePolygon: CLOSE_POLYGON_TOLERANCE_PX,
     shape: SHAPE_TOLERANCE_PX,
     click: CLICK_SLOP_PX,
+    minDraw: MIN_DRAW_SIZE_PX,
   };
 
   it("is the constants themselves at a zoom of one", () => {

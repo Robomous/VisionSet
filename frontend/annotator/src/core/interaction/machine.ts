@@ -109,7 +109,7 @@
  * it.** `gestures.test.ts` pins it by reference rather than by value.
  */
 
-import { moveBbox, normalizeBbox, resizeBbox } from "../geometry/bbox";
+import { isDrawnBox, moveBbox, normalizeBbox, resizeBbox } from "../geometry/bbox";
 import {
   MIN_POLYGON_POINTS,
   insertPolygonVertex,
@@ -444,11 +444,16 @@ const DRAWING_BBOX_ROW: Row<"drawing-bbox"> = {
   "pointer-up": (turn) => {
     if (turn.event.button !== "primary") return stay(turn);
     const end = inFrame(turn.context, turn.event.point);
-    // No minimum-size threshold. `bbox.ts` assigns that to #43 by name, noting
-    // v1 used two subtly disagreeing spellings — `width > 3` while drawing and
-    // `< 3` while resizing — and that the drawing tool should choose one
-    // knowingly rather than inherit either.
-    return finishDrawing(turn.context, turn.state.labelClass, normalizeBbox(turn.state.start, end));
+    const box = normalizeBbox(turn.state.start, end);
+    // A click in a drawing tool is not an annotation. Nothing is added and
+    // nothing is selected — and the selection the press cleared stays cleared,
+    // which is right rather than merely v1's: the click did land on empty canvas.
+    // The threshold itself is `tolerance.ts`'s, chosen on a screen and converted
+    // once; `bbox.ts` sets out why it is not `MIN_BBOX_SIZE`.
+    if (!isDrawnBox(box, turn.context.tolerances.minDraw, turn.context.document.asset)) {
+      return idle();
+    }
+    return finishDrawing(turn.context, turn.state.labelClass, box);
   },
   cancel: () => idle(),
   "pointer-cancel": () => idle(),

@@ -4,11 +4,19 @@
  *
  * This is the only module in `src/core/` that names a viewport in code. The audit
  * that the frame discipline holds is
- * `grep -rn zoom src/core | grep -v ' \* '` — it answers with this file and its
- * test and nothing else. The bare `grep` matches three more, and all three are
- * prose in this directory explaining why they take no zoom; excluding the JSDoc
- * lines is what makes the check mean what it says. Everything else in the engine
- * speaks asset pixels and nothing else.
+ *
+ *     grep -rn zoom src/core --include='*.ts' | grep -v '\.test\.ts' | grep -v ' \* '
+ *
+ * — it answers with **this file alone**. Two of the three filters earn their
+ * place: the bare `grep` matches prose in this directory explaining why other
+ * modules take no zoom, so excluding JSDoc lines is what makes the check mean what
+ * it says; and #43's drawing-gate tests set `assetTolerances(4)` and
+ * `assetTolerances(0.25)` deliberately, to prove the conversion is load-bearing
+ * rather than decorative. A *test* naming a zoom is the discipline being
+ * exercised. The claim was always about the shipped engine — which is exactly what
+ * `tsconfig.build.json` defines by excluding `*.test.ts` and `_*.ts` — and this is
+ * that claim, stated so it can be checked. Everything else in the engine speaks
+ * asset pixels and nothing else.
  *
  * ## The constants are SCREEN pixels; the hit tests take ASSET pixels
  *
@@ -79,6 +87,40 @@ export const SHAPE_TOLERANCE_PX = 4;
 export const CLICK_SLOP_PX = 3;
 
 /**
+ * How large a drawn box must be on each axis to count as drawn rather than as a
+ * mis-click, in screen pixels. v1's 3, and #43's caller is the one place a
+ * drawing gesture becomes an annotation.
+ *
+ * ## Three numbers, and the point is that they answer three questions
+ *
+ * v1 had two spellings of "3" — `width > 3` *strictly* when a drawn box was
+ * accepted, `< 3` when a resized one was pushed back out — and the fault was not
+ * that there were two numbers. It was that both answered *the same* question and
+ * disagreed about its boundary. Here there are three, and each names a different
+ * question:
+ *
+ * | constant | unit | question |
+ * | --- | --- | --- |
+ * | `CLICK_SLOP_PX` | screen | did a press on empty canvas travel, or was it a click? |
+ * | `MIN_DRAW_SIZE_PX` | screen | did the human mean to draw a box, or twitch? |
+ * | `MIN_BBOX_SIZE` | asset | may a *stored* box be this degenerate? |
+ *
+ * The first two are facts about hands and belong here in screen pixels; the
+ * third is a fact about the document and lives in `bbox.ts` in asset pixels.
+ * Reusing `CLICK_SLOP_PX` for the second was considered — the two are 3 today and
+ * their questions rhyme — and rejected because they are independently tunable:
+ * raising the size a box must reach before it enters a dataset should not make a
+ * selection click harder to land.
+ *
+ * Screen pixels rather than asset pixels for this module's whole thesis. v1
+ * compared its threshold against a coordinate it had already divided by the
+ * zoom, so a box drawn at 30% zoom needed about one screen pixel of drag and one
+ * drawn at 200% needed six — the same inversion, on the one gate where it decides
+ * whether an annotation exists at all.
+ */
+export const MIN_DRAW_SIZE_PX = 3;
+
+/**
  * Every tolerance a hit test takes, in the asset's own pixels.
  *
  * The adapter builds one per zoom change and threads it through; #42's
@@ -92,6 +134,7 @@ export interface Tolerances {
   readonly closePolygon: number;
   readonly shape: number;
   readonly click: number;
+  readonly minDraw: number;
 }
 
 /**
@@ -112,13 +155,13 @@ export function toleranceInAssetPixels(screenPixels: number, zoom: number): numb
 }
 
 /**
- * All six constants converted at once — the call an adapter makes when the zoom
- * changes, instead of six.
+ * All seven constants converted at once — the call an adapter makes when the zoom
+ * changes, instead of seven.
  *
- * One builder rather than six call sites is also what keeps the frame discipline
- * checkable: a caller that converted five and forgot one would produce a record
- * whose fields are in two different units, which is the "individually plausible
- * and uniformly wrong" failure again, one layer down.
+ * One builder rather than seven call sites is also what keeps the frame
+ * discipline checkable: a caller that converted six and forgot one would produce
+ * a record whose fields are in two different units, which is the "individually
+ * plausible and uniformly wrong" failure again, one layer down.
  */
 export function assetTolerances(zoom: number): Tolerances {
   return {
@@ -128,5 +171,6 @@ export function assetTolerances(zoom: number): Tolerances {
     closePolygon: toleranceInAssetPixels(CLOSE_POLYGON_TOLERANCE_PX, zoom),
     shape: toleranceInAssetPixels(SHAPE_TOLERANCE_PX, zoom),
     click: toleranceInAssetPixels(CLICK_SLOP_PX, zoom),
+    minDraw: toleranceInAssetPixels(MIN_DRAW_SIZE_PX, zoom),
   };
 }
