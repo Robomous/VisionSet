@@ -27,15 +27,34 @@
  *    — because someone reading it needs to know the answer is "not yet" rather
  *    than "you misspelled it".
  *
+ * #40 added the schema and the asset, and with them a fourth rule:
+ *
+ * 4. **Strictness follows the round-trip, not the type.** Rule 1 is exact about
+ *    keys *because the editor hands annotations back*. The schema and the asset
+ *    are input-only — nothing here ever returns them — so that argument does not
+ *    transfer, and `color`, `attributes`, `required`, `options` and `default` all
+ *    carry defaults on the wire, which #27's rule emits as *optional*. So those
+ *    parsers apply the wire's own defaults for an absent optional key while still
+ *    refusing an unknown one, which is a caller bug either way. `allowExactKeys`
+ *    is that distinction made explicit rather than `requireExactKeys` loosened.
+ *
  * No dependency: the package ships zero runtime dependencies and keeps them.
  */
 
 import {
+  ATTRIBUTE_KINDS,
   GEOMETRY_TYPES,
   IMPLEMENTED_GEOMETRY_TYPES,
   type Annotation,
+  type AnnotationCreate,
+  type AnnotationSchema,
+  type AnnotationUpdate,
+  type AssetDescriptor,
+  type Attribute,
+  type AttributeKind,
   type AttributeValue,
   type Geometry,
+  type LabelClass,
   type Point,
   type Provenance,
 } from "./types";
@@ -68,6 +87,47 @@ export const ANNOTATION_KEYS = Object.keys(
   ANNOTATION_KEY_SET,
 ) as readonly (keyof Annotation)[];
 
+// The two outbound projections get the same gate, which is what keeps them from
+// drifting into "the same fields minus whichever one somebody forgot".
+const CREATE_KEY_SET: Record<keyof AnnotationCreate, true> = {
+  asset_id: true,
+  label_class: true,
+  geometry: true,
+  attributes: true,
+  provenance: true,
+  model_ref: true,
+  confidence: true,
+};
+
+const UPDATE_KEY_SET: Record<keyof AnnotationUpdate, true> = {
+  id: true,
+  label_class: true,
+  geometry: true,
+  attributes: true,
+  provenance: true,
+  model_ref: true,
+  confidence: true,
+};
+
+/** Exactly the keys `POST /jobs/{id}/annotations` takes. */
+export const ANNOTATION_CREATE_KEYS = Object.keys(
+  CREATE_KEY_SET,
+) as readonly (keyof AnnotationCreate)[];
+
+/** Exactly the keys `PATCH /jobs/{id}/annotations` takes. */
+export const ANNOTATION_UPDATE_KEYS = Object.keys(
+  UPDATE_KEY_SET,
+) as readonly (keyof AnnotationUpdate)[];
+
+const ATTRIBUTE_REQUIRED_KEYS = ["name", "kind"] as const;
+const ATTRIBUTE_OPTIONAL_KEYS = ["required", "options", "default"] as const;
+const LABEL_CLASS_REQUIRED_KEYS = ["name", "geometry"] as const;
+const LABEL_CLASS_OPTIONAL_KEYS = ["color", "attributes"] as const;
+const SCHEMA_KEYS = ["project_id", "version", "classes"] as const;
+// A projection, so it names the three fields it wants and ignores the eight it
+// does not — the one place here that is deliberately not exact about keys.
+const ASSET_KEYS = ["id", "width", "height"] as const;
+
 const BBOX_KEYS = ["type", "x", "y", "width", "height"] as const;
 const POLYGON_KEYS = ["type", "points"] as const;
 const CLASSIFICATION_KEYS = ["type"] as const;
@@ -97,6 +157,33 @@ function requireExactKeys(
   }
 }
 
+/**
+ * Refuse a payload missing a required key or carrying an undeclared one.
+ *
+ * Rule 4: an absent *optional* key is legal and the caller applies the wire's own
+ * default. Deliberately a second function rather than a parameter on
+ * `requireExactKeys`, so nothing can loosen the annotation path by accident.
+ */
+function allowExactKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+  what: string,
+): void {
+  const present = new Set(Object.keys(value));
+  const missing = required.filter((key) => !present.has(key));
+  const declared = [...required, ...optional];
+  const unknown = [...present].filter((key) => !declared.includes(key));
+  if (missing.length > 0) {
+    throw new WireFormatError(`${what} is missing ${missing.join(", ")}`);
+  }
+  if (unknown.length > 0) {
+    throw new WireFormatError(
+      `${what} carries ${unknown.join(", ")}, which the wire contract does not declare`,
+    );
+  }
+}
+
 function requireNumber(value: unknown, what: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new WireFormatError(`${what} must be a finite number`);
@@ -113,6 +200,32 @@ function requireString(value: unknown, what: string): string {
 
 function requireNullableString(value: unknown, what: string): string | null {
   return value === null ? null : requireString(value, what);
+}
+
+function requireBoolean(value: unknown, what: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new WireFormatError(`${what} must be a boolean`);
+  }
+  return value;
+}
+
+function requireStringArray(value: unknown, what: string): string[] {
+  if (!Array.isArray(value)) {
+    throw new WireFormatError(`${what} must be an array`);
+  }
+  return value.map((entry, index) => requireString(entry, `${what}[${index}]`));
+}
+
+/** One attribute value: the three types the kernel's smart union tries, in order. */
+function requireAttributeValue(value: unknown, what: string): AttributeValue {
+  if (
+    typeof value !== "boolean" &&
+    typeof value !== "number" &&
+    typeof value !== "string"
+  ) {
+    throw new WireFormatError(`${what} must be a boolean, a number or a string`);
+  }
+  return value;
 }
 
 function requirePoint(value: unknown, what: string): Point {
@@ -133,16 +246,7 @@ function requireAttributes(
   }
   const attributes: Record<string, AttributeValue> = {};
   for (const [key, attribute] of Object.entries(value)) {
-    if (
-      typeof attribute !== "boolean" &&
-      typeof attribute !== "number" &&
-      typeof attribute !== "string"
-    ) {
-      throw new WireFormatError(
-        `${what}.${key} must be a boolean, a number or a string`,
-      );
-    }
-    attributes[key] = attribute;
+    attributes[key] = requireAttributeValue(attribute, `${what}.${key}`);
   }
   return attributes;
 }
@@ -242,4 +346,176 @@ export function parseAnnotations(value: unknown): Annotation[] {
     throw new WireFormatError("annotations must be an array");
   }
   return value.map(parseAnnotation);
+}
+
+/**
+ * One attribute declaration. Optional keys take the wire model's own defaults.
+ *
+ * What an attribute will and will not *accept* is not checked here: `Attribute`'s
+ * own validators own that, and re-deriving "a select needs options" in TypeScript
+ * would be a second copy of a rule with an owner. This parser establishes the
+ * shape a surface renders a field from.
+ */
+export function parseAttribute(value: unknown): Attribute {
+  if (!isRecord(value)) {
+    throw new WireFormatError("attribute must be an object");
+  }
+  allowExactKeys(value, ATTRIBUTE_REQUIRED_KEYS, ATTRIBUTE_OPTIONAL_KEYS, "attribute");
+
+  const name = requireString(value["name"], "attribute.name");
+  const kind = requireString(value["kind"], `attribute ${name} kind`);
+  if (!(ATTRIBUTE_KINDS as readonly string[]).includes(kind)) {
+    throw new WireFormatError(
+      `attribute ${name} kind ${JSON.stringify(kind)} is not one of ${ATTRIBUTE_KINDS.join(", ")}`,
+    );
+  }
+
+  const options = value["options"];
+  const fallback = value["default"];
+  return {
+    name,
+    kind: kind as AttributeKind,
+    required:
+      value["required"] === undefined
+        ? false
+        : requireBoolean(value["required"], `attribute ${name} required`),
+    options:
+      options === undefined || options === null
+        ? null
+        : requireStringArray(options, `attribute ${name} options`),
+    default:
+      fallback === undefined || fallback === null
+        ? null
+        : requireAttributeValue(fallback, `attribute ${name} default`),
+  };
+}
+
+/**
+ * One labelable class.
+ *
+ * `geometry` is validated against the **eight**, not the three: declaring
+ * `polyline` is legal in a schema and refused at the annotation. Narrowing here
+ * would make a whole class list unloadable because of one class nobody was going
+ * to draw with.
+ */
+export function parseLabelClass(value: unknown): LabelClass {
+  if (!isRecord(value)) {
+    throw new WireFormatError("label class must be an object");
+  }
+  allowExactKeys(value, LABEL_CLASS_REQUIRED_KEYS, LABEL_CLASS_OPTIONAL_KEYS, "label class");
+
+  const name = requireString(value["name"], "label class name");
+  const geometry = requireString(value["geometry"], `class ${name} geometry`);
+  if (!(GEOMETRY_TYPES as readonly string[]).includes(geometry)) {
+    throw new WireFormatError(
+      `class ${name} declares geometry ${JSON.stringify(geometry)}, which is not a GeometryType — ` +
+        `expected one of ${GEOMETRY_TYPES.join(", ")}`,
+    );
+  }
+
+  const attributes = value["attributes"];
+  if (attributes !== undefined && !Array.isArray(attributes)) {
+    throw new WireFormatError(`class ${name} attributes must be an array`);
+  }
+  return {
+    name,
+    geometry: geometry as LabelClass["geometry"],
+    color:
+      value["color"] === undefined
+        ? null
+        : requireNullableString(value["color"], `class ${name} color`),
+    attributes: attributes === undefined ? [] : attributes.map(parseAttribute),
+  };
+}
+
+/** One version of the labeling contract, classes in the order it declares them. */
+export function parseSchema(value: unknown): AnnotationSchema {
+  if (!isRecord(value)) {
+    throw new WireFormatError("schema must be an object");
+  }
+  requireExactKeys(value, SCHEMA_KEYS, "schema");
+  const classes = value["classes"];
+  if (!Array.isArray(classes)) {
+    throw new WireFormatError("schema.classes must be an array");
+  }
+  return {
+    project_id: requireString(value["project_id"], "schema.project_id"),
+    version: requireNumber(value["version"], "schema.version"),
+    classes: classes.map(parseLabelClass),
+  };
+}
+
+/**
+ * The frame an asset's annotations are measured in, read off an `AssetOut`.
+ *
+ * The one deliberately non-exact parser: it takes the three fields an engine can
+ * use and ignores the eight about where the bytes came from, so a host can hand
+ * over the response it already has.
+ *
+ * A null `width` or `height` is refused rather than defaulted. `AssetOut` declares
+ * both nullable because a pre-pipeline row has never been measured, and there is
+ * no honest fallback: geometry here is native pixels, so an unmeasured asset has
+ * no frame to be native to. Guessing would produce coordinates that are in range
+ * and uniformly wrong.
+ */
+export function parseAssetDescriptor(value: unknown): AssetDescriptor {
+  if (!isRecord(value)) {
+    throw new WireFormatError("asset must be an object");
+  }
+  const missing = ASSET_KEYS.filter((key) => !(key in value));
+  if (missing.length > 0) {
+    throw new WireFormatError(`asset is missing ${missing.join(", ")}`);
+  }
+  const id = requireString(value["id"], "asset.id");
+  if (value["width"] === null || value["height"] === null) {
+    throw new WireFormatError(
+      `asset ${id} has no measured width and height, so there is no pixel frame to ` +
+        `annotate in — an unmeasured asset needs the ingest pipeline to run first`,
+    );
+  }
+  return {
+    id,
+    width: requireNumber(value["width"], "asset.width"),
+    height: requireNumber(value["height"], "asset.height"),
+  };
+}
+
+/**
+ * What `POST /jobs/{id}/annotations` takes, from an annotation the engine holds.
+ *
+ * Drops `id` and `schema_version`, and dropping them is the point rather than a
+ * detail: both are provisional locally — a client-minted uuid v4 and whatever
+ * version the schema in hand claimed — and the service mints the first and stamps
+ * the second from the version its batch pinned. A field a client could set and
+ * never observe is a lie, so neither travels, which is exactly what makes
+ * inventing a local id safe.
+ */
+export function toAnnotationCreate(annotation: Annotation): AnnotationCreate {
+  return {
+    asset_id: annotation.asset_id,
+    label_class: annotation.label_class,
+    geometry: annotation.geometry,
+    attributes: annotation.attributes,
+    provenance: annotation.provenance,
+    model_ref: annotation.model_ref,
+    confidence: annotation.confidence,
+  };
+}
+
+/**
+ * What `PATCH /jobs/{id}/annotations` takes: a whole replacement, addressed by id.
+ *
+ * No `asset_id` — the stored one wins, so moving a label to another asset is a
+ * delete and an add. No `schema_version` either, for `toAnnotationCreate`'s reason.
+ */
+export function toAnnotationUpdate(annotation: Annotation): AnnotationUpdate {
+  return {
+    id: annotation.id,
+    label_class: annotation.label_class,
+    geometry: annotation.geometry,
+    attributes: annotation.attributes,
+    provenance: annotation.provenance,
+    model_ref: annotation.model_ref,
+    confidence: annotation.confidence,
+  };
 }

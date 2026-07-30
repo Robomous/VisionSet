@@ -29,10 +29,11 @@
  * schema and refused at the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`)
  * and by `parseGeometry` here. See `docs/schemas.md`.
  *
- * Left for #40, the document model: a locally drawn annotation has no server
- * `id` — `AnnotationCreate` has no such field, because the service mints it. How
- * a draft carries identity between the first click and the response is the
- * document's question, not this file's.
+ * #40 answered the question this docstring used to leave open — how a locally
+ * drawn annotation carries identity when `AnnotationCreate` has no `id` field.
+ * It mints a client-side uuid v4 into the ordinary `id`, and `toAnnotationCreate`
+ * drops it: the provisional value is the document's key and the selection's key
+ * for the life of the session, and it never travels. See `state/document.ts`.
  */
 
 /**
@@ -67,6 +68,18 @@ export const IMPLEMENTED_GEOMETRY_TYPES = [
   "classification_tag",
   "polygon",
 ] as const satisfies readonly GeometryType[];
+
+/**
+ * What an `Attribute` may hold — the kernel's `Attribute.kind` Literal.
+ *
+ * A `Literal` rather than an enum on the Python side, spelled inline in the wire
+ * model for #27's reason, so nothing structural ties this list to that one.
+ * `wire.test.ts` asserts it against the fixture's `attribute_kinds`.
+ */
+export const ATTRIBUTE_KINDS = ["boolean", "number", "select", "string"] as const;
+
+/** The four kinds an attribute may declare. */
+export type AttributeKind = (typeof ATTRIBUTE_KINDS)[number];
 
 /** One vertex, `[x, y]`, in the asset's own pixels. A pair, never `{x, y}`. */
 export type Point = readonly [number, number];
@@ -144,4 +157,82 @@ export interface AnnotationUpdate {
   readonly provenance: Provenance;
   readonly model_ref: string | null;
   readonly confidence: number | null;
+}
+
+/**
+ * A typed attribute on a label class. Mirrors `AttributeBody`.
+ *
+ * `required` and `default` are independent: a required attribute with a default
+ * is an ordinary, useful thing — the first says an annotation must carry a value,
+ * the second says which one a surface should offer.
+ */
+export interface Attribute {
+  readonly name: string;
+  readonly kind: AttributeKind;
+  readonly required: boolean;
+  readonly options: readonly string[] | null;
+  readonly default: AttributeValue | null;
+}
+
+/**
+ * One labelable class, bound to **one** geometry. Mirrors `LabelClassBody`.
+ *
+ * `geometry` is singular, and that is the rule an annotator is built around:
+ * picking a class picks a tool. `color` is the kernel's own field — a renderer
+ * choosing its own palette when it is null is a rendering decision, not a
+ * document one.
+ *
+ * `geometry` is a `GeometryType`, all eight, not just the carryable three. A
+ * schema may legally declare `polyline`; an annotation may not carry one. Keeping
+ * the wide type here is what lets a class list load intact and the refusal happen
+ * where a user can be told about it.
+ */
+export interface LabelClass {
+  readonly name: string;
+  readonly geometry: GeometryType;
+  readonly color: string | null;
+  readonly attributes: readonly Attribute[];
+}
+
+/**
+ * One version of a project's labeling contract. Mirrors `SchemaVersionOut`.
+ *
+ * `version` is kept because a locally created annotation has to put *something*
+ * in `schema_version`, and the schema in hand is the only honest answer. It is
+ * provisional: the kernel stamps the version its batch pinned, and
+ * `toAnnotationCreate` drops the field entirely so the guess never travels.
+ *
+ * `classes` order is the schema's own and is preserved — it is authored, and a
+ * class list is what a surface renders as a palette.
+ */
+export interface AnnotationSchema {
+  readonly project_id: string;
+  readonly version: number;
+  readonly classes: readonly LabelClass[];
+}
+
+/**
+ * The asset being annotated, reduced to the frame its geometry is measured in.
+ *
+ * A projection of `AssetOut`, not a mirror, and the three fields are the three an
+ * engine can use: everything else on that model — content hash, format, frame
+ * provenance, thumbnail hash — is about where the bytes came from, which is the
+ * host's business.
+ *
+ * `width`/`height` are the asset's **native** pixels. `AssetOut` declares them
+ * `int | None` because a pre-pipeline row has never been measured, and
+ * `parseAssetDescriptor` refuses that case: annotation geometry is native and
+ * never normalized, so an asset with no known frame has nothing to be native to.
+ *
+ * They are emphatically **not** the size of the image a renderer displays. That
+ * is the same trap `get_asset_image` publishes four numbers to avoid — a preview
+ * is capped on its long edge, and coordinates measured on it and submitted
+ * unscaled are individually plausible and uniformly wrong. The screen↔image
+ * transform belongs to the adapter (#47); the document only ever holds native
+ * pixels.
+ */
+export interface AssetDescriptor {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
 }

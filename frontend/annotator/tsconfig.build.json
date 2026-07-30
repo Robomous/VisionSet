@@ -1,4 +1,8 @@
 {
+  // What ships. `_`-prefixed modules are test harnesses, the convention
+  // `tests/server/_flow.py` already follows on the Python side — excluding them
+  // here is also what keeps `node:fs` out of the shipped engine and out of
+  // tsconfig.core.json's boundary gate, which inherits this list.
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/_*.ts"]
 }
