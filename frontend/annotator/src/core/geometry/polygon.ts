@@ -30,7 +30,7 @@
  * v1 deleted the **whole annotation** when a triangle's vertex was removed, in
  * four separate copies of the same `if (pts.length <= 3)`, each inside a pointer
  * handler. `removePolygonVertex` answers `null` instead and leaves the choice to
- * #45, which owns `removeAnnotationsCommand` — where it is one undo step and where
+ * #44, which owns the polygon tool — where it is one undo step and where
  * a user can be told what happened. **The behaviour a user sees is v1's; only its
  * owner moved.**
  *
@@ -43,7 +43,8 @@
  *
  * It also refuses nothing. v1 bailed out of an edge insert when the click was
  * within 6 px of an existing vertex — that is a tool's reading of a double-click,
- * built on `nearestVertex` (#45), not a fact about polygons.
+ * built on `nearestVertex` — #42's `nearestInsertion` is where it lives — and
+ * not a fact about polygons.
  *
  * There is no self-intersection check and no winding rule. `polygonContains` is
  * even-odd, which is what SVG's default `fill-rule` draws, so what a user clicks
@@ -191,7 +192,7 @@ export function insertPolygonVertex(
  * `MIN_POLYGON_POINTS` and there is nothing left to drop it from.
  *
  * `null` means "this polygon cannot survive the edit" and nothing more. What to do
- * about that — v1 deleted the whole annotation — is #45's call, because it is a
+ * about that — v1 deleted the whole annotation — is #44's call, because it is a
  * document decision and belongs in one undoable command.
  */
 export function removePolygonVertex(

@@ -67,6 +67,34 @@ export const CLOSE_POLYGON_TOLERANCE_PX = 10;
 export const SHAPE_TOLERANCE_PX = 4;
 
 /**
+ * How far a press on empty canvas may travel and still count as a click rather
+ * than a drag, in screen pixels. v1's `|Δx| + |Δy| < 3`.
+ *
+ * The sixth constant, and it belongs beside the other five for the reason the
+ * docstring above gives: it is a fact about fingers, chosen by looking at a
+ * screen. Hard-coding it in asset pixels instead would reintroduce exactly the
+ * inversion this module exists to fix — three asset pixels is one screen pixel
+ * at 300%.
+ */
+export const CLICK_SLOP_PX = 3;
+
+/**
+ * Every tolerance a hit test takes, in the asset's own pixels.
+ *
+ * The adapter builds one per zoom change and threads it through; #42's
+ * `resolveTarget` and its state machine take this record and never a zoom, which
+ * is what keeps the audit above answering with this file alone.
+ */
+export interface Tolerances {
+  readonly handle: number;
+  readonly vertex: number;
+  readonly edge: number;
+  readonly closePolygon: number;
+  readonly shape: number;
+  readonly click: number;
+}
+
+/**
  * `screenPixels` expressed in asset pixels at this zoom — the whole of the frame
  * conversion the hit tests refuse to do for themselves.
  *
@@ -81,4 +109,24 @@ export function toleranceInAssetPixels(screenPixels: number, zoom: number): numb
     );
   }
   return screenPixels / zoom;
+}
+
+/**
+ * All six constants converted at once — the call an adapter makes when the zoom
+ * changes, instead of six.
+ *
+ * One builder rather than six call sites is also what keeps the frame discipline
+ * checkable: a caller that converted five and forgot one would produce a record
+ * whose fields are in two different units, which is the "individually plausible
+ * and uniformly wrong" failure again, one layer down.
+ */
+export function assetTolerances(zoom: number): Tolerances {
+  return {
+    handle: toleranceInAssetPixels(HANDLE_TOLERANCE_PX, zoom),
+    vertex: toleranceInAssetPixels(VERTEX_TOLERANCE_PX, zoom),
+    edge: toleranceInAssetPixels(EDGE_TOLERANCE_PX, zoom),
+    closePolygon: toleranceInAssetPixels(CLOSE_POLYGON_TOLERANCE_PX, zoom),
+    shape: toleranceInAssetPixels(SHAPE_TOLERANCE_PX, zoom),
+    click: toleranceInAssetPixels(CLICK_SLOP_PX, zoom),
+  };
 }
