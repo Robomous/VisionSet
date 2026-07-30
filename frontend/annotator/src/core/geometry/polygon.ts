@@ -30,9 +30,15 @@
  * v1 deleted the **whole annotation** when a triangle's vertex was removed, in
  * four separate copies of the same `if (pts.length <= 3)`, each inside a pointer
  * handler. `removePolygonVertex` answers `null` instead and leaves the choice to
- * #44, which owns the polygon tool — where it is one undo step and where
- * a user can be told what happened. **The behaviour a user sees is v1's; only its
- * owner moved.**
+ * the tool.
+ *
+ * **#44 made that call, and it is not v1's**: the delete is refused, and the polygon
+ * stays a triangle. A gesture that escalates from "remove this vertex" to "remove
+ * the shape" at a boundary nobody can see is a surprise, and the remedy for deleting
+ * a polygon is already explicit elsewhere. The argument in full, including the
+ * ctrl-click double-fire it also avoids, is in `machine.ts`'s `deleteVertex`. This
+ * paragraph previously predicted the opposite and is corrected rather than removed,
+ * because the prediction is why the `null` is here at all.
  *
  * ## What is deliberately not here
  *
@@ -192,8 +198,8 @@ export function insertPolygonVertex(
  * `MIN_POLYGON_POINTS` and there is nothing left to drop it from.
  *
  * `null` means "this polygon cannot survive the edit" and nothing more. What to do
- * about that — v1 deleted the whole annotation — is #44's call, because it is a
- * document decision and belongs in one undoable command.
+ * about that was #44's call, and #44 answered *nothing happens* — see `deleteVertex`
+ * in `machine.ts`, and the section above.
  */
 export function removePolygonVertex(
   polygon: PolygonGeometry,

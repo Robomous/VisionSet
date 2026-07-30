@@ -14,6 +14,7 @@ import {
   nearestEdge,
   nearestHandle,
   nearestVertex,
+  polygonCloseAttempt,
   topmostAnnotationAt,
 } from "./hitTest";
 
@@ -225,5 +226,48 @@ describe("picking the topmost annotation", () => {
   it("skips a classification tag sitting on top of everything", () => {
     const tagged = [under, annotationOf("tag", { type: "classification_tag" })];
     expect(topmostAnnotationAt(tagged, [10, 10], 4)?.id).toBe("under");
+  });
+});
+
+describe("what a press near a half-drawn polygon's first vertex means", () => {
+  const opened: readonly Point[] = [
+    [10, 10],
+    [60, 10],
+    [60, 60],
+  ];
+
+  it("closes on the first vertex once there are enough points", () => {
+    expect(polygonCloseAttempt(opened, [10, 10], 10)).toBe("closes");
+  });
+
+  it("closes anywhere inside the ring, not only dead on the vertex", () => {
+    expect(polygonCloseAttempt(opened, [16, 18], 10)).toBe("closes");
+  });
+
+  it("takes the tolerance inclusively, like every other hit test here", () => {
+    expect(polygonCloseAttempt(opened, [20, 10], 10)).toBe("closes");
+    expect(polygonCloseAttempt(opened, [20.5, 10], 10)).toBe("no");
+  });
+
+  it("answers too-few inside the ring before the third point", () => {
+    // The distinction the three-valued answer exists for: the press is aimed at
+    // the first vertex either way, so it must not fall through to "append".
+    expect(polygonCloseAttempt(opened.slice(0, 1), [10, 10], 10)).toBe("too-few");
+    expect(polygonCloseAttempt(opened.slice(0, 2), [12, 12], 10)).toBe("too-few");
+  });
+
+  it("answers no outside the ring, whatever the count", () => {
+    expect(polygonCloseAttempt(opened, [60, 60], 10)).toBe("no");
+    expect(polygonCloseAttempt(opened.slice(0, 2), [60, 10], 10)).toBe("no");
+  });
+
+  it("measures only the first vertex, never the nearest one", () => {
+    // A later vertex sitting under the pointer is not a close: closing is aiming
+    // at where the shape started, and `nearestVertex` is the function that searches.
+    expect(polygonCloseAttempt(opened, [60, 10], 10)).toBe("no");
+  });
+
+  it("answers no for an empty buffer instead of indexing into it", () => {
+    expect(polygonCloseAttempt([], [0, 0], 10)).toBe("no");
   });
 });

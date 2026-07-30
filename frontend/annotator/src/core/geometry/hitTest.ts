@@ -47,7 +47,7 @@ import {
   bboxHandlePositions,
   type BboxHandle,
 } from "./bbox";
-import { polygonContains } from "./polygon";
+import { MIN_POLYGON_POINTS, polygonContains } from "./polygon";
 import { closestPointOnSegment, distance } from "./primitives";
 
 /** A vertex found near a point. `point` is the vertex itself. */
@@ -81,6 +81,11 @@ export interface HandleHit {
  * Strictly-nearest wins and a tie goes to the lower index — v1's `d < minDist`.
  * It takes a bare point list rather than a polygon so that #44's half-drawn one,
  * which is not a `PolygonGeometry` yet, can be tested with the same function.
+ *
+ * That prediction landed one function over. #44 does test a half-drawn buffer, but
+ * against a vertex it can already name — the first — so it is `polygonCloseAttempt`
+ * below, calling `distance` directly. Searching a list for a vertex you have the
+ * index of is a slower way to get the same answer.
  */
 export function nearestVertex(
   points: readonly Point[],
@@ -96,6 +101,45 @@ export function nearestVertex(
     }
   }
   return best;
+}
+
+/**
+ * What a press inside the ring around a half-drawn polygon's **first** vertex
+ * means. v1's `dist(point, pendingPolygon[0]) <= 10`, split into its two cases.
+ *
+ * - `closes` — inside the ring, and the buffer has enough points to be a polygon.
+ * - `too-few` — inside the ring, and it does not. The press is still a close
+ *   *attempt*: the user is aiming at the first vertex, and the only honest answers
+ *   are to close or to do nothing. Appending is neither, and it is what v1 did —
+ *   stacking a near-duplicate of vertex 0 onto a two-point buffer.
+ * - `no` — outside the ring; the press means something else.
+ *
+ * The middle case is why this returns three answers rather than a boolean. It is
+ * what makes *"a press inside the close ring never appends a vertex"* a rule with a
+ * name, instead of a shape that falls out of the order two `if`s happen to sit in.
+ *
+ * One function because two callers ask: the transition table decides what the press
+ * does, and `affordanceAt` decides what the cursor promises. #43's rule — those two
+ * must not be able to disagree — and the reason the affordance layer mirrors
+ * `IDLE_ROW` rather than re-deriving it.
+ *
+ * `tolerance` is `Tolerances.closePolygon`, in asset pixels like every other
+ * tolerance here.
+ */
+export type CloseAttempt = "closes" | "too-few" | "no";
+
+export function polygonCloseAttempt(
+  points: readonly Point[],
+  point: Point,
+  tolerance: number,
+): CloseAttempt {
+  const first = points[0];
+  // An empty buffer has no first vertex to aim at. Unreachable through the machine,
+  // which never leaves `drawing-polygon` holding nothing, and answered rather than
+  // indexed into because this is exported from the package root.
+  if (first === undefined) return "no";
+  if (distance(point, first) > tolerance) return "no";
+  return points.length >= MIN_POLYGON_POINTS ? "closes" : "too-few";
 }
 
 /**

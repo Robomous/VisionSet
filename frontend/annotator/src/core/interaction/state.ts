@@ -134,6 +134,13 @@ export type InteractionState =
    * lived outside its union and caused the Escape-precedence bug `machine.ts`
    * describes; `cursor` is the rubber-band endpoint, `null` before the pointer
    * has moved.
+   *
+   * **`points` is never empty.** The state is only ever entered carrying the vertex
+   * that opened it, and #44's take-back gesture returns to `idle` on the last one
+   * rather than leaving an empty buffer behind. That is load-bearing rather than
+   * incidental: `points[0]` is what the close ring is measured from, in the
+   * transition table and in `affordanceAt` alike, and a representable-but-unreachable
+   * empty case would put a guard in both. The type cannot say it, so this does.
    */
   | {
       readonly type: "drawing-polygon";
