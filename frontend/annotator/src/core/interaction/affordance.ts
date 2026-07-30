@@ -8,7 +8,7 @@
  *
  * ## A CSS cursor keyword is vocabulary, not a DOM API
  *
- * `Cursor` is a union of the seven `cursor` values this engine can mean. They are
+ * `Cursor` is a union of the `cursor` values this engine can mean. They are
  * strings; nothing here touches a node, and the module compiles under
  * `tsconfig.core.json` with `lib: ["ES2022"]` and `types: []` like every other
  * file in `core/`. The alternative considered was an abstract union — `"grab"`,
@@ -26,9 +26,17 @@
  * the grips on a selected box are unreachable, however exactly the pointer sits on
  * one. A hover query that resolved a target first would light that grip up and
  * offer a resize cursor for a gesture that cannot happen. In a drawing tool the
- * answer is therefore `crosshair` and `NO_TARGET`, unconditionally, and
- * `affordance.test.ts` pins it with the pointer parked on a selected box's `nw`
+ * answer is therefore `crosshair` and `NO_TARGET`, whatever is under the pointer,
+ * and `affordance.test.ts` pins it with the pointer parked on a selected box's `nw`
  * grip.
+ *
+ * The same rule read forwards, once #44 gave the polygon row a second meaning for a
+ * press: *while a polygon session is open*, a press inside the ring around the first
+ * vertex closes the shape instead of extending it, so the cursor there is `pointer`
+ * rather than `crosshair`. Both facts come from one function — the row and this
+ * module call `polygonCloseAttempt`, neither re-derives it — which is the mechanical
+ * version of "the cursor and the press cannot disagree". A hover during
+ * `drawing-bbox` has no such second meaning and stays unconditional.
  *
  * ## During a drag the grip stays hot, even when the pointer leaves it
  *
@@ -51,6 +59,8 @@
 
 import { bboxHandlePositions } from "../geometry/bbox";
 import type { BboxHandle } from "../geometry/bbox";
+import { polygonCloseAttempt } from "../geometry/hitTest";
+import { clampPoint } from "../geometry/primitives";
 import { annotationById } from "../state/document";
 import type { Point } from "../types";
 import type { InteractionState } from "./state";
@@ -61,13 +71,20 @@ import type { Tool } from "./tool";
 /**
  * The cursors this engine can ask for.
  *
- * Seven, and each is earned by a branch below. `grabbing` and `pointer` were left
- * out: nothing here distinguishes holding a body from hovering one, and inventing
- * that distinction in a chassis task is how a vocabulary grows entries nobody uses.
+ * Eight, and each is earned by a branch below. #43 shipped seven and left `pointer`
+ * out on the grounds that "nothing here distinguishes holding a body from hovering
+ * one, and inventing that distinction in a chassis task is how a vocabulary grows
+ * entries nobody uses". #44 supplies the distinction it was waiting for: inside the
+ * ring around a half-drawn polygon's first vertex a press **closes the shape**,
+ * where a press one pixel outside it places another vertex. Two different gestures
+ * a millimetre apart, and the only warning a user can get is the cursor.
+ *
+ * `grabbing` is still out, for #43's reason unamended.
  */
 export type Cursor =
   | "default"
   | "crosshair"
+  | "pointer"
   | "move"
   | "nwse-resize"
   | "nesw-resize"
@@ -133,6 +150,34 @@ function heldBody(scene: Scene, id: string): Target {
   return { kind: "body", id };
 }
 
+/**
+ * Mid-session: is the pointer over the first vertex, where a press would close?
+ *
+ * The point is clamped exactly as `DRAWING_POLYGON_ROW` clamps it, through the same
+ * `clampPoint(…, asset)`. That is not defensive tidying: the row measures the ring
+ * from where the vertex *would land*, so for a first vertex sitting on the asset's
+ * own edge an unclamped comparison here would put the cursor and the press on
+ * different sides of the ring — the one disagreement this whole module exists to
+ * make impossible.
+ *
+ * `hot` stays `NO_TARGET`. A `Target` names an annotation by id and a pending
+ * polygon has none; a renderer wanting to ring the vertex reads `state.points[0]`,
+ * which it must already have in order to draw the rubber band at all.
+ *
+ * `too-few` shows `crosshair`, not `pointer`. The press there does nothing, and a
+ * cursor promising a close that will not happen is the same lie in the other
+ * direction — #43's `default`-over-an-`edge` mistake, one task on.
+ */
+function drawingPolygon(
+  state: Extract<InteractionState, { type: "drawing-polygon" }>,
+  scene: Scene,
+  point: Point,
+): Affordance {
+  const at = clampPoint(point, scene.document.asset);
+  const attempt = polygonCloseAttempt(state.points, at, scene.tolerances.closePolygon);
+  return { cursor: attempt === "closes" ? "pointer" : "crosshair", hot: NO_TARGET };
+}
+
 /** What a press at this point would do, with no gesture in flight. */
 function hovering(scene: Scene, tool: Tool, point: Point): Affordance {
   // The tool check comes first here because it comes first in `IDLE_ROW`.
@@ -185,8 +230,9 @@ export function affordanceAt(
       // into — would give it something of its own to show.
       return { cursor: "default", hot: NO_TARGET };
     case "drawing-bbox":
-    case "drawing-polygon":
       return { cursor: "crosshair", hot: NO_TARGET };
+    case "drawing-polygon":
+      return drawingPolygon(state, scene, point);
     case "moving":
       return { cursor: "move", hot: heldBody(scene, state.id) };
     case "moving-vertex":

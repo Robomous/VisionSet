@@ -94,6 +94,52 @@
  * survived a switch to the bbox tool, where no gesture could add to it or close
  * it — a buffer outliving the tool that can reach it. Not ported.
  *
+ * ## Closing a polygon, three ways
+ *
+ * A press on the first vertex, a double-click, or `commit` (#46 binds Enter). All
+ * three go through `closeSession`, all three are gated at `MIN_POLYGON_POINTS`, and
+ * all three produce exactly one `add` — so a session of any length is one undo step
+ * whichever way it ended.
+ *
+ * Only the first is v1's. **v1 has no double-click close for polygons at all** —
+ * that is its *polyline* gesture, driven by a hand-rolled 350 ms timer against a
+ * `polylineLastClickTimeRef`. #73 put `polyline` out of scope, so the gesture is
+ * unclaimed here, it is the idiom every other polygon tool uses, and #44's issue
+ * body asks for it by name. It arrives as a real `double-click` event because
+ * `events.ts` makes the adapter own that recognition, which is also what retires
+ * v1's timer.
+ *
+ * ## A press while drawing: four rules, and the order is the rule
+ *
+ * 1. **Secondary** takes back the last pending vertex; taking back the only one
+ *    returns to `idle`.
+ * 2. **Inside the close ring** — `polygonCloseAttempt` — closes, or does nothing
+ *    when there are too few points. Never appends.
+ * 3. **On the vertex just placed** — within `tolerances.vertex` — is that vertex
+ *    again. Never appends.
+ * 4. Otherwise, a new vertex.
+ *
+ * ## Why the duplicate rule is load-bearing, and not hygiene
+ *
+ * Rule 3 reads like tidiness and is not: it is what makes rule-2-by-double-click
+ * produce the polygon the user drew. An adapter delivers a `pointer-down` for
+ * *each* click of a double-click before the `double-click` itself arrives, so
+ * without rule 3 every double-click close would stack a duplicate vertex on top of
+ * the one the first click had just placed. v1 never hit this because v1 had no
+ * double-click close.
+ *
+ * It is also why the rule is a *tolerance* rather than an equality. Two clicks at
+ * "the same place" differ by a pixel or two of hand tremor, so `===` would catch
+ * almost none of them; `tolerances.vertex` is the same distance that decides
+ * whether a press means an existing vertex, asked one layer earlier.
+ *
+ * What this does **not** do is refuse a degenerate polygon. Three collinear points,
+ * or a sliver, still stores: the wire format accepts it, `polygonContains` answers
+ * honestly about it, and rule 3 already guarantees every vertex is a visible
+ * distance from its neighbour. There is no fourth screen-pixel constant here for
+ * the reason `tolerance.ts`'s table gives — a number is worth adding when it answers
+ * a question nobody else is answering, and this one has no question left.
+ *
  * ## And the one thing v1 structurally could not do
  *
  * v1 wrote every pointer-move straight through to the shared annotations array,
@@ -118,7 +164,8 @@ import {
   removePolygonVertex,
   translatePolygon,
 } from "../geometry/polygon";
-import { clampPoint } from "../geometry/primitives";
+import { polygonCloseAttempt } from "../geometry/hitTest";
+import { clampPoint, distance } from "../geometry/primitives";
 import type { Tolerances } from "../geometry/tolerance";
 import type { IdFactory } from "../ids";
 import { annotationById } from "../state/document";
@@ -313,12 +360,26 @@ function pressOnShape(turn: Turn<InteractionState, Extract<InteractionEvent, { t
 }
 
 /**
- * v1's vertex delete — right-click or ctrl-click — as far as #42 takes it.
+ * v1's vertex delete — right-click or ctrl-click.
  *
- * `removePolygonVertex` answers `null` at `MIN_POLYGON_POINTS`, and **nothing is
- * emitted for that case**. v1 deleted the whole annotation; `polygon.ts` assigns
- * that decision to the tool by name, because it is a document decision and
- * belongs in one undoable command. #44 turns this row into a `remove`.
+ * `removePolygonVertex` answers `null` at `MIN_POLYGON_POINTS`, and **#44's answer
+ * to that is to do nothing.** v1 deleted the whole annotation, and `polygon.ts`
+ * left the call here on the grounds that it is a document decision. The call, made:
+ *
+ * A gesture whose scope escalates from "remove this vertex" to "remove the whole
+ * shape" at a boundary the user cannot see is a surprise, and a triangle does not
+ * look different enough from a quadrilateral to be a warning. Undo would make it
+ * *recoverable* — which v1's could not — but recoverable is not the same as
+ * predictable, and the remedy for deleting a polygon already exists and is explicit:
+ * select it and press Delete (#46).
+ *
+ * It also removes a failure mode #47 would otherwise inherit. On macOS a ctrl-click
+ * is the native secondary click, so both spellings of this gesture fire from one
+ * press — v1's own bug. Two no-ops are a no-op; two `remove`s are a `DocumentError`
+ * out of `removeAnnotations`' all-or-nothing refusal, raised from a pointer handler.
+ *
+ * The silence is the cost, and it is stated rather than hidden: core has no channel
+ * to say "not this one". M5's panel is where that sentence can be shown.
  */
 function deleteVertex(context: InteractionContext, id: string, index: number): Transition {
   const annotation = annotationById(context.document, id);
@@ -460,14 +521,77 @@ const DRAWING_BBOX_ROW: Row<"drawing-bbox"> = {
   "tool-changed": () => idle(),
 };
 
+/**
+ * A drawing session ends, if it has enough points to end with.
+ *
+ * Shared by `commit` (Enter) and `double-click` so the two cannot come to differ
+ * about the arity gate — one of them silently accepting a two-point polygon is the
+ * kind of divergence that only shows up in exported data.
+ *
+ * Below `MIN_POLYGON_POINTS` the session **stays alive**. There is nothing to
+ * discard (a pending polygon has written nothing) and dropping the user's placed
+ * vertices because they reached for the wrong key would be a punishment for a typo.
+ * Escape is how a session is abandoned, and it is one key away.
+ */
+function closeSession(turn: Turn<Extract<InteractionState, { type: "drawing-polygon" }>>): Transition {
+  if (turn.state.points.length < MIN_POLYGON_POINTS) return stay(turn);
+  return finishDrawing(turn.context, turn.state.labelClass, {
+    type: "polygon",
+    points: turn.state.points,
+  });
+}
+
+/** The vertex a press would be re-placing, if it landed on the one just placed. */
+function repeatsLastVertex(
+  state: Extract<InteractionState, { type: "drawing-polygon" }>,
+  at: Point,
+  tolerance: number,
+): boolean {
+  const last = state.points[state.points.length - 1];
+  return last !== undefined && distance(at, last) <= tolerance;
+}
+
 const DRAWING_POLYGON_ROW: Row<"drawing-polygon"> = {
+  /**
+   * Four rules, and the order is the whole of it — see "a press while drawing"
+   * in the module header.
+   */
   "pointer-down": (turn) => {
-    if (turn.event.button !== "primary") return stay(turn);
-    // Closing by clicking the first vertex is #44's, which is why
-    // `CLOSE_POLYGON_TOLERANCE_PX` has no reader here yet. Every press appends.
-    const at = inFrame(turn.context, turn.event.point);
+    const { context, event, state } = turn;
+
+    if (event.button !== "primary") {
+      // v1's right-click-to-take-back, which was its only undo of any kind while
+      // drawing. Emptying the buffer returns to `idle` rather than leaving a
+      // `drawing-polygon` holding nothing: `points[0]` is what the close ring and
+      // the affordance are measured from, and a state where that is `undefined` is
+      // one every reader would have to guard. The tool has not changed, so the next
+      // press starts a fresh session — which is also what Escape from a one-point
+      // session does, and the two agreeing is not an accident.
+      if (event.button !== "secondary") return stay(turn);
+      if (state.points.length <= 1) return idle();
+      return {
+        state: { ...state, points: state.points.slice(0, -1) },
+        effects: NO_EFFECTS,
+      };
+    }
+
+    const at = inFrame(context, event.point);
+
+    // Aiming at the first vertex is a close attempt whether or not it can be
+    // honoured, and neither answer appends. `too-few` is silent: refusing loudly
+    // would need a channel core does not have, and the vertices are all still there.
+    const attempt = polygonCloseAttempt(state.points, at, context.tolerances.closePolygon);
+    if (attempt === "closes") return closeSession(turn);
+    if (attempt === "too-few") return stay(turn);
+
+    // The press that lands on the vertex it just placed is that vertex again, not a
+    // second one. See "why the duplicate rule is load-bearing" in the header.
+    if (repeatsLastVertex(state, at, context.tolerances.vertex)) {
+      return { state: { ...state, cursor: at }, effects: NO_EFFECTS };
+    }
+
     return {
-      state: { ...turn.state, points: [...turn.state.points, at], cursor: at },
+      state: { ...state, points: [...state.points, at], cursor: at },
       effects: NO_EFFECTS,
     };
   },
@@ -477,13 +601,8 @@ const DRAWING_POLYGON_ROW: Row<"drawing-polygon"> = {
     state: { ...turn.state, cursor: inFrame(turn.context, turn.event.point) },
     effects: NO_EFFECTS,
   }),
-  commit: (turn) => {
-    if (turn.state.points.length < MIN_POLYGON_POINTS) return stay(turn);
-    return finishDrawing(turn.context, turn.state.labelClass, {
-      type: "polygon",
-      points: turn.state.points,
-    });
-  },
+  "double-click": (turn) => closeSession(turn),
+  commit: (turn) => closeSession(turn),
   cancel: () => idle(),
   "tool-changed": () => idle(),
   // `pointer-cancel` is deliberately absent — see the cancel table above.

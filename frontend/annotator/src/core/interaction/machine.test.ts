@@ -322,15 +322,33 @@ describe("a vertex, deleted", () => {
     expect(after?.geometry.type === "polygon" && after.geometry.points.length).toBe(3);
   });
 
-  it("asks for nothing at the minimum, leaving the whole-annotation call to #44", () => {
+  it("refuses at the minimum, and refusing means the document does not move", () => {
     const world = new World();
     world.send(down([350, 340]), up([350, 340]));
     world.dispatch(down(POLY_VERTEX, "secondary"));
     const before = world.store.document;
-    // A triangle now. `removePolygonVertex` answers `null`, and #42 emits nothing
-    // rather than inventing the delete-the-annotation rule `polygon.ts` assigns
-    // to the tool.
+    // A triangle now. `removePolygonVertex` answers `null` and #44's call is that
+    // nothing happens — v1 deleted the whole annotation here. By identity, because
+    // "the document did not move" is the claim; an equal-but-new document would
+    // still have put an entry in the history.
     world.dispatch(down([300, 300], "secondary"));
+    expect(world.store.document).toBe(before);
+    expect(world.store.canUndo).toBe(true);
+    expect(world.store.getSnapshot().undoLabel).toBe("edit lane");
+  });
+
+  it("survives the ctrl-click that fires twice on macOS, where a delete would not", () => {
+    // v1's own bug: ctrl-click is the native secondary click there, so one gesture
+    // raises both handlers. Two refusals are a refusal; two removes would be a
+    // `DocumentError` out of `removeAnnotations`, raised from a pointer handler.
+    const world = new World();
+    world.send(down([350, 340]), up([350, 340]));
+    world.dispatch(down(POLY_VERTEX, "secondary"));
+    const before = world.store.document;
+    expect(() => {
+      world.dispatch(down([300, 300], "secondary"));
+      world.dispatch(down([300, 300], "primary", held("ctrl")));
+    }).not.toThrow();
     expect(world.store.document).toBe(before);
   });
 });
