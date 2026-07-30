@@ -77,6 +77,13 @@ describe("the tolerances themselves", () => {
     expect(SHAPE_TOLERANCE_PX).toBeLessThan(HANDLE_TOLERANCE_PX);
   });
 
+  it("keeps the close ring wider than a vertex grab, because a user aims at it", () => {
+    // Closing is the gesture that ends a session and it is deliberately easy to
+    // land; grabbing a vertex is one of several things a press on a finished shape
+    // could mean, so it stays tighter. v1 chose the same two numbers.
+    expect(CLOSE_POLYGON_TOLERANCE_PX).toBeGreaterThan(VERTEX_TOLERANCE_PX);
+  });
+
   it("keeps v1's click slop, which is what tells a click from a pan", () => {
     expect(CLICK_SLOP_PX).toBe(3);
   });

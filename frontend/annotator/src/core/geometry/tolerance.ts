@@ -61,7 +61,14 @@ export const EDGE_TOLERANCE_PX = 15;
 
 /**
  * How near the first vertex a click closes the polygon being drawn, in screen
- * pixels. v1's 10; #44 is the caller.
+ * pixels. v1's 10.
+ *
+ * Read through `Tolerances.closePolygon` by exactly one function,
+ * `polygonCloseAttempt` in `hitTest.ts` — which both the transition table and the
+ * cursor ask, so that a ring the cursor reports and a ring a press honours are the
+ * same ring. Deliberately larger than `VERTEX_TOLERANCE_PX`: closing is the gesture
+ * that ends a session and a user aims at it, where grabbing a vertex is one of
+ * several things a press on a finished shape might mean.
  */
 export const CLOSE_POLYGON_TOLERANCE_PX = 10;
 

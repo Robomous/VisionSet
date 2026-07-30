@@ -28,6 +28,7 @@ import {
   BOX_NW,
   EMPTY_POINT,
   POLY_BODY,
+  World,
   POLY_ID,
   POLY_VERTEX,
   down,
@@ -47,6 +48,7 @@ import type { Tool } from "./tool";
 const KNOWN_CURSORS: Record<Cursor, true> = {
   default: true,
   crosshair: true,
+  pointer: true,
   move: true,
   "nwse-resize": true,
   "nesw-resize": true,
@@ -57,6 +59,34 @@ const KNOWN_CURSORS: Record<Cursor, true> = {
 function toolOf(type: "drawing-bbox" | "drawing-polygon"): Tool {
   return type === "drawing-bbox" ? "bbox" : "polygon";
 }
+
+/** The scene an adapter passes mid-session: what is rendered, and how near counts. */
+function sceneOfWorld(world: World): Scene {
+  return {
+    document: world.store.rendered,
+    selection: world.store.selection,
+    tolerances: world.tolerances,
+  };
+}
+
+/**
+ * A live polygon session holding `points`, reached by walking rather than built.
+ *
+ * Three points is the smallest buffer that can close, which is what makes the
+ * `closes`/`too-few` pair testable from one helper.
+ */
+function drawing(...points: readonly Point[]): World {
+  const world = new World();
+  world.activeClass = "lane";
+  world.send(...points.map((point) => down(point)));
+  return world;
+}
+
+const PENDING: readonly Point[] = [
+  [200, 200],
+  [260, 200],
+  [260, 260],
+];
 
 function scene(selection: Selection = EMPTY_SELECTION): Scene {
   return { document: sceneDocument(), selection, tolerances: assetTolerances(1) };
@@ -195,14 +225,68 @@ describe("a drawing tool outranks every grip, and the cursor has to say so", () 
   it("keeps the crosshair while a shape is being drawn", () => {
     for (const type of ["drawing-bbox", "drawing-polygon"] as const) {
       const world = worldIn(type);
-      const answer = affordanceAt(
-        world.state,
-        { document: world.store.rendered, selection: world.store.selection, tolerances: world.tolerances },
-        toolOf(type),
-        BOX_NW,
-      );
+      const answer = affordanceAt(world.state, sceneOfWorld(world), toolOf(type), BOX_NW);
       expect(answer, type).toEqual({ cursor: "crosshair", hot: NO_TARGET });
     }
+  });
+});
+
+describe("mid-session, the cursor says whether this click would close the polygon", () => {
+  it("offers a pointer over the first vertex, and the press does close there", () => {
+    const world = drawing(...PENDING);
+    const where = sceneOfWorld(world);
+    expect(affordanceAt(world.state, where, "polygon", PENDING[0])).toEqual({
+      cursor: "pointer",
+      hot: NO_TARGET,
+    });
+    // Asserted in the same `it` as the cursor that predicted it — #43's rule, and
+    // the only thing that stops the two drifting apart.
+    world.dispatch(down(PENDING[0]));
+    expect(world.state).toBe(IDLE);
+    expect(world.minted).toBe(1);
+  });
+
+  it("keeps the crosshair over the last vertex, which is not the one that closes", () => {
+    const world = drawing(...PENDING);
+    const answer = affordanceAt(world.state, sceneOfWorld(world), "polygon", PENDING[2]);
+    expect(answer).toEqual({ cursor: "crosshair", hot: NO_TARGET });
+  });
+
+  it("keeps the crosshair just outside the ring", () => {
+    const world = drawing(...PENDING);
+    // 11 asset px at zoom 1, one past CLOSE_POLYGON_TOLERANCE_PX.
+    const outside: Point = [PENDING[0][0] + 11, PENDING[0][1]];
+    expect(affordanceAt(world.state, sceneOfWorld(world), "polygon", outside).cursor).toBe(
+      "crosshair",
+    );
+  });
+
+  it("shows no pointer while the session is too short to close, and the press agrees", () => {
+    const world = drawing(PENDING[0], PENDING[1]);
+    const where = sceneOfWorld(world);
+    // `too-few`: the press there does nothing at all, so promising a close would be
+    // #43's `default`-over-an-`edge` mistake pointed the other way.
+    expect(affordanceAt(world.state, where, "polygon", PENDING[0]).cursor).toBe("crosshair");
+    const before = world.state;
+    world.dispatch(down(PENDING[0]));
+    expect(world.state).toBe(before);
+    expect(world.minted).toBe(0);
+  });
+
+  it("measures the ring from where the vertex landed, not from where the pointer is", () => {
+    // The first vertex was clamped onto the asset's left edge; the pointer is
+    // outside the image. An unclamped comparison here puts the cursor and the press
+    // on opposite sides of the ring — the one disagreement this module forbids.
+    const world = drawing([-40, 200], [260, 200], [260, 260]);
+    const where = sceneOfWorld(world);
+    const outsideTheImage: Point = [-40, 200];
+    expect(affordanceAt(world.state, where, "polygon", outsideTheImage)).toEqual({
+      cursor: "pointer",
+      hot: NO_TARGET,
+    });
+    world.dispatch(down(outsideTheImage));
+    expect(world.state).toBe(IDLE);
+    expect(world.minted).toBe(1);
   });
 });
 
@@ -322,12 +406,15 @@ describe("the cursor table", () => {
     // The union is vocabulary, and vocabulary nobody speaks is dead weight that
     // reads as capability. Every member has to come out of a real call: the four
     // resize keywords from the grips, `move` from a body, `crosshair` from a
-    // drawing tool, `default` from empty canvas.
+    // drawing tool, `default` from empty canvas, `pointer` from the first vertex of
+    // a polygon long enough to close.
+    const closeable = drawing(...PENDING);
     const produced = new Set<Cursor>([
       ...BBOX_HANDLES.map((handle) => at(IDLE, GRIP_POSITIONS[handle]).cursor),
       at(IDLE, BOX_BODY).cursor,
       at(IDLE, EMPTY_POINT, "bbox").cursor,
       at(IDLE, EMPTY_POINT).cursor,
+      affordanceAt(closeable.state, sceneOfWorld(closeable), "polygon", PENDING[0]).cursor,
     ]);
     expect(produced).toEqual(new Set(Object.keys(KNOWN_CURSORS)));
   });
