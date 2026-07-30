@@ -7,22 +7,24 @@
  * on read. A test that swapped documents by hand would prove the shape of this
  * file and nothing about the pairing.
  *
- * `#39` will replace these ad-hoc closures with real commands. The behaviour
- * asserted here is what it has to keep.
+ * #39 has since replaced the ad-hoc closures this file used to carry with the
+ * real store and the real commands. Every assertion below is the one it inherited.
  */
 
 import { describe, expect, it } from "vitest";
 
-import type { Annotation, AnnotationSchema, AssetDescriptor } from "../types";
-import { CommandLog, type Command } from "./commandLog";
+import { annotation, documentOf } from "./_sample";
 import {
-  addAnnotation,
+  addAnnotationCommand,
+  removeAnnotationsCommand,
+  replaceAnnotationCommand,
+} from "./commands";
+import {
   annotationsInDrawOrder,
-  createDocument,
   removeAnnotations,
   replaceAnnotation,
-  type AnnotationDocument,
 } from "./document";
+import { AnnotatorStore } from "./store";
 import {
   EMPTY_SELECTION,
   clearSelection,
@@ -37,53 +39,6 @@ import {
   selectionOf,
   toggleSelection,
 } from "./selection";
-
-const ASSET: AssetDescriptor = { id: "asset-1", width: 640, height: 480 };
-const SCHEMA: AnnotationSchema = {
-  project_id: "project-1",
-  version: 1,
-  classes: [{ name: "sign", geometry: "bbox", color: "#ff0000", attributes: [] }],
-};
-
-function annotation(id: string, x = 0): Annotation {
-  return {
-    id,
-    asset_id: ASSET.id,
-    label_class: "sign",
-    schema_version: 1,
-    geometry: { type: "bbox", x, y: 0, width: 10, height: 10 },
-    attributes: {},
-    provenance: "human",
-    model_ref: null,
-    confidence: null,
-  };
-}
-
-function documentOf(...ids: readonly string[]): AnnotationDocument {
-  return createDocument(ASSET, SCHEMA, ids.map((id) => annotation(id)));
-}
-
-/**
- * A command over a document held in a closure — the smallest thing that makes
- * `CommandLog` operate on real state. #39 owns the real ones.
- */
-function editing(
-  hold: { document: AnnotationDocument },
-  label: string,
-  apply: (document: AnnotationDocument) => AnnotationDocument,
-): Command {
-  let before: AnnotationDocument;
-  return {
-    label,
-    execute: () => {
-      before = hold.document;
-      hold.document = apply(hold.document);
-    },
-    undo: () => {
-      hold.document = before;
-    },
-  };
-}
 
 describe("picking things", () => {
   it("starts empty", () => {
@@ -163,19 +118,16 @@ describe("selection is not document state", () => {
 
 describe("across undo and redo", () => {
   it("survives an edit, its undo and its redo untouched", () => {
-    const hold = { document: documentOf("a", "b", "c") };
-    const log = new CommandLog();
-    const selection = selectionOf(["a", "c"]);
-    const picked = () => selectedAnnotations(hold.document, selection).map((a) => a.id);
+    const store = new AnnotatorStore(documentOf("a", "b", "c"), selectionOf(["a", "c"]));
+    const picked = () =>
+      selectedAnnotations(store.document, store.selection).map((a) => a.id);
 
     expect(picked()).toEqual(["a", "c"]);
-    log.execute(
-      editing(hold, "move a", (document) => replaceAnnotation(document, annotation("a", 50))),
-    );
+    store.execute(replaceAnnotationCommand(annotation("a", 50)));
     expect(picked()).toEqual(["a", "c"]);
-    expect(log.undo()).toBe(true);
+    expect(store.undo()).toBe(true);
     expect(picked()).toEqual(["a", "c"]);
-    expect(log.redo()).toBe(true);
+    expect(store.redo()).toBe(true);
     expect(picked()).toEqual(["a", "c"]);
   });
 
@@ -183,18 +135,17 @@ describe("across undo and redo", () => {
     // The whole reason resolution happens on read. The id never left the set, so
     // undoing the delete makes it resolve again — and nothing anywhere had to
     // coordinate a prune with the command log to achieve it.
-    const hold = { document: documentOf("a", "b") };
-    const log = new CommandLog();
-    const selection = selectionOf(["a", "b"]);
-    const picked = () => selectedAnnotations(hold.document, selection).map((a) => a.id);
+    const store = new AnnotatorStore(documentOf("a", "b"), selectionOf(["a", "b"]));
+    const picked = () =>
+      selectedAnnotations(store.document, store.selection).map((a) => a.id);
 
-    log.execute(editing(hold, "delete a", (document) => removeAnnotations(document, ["a"])));
+    store.execute(removeAnnotationsCommand(["a"]));
     expect(picked()).toEqual(["b"]);
 
-    expect(log.undo()).toBe(true);
+    expect(store.undo()).toBe(true);
     expect(picked()).toEqual(["a", "b"]);
 
-    expect(log.redo()).toBe(true);
+    expect(store.redo()).toBe(true);
     expect(picked()).toEqual(["b"]);
   });
 
@@ -202,31 +153,30 @@ describe("across undo and redo", () => {
     // #39's property test in miniature, from the selection's side: whatever the
     // log does to the document, the selection at the end is the selection at the
     // start, because it was never in the log.
-    const hold = { document: documentOf("a", "b") };
-    const log = new CommandLog();
-    const selection = selectionOf(["a", "b"]);
-    const picked = () => selectedAnnotations(hold.document, selection).map((a) => a.id);
+    const store = new AnnotatorStore(documentOf("a", "b"), selectionOf(["a", "b"]));
+    const picked = () =>
+      selectedAnnotations(store.document, store.selection).map((a) => a.id);
 
-    log.execute(editing(hold, "add c", (d) => addAnnotation(d, annotation("c"))));
-    log.execute(editing(hold, "delete b", (d) => removeAnnotations(d, ["b"])));
-    log.execute(editing(hold, "move a", (d) => replaceAnnotation(d, annotation("a", 5))));
+    store.execute(addAnnotationCommand(annotation("c")));
+    store.execute(removeAnnotationsCommand(["b"]));
+    store.execute(replaceAnnotationCommand(annotation("a", 5)));
     expect(picked()).toEqual(["a"]);
 
-    while (log.undo()) {
+    while (store.undo()) {
       /* unwind everything */
     }
-    expect(annotationsInDrawOrder(hold.document).map((a) => a.id)).toEqual(["a", "b"]);
+    expect(annotationsInDrawOrder(store.document).map((a) => a.id)).toEqual(["a", "b"]);
     expect(picked()).toEqual(["a", "b"]);
   });
 
   it("does not put a selection change into the log", () => {
     // Selection is not a command. If it were, Ctrl+Z after a click would undo the
     // click and the log would fill with entries for looking at things.
-    const log = new CommandLog();
-    let selection = selectionOf(["a"]);
-    selection = selectAlso(selection, "b");
-    expect(log.canUndo).toBe(false);
-    expect([...selection].sort()).toEqual(["a", "b"]);
+    const store = new AnnotatorStore(documentOf("a", "b"), selectionOf(["a"]));
+    store.select(selectAlso(store.selection, "b"));
+
+    expect(store.canUndo).toBe(false);
+    expect([...store.selection].sort()).toEqual(["a", "b"]);
   });
 });
 
@@ -239,16 +189,16 @@ describe("compacting, which is optional because it is lossy", () => {
   it("is what makes undo stop restoring a selection", () => {
     // Stated as a test so the trade-off is not discovered by surprise: compacting
     // after a delete is exactly what forfeits the previous block's behaviour.
-    const hold = { document: documentOf("a", "b") };
-    const log = new CommandLog();
-    let selection = selectionOf(["a", "b"]);
+    const store = new AnnotatorStore(documentOf("a", "b"), selectionOf(["a", "b"]));
 
-    log.execute(editing(hold, "delete a", (d) => removeAnnotations(d, ["a"])));
-    selection = compactSelection(selection, hold.document);
-    log.undo();
+    store.execute(removeAnnotationsCommand(["a"]));
+    store.select(compactSelection(store.selection, store.document));
+    store.undo();
 
-    expect(annotationsInDrawOrder(hold.document).map((a) => a.id)).toEqual(["a", "b"]);
-    expect(selectedAnnotations(hold.document, selection).map((a) => a.id)).toEqual(["b"]);
+    expect(annotationsInDrawOrder(store.document).map((a) => a.id)).toEqual(["a", "b"]);
+    expect(selectedAnnotations(store.document, store.selection).map((a) => a.id)).toEqual([
+      "b",
+    ]);
   });
 
   it("leaves a selection the document fully holds alone", () => {
