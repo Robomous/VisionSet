@@ -23,13 +23,11 @@
 
 import { describe, expect, it } from "vitest";
 
+import { mulberry32, SEEDS } from "../_random";
 import { documentOf } from "./_sample";
-import { mulberry32, randomCommand, type RandomWorld } from "./_random";
+import { randomCommand, type RandomWorld } from "./_random";
 import { annotationsInDrawOrder } from "./document";
 import { AnnotatorStore } from "./store";
-
-/** Arbitrary and fixed. More seeds cost milliseconds; fewer cover less. */
-const SEEDS = [1, 7, 42, 1337, 90210, 2026] as const;
 
 const START = ["a", "b", "c"] as const;
 const STEPS = 40;
