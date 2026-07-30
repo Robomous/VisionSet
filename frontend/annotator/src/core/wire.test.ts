@@ -8,34 +8,27 @@
  * package that must not depend on `@visionset/ui-core` can show its hand-written
  * types still agree with the kernel's union.
  *
- * The fixture is read through `import.meta.url` rather than a relative path, so
- * it does not matter what vitest's working directory is.
+ * The fixture is loaded by `_fixture.ts`, through `import.meta.url` rather than a
+ * relative path, so it does not matter what vitest's working directory is.
  */
-
-import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { GEOMETRY_TYPES, IMPLEMENTED_GEOMETRY_TYPES } from "./types";
-import { ANNOTATION_KEYS, WireFormatError, parseAnnotation, parseGeometry } from "./wire";
-
-interface Fixture {
-  readonly annotations: readonly unknown[];
-  readonly geometry_types: readonly string[];
-  readonly implemented_geometry_types: readonly string[];
-}
-
-const FIXTURE_URL = new URL(
-  "../../../../tests/fixtures/wire_annotations.json",
-  import.meta.url,
-);
-
-const fixture = JSON.parse(readFileSync(FIXTURE_URL, "utf8")) as Fixture;
-
-/** A known-good annotation to mutate into each malformed case. */
-function sample(): Record<string, unknown> {
-  return structuredClone(fixture.annotations[0]) as Record<string, unknown>;
-}
+import { fixture, sampleAnnotation as sample } from "./_fixture";
+import { ATTRIBUTE_KINDS, GEOMETRY_TYPES, IMPLEMENTED_GEOMETRY_TYPES } from "./types";
+import {
+  ANNOTATION_CREATE_KEYS,
+  ANNOTATION_KEYS,
+  ANNOTATION_UPDATE_KEYS,
+  WireFormatError,
+  parseAnnotation,
+  parseAssetDescriptor,
+  parseGeometry,
+  parseLabelClass,
+  parseSchema,
+  toAnnotationCreate,
+  toAnnotationUpdate,
+} from "./wire";
 
 describe("the geometry vocabulary", () => {
   it("names every geometry the kernel can address", () => {
@@ -191,5 +184,144 @@ describe("bounds, which belong to the kernel and are not restated here", () => {
         ],
       }),
     ).not.toThrow();
+  });
+});
+
+describe("the attribute vocabulary", () => {
+  it("names every kind the kernel's Attribute accepts", () => {
+    // `Attribute.kind` is a Literal spelled inline in the wire model, so nothing
+    // structural ties this union to that one. This is the tie.
+    expect([...ATTRIBUTE_KINDS].sort()).toEqual([...fixture.attribute_kinds]);
+  });
+});
+
+describe("parsing the schema the kernel produced", () => {
+  it("parses it, and finds a class per carryable geometry", () => {
+    const schema = parseSchema(fixture.schema);
+    expect(schema.classes.map((c) => c.geometry).sort()).toEqual([
+      ...fixture.implemented_geometry_types,
+    ]);
+  });
+
+  it("round-trips without dropping or renaming a field", () => {
+    expect(JSON.parse(JSON.stringify(parseSchema(fixture.schema)))).toEqual(
+      fixture.schema,
+    );
+  });
+
+  it("reads both states of every optional field", () => {
+    // The fixture carries a populated class and a bare one precisely so this can
+    // be asserted; a mirror only ever handed values leaves the null branch dead.
+    const classes = parseSchema(fixture.schema).classes;
+    expect(new Set(classes.map((c) => c.color === null))).toEqual(new Set([true, false]));
+    expect(new Set(classes.map((c) => c.attributes.length === 0))).toEqual(
+      new Set([true, false]),
+    );
+    const attributes = classes.flatMap((c) => c.attributes);
+    expect(new Set(attributes.map((a) => a.options === null))).toEqual(
+      new Set([true, false]),
+    );
+    expect(new Set(attributes.map((a) => a.default === null))).toEqual(
+      new Set([true, false]),
+    );
+  });
+
+  it("applies the wire's own defaults when an optional key is absent", () => {
+    // Rule 4: the schema is input-only, so absence is legal here where it is not
+    // for an annotation. A host assembling a class by hand writes two fields.
+    const parsed = parseLabelClass({ name: "sign", geometry: "bbox" });
+    expect(parsed).toEqual({
+      name: "sign",
+      geometry: "bbox",
+      color: null,
+      attributes: [],
+    });
+  });
+
+  it("still refuses a key the contract does not declare", () => {
+    // Optional is not the same as anything-goes: an unknown key is a caller bug
+    // whether or not the payload is ever handed back.
+    expect(() =>
+      parseLabelClass({ name: "sign", geometry: "bbox", colour: "#fff" }),
+    ).toThrow(WireFormatError);
+  });
+
+  it("accepts a class declaring a geometry no annotation can carry", () => {
+    // Eight names, three models. A schema may legally say `polyline`; refusing it
+    // here would make one such class cost the whole class list.
+    const parsed = parseLabelClass({ name: "lane", geometry: "polyline" });
+    expect(parsed.geometry).toBe("polyline");
+  });
+
+  it("refuses a geometry that is not in the vocabulary at all", () => {
+    expect(() => parseLabelClass({ name: "lane", geometry: "squiggle" })).toThrow(
+      /not a GeometryType/,
+    );
+  });
+
+  it("refuses an attribute kind the domain does not have", () => {
+    expect(() =>
+      parseLabelClass({
+        name: "sign",
+        geometry: "bbox",
+        attributes: [{ name: "note", kind: "text" }],
+      }),
+    ).toThrow(/kind "text" is not one of/);
+  });
+});
+
+describe("parsing the asset the kernel produced", () => {
+  it("takes the three fields an engine can use and ignores the rest", () => {
+    const asset = parseAssetDescriptor(fixture.asset);
+    expect(Object.keys(asset).sort()).toEqual(["height", "id", "width"]);
+    expect(asset.width).toBeGreaterThan(0);
+    expect(asset.height).toBeGreaterThan(0);
+  });
+
+  it("refuses an asset whose dimensions were never measured", () => {
+    // `AssetOut.width`/`height` are `int | None` because a pre-pipeline row has
+    // never been probed. There is no honest default: geometry here is native
+    // pixels, so no frame means nothing to be native to.
+    const unmeasured = { ...(fixture.asset as object), width: null, height: null };
+    expect(() => parseAssetDescriptor(unmeasured)).toThrow(/no measured width and height/);
+  });
+
+  it("refuses an asset missing a dimension key entirely", () => {
+    // Absent is told apart from null: one is a payload that is not an AssetOut,
+    // the other is an AssetOut for an asset nobody has measured.
+    const truncated = structuredClone(fixture.asset) as Record<string, unknown>;
+    delete truncated["width"];
+    expect(() => parseAssetDescriptor(truncated)).toThrow(/missing width/);
+  });
+});
+
+describe("what leaves for the API", () => {
+  it("drops id and schema_version from a create", () => {
+    // Both are provisional locally and the service owns both, so a field here
+    // would be one a client could set and never observe.
+    const annotation = parseAnnotation(fixture.annotations[0]);
+    const create = toAnnotationCreate(annotation);
+    expect(Object.keys(create).sort()).toEqual([...ANNOTATION_CREATE_KEYS].sort());
+    expect(create).not.toHaveProperty("id");
+    expect(create).not.toHaveProperty("schema_version");
+  });
+
+  it("keeps the id on an update and drops asset_id", () => {
+    // An update is addressed by id and by nothing else; the stored asset wins, so
+    // moving a label to another asset is a delete and an add.
+    const annotation = parseAnnotation(fixture.annotations[0]);
+    const update = toAnnotationUpdate(annotation);
+    expect(Object.keys(update).sort()).toEqual([...ANNOTATION_UPDATE_KEYS].sort());
+    expect(update.id).toBe(annotation.id);
+    expect(update).not.toHaveProperty("asset_id");
+    expect(update).not.toHaveProperty("schema_version");
+  });
+
+  it("carries the geometry through untouched", () => {
+    for (const raw of fixture.annotations) {
+      const annotation = parseAnnotation(raw);
+      expect(toAnnotationCreate(annotation).geometry).toEqual(annotation.geometry);
+      expect(toAnnotationUpdate(annotation).geometry).toEqual(annotation.geometry);
+    }
   });
 });

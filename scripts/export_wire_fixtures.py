@@ -1,7 +1,7 @@
-"""Export kernel-produced annotation payloads to tests/fixtures/wire_annotations.json.
+"""Export kernel-produced payloads to tests/fixtures/wire_annotations.json.
 
 The committed fixture is how the TypeScript annotator proves its hand-written
-mirror of the geometry union still matches this one. It cannot read the Python
+mirror of the wire contract still matches this one. It cannot read the Python
 models, and `frontend/annotator` must not depend on `@visionset/ui-core` to
 reach the generated client — that package carries `openapi-fetch` as a runtime
 dependency, and the annotator's contract is "no HTTP, no fetching". So the
@@ -12,6 +12,13 @@ Two gates, sharing no toolchain, exactly like the spec and its client:
 `frontend/annotator/src/core/wire.test.ts` keeps the TypeScript matching this
 file. The frontend CI job installs no Python and reads only what is committed.
 
+#40 widened it from annotations alone to **the three inputs an annotator document
+is built from** — an asset, a schema and the annotations on that asset — because
+the document takes a schema as typed input and a hand-written TypeScript schema
+fixture would be the second spelling this whole arrangement exists to prevent.
+The filename stays `wire_annotations.json`: renaming a committed artifact for
+tidiness would churn three paths for nothing.
+
 Usage: uv run python scripts/export_wire_fixtures.py
 """
 
@@ -20,7 +27,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -31,14 +38,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tests.fixtures.samples import ANNOTATION, GEOMETRIES  # noqa: E402
+from tests.fixtures.samples import ANNOTATION, ASSET, GEOMETRIES, SCHEMA_VERSION  # noqa: E402
 
 from visionset.kernel.domain import (  # noqa: E402
     IMPLEMENTED_GEOMETRIES,
     Annotation,
+    AnnotationSchema,
+    Attribute,
     GeometryType,
+    LabelClass,
 )
-from visionset.server.models import AnnotationOut  # noqa: E402
+from visionset.server.models import AnnotationOut, AssetOut, SchemaVersionOut  # noqa: E402
 
 OUTPUT_PATH = "tests/fixtures/wire_annotations.json"
 
@@ -47,10 +57,47 @@ OUTPUT_PATH = "tests/fixtures/wire_annotations.json"
 # drift gate would fail for a reason nobody chose. Derived rather than typed out,
 # so "these are fixed deliberately" is structural.
 _ASSET_ID = uuid5(NAMESPACE_URL, "visionset/wire-fixture/asset")
+_PROJECT_ID = uuid5(NAMESPACE_URL, "visionset/wire-fixture/project")
+_SOURCE_ID = uuid5(NAMESPACE_URL, "visionset/wire-fixture/source")
 
 
 def _annotation_id(name: str) -> UUID:
     return uuid5(NAMESPACE_URL, f"visionset/wire-fixture/annotation/{name}")
+
+
+def _schema() -> AnnotationSchema:
+    """One class per carryable geometry, and every optional field in both states.
+
+    ``samples.SCHEMA_VERSION``'s single class is fully populated — a colour and a
+    ``select`` attribute carrying options and a default — so it proves the
+    populated half. The other two exist for the empty half: a mirror where
+    ``color`` is never null and ``attributes`` is never empty leaves those
+    branches unparsed, which is the same gap the "bare" annotation below closes.
+
+    One class per geometry is not decoration either: an annotator picks a class
+    and gets a geometry, so #43-#45 each need one to draw with.
+    """
+    populated = SCHEMA_VERSION.classes[0]
+    assert populated.geometry is GeometryType.BBOX, "the sample class is the bbox one"
+    return AnnotationSchema(
+        project_id=_PROJECT_ID,
+        version=SCHEMA_VERSION.version,
+        classes=(
+            populated,
+            # No colour, no attributes. A renderer must choose its own colour for
+            # this one, and the parser must accept the keys being absent.
+            LabelClass(name="lane", geometry=GeometryType.POLYGON),
+            # An attribute with every optional at its default: not required, no
+            # options, no default. `select` is the only kind that may carry
+            # options, so this is the other side of `populated`'s attribute.
+            LabelClass(
+                name="weather",
+                geometry=GeometryType.CLASSIFICATION_TAG,
+                color="#00ff00",
+                attributes=(Attribute(name="note", kind="string"),),
+            ),
+        ),
+    )
 
 
 def build_fixture() -> dict[str, Any]:
@@ -87,12 +134,24 @@ def build_fixture() -> dict[str, Any]:
             confidence=None,
         )
     )
+    # `samples.ASSET` carries three `uuid4()`s, so they are pinned to derived ones
+    # for the reason `_ASSET_ID` exists. Everything else — the dimensions the
+    # annotator needs, the format, the frame provenance — is the sample's.
+    asset = ASSET.model_copy(
+        update={"id": _ASSET_ID, "project_id": _PROJECT_ID, "source_id": _SOURCE_ID}
+    )
     return {
-        # Built through the server's wire model, not `visionset.wire`: the
-        # annotator talks HTTP, and `AnnotationOut` is what `openapi.json` is
-        # generated from, so this fixture and the generated client cannot
-        # disagree about a field name.
+        # Built through the server's wire models, not `visionset.wire`: the
+        # annotator talks HTTP, and these are what `openapi.json` is generated
+        # from, so this fixture and the generated client cannot disagree about a
+        # field name.
         "annotations": [AnnotationOut.of(a).model_dump(mode="json") for a in annotations],
+        "asset": AssetOut.of(asset).model_dump(mode="json"),
+        "schema": SchemaVersionOut.of(_schema()).model_dump(mode="json"),
+        # The four `Attribute.kind` values, read off the model rather than typed
+        # out — the `geometry_types` bargain, so a fifth kind reaches the
+        # annotator as a failing test instead of as a payload it cannot describe.
+        "attribute_kinds": sorted(get_args(Attribute.model_fields["kind"].annotation)),
         "geometry_types": sorted(g.value for g in GeometryType),
         "implemented_geometry_types": sorted(g.value for g in IMPLEMENTED_GEOMETRIES),
     }

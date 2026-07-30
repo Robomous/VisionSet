@@ -81,6 +81,25 @@
       "schema_version": 1
     }
   ],
+  "asset": {
+    "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "format": "png",
+    "frame_index": 4,
+    "frame_timestamp": 0.8,
+    "height": 120,
+    "id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+    "modality": "image",
+    "project_id": "7ea854f2-431a-54a0-b09c-ab53adb21f5b",
+    "source_id": "2f655c84-f276-5c65-b67a-0974558a5673",
+    "thumbnail_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "width": 160
+  },
+  "attribute_kinds": [
+    "boolean",
+    "number",
+    "select",
+    "string"
+  ],
   "geometry_types": [
     "bbox",
     "classification_tag",
@@ -95,5 +114,48 @@
     "bbox",
     "classification_tag",
     "polygon"
-  ]
+  ],
+  "schema": {
+    "classes": [
+      {
+        "attributes": [
+          {
+            "default": "clean",
+            "kind": "select",
+            "name": "condition",
+            "options": [
+              "clean",
+              "faded"
+            ],
+            "required": true
+          }
+        ],
+        "color": "#ff0000",
+        "geometry": "bbox",
+        "name": "sign"
+      },
+      {
+        "attributes": [],
+        "color": null,
+        "geometry": "polygon",
+        "name": "lane"
+      },
+      {
+        "attributes": [
+          {
+            "default": null,
+            "kind": "string",
+            "name": "note",
+            "options": null,
+            "required": false
+          }
+        ],
+        "color": "#00ff00",
+        "geometry": "classification_tag",
+        "name": "weather"
+      }
+    ],
+    "project_id": "7ea854f2-431a-54a0-b09c-ab53adb21f5b",
+    "version": 3
+  }
 }
