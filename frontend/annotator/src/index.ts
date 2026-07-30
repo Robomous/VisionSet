@@ -96,13 +96,50 @@ export {
   type VertexHit,
 } from "./core/geometry/hitTest";
 export {
+  CLICK_SLOP_PX,
   CLOSE_POLYGON_TOLERANCE_PX,
   EDGE_TOLERANCE_PX,
   HANDLE_TOLERANCE_PX,
   SHAPE_TOLERANCE_PX,
   VERTEX_TOLERANCE_PX,
+  assetTolerances,
   toleranceInAssetPixels,
+  type Tolerances,
 } from "./core/geometry/tolerance";
+// Interaction (#42) — the state machine: states, events, effects, and the runner
+export {
+  IDLE,
+  type InteractionState,
+  type InteractionStateType,
+  type MovableGeometry,
+} from "./core/interaction/state";
+export {
+  NO_MODIFIERS,
+  isToggleModifier,
+  type InteractionEvent,
+  type InteractionEventType,
+  type Modifiers,
+  type PointerButton,
+} from "./core/interaction/events";
+export { NO_EFFECTS, type Effect, type EffectKind } from "./core/interaction/effects";
+export { drawableGeometry, toolFor, type Tool } from "./core/interaction/tool";
+export {
+  NO_TARGET,
+  nearestInsertion,
+  resolveTarget,
+  type Insertion,
+  type Scene,
+  type Target,
+} from "./core/interaction/target";
+export { draftAnnotation } from "./core/interaction/draft";
+export {
+  TRANSITIONS,
+  transition,
+  type InteractionContext,
+  type Transition,
+  type Turn,
+} from "./core/interaction/machine";
+export { runEffects } from "./core/interaction/runEffects";
 
 // Host adapters — each needs a capability the headless core may not name
 export { randomUuid } from "./adapters/ids";

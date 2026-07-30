@@ -33,8 +33,9 @@
  *
  * No document-shaped overload. `topmostAnnotationAt` takes the array so that
  * `geometry/` imports nothing from `state/` and stays a leaf — and so that a caller
- * can hand it a subset, which #45 wants when it tests the selected annotations'
- * grips before testing anything's body. A convenience taking an
+ * can hand it a subset, which #42 wants when it tests the selected annotations'
+ * grips before testing anything's body — `interaction/target.ts` is that caller.
+ * A convenience taking an
  * `AnnotationDocument` would cost that for one line at the call site.
  */
 
