@@ -20,6 +20,7 @@ artifact is always the pip package).
 | Lint/format | `uv run ruff check .` / `uv run ruff format .` |
 | Frontend build + tests | `pnpm -r build && pnpm test` |
 | Frontend lint | `pnpm -r lint` |
+| Annotator headless boundary | `pnpm --filter @visionset/annotator lint` |
 | Version sync | `pnpm version:check` |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
 | Generated API client | `pnpm generate:client` (commit the diff) |
@@ -31,8 +32,13 @@ artifact is always the pip package).
    `visionset.mcp`, `visionset.formats`, nor `fastapi`/`typer`/`mcp`/`uvicorn`. Enforced by
    `import-linter` (contracts in `pyproject.toml`) and a fresh-process pytest in
    `tests/architecture/`.
-2. **Headless annotator** — `frontend/annotator/src/core/` never imports React. Enforced by
-   an ESLint `no-restricted-imports` rule scoped to `src/core/`.
+2. **Headless annotator** — `frontend/annotator/src/core/` never imports React and never reaches
+   the DOM. Enforced by three gates, all run by `pnpm --filter @visionset/annotator lint`:
+   an ESLint `no-restricted-imports` rule and an ESLint `no-restricted-globals` rule, both scoped
+   to `src/core/`, plus `tsconfig.core.json` — a `noEmit` pass that compiles the shipped engine
+   with **no `DOM` lib and no ambient `@types`**, which is the only one of the three that can see a
+   DOM type in a *signature*. `tests/scripts/annotator_boundary.test.mjs` proves each of them
+   fires.
 
 If a change fights either boundary, the change is wrong — not the boundary.
 
@@ -86,8 +92,10 @@ increments; every commit should leave the checks above green.
 
 - New kernel behavior ships with tests under `tests/kernel/`.
 - Anything touching the plugin surface proves discoverability via `importlib.metadata`.
-- Frontend logic in `annotator/src/core/` is unit-tested with vitest (it is pure TS — no DOM
-  needed).
+- Frontend logic in `annotator/src/core/` is unit-tested with vitest. It needs no DOM because it
+  cannot have one: see boundary 2 above. The test files themselves are the one part of `src/core/`
+  the type gate excludes — they run under Node and read a kernel-written fixture through `node:fs`
+  — so the ESLint half is what covers them.
 - Never commit fixture media. `**/workspace-data/` is git-ignored for a reason (v1 shipped
   929 MB of images into git history; we do not repeat that).
 - Generate media instead: `tests/fixtures/media.py` writes tiny images (Pillow) and tiny
