@@ -22,6 +22,25 @@
  * `if (activeTool !== "select") return;` guard on every start-move handler, kept,
  * minus the escape hatch.
  *
+ * ## The active class itself is the HOST's, and stays there
+ *
+ * Nothing in `core/` stores it. It arrives as `InteractionContext.labelClass` on
+ * every turn, and `finishDrawing` stamps it onto the annotation the gesture
+ * produced — which is the whole of #43's "class assignment from the active class".
+ * Moving it into `AnnotatorStore` was considered when #43 landed and declined: the
+ * store is the *document* and its history, and an active class is neither. It is
+ * not undoable, it survives no reload, and putting it in the history would make
+ * Ctrl+Z step through palette clicks. A palette is a host concern; #47 holds one
+ * piece of React state and passes it down.
+ *
+ * What the host owes in exchange is one line, stated here so #47 inherits it
+ * rather than rediscovering it: **when the class changes such that `toolFor`
+ * returns a different tool, send `tool-changed`.** Not on every class change — a
+ * switch from one bbox class to another leaves a half-drawn box perfectly valid,
+ * and `drawing-bbox` captured its class at the press anyway, so nothing is
+ * retargeted mid-drag. It is the *derived tool* moving that invalidates a gesture
+ * in flight, which is why the event is named for the tool and not for the class.
+ *
  * ## `select` has four causes, and they are not one fallthrough
  *
  * 1. **No active class.** Explicit select mode; #46 binds a key to it (v1's `v`).
