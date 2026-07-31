@@ -4,6 +4,11 @@ Product and architecture docs land here. Start with the repo-root
 [README](../README.md) and [CONTRIBUTING](../CONTRIBUTING.md); the architecture
 contracts (kernel purity, headless annotator) are described there and enforced in CI.
 
+The **visual** contract is [DESIGN.md](../DESIGN.md), also at the repository root
+rather than here — it is the file to read *before* building any screen, and the one
+`frontend/ui-core/src/styles.css` implements. Read it beside
+[annotations.md](annotations.md), which covers the annotator itself.
+
 | Doc | Covers |
 | --- | --- |
 | [workspaces.md](workspaces.md) | The workspace on disk: layout, `init`/`open`, which workspace a surface resolves to, project-name uniqueness, and how services are composed |

@@ -191,12 +191,17 @@ jobs:
       - name: Install chromium
         run: pnpm --filter @visionset/app exec playwright install --with-deps chromium
 
-      # `frontend/app` resolves `@visionset/annotator` through its `dist/`, so an
-      # unbuilt engine is served silently rather than failing to compile. The
-      # Playwright config builds it too; doing it here as well keeps the failure at
-      # a named step instead of inside a web-server log.
-      - name: Build the annotator
-        run: pnpm --filter @visionset/annotator build
+      # `frontend/app` resolves `@visionset/annotator` and `@visionset/ui-core`
+      # through their `dist/`, so an unbuilt workspace package is served silently
+      # rather than failing to compile — and on a clean checkout that is not one
+      # failing scenario, it is all of them hunting for a blank page. The Playwright
+      # config builds both too; doing it here as well keeps the failure at a named
+      # step instead of inside a web-server log. Dependency order: `ui-core`
+      # re-exports `classColor` from the annotator.
+      - name: Build the workspace packages
+        run: |
+          pnpm --filter @visionset/annotator build
+          pnpm --filter @visionset/ui-core build
 
       - name: Drive the demo
         run: pnpm --filter @visionset/app e2e
