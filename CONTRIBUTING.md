@@ -23,6 +23,7 @@ artifact is always the pip package).
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` |
 | Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) |
 | Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated |
+| Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror |
 | Version sync | `pnpm version:check` |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
 | Generated API client | `pnpm generate:client` (commit the diff) |

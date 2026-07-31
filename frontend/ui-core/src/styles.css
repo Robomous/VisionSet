@@ -1,0 +1,106 @@
+/*
+ * @visionset/ui-core — the design system's stylesheet.
+ *
+ * This file *is* the contract: Tailwind v4 reads `@theme` and every utility the
+ * package uses is generated from it, so `bg-primary` cannot mean anything other
+ * than what is written below. `DESIGN.md` at the repository root is the prose half
+ * and `src/tokens.ts` the TypeScript mirror; `tokens.test.ts` asserts this block
+ * and that module agree declaration for declaration, in both directions.
+ *
+ * A consuming app imports exactly this:
+ *
+ *     import "@visionset/ui-core/styles.css";
+ *
+ * and adds an `@source` for its own sources. Tailwind v4 is CSS-first: there is no
+ * `tailwind.config.js` anywhere in this repository and there must not be one, or
+ * the tokens acquire a second home.
+ */
+
+@import "tailwindcss";
+
+/*
+ * The package's own components, so a class string that only ever appears inside
+ * `ui-core` still produces CSS in the consumer's build. Relative to this file,
+ * which is what `@source` takes.
+ */
+@source ".";
+
+@theme {
+  /* Brand — an accent, never a surface fill. */
+  --color-primary: #eb5a47;
+  --color-primary-hover: #d94a37;
+  --color-primary-foreground: #ffffff;
+
+  /* Surfaces and ink. */
+  --color-background: #ffffff;
+  --color-foreground: #252949;
+  --color-card: #ffffff;
+  --color-card-foreground: #252949;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #252949;
+  --color-muted: #f6f8fa;
+  --color-muted-foreground: #57606a;
+
+  /* Lines and focus. */
+  --color-border: #d0d7de;
+  --color-input: #d0d7de;
+  --color-ring: #eb5a47;
+
+  /* Status. Success has no token yet — `DESIGN.md` records the one exception. */
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+
+  /* The dark rail (#58). */
+  --color-sidebar: #1f2937;
+  --color-sidebar-accent: #2d3748;
+  --color-sidebar-strong: #111827;
+  --color-sidebar-foreground: #ffffff;
+
+  /* Radius. `md` is the default — buttons, inputs, badges. */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* The rail's three widths, which three components have to agree on. */
+  --spacing-sidebar: 240px;
+  --spacing-sidebar-collapsed: 60px;
+  --spacing-sidebar-mobile: 280px;
+
+  /* One type scale. */
+  --text-meta: 0.75rem;
+  --text-body: 0.875rem;
+  --text-section: 1rem;
+  --text-page: 1.5rem;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  /*
+   * 14px base and line-height 1.6, which is the rhythm every measurement in
+   * `DESIGN.md` was taken against.
+   */
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-size: var(--text-body);
+    line-height: 1.6;
+  }
+
+  /*
+   * Accessible by default, and not per component. Real `<button>`/`<a>` elements
+   * get a visible ring wherever they are, so a screen cannot forget one — and it
+   * is `:focus-visible`, so a pointer user never sees it.
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}

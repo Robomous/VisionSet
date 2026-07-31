@@ -76,7 +76,12 @@ export default defineConfig({
   },
   webServer: {
     command:
-      "pnpm --filter @visionset/annotator build && vite build && vite preview --base /ui/ --port 5373 --strictPort",
+      "pnpm --filter @visionset/annotator build && " +
+      // In dependency order, and both of them: `frontend/app` resolves each through
+      // its `dist/`. See the note in `playwright.config.ts` — on a clean checkout an
+      // unbuilt workspace package is a blank page, not a compile error.
+      "pnpm --filter @visionset/ui-core build && " +
+      "vite build && vite preview --base /ui/ --port 5373 --strictPort",
     url: "http://localhost:5373/ui/",
     reuseExistingServer: false,
     timeout: 180_000,
