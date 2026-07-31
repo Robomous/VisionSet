@@ -49,6 +49,7 @@ visionset = "visionset.cli.main:app"
 # `visionset-format-x` package) register their plugins in this same group.
 [project.entry-points."visionset.formats"]
 dummy = "visionset.formats._dummy:DummyExporter"
+yolo = "visionset.formats.yolo:YoloDetectionExporter"
 
 [dependency-groups]
 dev = [
@@ -63,6 +64,15 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "import-linter>=2.0",
+]
+
+# The tool the YOLO exporter exists to feed, used by one smoke test (#62) and
+# deliberately NOT in `dev`: it brings torch, so it is roughly two gigabytes in
+# front of every `uv sync`. CI installs this group in its own job and sets
+# VISIONSET_REQUIRE_ULTRALYTICS=1, which turns the local skip into an error —
+# the ffmpeg rule from #22, for its reason.
+yolo = [
+    "ultralytics>=8.3",
 ]
 
 # --- Version: single source of truth is the repo-root VERSION file ---

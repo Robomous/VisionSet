@@ -249,6 +249,66 @@ the plugin runs (a plugin that clears its own subdirectory would otherwise take 
 when an earlier run left one behind. That is what keeps "an exporter that writes nothing reports
 zero" true, and keeps exporting twice into one directory agreeing with itself.
 
+### The YOLO detection format
+
+`yolo` is the first format here that writes anything, and it is a rewrite of v1's rather than a
+port. The layout:
+
+```
+data.yaml
+images/train/<content-hash>.png     labels/train/<content-hash>.txt
+images/val/…                        labels/val/…
+images/test/…                       labels/test/…
+visionset-export-report.json
+```
+
+Four of v1's decisions are deliberately not kept, and each was a way to be wrong quietly.
+
+**Classes come from the frozen schema, never from the annotations present.** v1 built its class
+index by sorting the names it found in the labels, so a class nobody had used yet vanished from
+`data.yaml` — and, worse, drawing the first box of a new class *renumbered every other class*. A
+model trained against one export and evaluated against the next is then wrong with nothing to
+report it. Here the order is `Manifest.classes`, the project's authored schema order frozen at
+publication, and every class gets an index whether or not anything uses it.
+
+**A read failure aborts.** v1 wrapped the image read in `except Exception: pass` and wrote the
+label file anyway, so one lost object produced a training set silently short of an image and
+carrying labels pointing at nothing. Every read goes through the `ContentReader` the kernel
+composes, and a missing or undecodable blob is `409 EXPORT_SOURCE_UNREADABLE` naming the asset.
+
+**Pixel dimensions are required.** v1 parsed `"WxH"` out of a string and fell back to `(1, 1)`,
+which does not fail — it divides by one and writes raw pixel coordinates into a file whose whole
+contract is that every number is a fraction. An asset with no recorded size is refused by name.
+
+**Files are named by content hash.** v1 used the original filename with a `_2` de-duplicating
+suffix, which makes the mapping depend on iteration order and lets one picture ingested from two
+directories land twice. A hash is stable across machines and runs and cannot collide. The cost is
+that the names are not human-readable, which a directory destined for a trainer does not need.
+
+Three details of `data.yaml` are ultralytics' contract rather than ours, and each was measured
+against its source rather than assumed:
+
+- **There is no `path:` key.** Ultralytics resolves a relative `path` against its own datasets
+  directory or the working directory of whatever process loads the file — so the obvious `path: .`
+  breaks the moment the export is copied. Omitted, it falls back to the yaml's own parent, which
+  is what makes the directory movable.
+- **`train` and `val` are both required**, and a missing key is a `SyntaxError` rather than a
+  default. A release published without a recipe is one undivided set, so `val` names the training
+  images: that says "there is no held-out set", where omitting the key says "this file is
+  malformed". `test` is optional and is written only when it has something in it.
+- **`images/` → `labels/` is a string substitution on the resolved image path**, not a configured
+  location, so those two directory names are load-bearing.
+
+An asset with nothing on it gets an **empty** label file rather than none: ultralytics reads a
+missing file as "nobody looked" and an empty one as "somebody looked and there is nothing here",
+and a detector needs the second.
+
+`yolo` is `lossy = True` unconditionally, because a label row is five numbers — attributes,
+confidence and provenance never survive — so every export in this format asks for consent. Its
+`supported_geometries` is `{bbox}`: a polygon is still written, as its axis-aligned bounding box,
+but its shape is gone, so #65's report counts it as not carried and says which classes and how
+many. A classification tag has no location at all and is dropped rather than given an invented box.
+
 ### The destination is the caller's
 
 `dest` is created if it is not there and is **not** emptied if it is — deleting files under a
@@ -294,8 +354,8 @@ would answer with a traceback instead of the list of installed formats. `visions
 prints that list without opening a workspace at all.
 
 `--allow-lossy` is the third gate word, never folded into `--yes` or `--allow-destructive`. And
-`dummy` — the only exporter this repository ships — writes nothing, so a `file_count` of 0 in its
-report is an export that ran, not one that failed.
+`dummy` writes nothing, so a `file_count` of 0 in its report is an export that ran, not one that
+failed. `yolo` is the real one; see [the YOLO format](#the-yolo-detection-format) below.
 
 When an export does leave something behind, the names go to **stderr** with the rest of the prose,
 so `visionset export … | xargs` still receives exactly the directory:
@@ -342,8 +402,8 @@ indistinguishable from a real recipe that said so.
 **Export is synchronous**, and that is a stated limit. The launch-and-poll pattern the ingest
 routes use needs a row to poll and a row needs a table, and M3's migration ledger is spent —
 inventing a second place to keep job state would be exactly the logic leaking upward this
-milestone watches for. The only installed format writes nothing today, so the wait is nil; M6
-brings real exporters and, with them, the case for a job. The archive comes back inline as
+milestone watches for. `yolo` writes one file per image and copies the pixels, so the wait is now
+real for a large release; the case for a job is filed rather than taken here. The archive comes back inline as
 `application/zip`, built from `<workspace>/exports/<release_id>/<format>/`, which is a
 server-owned directory like `uploads/`. The route clears it before each run so the archive
 describes *this* export and not the last one.
@@ -372,6 +432,7 @@ carries the identical body under `detail.compatibility`.
 | `NoSplitRecipe` | `assignment` was asked of a release published without one. Not an error in the release: no recipe means one undivided set, and inventing an all-train answer would be indistinguishable from a real one. |
 | `UnserializableManifest` | An annotation carries a NaN or infinite coordinate. `Geometry` accepts any float, so such a label can be stored; canonical JSON cannot express it, and writing `null` or the bare token `NaN` would lose data or produce a document no other tool can parse. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
+| `ExportSourceUnreadable` | The release names bytes an export cannot use — the blob is gone, or is not an image the format can write. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
 | `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service — the kernel never sees a name. |
 | `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Raised when the format declares itself lossy **or** when this release's own report is not clean, and it carries that report. Retryable with the flag, which is why a client must branch on the code and never on the 409. |
 
