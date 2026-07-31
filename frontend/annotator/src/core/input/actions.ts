@@ -71,7 +71,10 @@ import type { InteractionEvent } from "../interaction/events";
  * `Extract` rather than a hand-written pair: the vocabulary is `events.ts`'s and
  * this is a view of it, not a copy.
  */
-export type KeyIntent = Extract<InteractionEvent, { type: "cancel" | "commit" }>;
+export type KeyIntent = Extract<
+  InteractionEvent,
+  { type: "cancel" | "commit" | "take-back-point" }
+>;
 
 /**
  * Everything an action can hand back for the machine.

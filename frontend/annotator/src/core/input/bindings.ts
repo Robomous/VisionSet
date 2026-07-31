@@ -15,7 +15,7 @@
  * | `escape` | `send cancel` | **v1** `Escape`. `machine.ts` has one cancel rule per state, so v1's Escape-precedence bug is unrepresentable. |
  * | `enter` | `send commit` | **v1** `Enter`. `closeSession` keeps the `MIN_POLYGON_POINTS` gate. |
  * | `delete` | `delete-selection` | **v1** `Delete`, annotation arm only. |
- * | `backspace` | `delete-selection` | **v1** `Backspace`, same. |
+ * | `backspace` | take back the last polygon point | **#129**, and see below. |
  * | `mod+z` | `undo` | **NEW.** v1 has no undo at all. |
  * | `mod+shift+z` | `redo` | **NEW.** The only redo chord; see `keys.ts` on the `mod` fold. |
  * | `mod+a` | `select-all` | **NEW.** The other half of `delete-selection`. |
@@ -131,7 +131,21 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { chord: "escape", action: { kind: "send", event: { type: "cancel" } } },
   { chord: "enter", action: { kind: "send", event: { type: "commit" } } },
   { chord: "delete", action: { kind: "delete-selection" } },
-  { chord: "backspace", action: { kind: "delete-selection" } },
+  // `Backspace` is not a synonym for `Delete` any more, and that is #129's answer
+  // rather than an oversight.
+  //
+  // The two chords used to mean one thing, so one of them was free — and the split
+  // is the conventional one: `Delete` removes a *thing*, `Backspace` takes back the
+  // *last thing you did*, which is what it means in every text field and every
+  // drawing tool. What it buys is a capability that had **no spelling at all**:
+  // v1 took a polygon point back with a right-click, and #129 found that gesture
+  // has no path through the React adapter, which answers every non-primary press
+  // with a pan. `mod+z` cannot serve, because a pending polygon is not in the
+  // command log.
+  //
+  // Outside `drawing-polygon` the intent is silent — `machine.ts`'s rows are
+  // partial — so this costs a synonym and takes away no capability.
+  { chord: "backspace", action: { kind: "send", event: { type: "take-back-point" } } },
   { chord: "mod+z", action: { kind: "undo" } },
   { chord: "mod+shift+z", action: { kind: "redo" } },
   { chord: "mod+a", action: { kind: "select-all" } },

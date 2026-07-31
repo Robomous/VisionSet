@@ -352,3 +352,91 @@ describe("a vertex, deleted", () => {
     expect(world.store.document).toBe(before);
   });
 });
+
+/**
+ * #129's answer: the take-back a browser can actually reach.
+ *
+ * v1 spelled this as a right-click, and the React adapter answers **every**
+ * non-primary press with a pan before the machine is told — deliberately, because
+ * a pan conditional on a hit test would pan sometimes and not others depending on
+ * where a vertex happens to be, and because on macOS ctrl-click *is* a secondary
+ * press, so routing it would fire both spellings of the vertex delete at once.
+ *
+ * So the capability got an intent of its own, and the two doors share one
+ * implementation. These assert the intent; `bindings.test.ts` asserts that
+ * `Backspace` is what says it.
+ */
+describe("taking a polygon point back", () => {
+  function drawing(points: readonly [number, number][]): World {
+    const world = new World();
+    world.activeClass = "lane";
+    for (const point of points) world.dispatch(down(point));
+    return world;
+  }
+
+  it("drops the last point placed", () => {
+    const world = drawing([
+      [200, 200],
+      [300, 200],
+      [300, 300],
+    ]);
+    world.dispatch({ type: "take-back-point" });
+    expect(world.state.type === "drawing-polygon" && world.state.points.length).toBe(2);
+  });
+
+  it("is the same thing a secondary press does, by construction", () => {
+    const keyboard = drawing([
+      [200, 200],
+      [300, 200],
+    ]);
+    const pointer = drawing([
+      [200, 200],
+      [300, 200],
+    ]);
+    keyboard.dispatch({ type: "take-back-point" });
+    pointer.dispatch(down([300, 200], "secondary"));
+    expect(keyboard.state).toEqual(pointer.state);
+  });
+
+  it("returns to idle rather than leaving a session holding nothing", () => {
+    // `points[0]` is what the close ring and the affordance are measured from, so a
+    // `drawing-polygon` with an empty buffer is a state every reader would have to
+    // guard. Escape from a one-point session does the same, and that is not an
+    // accident.
+    const world = drawing([[200, 200]]);
+    world.dispatch({ type: "take-back-point" });
+    expect(world.state.type).toBe("idle");
+  });
+
+  it("leaves the cursor where the pointer is, not where the vertex was", () => {
+    const world = drawing([
+      [200, 200],
+      [300, 200],
+    ]);
+    world.dispatch({ type: "pointer-move", point: [400, 400] });
+    world.dispatch({ type: "take-back-point" });
+    expect(world.state.type === "drawing-polygon" && world.state.cursor).toEqual([400, 400]);
+  });
+
+  it("is silent everywhere else, which the partial rows make automatic", () => {
+    for (const type of ["idle", "moving", "resizing", "moving-vertex", "pressing-empty"] as const) {
+      const world = worldIn(type);
+      const before = world.state;
+      world.dispatch({ type: "take-back-point" });
+      expect(world.state, `${type} answered take-back-point`).toBe(before);
+    }
+  });
+
+  it("does not touch the document — a pending polygon is not in the log at all", () => {
+    // Which is also why `mod+z` could not have served: `store.undo()` would walk
+    // past the session to whatever was committed before it.
+    const world = drawing([
+      [200, 200],
+      [300, 200],
+      [300, 300],
+    ]);
+    const before = world.store.document;
+    world.dispatch({ type: "take-back-point" });
+    expect(world.store.document).toBe(before);
+  });
+});
