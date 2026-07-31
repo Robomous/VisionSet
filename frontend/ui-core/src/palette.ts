@@ -44,3 +44,67 @@ export type { LabelClass } from "@visionset/annotator";
  * strong a fill is without any of them knowing how the colour was chosen.
  */
 export const CLASS_FILL_OPACITY = 0.2;
+
+/**
+ * `classColor`'s answer as `#rrggbb`, or `null` when it cannot be one.
+ *
+ * `<input type="color">` accepts **only** `#rrggbb`. Anything else — including a
+ * perfectly valid CSS colour — leaves the control on its own default, which is
+ * black in every browser and reads as grey through the design system's border.
+ * That is #162: a class with no declared colour showed its derived hue in the dot
+ * beside its name and **grey** in the swatch two inches to the right, in the one
+ * control whose whole job is to show what colour something is.
+ *
+ * So this converts rather than gives up, and the derived branch is exactly the
+ * case it has to handle: `classColor` answers `hsl(h 72% 58%)` there, which is a
+ * closed form this module produced and can therefore convert without parsing CSS
+ * in general.
+ *
+ * **It is a conversion, never a second palette.** `classColor` stays the one
+ * spelling of the rule (#128's acceptance criterion, and the reason this module
+ * re-exports rather than re-implements); this only changes the notation.
+ *
+ * `null` for anything else, and that is honest rather than lazy: the kernel
+ * accepts any CSS spelling in `LabelClass.color`, so a schema authored elsewhere
+ * may legitimately hold `rgb(255 0 0)` or `rebeccapurple`. Guessing a hex for
+ * those would mean shipping a CSS colour parser to fill in one input. A caller
+ * shows its own neutral and the dot beside it still shows the truth.
+ */
+export function hexColor(color: string): string | null {
+  const trimmed = color.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
+  // `#abc` is legal CSS and is not what the input takes.
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(trimmed);
+  if (short !== null) {
+    return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`.toLowerCase();
+  }
+  // Space-separated is what `classColor` emits; commas are accepted too, because
+  // a schema stored by something else may well use the older spelling and the
+  // conversion costs one character in the pattern.
+  const hsl = /^hsl\(\s*([\d.]+)(?:deg)?\s*[, ]\s*([\d.]+)%\s*[, ]\s*([\d.]+)%\s*\)$/.exec(trimmed);
+  if (hsl === null) return null;
+  return hslToHex(Number(hsl[1]), Number(hsl[2]) / 100, Number(hsl[3]) / 100);
+}
+
+/** The CSS Color 4 conversion, written out rather than pulled in. */
+function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const sector = (((hue % 360) + 360) % 360) / 60;
+  const second = chroma * (1 - Math.abs((sector % 2) - 1));
+  const [red, green, blue] = (
+    [
+      [chroma, second, 0],
+      [second, chroma, 0],
+      [0, chroma, second],
+      [0, second, chroma],
+      [second, 0, chroma],
+      [chroma, 0, second],
+    ] as const
+  )[Math.floor(sector) % 6];
+  const base = lightness - chroma / 2;
+  const channel = (value: number): string =>
+    Math.round((value + base) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(red)}${channel(green)}${channel(blue)}`;
+}

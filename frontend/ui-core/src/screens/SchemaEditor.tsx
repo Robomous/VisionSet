@@ -53,7 +53,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
-import { classColor } from "../palette";
+import { classColor, hexColor } from "../palette";
 import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
@@ -551,11 +551,18 @@ function splitOptions(value: string): string[] {
 /**
  * A colour input needs `#rrggbb` and nothing else.
  *
- * `classColor` may answer `hsl(...)` — the derived branch — and the kernel accepts
- * any CSS spelling in `LabelClass.color`, so neither is guaranteed to be a hex.
- * Rather than parse, fall back to a neutral: the swatch beside the input already
- * shows the real colour, and the input is only a way to *pick* a new one.
+ * This used to answer a flat `#888888` for anything that was not already a hex,
+ * which meant **every derived class showed grey** — `classColor`'s derived branch
+ * returns `hsl(...)`. #162: the dot beside the class name showed the real colour,
+ * this input showed grey, and the annotator drew the real colour. Two of the three
+ * agreed and the disagreeing one was the control whose entire job is to show what
+ * colour something is.
+ *
+ * `hexColor` converts instead, so the preview is the truth. The neutral survives
+ * for the case it was always right about: a schema authored elsewhere may hold any
+ * CSS spelling — `rgb(255 0 0)`, `rebeccapurple` — and shipping a CSS colour parser
+ * to fill in one input is not worth it. The dot still shows the real thing.
  */
 function hexOf(color: string): string {
-  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : "#888888";
+  return hexColor(color) ?? "#888888";
 }

@@ -198,6 +198,11 @@ gallery badges (#55) — and it **already exists, shipped and unit-tested**:
   palette prop to thread down. (v1's fallback used a different hash and a four-value
   palette; not ported — the shipped rule is tested, and a fallback hue is arbitrary,
   not brand.)
+- A control that can only take `#rrggbb` — `<input type="color">` in the schema editor — shows
+  the same answer **converted**, never a substitute. `hexColor` in `frontend/ui-core/src/palette.ts`
+  changes the notation and nothing else; it returns `null` for a CSS spelling it cannot convert,
+  and the caller shows a neutral for that case alone. #162: binding such an input to the *stored*
+  colour rendered every derived class grey beside a dot showing the real one.
 - v1's shape metrics, kept as the reference: stroke width 2, selected 3; vertices render
   only while selected, radius 5 (7 when the vertex itself is selected), with a 2px white
   outline; the class label renders only while selected, 11px / 700, anchored at the
