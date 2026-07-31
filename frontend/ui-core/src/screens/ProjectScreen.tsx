@@ -40,6 +40,7 @@ import {
 import { FieldError, Input, Label } from "../primitives/Input";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { BatchesScreen } from "./BatchesScreen";
 import { SchemaEditor } from "./SchemaEditor";
 import {
   useActiveSchema,
@@ -54,11 +55,16 @@ const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 
 export interface ProjectScreenProps {
   readonly projectId: string;
-  /** Route change, supplied by the app. See `ProjectsScreen`'s note. */
+  /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
+  readonly onOpenBatch?: (batchId: string) => void;
 }
 
-export function ProjectScreen({ projectId, onIngest }: ProjectScreenProps): JSX.Element {
+export function ProjectScreen({
+  projectId,
+  onIngest,
+  onOpenBatch,
+}: ProjectScreenProps): JSX.Element {
   const project = useProject(projectId);
   const schema = useActiveSchema(projectId);
   const versions = useSchemaVersions(projectId);
@@ -106,6 +112,10 @@ export function ProjectScreen({ projectId, onIngest }: ProjectScreenProps): JSX.
         />
       ) : (
         <SchemaEditor projectId={projectId} active={schemaless ? null : (schema.data ?? null)} />
+      )}
+
+      {onOpenBatch !== undefined && (
+        <BatchesScreen projectId={projectId} onOpenBatch={onOpenBatch} />
       )}
 
       <VersionHistory query={versions} />
