@@ -77,7 +77,10 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    command: "pnpm --filter @visionset/annotator build && vite --port 5273 --strictPort",
+    command:
+      "pnpm --filter @visionset/annotator build && " +
+      "pnpm --filter @visionset/ui-core build && " +
+      "vite --port 5273 --strictPort",
     url: "http://localhost:5273",
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
