@@ -1,0 +1,41 @@
+/**
+ * The demo's schema: five classes chosen so that pressing 1–5 walks every branch
+ * the engine has.
+ *
+ * The **order is the fixture**, the way `core/input/_palette.ts` says of its own:
+ * `classHotkeys` binds digit N to class N in authored order, so what each digit
+ * proves is decided here.
+ *
+ * | digit | class | what it exercises |
+ * | --- | --- | --- |
+ * | 1 | `vehicle` (bbox) | the bbox tool |
+ * | 2 | `lane` (polygon) | the polygon tool, and a real tool change from 1 |
+ * | 3 | `daytime` (tag) | `toggle-tag` — a panel row, never the canvas |
+ * | 4 | `pedestrian` (bbox) | a **second** bbox class: 1 → 4 must not abandon a half-drawn box |
+ * | 5 | `centerline` (polyline) | a geometry no annotation can carry — `select`, and nothing drawable |
+ *
+ * The fifth is the one that looks like a mistake and is not. `polyline` is a
+ * legal `GeometryType` for a `LabelClass` and is not one of the three an
+ * `Annotation` can carry; `toolFor` answers `select` for it, and `drawableGeometry`
+ * answers `null`. Keeping it here is what makes the demo show that state rather
+ * than pretend it cannot happen.
+ *
+ * Written as a plain object and parsed by `documentFromWire`, not built with
+ * `createDocument`: this is the shape `GET /projects/{id}/schema` returns, so the
+ * demo goes through the same parser a real host would and a drifted mirror would
+ * fail here first.
+ */
+
+export const SAMPLE_SCHEMA = {
+  project_id: "11111111-1111-4111-8111-111111111111",
+  version: 1,
+  classes: [
+    { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
+    { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
+    { name: "daytime", geometry: "classification_tag", color: "#a3e635", attributes: [] },
+    // No colour: `classColor` derives a stable hue from the name instead, which is
+    // the branch `LabelClass.color`'s own docstring blesses.
+    { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
+    { name: "centerline", geometry: "polyline", color: "#c084fc", attributes: [] },
+  ],
+} as const;

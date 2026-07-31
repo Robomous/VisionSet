@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 // The browser host, banned by name inside src/core/. `no-undef` is off for TypeScript files (the
@@ -67,6 +68,24 @@ export default tseslint.config(
         "error",
         ...BROWSER_HOST.map((name) => ({ name, message: NO_BROWSER_HOST })),
       ],
+    },
+  },
+  {
+    // The Rules of Hooks, over the one directory that has any. #47 brought the
+    // repository's first non-trivial hook code, and a hook called conditionally or
+    // a stale dependency is precisely the class of bug the three gates above are
+    // blind to: `tsc` type-checks a conditional `useRef` happily, and a `useEffect`
+    // reading a value it does not depend on is well-typed and wrong.
+    //
+    // Scoped to `src/adapters/react/**` rather than applied package-wide, for the
+    // same reason the boundary rules are scoped to `src/core/**`: a rule whose
+    // subject is React should have nothing to say about a package that is
+    // mostly not React.
+    files: ["src/adapters/react/**/*.ts", "src/adapters/react/**/*.tsx"],
+    plugins: { "react-hooks": reactHooks },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "error",
     },
   }
 );
