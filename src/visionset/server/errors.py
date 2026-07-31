@@ -63,6 +63,7 @@ from visionset.kernel import (
     EntityAlreadyExists,
     EntityNotFound,
     ExportFormatNotFound,
+    ExportSourceUnreadable,
     IngestJobNotFound,
     InvalidAnnotation,
     InvalidAttributeValue,
@@ -235,6 +236,12 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # format is genuinely installed; what refuses is the pairing of this format
     # with a caller who has not said the loss is acceptable.
     LossyExportNotConsented: ErrorRule(409, "LOSSY_EXPORT_NOT_CONSENTED"),
+    # A release naming bytes that are gone or will not decode. 409 for
+    # ``UnserializableManifest``'s reason — the request is fine and the stored
+    # state is not — and the message is exposed by being a 4xx at all, which is
+    # the point: it names the asset, and the remedy is `GET /releases/{id}/verify`
+    # followed by restoring the blob.
+    ExportSourceUnreadable: ErrorRule(409, "EXPORT_SOURCE_UNREADABLE"),
     # --- 422: the payload itself is wrong ----------------------------------
     InvalidName: ErrorRule(422, "INVALID_NAME"),
     InvalidSchema: ErrorRule(422, "INVALID_SCHEMA"),

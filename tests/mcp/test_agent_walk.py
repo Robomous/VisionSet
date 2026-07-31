@@ -167,7 +167,15 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
             # which is what makes it the format that never refuses.
             "geometries": sorted(one.value for one in GeometryType),
             "modalities": ["image", "point_cloud", "video"],
-        }
+        },
+        {
+            # #62. An agent picking a format sees what each can write, so it can
+            # tell "carries everything" from "carries boxes" without exporting.
+            "name": "yolo",
+            "lossy": True,
+            "geometries": ["bbox"],
+            "modalities": ["image"],
+        },
     ]
     exported = ok(
         call(

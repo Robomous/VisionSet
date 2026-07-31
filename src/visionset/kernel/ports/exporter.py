@@ -1,7 +1,35 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import BinaryIO, Protocol, runtime_checkable
 
 from visionset.kernel.domain import GeometryType, Manifest, Release
+
+ContentReader = Callable[[str], BinaryIO]
+"""Resolve one content hash to the bytes behind it, for the duration of a call.
+
+A :class:`Manifest` names every asset by ``content_hash`` and by a workspace-local
+``uri``, and **neither of those is a file an exporter can open**. A ``uri`` is
+where the bytes were first *seen*: the original ingest path, which may have been
+deleted since, or — for a frame cut out of a clip — a locator like
+``/clips/drive.mp4#frame=12`` that was never a file at all. The bytes live in the
+blob store, under a layout only the blob store knows.
+
+So a format that lays out images gets this, and nothing wider. It is a plain
+callable rather than the :class:`~visionset.kernel.ports.BlobStore` port because
+the difference is authority: a reader can read, where the port can also ``put``,
+and a plugin that could write into the content store could give a release bytes
+nobody published. ``ReleaseService.export`` composes it, so the plugin never sees
+a workspace, a path layout or a port.
+
+**It raises rather than returning ``None``** when the bytes are gone — a released
+asset whose blob is missing is damage, and an exporter that swallowed it would
+write a training set quietly missing images. That is v1's failure #1, and it is
+why this signature has no error branch to ignore.
+
+The handle is open and positioned at the start; the caller closes it. A file
+already read once must be re-requested rather than rewound, because nothing
+promises two calls return the same object.
+"""
 
 
 @runtime_checkable
@@ -17,6 +45,10 @@ class Exporter(Protocol):
     can be megabytes; an exporter given the release alone would hold a hash and
     no way to resolve it, since the kernel hands its plugins domain values and
     never a port. ``ReleaseService.manifest`` is what a caller resolves it with.
+
+    ``content`` is how a format that lays out images gets them; see
+    :data:`ContentReader` for why a ``uri`` is not a file and why this is a
+    callable rather than a port. A format writing only labels ignores it.
 
     ``export`` writes into ``dest``, which the caller has already created, and
     returns nothing. Counting what was written is ``ReleaseService.export``'s job
@@ -82,4 +114,11 @@ class Exporter(Protocol):
     #: ``image``.
     supported_modalities: frozenset[str]
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None: ...
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None: ...

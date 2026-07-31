@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from visionset.kernel.domain import GeometryType, Manifest, Release
+from visionset.kernel.ports import ContentReader
 
 
 class DummyExporter:
@@ -34,5 +35,12 @@ class DummyExporter:
     #: that named it would have to grow when the domain does.
     supported_modalities = frozenset({"image", "video", "point_cloud"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         return None

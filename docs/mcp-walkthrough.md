@@ -196,7 +196,7 @@ the manifest names — it does not consult an index, because an index agreeing w
 nothing.
 
 `list_formats` exists because the installed set is a property of *this* installation, not of the
-API: `dummy` is the only exporter that ships, and it writes nothing, so a `file_count` of 0 is an
+API: `dummy` writes nothing, so a `file_count` of 0 is an
 export that ran. `export_release` takes a **local `dest`**, not an archive: an agent runs beside the
 workspace and has a filesystem, and a zip travelling base64 through a JSON-RPC message is a token
 bill nobody should pay.
@@ -327,7 +327,8 @@ tools; it does mean a generated clip is a poor instrument for measuring a cycle 
 labelled data, which is why the labelling half was measured separately against a target the agent
 could actually see.
 
-**`allow_lossy` was never exercised by an agent.** `dummy` is the only installed exporter and it is
+**`allow_lossy` was never exercised by an agent.** At the time of this transcript `dummy` was the
+only installed exporter and it is
 not lossy, and installing a second one for the run would have changed the surface under test. It
 stays covered by `tests/mcp/test_release_tools.py`.
 

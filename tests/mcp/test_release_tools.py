@@ -10,7 +10,7 @@ import pytest
 from tests.mcp._flow import BBOX, SCHEMA_CLASSES, call, error, open_batch, payload
 
 from visionset.kernel.domain import GeometryType
-from visionset.kernel.ports import Exporter
+from visionset.kernel.ports import ContentReader, Exporter
 from visionset.kernel.services import EXPORT_REPORT_FILENAME
 
 
@@ -149,7 +149,7 @@ def test_verification_of_an_untouched_release_is_ok(
     assert report["missing"] == report["corrupt"] == report["cache_mismatches"] == []
 
 
-def test_only_the_dummy_exporter_is_installed_and_it_is_not_lossy() -> None:
+def test_the_installed_exporters_declare_what_they_can_carry() -> None:
     assert payload(call("list_formats")) == {
         "items": [
             {
@@ -159,9 +159,18 @@ def test_only_the_dummy_exporter_is_installed_and_it_is_not_lossy() -> None:
                 # which is what makes it the format that never refuses.
                 "geometries": sorted(one.value for one in GeometryType),
                 "modalities": ["image", "point_cloud", "video"],
-            }
+            },
+            {
+                # #62, and the first format in this repository that writes
+                # anything. Lossy because a label row is five numbers, so
+                # attributes, confidence and provenance never survive.
+                "name": "yolo",
+                "lossy": True,
+                "geometries": ["bbox"],
+                "modalities": ["image"],
+            },
         ],
-        "total": 1,
+        "total": 2,
     }
 
 
@@ -188,7 +197,13 @@ def test_an_unknown_format_names_the_ones_that_are_installed(
     named = promoted(monkeypatch, tmp_path, count=1)
     payload(call("publish_release", project=named, tag="v1.0"))
     refusal = error(
-        call("export_release", project=named, tag="v1.0", format="yolo", dest=str(tmp_path / "out"))
+        call(
+            "export_release",
+            project=named,
+            tag="v1.0",
+            format="not-a-format",
+            dest=str(tmp_path / "out"),
+        )
     )
     assert "dummy" in refusal["message"]
     # A `KeyError` here would be outside the VisionSetError tree, so a mistyped
@@ -221,7 +236,14 @@ class LossyExporter:
     supported_geometries = frozenset(GeometryType)
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Any, manifest: Any, dest: Path) -> None:
+    def export(
+        self,
+        release: Any,
+        manifest: Any,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         dest.mkdir(parents=True, exist_ok=True)
 
 
@@ -274,7 +296,14 @@ class PolygonsOnlyExporter:
     supported_geometries = frozenset({GeometryType.POLYGON})
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Any, manifest: Any, dest: Path) -> None:
+    def export(
+        self,
+        release: Any,
+        manifest: Any,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         dest.mkdir(parents=True, exist_ok=True)
 
 

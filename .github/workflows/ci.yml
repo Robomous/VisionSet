@@ -289,6 +289,39 @@ jobs:
   # sharing a runner with itself is not measuring anything.
   #
   # The recorded baseline lives in `docs/annotations.md` and was taken on a
+  # #62's second acceptance criterion: the tool the YOLO exporter exists to feed
+  # actually loads what it wrote. Its own job because `ultralytics` brings torch —
+  # roughly two gigabytes — and putting that in front of every `uv sync` for one
+  # test is a cost nobody in the main job is paying for. The dependency group is
+  # `yolo`, installed only here.
+  #
+  # VISIONSET_REQUIRE_ULTRALYTICS turns the local skip into an error, so a broken
+  # install goes red rather than quietly shrinking the suite. Same rule, same
+  # reason, as VISIONSET_REQUIRE_FFMPEG in the python job.
+  yolo-smoke:
+    name: yolo smoke (ultralytics)
+    runs-on: ubuntu-latest
+    env:
+      VISIONSET_REQUIRE_ULTRALYTICS: "1"
+      # Ultralytics writes a settings file and phones home on first use. Neither
+      # is wanted in CI, and the second makes a green build depend on a third
+      # party's uptime.
+      YOLO_OFFLINE: "true"
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync environment with the yolo group
+        run: uv sync --group yolo
+
+      - name: Ultralytics loads the export
+        run: uv run pytest tests/formats/test_yolo_smoke.py -q
+
   # developer machine, which is what the acceptance criterion asks for. A run here
   # answers a different question — "did this change make it worse on the same
   # hardware as last time" — so compare a dispatch against a dispatch, never
