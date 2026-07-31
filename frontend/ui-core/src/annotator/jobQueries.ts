@@ -165,6 +165,27 @@ export function useJobAssets(
   });
 }
 
+/**
+ * Where in the job to open, given the asset a caller asked for.
+ *
+ * #160: a gallery tile hands the annotator an **asset**, and this page counts in
+ * **positions**. Pure and exported for the same reason `planSave` is — it is the
+ * part that decides something, and it is decidable without a browser.
+ *
+ * An id the job does not carry answers `0` rather than refusing. The link may be
+ * stale (the asset moved to another job, or the batch was re-partitioned), and the
+ * useful behaviour there is "here is the job you asked for, from the start" — not
+ * an error page about a query parameter.
+ */
+export function assetPositionOf(
+  assets: readonly { readonly id: string }[] | undefined,
+  assetId: string | undefined,
+): number {
+  if (assetId === undefined || assets === undefined) return 0;
+  const at = assets.findIndex((one) => one.id === assetId);
+  return at < 0 ? 0 : at;
+}
+
 export function useAssetAnnotations(
   jobId: string,
   assetId: string | undefined,

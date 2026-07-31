@@ -13,6 +13,23 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **The annotator was unreachable from inside the UI** (#160). Every gallery tile rendered
+  `disabled`, the annotator's own "Open the gallery" button rendered `disabled`, and nothing
+  anywhere navigated to `/jobs/:jobId` — so the one thing the product is for could be reached only
+  by pasting a URL whose job id came out of the REST API. `routes.tsx` never passed
+  `GalleryScreen`'s `onOpenAsset`, while every sibling route wired its callbacks.
+
+  Clicking a tile now opens the annotator **on that asset** (`/jobs/:jobId?asset=<id>`), because a
+  click that landed on the fifth picture and opened the first reads as the click being ignored;
+  the grid button returns to that batch's gallery, handed the project and batch by the page that
+  already resolved them. Tiles in a `draft` batch stay inert — there is no job to open until
+  approval cuts one — and now say so on the control itself rather than looking broken.
+
+  The guard is the one the epic asked for: `frontend/app/cycle/cycle.spec.ts` reaches the
+  annotator **entirely by clicking**, and the helper that used to fetch a job id out of the API so
+  the spec could type a URL is deleted. Verified by mutation — disabling the tiles again, or
+  ignoring the requested asset, each turns the walk red.
+
 - **The export report said polygons were not carried while YOLO and VOC wrote them as bounding
   boxes** (#158). `Exporter.supported_geometries` carried one meaning and was read with two
   intents: the compatibility report treated an unsupported geometry as absent from the output,

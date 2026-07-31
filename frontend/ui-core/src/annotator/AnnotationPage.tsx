@@ -71,6 +71,7 @@ import { AnnotatorPanel } from "./AnnotatorPanel";
 import { AssetImage } from "./AssetImage";
 import type { WireAnnotation } from "./jobQueries";
 import {
+  assetPositionOf,
   isEmptyPlan,
   planSave,
   useAssetAnnotations,
@@ -89,20 +90,52 @@ const ZOOM_STEP = 1.25;
 
 export interface AnnotationPageProps {
   readonly jobId: string;
+  /**
+   * Which asset of the job to open on. Defaults to the first.
+   *
+   * #160: a gallery tile that opened the job at its *first* asset read as the
+   * click being ignored — press the fifth picture, get the first. An id rather
+   * than a position, because the caller is holding an asset and the position is
+   * this page's own idea; an id nobody in this job carries falls back to the
+   * first rather than showing nothing, since a stale link is not an error state.
+   */
+  readonly initialAssetId?: string;
   /** Back to the batch. The app turns it into a route change. */
   readonly onBack?: () => void;
-  /** The gallery (#55), which the design's grid button jumps to. */
-  readonly onOpenGallery?: () => void;
+  /**
+   * The gallery (#55), which the design's grid button jumps to.
+   *
+   * Handed the project and batch it belongs to, because only this page knows
+   * them: a job records its task group, and `job → batch → project` is the walk
+   * `jobQueries.ts` already does. An app that had to work them out again would be
+   * making a second request for something the screen is already holding.
+   */
+  readonly onOpenGallery?: (projectId: string, batchId: string) => void;
 }
 
-export function AnnotationPage({ jobId, onBack, onOpenGallery }: AnnotationPageProps): JSX.Element {
+export function AnnotationPage({
+  jobId,
+  initialAssetId,
+  onBack,
+  onOpenGallery,
+}: AnnotationPageProps): JSX.Element {
   const job = useJob(jobId);
   const batch = useBatchOf(job.data?.batch_id);
   const schema = usePinnedSchema(batch.data?.project_id, batch.data?.schema_version);
   const assets = useJobAssets(job.data?.batch_id, jobId);
   const progress = useJobProgress(jobId);
 
-  const [index, setIndex] = useState(0);
+  // Where the caller asked to start, derived rather than seeded into state.
+  //
+  // The obvious spelling — `useState(0)` plus an effect that jumps once the assets
+  // arrive — is the shape #159's defect has: an effect whose one chance to run
+  // happens while the thing it needs is still absent. Here `chosen` is null until
+  // the *user* navigates, and `index` falls through to the requested position, so
+  // there is no moment to miss and a background refetch cannot pull somebody back
+  // to where they started. An id the job does not carry lands on the first asset:
+  // a stale link is not an error state.
+  const [chosen, setChosen] = useState<number | null>(null);
+  const index = chosen ?? assetPositionOf(assets.data, initialAssetId);
   const asset = assets.data?.[index];
   const annotations = useAssetAnnotations(jobId, asset?.id);
 
@@ -138,9 +171,16 @@ export function AnnotationPage({ jobId, onBack, onOpenGallery }: AnnotationPageP
       schema={schema.data}
       loaded={annotations.data}
       counts={progress.data ?? null}
-      onNavigate={setIndex}
+      onNavigate={setChosen}
       {...(onBack === undefined ? {} : { onBack })}
-      {...(onOpenGallery === undefined ? {} : { onOpenGallery })}
+      {...(onOpenGallery === undefined
+        ? {}
+        : {
+            // Bound here, where the batch is resolved, so the button below stays a
+            // plain `() => void` and the app never has to ask for what this page
+            // already knows.
+            onOpenGallery: () => onOpenGallery(batch.data.project_id, batch.data.id),
+          })}
     />
   );
 }

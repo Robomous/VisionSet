@@ -51,6 +51,15 @@ const PROGRESS_VARIANT: Record<string, "neutral" | "accent" | "outline" | "destr
 export interface GalleryScreenProps {
   readonly projectId: string;
   readonly batchId: string;
+  /**
+   * Open one asset for annotation. The app turns it into a route change.
+   *
+   * The callback is handed the whole `BatchAsset` rather than an id because the
+   * annotator is keyed on a **job** while this screen lists **assets**: only
+   * `asset.job_id` closes that gap, and it is null exactly while the batch is a
+   * draft (#29's shape). A tile whose asset has no job stays inert whether or not
+   * this prop is passed — see `Tile`.
+   */
   readonly onOpenAsset?: (asset: BatchAsset) => void;
 }
 
@@ -131,7 +140,9 @@ export function GalleryScreen({ projectId, batchId, onOpenAsset }: GalleryScreen
                         key={asset.id}
                         projectId={projectId}
                         asset={asset}
-                        {...(onOpenAsset === undefined ? {} : { onOpen: () => onOpenAsset(asset) })}
+                        {...(onOpenAsset === undefined
+                          ? {}
+                          : { onOpen: () => onOpenAsset(asset) })}
                       />
                     ))}
                 </div>
@@ -157,13 +168,30 @@ function Tile({
     ? asset.content_hash.slice(0, 8)
     : `frame ${asset.frame_index}`;
 
+  // Two different inertias, and #160 is what conflating them cost. `onOpen`
+  // absent means *this host does not navigate* — the gallery embedded somewhere
+  // read-only. A null `job_id` means *this asset has nowhere to go yet*, which is
+  // the ordinary state of a draft batch: jobs are cut at approval, so before then
+  // there is no job to open. The first is a composition fact and the second is a
+  // domain one, and only the second is worth explaining to the person clicking.
+  const pending = asset.job_id === null || asset.job_id === undefined;
+  const reason = pending
+    ? "This batch is still a draft. Approve it to cut jobs, then assets can be annotated."
+    : undefined;
+
   return (
     <button
       type="button"
       data-testid={`tile-${asset.id}`}
       onClick={onOpen}
-      disabled={onOpen === undefined}
-      className="relative overflow-hidden rounded-md border border-border bg-card p-0"
+      disabled={onOpen === undefined || pending}
+      // `title` rather than the design system's `Tooltip`: a tooltip trigger that
+      // is `disabled` receives no pointer events, so the one explanation a person
+      // can actually reach on a dead control is the browser's own. `aria-*`
+      // carries it for a reader that never hovers.
+      {...(reason === undefined ? {} : { title: reason, "aria-description": reason })}
+      data-pending={pending ? "true" : undefined}
+      className="relative overflow-hidden rounded-md border border-border bg-card p-0 disabled:cursor-not-allowed"
       style={{ width: TILE, height: TILE }}
     >
       <AssetThumbnail

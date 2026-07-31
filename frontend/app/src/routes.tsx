@@ -126,10 +126,37 @@ function Project(): JSX.Element {
   );
 }
 
+/**
+ * The gallery, and the one place the product joins its two halves.
+ *
+ * #160: this route passed no `onOpenAsset`, so every tile rendered `disabled` and
+ * **the annotator was unreachable from inside the app** — reachable only by typing
+ * `/jobs/{id}` after reading the id out of the REST API. Every sibling route wired
+ * its callbacks; this one looked like an omission because it was one.
+ *
+ * The two screens are keyed on different things — the gallery lists *assets in a
+ * batch*, the annotator opens a *job* — and `asset.job_id` is the only bridge. It
+ * is present exactly once the batch leaves `draft` (#29), which is why `Tile`
+ * refuses a null one on its own rather than trusting this callback to be careful.
+ *
+ * The asset travels as a query parameter, not a path segment: `/jobs/:jobId` is the
+ * annotator's identity and the asset is *where to start*, which a person can change
+ * with the next/previous buttons without the URL becoming a lie.
+ */
 function Gallery(): JSX.Element {
   const { projectId, batchId } = useParams();
+  const navigate = useNavigate();
   if (projectId === undefined || batchId === undefined) return <NotFound />;
-  return <GalleryScreen projectId={projectId} batchId={batchId} />;
+  return (
+    <GalleryScreen
+      projectId={projectId}
+      batchId={batchId}
+      onOpenAsset={(asset) => {
+        if (asset.job_id === null || asset.job_id === undefined) return;
+        void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
+      }}
+    />
+  );
 }
 
 function DatasetView(): JSX.Element {
@@ -138,11 +165,36 @@ function DatasetView(): JSX.Element {
   return <DatasetScreen projectId={projectId} />;
 }
 
+/**
+ * The annotator, and the return leg of #160.
+ *
+ * `?asset=` is where the gallery said to start; absent — a deep link somebody
+ * pasted, or a reload — the page opens on the job's first asset, which is what it
+ * always did.
+ *
+ * "Open the gallery" is passed the project and batch by `AnnotationPage`, because
+ * that screen has already walked job → batch to find the pinned schema and this
+ * one has not. It is a *navigate* rather than a `navigate(-1)` on purpose: the
+ * grid button means "show me this batch", and it has to mean that whether the
+ * annotator was reached by clicking a tile, by pasting a URL, or by walking
+ * forward from another asset.
+ */
 function Annotate(): JSX.Element {
   const { jobId } = useParams();
+  const [query] = useSearchParams();
   const navigate = useNavigate();
   if (jobId === undefined) return <NotFound />;
-  return <AnnotationPage jobId={jobId} onBack={() => void navigate(-1)} />;
+  const asset = query.get("asset");
+  return (
+    <AnnotationPage
+      jobId={jobId}
+      {...(asset === null ? {} : { initialAssetId: asset })}
+      onBack={() => void navigate(-1)}
+      onOpenGallery={(projectId, batchId) =>
+        void navigate(`/projects/${projectId}/batches/${batchId}`)
+      }
+    />
+  );
 }
 
 function Ingest(): JSX.Element {
