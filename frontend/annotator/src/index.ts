@@ -194,6 +194,54 @@ export {
 
 // Host adapters — each needs a capability the headless core may not name
 export { randomUuid } from "./adapters/ids";
+// The screen↔image transform (#47) — a zoom is not the engine's to name, so this
+// is the one piece of geometry that lives outside `core/`. Renderer-agnostic.
+export {
+  IDENTITY_VIEWPORT,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  clampZoom,
+  fitToViewport,
+  imageToScreen,
+  panBy,
+  screenToImage,
+  zoomAbout,
+  type Viewport,
+} from "./adapters/viewport";
 
-// React adapter (requires the optional `react` peer dependency)
-export { AnnotatorCanvas } from "./adapters/react";
+// React adapter (#47, requires the optional `react` peer dependency)
+export {
+  AnnotationLayer,
+  AnnotationShape,
+  AnnotatorCanvas,
+  BboxShape,
+  Grips,
+  HANDLE_PX,
+  LABEL_PX,
+  PolygonShape,
+  SELECTED_STROKE_PX,
+  STROKE_PX,
+  ShapeLabel,
+  TransientLayer,
+  VERTEX_PX,
+  Vertices,
+  classColor,
+  digitFromCode,
+  editedId,
+  isComposing,
+  isTextEntry,
+  paintAnnotation,
+  paintDocument,
+  pendingPolygon,
+  rubberBand,
+  screenPx,
+  useAnnotatorSnapshot,
+  useAnnotatorStore,
+  type AnnotationLayerProps,
+  type AnnotatorCanvasProps,
+  type CompositionProbe,
+  type PaintedAnnotation,
+  type PendingPolygon,
+  type TextEntryProbe,
+  type TransientLayerProps,
+} from "./adapters/react";

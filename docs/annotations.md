@@ -280,3 +280,97 @@ be merged: `resolve(...) !== null` answers *is this keystroke ours*, which is wh
 `preventDefault`, and `runAction(...).changed` answers *did it do anything*. The rest of what an
 adapter owes — the text-entry guard, Escape surviving it, IME filtering, the `code`-for-digits
 seam on layouts where the digit row is shifted — is listed in `core/input/index.ts`.
+
+## The React adapter, and what "embeddable" means
+
+`<AnnotatorCanvas>` is the first renderer over the headless engine, and the whole of the React
+that exists in `@visionset/annotator`. It takes a store, a picture and an active class, and it
+gives back callbacks:
+
+```tsx
+const store = useAnnotatorStore({ asset, schema, annotations });   // what the API returned
+<AnnotatorCanvas
+  store={store}
+  imageSrc={url}
+  activeClass={activeClass}
+  onActivateClass={setActiveClass}
+  onAnnotationsChange={(document) => …}
+/>
+```
+
+**No HTTP, no routing, no fetching, and no chrome.** The class palette, the undo buttons, the tag
+panel and the shortcut sheet in `frontend/app/src/demo/` are all *outside* the package. That is
+what makes the canvas embeddable rather than a small application: a product restyles its own
+palette and never forks the annotator to do it.
+
+The **store is a prop**, not something the canvas builds, so a host's controls read exactly the
+state the canvas draws. There is deliberately no `asset` or `schema` prop either — an
+`AnnotationDocument` already carries both, and a second copy is a second spelling free to drift.
+What the document does not carry is the pixels, which is precisely what `imageSrc` is for.
+
+**The image is laid out at the descriptor's width and height, never at its own `naturalWidth`.**
+That is [`get_asset_image`](mcp.md)'s finding one layer out: the descriptor is the frame the
+coordinates live in, and a picture whose natural size disagrees is a preview. Hand one in and
+every annotation is individually plausible and uniformly wrong.
+
+### Who owns the transform
+
+The adapter, entirely. `geometry/tolerance.ts` is the only module inside `src/core/` allowed to
+name a zoom, so the screen↔image transform lives in `adapters/viewport.ts` — pure arithmetic, no
+DOM, no React, and therefore unit-tested without a browser:
+
+```
+screenToImage(v, x, y) = [ (x - v.panX) / v.zoom, (y - v.panY) / v.zoom ]
+```
+
+The `<svg>` is laid out at the asset's native size inside one wrapper carrying
+`translate(pan) scale(zoom)`, so **an SVG user unit is an asset pixel** and nothing in the paint
+path converts anything. The corollary is the trap: a 2-pixel stroke written as `2` is two *asset*
+pixels — a hair at 8× and a slab at 10% — so every thickness, radius and font size goes through
+`screenPx(px, zoom)`. It is #41's tolerance finding pointed at drawing instead of at hit-testing.
+
+Zoom is the wheel, and `ctrlKey` on a wheel event **is** how a browser reports a trackpad pinch.
+Pan is a middle- or secondary-button drag. `mod+0` refits, and it is intercepted by the adapter
+rather than forwarded, because the zoom is the adapter's — it is the one row of the `InputHost`
+port that is not a pass-through.
+
+### Dragging repaints one layer
+
+`AnnotatorStore.stage` leaves the committed document untouched and moves only the preview, which
+is what lets the committed annotation layer sit still through a whole gesture: it is `memo`'d on
+`(document, selection, skipId, hotId, zoom)`, and none of those move while the pointer does.
+`skipId` is a `string | null` and `hotId` is a `string` for that reason — a freshly allocated
+`Set`, or the `Affordance.hot` target object, would be a new prop on every pointer-move and would
+defeat the bail-out before `memo` was consulted.
+
+Measured on the demo page with twelve boxes, dragging one across thirty pointer-moves: **1 DOM
+mutation in the committed layer and 601 in the transient layer**, plus one more in the committed
+layer on release. The committed layer mutates twice per gesture — once when the dragged shape
+leaves it, once when it comes back — and not at all in between.
+
+React Compiler is installed nowhere in this repository, and the annotator ships as `tsc` output
+that a compiler pass in a consuming app could never reach, so those `memo`/`useMemo` calls are
+load-bearing rather than decoration.
+
+### The render layers are inert, and that is not a style choice
+
+Both `<g>` layers carry `pointer-events: none`; the `<svg>` is the only input surface and
+`resolveTarget` is the only hit test. Without it the entire keyboard silently stops working after
+a polygon is closed by clicking its first vertex — the shape is the press's hit target, React 19
+flushes discrete events synchronously so the commit removes it *during* the event, and the
+browser's own focus fixup for the `mousedown` then resolves a detached node, finds nothing, and
+moves focus to `<body>`. No error is reported anywhere.
+
+v1 could not have had this fix: its shapes carried the pointer handlers, so they had to be hit
+targets. A headless hit test is what makes an inert render layer possible in the first place.
+
+### Running the demo
+
+```
+pnpm --filter @visionset/annotator build && pnpm --filter @visionset/app dev
+```
+
+The annotator builds first, deliberately: the app resolves `@visionset/annotator` through its
+`dist/`, so an unbuilt change is simply invisible in the browser rather than a compile error.
+The sample image is an SVG `data:` URI generated in code — fixture media is never committed here,
+and its rulers are what make a wrong transform visible by eye.
