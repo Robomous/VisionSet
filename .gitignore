@@ -25,6 +25,11 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
+# The benchmark's own report. Machine-specific by construction — the numbers that
+# matter are copied into docs/annotations.md, where they carry the machine that
+# produced them; a committed file would just be one developer's laptop.
+frontend/app/bench-results.json
+
 # Compiled UI bundle travels in the wheel, never in git
 src/visionset/_static/*
 !src/visionset/_static/README.md
