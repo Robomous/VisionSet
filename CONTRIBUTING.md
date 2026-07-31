@@ -28,6 +28,7 @@ artifact is always the pip package).
 | Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror |
 | Format smoke (ultralytics, pycocotools) | `uv sync --group yolo --group coco && uv run pytest tests/formats/test_*_smoke.py` — their own groups because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run only those files and `uv sync` again afterwards; skips without them, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` / `VISIONSET_REQUIRE_PYCOCOTOOLS=1` so a broken install goes red |
 | Wheel (build, install, serve) | `bash scripts/build_dist.sh && VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging` — builds the UI into `_static/`, builds the wheel, installs it in a fresh venv and serves `/ui/` from it. Opt-in locally (it costs about a minute); CI's `wheel` job runs it and uploads the artifact |
+| The 30-minute flow | `uv run python examples/thirty_minute_flow.py` — the vision document's success metric end to end. CI's `30-minute flow (wheel, end to end)` job runs it from the **installed wheel** in an empty venv, with `ultralytics` required there |
 | Version sync | `pnpm version:check` |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
 | Generated API client | `pnpm generate:client` (commit the diff) |
@@ -91,6 +92,23 @@ dev base references `/assets/…`, which the SPA fallback answers with `index.ht
 
 CI's `wheel` job runs both and uploads `dist/*` from every build, so there is always
 something installable to hand somebody.
+
+### The release gate
+
+`30-minute flow (wheel, end to end)` is the check the beta cannot ship without: it builds the
+wheel, installs it into an empty environment, and drives video → 50 boxes → release → YOLO export
+→ a trainer loading the result. It runs on every push and pull request.
+
+**Marking it a required status is a repository-admin action and is not in this repository**, since
+branch protection lives in GitHub's settings rather than in the tree. Whoever owns the repository
+turns it on once:
+
+```bash
+gh api -X PUT repos/<owner>/<repo>/branches/main/protection \
+  -f 'required_status_checks[strict]=true' \
+  -f 'required_status_checks[contexts][]=30-minute flow (wheel, end to end)' \
+  -f 'enforce_admins=false' -f 'required_pull_request_reviews=null' -f 'restrictions=null'
+```
 
 ### Tags and publishing
 

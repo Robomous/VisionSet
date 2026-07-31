@@ -337,6 +337,72 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # #67: the vision document's success metric, automated — install → project →
+  # video → 50 boxes → release → YOLO export → a trainer loads it. The gate the
+  # beta cannot ship without, and the one job here that runs against **what a
+  # user gets from pip** rather than against the source tree: the wheel goes into
+  # an empty virtual environment and nothing from the checkout is importable.
+  #
+  # It therefore proves in one run what a dozen source tests each prove a piece
+  # of — the wheel, the entry points, plugin discovery, the media toolchain, and
+  # every service in the cycle.
+  #
+  # `examples/thirty_minute_flow.py` names and times each stage and asserts its
+  # own wall clock, so a failure here says which step broke rather than leaving a
+  # traceback into whichever service happened to raise.
+  thirty-minute-flow:
+    name: 30-minute flow (wheel, end to end)
+    runs-on: ubuntu-latest
+    env:
+      # The clip is generated rather than committed, and the export is checked by
+      # the tool it exists for. Both are errors here rather than skips: a gate
+      # that quietly stopped checking half of itself is worse than no gate.
+      VISIONSET_REQUIRE_ULTRALYTICS: "1"
+      YOLO_OFFLINE: "true"
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - uses: pnpm/action-setup@v4 # reads packageManager from package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the wheel
+        run: bash scripts/build_dist.sh
+
+      # A venv with the wheel and the trainer in it, and **nothing else** — in
+      # particular not the repository, which is what makes this a test of the
+      # artifact. `--no-cache` so a previously built wheel of the same version
+      # cannot be served from uv's cache in place of this one.
+      - name: Install the wheel into a clean environment
+        run: |
+          uv venv /tmp/flow-venv
+          uv pip install --no-cache --python /tmp/flow-venv dist/*.whl ultralytics
+
+      # `cd /tmp` so an accidental relative import cannot reach the checkout: the
+      # script is named by absolute path and runs with the repository *not* on
+      # its working directory.
+      - name: Run the thirty-minute flow
+        run: |
+          cd /tmp
+          /tmp/flow-venv/bin/python "$GITHUB_WORKSPACE/examples/thirty_minute_flow.py" /tmp/flow
+
   # #62's and #63's second acceptance criteria: the tools the exporters exist to
   # feed actually load what they wrote. Its own job because `ultralytics` brings
   # torch — roughly two gigabytes — and putting that in front of every `uv sync`
