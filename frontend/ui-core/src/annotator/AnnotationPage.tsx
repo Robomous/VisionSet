@@ -79,6 +79,7 @@ import {
   useJobAssets,
   useJobProgress,
   usePinnedSchema,
+  useJobTransition,
   useSaveAnnotations,
   useSetAssetProgress,
 } from "./jobQueries";
@@ -127,8 +128,9 @@ export function AnnotationPage({ jobId, onBack, onOpenGallery }: AnnotationPageP
 
   return (
     <Workspace
-      key={`${asset.id}:${annotations.dataUpdatedAt}`}
+      key={asset.id}
       jobId={jobId}
+      jobState={job.data?.state ?? "pending"}
       projectId={batch.data.project_id}
       assetIndex={index}
       assetCount={assets.data.length}
@@ -145,13 +147,18 @@ export function AnnotationPage({ jobId, onBack, onOpenGallery }: AnnotationPageP
 
 interface WorkspaceProps {
   readonly jobId: string;
+  readonly jobState: string;
   readonly projectId: string;
   readonly assetIndex: number;
   readonly assetCount: number;
   readonly asset: { readonly id: string; readonly width: number | null; readonly height: number | null; readonly content_hash: string; readonly progress?: string | null };
   readonly schema: unknown;
   readonly loaded: readonly WireAnnotation[];
-  readonly counts: { readonly annotated: number; readonly total: number } | null;
+  readonly counts: {
+    readonly annotated: number;
+    readonly total: number;
+    readonly unannotated: number;
+  } | null;
   readonly onNavigate: (index: number) => void;
   readonly onBack?: () => void;
   readonly onOpenGallery?: () => void;
@@ -164,9 +171,22 @@ interface WorkspaceProps {
  * this asset" structural: an `AnnotatorStore` carries its own undo history, and
  * carrying that across a navigation would let `mod+z` walk into the previous
  * picture's edits.
+ *
+ * **The key is the asset id and nothing else.** It briefly also carried
+ * `annotations.dataUpdatedAt`, to rebuild the store after a save — and that was a
+ * real bug: `dataUpdatedAt` moves on *every* refetch, including the background ones
+ * `staleTime` and window focus produce, so the whole workspace remounted every few
+ * seconds and took any unsaved work with it. #59's cycle found it as a panel button
+ * that could never be clicked because the element kept detaching.
+ *
+ * What rebuilds the store after a save is the `useMemo` below, keyed on `loaded`.
+ * TanStack Query structurally shares its results, so a refetch that finds identical
+ * JSON returns the *same array* and the memo holds; a save changes the ids and it
+ * does not.
  */
 function Workspace({
   jobId,
+  jobState,
   projectId,
   assetIndex,
   assetCount,
@@ -198,6 +218,25 @@ function Workspace({
 
   const save = useSaveAnnotations(jobId, asset.id);
   const setProgress = useSetAssetProgress(jobId);
+  const startJob = useJobTransition(jobId, "start");
+  const finishJob = useJobTransition(jobId, "complete");
+
+  /**
+   * Opening a job to work on it **is** starting it.
+   *
+   * `pending → in_progress` is a move somebody has to make, and there is nobody
+   * else: the batch's own `start` moves the *batch*, not its jobs. Before #59
+   * walked the whole cycle, nothing in the browser made this move, so
+   * `JobService.complete` would have refused forever and the batch could never
+   * leave `in_annotation`.
+   *
+   * Fired once and never retried — a second `start` is an `InvalidTransition`, and
+   * the guard is the state rather than a flag.
+   */
+  useEffect(() => {
+    if (jobState !== "pending" || startJob.isPending || startJob.isSuccess) return;
+    startJob.mutate();
+  }, [jobState, startJob]);
 
   const plan = useMemo(() => planSave(snapshot.document, loaded), [snapshot.document, loaded]);
   const dirty = !isEmptyPlan(plan);
@@ -333,6 +372,27 @@ function Workspace({
           <span className="text-meta text-muted-foreground" data-testid="job-progress">
             {counts === null ? "—" : `${counts.annotated} / ${counts.total} annotated`}
           </span>
+
+          {/*
+            Offered only when every asset is settled, because that is exactly when
+            `JobService.complete` stops refusing. `unannotated` is the one count
+            that blocks it — `annotated`, `skipped` and `accepted` are all settled.
+          */}
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="finish-job"
+            disabled={
+              counts === null ||
+              counts.unannotated > 0 ||
+              jobState === "completed" ||
+              finishJob.isPending
+            }
+            onClick={() => finishJob.mutate()}
+          >
+            <CheckCheck className="size-4" />
+            {jobState === "completed" ? "Finished" : "Finish job"}
+          </Button>
 
           <span className="h-5 w-px bg-border" />
 

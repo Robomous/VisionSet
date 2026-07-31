@@ -25,7 +25,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -114,7 +114,7 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
 }
 
 describe("the batch table", () => {
-  it("shows one action per state, and none at all when the batch is finished", async () => {
+  it("shows one action per state, and the last one is promote", async () => {
     on("GET", /\/batches$/, {
       status: 200,
       body: {
@@ -134,9 +134,14 @@ describe("the batch table", () => {
     expect(screen.queryByTestId("approve-a")).not.toBeNull();
     expect(screen.queryByTestId("start-b")).not.toBeNull();
     expect(screen.queryByTestId("complete-c")).not.toBeNull();
-    // `completed` is terminal and there is no route back to `draft` — jobs are
-    // already cut against the pinned schema — so the row offers nothing.
-    expect(within(screen.getByTestId("batch-d")).queryAllByRole("button")).toHaveLength(1);
+    // `completed` is terminal as a *state* — there is no route back to `draft`,
+    // because jobs are already cut against the pinned schema — but it is not the
+    // end of the batch's usefulness: promotion is the last move, and #59 found the
+    // product had no way to make it.
+    expect(screen.queryByTestId("promote-d")).not.toBeNull();
+    expect(screen.queryByTestId("approve-d")).toBeNull();
+    expect(screen.queryByTestId("start-d")).toBeNull();
+    expect(screen.queryByTestId("complete-d")).toBeNull();
   });
 
   it("shows no schema version until approval, because that is when it pins", async () => {

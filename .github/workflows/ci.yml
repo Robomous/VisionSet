@@ -213,6 +213,71 @@ jobs:
           path: frontend/app/playwright-report/
           retention-days: 7
 
+  # #59: the whole cycle in a browser, against a real server and a real kernel.
+  #
+  # A job of its own, and it needs both toolchains — this is the only check in the
+  # repository that does: `uv` for the server under test, `pnpm` for the bundle it
+  # serves. Everything else is one or the other, which is why neither existing job
+  # could have grown this leg.
+  #
+  # It drives the **built** artifact at `/ui/`, exactly as the wheel serves it, so
+  # it is also the only check that exercises the static mount and #58's SPA
+  # deep-link fallback for real.
+  cycle-e2e:
+    name: browser cycle (chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync environment
+        run: uv sync
+
+      - uses: pnpm/action-setup@v4 # reads packageManager from package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Keyed on the resolved version, never the range — the same reasoning as the
+      # annotator's job, and the same cache.
+      - name: Resolve the Playwright version
+        id: playwright
+        run: |
+          version=$(node -p "require('./frontend/app/node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install chromium
+        run: pnpm --filter @visionset/app exec playwright install --with-deps chromium
+
+      # The config's own webServer builds the engine, the design system and the
+      # bundle, copies it into the package data, creates a throwaway workspace and
+      # starts `visionset ui`. One command, so a failure in any of those steps is
+      # reported at this step rather than inside a server log.
+      - name: Drive the whole cycle
+        run: pnpm --filter @visionset/app cycle
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cycle-report
+          path: frontend/app/playwright-report/
+          retention-days: 7
+
   # #49's performance benchmark: frame times during pan, zoom and drag over 200
   # boxes and 20 polygons of 32 vertices on a 4K asset, plus a CPU-throttling
   # ladder that says how much headroom each gesture has.

@@ -22,6 +22,7 @@ artifact is always the pip package).
 | Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built |
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` |
 | Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) |
+| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset ui`; needs `uv sync` and `playwright install chromium` |
 | Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated |
 | Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server |
 | Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror |
