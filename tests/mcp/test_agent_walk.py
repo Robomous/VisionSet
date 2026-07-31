@@ -177,6 +177,14 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
             "modalities": ["image", "point_cloud", "video"],
         },
         {
+            # #64. Lossy because a VOC `<object>` has a fixed set of children
+            # its consumers index by tag name.
+            "name": "voc",
+            "lossy": True,
+            "geometries": ["bbox"],
+            "modalities": ["image"],
+        },
+        {
             # #62. An agent picking a format sees what each can write, so it can
             # tell "carries everything" from "carries boxes" without exporting.
             "name": "yolo",
