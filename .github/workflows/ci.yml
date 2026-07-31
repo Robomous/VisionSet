@@ -298,6 +298,14 @@ jobs:
   # VISIONSET_REQUIRE_ULTRALYTICS turns the local skip into an error, so a broken
   # install goes red rather than quietly shrinking the suite. Same rule, same
   # reason, as VISIONSET_REQUIRE_FFMPEG in the python job.
+  #
+  # It runs ONE FILE, never the suite, and that is not thrift. The ultralytics
+  # wheel ships a top-level `tests` package — `__init__.py`, `conftest.py` and
+  # all — which installs into site-packages and shadows this repository's
+  # namespace-package `tests/`. A regular package beats a namespace portion
+  # wherever it is found, so no path ordering fixes it: in this environment
+  # `import tests.fixtures` raises. `test_yolo_smoke.py` therefore imports
+  # nothing from `tests.`, and its docstring says so.
   yolo-smoke:
     name: yolo smoke (ultralytics)
     runs-on: ubuntu-latest
