@@ -605,3 +605,78 @@ the headroom rows detached, and reported beautiful numbers about nothing.
 CI carries the benchmark only on `workflow_dispatch` (`annotator bench (chromium,
 manual)`), which is what #49 asks for. Compare a dispatch against a dispatch — a shared
 runner is not the machine above.
+
+## The showcase
+
+The demo page at `/` is the annotator's public showcase, and #50 is what made it one. It
+is the same page the behavioural contract drives — the shape did not move — restyled onto
+the repo-root `DESIGN.md` and given the two pieces of the annotation workspace that cost
+nothing to bring forward.
+
+### What is on it
+
+| region | what it proves |
+| --- | --- |
+| the canvas | the three tools, the wheel and pinch zoom, pan, undo/redo, the whole keyboard |
+| the floating tool strip | the tools *this schema* can reach, and the derived tool it currently is |
+| the zoom readout | the stage's own scale, reported through `onViewChange` |
+| Classes | the hotkey, the class colour and the geometry of every declared class |
+| History | `undoLabel` / `redoLabel`, and buttons driving the same log the chords do |
+| Tags | the classification tool, which is a panel and never the canvas |
+| State + What would be saved | the document, and the exact `AnnotationCreate` payload a host would POST |
+
+Every one of those is **outside** `@visionset/annotator`. The canvas takes a store, a
+picture and an active class and gives back callbacks; it fetches nothing, routes nothing,
+and owns no UI a product would want to restyle. That is the embeddable contract, and the
+demo is the thing that keeps it honest — a control the package had to own would have to
+be built here first and would not fit.
+
+### A tool strip over a tool that does not exist
+
+`core/interaction/tool.ts` is emphatic: the tool is **derived from the active class and
+never stored**. v1 stored both and spent two mechanisms keeping them from disagreeing. So
+the strip does not select a tool — it reports the derived one, and a press moves the
+active class to one that derives the tool asked for. Two consequences, both deliberate:
+
+- A press whose tool is **already active is a no-op.** The demo schema declares two bbox
+  classes; with `pedestrian` held the box button is already lit, and re-pointing the class
+  at `vehicle` would silently change what the next shape is labelled.
+- The strip lists **one button per distinct drawable geometry**, built from
+  `drawableGeometry`. A `classification_tag` and a `polyline` both answer `null`, and the
+  demo schema declares both — so the two omissions are visible rather than theoretical.
+
+### `onViewChange`, and the one place a default is a lie
+
+The readout needed the stage's scale, and the adapter had no way to hand it over. The new
+prop is read-only and it is called **on mount**, unlike `onAnnotationsChange` and
+`onSelectionChange`, which deliberately are not.
+
+The asymmetry is the point. A document is handed *in*, so a host already knows the initial
+one. A viewport is not: the fit is computed in a `useLayoutEffect` against a pane rect only
+the component can measure, so a host that was never told would have to display `1` — and
+100% is the one number the fit is guaranteed not to be. `showcase.spec.ts` asserts the
+readout against the measured scale for exactly that reason; with no jsdom in this
+repository, a browser is the only place a mount-time call can be observed at all.
+
+Zoom **controls** — a `−`/`+` pair driving the stage from outside — need an imperative
+handle the adapter still does not publish. They land with the top bar that has somewhere to
+put them (#56). Until then the readout reports and the wheel, the pinch and `mod+0` drive.
+
+### The one deliberate departure from `DESIGN.md`
+
+**The canvas well is dark.** Everything around the image follows the contract exactly —
+white cards, `#d0d7de` borders, Robomous orange strictly as an accent, one type scale — but
+the surround the picture sits in does not. A bright frame around a photograph shifts its
+apparent contrast, which is why every image tool ships a dark mat. It is a mat and not a
+second theme: the only interactive thing drawn on it is the tool strip, which is a `muted`
+panel from the light palette.
+
+`frontend/app/src/demo/theme.ts` holds the tokens and records that exception once, rather
+than six components each making it. **#128 replaces that file** with `@visionset/ui-core`'s
+real `tokens.css` — today a superseded placeholder whose dark surfaces and blue accent
+contradict the contract. The components above it do not change when it does, because they
+already name intents rather than colours.
+
+The benchmark page keeps the old dark chrome on purpose. It is an instrument, #49's numbers
+were recorded against it as it stands, and restyling it would change what its frame times
+measure for no reason anybody asked for.
