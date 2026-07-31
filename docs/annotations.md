@@ -374,3 +374,89 @@ The annotator builds first, deliberately: the app resolves `@visionset/annotator
 `dist/`, so an unbuilt change is simply invisible in the browser rather than a compile error.
 The sample image is an SVG `data:` URI generated in code — fixture media is never committed here,
 and its rulers are what make a wrong transform visible by eye.
+
+## The behavioural contract
+
+Two suites, and the division is not by speed.
+
+**`pnpm --filter @visionset/annotator test`** — 700 vitest cases over 30 files, and they
+need no DOM because the engine cannot have one. It runs in **about four seconds**
+(6.7 s wall including process startup, measured on an idle developer machine), which
+is a property of the boundary rather than of the number of tests: there is no jsdom to
+build, no setup file, no vitest config at all. The things that would end it are adding
+a browser environment, adding jsdom, or adding a setup file — not adding more tests.
+If that budget ever needs raising, say which of the three bought it.
+
+**`pnpm --filter @visionset/app e2e`** — 37 Playwright scenarios against the demo page,
+in one chromium. They exist for the half a unit test structurally cannot reach: whether
+a browser delivers a real press to an element that still holds focus.
+
+### What the port kept, and what it could not
+
+v1 shipped four annotation specs, 825 lines. They are not transcribed, because more
+than half of them describe things this build does not do.
+
+| v1 spec | LOC | Disposition |
+| --- | --- | --- |
+| `polygon-tool.spec.ts` | 233 | **Ported**, all seven scenarios — one of them inverted, see below |
+| `annotation-redesign.spec.ts` | 129 | **One of six ported.** The other five are v1's routing and chrome — a batch list, an `Annotate` link, a sidebar, an image picker, a back button. The demo has no router and no backend; those describe a product surface M5 builds, not a behaviour that moved |
+| `polyline-tool.spec.ts` | 257 | **Out of scope.** `polyline` is a nameable `GeometryType` with no `Geometry` variant — `parseGeometry` refuses it as `UNSUPPORTED_GEOMETRY`, *declared with no implementation*. It becomes live the day a `PolylineGeometry` joins the union |
+| `lane-export.spec.ts` | 206 | **Out of scope**, same reason, plus two lane-export formats that do not exist here |
+
+The demo's fifth class, `centerline`, is that state made visible: it is declared
+`polyline`, `toolFor` answers `select` for it, and a scenario asserts that activating it
+draws nothing. That is the closest honest port of the polyline spec's premise.
+
+### The one place the port asserts the opposite of v1
+
+v1: *clicking a vertex and pressing Delete removes that vertex, and since 3 − 1 = 2 is
+below the minimum, the whole triangle goes.* #44 answered the same question the other
+way — `removePolygonVertex` returns `null` at `MIN_POLYGON_POINTS`, `deleteVertex` does
+nothing, and the polygon survives. Destroying a shape somebody placed three clicks into
+because they aimed at a vertex is a punishment for a typo, and `Delete` on the selection
+is one key away. Two scenarios hold it: the refusal on a triangle, and the removal on a
+quadrilateral — because a refusal with no working sibling is indistinguishable from a
+dead code path.
+
+### Two engine behaviours have no adapter path
+
+Found by writing the port. `AnnotatorCanvas.handlePointerDown` answers **every**
+non-primary press with a pan and returns before the machine is told, which is the
+adapter honouring `state.ts`'s contract that a pan forwards nothing. The cost is that
+two interaction-table rows are unreachable in a browser: the secondary press that
+deletes a vertex (reachable instead through the toggle modifier, so the capability
+survives — only v1's gesture for it does not), and the secondary press that takes back
+the last placed polygon point, which has **no other spelling**. `adapter-gaps.spec.ts`
+pins today's behaviour so a later change goes red and says what to update. Filed as
+**#129**, which sets out the two defensible answers.
+
+### The two render layers guard different halves
+
+#47 fixed a bug where closing a polygon on its first vertex moved focus to `<body>` and
+silently killed every shortcut, and put `pointer-events: none` on both `<g>` layers.
+Measured while writing this suite: they are not redundant. Restoring the attribute on
+`TransientLayer` alone reproduces the original bug exactly and fails **one** scenario —
+the vertex pressed belongs to the polygon still being drawn. Restoring it on
+`AnnotationLayer` alone leaves that one green and fails **five** others, every one of
+which presses on a committed shape.
+
+### No scenario waits on a clock
+
+v1's specs are built on `waitForTimeout` between gestures, because nothing on its page
+exposed a settled state. This demo publishes `counts` and `wire`, and React 19 flushes
+discrete events synchronously, so every assertion is web-first or an `expect.poll`.
+`tests/scripts/e2e_discipline.test.mjs` holds it. When a sleep looks necessary, the demo
+has stopped exposing the state the scenario needs, and the fix is a `data-testid`.
+
+### Running it
+
+```
+pnpm --filter @visionset/app e2e
+```
+
+The config starts its own server on **port 5273** — not vite's 5173, which the first run
+of this suite found already held by an unrelated stack, and drove for twelve scenarios
+before failing. It builds the annotator first, deliberately: the app resolves
+`@visionset/annotator` through `dist/`, so an unbuilt engine is invisible rather than a
+compile error. `reuseExistingServer` skips that rebuild locally — if the demo behaves
+like an older build, kill the dev server you already had open.

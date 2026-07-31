@@ -133,6 +133,66 @@ jobs:
       - name: Test
         run: pnpm test
 
+  # M4's behavioural contract: v1's Playwright specs, re-pointed at the annotator
+  # demo. A job of its own rather than a step in `frontend`, because root
+  # `pnpm test` is `pnpm -r test` and hanging a browser off that would put a
+  # ~100 MB download in front of every unit-test run. The `e2e` matrix above is the
+  # precedent — a job that pays for its own setup — and the name says `annotator`
+  # so a red X in the checks list names the surface rather than colliding with it.
+  annotator-e2e:
+    name: annotator e2e (chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # reads packageManager from package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Keyed on the version the lockfile actually resolved, never on the range in
+      # package.json: a caret bump that changed the browser build while the key
+      # stayed still would restore a cache for the wrong revision, and Playwright
+      # refuses to run against one.
+      - name: Resolve the Playwright version
+        id: playwright
+        run: |
+          version=$(node -p "require('./frontend/app/node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # `--with-deps` installs OS libraries, which the cache above does not hold, so
+      # it runs on a hit too. The browser download is what the cache actually saves.
+      - name: Install chromium
+        run: pnpm --filter @visionset/app exec playwright install --with-deps chromium
+
+      # `frontend/app` resolves `@visionset/annotator` through its `dist/`, so an
+      # unbuilt engine is served silently rather than failing to compile. The
+      # Playwright config builds it too; doing it here as well keeps the failure at
+      # a named step instead of inside a web-server log.
+      - name: Build the annotator
+        run: pnpm --filter @visionset/annotator build
+
+      - name: Drive the demo
+        run: pnpm --filter @visionset/app e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/app/playwright-report/
+          retention-days: 7
+
   openapi:
     name: OpenAPI contract drift gate
     runs-on: ubuntu-latest
