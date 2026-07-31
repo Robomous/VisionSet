@@ -37,7 +37,7 @@ from mcp.types import CallToolResult
 from tests.fixtures.media import write_images
 
 from visionset.kernel.services import WorkspaceService
-from visionset.mcp.main import server
+from visionset.mcp.main import build_server, server
 
 SCHEMA_CLASSES: list[dict[str, Any]] = [
     {
@@ -55,9 +55,23 @@ BBOX: dict[str, Any] = {"type": "bbox", "x": 1.0, "y": 2.0, "width": 8.0, "heigh
 
 def call(tool: str, /, **arguments: Any) -> CallToolResult:
     """Invoke one tool over a real client session and return the whole result."""
+    return _call(server, tool, arguments)
 
+
+def call_destructive(tool: str, /, **arguments: Any) -> CallToolResult:
+    """The same, against a server started with ``--allow-destructive`` (#108).
+
+    A second server rather than an environment variable, because the module-level
+    one registers at import and a test cannot get in front of that. This is the
+    seam ``build_server`` exists for: the posture is a *startup* decision, so
+    exercising both means starting two.
+    """
+    return _call(build_server(allow_destructive=True), tool, arguments)
+
+
+def _call(target: Any, tool: str, arguments: dict[str, Any]) -> CallToolResult:
     async def go() -> CallToolResult:
-        async with create_connected_server_and_client_session(server) as client:
+        async with create_connected_server_and_client_session(target) as client:
             return await client.call_tool(tool, arguments)
 
     return anyio.run(go)

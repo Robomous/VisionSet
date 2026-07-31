@@ -32,6 +32,34 @@ the environment, because there is no other channel:
 `python -m visionset.mcp.main` is the same server without the pre-flight check, for a client that
 cannot run a console script.
 
+### Destructive tools are not offered unless you ask
+
+`delete_project` is **absent from the listing** unless the server was started with
+`--allow-destructive` (or, for the module form, `VISIONSET_MCP_ALLOW_DESTRUCTIVE=1`):
+
+```json
+{ "command": "visionset", "args": ["mcp", "--allow-destructive"] }
+```
+
+This is measured rather than cautious. Four real agent runs were asked to tidy a schema and then
+delete a project; in **four of four** the model sent `confirm: true` on the *first* call, having
+read the parameter in the tool description. `ConfirmationRequired` never fired once, because
+nothing ever made the un-gated call.
+
+That is not the flag failing. Over HTTP or at a terminal `confirm` works exactly as designed,
+because a **person** is the one adding it. What the runs settle is narrower: *when the caller is a
+model, `confirm` is not a human in the loop.* It is a parameter documented in the same listing the
+caller reads before choosing, so the description that exists to explain the gate is also the
+instruction for clearing it. There is no version of a self-describing tool schema where that is
+not true.
+
+So the gate moved somewhere an agent cannot reach — the server's own startup. A tool that is not
+advertised cannot be called with a flag. `confirm` itself is unchanged, and stays: it is correct
+for every other surface, and when these tools *are* registered they behave exactly as before. The
+only decision is whether an agent is shown them at all.
+
+`visionset mcp` prints which posture it started with, on stderr beside the workspace.
+
 `visionset mcp` resolves the workspace with the full precedence documented in
 [workspaces.md](workspaces.md) — `--workspace`, then `$VISIONSET_WORKSPACE`, then the nearest
 workspace at or above the working directory — and then **states** the answer in the environment,
@@ -51,7 +79,8 @@ it, and what twelve real agent runs did with it — see
 
 ## The tools
 
-Thirty-four, listed in the order an agent meets them.
+Thirty-three by default, listed in the order an agent meets them, plus one offered only on
+request — see [above](#destructive-tools-are-not-offered-unless-you-ask).
 
 ### Projects and schema
 
@@ -60,7 +89,6 @@ Thirty-four, listed in the order an agent meets them.
 | `create_project` | Make a project and the empty dataset that is its trunk. |
 | `list_projects` | Everything in this workspace. |
 | `get_project` | The project, its dataset id, and how far its work has got. |
-| `delete_project` | **Destructive.** Requires `confirm: true`. |
 | `get_schema` | The classes, the active version, and every version that exists. |
 | `preview_schema_change` | What a proposed change would do. Writes nothing. |
 | `create_schema_version` | Apply one. `allow_destructive` for a narrowing change. |
@@ -111,6 +139,12 @@ Thirty-four, listed in the order an agent meets them.
 | `list_formats` | Installed exporters, which are lossy, and what each can write. |
 | `check_export` | What a format would drop from a release, before writing anything. |
 | `export_release` | Write a release to a local directory. `allow_lossy` where needed. |
+
+### Offered only with `--allow-destructive`
+
+| | |
+| --- | --- |
+| `delete_project` | **Destructive.** Removes the project, its dataset, its batches, its jobs and its annotations. Requires `confirm: true` as well — the parameter is unchanged; what changed is that the tool is not in the listing unless somebody started the server for it. |
 
 ## `get_asset_image`, and the coordinate frame
 
@@ -184,6 +218,12 @@ Never merged into one, because they guard different things:
 | `allow_destructive` | narrowing a contract | `create_schema_version` |
 | `allow_lossy` | emitting an incomplete copy of something that stays intact | `export_release` |
 
+`confirm` is the one of the three that an agent will clear by itself — see
+[above](#destructive-tools-are-not-offered-unless-you-ask) — which is why the tool that takes it
+is not advertised by default. The other two guard *narrowing a contract* and *emitting an
+incomplete copy*, neither of which destroys anything: the release stays intact, the earlier schema
+version stays readable, and both refusals are recoverable by resubmitting. They stay advertised.
+
 `delete_annotations` takes **none** of them. Removing a label is the annotator edit loop, and the
 guard is that a batch which is no longer `in_annotation` refuses every write.
 
@@ -203,7 +243,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-thirty-four tools would put a path an agent has no way to know into every call. The workspace is
+thirty-odd tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset ui` or
 a second agent between calls.
 

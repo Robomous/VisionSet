@@ -12,13 +12,18 @@ import inspect
 import pytest
 from tests.mcp._flow import tool_names, tool_schemas
 
-from visionset.mcp.main import DESTROYS, TOOLS
+from visionset.mcp.main import (
+    ALLOW_DESTRUCTIVE_ENV,
+    DESTROYS,
+    DESTRUCTIVE_TOOLS,
+    TOOLS,
+    registered_tools,
+)
 
 SHIPPED = {
     "create_project",
     "list_projects",
     "get_project",
-    "delete_project",
     "get_schema",
     "preview_schema_change",
     "create_schema_version",
@@ -50,10 +55,20 @@ SHIPPED = {
     "export_release",
     "list_formats",
 }
-"""Written out rather than derived from ``TOOLS``, so that adding a tool is a
+"""Every tool this server offers by default.
+
+Written out rather than derived from ``TOOLS``, so that adding a tool is a
 deliberate edit in two places. The ship-vs-fold decision is the whole point of
 #35; a set computed from the table would agree with itself no matter what
 landed."""
+
+DESTRUCTIVE = {"delete_project"}
+"""Offered only when the server was started with ``--allow-destructive`` (#108).
+
+Absent from the listing by default rather than present and gated, because
+``confirm`` is documented in the same listing an agent reads before choosing —
+four of four real runs sent it on the first call. A tool that is not advertised
+cannot be called with a flag."""
 
 
 def test_the_server_advertises_exactly_the_shipped_tools() -> None:
@@ -67,12 +82,13 @@ def test_every_registered_tool_reaches_the_listing() -> None:
     assert len(tool_names()) == len(TOOLS)
 
 
-def test_thirty_four_tools_ship() -> None:
+def test_thirty_three_tools_ship_and_one_more_is_offered_on_request() -> None:
     # The count is a decision, not an accident — 50 candidates were evaluated one
-    # by one. A change here should be argued in `docs/mcp.md` first. #65 added the
-    # thirty-fourth, `check_export`: the plan-before-apply half of an export, on
-    # the `preview_schema_change` precedent.
-    assert len(SHIPPED) == 34
+    # by one. A change here should be argued in `docs/mcp.md` first. #65 added
+    # `check_export`, the plan-before-apply half of an export; #108 moved
+    # `delete_project` out of the default listing.
+    assert len(SHIPPED) == 33
+    assert len(DESTRUCTIVE) == 1
 
 
 @pytest.mark.parametrize("name", sorted(SHIPPED))
@@ -110,11 +126,60 @@ def test_a_tool_that_can_destroy_data_says_so_and_takes_confirm() -> None:
     assert gated == hinted
 
 
-def test_delete_project_is_the_only_destructive_tool() -> None:
+def test_nothing_in_the_default_listing_destroys_anything() -> None:
     # Deliberate and worth pinning: `delete_annotations` removes rows and is *not*
     # destructive in this sense, because the batch gate guards it and deleting a
     # label is the ordinary edit loop.
-    assert {tool.__name__ for tool, hints in TOOLS if hints is DESTROYS} == {"delete_project"}
+    assert [tool.__name__ for tool, hints in TOOLS if hints is DESTROYS] == []
+
+
+def test_delete_project_is_the_only_destructive_tool() -> None:
+    assert {tool.__name__ for tool, hints in DESTRUCTIVE_TOOLS} == DESTRUCTIVE
+    assert all(hints is DESTROYS for _, hints in DESTRUCTIVE_TOOLS)
+
+
+def test_the_destructive_tools_are_absent_until_the_server_is_started_for_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#108's whole answer, in one assertion.
+
+    Absent from the listing rather than present and gated: a `confirm` parameter
+    is documented in the same listing an agent reads before choosing, so the
+    description that explains the gate is also the instruction for clearing it.
+    Four of four measured runs sent it on the first call.
+    """
+    monkeypatch.delenv(ALLOW_DESTRUCTIVE_ENV, raising=False)
+    assert registered_tools() == TOOLS
+
+    monkeypatch.setenv(ALLOW_DESTRUCTIVE_ENV, "1")
+    assert registered_tools() == TOOLS + DESTRUCTIVE_TOOLS
+
+
+@pytest.mark.parametrize("value", ["", "0", "true", "yes", "TRUE"])
+def test_only_an_exact_one_opens_the_destructive_tools(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """Exact, because the variable is a switch a human set and not a preference.
+
+    `visionset mcp` writes `1` or `0` and nothing else; anything ambiguous
+    arriving from somewhere is the case where refusing is right.
+    """
+    monkeypatch.setenv(ALLOW_DESTRUCTIVE_ENV, value)
+    assert registered_tools() == TOOLS
+
+
+def test_the_destructive_tools_keep_the_confirm_and_hint_agreement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The constraint #108 states: whatever *is* registered still agrees in both directions.
+
+    Checked against the table rather than a live listing, because the server
+    registers at import and this process imported it without the flag — building
+    a second `FastMCP` here would test a registry nothing runs.
+    """
+    for tool, hints in DESTRUCTIVE_TOOLS:
+        assert hints is DESTROYS
+        assert "confirm" in inspect.signature(tool).parameters
 
 
 def test_no_tool_administers_tokens() -> None:
