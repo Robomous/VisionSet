@@ -100,7 +100,7 @@ def test_a_declared_class_nobody_used_is_absent_from_the_statistics(summary: Any
 
 def test_the_export_wrote_where_it_was_told(summary: Any) -> None:
     """`export_release` takes a local path — an agent runs beside the filesystem."""
-    assert summary.formats == ("dummy", "yolo")
+    assert summary.formats == ("coco", "dummy", "yolo")
     assert Path(summary.export_directory).is_dir()
 
 

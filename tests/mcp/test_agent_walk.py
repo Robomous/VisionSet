@@ -161,6 +161,14 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
 
     assert ok(call("list_formats"))["items"] == [
         {
+            # #63. Lossless: boxes and polygons are native, and everything
+            # COCO has no field for rides in a `visionset` object.
+            "name": "coco",
+            "lossy": False,
+            "geometries": ["bbox", "polygon"],
+            "modalities": ["image"],
+        },
+        {
             "name": "dummy",
             "lossy": False,
             # #65: what the format can carry. `dummy` declares everything,

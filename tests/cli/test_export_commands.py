@@ -108,7 +108,12 @@ def test_format_list_names_the_installed_exporters() -> None:
     assert result.exit_code == 0, result.output
     rows = result.stdout.splitlines()
     assert rows[0].split() == ["NAME", "LOSSY"]
-    assert rows[1].split() == ["dummy", "no"]
+    # Sorted by name, so `coco` leads and `yolo` closes.
+    assert [row.split() for row in rows[1:]] == [
+        ["coco", "no"],
+        ["dummy", "no"],
+        ["yolo", "yes"],
+    ]
 
 
 def test_format_list_needs_no_workspace_at_all(
@@ -130,6 +135,14 @@ def test_format_list_json_is_the_envelope() -> None:
     # claims everything — declaring less would make the report describe a loss
     # that never happens.
     assert json.loads(result.stdout)["items"] == [
+        {
+            # #63. Lossless: boxes and polygons are native, and everything COCO
+            # has no field for rides in a `visionset` object per annotation.
+            "name": "coco",
+            "lossy": False,
+            "geometries": ["bbox", "polygon"],
+            "modalities": ["image"],
+        },
         {
             "name": "dummy",
             "lossy": False,

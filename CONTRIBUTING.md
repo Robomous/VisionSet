@@ -26,7 +26,7 @@ artifact is always the pip package).
 | Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated |
 | Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server |
 | Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror |
-| YOLO smoke (ultralytics) | `uv sync --group yolo && uv run pytest tests/formats/test_yolo_smoke.py` — its own group because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run that one file and `uv sync` again afterwards; skips without it, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` so a broken install goes red |
+| Format smoke (ultralytics, pycocotools) | `uv sync --group yolo --group coco && uv run pytest tests/formats/test_*_smoke.py` — their own groups because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run only those files and `uv sync` again afterwards; skips without them, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` / `VISIONSET_REQUIRE_PYCOCOTOOLS=1` so a broken install goes red |
 | Version sync | `pnpm version:check` |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
 | Generated API client | `pnpm generate:client` (commit the diff) |
