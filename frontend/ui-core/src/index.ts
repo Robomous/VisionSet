@@ -158,6 +158,8 @@ export { SchemaEditor, type SchemaEditorProps } from "./screens/SchemaEditor.js"
 export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
 export { BatchesScreen, type BatchesScreenProps } from "./screens/BatchesScreen.js";
 export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.js";
+export { DatasetScreen, type DatasetScreenProps } from "./screens/DatasetScreen.js";
+export { saveBlob } from "./screens/download.js";
 export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
 
 // The annotation page's side panel (#126). Driven entirely by the `AnnotatorStore`
@@ -223,4 +225,20 @@ export {
   type Job,
   type Partition,
   type ProgressCounts,
+  datasetKeys,
+  useDatasetStats,
+  useDownloadManifest,
+  useExportRelease,
+  useFormats,
+  useProjectDataset,
+  usePromoteBatch,
+  usePublishRelease,
+  useReleases,
+  useVerifyRelease,
+  type Dataset,
+  type DatasetStats,
+  type Format,
+  type Release,
+  type ReleaseVerification,
+  type SplitRecipe,
 } from "./screens/queries.js";

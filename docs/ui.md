@@ -46,6 +46,43 @@ Query keys are hierarchical — `["projects"]` → `["projects", id]` →
 invalidating `["projects", id]` after a rename refreshes the project, its schema and
 its version list, and the mutation never has to enumerate what it affected.
 
+### The dataset, its releases, and getting the data out
+
+A release is the only truly immutable artifact, and the screen reflects that: the
+timeline offers no edit and no delete, because there is no `ReleaseService.delete`
+— only a project's own cascade removes one, and the manifest blob survives even
+that.
+
+**Verification is on demand.** `verify` re-reads and re-hashes every blob the
+manifest names — `BlobStore.exists` is `is_file()` on a path *named by* the hash and
+proves nothing — so it is not something to run because a list rendered. A broken
+manifest is reported on its own: the service stops with `checked: 0`, so every other
+number would be about a document that is not the one its hash names.
+
+**The split's fractions are compared the kernel's way.** `0.7 + 0.15 + 0.15` is not
+`1.0` in binary floating point, and the kernel uses `math.isclose(abs_tol=1e-9)`; a
+stricter check in the browser would refuse a recipe the API accepts.
+
+**`allow_lossy` is the third gate word**, and this is where it lives. `confirm=`
+guards destroying data, `allow_destructive=` guards narrowing a contract, and this
+one guards emitting an **incomplete copy of something that stays intact**. The
+kernel never catches the three together and neither does the UI: three dialogs,
+three questions.
+
+There is no pre-export validation route, so consent is the schema editor's shape:
+attempt → read `LOSSY_EXPORT_NOT_CONSENTED` off the 409 → ask → retry with the flag.
+`FormatOut.lossy` makes the question predictable in advance, because lossiness is
+declared by the **format** — a bbox-only format loses a polygon whether or not
+today's dataset holds one.
+
+### Downloads, and the fourth instance of one finding
+
+`<a href download>` sends no `Authorization` header, exactly as `<img src>` does not.
+So an export archive and a manifest are fetched through the typed client and saved
+with `saveBlob`: an object URL, an anchor, `a.click()`, and a revoke on the next
+tick. `a.click()` rather than a synthesised event — a `MouseEvent` built in script is
+not user activation, and a browser may refuse the download outright.
+
 ### The annotation page
 
 Where M4's engine meets M3's API. Three findings shaped it.
