@@ -28,7 +28,7 @@
  * UUIDs. A program has the SDK and the API.
  */
 
-import { Layers, Play, SquareCheckBig } from "lucide-react";
+import { ArrowUpFromLine, Layers, Play, SquareCheckBig } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -56,6 +56,7 @@ import {
   useApproveBatch,
   useBatchTransition,
   useBatches,
+  usePromoteBatch,
   type Batch,
   type ProgressCounts,
 } from "./queries";
@@ -138,7 +139,10 @@ export function BatchesScreen({ projectId, onOpenBatch }: BatchesScreenProps): J
                     <ProgressBar counts={batch.progress} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Lifecycle batch={batch} onApprove={() => setApproving(batch)} />
+                    <Lifecycle
+                      batch={{ ...batch, projectId }}
+                      onApprove={() => setApproving(batch)}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -180,12 +184,39 @@ function Lifecycle({
   batch,
   onApprove,
 }: {
-  readonly batch: Batch;
+  readonly batch: Batch & { readonly projectId?: string };
   readonly onApprove: () => void;
 }): JSX.Element | null {
   const start = useBatchTransition(batch.id, "start");
   const complete = useBatchTransition(batch.id, "complete");
+  const promote = usePromoteBatch(batch.projectId ?? "");
 
+  if (batch.state === "completed") {
+    // The last move, and the only one that is not a state transition: promotion
+    // adds the batch's assets to the trunk. Idempotent — a **union** against
+    // current membership, with no log entry when nothing changed — so pressing it
+    // twice is safe and a curator's earlier removal is restored rather than
+    // remembered.
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <Button
+          variant="secondary"
+          size="sm"
+          data-testid={`promote-${batch.name}`}
+          disabled={promote.isPending}
+          onClick={() => promote.mutate(batch.id)}
+        >
+          <ArrowUpFromLine className="size-4" aria-hidden="true" />
+          {promote.isSuccess ? "Promoted" : "Promote"}
+        </Button>
+        {promote.isError && (
+          <FieldError data-testid={`promote-error-${batch.name}`}>
+            {asApiError(promote.error).code}
+          </FieldError>
+        )}
+      </div>
+    );
+  }
   if (batch.state === "draft") {
     return (
       <Button variant="primary" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
@@ -235,8 +266,8 @@ function Lifecycle({
       </div>
     );
   }
-  // `completed` is terminal. There is no route back to `draft`, so there is no
-  // button — jobs are already cut against the pinned schema.
+  // Every state is answered above; `approved` and `in_annotation` are the two
+  // middle rows and `draft`/`completed` the ends.
   return null;
 }
 

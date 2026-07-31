@@ -1,18 +1,19 @@
 {
   "name": "@visionset/app",
   "version": "0.0.1-dev.0",
-  "description": "VisionSet OSS product shell. Private — never published to npm; the compiled bundle ships inside the Python wheel.",
+  "description": "VisionSet OSS product shell. Private \u2014 never published to npm; the compiled bundle ships inside the Python wheel.",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "lint": "eslint src e2e bench playwright.config.ts playwright.bench.config.ts && pnpm run typecheck:e2e",
+    "lint": "eslint src e2e cycle bench playwright.config.ts playwright.bench.config.ts playwright.cycle.config.ts && pnpm run typecheck:e2e",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json",
     "e2e": "playwright test",
     "bench": "playwright test -c playwright.bench.config.ts",
-    "e2e:report": "playwright show-report"
+    "e2e:report": "playwright show-report",
+    "cycle": "playwright test -c playwright.cycle.config.ts"
   },
   "dependencies": {
     "@visionset/annotator": "workspace:*",
