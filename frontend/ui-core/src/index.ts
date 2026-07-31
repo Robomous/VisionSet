@@ -1,34 +1,127 @@
 /**
- * @visionset/ui-core — domain components, design tokens, generated API client.
+ * `@visionset/ui-core` — the design system, the domain components, and the
+ * generated API client.
  *
- * Components land in later sessions (Radix + lucide only for primitives).
- * For now this package exposes the token names so consumers reference CSS
- * custom properties through typed constants instead of raw strings, and the
- * typed API client generated from the committed openapi.json.
+ * ## What a consumer imports
+ *
+ * ```ts
+ * import "@visionset/ui-core/styles.css";           // once, in the app's entry
+ * import { Button, Card, EmptyState } from "@visionset/ui-core";
+ * ```
+ *
+ * The stylesheet is the contract: Tailwind v4 reads its `@theme` block, so
+ * `bg-primary` in a component here and `bg-primary` in a screen in `@visionset/app`
+ * are the same colour by construction. There is no `tailwind.config.js` in this
+ * repository and there must not be one — the tokens would acquire a second home.
+ *
+ * ## The rule this package exists to make enforceable
+ *
+ * `DESIGN.md`'s first principle: **never a hex or a `var()` colour in a class
+ * string.** `tests/scripts/design_tokens.test.mjs` scans every tracked frontend
+ * file for one and fails the build. v1 spent its life migrating away from hardcoded
+ * colours; VisionSet starts clean, so the legacy escape hatch does not come along.
+ *
+ * ## Layering
+ *
+ * `app/` is navigation, layout and composition — the enterprise rule (#58). A
+ * capability that lands there instead of here is an architecture bug by
+ * definition, because the future enterprise UI cannot reuse it. Screens are
+ * components in this package; routes are in the app.
+ *
+ * The public surface is listed explicitly rather than `export *`, so what this
+ * package promises stays auditable — the rule `generated/api.ts` already follows.
  */
 
+// The design tokens, and their prose contract at the repository root.
+export { COLOR, DESIGN_TOKENS, FONT, RADIUS, SPACING, TEXT } from "./tokens.js";
+
+// The class palette. Re-exported from the annotator, never respelled — see the
+// argument in `palette.ts`.
+export { CLASS_FILL_OPACITY, classColor } from "./palette.js";
+export type { LabelClass } from "./palette.js";
+
+export { cn } from "./lib/cn.js";
+
+// Primitives — Radix + lucide only (decision H).
+export { Button, buttonVariants, type ButtonProps } from "./primitives/Button.js";
+export {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "./primitives/Card.js";
+export { FieldError, FieldHint, Input, Label, Textarea } from "./primitives/Input.js";
+export {
+  Alert,
+  Badge,
+  badgeVariants,
+  type AlertProps,
+  type BadgeProps,
+} from "./primitives/Badge.js";
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+  type SheetContentProps,
+} from "./primitives/Dialog.js";
+export { Tabs, TabsContent, TabsList, TabsTrigger } from "./primitives/Tabs.js";
+export {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "./primitives/Select.js";
+export {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./primitives/Menu.js";
+export { Progress, Skeleton, Toaster, toast } from "./primitives/Feedback.js";
+export {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./primitives/Table.js";
+
+// The three states every async surface owes.
+export {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  type EmptyStateProps,
+  type ErrorStateProps,
+  type LoadingStateProps,
+} from "./patterns/AsyncStates.js";
+
+// The typed client, and the generated contract under the names every
+// openapi-typescript consumer expects.
 export { createApiClient } from "./client.js";
 export type { ApiClientOptions, VisionSetClient } from "./client.js";
-
-// The generated contract, re-exported under the names every openapi-typescript consumer
-// expects. Listed explicitly rather than `export *` so the public surface stays auditable.
 export type { components, operations, paths } from "./generated/api.js";
-
-export const tokens = {
-  colorBg: "--vs-color-bg",
-  colorSurface: "--vs-color-surface",
-  colorBorder: "--vs-color-border",
-  colorText: "--vs-color-text",
-  colorTextMuted: "--vs-color-text-muted",
-  colorAccent: "--vs-color-accent",
-  colorDanger: "--vs-color-danger",
-  space1: "--vs-space-1",
-  space2: "--vs-space-2",
-  space3: "--vs-space-3",
-  space4: "--vs-space-4",
-  radius: "--vs-radius",
-  fontSans: "--vs-font-sans",
-  fontMono: "--vs-font-mono",
-} as const;
-
-export type TokenName = (typeof tokens)[keyof typeof tokens];

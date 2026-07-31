@@ -1,0 +1,8 @@
+{
+  // What ships. Test files are compiled by `typecheck` and by vitest, but they
+  // must not land in `dist/` — the annotator draws the same line for the same
+  // reason, and a consumer resolving `@visionset/ui-core` should never be one
+  // `import` away from a testing-library dependency.
+  "extends": "./tsconfig.json",
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}
