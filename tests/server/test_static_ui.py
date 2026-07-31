@@ -28,7 +28,13 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.server._probe import PROBE_PATH, StubAuthProvider, stubbed_app
 
-from visionset.server.main import BUNDLE_COMMAND, INDEX_FILENAME, create_app, static_root
+from visionset.server.main import (
+    BUNDLE_COMMAND,
+    INDEX_FILENAME,
+    UI_PREFIX,
+    create_app,
+    static_root,
+)
 
 MARKER = "built-by-a-test"
 
@@ -198,3 +204,89 @@ def test_serving_the_bundle_opens_no_workspace(
     with TestClient(app) as client:
         assert client.get("/ui/").status_code == 200
     assert app.state.workspace_handle.is_open is False
+
+
+# --- the single-page deep-link fallback (#58) ---------------------------------
+
+
+HTML = {"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+"""What a browser sends on a navigation. The whole rule turns on this header."""
+
+
+def test_a_client_route_under_the_prefix_serves_the_index_so_a_reload_works(
+    bundled: TestClient,
+) -> None:
+    """The deferral #33 wrote into ``_install_ui``'s docstring, discharged.
+
+    ``/ui/projects/abc`` is a route the router resolves in the browser; a reload on
+    it is a real request for a path no file backs. Without this, refreshing any page
+    but the index is a 404 — and so is every bookmark.
+    """
+    response = bundled.get("/ui/projects/abc", headers=HTML)
+    assert response.status_code == 200
+    assert MARKER in response.text
+
+
+def test_the_fallback_answers_200_rather_than_404_with_a_body(bundled: TestClient) -> None:
+    """A page that renders correctly must not claim to be missing.
+
+    A 404 status under a working document is a lie every crawler and every error
+    reporter believes.
+    """
+    assert bundled.get("/ui/anything/at/all", headers=HTML).status_code == 200
+
+
+def test_a_client_that_does_not_claim_to_be_a_browser_still_gets_the_json_404(
+    bundled: TestClient,
+) -> None:
+    """httpx sends ``*/*``, which is exactly why the substring test is the rule.
+
+    Every other test in ``tests/server`` needed no change for this feature, and that
+    is the evidence rather than a claim: an API client never asks for ``text/html``.
+    """
+    response = bundled.get("/ui/projects/abc")
+    assert response.status_code == 404
+    assert response.json() == {"code": "NOT_FOUND", "message": "Not Found", "detail": None}
+
+
+def test_the_api_keeps_its_own_404_even_for_a_browser(bundled: TestClient) -> None:
+    """The API owns the root, so the fallback claims one prefix and nothing else.
+
+    Answering HTML for an unknown ``/projects/nope`` would hide a real refusal from a
+    client that mistyped a route — the same argument that put the bundle at ``/ui``.
+    """
+    response = bundled.get("/no-such-route", headers=HTML)
+    assert response.status_code == 404
+    assert response.json() == {"code": "NOT_FOUND", "message": "Not Found", "detail": None}
+
+
+def test_a_wrong_method_on_a_client_route_is_not_a_page_load(bundled: TestClient) -> None:
+    response = bundled.post("/ui/projects/abc", headers=HTML)
+    assert response.status_code != 200
+
+
+def test_a_405_is_still_a_405_for_a_browser(bundled: TestClient) -> None:
+    """The fallback narrows on the status too, or every wrong method would render."""
+    response = bundled.post("/", headers=HTML)
+    assert response.status_code == 405
+    assert response.json()["code"] == "METHOD_NOT_ALLOWED"
+
+
+def test_a_checkout_with_no_bundle_does_not_pretend_to_have_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``index.is_file()`` is checked per request, not at startup.
+
+    ``_static/`` always exists — that is what makes the mount unconditional — but in
+    a source checkout it holds only ``README.md``. Serving a file that is not there
+    would be a ``RuntimeError`` inside an exception handler, which is the worst place
+    in the application to raise one.
+    """
+    client = _served(monkeypatch, tmp_path)
+    assert client.get("/ui/projects/abc", headers=HTML).status_code == 404
+
+
+def test_the_fallback_did_not_reach_the_contract() -> None:
+    """An exception handler is not an operation, so both drift gates stay still."""
+    spec = create_app().openapi()
+    assert not any(path.startswith(UI_PREFIX) for path in spec["paths"])

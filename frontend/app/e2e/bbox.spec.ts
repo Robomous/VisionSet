@@ -25,10 +25,11 @@ import {
   focusCanvas,
   frameOf,
   wire,
+  SHOWCASE,
 } from "./_frame";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto(SHOWCASE);
 });
 
 test("a drag with a bbox class draws one box, already selected", async ({ page }) => {

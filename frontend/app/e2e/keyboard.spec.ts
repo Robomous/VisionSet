@@ -15,10 +15,10 @@
 
 import { expect, test } from "@playwright/test";
 
-import { drawBbox, expectCounts, focusCanvas, frameOf, wire } from "./_frame";
+import { drawBbox, expectCounts, focusCanvas, frameOf, wire, SHOWCASE } from "./_frame";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto(SHOWCASE);
 });
 
 /**

@@ -18,10 +18,10 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { expectCounts, expectFitted, focusCanvas, frameOf } from "./_frame";
+import { expectCounts, expectFitted, focusCanvas, frameOf, SHOWCASE } from "./_frame";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto(SHOWCASE);
 });
 
 /** What the strip shows is `toolFor`'s answer, and the schema decides the buttons. */

@@ -10,18 +10,18 @@
  * projection of it. What is left is a shape adapter — `COLOR.primary` as a string
  * for a `style={{}}` object, not `bg-primary` as a class.
  *
- * The showcase keeps inline styles rather than moving to Tailwind utilities, and
- * that is deliberate rather than deferred work. **Tailwind ships a preflight**, a
- * global reset that removes the `body` margin and unstyles headings, buttons and
- * tables. The showcase is driven by 49 Playwright scenarios whose coordinate
- * arithmetic `e2e/_frame.ts` derives from the page's real layout, and whose
- * docstring states in as many words that the page ships no CSS reset. Importing a
- * stylesheet into it as a side effect of adding a design system would be a layout
- * change in the one place this repository has the most tests, bought for nothing.
+ * The showcase keeps inline styles rather than moving to Tailwind utilities. #128
+ * deferred that by giving the design system its own Vite entry, so that Tailwind's
+ * preflight — a global reset — would not reach the page 54 Playwright scenarios
+ * measure. #58 retired both entries: there is one bundle now and the reset applies
+ * here too.
  *
- * So the design system gets its own Vite entry (`styleguide.html`), the showcase
- * keeps its own, and **#58 retires both** when the router and the real shell land.
- * At that point this file goes away rather than being ported.
+ * These stayed anyway, and the reason is what made the flip safe. Because every
+ * value below is already an explicit `style={{}}`, preflight has almost nothing
+ * left to reset on this page — its headings, buttons and panels all carry their
+ * own. Rewriting them into utilities would be a diff across a page whose layout is
+ * load-bearing for the suite, bought for consistency alone. The values come from
+ * `@visionset/ui-core` either way, so the contract still has one home.
  *
  * ## The one deliberate exception, recorded here rather than in six components
  *
