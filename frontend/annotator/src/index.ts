@@ -160,6 +160,37 @@ export {
   toggleTagCommand,
   untagCommand,
 } from "./core/interaction/tags";
+// The input layer (#46) — a press, a chord, the map, and what carries a row out
+export {
+  CLASS_HOTKEY_DIGITS,
+  DEFAULT_BINDINGS,
+  RESET_ZOOM,
+  TOGGLE_HELP,
+  chordOf,
+  classAction,
+  classHotkeys,
+  hotkeyForClass,
+  keystrokeOf,
+  modifiersOf,
+  pointerButton,
+  pointerPoint,
+  registryOf,
+  resolve,
+  runAction,
+  type Action,
+  type ActionContext,
+  type ActionKind,
+  type ActionOutcome,
+  type Binding,
+  type InputHost,
+  type KeyIntent,
+  type KeyPress,
+  type Keystroke,
+  type ModifierState,
+  type PointerPress,
+  type Registry,
+  type SentEvent,
+} from "./core/input";
 
 // Host adapters — each needs a capability the headless core may not name
 export { randomUuid } from "./adapters/ids";

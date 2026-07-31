@@ -10,11 +10,12 @@
 // deliberate violation" is proved by a test containing no violation.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+const REPO = fileURLToPath(new URL("../../", import.meta.url));
 const PACKAGE = fileURLToPath(new URL("../../frontend/annotator/", import.meta.url));
 const TSC = path.join(PACKAGE, "node_modules", ".bin", "tsc");
 const ESLINT = path.join(PACKAGE, "node_modules", ".bin", "eslint");
@@ -134,4 +135,67 @@ test("the react import ban still fires", () => {
   );
   assert.notEqual(status, 0, "a react import inside core must fail lint");
   assert.match(output, /no-restricted-imports/, output);
+});
+
+// #46's second acceptance criterion: "no `KeyboardEvent` construction anywhere as an
+// inter-component API". It is already true by construction — `core/interaction/events.ts` owns a
+// vocabulary that has never heard the string "Escape", and the type gate above proves a DOM type
+// cannot even be named in a core signature — but nothing pinned it, and v1 shipped exactly this:
+// its polygon confirm button called `document.dispatchEvent(new KeyboardEvent("keydown", …))` so
+// that one component could talk to another.
+//
+// The pattern is assembled at runtime from two fragments, so this file does not match itself. That
+// is the same reason `tests/architecture/test_tracked_file_sizes.py` reads `git ls-files`: the
+// index, not the tree, which also keeps node_modules/ and dist/ out for free rather than by an
+// ignore list somebody has to maintain.
+const EVENT = ["Ev", "ent"].join("");
+const SYNTHETIC = new RegExp(
+  String.raw`new\s+(?:Keyboard|Pointer|Mouse|Touch)${EVENT}\s*\(|dispatch${EVENT}\s*\(`,
+);
+// Comments are skipped, and that is not a loophole — it is what the rule is *about*. `events.ts`
+// and `core/input/index.ts` both quote v1's line verbatim while explaining why it is forbidden,
+// which is exactly what a docstring should do; a gate that forbade its own explanation would be
+// worse than no gate. Prose starts a line, so a trailing `// new KeyboardEvent(…)` after real code
+// still trips — the conservative direction.
+const COMMENT = /^\s*(?:\/\/|\/\*|\*)/;
+const SOURCE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
+
+/** Every `file:line` in `text` that constructs or dispatches a DOM event. */
+function synthesizedIn(file, text) {
+  return text
+    .split("\n")
+    .map((line, index) => ({ line, at: index + 1 }))
+    .filter(({ line }) => !COMMENT.test(line) && SYNTHETIC.test(line))
+    .map(({ line, at }) => `${file}:${at}: ${line.trim()}`);
+}
+
+test("the scan finds the line v1 shipped, and nothing that merely names the type", () => {
+  // The rule is a pure function, so "fails on a deliberate violation" is proved by a test holding
+  // no violation — the bargain this whole file is built on.
+  assert.deepEqual(
+    synthesizedIn("v1.tsx", `  document.dispatch${EVENT}(new Keyboard${EVENT}("keydown", {}));`),
+    [`v1.tsx:1: document.dispatch${EVENT}(new Keyboard${EVENT}("keydown", {}));`],
+  );
+  assert.deepEqual(synthesizedIn("a.ts", `el.dispatch${EVENT}(e)`), ["a.ts:1: el.dispatchEvent(e)"]);
+  // A signature, a normalized-event union and a docstring must all pass, or the gate would forbid
+  // `core/interaction/events.ts` and `core/input/keys.ts` — the two files that make it true.
+  assert.deepEqual(synthesizedIn("b.ts", `export function onKey(e: Keyboard${EVENT}): void {}`), []);
+  assert.deepEqual(synthesizedIn("c.ts", '| { readonly type: "pointer-down" }'), []);
+  assert.deepEqual(synthesizedIn("d.ts", ` * v1 did \`new Keyboard${EVENT}("keydown")\`.`), []);
+});
+
+test("no module builds a synthetic DOM event to talk to another module", () => {
+  const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
+  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
+  const tracked = listed.stdout.split("\0").filter((name) => SOURCE.test(name));
+  assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
+
+  const offenders = tracked.flatMap((file) =>
+    synthesizedIn(file, readFileSync(path.join(REPO, file), "utf8")),
+  );
+  assert.deepEqual(
+    offenders,
+    [],
+    `a synthetic DOM event is not an API — pass data, or a normalized event:\n${offenders.join("\n")}`,
+  );
 });
