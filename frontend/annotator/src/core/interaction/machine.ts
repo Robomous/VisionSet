@@ -560,19 +560,12 @@ const DRAWING_POLYGON_ROW: Row<"drawing-polygon"> = {
     const { context, event, state } = turn;
 
     if (event.button !== "primary") {
-      // v1's right-click-to-take-back, which was its only undo of any kind while
-      // drawing. Emptying the buffer returns to `idle` rather than leaving a
-      // `drawing-polygon` holding nothing: `points[0]` is what the close ring and
-      // the affordance are measured from, and a state where that is `undefined` is
-      // one every reader would have to guard. The tool has not changed, so the next
-      // press starts a fresh session — which is also what Escape from a one-point
-      // session does, and the two agreeing is not an accident.
+      // v1's right-click-to-take-back. Kept, and shared with the `take-back-point`
+      // intent below — #129 found this gesture has no path through the React
+      // adapter, which answers every non-primary press with a pan, so the keyboard
+      // is how a user actually reaches it. One implementation, two doors.
       if (event.button !== "secondary") return stay(turn);
-      if (state.points.length <= 1) return idle();
-      return {
-        state: { ...state, points: state.points.slice(0, -1) },
-        effects: NO_EFFECTS,
-      };
+      return takeBackPoint(turn);
     }
 
     const at = inFrame(context, event.point);
@@ -604,9 +597,32 @@ const DRAWING_POLYGON_ROW: Row<"drawing-polygon"> = {
   "double-click": (turn) => closeSession(turn),
   commit: (turn) => closeSession(turn),
   cancel: () => idle(),
+  "take-back-point": (turn) => takeBackPoint(turn),
   "tool-changed": () => idle(),
   // `pointer-cancel` is deliberately absent — see the cancel table above.
 };
+
+/**
+ * Drop the last placed vertex — v1's right-click, and #46's `backspace`.
+ *
+ * Emptying the buffer returns to `idle` rather than leaving a `drawing-polygon`
+ * holding nothing: `points[0]` is what the close ring and the affordance are
+ * measured from, and a state where that is `undefined` is one every reader would
+ * have to guard. The tool has not changed, so the next press starts a fresh
+ * session — which is also what Escape from a one-point session does, and the two
+ * agreeing is not an accident.
+ *
+ * The `cursor` is deliberately left where it was. It is the rubber band's far end
+ * and the pointer has not moved; recomputing it from the vertex that just went
+ * away would snap the preview to a place the pointer is not.
+ */
+function takeBackPoint(
+  turn: Turn<Extract<InteractionState, { type: "drawing-polygon" }>, InteractionEvent>,
+): Transition {
+  const { state } = turn;
+  if (state.points.length <= 1) return idle();
+  return { state: { ...state, points: state.points.slice(0, -1) }, effects: NO_EFFECTS };
+}
 
 const MOVING_ROW: Row<"moving"> = {
   "pointer-move": (turn) => {

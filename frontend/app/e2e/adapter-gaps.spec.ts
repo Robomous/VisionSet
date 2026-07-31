@@ -1,6 +1,9 @@
 /**
- * Engine behaviour with no path through the React adapter — found by this port, and
- * pinned here rather than left as a silent hole.
+ * The secondary press, and what #129 decided about it.
+ *
+ * This file was written by #48 as a pinned *gap*: two rows of the interaction table
+ * that no browser could reach. #129 settled it — **the pan stays** — so the file is
+ * now a pinned *decision*, and one of its two scenarios has grown the answer.
  *
  * `AnnotatorCanvas.handlePointerDown` answers **every** non-primary press with a pan
  * and returns before the machine is told anything:
@@ -14,26 +17,34 @@
  * }
  * ```
  *
- * That is the adapter honouring `state.ts`'s written contract — while panning it
- * forwards nothing — and it is also correct for the overwhelmingly common case.
- * The cost is that two rows of the interaction table are unreachable in a browser:
+ * ## Why the pan stays
  *
- * 1. `IDLE_ROW`'s secondary press on a vertex, which deletes it. v1's spelling.
- *    Reachable here through the toggle modifier instead, which `polygon.spec.ts`
- *    covers, so the *capability* is not lost — only v1's gesture for it.
- * 2. `DRAWING_POLYGON_ROW`'s secondary press, which takes back the last placed
- *    point and was v1's only undo of any kind while drawing. There is **no other
- *    spelling**, so this capability is genuinely unreachable from the demo today.
+ * The alternative was to forward a secondary press to the machine and begin the pan
+ * only when the machine did not consume it. Two things killed it:
  *
- * Both are covered by the annotator's own vitest suite, which drives the machine
- * directly and therefore cannot notice that nothing calls it this way. That gap
- * between "the engine does it" and "a user can reach it" is exactly what an
- * end-to-end suite is for.
+ * - **A conditional pan is unpredictable.** Right-drag would pan on empty canvas
+ *   and not over a vertex, so whether the gesture works depends on where the
+ *   vertices happen to be — which the user cannot see before pressing.
+ * - **On macOS, ctrl-click *is* a secondary press.** The toggle modifier is
+ *   `ctrl` or `meta`, so routing the secondary press would make one ctrl-click
+ *   raise **both** spellings of the vertex delete. That is v1's own bug, and #44
+ *   closed it deliberately: `machine.test.ts` still asserts the double gesture
+ *   cannot throw.
  *
- * These scenarios assert **what happens today**, deliberately. If a later change
- * routes a secondary press to the machine, they go red and say what to update —
- * which is the behaviour a pinned gap should have. Filed as **#129**, which sets out
- * the two defensible answers; see also `docs/annotations.md`.
+ * So the two rows stay unreachable *by that gesture*, and the question becomes what
+ * each capability costs:
+ *
+ * 1. `IDLE_ROW`'s secondary press on a vertex costs **nothing**: the toggle
+ *    modifier reaches the same call, and `polygon.spec.ts` covers it. Only v1's
+ *    gesture is gone.
+ * 2. `DRAWING_POLYGON_ROW`'s take-back had **no other spelling at all**, and
+ *    `mod+z` cannot serve because a pending polygon is not in the command log. So
+ *    #129 gave it one: **`Backspace`**, a `take-back-point` intent the machine
+ *    answers only while drawing. The scenario below asserts both halves — the press
+ *    still pans, and the keyboard does the work.
+ *
+ * The rest is still pinned behaviour: a change that routes a secondary press to the
+ * machine turns these red and says what to update.
  */
 
 import { expect, test } from "@playwright/test";
@@ -83,7 +94,9 @@ test("a secondary press on a vertex pans instead of removing it", async ({ page 
  * deliberately (`machine.ts` omits the row), which is why the polygon below still
  * completes rather than vanishing.
  */
-test("a secondary press while drawing pans, and takes back no point", async ({ page }) => {
+test("a secondary press while drawing pans, and Backspace is what takes a point back", async ({
+  page,
+}) => {
   const frame = await frameOf(page);
   await focusCanvas(page);
   await page.keyboard.press("2");
@@ -102,9 +115,16 @@ test("a secondary press while drawing pans, and takes back no point", async ({ p
     .poll(async () => Math.round((await canvasOrigin(page)).x))
     .toBe(Math.round(origin.x - 60));
 
-  // Both points survived: one more closes the polygon. Coordinates are re-read,
-  // because the view moved under them.
+  // Both points survived the pan, which is the pinned half.
+  //
+  // Now #129's answer: `Backspace` takes the second one back, so the ring is one
+  // point again — and the shape below is drawn from a *different* second point,
+  // which is what proves the take-back happened rather than being ignored.
+  await focusCanvas(page);
+  await page.keyboard.press("Backspace");
+
   const moved = await frameOf(page);
+  await page.mouse.click(moved.at(560, 330).x, moved.at(560, 330).y);
   await page.mouse.click(moved.at(570, 470).x, moved.at(570, 470).y);
   await page.keyboard.press("Enter");
 

@@ -86,7 +86,7 @@ export const NO_MODIFIERS: Modifiers = {
   alt: false,
 };
 
-/** Everything the machine can be told. Eight variants, discriminated on `type`. */
+/** Everything the machine can be told. Nine variants, discriminated on `type`. */
 export type InteractionEvent =
   /** A button went down at `point`. */
   | {
@@ -128,7 +128,25 @@ export type InteractionEvent =
    * class for another is not a tool change, and an in-flight draw keeps the class
    * it captured.
    */
-  | { readonly type: "tool-changed" };
+  | { readonly type: "tool-changed" }
+  /**
+   * Take back the last point placed while drawing a polygon.
+   *
+   * An **intent**, like `cancel` and `commit`, and it exists for the same reason
+   * they do: #42 decides what taking back a point means in each state, #46 decides
+   * which key says it. Nothing in `interaction/` has heard of `Backspace`.
+   *
+   * It is here because #129 found that the gesture v1 used for this — a secondary
+   * press — has **no path through the React adapter**, which answers every
+   * non-primary press with a pan before the machine is told. That decision is kept
+   * (see `AnnotatorCanvas`), so the capability needed a spelling of its own; it had
+   * none, and `mod+z` cannot serve because a pending polygon is not in the command
+   * log at all.
+   *
+   * Every state but `drawing-polygon` ignores it, which the partial rows in
+   * `machine.ts` make automatic rather than a guard anybody writes.
+   */
+  | { readonly type: "take-back-point" };
 
 /** Every event's discriminant, read off the union by `machine.ts`'s table. */
 export type InteractionEventType = InteractionEvent["type"];

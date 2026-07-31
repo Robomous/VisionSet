@@ -55,7 +55,14 @@ const DISPATCH: readonly DispatchRow[] = [
   { chord: "escape", key: "Escape", action: { kind: "send", event: { type: "cancel" } } },
   { chord: "enter", key: "Enter", action: { kind: "send", event: { type: "commit" } } },
   { chord: "delete", key: "Delete", action: { kind: "delete-selection" } },
-  { chord: "backspace", key: "Backspace", action: { kind: "delete-selection" } },
+  // #129: not a synonym for `Delete` any more. The two chords meant one thing, so
+  // one was free — and `Backspace` takes back the last thing you did, which is the
+  // only spelling the polygon take-back has.
+  {
+    chord: "backspace",
+    key: "Backspace",
+    action: { kind: "send", event: { type: "take-back-point" } },
+  },
   { chord: "mod+z", key: "z", held: MOD, action: { kind: "undo" } },
   {
     chord: "mod+shift+z",
