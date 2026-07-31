@@ -33,17 +33,17 @@
  * that exact page, and moving it would change what it measures for no reason
  * anybody asked for.
  *
- * ## Screens land later, and the placeholders say which task owns them
+ * ## Every route now has a screen
  *
- * #53 through #57 build the screens, in `ui-core`. Until then each route renders an
- * `EmptyState` naming its issue, which is a more honest shell than a route table
- * with commented-out lines: the *navigation* is real and testable today, and a
- * screen arriving is one import.
+ * #58 stood this table up with placeholders naming the task that owed each screen.
+ * #53 through #57 filled them in, and the last placeholder went with #57 — which
+ * the compiler noticed before anybody did, because an unused function is an error
+ * here. That is the milestone's own progress bar, and it has run out.
  */
 
 import {
   AnnotationPage,
-  EmptyState,
+  DatasetScreen,
   GalleryScreen,
   IngestScreen,
   ProjectScreen,
@@ -75,10 +75,7 @@ export function AppRoutes(): JSX.Element {
           <Route path="projects/:projectId/ingest" element={<Ingest />} />
           <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
           <Route path="jobs/:jobId" element={<Annotate />} />
-          <Route
-            path="projects/:projectId/dataset"
-            element={<Placeholder title="Dataset" issue={57} />}
-          />
+          <Route path="projects/:projectId/dataset" element={<DatasetView />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
@@ -124,6 +121,7 @@ function Project(): JSX.Element {
       projectId={projectId}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
+      onOpenDataset={() => void navigate(`/projects/${projectId}/dataset`)}
     />
   );
 }
@@ -132,6 +130,12 @@ function Gallery(): JSX.Element {
   const { projectId, batchId } = useParams();
   if (projectId === undefined || batchId === undefined) return <NotFound />;
   return <GalleryScreen projectId={projectId} batchId={batchId} />;
+}
+
+function DatasetView(): JSX.Element {
+  const { projectId } = useParams();
+  if (projectId === undefined) return <NotFound />;
+  return <DatasetScreen projectId={projectId} />;
 }
 
 function Annotate(): JSX.Element {
@@ -147,17 +151,3 @@ function Ingest(): JSX.Element {
   return <IngestScreen projectId={projectId} />;
 }
 
-function Placeholder({
-  title,
-  issue,
-}: {
-  readonly title: string;
-  readonly issue: number;
-}): JSX.Element {
-  return (
-    <EmptyState
-      title={title}
-      description={`This screen lands with #${issue}. The shell, the router and the rail are #58's.`}
-    />
-  );
-}
