@@ -50,12 +50,16 @@ before anything is written:
 from __future__ import annotations
 
 import json
-import shutil
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Final
-from uuid import UUID
 
+from visionset.formats._layout import (
+    IMAGES_DIRNAME,
+    dimensions_of,
+    folds_of,
+    write_image,
+)
 from visionset.kernel.domain import (
     BboxGeometry,
     Geometry,
@@ -65,7 +69,6 @@ from visionset.kernel.domain import (
     ManifestAsset,
     PolygonGeometry,
     Release,
-    assign_split,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
@@ -77,16 +80,9 @@ from visionset.kernel.ports import ContentReader
 #: configured location — so these two names are load-bearing rather than
 #: conventional. Renaming either produces an export that loads with zero labels
 #: and no error.
-IMAGES_DIRNAME: Final = "images"
 LABELS_DIRNAME: Final = "labels"
 
 DATA_FILENAME: Final = "data.yaml"
-
-#: The fold every asset lands in when a release was published without a recipe.
-#:
-#: One undivided set, named ``train`` because that is the one key ultralytics
-#: requires; answering with three empty folds would be a split nobody asked for.
-DEFAULT_SPLIT: Final = "train"
 
 #: How many digits a normalized coordinate is written with.
 #:
@@ -94,22 +90,6 @@ DEFAULT_SPLIT: Final = "train"
 #: pixel on an image up to a million pixels wide, so the rounding is below what
 #: the annotation itself can express.
 PRECISION: Final = 6
-
-#: What the first bytes of a file say it is, and the suffix to give it.
-#:
-#: Sniffed rather than taken from ``ManifestAsset.uri``, because a ``uri`` is not
-#: a filename: a frame cut out of a clip is recorded as
-#: ``/clips/drive.mp4#frame=12``, whose suffix would name the container it came
-#: out of. Three signatures, and anything else is refused by name rather than
-#: written under a guessed extension — a trainer that cannot decode an image it
-#: was handed fails much later and much less clearly.
-_SIGNATURES: Final[tuple[tuple[bytes, str], ...]] = (
-    (b"\xff\xd8\xff", ".jpg"),
-    (b"\x89PNG\r\n\x1a\n", ".png"),
-    (b"RIFF", ".webp"),
-)
-
-_SIGNATURE_BYTES: Final = max(len(signature) for signature, _ in _SIGNATURES)
 
 
 class YoloDetectionExporter:
@@ -141,11 +121,11 @@ class YoloDetectionExporter:
     ) -> None:
         names = [declared.name for declared in manifest.classes]
         index_of = {name: index for index, name in enumerate(names)}
-        folds = _folds(release, manifest)
+        folds = folds_of(release, manifest)
 
         for asset in manifest.assets:
             fold = folds[asset.asset_id]
-            _write_image(asset, dest / IMAGES_DIRNAME / fold, content)
+            write_image(asset, dest / IMAGES_DIRNAME / fold, content)
             _write_labels(
                 asset,
                 (dest / LABELS_DIRNAME / fold / asset.content_hash).with_suffix(".txt"),
@@ -153,56 +133,6 @@ class YoloDetectionExporter:
             )
 
         _write_data_yaml(dest / DATA_FILENAME, names, set(folds.values()))
-
-
-def _folds(release: Release, manifest: Manifest) -> dict[UUID, str]:
-    """Which fold each asset belongs to, keyed by asset id.
-
-    Computed from the release's own recipe and its own frozen asset set, which is
-    the same call ``ReleaseService.assignment`` makes — the plugin does not need
-    the service, because ``assign_split`` is a pure function of a recipe and a
-    sequence of manifest assets. An export is therefore reproducible from the
-    release alone, on any machine, forever.
-    """
-    if release.split is None:
-        return {asset.asset_id: DEFAULT_SPLIT for asset in manifest.assets}
-    assignment = assign_split(release.split, manifest.assets)
-    return {
-        asset_id: fold
-        for fold, members in (
-            ("train", assignment.train),
-            ("val", assignment.val),
-            ("test", assignment.test),
-        )
-        for asset_id in members
-    }
-
-
-def _write_image(asset: ManifestAsset, into: Path, content: ContentReader) -> None:
-    """Copy one asset's bytes into its fold, named by content hash.
-
-    Streamed with ``shutil.copyfileobj`` rather than read whole: a release is
-    every image somebody is about to train on, and holding one 4K frame in memory
-    at a time is a choice where holding none is available.
-    """
-    into.mkdir(parents=True, exist_ok=True)
-    with content(asset.content_hash) as stream:
-        head = stream.read(_SIGNATURE_BYTES)
-        suffix = _suffix_for(head, asset)
-        target = (into / asset.content_hash).with_suffix(suffix)
-        with target.open("wb") as handle:
-            handle.write(head)
-            shutil.copyfileobj(stream, handle)
-
-
-def _suffix_for(head: bytes, asset: ManifestAsset) -> str:
-    for signature, suffix in _SIGNATURES:
-        if head.startswith(signature):
-            return suffix
-    raise ExportSourceUnreadable(
-        f"asset {asset.asset_id} ({asset.content_hash}) is not a JPEG, PNG or WebP, "
-        f"so it cannot be written into a YOLO dataset"
-    )
 
 
 def _write_labels(asset: ManifestAsset, target: Path, index_of: Mapping[str, int]) -> None:
@@ -219,7 +149,7 @@ def _write_labels(asset: ManifestAsset, target: Path, index_of: Mapping[str, int
 
 
 def _rows(asset: ManifestAsset, index_of: Mapping[str, int]) -> Iterable[str]:
-    width, height = _dimensions(asset)
+    width, height = dimensions_of(asset)
     for annotation in asset.annotations:
         index = index_of.get(annotation.label_class)
         # A label whose class the manifest does not declare cannot happen —
@@ -253,22 +183,6 @@ def _as_box(annotation: ManifestAnnotation) -> BboxGeometry | None:
         ys = [y for _, y in geometry.points]
         return BboxGeometry(x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys))
     return None
-
-
-def _dimensions(asset: ManifestAsset) -> tuple[int, int]:
-    """The pixel size every coordinate is divided by, or refuse by name.
-
-    Never a fallback. v1 answered ``(1, 1)`` when it could not parse a size, which
-    turns normalization into the identity and writes pixel coordinates into a file
-    whose whole contract is that every number is between 0 and 1 — a dataset that
-    loads, trains, and is wrong.
-    """
-    if asset.width is None or asset.height is None:
-        raise ExportSourceUnreadable(
-            f"asset {asset.asset_id} has no recorded pixel size, so its annotations "
-            f"cannot be normalized"
-        )
-    return asset.width, asset.height
 
 
 def _normalized(box: BboxGeometry, width: int, height: int) -> list[str]:

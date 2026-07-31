@@ -50,6 +50,7 @@ visionset = "visionset.cli.main:app"
 [project.entry-points."visionset.formats"]
 dummy = "visionset.formats._dummy:DummyExporter"
 yolo = "visionset.formats.yolo:YoloDetectionExporter"
+coco = "visionset.formats.coco:CocoExporter"
 
 [dependency-groups]
 dev = [
@@ -73,6 +74,12 @@ dev = [
 # the ffmpeg rule from #22, for its reason.
 yolo = [
     "ultralytics>=8.3",
+]
+
+# The reference reader for the COCO exporter (#63). Its own group beside `yolo`
+# for the same reason, and installed in the same CI job.
+coco = [
+    "pycocotools>=2.0",
 ]
 
 # --- Version: single source of truth is the repo-root VERSION file ---
