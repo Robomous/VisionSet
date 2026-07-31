@@ -56,6 +56,8 @@ import type { LabelClass, Viewport } from "@visionset/annotator";
 import { useCallback, useState } from "react";
 import type { CSSProperties, JSX, MouseEvent, ReactNode } from "react";
 
+import { AnnotatorPanel } from "@visionset/ui-core";
+
 import { SAMPLE_ASSET, SAMPLE_IMAGE_SRC } from "./sampleAsset";
 import { SAMPLE_SCHEMA } from "./sampleSchema";
 import { ToolStrip, ZoomBadge } from "./ToolStrip";
@@ -84,6 +86,10 @@ export function AnnotatorDemo(): JSX.Element {
   const [showHelp, setShowHelp] = useState(false);
   const [notes, setNotes] = useState("");
   const [view, setView] = useState<Viewport | null>(null);
+  // Held here, and handed to both: the panel writes it and the canvas reads it.
+  // A `useState` rather than a fresh `Set` per render, because an unstable set
+  // defeats `AnnotationLayer`'s `memo` — #49's finding about `skipId`.
+  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const schema = snapshot.document.schema;
   const tool = toolFor(snapshot.document, activeClass);
@@ -134,6 +140,7 @@ export function AnnotatorDemo(): JSX.Element {
           activeClass={activeClass}
           onActivateClass={setActiveClass}
           onViewChange={setView}
+          hiddenIds={hiddenIds}
           onHostAction={hostAction}
         />
         <ToolStrip
@@ -156,6 +163,17 @@ export function AnnotatorDemo(): JSX.Element {
           minHeight: 0,
         }}
       >
+        {/* #126's panel, composed here so the showcase is where its browser
+            scenarios run. It is `ui-core`'s and styled with the design tokens; the
+            debug panels below it stay inline-styled, which `theme.ts` argues. */}
+        <AnnotatorPanel
+          store={store}
+          hiddenIds={hiddenIds}
+          onHiddenChange={setHiddenIds}
+          activeClass={activeClass}
+          onActivateClass={setActiveClass}
+        />
+
         <Panel title="Classes" testId="palette">
           <PaletteRow
             testId="class-select"

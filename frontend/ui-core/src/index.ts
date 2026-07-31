@@ -159,6 +159,10 @@ export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js"
 export { BatchesScreen, type BatchesScreenProps } from "./screens/BatchesScreen.js";
 export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.js";
 export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
+
+// The annotation page's side panel (#126). Driven entirely by the `AnnotatorStore`
+// the page already holds — no second door to the document.
+export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
 export {
   queryKeys,
   useActiveSchema,

@@ -698,3 +698,22 @@ already name intents rather than colours.
 The benchmark page keeps the old dark chrome on purpose. It is an instrument, #49's numbers
 were recorded against it as it stands, and restyling it would change what its frame times
 measure for no reason anybody asked for.
+
+
+## The side panel
+
+`@visionset/ui-core`'s `AnnotatorPanel` is the Objects/Labels column beside the
+canvas. It is driven entirely by the `AnnotatorStore` the page already holds and
+adds no second door to the document: every write is a command that already existed,
+and the selection is one `Selection` seen twice rather than two kept in step.
+
+**Hiding is a view decision.** The core document has no `hidden` flag and must not
+grow one — hiding is per viewer and per session, and a field would travel to the API
+and change a release hash. `AnnotatorCanvas` takes a `hiddenIds` prop instead, and
+filters both what it draws **and** the document the machine hit tests against,
+because a shape you cannot see must not swallow a press. `withoutHidden` returns the
+*same object* when nothing is hidden, which is what keeps the committed layer's
+`memo` bailing out during a drag.
+
+Hold that set in state. A freshly allocated `Set` on every render defeats the memo
+before it is consulted — #49's `skipId` finding, one prop over.
