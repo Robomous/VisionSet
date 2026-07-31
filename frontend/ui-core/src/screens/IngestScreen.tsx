@@ -33,8 +33,9 @@
  * so a clip gets a count and an indeterminate state instead.
  */
 
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, FileVideo, Images, RefreshCw, Upload } from "lucide-react";
-import { useMemo, useState, type ChangeEvent, type DragEvent, type JSX } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
 import { Alert, Badge } from "../primitives/Badge";
@@ -83,6 +84,25 @@ export function IngestScreen({ projectId }: IngestScreenProps): JSX.Element {
   const start = useStartIngest(projectId);
   const batches = useBatches(projectId);
   const job = useIngestJob(jobId);
+  const queries = useQueryClient();
+
+  /**
+   * Refresh the project when the run **finishes**, not when it starts.
+   *
+   * `useStartIngest` invalidates on the launch, and at that moment there is nothing
+   * to see: `ingest()` fills the batch and completes the job in its *last*
+   * transaction, so the batch a run creates does not exist until the poll says
+   * `completed`. Without this, a user who ingests and then walks to the batch list
+   * is shown "No batches yet" about a batch that is right there.
+   *
+   * Found by #59's browser cycle, which is the only test that walks from one screen
+   * to another after a background job.
+   */
+  const settled = job.data?.state;
+  useEffect(() => {
+    if (settled !== "completed" && settled !== "failed") return;
+    void queries.invalidateQueries({ queryKey: ["projects", projectId] });
+  }, [settled, projectId, queries]);
 
   // A clip is one file; images are many. Decided from the selection rather than
   // from a mode switch, because a mode switch is a second place the same fact

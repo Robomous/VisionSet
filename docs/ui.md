@@ -417,3 +417,54 @@ production too*, and the catch-all `Exception` handler lives in
 `ServerErrorMiddleware`, outside the user middleware stack — so a CORS layer would
 not run on a 500 anyway. The prefix exists because the API owns the root: `/projects`
 is both a real endpoint and a client route the SPA will want.
+
+
+## Selectors
+
+Every control a test drives carries a **`data-testid`**, and that is the policy
+rather than a habit. Three suites depend on it — the annotator's 76 scenarios,
+`ui-core`'s component tests, and #59's browser cycle — and the alternatives each
+fail in their own way: a CSS class is the design system's to change, and a visible
+string is the copy's.
+
+The rules:
+
+- **Name the thing, not the widget.** `save`, `approve-${batch.name}`,
+  `object-row-0` — never `primary-button-2`.
+- **Interpolate the domain's own identifier** when a control repeats:
+  `class-${name}`, `release-${tag}`, `version-${n}`. A test then reads the way the
+  product does.
+- **State goes on `data-*`, not on a class.** `data-active`, `data-selected`,
+  `data-hidden`, `data-collapsed`. #50 moved an assertion off a literal
+  `rgb(143, 211, 244)` for exactly this reason: it pinned the design system rather
+  than the behaviour, and it got *stronger* in the move, because a `data-` attribute
+  can be asserted on every row at once.
+- **Roles where a role is the claim.** `getByRole("dialog")`,
+  `toHaveAccessibleName`, `aria-current` — if the assertion is about accessibility,
+  a `data-testid` would be testing the wrong thing.
+
+## The browser cycle
+
+`pnpm --filter @visionset/app cycle` runs the whole product against a real server:
+`visionset ui` serving the built bundle out of `_static/`, the real API, the real
+kernel, and no mocks anywhere. Token → project → schema → ingest → approve →
+annotate → finish → complete → promote → publish → verify → export → download.
+
+It is one test, deliberately: every step needs the last one's output, and splitting
+it would mean either ten sign-ins or shared state that makes the order load-bearing
+and invisible. `test.step` gives the reporting a multi-test file would have bought.
+
+**It found three gaps that every other suite was structurally blind to**, because
+each is about one screen's effect on another:
+
+1. Nothing invalidated the batch list when an ingest **completed** — only when it
+   launched, before the batch exists — so a user who ingested and then walked to the
+   batch list saw "No batches yet" about a batch that was right there.
+2. Nothing started or completed a **job**. `BatchService.complete` refuses while a
+   job is outstanding and `JobService.complete` refuses while an asset is unsettled,
+   so a batch annotated entirely in the browser could never leave `in_annotation`.
+3. Nothing **promoted** a completed batch into the trunk, so a release could only
+   ever be published over an empty dataset.
+
+Each is now owned by the screen the domain says owns it, and the cycle asserts all
+three.

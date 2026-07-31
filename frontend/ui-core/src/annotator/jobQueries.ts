@@ -319,3 +319,33 @@ export function useSetAssetProgress(jobId: string) {
     },
   });
 }
+
+/**
+ * Move the job itself — `pending → in_progress → completed`.
+ *
+ * Two moves nothing in the browser made before #59 walked the whole cycle and
+ * found the batch stuck at `in_annotation`. The chain is real and each link is
+ * somebody's job: `BatchService.complete` refuses while any job is outstanding,
+ * `JobService.complete` refuses while any asset is unsettled, and neither is
+ * automatic — "derived" in this kernel means *recomputed*, not *implicit*.
+ *
+ * So the annotation page owns both: opening a job to work on it **is** starting it,
+ * and finishing it is a deliberate act with a button.
+ */
+export function useJobTransition(jobId: string, move: "start" | "complete") {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      unwrap(
+        move === "start"
+          ? await client.POST("/jobs/{job_id}/start", { params: { path: { job_id: jobId } } })
+          : await client.POST("/jobs/{job_id}/complete", { params: { path: { job_id: jobId } } }),
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: jobKeys.job(jobId) });
+      void queries.invalidateQueries({ queryKey: ["projects"] });
+      void queries.invalidateQueries({ queryKey: ["batches"] });
+    },
+  });
+}
