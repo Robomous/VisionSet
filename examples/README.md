@@ -3,8 +3,9 @@
 Runnable examples. Never commit example media — every image here is generated at runtime,
 and `**/workspace-data/` is git-ignored by design.
 
-The first two drive the SDK. The last three drive the same cycle over each of the three
-surfaces, which is M3's exit criterion: one kernel, reachable three ways.
+The first two drive the SDK. The next three drive the same cycle over each of the three
+surfaces, which is M3's exit criterion: one kernel, reachable three ways. The last one is
+**M6's gate** — the vision document's success metric, run against the installed wheel.
 
 | Example | What it shows |
 | --- | --- |
@@ -12,6 +13,7 @@ surfaces, which is M3's exit criterion: one kernel, reachable three ways.
 | [`ingest_end_to_end.py`](ingest_end_to_end.py) | Where assets come from: a generated 10 s clip → source at 5 fps → 50 deduplicated assets → approved batch of 2 jobs, plus a re-run that creates nothing, the same clip at a second rate, and a folder of stills with one unreadable file. **Needs ffmpeg.** |
 | [`http_end_to_end.py`](http_end_to_end.py) | The same cycle over HTTP, against a real server on a real port with a bearer token — including the multipart upload and the launch-and-poll ingest. `urllib` only: no `httpx`, no `requests`, no `curl`. |
 | [`cli_end_to_end.sh`](cli_end_to_end.sh) | The same cycle from a shell, using nothing but the `visionset` command: init → project → schema → ingest → batch → jobs → release → export, with the `--json` shapes asserted and one deliberate refusal. No ffmpeg, no `jq`, no server. |
+| [`thirty_minute_flow.py`](thirty_minute_flow.py) | The promise, executable: a 10 s clip → 50 frames → 50 boxes → a verified release → a YOLO dataset `ultralytics` agrees to load. Every stage named, timed, and asserted against a wall-clock ceiling. **Needs ffmpeg**; `ultralytics` optional. CI runs it from the wheel in an empty venv. |
 | [`mcp_end_to_end.py`](mcp_end_to_end.py) | The same cycle over MCP stdio, spawning `visionset mcp` and speaking JSON-RPC down its pipe — including looking at a preview and scaling the box back into the asset's own pixels. |
 
 ## Running the SDK end-to-end example
@@ -141,3 +143,19 @@ visionset mcp --workspace examples/workspace-data/mcp-e2e/ws
 
 [`docs/examples.md`](../docs/examples.md) walks through what each stage of all five examples does
 and why.
+
+## Running the thirty-minute flow
+
+```bash
+uv run python examples/thirty_minute_flow.py            # into ./thirty-minute-flow
+uv run python examples/thirty_minute_flow.py ./scratch  # or wherever you like
+```
+
+This is the one example that is also a **gate**. CI's `30-minute flow (wheel, end to end)` job
+builds the wheel, installs it into an empty virtual environment together with `ultralytics`, and
+runs this file from a working directory that is not the repository — so what it exercises is what
+`pip install visionset` gives somebody, entry points and plugin discovery included.
+
+Locally it runs against the source tree and skips the `ultralytics` check when the library is not
+installed, saying so. `tests/examples/test_thirty_minute_flow.py` runs the same file in process on
+every push, which is the cheap half; the wheel half is the expensive one and lives in CI.
