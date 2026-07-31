@@ -360,3 +360,18 @@ for them. See [batches.md](batches.md).
   and a queue would be a third arrangement neither of them would notice.
 - **No cross-attempt history.** The report and the counters describe the current attempt. A
   resumed run overwrites them, and a log of every attempt would be its own table.
+
+
+## In the browser
+
+`@visionset/ui-core`'s ingest screen is three steps, and their order is forced by
+the two facts on this page rather than chosen: **`extraction_fps` belongs to the
+source**, so it is picked before anything is probed, and the probe only exists once
+the source is registered. Registering the same clip at another rate creates a second
+source, which the screen says out loud.
+
+It shows `processed` against `total` for a directory and a bare count for a clip
+(there is no denominator until an extraction is over), groups the per-file report by
+`IngestFailureKind`, and offers **Resume** only for a `failed` run — a stuck
+`running` job has no button, because `running → running` is deliberately not a
+transition. See [ui.md](ui.md#the-ingest-flow-and-the-order-the-domain-forces).

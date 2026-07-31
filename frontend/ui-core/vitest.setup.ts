@@ -36,3 +36,30 @@ if (typeof Element !== "undefined") {
   Element.prototype.releasePointerCapture ??= () => undefined;
   Element.prototype.scrollIntoView ??= () => undefined;
 }
+
+/**
+ * Give `FormData` back to the realm that owns `fetch`.
+ *
+ * vitest's jsdom environment replaces `globalThis.FormData` with jsdom's class
+ * while leaving `fetch`, `Request` and `Response` as Node's (undici). The two do
+ * not recognise each other: `new Request(url, { body: <jsdom FormData> })`
+ * silently **stringifies** it, so a multipart upload arrives as
+ * `text/plain: "[object FormData]"`.
+ *
+ * That is a realm mismatch and not a product bug — in a browser both come from the
+ * same place — but it makes an upload untestable, and worse, it makes a *correct*
+ * upload look exactly like the `[object File]` bug a missing `bodySerializer`
+ * produces. So the realms are reconciled here rather than worked around in each
+ * test.
+ *
+ * undici's class is not importable (undici is not a dependency), so it is taken
+ * from an instance: parsing a form-encoded `Response` produces one, and its
+ * constructor is the class `Request` will accept.
+ */
+const nodeFormData = (
+  await new Response("k=v", {
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  }).formData()
+).constructor as typeof FormData;
+
+globalThis.FormData = nodeFormData;

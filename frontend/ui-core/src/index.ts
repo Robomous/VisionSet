@@ -155,6 +155,7 @@ export { clearToken, readToken, writeToken } from "./data/session.js";
 export { ProjectsScreen, type ProjectsScreenProps } from "./screens/ProjectsScreen.js";
 export { ProjectScreen, type ProjectScreenProps } from "./screens/ProjectScreen.js";
 export { SchemaEditor, type SchemaEditorProps } from "./screens/SchemaEditor.js";
+export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
 export {
   queryKeys,
   useActiveSchema,
@@ -172,4 +173,17 @@ export {
   type ProjectPage,
   type SchemaVersion,
   type SchemaVersionPage,
+  ingestKeys,
+  useBatches,
+  useIngestJob,
+  useRegisterSource,
+  useResumeIngest,
+  useSources,
+  useStartIngest,
+  type Batch,
+  type BatchPage,
+  type IngestFailure,
+  type IngestJob,
+  type Source,
+  type SourcePage,
 } from "./screens/queries.js";

@@ -41,7 +41,7 @@
  * screen arriving is one import.
  */
 
-import { EmptyState, ProjectScreen, ProjectsScreen } from "@visionset/ui-core";
+import { EmptyState, IngestScreen, ProjectScreen, ProjectsScreen } from "@visionset/ui-core";
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router";
 import type { JSX } from "react";
 
@@ -65,6 +65,7 @@ export function AppRoutes(): JSX.Element {
           <Route index element={<Navigate to="/projects" replace />} />
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:projectId" element={<Project />} />
+          <Route path="projects/:projectId/ingest" element={<Ingest />} />
           <Route
             path="projects/:projectId/batches/:batchId"
             element={<Placeholder title="Batch" issue={55} />}
@@ -111,9 +112,21 @@ function Projects(): JSX.Element {
 
 function Project(): JSX.Element {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   // The router guarantees the segment exists for this path; the type does not.
   if (projectId === undefined) return <NotFound />;
-  return <ProjectScreen projectId={projectId} />;
+  return (
+    <ProjectScreen
+      projectId={projectId}
+      onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
+    />
+  );
+}
+
+function Ingest(): JSX.Element {
+  const { projectId } = useParams();
+  if (projectId === undefined) return <NotFound />;
+  return <IngestScreen projectId={projectId} />;
 }
 
 function Placeholder({
