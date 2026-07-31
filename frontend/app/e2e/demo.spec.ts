@@ -7,10 +7,12 @@
  * v1's `annotation-redesign.spec.ts` (129 LOC) is six tests, and five of them are
  * about v1's *routing and chrome*: a project tab listing upload batches, an
  * `Annotate` link to a fullscreen route, an `AppSidebar`, an image-picker dialog and
- * a back button. This page has none of that — `App.tsx` renders `<AnnotatorDemo/>`
- * at `/`, there is no router, no backend and no auth. Those five describe a product
- * surface M5 builds, not a behaviour that moved, so they are recorded as out of
- * scope rather than dropped quietly.
+ * a back button. This page has none of that — it is `<AnnotatorDemo/>` on one route,
+ * with no backend and no auth. Those five describe a product surface M5 builds, not
+ * a behaviour that moved, so they are recorded as out of scope rather than dropped
+ * quietly. #58 gave the application a router and a rail; the showcase stayed a leaf
+ * outside the token gate, so the five are still out of scope here and belong to
+ * #59's cycle instead.
  *
  * The sixth — *"no console errors on annotation route"* — ports directly, and is
  * worth more here than it was there. `StrictMode` double-invokes effects, and
@@ -22,10 +24,10 @@
 
 import { expect, test } from "@playwright/test";
 
-import { canvasOrigin, drawBbox, expectCounts, focusCanvas, frameOf } from "./_frame";
+import { canvasOrigin, drawBbox, expectCounts, focusCanvas, frameOf, SHOWCASE } from "./_frame";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto(SHOWCASE);
 });
 
 test("a full editing session raises no console error and no uncaught exception", async ({

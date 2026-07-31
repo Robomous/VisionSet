@@ -227,10 +227,27 @@ matches every path, so it beats the *partial* match that produces a 405, and it 
 registered after the application is built. `POST /health` is still 405 `METHOD_NOT_ALLOWED`, and an
 unknown path under the prefix is still a 404 in the one error body below.
 
-**No deep-link fallback yet.** `/ui/` serves the index and nothing else does; `/ui/projects/abc` is
-a 404. The fallback belongs to the milestone that owns a client-side router, and its shape is
-already argued in `_install_ui`'s docstring — return the index for a 404 only when the method is
-`GET` *and* `Accept` literally contains `text/html`, so an API client's JSON 404 is untouched.
+**The deep-link fallback, since #58.** A client route like `/ui/projects/abc` is resolved by the
+router in the browser, but a *reload* on it is a real request for a path no file backs — so without
+a fallback, refreshing any page but the index is a 404, and so is every bookmark. The index is now
+served for a 404 under three conditions, and each keeps something alive:
+
+| condition | what it protects |
+| --- | --- |
+| the path is under `/ui/` | an unknown `/projects/nope` is still the API's own 404 — the same argument that put the bundle at `/ui` |
+| the method is `GET` | a `POST` to a client route is not a page load |
+| `Accept` contains `text/html` | httpx and every other API client send `*/*`, so **the JSON 404 below is untouched** |
+
+That substring test is why no other test in `tests/server` needed changing when the fallback landed:
+an API client never claims to be a browser. The response is **200**, not 404 with a body — a page
+that renders correctly must not claim to be missing.
+
+It is installed by replacing the `HTTPException` handler and falling through to the normal one, not
+as middleware: `@app.middleware("http")` wraps the application in `BaseHTTPMiddleware`, which buffers
+a `StreamingResponse`, and four routes stream. And it is keyed on **Starlette's** `HTTPException`,
+not FastAPI's subclass — the router raises the Starlette class for an unknown path and `StaticFiles`
+raises it for a missing file, so keying on the subclass makes the fallback dead code for exactly the
+two things that produce the 404 it exists for.
 
 In a source checkout the bundle is absent until `pnpm bundle:static` runs, and `/` then answers a
 404 naming that command. The API is unaffected.

@@ -34,6 +34,16 @@
 
 import { expect, type Locator, type Page } from "@playwright/test";
 
+/**
+ * Where the annotator showcase lives.
+ *
+ * `/`, until #58 gave the application a router and a real Home. The showcase is a
+ * route now — outside the token gate, because its picture is a `data:` URI and it
+ * has no server to authenticate against — and naming it once here is what kept
+ * that move to one line instead of nine `beforeEach` blocks.
+ */
+export const SHOWCASE = "/demo";
+
 /** `SAMPLE_ASSET` in `src/demo/sampleAsset.ts`. The frame every coordinate is in. */
 export const ASSET = { width: 1280, height: 720 } as const;
 

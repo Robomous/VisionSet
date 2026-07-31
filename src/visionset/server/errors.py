@@ -403,7 +403,15 @@ async def _domain_error_handler(request: Request, exc: Exception) -> Response:
     return error_response(exc)
 
 
-async def _http_exception_handler(request: Request, exc: Exception) -> Response:
+async def http_exception_handler(request: Request, exc: Exception) -> Response:
+    """Render an ``HTTPException`` as the one error body.
+
+    Public, unlike its three siblings, because :func:`visionset.server.main._install_ui`
+    **replaces** this handler with one that falls through to it. Starlette keys the
+    handler map by exception class, so the single-page deep-link fallback cannot be
+    registered beside this one — it has to wrap it, and wrapping something private
+    would be reaching into another module rather than using it.
+    """
     assert isinstance(exc, HTTPException)
     headers = exc.headers  # keeps WWW-Authenticate on a 401
     if not is_body_allowed_for_status_code(exc.status_code):
@@ -440,7 +448,7 @@ def install_error_handlers(app: FastAPI) -> None:
     # for an unknown path and for a 405, and fastapi's is a *subclass* — keying
     # on the subclass would leave those two answering with FastAPI's default
     # ``{"detail": ...}`` while everything else answered with ErrorBody.
-    app.add_exception_handler(HTTPException, _http_exception_handler)
+    app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
     # This one lands in ServerErrorMiddleware, *outside* the user middleware
     # stack, so middleware added later (CORS, say) will not run on it. That is

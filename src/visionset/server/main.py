@@ -8,14 +8,19 @@ from importlib import resources
 from pathlib import Path
 from typing import Final
 
-from fastapi import APIRouter, FastAPI, HTTPException, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, status
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from visionset import __version__
 from visionset.server.dependencies import WorkspaceHandle
-from visionset.server.errors import UNIVERSAL_ERROR_RESPONSES, install_error_handlers
+from visionset.server.errors import (
+    UNIVERSAL_ERROR_RESPONSES,
+    http_exception_handler,
+    install_error_handlers,
+)
 from visionset.server.routes import ROUTERS
 from visionset.server.runner import IngestRunner
 
@@ -129,16 +134,70 @@ def _install_ui(app: FastAPI, root: Path) -> None:
     contract, and where a browser finds HTML is not part of it. That is also what
     keeps the CI drift gate and ``pnpm generate:client`` still.
 
-    **No single-page deep-link fallback, deliberately.** ``html=True`` serves
-    ``index.html`` for ``/ui/`` and nothing more, so ``/ui/projects/abc`` is a 404
-    in the one error body. The fallback the product shell will eventually want is
-    an ``HTTPException`` handler returning the index for a 404 when the method is
-    ``GET`` *and* ``Accept`` literally contains ``text/html`` — httpx sends
-    ``*/*``, so the API's JSON 404 survives untouched — and it belongs to the
-    milestone that owns a client-side router, not to the command that starts a
-    server.
+    **The single-page deep-link fallback**, which #33 deferred to "the milestone
+    that owns a client-side router" and #58 is. ``/ui/projects/abc`` is a client
+    route the router resolves in the browser, but a *reload* on it is a real
+    request for a path no file backs — so without a fallback, refreshing any page
+    but the index is a 404, and so is every bookmark and every link somebody
+    pastes into a chat.
+
+    Three conditions, and each one keeps something alive:
+
+    * **the path is under** :data:`UI_PREFIX` — the API owns the root, and
+      answering HTML for an unknown ``/projects/nope`` would hide a real 404 from
+      a client that mistyped a route;
+    * **the method is ``GET``** — a ``POST`` to a client route is not a page load;
+    * **``Accept`` literally contains ``text/html``** — httpx and every other API
+      client send ``*/*``, so the JSON 404 the contract promises survives
+      untouched. That substring test is why ``tests/server`` needed no change: its
+      requests never claim to be a browser.
+
+    It is installed by **replacing** the ``HTTPException`` handler and falling
+    through to :func:`~visionset.server.errors.http_exception_handler` for
+    everything else, because Starlette keys its handler map by exception class and
+    two handlers for one class is the last one registered. Not middleware:
+    ``@app.middleware("http")`` wraps the application in ``BaseHTTPMiddleware``,
+    which buffers a ``StreamingResponse`` — and four routes stream (asset content,
+    thumbnail, release manifest, export archive). Trading those for a 404 rule
+    would be a real regression bought for nothing.
+
+    **Nothing here reaches ``openapi.json`` either.** An exception handler is not
+    an operation.
     """
     app.mount(UI_PREFIX, StaticFiles(directory=root, html=True), name="ui")
+
+    # `index_file`, not `index`: the redirect route below is `async def index`, and
+    # a closure reads the *enclosing scope at call time* — so a name shared with a
+    # function defined later in the same function body resolves to the function, and
+    # the fallback answers 500 `AttributeError: 'function' object has no attribute
+    # 'is_file'`. Three tests found it; the name is the fix.
+    index_file = root / INDEX_FILENAME
+
+    async def spa_or_error(request: Request, exc: Exception) -> Response:
+        if (
+            isinstance(exc, StarletteHTTPException)
+            and exc.status_code == status.HTTP_404_NOT_FOUND
+            and request.method == "GET"
+            and request.url.path.startswith(f"{UI_PREFIX}/")
+            and "text/html" in request.headers.get("accept", "")
+            and index_file.is_file()
+        ):
+            # 200, not 404: the browser is about to run a router that will resolve
+            # the path itself, and a 404 status on a page that renders correctly is
+            # a lie every crawler and every error reporter believes.
+            return FileResponse(index_file)
+        return await http_exception_handler(request, exc)
+
+    # After install_error_handlers, and the order is the mechanism.
+    #
+    # Keyed on **Starlette's** ``HTTPException``, not FastAPI's — #31's trap, hit
+    # again from the other side. The router raises the Starlette class for an
+    # unknown path and ``StaticFiles`` raises it for a missing file, and FastAPI's
+    # is a *subclass*: registering the subclass leaves both of those falling
+    # through to the handler installed a moment ago, so the fallback never fires
+    # for the only two things that produce the 404 it exists for. Three tests
+    # failed on exactly that before this line said ``Starlette``.
+    app.add_exception_handler(StarletteHTTPException, spa_or_error)
 
     @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     async def index() -> RedirectResponse:
