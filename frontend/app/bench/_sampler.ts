@@ -66,8 +66,8 @@ export interface FrameStats {
 }
 
 /**
- * Start recording. Any previous sampler is stopped first, so a file that measures
- * six gestures does not accumulate six overlapping rAF loops.
+ * Start recording. Any previous sampler is stopped first, so a file measuring a
+ * dozen gestures does not accumulate a dozen overlapping rAF loops.
  */
 export async function startSampling(page: Page): Promise<void> {
   await page.evaluate(() => {

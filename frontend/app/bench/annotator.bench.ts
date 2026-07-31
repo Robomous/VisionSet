@@ -105,7 +105,8 @@ function record(
   stats: FrameStats,
   throttle = 1,
 ): void {
-  rows.push({ scenario, annotations, asset, cpu: throttle === 1 ? "full" : `${throttle}x slower`, ...stats });
+  const cpu = throttle === 1 ? "full" : `${throttle}x slower`;
+  rows.push({ scenario, annotations, asset, cpu, ...stats });
   // The gesture ran for as long as it was asked to. A short run is not a fast
   // one — it is a run whose frames never happened, and its percentiles would be
   // about a handful of samples.
