@@ -388,6 +388,35 @@ class AnnotationRow(Base):
     )
 
 
+#: One classification tag per (asset, class), and no rule for the other two
+#: geometries.
+#:
+#: ``ClassificationGeometry`` has **zero fields** and is frozen, so two tags of
+#: one class on one asset are the same statement made twice — not two facts. A
+#: bbox and a polygon are the opposite: two boxes on one asset under one class is
+#: the normal case, which is why this index is *partial* rather than a rule about
+#: ``annotation`` as a whole.
+#:
+#: Partial and expression-based, so #20's two traps both apply. SQLAlchemy cannot
+#: reflect either kind, so ``checkfirst`` reports the index absent and re-issues
+#: the ``CREATE``; migration 12 uses ``CreateIndex(..., if_not_exists=True)`` and
+#: asks SQLite instead. The DDL is still compiled from this one object.
+#:
+#: SQL reading a JSON column, which the module docstring reserves for values
+#: "nothing ever queries" — the same exemption ``SOURCE_ORIGIN_UNIQUE`` takes, and
+#: for the same reason: an index is not a query. No service gains a JSON path and
+#: ``_annotation_to_domain`` still rehydrates the geometry whole. The alternative
+#: was a redundant ``geometry_type`` column written by the mapper and read by
+#: nobody.
+ANNOTATION_TAG_UNIQUE = Index(
+    "uq_annotation_asset_classification",
+    AnnotationRow.asset_id,
+    AnnotationRow.label_class,
+    unique=True,
+    sqlite_where=text("json_extract(geometry, '$.type') = 'classification_tag'"),
+)
+
+
 class DatasetRow(Base):
     __tablename__ = "dataset"
 

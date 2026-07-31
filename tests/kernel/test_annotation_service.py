@@ -20,6 +20,7 @@ from visionset.kernel import (
     AssetNotInJob,
     BatchNotInAnnotation,
     DisallowedGeometry,
+    DuplicateClassificationTag,
     InvalidAnnotation,
     InvalidAttributeValue,
     JobNotFound,
@@ -769,4 +770,102 @@ def test_annotating_every_asset_carries_the_batch_to_completed(tmp_path: Path) -
     assert fixture.jobs.job_progress(job.id)[ANNOTATED] == len(fixture.assets)
     assert fixture.jobs.complete(job.id).state.value == "completed"
     assert fixture.batches.complete(fixture.batch.id).state is BatchState.COMPLETED
+    fixture.close()
+
+
+# --- one tag per (asset, class) -----------------------------------------------
+
+
+def _tag(asset_id: UUID, **overrides: Any) -> Annotation:
+    """A valid ``kiosk``: the schema's one classification-tag class."""
+    fields: dict[str, Any] = {
+        "asset_id": asset_id,
+        "label_class": "kiosk",
+        "schema_version": 1,
+        "geometry": ClassificationGeometry(),
+        "provenance": "human",
+    }
+    return Annotation(**{**fields, **overrides})
+
+
+def test_a_second_tag_of_the_same_class_on_one_asset_is_refused(tmp_path: Path) -> None:
+    """#121. A ``ClassificationGeometry`` has zero fields, so the second tag is the
+    same statement made twice — not a second fact the way two boxes are."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    fixture.annotations.add(job.id, [_tag(asset_id)])
+
+    with pytest.raises(DuplicateClassificationTag):
+        fixture.annotations.add(job.id, [_tag(asset_id)])
+    fixture.close()
+
+
+def test_the_duplicate_is_caught_within_one_call_too(tmp_path: Path) -> None:
+    """``add`` is all-or-nothing, so without the running set the index would refuse
+    at commit time — where the ``index`` a caller is told about cannot be
+    reconstructed."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+
+    with pytest.raises(DuplicateClassificationTag) as refusal:
+        fixture.annotations.add(job.id, [_tag(asset_id), _tag(asset_id)])
+    # Blamed on the *second* position, which is the one that could not be honoured.
+    assert refusal.value.index == 1
+    # And nothing was written, because the call is one transaction.
+    assert fixture.annotations.for_asset(job.id, asset_id) == []
+    fixture.close()
+
+
+def test_the_same_class_on_a_different_asset_is_a_different_statement(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    stored = fixture.annotations.add(job.id, [_tag(fixture.assets[0]), _tag(fixture.assets[1])])
+    assert len(stored) == 2
+    fixture.close()
+
+
+def test_two_boxes_under_one_class_are_still_the_normal_case(tmp_path: Path) -> None:
+    """Which is exactly why the index is partial rather than a rule about the
+    table: a bbox carries coordinates, so two of them are two facts."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    stored = fixture.annotations.add(
+        job.id,
+        [
+            _box(asset_id),
+            _box(asset_id, geometry=BboxGeometry(x=90.0, y=90.0, width=5.0, height=5.0)),
+        ],
+    )
+    assert len(stored) == 2
+    fixture.close()
+
+
+def test_an_update_may_leave_a_tag_exactly_where_it_is(tmp_path: Path) -> None:
+    """The row being replaced is itself one of the stored ones, so judging a
+    replacement against a set that still contains it would refuse every no-op."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (tag,) = fixture.annotations.add(job.id, [_tag(fixture.assets[0])])
+
+    (same,) = fixture.annotations.update(job.id, [tag])
+    assert same.label_class == "kiosk"
+    fixture.close()
+
+
+def test_an_update_cannot_collide_with_a_tag_already_there(tmp_path: Path) -> None:
+    """Two classes, one asset, and a replacement that would make them one."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(
+        fixture.project.id,
+        [SIGN, LANE, KIOSK, LabelClass(name="booth", geometry=GeometryType.CLASSIFICATION_TAG)],
+    )
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    stored = fixture.annotations.add(job.id, [_tag(asset_id), _tag(asset_id, label_class="booth")])
+
+    with pytest.raises(DuplicateClassificationTag):
+        fixture.annotations.update(job.id, [stored[1].model_copy(update={"label_class": "kiosk"})])
     fixture.close()

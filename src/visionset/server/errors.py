@@ -57,6 +57,7 @@ from visionset.kernel import (
     DatasetNotFound,
     DestructiveSchemaChange,
     DisallowedGeometry,
+    DuplicateClassificationTag,
     EmptyBatch,
     EmptyRelease,
     EntityAlreadyExists,
@@ -239,6 +240,12 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     InvalidAnnotation: ErrorRule(422, "INVALID_ANNOTATION"),
     LabelClassNotInSchema: ErrorRule(422, "LABEL_CLASS_NOT_IN_SCHEMA"),
     DisallowedGeometry: ErrorRule(422, "DISALLOWED_GEOMETRY"),
+    # 422 like its five siblings, not 409, and the split is the one this table is
+    # built on. A 409 says "the resource's state refuses this; change the state
+    # and resubmit" — but the state to change is the annotation set, and removing
+    # the existing tag to add an identical one is not a remedy anybody wants. The
+    # payload is what is wrong: it asks for something already true.
+    DuplicateClassificationTag: ErrorRule(422, "DUPLICATE_CLASSIFICATION_TAG"),
     MissingRequiredAttribute: ErrorRule(422, "MISSING_REQUIRED_ATTRIBUTE"),
     UnknownAttribute: ErrorRule(422, "UNKNOWN_ATTRIBUTE"),
     InvalidAttributeValue: ErrorRule(422, "INVALID_ATTRIBUTE_VALUE"),
