@@ -1,0 +1,19 @@
+{
+  // The end-to-end suite, which is Node and not browser.
+  //
+  // A project of its own rather than a widening of `tsconfig.json`, because the two
+  // want opposite type environments: the app is browser code that must never be able
+  // to name `process`, and a Playwright config reads `process.env.CI` in four places.
+  // Folding the specs into the app project would buy `process` for the bundle too.
+  //
+  // `lib` keeps `DOM` — unlike the annotator's core project, and deliberately. These
+  // files are *about* a browser: `page.evaluate` callbacks and the shapes read off
+  // the page are DOM-typed, and there is no boundary here to protect. What is being
+  // separated is Node from the application, not the DOM from the engine.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}

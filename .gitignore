@@ -18,6 +18,13 @@ frontend/*/dist/
 *.tsbuildinfo
 .pnpm-debug.log*
 
+# Playwright output. The browsers themselves live in a per-user cache outside the
+# repository (~/.cache/ms-playwright), so nothing here needs an entry for them.
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
 # Compiled UI bundle travels in the wheel, never in git
 src/visionset/_static/*
 !src/visionset/_static/README.md
