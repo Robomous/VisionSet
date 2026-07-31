@@ -289,6 +289,54 @@ jobs:
   # sharing a runner with itself is not measuring anything.
   #
   # The recorded baseline lives in `docs/annotations.md` and was taken on a
+  # #66: the delivery thesis, built and then checked as an artifact. pip is the
+  # vehicle and the compiled UI travels inside the single wheel, and three things
+  # can be wrong with that wheel which no source test can see — the bundle is not
+  # in it, the version metadata disagrees with VERSION, or something enormous came
+  # along. Each installs cleanly, starts cleanly, and is wrong.
+  #
+  # The wheel and sdist are uploaded from every build, so a main build always
+  # leaves something installable behind. VISIONSET_REQUIRE_WHEEL turns the local
+  # skip into an error here, the VISIONSET_REQUIRE_FFMPEG rule.
+  wheel:
+    name: wheel (build, install, serve)
+    runs-on: ubuntu-latest
+    env:
+      VISIONSET_REQUIRE_WHEEL: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # reads packageManager from package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The whole pipeline in one script rather than a chain here, because the
+      # ordering is load-bearing: `uv build` copies `_static/` at the moment it
+      # runs, so a build before `bundle:static` ships no app and says nothing.
+      - name: Build the wheel and sdist
+        run: bash scripts/build_dist.sh
+
+      - name: Install it in a clean venv and serve the app
+        run: uv run pytest tests/packaging -q
+
+      - name: Upload the distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: visionset-dist
+          path: dist/*
+          if-no-files-found: error
+
   # #62's and #63's second acceptance criteria: the tools the exporters exist to
   # feed actually load what they wrote. Its own job because `ultralytics` brings
   # torch — roughly two gigabytes — and putting that in front of every `uv sync`

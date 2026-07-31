@@ -27,6 +27,7 @@ artifact is always the pip package).
 | Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server |
 | Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror |
 | Format smoke (ultralytics, pycocotools) | `uv sync --group yolo --group coco && uv run pytest tests/formats/test_*_smoke.py` — their own groups because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run only those files and `uv sync` again afterwards; skips without them, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` / `VISIONSET_REQUIRE_PYCOCOTOOLS=1` so a broken install goes red |
+| Wheel (build, install, serve) | `bash scripts/build_dist.sh && VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging` — builds the UI into `_static/`, builds the wheel, installs it in a fresh venv and serves `/ui/` from it. Opt-in locally (it costs about a minute); CI's `wheel` job runs it and uploads the artifact |
 | Version sync | `pnpm version:check` |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
 | Generated API client | `pnpm generate:client` (commit the diff) |
@@ -68,6 +69,28 @@ else derives from it, in lockstep across the monorepo — the Python distributio
 | `0.0.1` | `0.0.1` | First stable release |
 
 Never hand-edit a version anywhere else — change `VERSION`, then run `pnpm version:sync`.
+
+### Building the distribution
+
+```bash
+bash scripts/build_dist.sh          # pnpm -r build → bundle:static → uv build
+VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging
+```
+
+**The order in that script is the whole point.** `uv build` copies
+`src/visionset/_static/` as package data *at the moment it runs*, and a fresh checkout's
+`_static/` holds only `README.md` and `.gitkeep` — so a wheel built before
+`pnpm bundle:static` contains **no app at all**. It installs, `visionset ui` starts, and
+`/ui/` answers a 404 naming a script the user does not have. There is no error and no
+traceback anywhere in that sequence, which is why the script checks after each step and
+why `tests/dist/` checks the artifact rather than the source tree.
+
+The script also greps the built `index.html` for `/ui/assets/`. A bundle built with the
+dev base references `/assets/…`, which the SPA fallback answers with `index.html` at
+**200** — so the page loads blank rather than failing.
+
+CI's `wheel` job runs both and uploads `dist/*` from every build, so there is always
+something installable to hand somebody.
 
 ### Tags and publishing
 
