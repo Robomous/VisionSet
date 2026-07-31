@@ -65,6 +65,10 @@ def test_the_listing_uses_the_envelope_like_every_other_collection(
                 # #65's capability declaration, sorted because a set has no
                 # order and a wire shape must.
                 "geometries": sorted(one.value for one in GeometryType),
+                # #158's second declaration, published beside the first because
+                # `geometries` alone reads as the whole answer — and for `yolo` it
+                # left out that a polygon is written at all.
+                "degraded_geometries": [],
                 "modalities": ["image"],
             }
         ],

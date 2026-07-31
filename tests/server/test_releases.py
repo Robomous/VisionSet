@@ -494,8 +494,8 @@ def test_the_pre_flight_says_a_release_is_carried_whole(client: TestClient, rele
     # release above is `compatible` at all.
     assert [one["label_class"] for one in body["classes"]] == ["lane", "sign"]
     lane, sign = body["classes"]
-    assert (lane["supported"], lane["annotations"]) == (False, 0)
-    assert (sign["supported"], sign["reason"]) == (True, None)
+    assert (lane["status"], lane["annotations"]) == ("dropped", 0)
+    assert (sign["status"], sign["reason"]) == ("supported", None)
 
 
 def test_the_pre_flight_names_what_would_be_dropped(client: TestClient, release: str) -> None:
@@ -507,8 +507,9 @@ def test_the_pre_flight_names_what_would_be_dropped(client: TestClient, release:
 
     assert body["compatible"] is False
     assert body["excluded_annotations"] > 0
-    (sign,) = [one for one in body["classes"] if not one["supported"]]
-    assert sign["reason"] == "polygons-only cannot write bbox geometry"
+    (sign,) = [one for one in body["classes"] if one["status"] != "supported"]
+    assert sign["status"] == "dropped"
+    assert sign["reason"] == "polygons-only cannot place a bbox and drops it"
 
 
 def test_the_pre_flight_writes_nothing_a_later_read_can_see(

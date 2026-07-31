@@ -39,6 +39,7 @@ import json
 import math
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -408,6 +409,33 @@ class ReleaseVerification(BaseModel):
         )
 
 
+# Three values because a boolean was two answers wearing one word, which is #158:
+# ``supported=false`` meant "absent from the output" where ``_compatibility``
+# computed it and "convert it to something I can write" where the YOLO and VOC
+# exporters read it, so a user consenting to lose three annotations received two
+# of them back as boxes under the polygon's own class name. Nothing about the
+# output was malformed; it simply was not what the report promised.
+#
+# A ``StrEnum`` for the reason ``SourceKind`` is one and ``DatasetChange``'s
+# operation is not: the kernel branches on this value, no foreign writer produces
+# one, and the set grows deliberately. The docstring is short because this enum
+# reaches ``openapi.json`` verbatim and a bug narrative is not API documentation.
+class ClassExportStatus(StrEnum):
+    """What one format does with one class: writes it, reduces it, or drops it."""
+
+    #: Written as it stands. The format declares this geometry in
+    #: ``supported_geometries``.
+    SUPPORTED = "supported"
+    #: Written, but not as it stands — the format declares this geometry in
+    #: ``degraded_geometries``, so an annotation of this class reaches the output
+    #: having lost something the kernel could represent. A polygon written as its
+    #: axis-aligned bounding box is the case this exists for.
+    DEGRADED = "degraded"
+    #: Not written at all. The format declares this geometry in neither set, so
+    #: an annotation of this class is absent from the output.
+    DROPPED = "dropped"
+
+
 class ClassCompatibility(BaseModel):
     """One class of a release, judged against one format's declared capabilities.
 
@@ -418,7 +446,9 @@ class ClassCompatibility(BaseModel):
     ``DatasetStats`` — a thousand labels over a thousand images and the same
     thousand over ten are the same total and a very different loss.
 
-    ``reason`` is filled only when ``supported`` is false. A supported class has
+    ``reason`` is filled for anything other than :attr:`ClassExportStatus.SUPPORTED`,
+    and it states what actually happens: a dropped class says it is not written,
+    a degraded one says it *is* written and what it loses. A supported class has
     nothing to explain, and an empty string there would read as a reason nobody
     wrote down.
     """
@@ -427,13 +457,31 @@ class ClassCompatibility(BaseModel):
 
     label_class: str
     geometry: GeometryType
-    supported: bool
+    #: Replaces #65's ``supported: bool``. The two questions that boolean was
+    #: being asked — "is this written?" and "is this written intact?" — are
+    #: :attr:`carried` and :attr:`supported` below, and they are properties
+    #: rather than stored fields so no report can carry a pair that disagree.
+    status: ClassExportStatus
     #: Annotations of this class in the release. Zero is normal and is *not* a
     #: problem: a class the schema declares and nobody used excludes nothing, so
     #: it never makes a report incompatible however unsupported its geometry is.
     annotations: int = Field(ge=0)
     assets: int = Field(ge=0)
     reason: str | None = None
+
+    @property
+    def supported(self) -> bool:
+        """Written with nothing lost. The narrow half of the old boolean."""
+        return self.status is ClassExportStatus.SUPPORTED
+
+    @property
+    def carried(self) -> bool:
+        """Present in the output at all, intact or reduced.
+
+        The half a user weighing "what disappears?" is actually asking about,
+        and the one the old boolean answered wrongly for a polygon in YOLO.
+        """
+        return self.status is not ClassExportStatus.DROPPED
 
 
 class ExportCompatibility(BaseModel):
@@ -484,13 +532,26 @@ class ExportCompatibility(BaseModel):
         serialization_alias="format",
         validation_alias=AliasChoices("format", "format_name"),
     )
-    #: Nothing in this release would be dropped by this format's capabilities.
+    #: Nothing in this release would be dropped **or reduced** by this format's
+    #: capabilities. Still one word for the whole verdict, and still the gate on
+    #: consent: a degraded annotation loses information, so it asks.
     compatible: bool
     #: The format's own blanket declaration, carried so a reader of the report
     #: alone can tell "this release is clean" from "this format loses nothing".
     format_is_lossy: bool
+    #: Annotations that will be **absent** from the output.
+    #:
+    #: Dropped only, since #158. It used to count degraded annotations too, which
+    #: made it the number a user weighed while describing something else — YOLO
+    #: reported three excluded and wrote two of them as boxes. The number that
+    #: disappears is the number worth having under this name.
     excluded_annotations: int = Field(default=0, ge=0)
     excluded_assets: int = Field(default=0, ge=0)
+    #: Annotations that will be **present but reduced** — a polygon arriving as
+    #: its bounding box. Beside the excluded counts rather than folded into them,
+    #: because "gone" and "coarser" are different things to consent to.
+    degraded_annotations: int = Field(default=0, ge=0)
+    degraded_assets: int = Field(default=0, ge=0)
     classes: tuple[ClassCompatibility, ...] = ()
 
     @field_validator("classes")
@@ -500,8 +561,26 @@ class ExportCompatibility(BaseModel):
 
     @property
     def excluded(self) -> tuple[ClassCompatibility, ...]:
-        """The classes a caller has to decide about. Empty when compatible."""
-        return tuple(one for one in self.classes if not one.supported and one.annotations > 0)
+        """The classes that will not be in the output. Empty when nothing is dropped."""
+        return tuple(
+            one
+            for one in self.classes
+            if one.status is ClassExportStatus.DROPPED and one.annotations > 0
+        )
+
+    @property
+    def degraded(self) -> tuple[ClassCompatibility, ...]:
+        """The classes that will be in the output, reduced.
+
+        Separate from :attr:`excluded` rather than a flag on it, so a surface
+        listing "what you lose" cannot print a class under a heading that says it
+        is not there. Both are empty when :attr:`compatible`.
+        """
+        return tuple(
+            one
+            for one in self.classes
+            if one.status is ClassExportStatus.DEGRADED and one.annotations > 0
+        )
 
 
 class ExportResult(BaseModel):

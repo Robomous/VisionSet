@@ -192,24 +192,69 @@ against one format's declaration and returns an `ExportCompatibility`:
 
 ```json
 {
-  "release_id": "…", "format": "boxes-only", "compatible": false,
-  "format_is_lossy": false, "excluded_annotations": 1204, "excluded_assets": 310,
+  "release_id": "…", "format": "yolo", "compatible": false,
+  "format_is_lossy": true,
+  "excluded_annotations": 40, "excluded_assets": 40,
+  "degraded_annotations": 1204, "degraded_assets": 310,
   "classes": [
-    {"label_class": "lane", "geometry": "polygon", "supported": false,
+    {"label_class": "lane", "geometry": "polygon", "status": "degraded",
      "annotations": 1204, "assets": 310,
-     "reason": "boxes-only cannot write polygon geometry"},
-    {"label_class": "sign", "geometry": "bbox", "supported": true,
-     "annotations": 8800, "assets": 2400, "reason": null}
+     "reason": "yolo writes a polygon as its bounding box; the shape is lost"},
+    {"label_class": "sign", "geometry": "bbox", "status": "supported",
+     "annotations": 8800, "assets": 2400, "reason": null},
+    {"label_class": "weather", "geometry": "classification_tag", "status": "dropped",
+     "annotations": 40, "assets": 40,
+     "reason": "yolo cannot place a classification_tag and drops it"}
   ]
 }
 ```
 
-Three properties are worth stating, because each is a decision rather than a detail.
+### Dropped is not degraded, and one word for both was a lie
 
-**A class with zero annotations excludes nothing**, however unsupported its geometry. A schema
-that declares `mask` and holds no masks is carried whole by a format that cannot write one. The
-row is still published, with its zeros, because "this format cannot write masks and you have
-none" is an answer somebody is looking for.
+`status` has three values, and the reason is #158. Until then a class was `supported: true` or
+`supported: false`, and that single word was read with two different intents by two parts of the
+system that were each internally consistent:
+
+- `_compatibility` read "not in `supported_geometries`" as **will not be in the output**, and
+  counted it in `excluded_annotations`.
+- The YOLO and VOC exporters read the same declaration as **convert it to something I can
+  write**, and emitted the polygon as its axis-aligned bounding box — which is a real capability
+  #62 and #64 deliberately included, documented in both module docstrings.
+
+So a user exporting a release of 3 boxes, 2 polygons and 1 tag was told three annotations would
+be lost, consented, and received **four label rows where the API held two exportable boxes**. The
+extra two carried the polygon's own class name and were well-formed in every way a validator can
+check: every index real, every coordinate in range. Nothing was corrupt; it simply was not what
+the report promised.
+
+The fix is vocabulary rather than capability. `Exporter` declares two geometry sets:
+
+- **`supported_geometries`** — written as they stand.
+- **`degraded_geometries`** — written, having lost something the kernel could represent. `{polygon}`
+  for `yolo` and `voc`; empty for `coco`, which writes a polygon as a polygon, and empty for
+  `dummy`, which writes nothing at all. The two sets are disjoint, and `supported` wins if a plugin
+  says both, because resolving a contradiction towards the weaker claim would report a loss that
+  does not happen.
+
+A geometry in neither set is **dropped**. `excluded_annotations` counts dropped only —
+the number that disappears is the number worth having under that name — and `degraded_annotations`
+sits beside it. `compatible` is false for either, so **the `allow_lossy` gate did not move**: a
+polygon flattened to a box has lost its shape, and the consent it always required is still
+required. Only the accounting became true.
+
+The guard that comes with it is the part worth keeping: `tests/formats/test_report_agreement.py`
+exports the same release through **every installed format** and counts the annotations in the
+written label files, XML documents and COCO JSON. It asserts `excluded_annotations` equals what
+the artifacts are actually missing, rather than restating an expected number. A fourth exporter
+either lands a counter there or is declared non-writing, and the test fails until somebody
+chooses — which is how a format that converts silently stops being possible.
+
+Three more properties are worth stating, because each is a decision rather than a detail.
+
+**A class with zero annotations excludes nothing**, whatever its status. A schema that declares
+`mask` and holds no masks is carried whole by a format that cannot write one. The row is still
+published, with its zeros, because "this format cannot write masks and you have none" is an
+answer somebody is looking for.
 
 **The counts are per class and there are two of them.** `annotations` is what would be lost and
 `assets` is how wide the loss is — a thousand labels over a thousand images and the same thousand

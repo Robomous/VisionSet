@@ -435,6 +435,10 @@ def export_format(value: Exporter) -> dict[str, Any]:
         # Sorted, because a set has no order and a wire shape must: two calls to
         # one build have to agree, and a client diffing them should see nothing.
         "geometries": sorted(one.value for one in value.supported_geometries),
+        # Beside them rather than merged in, for #158's reason at this surface
+        # too: a caller reading `geometries: ["bbox"]` off yolo would conclude a
+        # polygon is not written, and a polygon is written.
+        "degraded_geometries": sorted(one.value for one in value.degraded_geometries),
         "modalities": sorted(value.supported_modalities),
     }
 
@@ -444,7 +448,11 @@ def class_compatibility(value: ClassCompatibility) -> dict[str, Any]:
     return {
         "label_class": value.label_class,
         "geometry": value.geometry.value,
-        "supported": value.supported,
+        # `status`, not #65's `supported`: the boolean answered "written intact?"
+        # and was read as "written at all?", which is #158. Three values say which
+        # is which, and the two derived booleans stay off the wire so a client
+        # cannot be handed a pair that disagree.
+        "status": value.status.value,
         "annotations": value.annotations,
         "assets": value.assets,
         "reason": value.reason,
@@ -462,6 +470,8 @@ def export_compatibility(value: ExportCompatibility) -> dict[str, Any]:
         "format_is_lossy": value.format_is_lossy,
         "excluded_annotations": value.excluded_annotations,
         "excluded_assets": value.excluded_assets,
+        "degraded_annotations": value.degraded_annotations,
+        "degraded_assets": value.degraded_assets,
         "classes": [class_compatibility(one) for one in value.classes],
     }
 

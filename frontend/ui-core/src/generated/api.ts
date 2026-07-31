@@ -1716,8 +1716,7 @@ export interface components {
             label_class: string;
             /** Reason */
             reason?: string | null;
-            /** Supported */
-            supported: boolean;
+            status: components["schemas"]["ClassExportStatus"];
         };
         /**
          * ClassCountOut
@@ -1731,6 +1730,12 @@ export interface components {
             /** Label Class */
             label_class: string;
         };
+        /**
+         * ClassExportStatus
+         * @description What one format does with one class: writes it, reduces it, or drops it.
+         * @enum {string}
+         */
+        ClassExportStatus: "supported" | "degraded" | "dropped";
         /**
          * ClassificationBody
          * @description A whole-asset tag: a class with no coordinates.
@@ -1850,6 +1855,10 @@ export interface components {
             classes: components["schemas"]["ClassCompatibilityOut"][];
             /** Compatible */
             compatible: boolean;
+            /** Degraded Annotations */
+            degraded_annotations: number;
+            /** Degraded Assets */
+            degraded_assets: number;
             /** Excluded Annotations */
             excluded_annotations: number;
             /** Excluded Assets */
@@ -1869,6 +1878,11 @@ export interface components {
          * @description An installed export format, and what it can express.
          */
         FormatOut: {
+            /**
+             * Degraded Geometries
+             * @default []
+             */
+            degraded_geometries: string[];
             /**
              * Geometries
              * @default []

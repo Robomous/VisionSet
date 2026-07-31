@@ -311,7 +311,10 @@ def test_the_report_names_the_classes_a_polygon_will_be_flattened_from(
     )
     fixture.close()
 
-    assert [one.label_class for one in result.compatibility.excluded] == ["lane"]
+    # Degraded, not excluded: VOC writes the polygon as its bounding box, and
+    # #158 is what calling that an exclusion cost.
+    assert result.compatibility.excluded == ()
+    assert [one.label_class for one in result.compatibility.degraded] == ["lane"]
 
 
 def test_a_missing_blob_aborts_rather_than_writing_a_dataset_that_is_short(

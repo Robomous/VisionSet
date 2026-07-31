@@ -128,10 +128,15 @@ def check_export(
 
     Call this before `export_release` when the answer matters. It reads the
     release's frozen manifest and judges every class in it against what the
-    format declares it can write, so the numbers are exact rather than estimated:
-    `excluded_annotations` is how many labels would not survive and
-    `excluded_assets` is how many assets would arrive with at least one label
-    missing.
+    format declares it can write, so the numbers are exact rather than estimated.
+
+    Every class gets a `status`, and there are three of them. `supported` is
+    written as it stands. `dropped` is **not in the output at all** —
+    `excluded_annotations` counts those labels and `excluded_assets` how many
+    assets arrive with at least one of them missing. `degraded` is **in the
+    output, reduced**: a polygon written as its axis-aligned bounding box, which
+    is what `yolo` and `voc` do, counted by `degraded_annotations` and
+    `degraded_assets`. Read `reason` for the sentence that says which.
 
     `compatible` true means this format loses nothing from this release, and
     `export_release` will run without `allow_lossy`. False means it will refuse
@@ -139,10 +144,10 @@ def check_export(
     written into the export directory as `visionset-export-report.json`, so
     calling this first is a convenience, never a requirement.
 
-    A class with zero annotations never makes a release incompatible, however
-    unsupported its geometry: a schema that declares `mask` and holds no masks
-    loses nothing. Those rows are still listed, with their zeros, because "this
-    format cannot write masks and you have none" is worth being able to read.
+    A class with zero annotations never makes a release incompatible, whatever
+    its status: a schema that declares `mask` and holds no masks loses nothing.
+    Those rows are still listed, with their zeros, because "this format cannot
+    write masks and you have none" is worth being able to read.
 
     `compatible` is not the same question as a format's `lossy` flag in
     `list_formats`. That flag covers everything a geometry list cannot see —

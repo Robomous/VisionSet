@@ -1009,15 +1009,14 @@
             ],
             "title": "Reason"
           },
-          "supported": {
-            "title": "Supported",
-            "type": "boolean"
+          "status": {
+            "$ref": "#/components/schemas/ClassExportStatus"
           }
         },
         "required": [
           "label_class",
           "geometry",
-          "supported",
+          "status",
           "annotations",
           "assets"
         ],
@@ -1047,6 +1046,16 @@
         ],
         "title": "ClassCountOut",
         "type": "object"
+      },
+      "ClassExportStatus": {
+        "description": "What one format does with one class: writes it, reduces it, or drops it.",
+        "enum": [
+          "supported",
+          "degraded",
+          "dropped"
+        ],
+        "title": "ClassExportStatus",
+        "type": "string"
       },
       "ClassificationBody": {
         "additionalProperties": false,
@@ -1263,6 +1272,14 @@
             "title": "Compatible",
             "type": "boolean"
           },
+          "degraded_annotations": {
+            "title": "Degraded Annotations",
+            "type": "integer"
+          },
+          "degraded_assets": {
+            "title": "Degraded Assets",
+            "type": "integer"
+          },
           "excluded_annotations": {
             "title": "Excluded Annotations",
             "type": "integer"
@@ -1292,6 +1309,8 @@
           "format_is_lossy",
           "excluded_annotations",
           "excluded_assets",
+          "degraded_annotations",
+          "degraded_assets",
           "classes"
         ],
         "title": "ExportCompatibilityOut",
@@ -1300,6 +1319,14 @@
       "FormatOut": {
         "description": "An installed export format, and what it can express.",
         "properties": {
+          "degraded_geometries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded Geometries",
+            "type": "array"
+          },
           "geometries": {
             "default": [],
             "items": {

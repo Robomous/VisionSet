@@ -97,6 +97,29 @@ class Exporter(Protocol):
     #: outside what a geometry list can see.
     supported_geometries: frozenset[GeometryType]
 
+    #: Which geometries this format writes, but not as they stand.
+    #:
+    #: Added by #158, and it exists because ``supported_geometries`` was being
+    #: read with two intents. ``_compatibility`` read "not supported" as *absent
+    #: from the output*; the YOLO and VOC exporters read it as *convert to
+    #: something I can write*, and both wrote a polygon as its axis-aligned
+    #: bounding box under the polygon's own class name. Both readings were
+    #: defensible, which is what made the report wrong rather than the code buggy:
+    #: the model had no word for **carried, but reduced**.
+    #:
+    #: Declare a geometry here when an annotation of it reaches the output having
+    #: lost something the kernel could represent. Declare it in
+    #: ``supported_geometries`` when it arrives intact, and in **neither** when it
+    #: is not written at all. The two sets are disjoint — a geometry cannot be
+    #: both intact and reduced — and ``_compatibility`` lets ``supported`` win if
+    #: a plugin says both, because writing something whole is the weaker claim to
+    #: doubt.
+    #:
+    #: Empty is the right answer for most formats, and for both reasons: COCO
+    #: writes a polygon as a polygon, and ``DummyExporter`` writes nothing at all.
+    #: A format that converts silently is the one this field exists to stop.
+    degraded_geometries: frozenset[GeometryType]
+
     #: Which asset modalities this format can write.
     #:
     #: A plain ``str`` set, matching ``Asset.modality``, and for the same reason

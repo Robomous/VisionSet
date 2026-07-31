@@ -58,6 +58,7 @@ class LossyExporter:
     #: — #65 made consent required when either says so, and a double declaring a
     #: narrower set would make this test pass for the other reason.
     supported_geometries = frozenset(GeometryType)
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(
@@ -142,6 +143,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "name": "coco",
             "lossy": False,
             "geometries": ["bbox", "polygon"],
+            "degraded_geometries": [],
             "modalities": ["image"],
         },
         {
@@ -157,6 +159,7 @@ def test_format_list_json_is_the_envelope() -> None:
                 "polyline",
                 "polyline_3d",
             ],
+            "degraded_geometries": [],
             "modalities": ["image", "point_cloud", "video"],
         },
         {
@@ -166,6 +169,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "name": "voc",
             "lossy": True,
             "geometries": ["bbox"],
+            "degraded_geometries": ["polygon"],
             "modalities": ["image"],
         },
         {
@@ -175,6 +179,7 @@ def test_format_list_json_is_the_envelope() -> None:
             # label row is five numbers: attributes, confidence and provenance
             # never survive, whatever a release happens to hold.
             "geometries": ["bbox"],
+            "degraded_geometries": ["polygon"],
             "modalities": ["image"],
         },
     ]
@@ -308,6 +313,7 @@ class BoxesOnlyExporter:
     lossy = False
 
     supported_geometries = frozenset({GeometryType.CLASSIFICATION_TAG})
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(
