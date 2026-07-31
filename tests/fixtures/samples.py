@@ -31,6 +31,7 @@ from visionset.kernel.domain import (
     ChangeKind,
     ClassCompatibility,
     ClassCount,
+    ClassExportStatus,
     ClassificationGeometry,
     Dataset,
     DatasetStats,
@@ -229,21 +230,35 @@ EXPORT_COMPATIBILITY = ExportCompatibility(
     format_is_lossy=True,
     excluded_annotations=3,
     excluded_assets=1,
+    degraded_annotations=4,
+    degraded_assets=2,
+    # One class per `ClassExportStatus`, deliberately: a sample carrying only two
+    # of the three would leave the third's projection unchecked by every parity
+    # gate that reads this module, which is the same argument the file's own
+    # docstring makes about a `None` where a nested model belongs.
     classes=(
         ClassCompatibility(
             label_class="lane",
             geometry=GeometryType.POLYGON,
-            supported=False,
-            annotations=3,
-            assets=1,
-            reason="dummy cannot write polygon geometry",
+            status=ClassExportStatus.DEGRADED,
+            annotations=4,
+            assets=2,
+            reason="dummy writes a polygon as its bounding box; the shape is lost",
         ),
         ClassCompatibility(
             label_class="sign",
             geometry=GeometryType.BBOX,
-            supported=True,
+            status=ClassExportStatus.SUPPORTED,
             annotations=2,
             assets=2,
+        ),
+        ClassCompatibility(
+            label_class="weather",
+            geometry=GeometryType.CLASSIFICATION_TAG,
+            status=ClassExportStatus.DROPPED,
+            annotations=3,
+            assets=1,
+            reason="dummy cannot place a classification_tag and drops it",
         ),
     ),
 )

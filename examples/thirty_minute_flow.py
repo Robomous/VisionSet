@@ -290,7 +290,12 @@ def main(dest: Path) -> Summary:
             print(
                 f"    {FORMAT_NAME}: compatible={compatibility.compatible}, "
                 f"lossy={compatibility.format_is_lossy}, "
-                f"excluded={compatibility.excluded_annotations}",
+                # Both numbers, because they are different answers: `excluded` is
+                # what will not be in the output at all and `degraded` is what
+                # will be there having lost something. Printing only the first
+                # was #158.
+                f"excluded={compatibility.excluded_annotations}, "
+                f"degraded={compatibility.degraded_annotations}",
                 flush=True,
             )
 

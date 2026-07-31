@@ -53,6 +53,7 @@ from visionset.kernel.domain import (
     Annotation,
     Asset,
     ClassCompatibility,
+    ClassExportStatus,
     Dataset,
     ExportCompatibility,
     ExportResult,
@@ -735,6 +736,15 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     :meth:`ReleaseService.check_export` and :meth:`ReleaseService.export` —
     cannot disagree about what a release contains.
 
+    **Three outcomes, not two.** Each class is written whole, written reduced, or
+    not written, read off the format's two declared geometry sets. #65 had only
+    the boolean, so ``_compatibility`` counted a converted polygon as an absent
+    one while the YOLO and VOC exporters went on writing it as a box — the report
+    and the output disagreed about the same annotations, and neither was wrong on
+    its own terms. ``excluded_annotations`` now counts what disappears and
+    ``degraded_annotations`` counts what survives coarser; ``compatible`` is false
+    for either, so nothing about consent moved.
+
     **Geometry only, and modality deliberately not.** ``Exporter`` declares
     ``supported_modalities`` and ``list_formats`` publishes it, but nothing here
     judges against it: a :class:`ManifestAsset` carries ``asset_id``,
@@ -751,13 +761,12 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     cannot open would have to become a field on ``ManifestAsset``, behind a
     ``MANIFEST_VERSION`` bump, which is its own decision.
     """
-    geometries = exporter.supported_geometries
     per_class: dict[str, tuple[GeometryType, int, set[UUID]]] = {}
     for declared in manifest.classes:
         per_class[declared.name] = (declared.geometry, 0, set())
 
-    excluded_annotations = 0
-    excluded_assets: set[UUID] = set()
+    counts = {status: 0 for status in ClassExportStatus}
+    touched: dict[ClassExportStatus, set[UUID]] = {status: set() for status in ClassExportStatus}
     for asset in manifest.assets:
         for annotation in asset.annotations:
             geometry, count, assets = per_class.get(
@@ -770,32 +779,81 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
                 (GeometryType(annotation.geometry.type), 0, set()),
             )
             per_class[annotation.label_class] = (geometry, count + 1, assets | {asset.asset_id})
-            if geometry not in geometries:
-                excluded_annotations += 1
-                excluded_assets.add(asset.asset_id)
+            status = _status_of(geometry, exporter)
+            counts[status] += 1
+            touched[status].add(asset.asset_id)
 
     classes = tuple(
         ClassCompatibility(
             label_class=name,
             geometry=geometry,
-            supported=geometry in geometries,
+            status=_status_of(geometry, exporter),
             annotations=count,
             assets=len(assets),
-            reason=(
-                None
-                if geometry in geometries
-                else f"{exporter.format_name} cannot write {geometry.value} geometry"
-            ),
+            reason=_reason_for(_status_of(geometry, exporter), geometry, exporter),
         )
         for name, (geometry, count, assets) in per_class.items()
     )
 
+    dropped = counts[ClassExportStatus.DROPPED]
+    degraded = counts[ClassExportStatus.DEGRADED]
     return ExportCompatibility(
         release_id=release.id,
         format_name=exporter.format_name,
-        compatible=excluded_annotations == 0 and not excluded_assets,
+        # Degraded counts against `compatible` exactly as dropped does: a polygon
+        # arriving as a box has lost its shape, and #65's whole point is that the
+        # caller is asked before that happens rather than told after. The
+        # `allow_lossy` gate does not move; only the numbers beside it get honest.
+        compatible=dropped == 0 and degraded == 0,
         format_is_lossy=exporter.lossy,
-        excluded_annotations=excluded_annotations,
-        excluded_assets=len(excluded_assets),
+        excluded_annotations=dropped,
+        excluded_assets=len(touched[ClassExportStatus.DROPPED]),
+        degraded_annotations=degraded,
+        degraded_assets=len(touched[ClassExportStatus.DEGRADED]),
         classes=classes,
     )
+
+
+def _status_of(geometry: GeometryType, exporter: Exporter) -> ClassExportStatus:
+    """What this format does with this geometry, from its own two declarations.
+
+    ``supported`` wins when a plugin declares a geometry in both sets. They are
+    documented as disjoint, and a plugin claiming a geometry is simultaneously
+    written whole and written reduced has said something contradictory — but
+    resolving it towards the *weaker* claim would report a loss that does not
+    happen, which is the mirror of the bug this function was rewritten for.
+    """
+    if geometry in exporter.supported_geometries:
+        return ClassExportStatus.SUPPORTED
+    if geometry in exporter.degraded_geometries:
+        return ClassExportStatus.DEGRADED
+    return ClassExportStatus.DROPPED
+
+
+def _reason_for(
+    status: ClassExportStatus, geometry: GeometryType, exporter: Exporter
+) -> str | None:
+    """One sentence saying what happens to this class, or ``None`` if nothing does.
+
+    A degraded reason says the class **is** written and what it costs; a dropped
+    one says it is not written. #158's third acceptance criterion, and the whole
+    reason the two are separate values: one string that has to cover both ends up
+    saying "cannot write", which is false for half of what it describes.
+
+    The kernel does not know *how* a plugin reduces a geometry — the port
+    declares that something is lost, not what the remains look like — so the
+    specific sentence is written only when the format's own declarations make it
+    inevitable: a format that reduces a shape and can write a box writes the box.
+    Anything else gets the honest general sentence rather than a guess, and a
+    format wanting to say more says it in its own documentation.
+    """
+    if status is ClassExportStatus.SUPPORTED:
+        return None
+    if status is ClassExportStatus.DROPPED:
+        return f"{exporter.format_name} cannot place a {geometry.value} and drops it"
+    if GeometryType.BBOX in exporter.supported_geometries:
+        return (
+            f"{exporter.format_name} writes a {geometry.value} as its bounding box; "
+            f"the shape is lost"
+        )
+    return f"{exporter.format_name} writes a {geometry.value} in a reduced form; detail is lost"

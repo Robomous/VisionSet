@@ -42,6 +42,7 @@ class WritingExporter:
     #: what it was — the file it writes, or the flag it sets — rather than a
     #: geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(
@@ -69,6 +70,7 @@ class LossyExporter:
     #: what it was — the file it writes, or the flag it sets — rather than a
     #: geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(
@@ -105,6 +107,7 @@ class BoxesOnlyExporter:
     lossy = False
 
     supported_geometries = frozenset({GeometryType.BBOX})
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(
@@ -125,6 +128,7 @@ class PolygonsOnlyExporter:
     lossy = False
 
     supported_geometries = frozenset({GeometryType.POLYGON})
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(

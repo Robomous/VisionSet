@@ -31,6 +31,11 @@ class DummyExporter:
     #: ``Geometry`` union rather than restated.
     supported_geometries = frozenset(GeometryType)
 
+    #: Empty, for the second of the two reasons an exporter's can be: this one
+    #: writes no files, so there is no geometry it could reduce either. A format
+    #: that converts silently is what #158's field exists to make visible.
+    degraded_geometries: frozenset[GeometryType] = frozenset()
+
     #: Likewise. ``image`` is the only modality anything produces today; a set
     #: that named it would have to grow when the domain does.
     supported_modalities = frozenset({"image", "video", "point_cloud"})

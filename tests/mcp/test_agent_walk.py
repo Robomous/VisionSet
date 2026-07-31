@@ -166,6 +166,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
             "name": "coco",
             "lossy": False,
             "geometries": ["bbox", "polygon"],
+            "degraded_geometries": [],
             "modalities": ["image"],
         },
         {
@@ -174,6 +175,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
             # #65: what the format can carry. `dummy` declares everything,
             # which is what makes it the format that never refuses.
             "geometries": sorted(one.value for one in GeometryType),
+            "degraded_geometries": [],
             "modalities": ["image", "point_cloud", "video"],
         },
         {
@@ -182,6 +184,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
             "name": "voc",
             "lossy": True,
             "geometries": ["bbox"],
+            "degraded_geometries": ["polygon"],
             "modalities": ["image"],
         },
         {
@@ -190,6 +193,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
             "name": "yolo",
             "lossy": True,
             "geometries": ["bbox"],
+            "degraded_geometries": ["polygon"],
             "modalities": ["image"],
         },
     ]

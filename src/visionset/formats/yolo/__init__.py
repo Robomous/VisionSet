@@ -40,11 +40,13 @@ before anything is written:
 - **Attributes, confidence and provenance.** A YOLO label row is five numbers.
   That is what ``lossy = True`` says, and it is why every export in this format
   asks for consent whatever the release holds.
-- **Geometry that is not a box.** ``supported_geometries`` is ``{bbox}``. A
-  polygon is still exported — as its axis-aligned bounding box, which is what a
-  detection dataset can use — but its shape is gone, so the report counts it as
-  not carried and says so by class. A classification tag has no box at all and is
-  dropped: a detection format has nowhere to put a label with no location.
+- **Geometry that is not a box.** ``supported_geometries`` is ``{bbox}`` and
+  ``degraded_geometries`` is ``{polygon}``. A polygon is still exported — as its
+  axis-aligned bounding box, which is what a detection dataset can use — but its
+  shape is gone, so the report counts it as **degraded** and says so by class. A
+  classification tag has no box at all and is **dropped**: a detection format has
+  nowhere to put a label with no location. Those two used to share one word, and
+  #158 is what that cost.
 """
 
 from __future__ import annotations
@@ -103,10 +105,17 @@ class YoloDetectionExporter:
     #: what this flag is for, and it is why consent is always asked.
     lossy = True
 
-    #: Boxes. A polygon is written as its bounding box under consent — see the
-    #: module docstring — and #65's report is what tells a caller which classes
-    #: that will happen to, with counts, before anything is written.
+    #: Boxes, and only boxes arrive intact.
     supported_geometries = frozenset({GeometryType.BBOX})
+
+    #: Polygons, because ``_as_box`` writes one as its axis-aligned bounds.
+    #:
+    #: #158's fix, and the shape of it is worth keeping in view: this was always
+    #: what the exporter did — the module docstring above said so — but the report
+    #: had no word for it and called the conversion a removal. A caller consented
+    #: to losing two annotations and received two boxes. The behaviour did not
+    #: change here; the declaration caught up with it.
+    degraded_geometries = frozenset({GeometryType.POLYGON})
 
     #: A YOLO dataset is a directory of pictures.
     supported_modalities = frozenset({"image"})

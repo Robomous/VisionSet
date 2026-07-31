@@ -25,8 +25,11 @@ consumers universally ignore it. Said out loud rather than dressed up.
 element has a fixed schema its consumers index by tag name, so there is nowhere to
 put an attribute, a confidence or a provenance — unlike COCO, where JSON's
 tolerance for unknown keys is what makes that format lossless. A polygon is still
-exported, as its bounding box, and a classification tag is dropped; #65's report
-names both, by class and with a count, before anything is written.
+exported, as its bounding box, which is why ``degraded_geometries`` is
+``{polygon}``; a classification tag is dropped. #65's report names both, by class
+and with a count, before anything is written — and since #158 it names them
+differently, because "reduced to a box" and "absent" are not the same thing to
+consent to.
 """
 
 from __future__ import annotations
@@ -87,9 +90,14 @@ class VocExporter:
     #: only readable by us.
     lossy = True
 
-    #: Boxes. A polygon is written as its axis-aligned bounding box under consent,
-    #: and a classification tag has no location for VOC to record at all.
+    #: Boxes, and only boxes arrive intact.
     supported_geometries = frozenset({GeometryType.BBOX})
+
+    #: Polygons, written as their axis-aligned bounding box. #158: this exporter
+    #: has always done it and the report used to call it a removal. A
+    #: classification tag has no location for VOC to record at all, so it stays
+    #: outside both sets and is genuinely dropped.
+    degraded_geometries = frozenset({GeometryType.POLYGON})
 
     supported_modalities = frozenset({"image"})
 

@@ -263,7 +263,7 @@ def test_under_consent_the_tag_is_dropped_and_the_report_enumerates_it(
     written = json.loads((out / "visionset-export-report.json").read_text(encoding="utf-8"))
     assert written["compatible"] is False
     assert written["excluded_annotations"] == 1
-    (weather,) = [one for one in written["classes"] if not one["supported"]]
+    (weather,) = [one for one in written["classes"] if one["status"] == "dropped"]
     assert (weather["label_class"], weather["annotations"], weather["assets"]) == (
         "weather",
         1,
