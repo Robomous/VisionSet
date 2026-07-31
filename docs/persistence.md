@@ -300,3 +300,26 @@ that exercises the migration at all.
 `format_version` here is the *database* generation. Validating the on-disk workspace layout
 around it — directories, the blob-store root, what makes a directory a workspace at all —
 belongs to `WorkspaceService`; see [workspaces.md](workspaces.md).
+
+## Migration 12 — one classification tag per (asset, class)
+
+`FORMAT_VERSION` moves to **12**, the first time since #25 and the only move M6
+expects. It adds a **partial, expression-based** unique index on
+`annotation (asset_id, label_class)` restricted to
+`json_extract(geometry, '$.type') = 'classification_tag'`.
+
+Partial because the rule is about tags and nothing else: two boxes under one class
+are two facts, and two tags of one class are the same statement twice.
+
+Expression-based, so #20's trap applies for the second time — SQLAlchemy can reflect
+neither a partial nor an expression index, so `checkfirst` reports it absent and
+re-issues the `CREATE`, which fails on every fresh database. The migration uses
+`CreateIndex(..., if_not_exists=True)` and asks SQLite instead, with the DDL still
+compiled from the one `Index` object in `_tables.py`.
+
+**The backfill collapses rather than refusing.** Migration 6's precedent — count and
+raise `WorkspaceCorrupt` — was right for a table nobody could have written to yet.
+Duplicates were legal before this migration, so refusing would leave a workspace
+unopenable with a remedy its owner cannot apply. The survivor is the
+lexicographically smallest `id`: arbitrary by construction, and deterministic, which
+is the property that matters when two machines migrate the same copy.

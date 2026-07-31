@@ -99,31 +99,48 @@ Whether a value is acceptable is `Attribute.rejects`, the one method that answer
 same one an attribute's own `default` is checked against. A value and a default can never be
 held to different standards.
 
-## Whole-asset tags carry no coordinates, and the kernel does not deduplicate them
+## Whole-asset tags carry no coordinates, and there is at most one per class
 
-`ClassificationGeometry` is a variant with no fields, rather than `geometry: None`, so that every
-annotation has a geometry with a discriminator and the union stays the single place that answers
-"what shape is this label?". A class declares one geometry (see [schemas.md](schemas.md)), so a
-class is *either* tagged or drawn — labelling an asset with a box, a polygon and a whole-frame tag
-takes three classes.
+A ``classification_tag`` class produces an annotation whose geometry has **zero
+fields**. It says something about the asset, not about a place in it — "this frame is
+at night" — so it has nothing to move, nothing to resize and no vertices.
 
-Two classification annotations on the same asset are distinguishable only by `id`, `label_class`
-and `attributes`, and **nothing in the kernel stops two identical ones existing.**
-`AnnotationService._validate` judges an annotation against the pinned schema alone and never reads
-the store; `annotation` has no unique index; no route and no MCP tool deduplicates. Passing the
-same `(asset_id, label_class, ClassificationGeometry())` twice in one `add` call stores two rows.
+That is also why **an asset carries at most one tag of a given class**. Two boxes
+under one class are two facts, because each carries its own coordinates; two tags of
+one class are the *same statement made twice*. Since #121 the kernel enforces it:
 
-That is deliberate for now rather than settled: the constraint would be a unique index and a
-migration, and no surface has needed it. What it means in practice is that **"tagged" is a
-property of the annotation set, not a flag**, and any surface offering a toggle owns the
-invariant itself. The annotator does exactly that — `frontend/annotator/src/core/interaction/tags.ts`
-makes "at most one tag per class" structural by answering with a command that changes nothing when
-the tag is already there, and its untag removes *every* tag of the class, so a duplicate that
-arrived from the API is healed by one toggle cycle.
+- a **partial unique index** on `(asset_id, label_class)`, restricted to tag
+  geometry, so the second one cannot be stored;
+- `AnnotationService.add` and `.update` refuse first, with
+  `DuplicateClassificationTag` — one of the six `InvalidAnnotation` refusals — so a
+  caller meets a sentence and an `index` rather than a raw constraint failure;
+- the check runs **within a call** as well as against the store, because `add` is
+  all-or-nothing and the index would otherwise refuse at commit time, where the
+  position at fault cannot be reconstructed.
 
-One consequence worth knowing: a classification tag alone moves an asset from `unannotated` to
-`annotated`, and removing the last one moves it back — the same rule as any other annotation.
+It sits in the `InvalidAnnotation` family even though it is the only one of the six
+that reads the store, because the *remedy* is the family's: fix the annotation. There
+is no flag that overrides it and no state to change first — the tag is already there.
+The status is **422 and not 409** for the same reason: 409 means "change the state
+and resubmit", and deleting the existing tag to add an identical one is not a remedy
+anybody wants.
 
+`AnnotationService.update` may still *move* a tag to another class, and a no-op
+update of a tag is not a duplicate — the row being replaced leaves the comparison
+before its replacement is judged.
+
+**Migration 12 collapses duplicates a workspace already carried.** They were legal
+before, so refusing to open would leave an owner with a remedy they cannot apply:
+this product ships no SQL console. The survivor is the lexicographically smallest
+`id`. Any tie-break is arbitrary by construction — the rows are one statement — so
+what matters is that it is deterministic, and two machines migrating the same copy of
+a workspace agree. It can discard a differing `attributes` map on the losing row,
+which is stated rather than hidden.
+
+The annotator's own rule (`core/interaction/tags.ts`) is unchanged and is now a
+mirror rather than a compensation: `tagCommand` on an already-tagged class returns a
+command that changes nothing, so a second tag is never *requested*, and `untagCommand`
+still removes every tag of the class.
 ## Provenance is the model's own rule, not the service's
 
 There is no `InvalidProvenance`. `provenance="model"` requiring a `model_ref`, and `confidence`

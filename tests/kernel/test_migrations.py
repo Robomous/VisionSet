@@ -126,6 +126,11 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
         # would survive the downgrade and migration 11 would ``checkfirst``-skip,
         # so the ``CREATE`` nobody ran would be reported as agreeing with itself.
         connection.execute(text("drop table token"))
+        # Migration 12's undo. One line, and it is the *only* thing that
+        # exercises that migration: ``annotation`` is only ever altered, so
+        # nothing above rebuilds it and takes the index away for free — the same
+        # position migration 11 is in, and the opposite of migration 9's.
+        connection.execute(text("drop index if exists uq_annotation_asset_classification"))
         connection.execute(text("update _visionset_meta set format_version = 1"))
 
 
@@ -706,4 +711,87 @@ def test_every_migration_after_the_first_is_idempotent(tmp_path: Path) -> None:
     with store.engine.begin() as connection:
         for migration in MIGRATIONS[1:]:
             migration.upgrade(connection)
+    store.close()
+
+
+def test_migration_twelve_makes_a_second_tag_on_one_asset_impossible(tmp_path: Path) -> None:
+    """The index is partial, so it constrains tags and nothing else."""
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    assert any("uq_annotation_asset_classification" in sql for sql in _schema(store))
+    store.close()
+
+
+def test_migration_twelve_collapses_duplicates_a_workspace_already_carried(
+    tmp_path: Path,
+) -> None:
+    """The backfill, and the reason it collapses rather than refusing.
+
+    Duplicates were legal before this migration, so a workspace can hold them —
+    and refusing to open one would leave its owner with a remedy they cannot
+    apply, since this product ships no SQL console. The survivor is the
+    lexicographically smallest id, which is arbitrary by construction (the rows
+    are one statement) and, more importantly, deterministic.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    _downgrade_to_version_one(store)
+
+    with store.engine.begin() as connection:
+        # A real parent chain, because foreign keys are on.
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
+        )
+        connection.execute(
+            text(
+                "insert into asset (id, project_id, modality, uri, content_hash)"
+                " values ('0000000000000000000000000000000a', 'p', 'image', 'f.png', 'h')"
+            )
+        )
+        for annotation_id, geometry in (
+            ("00000000000000000000000000000001", '{"type": "classification_tag"}'),
+            ("00000000000000000000000000000002", '{"type": "classification_tag"}'),
+            # A second class on the same asset is a different statement and stays.
+            ("00000000000000000000000000000003", '{"type": "classification_tag"}'),
+            # And two boxes under one class are the normal case, which is why the
+            # index is partial rather than a rule about the table.
+            (
+                "00000000000000000000000000000004",
+                '{"type": "bbox", "x": 0, "y": 0, "width": 1, "height": 1}',
+            ),
+            (
+                "00000000000000000000000000000005",
+                '{"type": "bbox", "x": 2, "y": 2, "width": 1, "height": 1}',
+            ),
+        ):
+            label = "night" if annotation_id.endswith("3") else "daytime"
+            connection.execute(
+                text(
+                    "insert into annotation (id, asset_id, label_class, schema_version,"
+                    " geometry, provenance)"
+                    " values (:id, :asset, :label, 1, :geometry, 'human')"
+                ),
+                {
+                    "id": annotation_id,
+                    "asset": "0000000000000000000000000000000a",
+                    "label": label,
+                    "geometry": geometry,
+                },
+            )
+
+    store.initialize()
+
+    with store.engine.begin() as connection:
+        surviving = sorted(
+            row[0] for row in connection.execute(text("select id from annotation")).fetchall()
+        )
+    # The first of the two `daytime` tags survives; the second is gone; the
+    # `night` tag and both boxes are untouched.
+    assert surviving == [
+        "00000000000000000000000000000001",
+        "00000000000000000000000000000003",
+        "00000000000000000000000000000004",
+        "00000000000000000000000000000005",
+    ]
     store.close()

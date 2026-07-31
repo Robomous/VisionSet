@@ -405,6 +405,29 @@ class DisallowedGeometry(InvalidAnnotation):
     """
 
 
+class DuplicateClassificationTag(InvalidAnnotation):
+    """This asset already carries a tag of this class.
+
+    A ``ClassificationGeometry`` has **zero fields** and is frozen, so two tags
+    of one class on one asset are the same statement made twice — not two facts
+    the way two boxes under one class are. #121 made that unrepresentable: a
+    partial unique index on ``(asset_id, label_class)``, restricted to tag
+    geometry, plus this refusal so a caller meets a sentence rather than a raw
+    ``ConstraintViolated``.
+
+    Deliberately inside the :class:`InvalidAnnotation` family even though it is
+    the only one of the six that reads the *store* rather than the schema. What
+    puts it here is the remedy, which is the family's rule: fix the annotation.
+    There is no flag that overrides it and no state to change first — the tag is
+    already there, which is what "already tagged" means.
+
+    Raised for a duplicate **within one call** as well as against what is
+    stored. ``add`` writes its whole list or none of it, so a request carrying
+    the same tag twice would otherwise be refused by the index at commit time,
+    where nothing can say which position was at fault.
+    """
+
+
 class MissingRequiredAttribute(InvalidAnnotation):
     """The class asks for an attribute value the annotation does not carry.
 

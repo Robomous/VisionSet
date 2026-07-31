@@ -47,6 +47,7 @@ from sqlalchemy import Column, Connection, Table, inspect, text
 from sqlalchemy.schema import CreateColumn, CreateIndex
 
 from visionset.kernel.adapters._tables import (
+    ANNOTATION_TAG_UNIQUE,
     ASSET_CONTENT_UNIQUE,
     PROJECT_NAME_UNIQUE,
     SOURCE_ORIGIN_UNIQUE,
@@ -443,6 +444,54 @@ def _add_api_tokens(connection: Connection) -> None:
     cast(Table, TokenRow.__table__).create(connection, checkfirst=True)
 
 
+def _enforce_one_tag_per_asset_and_class(connection: Connection) -> None:
+    """Make a duplicate classification tag unrepresentable, and collapse any there.
+
+    #121: nothing prevented two identical whole-asset tags.
+    ``AnnotationService._validate`` judges against the pinned schema alone and
+    never reads the store, ``add`` writes the proposed list unchanged, and no
+    index touched ``annotation``. ``ClassificationGeometry`` has zero fields and
+    is frozen, so two tags of one class on one asset differed only by ``id`` —
+    the same statement, made twice.
+
+    **The backfill collapses rather than refusing**, and that is the one decision
+    here worth arguing. Migration 6's precedent — count the rows and raise
+    ``WorkspaceCorrupt`` — was right for a table nobody could have written to
+    yet. Duplicates are *legal today*, so refusing would leave a workspace
+    unopenable with a remedy its owner cannot apply: there is no SQL console in
+    this product. Collapsing loses nothing that the model distinguishes.
+
+    The survivor is the **lexicographically smallest id**. Any tie-break is
+    arbitrary by construction — the rows are one statement — so the one that
+    matters is that it is *deterministic*, and two machines migrating the same
+    copy of a workspace agree.
+
+    The one thing it can discard is a differing ``attributes`` map on the losing
+    row. Stated rather than hidden: a classification tag is the least likely place
+    for meaningful divergence, and the alternative is the unopenable workspace
+    above.
+
+    Not ``checkfirst``: the index is partial **and** expression-based, and
+    SQLAlchemy can reflect neither — it would report the index absent and re-issue
+    the ``CREATE``, which fails on every fresh database. ``IF NOT EXISTS`` asks
+    SQLite. #20's trap, met a second time.
+    """
+    connection.execute(
+        text(
+            """
+            delete from annotation
+            where json_extract(geometry, '$.type') = 'classification_tag'
+              and id not in (
+                select min(id) from annotation
+                where json_extract(geometry, '$.type') = 'classification_tag'
+                group by asset_id, label_class
+              )
+            """
+        )
+    )
+    connection.execute(CreateIndex(ANNOTATION_TAG_UNIQUE, if_not_exists=True))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -494,6 +543,11 @@ MIGRATIONS: list[Migration] = [
         version=11,
         name="api_tokens",
         upgrade=_add_api_tokens,
+    ),
+    Migration(
+        version=12,
+        name="one_classification_tag_per_asset_and_class",
+        upgrade=_enforce_one_tag_per_asset_and_class,
     ),
 ]
 

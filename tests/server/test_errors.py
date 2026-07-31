@@ -88,6 +88,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "InvalidAnnotation": (422, "INVALID_ANNOTATION"),
     "LabelClassNotInSchema": (422, "LABEL_CLASS_NOT_IN_SCHEMA"),
     "DisallowedGeometry": (422, "DISALLOWED_GEOMETRY"),
+    "DuplicateClassificationTag": (422, "DUPLICATE_CLASSIFICATION_TAG"),
     "MissingRequiredAttribute": (422, "MISSING_REQUIRED_ATTRIBUTE"),
     "UnknownAttribute": (422, "UNKNOWN_ATTRIBUTE"),
     "InvalidAttributeValue": (422, "INVALID_ATTRIBUTE_VALUE"),
