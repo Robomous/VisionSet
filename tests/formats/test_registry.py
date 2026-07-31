@@ -16,6 +16,7 @@ import pytest
 from visionset.formats.registry import exporter, exporters, pick
 from visionset.kernel.domain import Annotation, GeometryType, Manifest, Release
 from visionset.kernel.errors import ExportFormatNotFound
+from visionset.kernel.ports import ContentReader
 
 
 class _AnImporter:
@@ -37,7 +38,14 @@ class _AnExporter:
     supported_geometries = frozenset(GeometryType)
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         return None
 
 
@@ -108,7 +116,14 @@ def test_a_plugin_missing_the_lossy_member_is_not_an_exporter() -> None:
     class _Outdated:
         format_name = "outdated"
 
-        def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+        def export(
+            self,
+            release: Release,
+            manifest: Manifest,
+            dest: Path,
+            *,
+            content: ContentReader,
+        ) -> None:
             return None
 
     assert not isinstance(_Outdated(), Exporter)

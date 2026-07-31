@@ -61,6 +61,10 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "AssetNotInJob": (404, "ASSET_NOT_IN_JOB"),
     "NoSplitRecipe": (404, "NO_SPLIT_RECIPE"),
     "ExportFormatNotFound": (404, "EXPORT_FORMAT_NOT_FOUND"),
+    # #62: a release naming bytes an export cannot use. 409 rather than 500 for
+    # `UnserializableManifest`'s reason — the request is fine, the stored state is
+    # not — so the message naming the asset reaches the caller.
+    "ExportSourceUnreadable": (409, "EXPORT_SOURCE_UNREADABLE"),
     "ThumbnailNotCached": (404, "THUMBNAIL_NOT_CACHED"),
     # 409 — well-formed request, the resource's state refuses it
     "ProjectNameTaken": (409, "PROJECT_NAME_TAKEN"),

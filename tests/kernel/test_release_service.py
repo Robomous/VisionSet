@@ -49,6 +49,7 @@ from visionset.kernel.domain import (
     canonical_bytes,
     sha256_hex,
 )
+from visionset.kernel.ports import ContentReader
 from visionset.kernel.services import (
     EXPORT_REPORT_FILENAME,
     AnnotationService,
@@ -655,7 +656,14 @@ class _Recording:
     def __init__(self) -> None:
         self.calls: list[tuple[UUID, int, Path]] = []
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         self.calls.append((release.id, len(manifest.assets), dest))
         (dest / "top.txt").write_text("x" * 10)
         # ``exist_ok`` because the port says so: ``dest`` may already hold an
@@ -678,7 +686,14 @@ class _Lossy:
     def __init__(self) -> None:
         self.called = False
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         self.called = True
         (dest / "partial.txt").write_text("boxes only")
 
@@ -734,7 +749,14 @@ def test_an_exporter_that_writes_nothing_reports_zero(tmp_path: Path) -> None:
         supported_geometries = frozenset(GeometryType)
         supported_modalities = frozenset({"image"})
 
-        def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+        def export(
+            self,
+            release: Release,
+            manifest: Manifest,
+            dest: Path,
+            *,
+            content: ContentReader,
+        ) -> None:
             return None
 
     fixture = Fixture(tmp_path)
@@ -893,7 +915,14 @@ class _BoxesOnly:
     supported_geometries = frozenset({GeometryType.BBOX})
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         (dest / "boxes.txt").write_text("ok", encoding="utf-8")
 
 

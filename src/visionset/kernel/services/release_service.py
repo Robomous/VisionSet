@@ -73,13 +73,14 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     ConstraintViolated,
     EmptyRelease,
+    ExportSourceUnreadable,
     LossyExportNotConsented,
     NoSplitRecipe,
     ReleaseNotFound,
     ReleaseTagTaken,
     WorkspaceCorrupt,
 )
-from visionset.kernel.ports import BlobStore, Exporter, UnitOfWork
+from visionset.kernel.ports import BlobStore, ContentReader, Exporter, UnitOfWork
 from visionset.kernel.services.dataset_service import DatasetService, assets_of
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -421,7 +422,12 @@ class ReleaseService:
                 compatibility=compatibility,
             )
         dest.mkdir(parents=True, exist_ok=True)
-        exporter.export(release, manifest, dest)
+        exporter.export(
+            release,
+            manifest,
+            dest,
+            content=_content_reader(manifest, self._workspace.blob_store),
+        )
         # The report is **excluded from the count**, on both sides: it is not
         # written until after the walk, and a report left by an earlier run into
         # the same directory is skipped. Both halves are needed for the same
@@ -615,6 +621,33 @@ def _cache_mismatches(release: Release, manifest: Manifest) -> tuple[str, ...]:
         for name, stored, actual in checks
         if stored != actual
     )
+
+
+def _content_reader(manifest: Manifest, blobs: BlobStore) -> ContentReader:
+    """The reader a plugin lays images out with, composed for exactly one export.
+
+    Closed over the manifest so the refusal can name the *asset* rather than the
+    hash a plugin happened to ask for — a caller who never saw a content hash
+    cannot act on one. Built here rather than handed the blob store directly
+    because a format plugin has no business writing into the content store; see
+    :data:`~visionset.kernel.ports.ContentReader`.
+
+    The handle is **not** closed here, unlike ``_read_blob``'s: this one hands it
+    over, and a plugin streaming a large image into a file wants the stream, not
+    its contents in memory.
+    """
+    subjects = {asset.content_hash: _asset_subject(asset) for asset in manifest.assets}
+
+    def read(content_hash: str) -> BinaryIO:
+        try:
+            return blobs.get(content_hash)
+        except FileNotFoundError as exc:
+            named = subjects.get(content_hash, f"content {content_hash}")
+            raise ExportSourceUnreadable(
+                f"{named} is not in the blob store; verify the release and restore it"
+            ) from exc
+
+    return read
 
 
 def _read_blob(blobs: BlobStore, content_hash: str, subject: str) -> bytes:

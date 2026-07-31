@@ -23,7 +23,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from visionset.kernel.domain import GeometryType, Manifest, Release
-from visionset.kernel.ports import Exporter
+from visionset.kernel.ports import ContentReader, Exporter
 from visionset.server.dependencies import get_exporters
 
 
@@ -44,7 +44,14 @@ class WritingExporter:
     supported_geometries = frozenset(GeometryType)
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         (dest / "manifest.json").write_text(json.dumps({"tag": release.tag}))
         (dest / "images").mkdir()
         (dest / "images" / "listing.txt").write_text(
@@ -64,7 +71,14 @@ class LossyExporter:
     supported_geometries = frozenset(GeometryType)
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         (dest / "boxes-only.txt").write_text(str(len(manifest.assets)))
 
 
@@ -93,7 +107,14 @@ class BoxesOnlyExporter:
     supported_geometries = frozenset({GeometryType.BBOX})
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         (dest / "boxes.txt").write_text(str(len(manifest.assets)))
 
 
@@ -106,5 +127,12 @@ class PolygonsOnlyExporter:
     supported_geometries = frozenset({GeometryType.POLYGON})
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         (dest / "polygons.txt").write_text(str(len(manifest.assets)))

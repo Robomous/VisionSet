@@ -38,6 +38,7 @@ from visionset.kernel.domain import (
     Manifest,
     Release,
 )
+from visionset.kernel.ports import ContentReader
 from visionset.kernel.services import (
     EXPORT_REPORT_FILENAME,
     WORKSPACE_ENV_VAR,
@@ -59,7 +60,14 @@ class LossyExporter:
     supported_geometries = frozenset(GeometryType)
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         (dest / "labels.txt").write_text(f"{len(manifest.assets)}\n", encoding="utf-8")
 
 
@@ -136,7 +144,16 @@ def test_format_list_json_is_the_envelope() -> None:
                 "polyline_3d",
             ],
             "modalities": ["image", "point_cloud", "video"],
-        }
+        },
+        {
+            "name": "yolo",
+            "lossy": True,
+            # #62, the first format here that writes anything. Lossy because a
+            # label row is five numbers: attributes, confidence and provenance
+            # never survive, whatever a release happens to hold.
+            "geometries": ["bbox"],
+            "modalities": ["image"],
+        },
     ]
 
 
@@ -187,7 +204,16 @@ def test_an_unknown_format_exits_one_naming_what_is_installed(root: Path, tmp_pa
     # set; a dict lookup would raise ``KeyError`` and print a traceback.
     name = published_release(root, tmp_path)
     result = run(
-        root, "export", "-p", name, "--release", "v1.0", "--format", "yolo", "--out", str(tmp_path)
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "not-a-format",
+        "--out",
+        str(tmp_path),
     )
     assert result.exit_code == 1, result.output
     assert "dummy" in result.stderr
@@ -261,7 +287,14 @@ class BoxesOnlyExporter:
     supported_geometries = frozenset({GeometryType.CLASSIFICATION_TAG})
     supported_modalities = frozenset({"image"})
 
-    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+    def export(
+        self,
+        release: Release,
+        manifest: Manifest,
+        dest: Path,
+        *,
+        content: ContentReader,
+    ) -> None:
         (dest / "tags.txt").write_text("nothing to write\n", encoding="utf-8")
 
 
