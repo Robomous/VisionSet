@@ -51,7 +51,7 @@ it, and what twelve real agent runs did with it — see
 
 ## The tools
 
-Thirty-three, listed in the order an agent meets them.
+Thirty-four, listed in the order an agent meets them.
 
 ### Projects and schema
 
@@ -108,7 +108,8 @@ Thirty-three, listed in the order an agent meets them.
 | `publish_release` | Freeze it under a tag, immutably. |
 | `list_releases` | Everything published, with counts and hashes. |
 | `verify_release` | Re-hash every blob a release names. |
-| `list_formats` | Installed exporters, and which are lossy. |
+| `list_formats` | Installed exporters, which are lossy, and what each can write. |
+| `check_export` | What a format would drop from a release, before writing anything. |
 | `export_release` | Write a release to a local directory. `allow_lossy` where needed. |
 
 ## `get_asset_image`, and the coordinate frame
@@ -202,7 +203,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-thirty-three tools would put a path an agent has no way to know into every call. The workspace is
+thirty-four tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset ui` or
 a second agent between calls.
 
@@ -213,7 +214,9 @@ out of the object to pick the variant, and omitting it fails. Always send
 
 ## What is not here, and why
 
-Fifty candidate tools were recorded across the four REST tasks; thirty ship, twenty do not. The
+Fifty candidate tools were recorded across the four REST tasks; thirty ship, twenty do not, and
+#65 added `check_export` afterwards — the plan-before-apply half of an export, on the
+`preview_schema_change` precedent. The
 parity rule means *evaluated*, not *implemented* — tool-selection accuracy degrades with count,
 so a tool ships only when an agent has a reason to reach for it that no neighbour covers.
 

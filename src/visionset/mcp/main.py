@@ -109,6 +109,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (releases.list_releases, READS),
     (releases.verify_release, READS),
     (formats.list_formats, READS),
+    (releases.check_export, READS),
     (releases.export_release, WRITES),
 )
 """Every shipped tool, with what it does to the workspace.

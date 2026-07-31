@@ -1165,6 +1165,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/releases/{release_id}/export-compatibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Export
+         * @description Say what the named format would drop from this release, without writing anything.
+         *
+         *     The pre-flight for `POST /releases/{release_id}/export`: same release, same
+         *     format name, same document the export refuses with and writes into its own
+         *     output. A client showing a consent dialog asks this first; one that would
+         *     rather find out by being refused does not have to.
+         *
+         *     `compatible` is the answer. It is not the same question as the format's
+         *     `lossy` flag, which `GET /formats` publishes: that is the format's blanket
+         *     statement about everything a capability list cannot see, while this is about
+         *     the labels *this* release actually holds. Export asks for `allow_lossy=true`
+         *     when either says so.
+         *
+         *     A GET because it writes nothing and answers the same thing every time — a
+         *     release is immutable, so this response is as stable as the release is.
+         */
+        get: operations["check_export"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/releases/{release_id}/manifest": {
         parameters: {
             query?: never;
@@ -1669,6 +1703,23 @@ export interface components {
             size: number;
         };
         /**
+         * ClassCompatibilityOut
+         * @description One class of a release, judged against one format's capabilities.
+         */
+        ClassCompatibilityOut: {
+            /** Annotations */
+            annotations: number;
+            /** Assets */
+            assets: number;
+            geometry: components["schemas"]["GeometryType"];
+            /** Label Class */
+            label_class: string;
+            /** Reason */
+            reason?: string | null;
+            /** Supported */
+            supported: boolean;
+        };
+        /**
          * ClassCountOut
          * @description How much of one label class the trunk holds.
          */
@@ -1791,12 +1842,45 @@ export interface components {
             message: string;
         };
         /**
+         * ExportCompatibilityOut
+         * @description What one format would drop from one release, worked out before writing.
+         */
+        ExportCompatibilityOut: {
+            /** Classes */
+            classes: components["schemas"]["ClassCompatibilityOut"][];
+            /** Compatible */
+            compatible: boolean;
+            /** Excluded Annotations */
+            excluded_annotations: number;
+            /** Excluded Assets */
+            excluded_assets: number;
+            /** Format */
+            format: string;
+            /** Format Is Lossy */
+            format_is_lossy: boolean;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+        };
+        /**
          * FormatOut
-         * @description An installed export format.
+         * @description An installed export format, and what it can express.
          */
         FormatOut: {
+            /**
+             * Geometries
+             * @default []
+             */
+            geometries: string[];
             /** Lossy */
             lossy: boolean;
+            /**
+             * Modalities
+             * @default []
+             */
+            modalities: string[];
             /** Name */
             name: string;
         };
@@ -5625,6 +5709,76 @@ export interface operations {
             };
             /** @description The resource's state refuses this request */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_export: {
+        parameters: {
+            query: {
+                /** @description Which installed format to write. `GET /formats` lists them. */
+                format: string;
+            };
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportCompatibilityOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

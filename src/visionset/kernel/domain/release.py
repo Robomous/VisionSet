@@ -42,11 +42,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from visionset.kernel.domain.annotation import Provenance
 from visionset.kernel.domain.geometry import Geometry
-from visionset.kernel.domain.schema import AttributeValue, LabelClass
+from visionset.kernel.domain.schema import AttributeValue, GeometryType, LabelClass
 from visionset.kernel.errors import UnserializableManifest
 
 #: The format of the manifest document itself — independent of ``FORMAT_VERSION``
@@ -401,6 +408,102 @@ class ReleaseVerification(BaseModel):
         )
 
 
+class ClassCompatibility(BaseModel):
+    """One class of a release, judged against one format's declared capabilities.
+
+    Per class rather than per annotation, and the counts are what make it useful:
+    "polygon is unsupported" is a fact about the schema, while "polygon is
+    unsupported, 1,204 annotations across 310 assets" is the number somebody
+    decides on. It is the same argument ``ClassCountOut`` makes for
+    ``DatasetStats`` — a thousand labels over a thousand images and the same
+    thousand over ten are the same total and a very different loss.
+
+    ``reason`` is filled only when ``supported`` is false. A supported class has
+    nothing to explain, and an empty string there would read as a reason nobody
+    wrote down.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label_class: str
+    geometry: GeometryType
+    supported: bool
+    #: Annotations of this class in the release. Zero is normal and is *not* a
+    #: problem: a class the schema declares and nobody used excludes nothing, so
+    #: it never makes a report incompatible however unsupported its geometry is.
+    annotations: int = Field(ge=0)
+    assets: int = Field(ge=0)
+    reason: str | None = None
+
+
+class ExportCompatibility(BaseModel):
+    """What one format would lose from one release, worked out before writing.
+
+    The report #65 exists for, and it is deliberately **computed from the frozen
+    manifest** rather than from live membership: an export describes a release,
+    and a release is a snapshot. Two runs against one release therefore agree
+    forever, which is what lets the same document be shown in a consent dialog,
+    attached to a refusal and written into the output.
+
+    ``compatible`` is the whole answer, and it is *not* the same question as
+    ``Exporter.lossy``. That flag is the format's blanket statement about
+    everything a capability list cannot see — attributes, confidence, provenance
+    — and it is true or false for the format forever. This is about **this
+    release**: a bbox-only format meeting a bbox-only release excludes nothing,
+    and the report says so with numbers.
+
+    Both are consulted, and consent is required if *either* says so. That is
+    monotone with what shipped in #30 — a lossy format still always asks — and it
+    adds the case #65 was filed for: a format that declares itself lossless still
+    cannot silently drop a geometry it never claimed to write.
+
+    ``classes`` sorts by name. Canonical ordering belongs to the artifact rather
+    than to whoever built it, which is the rule ``Manifest`` already follows and
+    the reason this document is stable enough to hash, diff or attach.
+    """
+
+    # ``populate_by_name`` is what makes the alias below safe to round-trip: the
+    # document written into an export directory has to parse back into this
+    # model, and an alias with no way in would make the file write-only.
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    release_id: UUID
+    #: Serialized as ``format``, and the **only** aliased field in the domain.
+    #: It is here because this one document is written to disk by the kernel and
+    #: published by three surfaces, so their spellings have to agree exactly.
+    #: ``visionset.wire`` and ``server/models.py`` say ``format`` for the same
+    #: reason ``export_result`` does; the kernel says ``format_name`` because
+    #: ``Exporter.format_name`` does. The alias is what lets both be true, and
+    #: ``test_the_report_on_disk_is_the_document_the_surfaces_publish`` is what
+    #: keeps it true. Both halves are spelled out — ``serialization_alias`` for
+    #: the way out, ``validation_alias=AliasChoices(...)`` for the way back in —
+    #: rather than one ``alias`` with ``populate_by_name``, because the pydantic
+    #: mypy plugin builds ``__init__`` from ``alias`` alone and every keyword
+    #: construction in the kernel would stop type-checking.
+    format_name: str = Field(
+        serialization_alias="format",
+        validation_alias=AliasChoices("format", "format_name"),
+    )
+    #: Nothing in this release would be dropped by this format's capabilities.
+    compatible: bool
+    #: The format's own blanket declaration, carried so a reader of the report
+    #: alone can tell "this release is clean" from "this format loses nothing".
+    format_is_lossy: bool
+    excluded_annotations: int = Field(default=0, ge=0)
+    excluded_assets: int = Field(default=0, ge=0)
+    classes: tuple[ClassCompatibility, ...] = ()
+
+    @field_validator("classes")
+    @classmethod
+    def _by_name(cls, value: tuple[ClassCompatibility, ...]) -> tuple[ClassCompatibility, ...]:
+        return tuple(sorted(value, key=lambda one: one.label_class))
+
+    @property
+    def excluded(self) -> tuple[ClassCompatibility, ...]:
+        """The classes a caller has to decide about. Empty when compatible."""
+        return tuple(one for one in self.classes if not one.supported and one.annotations > 0)
+
+
 class ExportResult(BaseModel):
     """What one run of an exporter left on disk.
 
@@ -425,6 +528,12 @@ class ExportResult(BaseModel):
 
     release_id: UUID
     format_name: str
+    #: What the format would drop, worked out before anything was written.
+    #:
+    #: Carried on the result as well as written into ``directory`` because a
+    #: caller that never sees the bytes — the CLI, an MCP tool, an SDK user —
+    #: would otherwise have to open the file to learn what it consented to.
+    compatibility: ExportCompatibility
     #: Where the files were written. Absolute, and the caller's own choice —
     #: the kernel never picks a location.
     directory: Path

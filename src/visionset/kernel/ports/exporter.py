@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from visionset.kernel.domain import Manifest, Release
+from visionset.kernel.domain import GeometryType, Manifest, Release
 
 
 @runtime_checkable
@@ -46,5 +46,40 @@ class Exporter(Protocol):
     #: ``False`` and never thinks about this again; ``LossyExportNotConsented`` is
     #: what a ``True`` costs the caller, once.
     lossy: bool
+
+    #: Which geometries this format can write.
+    #:
+    #: The **checkable** half of ``lossy``, added by #65. The flag above is a
+    #: blanket statement a plugin makes about itself and nobody can verify; this
+    #: is a list a report can be computed against, which is what turns "this
+    #: format is lossy" into "this release loses 1,204 polygon annotations across
+    #: 310 assets".
+    #:
+    #: Declared over ``GeometryType`` — every name the domain can address, not
+    #: only the three an ``Annotation`` may carry today — so a format that will
+    #: one day write masks says so once and the report widens with the union
+    #: rather than with a second edit here.
+    #:
+    #: A format supporting everything still sets ``lossy`` honestly: the two
+    #: answer different questions, and attributes, confidence and provenance are
+    #: outside what a geometry list can see.
+    supported_geometries: frozenset[GeometryType]
+
+    #: Which asset modalities this format can write.
+    #:
+    #: A plain ``str`` set, matching ``Asset.modality``, and for the same reason
+    #: ``DatasetChange.operation`` is a ``str`` while ``DatasetOperation`` is an
+    #: enum: a modality is a value a *format* declares, and a build that has never
+    #: heard of one should report it as unsupported rather than fail to load the
+    #: plugin.
+    #:
+    #: **Declared and published, but not yet judged against.** A
+    #: ``ManifestAsset`` carries no modality — adding one would change the shape
+    #: of every manifest and therefore every release hash ever computed — and
+    #: reading it off the live ``Asset`` would make an export report depend on
+    #: something that can move after publication. ``_compatibility`` in
+    #: ``release_service.py`` says so in full. Everything ingested today is
+    #: ``image``.
+    supported_modalities: frozenset[str]
 
     def export(self, release: Release, manifest: Manifest, dest: Path) -> None: ...

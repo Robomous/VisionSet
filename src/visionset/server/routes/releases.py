@@ -40,6 +40,7 @@ from visionset.kernel.services import ReleaseService
 from visionset.server.dependencies import ExportersDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
+    ExportCompatibilityOut,
     ReleaseCreate,
     ReleaseOut,
     ReleasePage,
@@ -205,6 +206,34 @@ def get_release_assignment(workspace: WorkspaceDep, release_id: UUID) -> SplitAs
     all-train would be indistinguishable from a real recipe that said so.
     """
     return SplitAssignmentOut.of(ReleaseService(workspace).assignment(release_id))
+
+
+@router.get("/{release_id}/export-compatibility", responses=documented(404))
+def check_export(
+    workspace: WorkspaceDep,
+    exporters: ExportersDep,
+    release_id: UUID,
+    format: FormatQuery,
+) -> ExportCompatibilityOut:
+    """Say what the named format would drop from this release, without writing anything.
+
+    The pre-flight for `POST /releases/{release_id}/export`: same release, same
+    format name, same document the export refuses with and writes into its own
+    output. A client showing a consent dialog asks this first; one that would
+    rather find out by being refused does not have to.
+
+    `compatible` is the answer. It is not the same question as the format's
+    `lossy` flag, which `GET /formats` publishes: that is the format's blanket
+    statement about everything a capability list cannot see, while this is about
+    the labels *this* release actually holds. Export asks for `allow_lossy=true`
+    when either says so.
+
+    A GET because it writes nothing and answers the same thing every time — a
+    release is immutable, so this response is as stable as the release is.
+    """
+    return ExportCompatibilityOut.of(
+        ReleaseService(workspace).check_export(release_id, pick(exporters, format))
+    )
 
 
 @router.post(
