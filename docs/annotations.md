@@ -99,6 +99,31 @@ Whether a value is acceptable is `Attribute.rejects`, the one method that answer
 same one an attribute's own `default` is checked against. A value and a default can never be
 held to different standards.
 
+## Whole-asset tags carry no coordinates, and the kernel does not deduplicate them
+
+`ClassificationGeometry` is a variant with no fields, rather than `geometry: None`, so that every
+annotation has a geometry with a discriminator and the union stays the single place that answers
+"what shape is this label?". A class declares one geometry (see [schemas.md](schemas.md)), so a
+class is *either* tagged or drawn — labelling an asset with a box, a polygon and a whole-frame tag
+takes three classes.
+
+Two classification annotations on the same asset are distinguishable only by `id`, `label_class`
+and `attributes`, and **nothing in the kernel stops two identical ones existing.**
+`AnnotationService._validate` judges an annotation against the pinned schema alone and never reads
+the store; `annotation` has no unique index; no route and no MCP tool deduplicates. Passing the
+same `(asset_id, label_class, ClassificationGeometry())` twice in one `add` call stores two rows.
+
+That is deliberate for now rather than settled: the constraint would be a unique index and a
+migration, and no surface has needed it. What it means in practice is that **"tagged" is a
+property of the annotation set, not a flag**, and any surface offering a toggle owns the
+invariant itself. The annotator does exactly that — `frontend/annotator/src/core/interaction/tags.ts`
+makes "at most one tag per class" structural by answering with a command that changes nothing when
+the tag is already there, and its untag removes *every* tag of the class, so a duplicate that
+arrived from the API is healed by one toggle cycle.
+
+One consequence worth knowing: a classification tag alone moves an asset from `unannotated` to
+`annotated`, and removing the last one moves it back — the same rule as any other annotation.
+
 ## Provenance is the model's own rule, not the service's
 
 There is no `InvalidProvenance`. `provenance="model"` requiring a `model_ref`, and `confidence`

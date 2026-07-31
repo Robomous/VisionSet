@@ -151,6 +151,15 @@ export {
   type Turn,
 } from "./core/interaction/machine";
 export { runEffects } from "./core/interaction/runEffects";
+// The classification tag tool (#45) — a panel, and the only tool not on the canvas
+export {
+  isTaggableClass,
+  tagCommand,
+  taggedClassNames,
+  tagsFor,
+  toggleTagCommand,
+  untagCommand,
+} from "./core/interaction/tags";
 
 // Host adapters — each needs a capability the headless core may not name
 export { randomUuid } from "./adapters/ids";

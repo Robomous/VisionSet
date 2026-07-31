@@ -20,9 +20,10 @@
  * arrives carrying what its class says a box carries. The class is read with
  * `classNamed` — the document's own lookup, not a second walk of `schema.classes`.
  * A class the schema does not declare contributes nothing rather than throwing:
- * `toolFor` has already refused to hand out a drawing tool for one, so reaching
- * this with an unknown name means the host changed the document mid-gesture, and
- * an empty attribute map is a better answer to that than a crash.
+ * both callers have already refused one — `toolFor` will not hand out a drawing
+ * tool, `tagCommand` answers `null` — so reaching this with an unknown name means
+ * the host changed the document mid-gesture, and an empty attribute map is a
+ * better answer to that than a crash.
  *
  * **A required attribute with no default is drawn anyway, and that is deliberate.**
  * `document.ts` says required-attribute rules stay the kernel's while *"the tools
@@ -34,12 +35,14 @@
  * attributes panel is what turns "refuse at draw time" into something a user can
  * act on.
  *
- * `provenance` is `"human"`: this function is only ever reached from a gesture.
+ * `provenance` is `"human"`: every caller is a gesture or a keystroke, never a
+ * model and never an import.
  *
- * It also does not check that the class it was given declares this geometry.
- * `toolFor` has already answered that question from the other end — a bbox
- * gesture only exists while the active class draws boxes — and re-checking here
- * would be the second spelling `wire.ts`'s rule 2 argues against.
+ * It also does not check that the class it was given declares this geometry. Its
+ * callers have already answered that question from the other end — `toolFor` for
+ * a gesture, since a bbox gesture only exists while the active class draws boxes;
+ * `isTaggableClass` for a tag, inside `tags.ts` — and re-checking here would be
+ * the second spelling `wire.ts`'s rule 2 argues against.
  */
 
 import type { IdFactory } from "../ids";
