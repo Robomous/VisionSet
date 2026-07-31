@@ -113,18 +113,21 @@ test("the rail carries exactly what the design gives it", async ({ page }) => {
 test("navigation is real links, and the active one is the one you are on", async ({ page }) => {
   await signIn(page);
 
-  // `end` on the Home link is what makes this true: without it `NavLink` treats
-  // `/` as a prefix of every route and Home is permanently active.
-  await expect(page.getByTestId("rail-home")).toHaveAttribute("aria-current", "page");
-
-  await page.getByTestId("rail-projects").click();
+  // Signing in at `/` lands on `/projects`, because Home redirects there — so
+  // **Projects** is the current page and Home is not. Asserting Home first would
+  // be racing the redirect, which is exactly what it did until this comment
+  // existed: the scenario passed alone and failed under parallel load.
   await expect(page).toHaveURL(/\/projects$/);
   await expect(page.getByTestId("rail-projects")).toHaveAttribute("aria-current", "page");
+
+  // `end` on the Home link is what keeps this true: without it `NavLink` treats
+  // `/` as a prefix of every route and Home is active on every page.
   await expect(page.getByTestId("rail-home")).not.toHaveAttribute("aria-current", "page");
 
   // A real `<a href>`, so middle-click and "open in new tab" work — which on a
   // tool people keep two workspaces open in is not a detail.
   await expect(page.getByTestId("rail-projects")).toHaveAttribute("href", "/projects");
+  await expect(page.getByTestId("rail-home")).toHaveAttribute("href", "/");
 });
 
 test("collapsing the rail narrows it and keeps every control reachable", async ({ page }) => {

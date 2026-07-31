@@ -23,7 +23,7 @@
  * and the editor already spells that.
  */
 
-import { History, Pencil } from "lucide-react";
+import { History, Pencil, Upload } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -54,9 +54,11 @@ const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 
 export interface ProjectScreenProps {
   readonly projectId: string;
+  /** Route change, supplied by the app. See `ProjectsScreen`'s note. */
+  readonly onIngest?: () => void;
 }
 
-export function ProjectScreen({ projectId }: ProjectScreenProps): JSX.Element {
+export function ProjectScreen({ projectId, onIngest }: ProjectScreenProps): JSX.Element {
   const project = useProject(projectId);
   const schema = useActiveSchema(projectId);
   const versions = useSchemaVersions(projectId);
@@ -78,10 +80,18 @@ export function ProjectScreen({ projectId }: ProjectScreenProps): JSX.Element {
                 {loaded.description ?? "No description."}
               </p>
             </div>
-            <Button variant="secondary" data-testid="rename-project" onClick={() => setRenaming(true)}>
-              <Pencil className="size-4" aria-hidden="true" />
-              Rename
-            </Button>
+            <div className="flex items-center gap-2">
+              {onIngest !== undefined && (
+                <Button variant="primary" data-testid="go-ingest" onClick={onIngest}>
+                  <Upload className="size-4" aria-hidden="true" />
+                  Ingest
+                </Button>
+              )}
+              <Button variant="secondary" data-testid="rename-project" onClick={() => setRenaming(true)}>
+                <Pencil className="size-4" aria-hidden="true" />
+                Rename
+              </Button>
+            </div>
           </header>
         )}
       </Async>
