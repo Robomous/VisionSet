@@ -46,6 +46,50 @@ Query keys are hierarchical — `["projects"]` → `["projects", id]` →
 invalidating `["projects", id]` after a rename refreshes the project, its schema and
 its version list, and the mutation never has to enumerate what it affected.
 
+### The annotation page
+
+Where M4's engine meets M3's API. Three findings shaped it.
+
+**`next_pending_assets` is a work queue, not a navigator.** The obvious way to
+build `‹ filename n/m ›` is `GET /jobs/{id}/next?n=<count>`; it is wrong, because
+that route hands out **pending** assets, so the list shrinks as the user works,
+`n/m` counts down under them, and an asset already annotated cannot be navigated
+back to. The stable list is the batch's asset listing filtered to this job —
+`BatchAssetOut` carries `job_id` and `progress`, exactly the pair a navigator
+needs.
+
+**The schema is the batch's pinned version, never the project's active one.**
+Approval pins the active version and it never moves. An annotator judged against a
+newer schema would offer classes the API then refuses, and the refusal would be
+correct while the screen looked broken. The page walks job → batch → *that
+version*.
+
+**Saving is a diff, and then a reload.** The annotator mints client-side ids and
+the kernel mints its own (#40 declined a `rebaseAnnotationId` for this reason), so
+a save cannot merge its own response back in. It computes created / updated /
+deleted against what was loaded, sends up to three all-or-nothing calls — **deletes
+first**, so a failure leaves the smaller document a retry can be built from — and
+then refetches.
+
+#### There is no autosave, and that is the policy
+
+1. **A save is followed by a reload**, so a debounced autosave would rebuild the
+   document under the cursor every few seconds — and a rebuild mid-gesture is a
+   dropped drag.
+2. **Every call is all-or-nothing.** A partial autosave has no meaning: the kernel
+   refuses a batch as a unit and reports the offending index, and firing that on a
+   timer reports it about work the user was not doing.
+3. **The two cases autosave exists for are covered**: "I forgot" is
+   save-on-navigate, "I closed the tab" is the `beforeunload` guard.
+
+**Accept** calls the existing progress endpoint with `accepted`, and is enabled only
+where `ASSET_PROGRESS_TRANSITIONS` allows the move — offering it on an untouched
+asset would be offering a refusal. The zoom `−`/`%`/`+` and fit drive
+`AnnotatorCanvas`'s new `viewRef` handle, whose `fit` is the same implementation
+`mod+0` reaches, which is why that chord stays intercepted rather than forwarded.
+The version dropdown and Merge render **disabled**: they are #127 and post-beta, and
+drawing them keeps the bar the shape the design shows.
+
 ### The annotation side panel
 
 `AnnotatorPanel` — Objects and Labels — lives in **`ui-core`**, not in the

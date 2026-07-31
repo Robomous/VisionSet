@@ -7,7 +7,11 @@
  * nobody can measure.
  */
 
-export { AnnotatorCanvas, type AnnotatorCanvasProps } from "./AnnotatorCanvas";
+export {
+  AnnotatorCanvas,
+  type AnnotatorCanvasProps,
+  type AnnotatorView,
+} from "./AnnotatorCanvas";
 export { useAnnotatorSnapshot, useAnnotatorStore } from "./hooks";
 export { AnnotationLayer, type AnnotationLayerProps } from "./AnnotationLayer";
 export { TransientLayer, type TransientLayerProps } from "./TransientLayer";

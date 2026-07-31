@@ -239,6 +239,7 @@ export {
   useAnnotatorStore,
   type AnnotationLayerProps,
   type AnnotatorCanvasProps,
+  type AnnotatorView,
   type CompositionProbe,
   type PaintedAnnotation,
   type PendingPolygon,
