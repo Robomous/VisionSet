@@ -60,6 +60,37 @@ const TAG = "v1";
 test("the whole cycle, from a pasted token to a downloaded export", async ({ page }) => {
   test.slow();
 
+  // #161's first acceptance criterion, collected across the whole walk rather than
+  // asserted at one moment: a clean load should produce **zero** console errors and
+  // no failed request, and the only one there had been was the browser asking for
+  // `/favicon.ico` unprompted and the API root correctly answering 404.
+  //
+  // Both halves are needed. `console` catches what the page complains about;
+  // `requestfailed` and a 404 sweep catch the case where a browser fetches
+  // something on its own initiative and says nothing — which is exactly what a
+  // missing icon does in a headless run.
+  const consoleErrors: string[] = [];
+  const badRequests: string[] = [];
+  // Every API call the *app* made that the API refused. The walk contains such
+  // calls by design — `GET /projects/{id}/schema` answers 404 for a project that
+  // has no schema yet, which is how the editor knows to open on an empty draft —
+  // and Chrome logs a console error for each. Collected so those can be told from
+  // a resource the *browser* went looking for on its own, which is the only kind
+  // #161 is about and the only kind nothing else would notice.
+  const apiRefusals = new Set<string>();
+  page.on("response", (response) => {
+    const kind = response.request().resourceType();
+    if (response.status() < 400) return;
+    if (kind === "fetch" || kind === "xhr") apiRefusals.add(response.url());
+    else badRequests.push(`${response.status()} ${kind} ${response.url()}`);
+  });
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    if (apiRefusals.has(message.location().url)) return;
+    consoleErrors.push(`${message.text()} @ ${message.location().url}`);
+  });
+  page.on("requestfailed", (request) => badRequests.push(`failed ${request.url()}`));
+
   await test.step("connect with a workspace token", async () => {
     await page.goto("./");
     await page.getByTestId("token-input").fill(token());
@@ -306,6 +337,31 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
       page.getByTestId("export-submit").click(),
     ]);
     await expectArchive(download);
+  });
+
+  await test.step("the whole walk produced a clean console", async () => {
+    // #161. Last, so it covers everything above rather than one screen: eleven
+    // navigations, a reload, two viewport changes and a download, and the browser
+    // should have had nothing to say about any of it.
+    //
+    // **Stated rather than implied: headless chromium does not request
+    // `/favicon.ico` on its own**, so this assertion cannot reproduce #161's
+    // original symptom — a headed browser asks, a headless one does not, and
+    // removing the `<link>` again leaves this passing. Verified, not assumed.
+    //
+    // What it does hold is the property the issue is actually after: the walk
+    // produces no console error and no failed resource load, so a *new* one has
+    // silence to stand out against instead of a permanent line. The icon itself is
+    // guarded by `tests/scripts/favicon.test.mjs` — which does fail when the link
+    // goes — and by the request below.
+    expect(consoleErrors).toEqual([]);
+    expect(badRequests).toEqual([]);
+    // And the icon is genuinely served under the mount, rather than absent and
+    // unnoticed: `vite preview` would answer 200 with `index.html` here, which is
+    // #49's trap and the reason this is checked against the real server.
+    const icon = await page.request.get("/ui/favicon.svg");
+    expect(icon.status()).toBe(200);
+    expect(icon.headers()["content-type"]).toContain("image/svg+xml");
   });
 });
 

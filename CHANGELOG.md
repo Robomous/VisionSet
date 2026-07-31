@@ -13,6 +13,18 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **`/favicon.ico` 404'd on every page** (#161) — the only console error in an otherwise clean
+  load. `frontend/app/index.html` declared no icon, so the browser asked for one unprompted and
+  the API root, which owns `/` deliberately (#33), correctly answered 404 in the one error body.
+  Cosmetic on its own, and worth closing: a console that is empty when things are fine is worth
+  more than one that always has a line in it.
+
+  An inline SVG mark ships in `frontend/app/public/`, referenced root-relative so Vite's `base`
+  rewrite puts it at `/ui/favicon.svg` in the build and `/favicon.svg` under `vite dev` — a
+  literal prefix would have worked in the wheel and 404'd in development, silently either way.
+  No `/favicon.ico` route was added to the API; the spec is the REST contract and a browser
+  convenience file has no place in it.
+
 - **The schema editor's colour swatch showed grey for a derived class colour** (#162), contradicting
   the dot two inches to its left and the colour the annotator actually draws — in the one control
   whose whole job is to say what colour something is. `<input type="color">` accepts only

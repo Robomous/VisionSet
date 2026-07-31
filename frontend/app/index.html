@@ -3,6 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      #161. Without this a browser asks for `/favicon.ico` unprompted, which lands
+      on the API root and is correctly answered 404 — the only console error in an
+      otherwise clean load, and a console that always has a line in it is worth
+      less than one that is empty when things are fine.
+
+      Written root-relative and **not** as a literal `/ui/…`: Vite rewrites asset
+      URLs in this document with the configured `base`, which is `/ui/` for a build
+      and `/` for `vite dev`. Hardcoding the prefix would break the dev server, and
+      hardcoding nothing would break the wheel. Both halves are asserted —
+      `tests/scripts/favicon.test.mjs` reads the built `dist/index.html`, and the
+      browser cycle loads the real server and asserts a clean console.
+    -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Robomous VisionSet</title>
   </head>
   <body>
