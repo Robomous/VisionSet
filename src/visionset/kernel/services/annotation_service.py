@@ -56,12 +56,14 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     AnnotationsWritten,
     Batch,
+    ClassificationGeometry,
     progress_after_annotating,
 )
 from visionset.kernel.errors import (
     AnnotationNotFound,
     AssetNotInJob,
     DisallowedGeometry,
+    DuplicateClassificationTag,
     InvalidAttributeValue,
     LabelClassNotInSchema,
     MissingRequiredAttribute,
@@ -144,10 +146,16 @@ class AnnotationService:
                 annotation.model_copy(update={"schema_version": schema.version})
                 for annotation in annotations
             ]
+            tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
             for index, annotation in enumerate(proposed):
                 with _blaming(index):
                     _require_asset_in_job(job, annotation.asset_id)
                     _validate(annotation, schema)
+                    # Checked inside this transaction and against a set that grows
+                    # as the loop goes, so a request carrying the same tag twice is
+                    # refused at the *second* position rather than by the index at
+                    # commit time, where nothing could say which one was at fault.
+                    _require_untagged(tagged, annotation)
 
             stored = [uow.annotations.add(annotation) for annotation in proposed]
             _refresh_progress(uow, job, (a.asset_id for a in proposed))
@@ -189,6 +197,15 @@ class AnnotationService:
                     )
                     _validate(replacement, schema)
                 replacements.append(replacement)
+
+            # After the loop, because an update may *move* a tag: the row being
+            # replaced is one of the ones already stored, so it has to leave the
+            # set before the replacement is judged against it.
+            moved = {a.id for a in replacements}
+            tagged = _tags_already_on(uow, {a.asset_id for a in replacements}, ignoring=moved)
+            for index, replacement in enumerate(replacements):
+                with _blaming(index):
+                    _require_untagged(tagged, replacement)
 
             stored = [uow.annotations.update(annotation) for annotation in replacements]
             _refresh_progress(uow, job, (a.asset_id for a in replacements))
@@ -358,6 +375,55 @@ def _require_asset_in_job(job: AnnotationJob, asset_id: UUID) -> None:
             f"job {job.id} does not carry asset {asset_id}; a job's assets are fixed "
             f"when its batch is approved"
         )
+
+
+def _tags_already_on(
+    uow: UnitOfWork,
+    asset_ids: set[UUID],
+    *,
+    ignoring: set[UUID] | None = None,
+) -> set[tuple[UUID, str]]:
+    """Which ``(asset, class)`` pairs already carry a classification tag.
+
+    Read once for the whole call rather than per annotation: the port's only
+    query shape is one ``parent_id``, so this is one ``list`` per asset touched,
+    and a per-annotation check would repeat them.
+
+    ``ignoring`` is what makes an *update* able to move a tag: the row being
+    replaced is itself one of the stored ones, and judging a replacement against
+    a set that still contains it would refuse every no-op edit.
+
+    Reads the store, which is the one thing ``_validate`` deliberately never
+    does — so it lives here, beside its callers, rather than inside it. That
+    property is stated in ``_validate``'s own docstring and is worth keeping:
+    schema judgement is a pure function of the annotation and the version.
+    """
+    skip = ignoring or set()
+    return {
+        (stored.asset_id, stored.label_class)
+        for asset_id in asset_ids
+        for stored in uow.annotations.list(asset_id)
+        if stored.id not in skip and isinstance(stored.geometry, ClassificationGeometry)
+    }
+
+
+def _require_untagged(tagged: set[tuple[UUID, str]], annotation: Annotation) -> None:
+    """Refuse a second tag of one class on one asset, and record the first.
+
+    Mutates ``tagged`` on the way through, which is what catches a duplicate
+    *within* one request — ``add`` is all-or-nothing, so without it the index
+    would refuse at commit time, where the ``index`` a caller is told about
+    cannot be reconstructed.
+    """
+    if not isinstance(annotation.geometry, ClassificationGeometry):
+        return
+    key = (annotation.asset_id, annotation.label_class)
+    if key in tagged:
+        raise DuplicateClassificationTag(
+            f"asset {annotation.asset_id} already carries a "
+            f"{annotation.label_class!r} classification tag"
+        )
+    tagged.add(key)
 
 
 def _validate(annotation: Annotation, schema: AnnotationSchema) -> None:
