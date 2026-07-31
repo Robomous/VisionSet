@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.mcp._flow import call, error, ingested, payload, project, workspace
+from tests.mcp._flow import call, call_destructive, error, ingested, payload, project, workspace
 
 from visionset.kernel.services import ProjectService, WorkspaceService
 
@@ -95,7 +95,7 @@ def test_delete_without_confirm_changes_nothing_and_names_the_flag(
 ) -> None:
     root = tmp_path / "ws"
     named = project(monkeypatch, tmp_path)
-    refusal = error(call("delete_project", project=named))
+    refusal = error(call_destructive("delete_project", project=named))
     assert refusal["retry_with"] == "confirm"
     # The refusal is only worth anything if the project is still there afterwards.
     with WorkspaceService.open(root) as service:
@@ -107,7 +107,10 @@ def test_delete_with_confirm_removes_the_project(
 ) -> None:
     root = tmp_path / "ws"
     named = project(monkeypatch, tmp_path)
-    assert payload(call("delete_project", project=named, confirm=True))["deleted"]["name"] == named
+    assert (
+        payload(call_destructive("delete_project", project=named, confirm=True))["deleted"]["name"]
+        == named
+    )
     with WorkspaceService.open(root) as service:
         assert ProjectService(service).list() == []
 
@@ -117,7 +120,10 @@ def test_deleting_something_that_is_not_there_says_so_with_or_without_confirm(
 ) -> None:
     workspace(monkeypatch, tmp_path)
     for confirm in (False, True):
-        assert "nope" in error(call("delete_project", project="nope", confirm=confirm))["message"]
+        assert (
+            "nope"
+            in error(call_destructive("delete_project", project="nope", confirm=confirm))["message"]
+        )
 
 
 def test_no_workspace_configured_is_refused_with_a_remedy_a_client_can_act_on(

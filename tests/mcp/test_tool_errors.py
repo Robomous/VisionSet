@@ -18,7 +18,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.mcp._flow import call, error, ingested, payload, project, schema, workspace
+from tests.mcp._flow import (
+    call,
+    call_destructive,
+    error,
+    ingested,
+    payload,
+    project,
+    schema,
+    workspace,
+)
 
 from visionset.kernel import (
     ConfirmationRequired,
@@ -92,7 +101,7 @@ def test_confirm_is_the_retry_word_for_destroying_data(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     named = project(monkeypatch, tmp_path)
-    assert error(call("delete_project", project=named))["retry_with"] == "confirm"
+    assert error(call_destructive("delete_project", project=named))["retry_with"] == "confirm"
 
 
 def test_allow_destructive_is_the_retry_word_for_narrowing_a_contract(

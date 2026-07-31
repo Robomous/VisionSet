@@ -40,7 +40,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from typing import Final
+from typing import Annotated, Final
 
 import typer
 
@@ -51,21 +51,53 @@ from visionset.kernel.services import WORKSPACE_ENV_VAR
 SERVER_MODULE: Final = "visionset.mcp.main"
 """What the child interpreter is told to run. See the module docstring for why."""
 
+ALLOW_DESTRUCTIVE_ENV: Final = "VISIONSET_MCP_ALLOW_DESTRUCTIVE"
+"""How ``--allow-destructive`` reaches the child.
 
-def mcp(workspace: WorkspaceOption = None) -> None:
+A **literal**, not an import, for the same reason ``SERVER_MODULE`` above is one:
+import-linter forbids ``visionset.cli`` importing ``visionset.mcp`` at all, so
+this surface names its sibling by string or not at all.
+``tests/cli/test_mcp_command.py`` imports both packages — a test may do what
+neither package may — and asserts the two spellings agree.
+"""
+
+
+def mcp(
+    workspace: WorkspaceOption = None,
+    allow_destructive: Annotated[
+        bool,
+        typer.Option(
+            "--allow-destructive",
+            help="Also offer the tools that destroy data. Off by default.",
+        ),
+    ] = False,
+) -> None:
     """Start the MCP server on stdio, serving this workspace to an agent.
 
     Speaks JSON-RPC on stdin and stdout, so run it from an MCP client rather than
     by hand. Every tool operates on the workspace resolved here, and no token is
     involved: an agent reaching this server is already inside the sandbox the
     workspace defines.
+
+    Destructive tools — `delete_project` today — are **not offered** unless
+    `--allow-destructive` is passed. A `confirm` parameter is documented in the
+    same listing an agent reads before choosing, so it is an instruction rather
+    than a gate; leaving the tool out of the listing is the only version of that
+    gate a model cannot clear by itself. See `docs/mcp.md`.
     """
     with opened_workspace(workspace) as service:
         root = service.root
     os.environ[WORKSPACE_ENV_VAR] = str(root)
+    # Stated rather than inherited, in both directions: a `1` left in the parent
+    # environment must not quietly re-arm a server started without the flag.
+    os.environ[ALLOW_DESTRUCTIVE_ENV] = "1" if allow_destructive else "0"
 
     typer.secho(f"VisionSet {__version__} — MCP server on stdio", err=True, bold=True)
     typer.echo(f"  workspace  {root}", err=True)
+    typer.echo(
+        f"  destructive tools  {'offered' if allow_destructive else 'not offered'}",
+        err=True,
+    )
     typer.echo("Press Ctrl+C to stop.", err=True)
 
     # `sys.executable`, not "python": a workspace's virtual environment is

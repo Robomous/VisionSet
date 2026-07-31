@@ -35,7 +35,8 @@ labelling:
     "env": { "VISIONSET_WORKSPACE": "/path/to/workspace" } } } }
 ```
 
-Thirty-four tools; see [docs/mcp.md](docs/mcp.md) for what each is for, or
+Thirty-three tools, plus one that is offered only when the server is started with
+`--allow-destructive`; see [docs/mcp.md](docs/mcp.md) for what each is for, or
 [docs/mcp-walkthrough.md](docs/mcp-walkthrough.md) for a session start to finish — including what
 twelve real agent runs actually did with it.
 
