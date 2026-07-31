@@ -26,7 +26,7 @@
  * the grid's own.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { Async } from "../data/Async";
@@ -65,8 +65,11 @@ export interface GalleryScreenProps {
 
 export function GalleryScreen({ projectId, batchId, onOpenAsset }: GalleryScreenProps): JSX.Element {
   const assets = useBatchAssets(batchId);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const columns = useColumns(scrollRef);
+  // One node, two consumers, one state value. `useVirtualizer` re-reads
+  // `getScrollElement` per call, so handing it the same state the observer is
+  // keyed on means the two halves of this screen can never disagree about which
+  // element they are measuring — which is how #159 was possible at all.
+  const { columns, scroller, attach } = useColumns();
 
   const items = useMemo(
     () => (assets.data?.pages ?? []).flatMap((page) => page.items),
@@ -77,7 +80,7 @@ export function GalleryScreen({ projectId, batchId, onOpenAsset }: GalleryScreen
 
   const virtualizer = useVirtualizer({
     count: rows,
-    getScrollElement: () => scrollRef.current,
+    getScrollElement: () => scroller,
     estimateSize: () => ROW_HEIGHT,
     // Three rows of headroom, so a fast scroll meets rendered tiles rather than
     // blank space. More than that and the DOM starts growing again.
@@ -118,8 +121,9 @@ export function GalleryScreen({ projectId, batchId, onOpenAsset }: GalleryScreen
       >
         {() => (
           <div
-            ref={scrollRef}
+            ref={attach}
             data-testid="gallery-scroll"
+            data-columns={columns}
             className="max-h-[70vh] overflow-y-auto rounded-xl border border-border p-3"
           >
             <div
@@ -212,31 +216,69 @@ function Tile({
 }
 
 /**
- * How many tiles fit across, measured.
+ * How many tiles fit across a pane of this width.
  *
- * `ResizeObserver` rather than a breakpoint list: the grid's own column count is a
- * function of the pane, and a second list of widths in JavaScript is a second
- * thing to keep in step. Falls back to one column, which is correct-but-slow
- * rather than wrong, in an environment with no observer (jsdom, notably).
+ * Pure and exported so it can be checked without a browser. The arithmetic was
+ * never the problem — `columnsFor(1239)` is 7 and always was — which is exactly
+ * why #159 survived a suite that asserted things like this: the defect was that
+ * the measurement never happened, and no amount of testing the formula sees it.
  */
-function useColumns(ref: React.RefObject<HTMLDivElement | null>): number {
+export function columnsFor(width: number): number {
+  return Math.max(1, Math.floor((width + GAP) / (TILE + GAP)));
+}
+
+/**
+ * How many tiles fit across, measured — through a **callback ref**.
+ *
+ * ## The bug this is written against
+ *
+ * #159: the gallery rendered one tile per row at every width, at every viewport,
+ * for the life of the screen. The arithmetic was right; the observer was never
+ * attached.
+ *
+ * The previous version took a `RefObject` and attached its `ResizeObserver` in an
+ * effect that began `if (element === null) return`. The scroller lives **inside
+ * `<Async>`'s children render-prop**, so on mount it does not exist yet and
+ * `ref.current` is null — the effect took the early return. Both of its
+ * dependencies were stable (`ref` is a `RefObject`, `measure` a `useCallback` over
+ * `[ref]`), so it never ran again once the real element arrived. `columns` stayed
+ * at its initial `1` forever.
+ *
+ * A ref object mutating is invisible to React. **A callback ref is not**: React
+ * calls it with the node on attach and with `null` on detach, so an effect keyed
+ * on that state re-runs by construction at exactly the two moments that matter.
+ * The contrast inside this very file is the tell — `useVirtualizer` takes
+ * `getScrollElement` as a *callback* and re-reads it, which is why rows
+ * virtualised correctly the whole time columns did not.
+ *
+ * ## The fallback is still one column, and it still has to be reachable
+ *
+ * An environment with no `ResizeObserver` measures once and stops, which is
+ * correct-but-static rather than wrong. jsdom is that environment, and #159's
+ * lesson is that a test running in it was asserting the broken value as if it were
+ * the intended one — so the count a *browser* renders is checked in a browser
+ * (`cycle/cycle.spec.ts`), and what is pinned here is only that the fallback is
+ * taken when the observer is genuinely absent.
+ */
+function useColumns(): {
+  readonly columns: number;
+  readonly scroller: HTMLDivElement | null;
+  readonly attach: (node: HTMLDivElement | null) => void;
+} {
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
   const [columns, setColumns] = useState(1);
 
-  const measure = useCallback(() => {
-    const width = ref.current?.clientWidth ?? 0;
-    setColumns(Math.max(1, Math.floor((width + GAP) / (TILE + GAP))));
-  }, [ref]);
-
   useEffect(() => {
+    if (element === null) return;
+    const measure = (): void => setColumns(columnsFor(element.clientWidth));
     measure();
-    const element = ref.current;
-    if (element === null || typeof ResizeObserver === "undefined") return;
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [ref, measure]);
+  }, [element]);
 
-  return columns;
+  return { columns, scroller: element, attach: setElement };
 }
 
 export { GALLERY_PAGE_SIZE };
