@@ -14,5 +14,11 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
+  // Browser sources only. The end-to-end suite gets `tsconfig.e2e.json` instead of
+  // being folded in here: it runs under Node and needs `process`, and buying that
+  // with `types: ["node"]` would put `process`, `Buffer` and the Node timers into
+  // the *application's* type environment, where nothing should be able to name
+  // them. The annotator draws the same line for the same reason — see its
+  // `tsconfig.core.json`.
   "include": ["src"]
 }
