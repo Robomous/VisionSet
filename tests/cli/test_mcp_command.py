@@ -19,6 +19,7 @@ from typer.testing import CliRunner
 
 from visionset.cli import mcp as mcp_module
 from visionset.cli.main import app
+from visionset.cli.mcp import ALLOW_DESTRUCTIVE_ENV
 from visionset.kernel.services import WORKSPACE_ENV_VAR, WorkspaceService
 
 runner = CliRunner()
@@ -180,3 +181,69 @@ def test_the_cli_does_not_import_the_mcp_package() -> None:
     source = Path(mcp_module.__file__).read_text()
     assert "import visionset.mcp" not in source
     assert "from visionset.mcp" not in source
+
+
+# --- the destructive posture (#108) -------------------------------------------
+
+
+def test_the_destructive_tools_are_off_unless_the_flag_is_passed(
+    tmp_path: Path, spawn: Spawn
+) -> None:
+    """The default, and it is a `0` rather than an absence.
+
+    Stated in both directions on purpose: a `1` left in the parent environment —
+    by a shell profile, by a client's config, by an earlier run — must not
+    quietly re-arm a server somebody started *without* the flag.
+    """
+    root = _workspace(tmp_path)
+    runner.invoke(app, ["mcp", "--workspace", str(root)])
+
+    assert spawn.env[ALLOW_DESTRUCTIVE_ENV] == "0"
+
+
+def test_an_inherited_one_does_not_survive_a_run_without_the_flag(
+    tmp_path: Path, spawn: Spawn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(ALLOW_DESTRUCTIVE_ENV, "1")
+    root = _workspace(tmp_path)
+
+    runner.invoke(app, ["mcp", "--workspace", str(root)])
+
+    assert spawn.env[ALLOW_DESTRUCTIVE_ENV] == "0"
+
+
+def test_the_flag_arms_them(tmp_path: Path, spawn: Spawn) -> None:
+    root = _workspace(tmp_path)
+    result = runner.invoke(app, ["mcp", "--workspace", str(root), "--allow-destructive"])
+
+    assert result.exit_code == 0
+    assert spawn.env[ALLOW_DESTRUCTIVE_ENV] == "1"
+
+
+def test_the_banner_says_which_posture_this_server_has(tmp_path: Path, spawn: Spawn) -> None:
+    """On stderr with the rest of it, because stdout is the protocol.
+
+    Worth printing: an operator wiring up a client has no other way to see which
+    of the two servers they started, and the difference is whether an agent can
+    delete a project.
+    """
+    root = _workspace(tmp_path)
+
+    quiet = runner.invoke(app, ["mcp", "--workspace", str(root)])
+    armed = runner.invoke(app, ["mcp", "--workspace", str(root), "--allow-destructive"])
+
+    assert "destructive tools  not offered" in quiet.stderr
+    assert "destructive tools  offered" in armed.stderr
+
+
+def test_the_two_packages_spell_the_variable_the_same_way() -> None:
+    """The one place the duplication can be checked.
+
+    `cli/mcp.py` names the variable as a literal because import-linter forbids
+    `visionset.cli` importing `visionset.mcp` at all — the same reason
+    `SERVER_MODULE` is a string. A test is outside both packages and may import
+    each, which is what keeps the two spellings from drifting.
+    """
+    from visionset.mcp.main import ALLOW_DESTRUCTIVE_ENV as SERVER_SIDE
+
+    assert ALLOW_DESTRUCTIVE_ENV == SERVER_SIDE
