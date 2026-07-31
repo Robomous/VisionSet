@@ -14,7 +14,7 @@ document is the data half.
 | route | what | behind the token gate |
 | --- | --- | --- |
 | `/` | Home | yes |
-| `/projects`, `/projects/:id`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
+| `/projects`, `/projects/:id`, `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
 | `/jobs/:jobId` | the annotation page | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
 | `/styleguide` | the rendered design system | **no** |
@@ -45,6 +45,41 @@ Query keys are hierarchical — `["projects"]` → `["projects", id]` →
 `["projects", id, "schema"]` — because TanStack Query matches a **prefix**. So
 invalidating `["projects", id]` after a rename refreshes the project, its schema and
 its version list, and the mutation never has to enumerate what it affected.
+
+### The ingest flow, and the order the domain forces
+
+The issue asks for an fps parameter "with original-fps display from the probe".
+Those two cannot happen in that order, and the screen says so rather than
+designing around it.
+
+`extraction_fps` belongs to the **source**, not to the run — "same source, same
+assets" only means something if the parameters are part of what the source *is* —
+and the probe result exists only once the clip is registered. So the rate is chosen
+first, the clip is registered, and then its native fps, duration, codec and
+resolution are shown. Registering the same clip at another rate produces a
+**second source**, deliberately: idempotency is on `(kind, path, extraction_fps)`.
+
+Three more things it inherits:
+
+- **Refusals split by when they can be known** (#28). A bad batch target is 404 or
+  409 *before a job row exists*, so it renders on the launch form. Everything after
+  the launch is on the job: `error` is the one fatal cause, `failures` is the
+  per-item report.
+- **`total` is `null` for a clip.** `VideoMetadata` carries no frame count by
+  design, so an extraction has no denominator until it is over — a directory states
+  its total before the first file. The progress readout shows a count instead of a
+  percentage rather than inventing one.
+- **The per-file report is grouped by kind**, which is the whole reason
+  `IngestFailureKind` exists: `unsupported` is operator noise, `corrupt` is data
+  loss, and reading fifty rows to notice the second is the mistake a table can
+  prevent. Names are rendered as basenames with the full string in `title`, because
+  for a *directory* ingest `IngestFailure.name` is the full server path — a known
+  kernel inconsistency, deliberately left alone.
+
+Nothing is filtered in the browser and there is no `react-dropzone`. Every filter
+the library would apply — MIME type, size, per-file rejection — is a rule the server
+already owns and refuses better, with the kernel's own reason; duplicating it here
+would be a second spelling of the accepted-format list.
 
 ### The schema editor, and the two 409s
 

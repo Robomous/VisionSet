@@ -23,6 +23,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 
 import { useApiClient } from "../data/ApiProvider";
+import { usePollingQuery } from "../data/polling";
 import { unwrap } from "../data/errors";
 import type { components } from "../generated/api";
 
@@ -177,5 +178,183 @@ export function useCreateSchemaVersion(projectId: string) {
         }),
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+  });
+}
+
+// --- ingest (#54) ------------------------------------------------------------
+
+export type Source = components["schemas"]["SourceOut"];
+export type SourcePage = components["schemas"]["SourcePage"];
+export type IngestJob = components["schemas"]["IngestJobOut"];
+export type IngestFailure = components["schemas"]["IngestFailureOut"];
+export type Batch = components["schemas"]["BatchOut"];
+export type BatchPage = components["schemas"]["BatchPage"];
+
+export const ingestKeys = {
+  sources: (projectId: string) => ["projects", projectId, "sources"] as const,
+  batches: (projectId: string) => ["projects", projectId, "batches"] as const,
+  ingestJob: (jobId: string) => ["ingest-jobs", jobId] as const,
+};
+
+/**
+ * `multipart/form-data`, which `openapi-fetch` will not serialize for you.
+ *
+ * It JSON-encodes a body by default and has no idea a `File` is special, so a
+ * request without this sends `[object File]` and the server answers 422 about a
+ * field that looks correct. The types still come from the generated contract —
+ * only the *encoding* is ours.
+ *
+ * `files` is one part per image, repeated under the same name, because that is
+ * what `list[UploadFile]` reads. A single part holding an array is silently one
+ * file with a stringified name.
+ */
+function formData(body: Record<string, unknown>): FormData {
+  const form = new FormData();
+  for (const [name, value] of Object.entries(body)) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) for (const item of value) form.append(name, item as Blob);
+    else if (value instanceof Blob) form.append(name, value);
+    else form.append(name, String(value));
+  }
+  return form;
+}
+
+export function useSources(projectId: string): UseQueryResult<SourcePage, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ingestKeys.sources(projectId),
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/projects/{project_id}/sources", {
+          params: { path: { project_id: projectId } },
+        }),
+      ),
+  });
+}
+
+export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ingestKeys.batches(projectId),
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/projects/{project_id}/batches", {
+          params: { path: { project_id: projectId } },
+        }),
+      ),
+  });
+}
+
+/**
+ * Register images or a clip, and get the probe back.
+ *
+ * **`extraction_fps` belongs to the source, not to the run**, which is the fact
+ * this whole screen is shaped around: "same source, same assets" only means
+ * something if the parameters are part of what the source *is*. So the rate is
+ * chosen here, before anything has been probed — and registering the same clip at
+ * a different rate produces a **second source**, deliberately.
+ *
+ * Registration is idempotent on `(kind, path, extraction_fps)` and upload staging
+ * is content-addressed, so re-registering the same bytes at the same rate returns
+ * the source that already exists rather than a duplicate.
+ */
+export function useRegisterSource(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { files: readonly File[]; extractionFps?: number }) => {
+      const extractionFps = input.extractionFps;
+      const source =
+        extractionFps !== undefined
+        ? unwrap(
+            await client.POST("/projects/{project_id}/sources/video", {
+              params: { path: { project_id: projectId } },
+              body: { file: input.files[0] as unknown as string, extraction_fps: extractionFps },
+              bodySerializer: formData,
+            }),
+          )
+        : unwrap(
+            await client.POST("/projects/{project_id}/sources/images", {
+              params: { path: { project_id: projectId } },
+              body: { files: input.files as unknown as string[] },
+              bodySerializer: formData,
+            }),
+          );
+      return source;
+    },
+    onSuccess: () => queries.invalidateQueries({ queryKey: ingestKeys.sources(projectId) }),
+  });
+}
+
+/**
+ * Launch a run. **202 with a `Location`** — the job row is the only view of what
+ * happens after.
+ *
+ * The batch target rides on the launch and is refused *synchronously*: an unknown
+ * batch is 404 and one past `draft` is 409, both before the job row exists. That
+ * is #28's rule — anything the request can refuse is refused now, and everything
+ * after the launch is reported on the job.
+ */
+export function useStartIngest(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      sourceId: string;
+      batchId?: string;
+      batchName?: string;
+    }) =>
+      unwrap(
+        await client.POST("/sources/{source_id}/ingest-jobs", {
+          params: { path: { source_id: input.sourceId } },
+          body: {
+            ...(input.batchId === undefined ? {} : { batch_id: input.batchId }),
+            ...(input.batchName === undefined ? {} : { batch_name: input.batchName }),
+          },
+        }),
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: ["projects", projectId] }),
+  });
+}
+
+/**
+ * Watch a run to its end.
+ *
+ * `total` is **null for a clip** and a number for a directory: `VideoMetadata`
+ * carries no frame count by design, so an extraction has no denominator until it
+ * is over. A progress bar that assumed one would be a lie with a percentage on it.
+ */
+export function useIngestJob(jobId: string | null): UseQueryResult<IngestJob, Error> {
+  const client = useApiClient();
+  return usePollingQuery({
+    queryKey: ingestKeys.ingestJob(jobId ?? "none"),
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/ingest-jobs/{job_id}", { params: { path: { job_id: jobId ?? "" } } }),
+      ),
+    isSettled: (job) => job.state === "completed" || job.state === "failed",
+    enabled: jobId !== null,
+  });
+}
+
+/**
+ * Resume a run that died.
+ *
+ * `failed → running` is the kernel's **first backward transition edge**, and it
+ * exists because nothing is pinned against an ingest run. `running → running` is
+ * deliberately absent: a job stuck at `running` is a crashed process, and the
+ * remedy is to ingest again — which creates nothing, because registration is
+ * idempotent and content addressing does the rest.
+ */
+export function useResumeIngest() {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (jobId: string) =>
+      unwrap(
+        await client.POST("/ingest-jobs/{job_id}/resume", { params: { path: { job_id: jobId } } }),
+      ),
+    onSuccess: (_data, jobId) =>
+      queries.invalidateQueries({ queryKey: ingestKeys.ingestJob(jobId) }),
   });
 }
