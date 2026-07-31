@@ -37,6 +37,20 @@ const CYCLE_DIR =
 
 const PORT = process.env["VISIONSET_CYCLE_PORT"] ?? "8123";
 
+/**
+ * Put the directory back into the environment, for the **workers**.
+ *
+ * `webServer.env` reaches the server and nothing else, and the spec needs the same
+ * path — the token was minted into it, and so were the fixture images. This file is
+ * evaluated in the main process before any worker is forked, and a worker inherits
+ * the environment it was forked with, so one assignment here is what the two halves
+ * share.
+ *
+ * It failed exactly once, in CI, because locally the variable was always set on the
+ * command line and the default branch never ran.
+ */
+process.env["VISIONSET_CYCLE_DIR"] = CYCLE_DIR;
+
 export default defineConfig({
   testDir: "./cycle",
   fullyParallel: false,
