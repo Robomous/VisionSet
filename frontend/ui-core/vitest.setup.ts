@@ -63,3 +63,32 @@ const nodeFormData = (
 ).constructor as typeof FormData;
 
 globalThis.FormData = nodeFormData;
+
+/**
+ * `URL.createObjectURL`, which jsdom does not implement at all.
+ *
+ * There is no blob URL scheme in jsdom and no object-URL registry behind it, so
+ * the call is simply absent — and because `AssetThumbnail` makes it inside an
+ * async effect, the `TypeError` lands *after* the test that caused it has passed.
+ * That is the worst shape a failure has: vitest reports "83 passed, 1 error" and
+ * names a test that was already green. It reproduced only in CI at first, because
+ * whether the effect resolves before the environment is torn down is a race.
+ *
+ * The stand-in is a counter rather than a no-op, so a test can still assert that a
+ * URL was handed out and that it was revoked — the leak this component exists to
+ * avoid is exactly the kind a silent no-op would hide.
+ */
+let objectUrls = 0;
+const revoked = new Set<string>();
+
+// Assigned on a `typeof` check rather than with `??=`: a jsdom release that
+// declares the property and leaves it `undefined` would satisfy neither `??=` nor
+// a call, and the difference is invisible until CI.
+if (typeof URL.createObjectURL !== "function") {
+  URL.createObjectURL = () => `blob:visionset/${++objectUrls}`;
+}
+if (typeof URL.revokeObjectURL !== "function") {
+  URL.revokeObjectURL = (url: string) => {
+    revoked.add(url);
+  };
+}
