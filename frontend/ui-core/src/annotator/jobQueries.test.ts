@@ -11,7 +11,7 @@
 import { AnnotatorStore, addAnnotationCommand, documentFromWire } from "@visionset/annotator";
 import { describe, expect, it } from "vitest";
 
-import { isEmptyPlan, planSave, type WireAnnotation } from "./jobQueries";
+import { assetPositionOf, isEmptyPlan, planSave, type WireAnnotation } from "./jobQueries";
 
 const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
@@ -139,5 +139,40 @@ describe("planSave", () => {
     expect(plan.updated.map((one) => one.id)).toEqual(["a"]);
     expect(plan.created.map((one) => one.id)).toEqual(["local-1"]);
     expect(plan.deleted).toEqual(["b"]);
+  });
+});
+
+/**
+ * Where the annotator opens, given the asset a gallery tile handed it.
+ *
+ * #160's "on that asset" half. Pure, so it is pinned here; that the tile *reaches*
+ * the annotator at all is a browser claim and lives in `cycle/cycle.spec.ts`,
+ * because jsdom reports every element as 0×0 and the gallery's virtualizer
+ * therefore renders no tiles to click.
+ */
+describe("assetPositionOf", () => {
+  const ASSETS = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+  it("opens on the asset that was asked for", () => {
+    expect(assetPositionOf(ASSETS, "c")).toBe(2);
+  });
+
+  it("opens on the first asset when nobody asked for one", () => {
+    // A deep link, or a reload: what the page always did, and still does.
+    expect(assetPositionOf(ASSETS, undefined)).toBe(0);
+  });
+
+  it("opens on the first asset when the one asked for is not in this job", () => {
+    // A stale link — the asset moved to another job, or the batch was
+    // re-partitioned. "Here is the job, from the start" beats an error page about
+    // a query parameter.
+    expect(assetPositionOf(ASSETS, "gone")).toBe(0);
+  });
+
+  it("answers zero while the assets are still loading", () => {
+    // The position has to be readable before the answer exists, because it is
+    // derived on every render rather than seeded once by an effect — which is the
+    // shape that made #159 possible.
+    expect(assetPositionOf(undefined, "c")).toBe(0);
   });
 });

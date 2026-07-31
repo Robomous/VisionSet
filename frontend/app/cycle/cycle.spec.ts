@@ -122,7 +122,22 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
     await expect(page.getByTestId("failures")).toHaveCount(0);
   });
 
-  let jobUrl = "";
+  await test.step("a draft batch's tiles are inert, and say why", async () => {
+    // Before approval there are no jobs, so `BatchAsset.job_id` is null (#29) and
+    // an asset has nowhere to go. #160's third criterion: the tile must read as
+    // *not yet* rather than as a broken control, so the reason travels on the
+    // element a person can hover.
+    //
+    // The ingest step above ends on the ingest screen, so the walk back to the
+    // batch table is the same one every other step makes.
+    await openProject(page);
+    await page.getByTestId("open-batch-cycle-batch").click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
+    const first = page.getByTestId(/^tile-/).first();
+    await expect(first).toBeDisabled();
+    await expect(first).toHaveAttribute("data-pending", "true");
+    await expect(first).toHaveAttribute("title", /draft/i);
+  });
 
   await test.step("approve the batch, which pins the schema and cuts one job", async () => {
     // Navigated rather than `goBack()`: history depth is an implementation detail
@@ -143,10 +158,48 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
     await expect(page.getByTestId("state-cycle-batch")).toHaveText("in_annotation");
   });
 
+  await test.step("reach the annotator by clicking, on the asset that was clicked", async () => {
+    // **#160's fourth acceptance criterion, and the reason this step exists.**
+    // Until this fix the only way in was `page.goto('./jobs/' + id)` with the id
+    // read out of the API — which is exactly what this spec used to do, and what
+    // made a defect that blocked the whole product invisible to a green suite.
+    // Nothing here types a URL.
+    await openProject(page);
+    await page.getByTestId("open-batch-cycle-batch").click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
+
+    // The **third** tile, so "it opened the job" and "it opened this asset" cannot
+    // be confused: a page that ignored the click would show 1/3.
+    const tiles = page.getByTestId(/^tile-/);
+    await expect(tiles).toHaveCount(3);
+    const third = tiles.nth(2);
+    await expect(third).toBeEnabled();
+    const openedAsset = (await third.getAttribute("data-testid"))!.replace("tile-", "");
+    await third.click();
+
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/jobs/[0-9a-f-]+\\?asset=${openedAsset}$`));
+    await expect(page.getByTestId("asset-position")).toContainText("3/3");
+
+    // #160's fifth criterion, and the only honest way to check it here: reload the
+    // URL **the app itself produced**, which is a fresh `GET /ui/jobs/<id>?asset=`
+    // at the server and therefore drives #58's SPA deep-link fallback for real. A
+    // typed `page.goto('./jobs/…')` would assert the same thing while reopening
+    // the door this task closed.
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await expect(page.getByTestId("asset-position")).toContainText("3/3");
+
+    // And back to the gallery, from the annotator's own grid button — the other
+    // half of #160, which rendered disabled because nothing passed the callback.
+    await page.getByTestId("open-gallery").click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
+  });
+
   await test.step("annotate all three assets", async () => {
-    const jobId = await jobIdOf(page);
-    jobUrl = `./jobs/${jobId}`;
-    await page.goto(jobUrl);
+    // Back in through the first tile, because the drawing below walks 1 → 2 → 3.
+    await page.getByTestId(/^tile-/).first().click();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.getByTestId("asset-position")).toContainText("1/3");
 
@@ -235,24 +288,13 @@ async function openProject(page: Page): Promise<void> {
   await expect(page.getByTestId("project-screen")).toBeVisible();
 }
 
-/** The job the approval cut, read through the browser's own credentialed session. */
-async function jobIdOf(page: Page): Promise<string> {
-  return await page.evaluate(async (projectName) => {
-    const token = globalThis.sessionStorage.getItem("visionset.token") ?? "";
-    const headers = { Authorization: `Bearer ${token}` };
-    const projects = (await (await fetch("/projects", { headers })).json()) as {
-      items: { id: string; name: string }[];
-    };
-    const project = projects.items.find((one) => one.name === projectName);
-    const batches = (await (
-      await fetch(`/projects/${project?.id}/batches`, { headers })
-    ).json()) as { items: { id: string }[] };
-    const jobs = (await (
-      await fetch(`/batches/${batches.items[0]?.id}/jobs`, { headers })
-    ).json()) as { items: { id: string }[] };
-    return jobs.items[0]?.id ?? "";
-  }, PROJECT);
-}
+/*
+ * `jobIdOf` used to live here: it read the job id out of the API through the
+ * browser's session so the spec could `page.goto('./jobs/' + id)`. #160 deleted it
+ * along with the navigation, because that helper *was* the workaround — a suite
+ * that fetches an id the product never shows cannot notice that the product never
+ * shows it. The annotator is now reached the way a person reaches it.
+ */
 
 /**
  * Pick a class and **wait until it is active**.
