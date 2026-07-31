@@ -131,11 +131,19 @@ jobs:
             exit 1
           }
 
-      - name: Lint
-        run: pnpm -r lint
-
+      # Build before lint, and the order is load-bearing. `frontend/app` resolves
+      # `@visionset/annotator` through its **`dist/`** — the workflow gotcha #47
+      # recorded — so on a clean checkout the engine has no type declarations until
+      # something builds it. That first bit when #49 put `bench/` into
+      # `tsconfig.e2e.json`: the benchmark imports the scene, the scene imports the
+      # engine's `Annotation` type rather than hand-writing a copy of a kernel
+      # shape, and `pnpm run typecheck:e2e` answered TS2307 for a module that is
+      # right there in the workspace.
       - name: Build
         run: pnpm -r build
+
+      - name: Lint
+        run: pnpm -r lint
 
       - name: Test
         run: pnpm test

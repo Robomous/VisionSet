@@ -19,7 +19,7 @@ artifact is always the pip package).
 | Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` |
 | Lint/format | `uv run ruff check .` / `uv run ruff format .` |
 | Frontend build + tests | `pnpm -r build && pnpm test` |
-| Frontend lint | `pnpm -r lint` |
+| Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built |
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` |
 | Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) |
 | Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated |
