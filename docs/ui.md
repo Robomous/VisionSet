@@ -46,6 +46,54 @@ Query keys are hierarchical — `["projects"]` → `["projects", id]` →
 invalidating `["projects", id]` after a rename refreshes the project, its schema and
 its version list, and the mutation never has to enumerate what it affected.
 
+### The gallery, and the `<img>` that cannot work
+
+**Every route but `/health` and `/openapi.json` needs `Authorization: Bearer`, and
+an `<img src>` sends no header.** The browser issues that request itself, with
+cookies and nothing else, so pointing an `<img>` at
+`GET /projects/{p}/assets/{a}/thumbnail` produces a 401 and a broken-image icon on
+every tile. There is no cookie session and the API takes no token in the query
+string, so `AssetThumbnail` fetches the bytes with the credentialed client and
+hands the result over as an object URL — which it then **revokes**, because a
+gallery scrolling a thousand assets would otherwise hold a thousand JPEGs alive
+with nothing referencing them.
+
+The cost is smaller than it looks: the route carries
+`Cache-Control: public, max-age=31536000, immutable` with the content hash as its
+`ETag`, and a `fetch` gets the browser's HTTP cache as much as an `<img>` does.
+
+A **NULL `thumbnail_hash` is a state, not a failure** — a preview that would not
+render is deliberately not an `IngestFailure`, because the asset exists and nothing
+was lost. It draws a placeholder, and offers no button: the remedy,
+`backfill_thumbnails`, is reachable only from the CLI and MCP.
+
+**Paging and virtualization are two problems and both are solved.** `limit`/`offset`
+bound the *response*, so the network side is `useInfiniteQuery` — and "have I seen
+everything" is `seen < total`, because `total` is the size of the whole batch and
+does not move. Ten pages fetched is still ten pages in the DOM, so the render side
+virtualizes **rows** (a row is what the browser lays out; virtualizing tiles inside a
+CSS grid means reimplementing the grid). The column count is measured with a
+`ResizeObserver` rather than guessed from a second breakpoint list.
+
+### Batches, and a machine that only goes forwards
+
+`draft → approved → in_annotation → completed`, with **no route back to `draft`** —
+jobs are already cut against the pinned schema. So the table offers exactly one
+action per state and never a revert: an action that would be refused is an action
+that should not be drawn.
+
+Approval is when the project's active schema version **pins to the batch and stops
+moving**, which is why the version column is empty until then. `complete` is
+*derived* rather than automatic — the service reads the jobs and refuses while any
+is outstanding — so that button is offered and its refusal is real.
+
+The partition dialog offers **single job** and **by size N**. `BySegments` is
+deliberately absent, the same call the CLI made: the only caller holding an exact
+partition is a program, it is the one strategy that can be *wrong*, and expressing
+it means typing tuples of UUIDs. Its `kind` is always sent explicitly — a
+discriminated union's tag emitted by default reads as optional in the schema while
+pydantic needs it in the dict to pick a variant.
+
 ### The ingest flow, and the order the domain forces
 
 The issue asks for an fps parameter "with original-fps display from the probe".

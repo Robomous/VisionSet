@@ -20,7 +20,13 @@
  * from the screen that needs it.
  */
 
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 
 import { useApiClient } from "../data/ApiProvider";
 import { usePollingQuery } from "../data/polling";
@@ -356,5 +362,123 @@ export function useResumeIngest() {
       ),
     onSuccess: (_data, jobId) =>
       queries.invalidateQueries({ queryKey: ingestKeys.ingestJob(jobId) }),
+  });
+}
+
+// --- batches, jobs and the gallery (#55) -------------------------------------
+
+export type BatchAsset = components["schemas"]["BatchAssetOut"];
+export type BatchAssetPage = components["schemas"]["BatchAssetPage"];
+export type Job = components["schemas"]["JobOut"];
+export type ProgressCounts = components["schemas"]["ProgressCounts"];
+export type Partition = components["schemas"]["BatchApprove"]["partition"];
+
+export const batchKeys = {
+  batch: (batchId: string) => ["batches", batchId] as const,
+  assets: (batchId: string) => ["batches", batchId, "assets"] as const,
+  jobs: (batchId: string) => ["batches", batchId, "jobs"] as const,
+};
+
+/** One request's worth. `docs/api.md`: paging bounds the response, not the read. */
+export const GALLERY_PAGE_SIZE = 100;
+
+export function useBatch(batchId: string): UseQueryResult<Batch, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: batchKeys.batch(batchId),
+    queryFn: async () =>
+      unwrap(await client.GET("/batches/{batch_id}", { params: { path: { batch_id: batchId } } })),
+  });
+}
+
+export function useBatchJobs(batchId: string, enabled = true) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: batchKeys.jobs(batchId),
+    enabled,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/batches/{batch_id}/jobs", { params: { path: { batch_id: batchId } } }),
+      ),
+  });
+}
+
+/**
+ * The batch's assets, a page at a time.
+ *
+ * The **only** paginated collection in this API, and #29 built it for exactly this
+ * caller: a batch can hold fifty thousand frames. Two properties of that contract
+ * decide the shape here — `total` is the size of the *whole* batch and does not
+ * move as you page, so "have I seen everything" is `seen < total` rather than
+ * "was the last page short"; and an offset past the end is 200 with an empty
+ * `items`, never a 404, so overrunning is harmless.
+ */
+export function useBatchAssets(batchId: string) {
+  const client = useApiClient();
+  return useInfiniteQuery({
+    queryKey: batchKeys.assets(batchId),
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) =>
+      unwrap(
+        await client.GET("/batches/{batch_id}/assets", {
+          params: {
+            path: { batch_id: batchId },
+            query: { limit: GALLERY_PAGE_SIZE, offset: pageParam },
+          },
+        }),
+      ),
+    getNextPageParam: (last, pages) => {
+      const seen = pages.reduce((count, page) => count + page.items.length, 0);
+      return seen < last.total ? seen : undefined;
+    },
+  });
+}
+
+/**
+ * Approve a batch, which is also when the partition happens and the schema pins.
+ *
+ * The partition body carries **`kind` explicitly and never by default**, and that
+ * is #29's trap rather than a style choice: a discriminated union's tag emitted
+ * with a default reads as *optional* in the JSON schema while pydantic reads the
+ * tag out of the input dict to pick a variant, so a payload omitting it fails with
+ * `union_tag_not_found` however the field is declared.
+ */
+export function useApproveBatch(batchId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (partition: Partition) =>
+      unwrap(
+        await client.POST("/batches/{batch_id}/approve", {
+          params: { path: { batch_id: batchId } },
+          body: partition === undefined ? {} : { partition },
+        }),
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+/** `approved → in_annotation`, and `in_annotation → completed`. One-way. */
+export function useBatchTransition(batchId: string, move: "start" | "complete") {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      unwrap(
+        move === "start"
+          ? await client.POST("/batches/{batch_id}/start", {
+              params: { path: { batch_id: batchId } },
+            })
+          : await client.POST("/batches/{batch_id}/complete", {
+              params: { path: { batch_id: batchId } },
+            }),
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: ["projects"] });
+    },
   });
 }

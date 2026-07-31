@@ -41,7 +41,13 @@
  * screen arriving is one import.
  */
 
-import { EmptyState, IngestScreen, ProjectScreen, ProjectsScreen } from "@visionset/ui-core";
+import {
+  EmptyState,
+  GalleryScreen,
+  IngestScreen,
+  ProjectScreen,
+  ProjectsScreen,
+} from "@visionset/ui-core";
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router";
 import type { JSX } from "react";
 
@@ -66,10 +72,7 @@ export function AppRoutes(): JSX.Element {
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:projectId" element={<Project />} />
           <Route path="projects/:projectId/ingest" element={<Ingest />} />
-          <Route
-            path="projects/:projectId/batches/:batchId"
-            element={<Placeholder title="Batch" issue={55} />}
-          />
+          <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
           <Route path="jobs/:jobId" element={<Placeholder title="Annotate" issue={56} />} />
           <Route
             path="projects/:projectId/dataset"
@@ -119,8 +122,15 @@ function Project(): JSX.Element {
     <ProjectScreen
       projectId={projectId}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
+      onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
     />
   );
+}
+
+function Gallery(): JSX.Element {
+  const { projectId, batchId } = useParams();
+  if (projectId === undefined || batchId === undefined) return <NotFound />;
+  return <GalleryScreen projectId={projectId} batchId={batchId} />;
 }
 
 function Ingest(): JSX.Element {

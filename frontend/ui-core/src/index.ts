@@ -156,6 +156,9 @@ export { ProjectsScreen, type ProjectsScreenProps } from "./screens/ProjectsScre
 export { ProjectScreen, type ProjectScreenProps } from "./screens/ProjectScreen.js";
 export { SchemaEditor, type SchemaEditorProps } from "./screens/SchemaEditor.js";
 export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
+export { BatchesScreen, type BatchesScreenProps } from "./screens/BatchesScreen.js";
+export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.js";
+export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
 export {
   queryKeys,
   useActiveSchema,
@@ -186,4 +189,16 @@ export {
   type IngestJob,
   type Source,
   type SourcePage,
+  GALLERY_PAGE_SIZE,
+  batchKeys,
+  useApproveBatch,
+  useBatch,
+  useBatchAssets,
+  useBatchJobs,
+  useBatchTransition,
+  type BatchAsset,
+  type BatchAssetPage,
+  type Job,
+  type Partition,
+  type ProgressCounts,
 } from "./screens/queries.js";
