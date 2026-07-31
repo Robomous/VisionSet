@@ -46,6 +46,7 @@ SHIPPED = {
     "publish_release",
     "list_releases",
     "verify_release",
+    "check_export",
     "export_release",
     "list_formats",
 }
@@ -66,10 +67,12 @@ def test_every_registered_tool_reaches_the_listing() -> None:
     assert len(tool_names()) == len(TOOLS)
 
 
-def test_thirty_three_tools_ship() -> None:
+def test_thirty_four_tools_ship() -> None:
     # The count is a decision, not an accident — 50 candidates were evaluated one
-    # by one. A change here should be argued in `docs/mcp.md` first.
-    assert len(SHIPPED) == 33
+    # by one. A change here should be argued in `docs/mcp.md` first. #65 added the
+    # thirty-fourth, `check_export`: the plan-before-apply half of an export, on
+    # the `preview_schema_change` precedent.
+    assert len(SHIPPED) == 34
 
 
 @pytest.mark.parametrize("name", sorted(SHIPPED))

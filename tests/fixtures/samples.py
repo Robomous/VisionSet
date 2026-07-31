@@ -29,10 +29,12 @@ from visionset.kernel.domain import (
     BatchState,
     BboxGeometry,
     ChangeKind,
+    ClassCompatibility,
     ClassCount,
     ClassificationGeometry,
     Dataset,
     DatasetStats,
+    ExportCompatibility,
     ExportResult,
     GeometryType,
     ImageFormat,
@@ -220,9 +222,36 @@ VERIFICATION = ReleaseVerification(
     cache_mismatches=("asset_count",),
 )
 
+EXPORT_COMPATIBILITY = ExportCompatibility(
+    release_id=RELEASE.id,
+    format_name="dummy",
+    compatible=False,
+    format_is_lossy=True,
+    excluded_annotations=3,
+    excluded_assets=1,
+    classes=(
+        ClassCompatibility(
+            label_class="lane",
+            geometry=GeometryType.POLYGON,
+            supported=False,
+            annotations=3,
+            assets=1,
+            reason="dummy cannot write polygon geometry",
+        ),
+        ClassCompatibility(
+            label_class="sign",
+            geometry=GeometryType.BBOX,
+            supported=True,
+            annotations=2,
+            assets=2,
+        ),
+    ),
+)
+
 EXPORT_RESULT = ExportResult(
     release_id=RELEASE.id,
     format_name="dummy",
+    compatibility=EXPORT_COMPATIBILITY,
     directory=Path("/workspace/exports/dummy"),
     file_count=7,
     total_bytes=4096,

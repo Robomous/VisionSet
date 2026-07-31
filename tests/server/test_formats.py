@@ -18,6 +18,8 @@ from fastapi.testclient import TestClient
 from tests.server._api import api_client
 from tests.server._exports import LossyExporter, WritingExporter, with_exporters
 
+from visionset.kernel.domain import GeometryType
+
 
 @pytest.fixture()
 def client(tmp_path: Path) -> Iterator[TestClient]:
@@ -56,7 +58,16 @@ def test_the_listing_uses_the_envelope_like_every_other_collection(
     with_exporters(client.app, WritingExporter())
 
     assert client.get("/formats").json() == {
-        "items": [{"name": "writing", "lossy": False}],
+        "items": [
+            {
+                "name": "writing",
+                "lossy": False,
+                # #65's capability declaration, sorted because a set has no
+                # order and a wire shape must.
+                "geometries": sorted(one.value for one in GeometryType),
+                "modalities": ["image"],
+            }
+        ],
         "total": 1,
     }
 

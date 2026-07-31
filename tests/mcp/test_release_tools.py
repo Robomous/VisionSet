@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 from tests.mcp._flow import BBOX, SCHEMA_CLASSES, call, error, open_batch, payload
 
+from visionset.kernel.domain import GeometryType
 from visionset.kernel.ports import Exporter
+from visionset.kernel.services import EXPORT_REPORT_FILENAME
 
 
 def promoted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, count: int = 2) -> str:
@@ -148,7 +151,16 @@ def test_verification_of_an_untouched_release_is_ok(
 
 def test_only_the_dummy_exporter_is_installed_and_it_is_not_lossy() -> None:
     assert payload(call("list_formats")) == {
-        "items": [{"name": "dummy", "lossy": False}],
+        "items": [
+            {
+                "name": "dummy",
+                "lossy": False,
+                # #65: what the format can carry. `dummy` declares everything,
+                # which is what makes it the format that never refuses.
+                "geometries": sorted(one.value for one in GeometryType),
+                "modalities": ["image", "point_cloud", "video"],
+            }
+        ],
         "total": 1,
     }
 
@@ -203,6 +215,12 @@ class LossyExporter:
     format_name = "lossy-probe"
     lossy = True
 
+    #: #65's capability declaration. Everything, so this double's *subject* stays
+    #: what it was — the file it writes, or the flag it sets — rather than a
+    #: geometry report nobody wrote this test for.
+    supported_geometries = frozenset(GeometryType)
+    supported_modalities = frozenset({"image"})
+
     def export(self, release: Any, manifest: Any, dest: Path) -> None:
         dest.mkdir(parents=True, exist_ok=True)
 
@@ -241,3 +259,110 @@ def test_a_lossy_format_refuses_until_its_own_flag_is_passed(
         )["format"]
         == "lossy-probe"
     )
+
+
+class PolygonsOnlyExporter:
+    """Lossless by its own declaration, and unable to write the one geometry in play.
+
+    The pair #65 exists for: `lossy` is false, so a refusal against this one is
+    entirely about what the release holds.
+    """
+
+    format_name = "polygons-probe"
+    lossy = False
+
+    supported_geometries = frozenset({GeometryType.POLYGON})
+    supported_modalities = frozenset({"image"})
+
+    def export(self, release: Any, manifest: Any, dest: Path) -> None:
+        dest.mkdir(parents=True, exist_ok=True)
+
+
+def _only(monkeypatch: pytest.MonkeyPatch, plugin: Exporter) -> None:
+    from visionset.formats import registry
+
+    monkeypatch.setattr(registry, "exporters", lambda: {plugin.format_name: plugin})
+
+
+def test_check_export_reports_what_a_format_would_drop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    plugin = PolygonsOnlyExporter()
+    assert isinstance(plugin, Exporter)
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    _only(monkeypatch, plugin)
+
+    report = payload(call("check_export", project=named, tag="v1.0", format="polygons-probe"))
+
+    assert report["compatible"] is False
+    assert report["format"] == "polygons-probe"
+    assert report["format_is_lossy"] is False
+    assert report["excluded_annotations"] == 1
+    (sign,) = [one for one in report["classes"] if not one["supported"]]
+    assert sign["reason"] == "polygons-probe cannot write bbox geometry"
+
+
+def test_a_format_that_carries_everything_reports_compatible(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+
+    report = payload(call("check_export", project=named, tag="v1.0", format="dummy"))
+
+    assert report["compatible"] is True
+    assert (report["excluded_annotations"], report["excluded_assets"]) == (0, 0)
+
+
+def test_a_lossless_format_that_would_drop_a_class_still_asks_for_consent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The refusal names `check_export`, because the envelope's four keys hold no report."""
+    plugin = PolygonsOnlyExporter()
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    _only(monkeypatch, plugin)
+    dest = tmp_path / "polygons-out"
+
+    refusal = error(
+        call(
+            "export_release",
+            project=named,
+            tag="v1.0",
+            format="polygons-probe",
+            dest=str(dest),
+        )
+    )
+
+    assert refusal["retry_with"] == "allow_lossy"
+    assert refusal["hint"] is not None
+    assert "check_export" in refusal["hint"]
+    assert not dest.exists()
+
+
+def test_an_export_carries_the_report_it_was_consented_to(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    plugin = PolygonsOnlyExporter()
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    _only(monkeypatch, plugin)
+    dest = tmp_path / "polygons-out"
+
+    result = payload(
+        call(
+            "export_release",
+            project=named,
+            tag="v1.0",
+            format="polygons-probe",
+            dest=str(dest),
+            allow_lossy=True,
+        )
+    )
+
+    assert result["compatibility"]["compatible"] is False
+    # …and the same document is on disk, which is what makes the answer readable
+    # by whatever picks the directory up later.
+    written = json.loads((dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8"))
+    assert written == result["compatibility"]

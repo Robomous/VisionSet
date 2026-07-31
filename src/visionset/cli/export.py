@@ -33,7 +33,7 @@ from visionset.cli._output import JsonOption, document, note
 from visionset.cli._resolve import ProjectOption, resolve_release
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.formats.registry import exporter
-from visionset.kernel.services import ReleaseService
+from visionset.kernel.services import EXPORT_REPORT_FILENAME, ReleaseService
 
 
 def export(
@@ -83,4 +83,12 @@ def export(
         f"Exported {found.tag!r} as {result.format_name}: "
         f"{result.file_count} file(s), {result.total_bytes} byte(s)."
     )
+    # On stderr with the rest of the prose, so `visionset export ... | xargs`
+    # still gets exactly the directory. Named classes with a count rather than a
+    # total, because "polygon, 1204" is what somebody acts on and a bare total is
+    # not; the file in the output has the rest.
+    excluded = result.compatibility.excluded
+    if excluded:
+        listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in excluded)
+        note(f"Not carried by {result.format_name}: {listed}. See {EXPORT_REPORT_FILENAME}.")
     typer.echo(str(result.directory))

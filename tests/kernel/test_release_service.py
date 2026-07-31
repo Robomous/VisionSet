@@ -12,6 +12,7 @@ blob, which is exactly why nothing in the kernel can be trusted to notice.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -19,7 +20,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from visionset import __version__
+from visionset import __version__, wire
 from visionset.kernel import (
     ConfirmationRequired,
     DatasetNotFound,
@@ -38,15 +39,18 @@ from visionset.kernel.domain import (
     Asset,
     AssetProgress,
     BboxGeometry,
+    ExportCompatibility,
     GeometryType,
     LabelClass,
     Manifest,
+    PolygonGeometry,
     Release,
     SplitRecipe,
     canonical_bytes,
     sha256_hex,
 )
 from visionset.kernel.services import (
+    EXPORT_REPORT_FILENAME,
     AnnotationService,
     BatchService,
     DatasetService,
@@ -643,6 +647,10 @@ class _Recording:
 
     format_name = "recording"
     lossy = False
+    #: #65's capability declaration. Everything, so this double's subject stays
+    #: what it was rather than a geometry report nobody wrote this test for.
+    supported_geometries = frozenset(GeometryType)
+    supported_modalities = frozenset({"image"})
 
     def __init__(self) -> None:
         self.calls: list[tuple[UUID, int, Path]] = []
@@ -662,6 +670,10 @@ class _Lossy:
 
     format_name = "lossy"
     lossy = True
+    #: #65's capability declaration. Everything, so this double's subject stays
+    #: what it was rather than a geometry report nobody wrote this test for.
+    supported_geometries = frozenset(GeometryType)
+    supported_modalities = frozenset({"image"})
 
     def __init__(self) -> None:
         self.called = False
@@ -717,6 +729,10 @@ def test_an_exporter_that_writes_nothing_reports_zero(tmp_path: Path) -> None:
     class _Silent:
         format_name = "silent"
         lossy = False
+        #: #65's capability declaration. Everything, so this double's subject stays
+        #: what it was rather than a geometry report nobody wrote this test for.
+        supported_geometries = frozenset(GeometryType)
+        supported_modalities = frozenset({"image"})
 
         def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
             return None
@@ -858,4 +874,252 @@ def test_open_manifest_says_the_workspace_is_damaged_when_the_blob_is_gone(
 
     with pytest.raises(WorkspaceCorrupt):
         fixture.releases.open_manifest(release)
+    fixture.close()
+
+
+# --- what a format would drop (#65) -------------------------------------------
+
+
+class _BoxesOnly:
+    """Declares itself lossless and can only write boxes.
+
+    The pair #65 exists for. ``lossy`` is false, so nothing about the *format*
+    asks for consent — everything that happens below happens because of what this
+    particular release holds.
+    """
+
+    format_name = "boxes-only"
+    lossy = False
+    supported_geometries = frozenset({GeometryType.BBOX})
+    supported_modalities = frozenset({"image"})
+
+    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+        (dest / "boxes.txt").write_text("ok", encoding="utf-8")
+
+
+def _polygon(asset_id: UUID) -> Annotation:
+    return Annotation(
+        asset_id=asset_id,
+        label_class="lane",
+        schema_version=1,
+        geometry=PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]),
+        provenance="human",
+    )
+
+
+def _mixed(fixture: Fixture) -> UUID:
+    """A release holding boxes on every asset and polygons on the first two."""
+    fixture.schemas.create_version(
+        fixture.project.id, [SIGN, LabelClass(name="lane", geometry=GeometryType.POLYGON)]
+    )
+    batch = fixture.batches.create(fixture.project.id, "mixed", fixture.asset_ids)
+    fixture.batches.approve(batch.id)
+    (job,) = fixture.batches.jobs(batch.id)
+    fixture.batches.start(batch.id)
+    fixture.jobs.start(job.id)
+    for index, asset_id in enumerate(fixture.asset_ids):
+        written = [_box(asset_id)] + ([_polygon(asset_id)] if index < 2 else [])
+        fixture.annotations.add(job.id, written)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(batch.id)
+    fixture.datasets.promote(batch.id)
+    return fixture.dataset_id
+
+
+def test_a_clean_report_names_every_class_with_its_counts(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    report = fixture.releases.check_export(release.id, _BoxesOnly())
+
+    assert report.compatible
+    assert (report.excluded_annotations, report.excluded_assets) == (0, 0)
+    assert report.excluded == ()
+    (sign,) = report.classes
+    assert (sign.label_class, sign.supported, sign.annotations, sign.assets) == (
+        "sign",
+        True,
+        5,
+        5,
+    )
+    # Filled only where something is wrong. An empty string here would read as a
+    # reason somebody forgot to write.
+    assert sign.reason is None
+    fixture.close()
+
+
+def test_the_report_counts_annotations_and_assets_separately(tmp_path: Path) -> None:
+    """Two polygons over two assets, out of five assets carrying boxes as well."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+
+    report = fixture.releases.check_export(release.id, _BoxesOnly())
+
+    assert not report.compatible
+    assert (report.excluded_annotations, report.excluded_assets) == (2, 2)
+    (lane,) = report.excluded
+    assert (lane.label_class, lane.annotations, lane.assets) == ("lane", 2, 2)
+    assert lane.reason == "boxes-only cannot write polygon geometry"
+    # Sorted by name, so two reports of one release are the same document.
+    assert [one.label_class for one in report.classes] == ["lane", "sign"]
+    fixture.close()
+
+
+def test_a_class_nobody_used_excludes_nothing_however_unsupported(tmp_path: Path) -> None:
+    """The report's least obvious property, and the one that keeps it honest.
+
+    A schema declaring ``lane`` does not make every export of that project lossy.
+    The row is still published, with its zero, because "this format cannot write
+    polygons and you have none" is an answer somebody is looking for.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(
+        fixture.project.id, [SIGN, LabelClass(name="lane", geometry=GeometryType.POLYGON)]
+    )
+    fixture.promote()
+    release = fixture.releases.publish(fixture.dataset_id, "v1")
+
+    report = fixture.releases.check_export(release.id, _BoxesOnly())
+
+    assert report.compatible
+    assert report.excluded == ()
+    lane = next(one for one in report.classes if one.label_class == "lane")
+    assert (lane.supported, lane.annotations, lane.assets) == (False, 0, 0)
+    # Unsupported and harmless: the reason is still there, because the row is
+    # about the format's capabilities and those do not depend on the data.
+    assert lane.reason is not None
+    fixture.close()
+
+
+def test_check_export_writes_nothing_at_all(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+    dest = tmp_path / "out"
+
+    fixture.releases.check_export(release.id, _BoxesOnly())
+
+    assert not dest.exists()
+    fixture.close()
+
+
+def test_a_lossless_format_that_would_drop_a_class_is_still_refused(tmp_path: Path) -> None:
+    """#65's whole point: ``lossy`` is a blanket claim, and this is about the data."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+
+    with pytest.raises(LossyExportNotConsented) as refusal:
+        fixture.releases.export(release.id, _BoxesOnly(), tmp_path / "out")
+
+    assert not (tmp_path / "out").exists()
+    fixture.close()
+    # The report travels on the refusal, so a caller can say what it is consenting
+    # to without a second call.
+    carried = refusal.value.compatibility
+    assert isinstance(carried, ExportCompatibility)
+    assert carried.excluded_annotations == 2
+    assert [one.label_class for one in carried.excluded] == ["lane"]
+
+
+def test_a_lossless_format_over_a_release_it_can_carry_needs_no_consent(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+
+    result = fixture.releases.export(release.id, _BoxesOnly(), tmp_path / "out")
+
+    assert result.compatibility.compatible
+    fixture.close()
+
+
+def test_consent_lets_the_incompatible_export_through(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+
+    result = fixture.releases.export(release.id, _BoxesOnly(), tmp_path / "out", allow_lossy=True)
+
+    assert not result.compatibility.compatible
+    assert result.compatibility.excluded_annotations == 2
+    fixture.close()
+
+
+def test_the_report_is_written_into_the_export_directory(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+    dest = tmp_path / "out"
+
+    result = fixture.releases.export(release.id, _BoxesOnly(), dest, allow_lossy=True)
+
+    written = json.loads((dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8"))
+    assert written["compatible"] is False
+    assert written["excluded_annotations"] == 2
+    # Key-for-key what `visionset.wire` hands the CLI and MCP, and what
+    # `ExportCompatibilityOut` puts on the API's refusal. One document, four
+    # places — which is #65's "report format stable" acceptance criterion, and it
+    # is the reason `format_name` carries a serialization alias.
+    assert written == wire.export_compatibility(result.compatibility)
+    fixture.close()
+
+
+def test_the_report_parses_back_into_the_model_that_wrote_it(tmp_path: Path) -> None:
+    """The alias has a way in as well as out, or the file would be write-only."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(_mixed(fixture), "v1")
+    dest = tmp_path / "out"
+
+    result = fixture.releases.export(release.id, _BoxesOnly(), dest, allow_lossy=True)
+
+    written = (dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8")
+    assert ExportCompatibility.model_validate_json(written) == result.compatibility
+    fixture.close()
+
+
+def test_the_report_is_not_counted_as_something_the_plugin_wrote(tmp_path: Path) -> None:
+    """``file_count`` describes the exporter's output, so the kernel's own file is out."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    dest = tmp_path / "out"
+
+    result = fixture.releases.export(release.id, _BoxesOnly(), dest)
+
+    assert (dest / EXPORT_REPORT_FILENAME).is_file()
+    assert result.file_count == 1
+    fixture.close()
+
+
+def test_exporting_twice_into_one_directory_still_agrees_with_itself(tmp_path: Path) -> None:
+    """The other half of the exclusion: a report left by the first run is skipped."""
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    dest = tmp_path / "out"
+
+    first = fixture.releases.export(release.id, _BoxesOnly(), dest)
+    second = fixture.releases.export(release.id, _BoxesOnly(), dest)
+
+    assert (first.file_count, first.total_bytes) == (second.file_count, second.total_bytes)
+    fixture.close()
+
+
+def test_a_report_is_computed_from_the_frozen_manifest_not_from_live_membership(
+    tmp_path: Path,
+) -> None:
+    """An export describes a release, and a release is a snapshot.
+
+    Curating an asset out of the trunk after publication must not move the answer:
+    the whole property that lets one document be shown in a dialog, attached to a
+    refusal and written into an output is that it is derived from the snapshot.
+    """
+    fixture = Fixture(tmp_path)
+    dataset_id = _mixed(fixture)
+    release = fixture.releases.publish(dataset_id, "v1")
+    before = fixture.releases.check_export(release.id, _BoxesOnly())
+
+    fixture.datasets.remove_asset(dataset_id, fixture.asset_ids[0])
+
+    assert fixture.releases.check_export(release.id, _BoxesOnly()) == before
+    fixture.close()
+
+
+def test_checking_an_unknown_release_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(ReleaseNotFound):
+        fixture.releases.check_export(uuid4(), _BoxesOnly())
     fixture.close()

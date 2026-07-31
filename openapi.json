@@ -980,6 +980,50 @@
         "title": "BySizeBody",
         "type": "object"
       },
+      "ClassCompatibilityOut": {
+        "description": "One class of a release, judged against one format's capabilities.",
+        "properties": {
+          "annotations": {
+            "title": "Annotations",
+            "type": "integer"
+          },
+          "assets": {
+            "title": "Assets",
+            "type": "integer"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/GeometryType"
+          },
+          "label_class": {
+            "title": "Label Class",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label_class",
+          "geometry",
+          "supported",
+          "annotations",
+          "assets"
+        ],
+        "title": "ClassCompatibilityOut",
+        "type": "object"
+      },
       "ClassCountOut": {
         "description": "How much of one label class the trunk holds.",
         "properties": {
@@ -1205,12 +1249,76 @@
         "title": "ErrorBody",
         "type": "object"
       },
-      "FormatOut": {
-        "description": "An installed export format.",
+      "ExportCompatibilityOut": {
+        "description": "What one format would drop from one release, worked out before writing.",
         "properties": {
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/ClassCompatibilityOut"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "compatible": {
+            "title": "Compatible",
+            "type": "boolean"
+          },
+          "excluded_annotations": {
+            "title": "Excluded Annotations",
+            "type": "integer"
+          },
+          "excluded_assets": {
+            "title": "Excluded Assets",
+            "type": "integer"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "format_is_lossy": {
+            "title": "Format Is Lossy",
+            "type": "boolean"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_id",
+          "format",
+          "compatible",
+          "format_is_lossy",
+          "excluded_annotations",
+          "excluded_assets",
+          "classes"
+        ],
+        "title": "ExportCompatibilityOut",
+        "type": "object"
+      },
+      "FormatOut": {
+        "description": "An installed export format, and what it can express.",
+        "properties": {
+          "geometries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Geometries",
+            "type": "array"
+          },
           "lossy": {
             "title": "Lossy",
             "type": "boolean"
+          },
+          "modalities": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Modalities",
+            "type": "array"
           },
           "name": {
             "title": "Name",
@@ -6792,6 +6900,106 @@
           }
         ],
         "summary": "Export Release",
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/releases/{release_id}/export-compatibility": {
+      "get": {
+        "description": "Say what the named format would drop from this release, without writing anything.\n\nThe pre-flight for `POST /releases/{release_id}/export`: same release, same\nformat name, same document the export refuses with and writes into its own\noutput. A client showing a consent dialog asks this first; one that would\nrather find out by being refused does not have to.\n\n`compatible` is the answer. It is not the same question as the format's\n`lossy` flag, which `GET /formats` publishes: that is the format's blanket\nstatement about everything a capability list cannot see, while this is about\nthe labels *this* release actually holds. Export asks for `allow_lossy=true`\nwhen either says so.\n\nA GET because it writes nothing and answers the same thing every time \u2014 a\nrelease is immutable, so this response is as stable as the release is.",
+        "operationId": "check_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which installed format to write. `GET /formats` lists them.",
+            "in": "query",
+            "name": "format",
+            "required": true,
+            "schema": {
+              "description": "Which installed format to write. `GET /formats` lists them.",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportCompatibilityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Check Export",
         "tags": [
           "releases"
         ]

@@ -31,6 +31,8 @@ from tests.fixtures.media import write_image
 from tests.server._api import api_client
 from tests.server._runner import RecordingRunner
 
+from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME
+
 
 @pytest.fixture()
 def runner() -> RecordingRunner:
@@ -255,7 +257,9 @@ def test_an_external_client_drives_the_cycle_from_ingest_to_an_exported_release(
     archive = client.post(f"/releases/{release['id']}/export", params={"format": "dummy"})
     ok(archive, 200)
     assert archive.headers["content-type"] == "application/zip"
-    assert zipfile.ZipFile(io.BytesIO(archive.content)).namelist() == []
+    # `dummy` writes no annotations at all, so the only thing in the archive
+    # is the compatibility report every export carries.
+    assert zipfile.ZipFile(io.BytesIO(archive.content)).namelist() == [EXPORT_REPORT_FILENAME]
 
     # 10. And reach the pixels. An annotator or a gallery renders these directly,
     #     so the media type has to be right and the bytes have to be the originals.

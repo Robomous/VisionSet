@@ -85,6 +85,7 @@ GET    /releases/{release_id}
 GET    /releases/{release_id}/manifest                    bytes
 GET    /releases/{release_id}/verify
 GET    /releases/{release_id}/assignment
+GET    /releases/{release_id}/export-compatibility        ?format=
 POST   /releases/{release_id}/export                      ?format=&allow_lossy=, bytes
 GET    /formats
 ```

@@ -61,10 +61,12 @@ from visionset.kernel.domain import (
     Attribute,
     Batch,
     BboxGeometry,
+    ClassCompatibility,
     ClassCount,
     ClassificationGeometry,
     Dataset,
     DatasetStats,
+    ExportCompatibility,
     ExportResult,
     Geometry,
     IngestFailure,
@@ -426,8 +428,42 @@ def release_verification(value: ReleaseVerification) -> dict[str, Any]:
 
 
 def export_format(value: Exporter) -> dict[str, Any]:
-    """One installed exporter."""
-    return {"name": value.format_name, "lossy": value.lossy}
+    """One installed exporter, with the capabilities #65 made it declare."""
+    return {
+        "name": value.format_name,
+        "lossy": value.lossy,
+        # Sorted, because a set has no order and a wire shape must: two calls to
+        # one build have to agree, and a client diffing them should see nothing.
+        "geometries": sorted(one.value for one in value.supported_geometries),
+        "modalities": sorted(value.supported_modalities),
+    }
+
+
+def class_compatibility(value: ClassCompatibility) -> dict[str, Any]:
+    """One class of a release, judged against one format."""
+    return {
+        "label_class": value.label_class,
+        "geometry": value.geometry.value,
+        "supported": value.supported,
+        "annotations": value.annotations,
+        "assets": value.assets,
+        "reason": value.reason,
+    }
+
+
+def export_compatibility(value: ExportCompatibility) -> dict[str, Any]:
+    """What a format would drop from a release. The same document on all three
+    surfaces — attached to a refusal, carried on a result, written into the
+    output — which is what #65 means by "stable"."""
+    return {
+        "release_id": str(value.release_id),
+        "format": value.format_name,
+        "compatible": value.compatible,
+        "format_is_lossy": value.format_is_lossy,
+        "excluded_annotations": value.excluded_annotations,
+        "excluded_assets": value.excluded_assets,
+        "classes": [class_compatibility(one) for one in value.classes],
+    }
 
 
 def export_result(value: ExportResult) -> dict[str, Any]:
@@ -443,4 +479,5 @@ def export_result(value: ExportResult) -> dict[str, Any]:
         "directory": str(value.directory),
         "file_count": value.file_count,
         "total_bytes": value.total_bytes,
+        "compatibility": export_compatibility(value.compatibility),
     }
