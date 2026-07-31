@@ -30,23 +30,30 @@ test("the digits activate the schema's classes in authored order", async ({ page
   await frameOf(page);
   await focusCanvas(page);
 
+  // Every row the palette draws, so "this one is active" can be checked against
+  // "and no other one is" — which is the claim, and which an assertion on the
+  // active row alone cannot make.
+  const rows = ["select", "vehicle", "lane", "daytime", "pedestrian", "centerline"] as const;
+
   for (const [digit, className] of [
     ["1", "vehicle"],
     ["2", "lane"],
     ["4", "pedestrian"],
     ["5", "centerline"],
+    ["v", "select"],
   ] as const) {
     await page.keyboard.press(digit);
-    // The demo outlines the active class; the outline is the only thing that says
-    // which one the canvas would draw with.
-    await expect(page.getByTestId(`class-${className}`)).toHaveCSS(
-      "outline-color",
-      "rgb(143, 211, 244)",
-    );
+    // `data-active`, not the row's colour. #50 moved the palette onto `DESIGN.md`'s
+    // tokens, where a selected row is `border-primary` plus the accent at 10% — so
+    // an assertion on a literal `rgb(...)` was pinning the design system rather than
+    // the behaviour, and would have to be re-pinned by every restyle.
+    for (const row of rows) {
+      await expect(page.getByTestId(`class-${row}`)).toHaveAttribute(
+        "data-active",
+        row === className ? "true" : "false",
+      );
+    }
   }
-
-  await page.keyboard.press("v");
-  await expect(page.getByTestId("class-select")).toHaveCSS("outline-color", "rgb(143, 211, 244)");
 });
 
 /**

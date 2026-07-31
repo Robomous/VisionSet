@@ -159,6 +159,29 @@ export interface AnnotatorCanvasProps {
   readonly onAnnotationsChange?: (document: AnnotationDocument) => void;
   readonly onSelectionChange?: (selection: Selection) => void;
   /**
+   * The stage's transform, whenever it moves — and **on mount**, unlike the two
+   * above.
+   *
+   * The mount call is the difference that matters. A viewport is not the host's
+   * state to seed: the fit is computed in a `useLayoutEffect` against a pane rect
+   * only this component can measure, so a host rendering a zoom readout has no
+   * honest initial value to show and would have to invent `1` — which is the one
+   * number the fit is guaranteed *not* to be. A document, by contrast, is handed
+   * in, so `onAnnotationsChange` staying quiet on mount is right for the same
+   * reason this one must not be.
+   *
+   * Read-only. Zoom **controls** — a `−`/`+` pair driving the stage from outside —
+   * need an imperative handle this adapter deliberately does not publish yet;
+   * they land with the annotation page that has a top bar to put them in (#56).
+   * Until then the host reports the zoom and the user changes it with the wheel,
+   * a pinch, or `mod+0`.
+   *
+   * A mount announces `IDENTITY_VIEWPORT` and then the fit, in that order and
+   * inside the same commit — the fit runs in a layout effect, so no paint happens
+   * between them and a readout never shows the 100% that was never true.
+   */
+  readonly onViewChange?: (view: Viewport) => void;
+  /**
    * Anything core cannot do and this adapter does not own — a help sheet, a
    * "next asset". `reset-zoom` never arrives: the zoom is the adapter's.
    */
@@ -176,6 +199,7 @@ export function AnnotatorCanvas({
   onActivateClass,
   onAnnotationsChange,
   onSelectionChange,
+  onViewChange,
   onHostAction,
   bindings,
   mint = randomUuid,
@@ -286,6 +310,17 @@ export function AnnotatorCanvas({
       if (snapshot.selection !== seen.selection) onSelectionChange?.(snapshot.selection);
     }
   }, [snapshot.document, snapshot.selection, onAnnotationsChange, onSelectionChange]);
+
+  // Deliberately *not* folded into `applyViewport`. That callback carries `[]`
+  // deps, and it is a dependency of both `fit` and the imperative wheel listener —
+  // so naming a host prop inside it would re-run the fit and re-register the
+  // listener on every render that passes an inline function. An effect keyed on
+  // the state instead costs one extra call when the host's identity churns, and a
+  // repeat notification of an unchanged viewport is a no-op for any host that
+  // stores it (`setState` bails on the same object).
+  useEffect(() => {
+    onViewChange?.(view);
+  }, [view, onViewChange]);
 
   const host: InputHost = {
     activeClass,
