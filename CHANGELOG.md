@@ -13,6 +13,18 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **The schema editor's colour swatch showed grey for a derived class colour** (#162), contradicting
+  the dot two inches to its left and the colour the annotator actually draws — in the one control
+  whose whole job is to say what colour something is. `<input type="color">` accepts only
+  `#rrggbb`, `classColor` answers `hsl(...)` for a class with no declared colour, and the editor
+  fell back to a neutral rather than converting.
+
+  `hexColor` in `frontend/ui-core/src/palette.ts` converts the notation and nothing else — the rule
+  stays `classColor`'s single spelling. Showing a colour still does not *declare* one: an untouched
+  save sends `color: null` for a derived class, asserted on the request payload rather than on the
+  control, so a schema version can never silently freeze today's hash output as if it had been
+  authored. "Derive" still clears a declared colour, and now the swatch follows it.
+
 - **The gallery rendered one tile per row at every viewport width** (#159). `useColumns` attached
   its `ResizeObserver` in an effect that began `if (element === null) return` — and the scroller it
   points at lives inside `<Async>`'s children render-prop, so on mount it does not exist yet. The
