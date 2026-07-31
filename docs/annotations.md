@@ -387,9 +387,11 @@ build, no setup file, no vitest config at all. The things that would end it are 
 a browser environment, adding jsdom, or adding a setup file — not adding more tests.
 If that budget ever needs raising, say which of the three bought it.
 
-**`pnpm --filter @visionset/app e2e`** — 37 Playwright scenarios against the demo page,
+**`pnpm --filter @visionset/app e2e`** — 42 Playwright scenarios against the demo page,
 in one chromium. They exist for the half a unit test structurally cannot reach: whether
-a browser delivers a real press to an element that still holds focus.
+a browser delivers a real press to an element that still holds focus. Five of them are
+`perf.spec.ts`, which counts work rather than asserting behaviour — see
+[The performance benchmark](#the-performance-benchmark).
 
 ### What the port kept, and what it could not
 
@@ -445,8 +447,9 @@ which presses on a committed shape.
 v1's specs are built on `waitForTimeout` between gestures, because nothing on its page
 exposed a settled state. This demo publishes `counts` and `wire`, and React 19 flushes
 discrete events synchronously, so every assertion is web-first or an `expect.poll`.
-`tests/scripts/e2e_discipline.test.mjs` holds it. When a sleep looks necessary, the demo
-has stopped exposing the state the scenario needs, and the fix is a `data-testid`.
+`tests/scripts/e2e_discipline.test.mjs` holds it, over `e2e/` **and** `bench/`. When a
+sleep looks necessary, the demo has stopped exposing the state the scenario needs, and
+the fix is a `data-testid`.
 
 ### Running it
 
@@ -460,3 +463,145 @@ before failing. It builds the annotator first, deliberately: the app resolves
 `@visionset/annotator` through `dist/`, so an unbuilt engine is invisible rather than a
 compile error. `reuseExistingServer` skips that rebuild locally — if the demo behaves
 like an older build, kill the dev server you already had open.
+
+## The performance benchmark
+
+M4's exit criterion ends "at 60fps with 200+ annotations", and until #49 nothing had
+measured it. The answer is **yes, with roughly ten times the headroom for a drag** — and
+one gesture, the zoom, that is O(annotations) by construction and is where the ceiling
+will appear first.
+
+### The scene
+
+`?scene=bench` on the demo page. `src/demo/benchScene.ts` builds **200 bboxes and 20
+polygons of 32 vertices — 220 annotations and 640 vertices — on a 3840x2160 asset**,
+every coordinate from one seeded PRNG so the scene is identical on every machine. The
+picture is a raster generated in a `<canvas>` at load and handed over as a blob URL: no
+fixture media is committed here any more than in `tests/fixtures/media.py`, and a bitmap
+is what a compositor actually has to re-rasterize when the stage zooms, which a vector
+image understates.
+
+The page is `BenchmarkHost`, not `AnnotatorDemo`, and the difference is one panel: the
+demo's `<pre data-testid="wire">` runs `JSON.stringify` over every annotation on every
+snapshot change, and a drag invalidates the snapshot on every pointer-move. That is the
+host's debug surface, not the engine — so it is left out, and then *priced*, by a row
+that puts it back (`?scene=bench&chrome=wire`).
+
+### Two instruments, and neither replaces the other
+
+| | asserted | runs | sees |
+| --- | --- | --- | --- |
+| `e2e/perf.spec.ts` | yes | every pull request | **DOM writes per gesture** — deterministic, hardware independent |
+| `bench/annotator.bench.ts` | a loose floor only | `pnpm --filter @visionset/app bench`, and a manual CI dispatch | **frame times** — the 60fps claim, and how much headroom is left |
+
+The split is #48's precedent — a wall-clock assertion on a shared runner fails for
+reasons nobody chose — and the boundary between them was measured rather than assumed.
+Three regressions were introduced deliberately and the drag scenario run against each:
+
+| broken on purpose | the drag scenario | caught |
+| --- | --- | --- |
+| `memo(AnnotationLayer, () => false)` | 3 records, unchanged | no |
+| `committed={snapshot.rendered}` | 3 records, unchanged | no |
+| `skipId={null}` | 2 records | yes |
+| the last two together | **80** records across the moves | yes |
+
+The first two cost a re-render of 220 shapes on every pointer-move and write *nothing*,
+because `paintDocument`'s output is unchanged and React's diff finds no work to do. So
+the counter cannot see a wasted render, and does not claim to: its guarantee is that the
+committed layer's **output** is constant through a gesture, which is the regression that
+costs frames. The price of a render that changes nothing is a question for the clock.
+The third is caught by the count going *down* — with nothing skipped the preview never
+takes the shape over, so the removal never happens — which is why the total is asserted
+with equality rather than as a ceiling.
+
+### What is asserted every pull request
+
+| claim | number |
+| --- | --- |
+| the committed layer is one `<g>` per annotation | 220 groups, 660 elements: 200 `rect`, 20 `polygon`, 220 `text` |
+| a drag's moves cost the committed layer nothing | **0** mutations across the moves, at 4 moves and at 60 |
+| …and the whole gesture is a constant | **3** records: removal, re-insertion, hover fill |
+| a pan touches neither render layer | **0** and **0**; one style write per move on the stage `<div>` |
+| one wheel notch rewrites every shape | **880** records — four attributes on each of 220 |
+| drawing a box reaches the committed layer once | **1** |
+
+The 880 is the finding, and it is a consequence of a rule worth keeping: every stroke
+width, grip size and label size goes through `screenPx(…, zoom)` so that a 2-pixel stroke
+is two *screen* pixels at every zoom (#41's tolerance finding, pointed at rendering). A
+wheel notch changes `zoom`, so `AnnotationLayer`'s `memo` correctly fails to bail out and
+the whole document is rewritten. Pan and drag are O(1) in the document; zoom is O(n).
+
+### The recorded baseline
+
+```
+Darwin 25.6.0 x64 · Intel Core i9-9880H @ 2.30GHz · 16 threads · 32 GB
+node 24.13.0 · chromium 151.0.7922.34 · production build via vite preview
+frame budget 16.67 ms (60fps); a stall is an interval over 25.0 ms
+
+scenario                                  n         cpu   frames   p50     p95     p99     max   stalls
+pan                                     220        full      118  16.7    16.7    16.8    16.8        0
+zoom (wheel)                            220        full      182  16.7    16.8    33.3   133.3        6
+drag one box                            220        full      120  16.7    16.8    16.8    16.8        0
+draw a box                              220        full      119  16.7    16.8    16.8    16.8        0
+drag one box (control)                    1        full      118  16.7    16.7    16.8    16.8        0
+drag one box + wire pane                220        full      118  16.7    16.7    16.8    16.8        0
+drag one box                            220   4x slower      121  16.7    16.7    16.8    16.8        0
+zoom (wheel)                            220   4x slower      261  16.7    16.8    33.4   150.0       12
+drag one box                            220  10x slower      214  16.7    16.8    33.3    33.4        6
+zoom (wheel)                            220  10x slower      313  16.7    83.4   100.1   133.4       64
+drag one box                            220  20x slower      220  16.7    50.0    50.1    66.7       61
+zoom (wheel)                            220  20x slower      268  16.7   200.0   216.7   250.1       92
+```
+
+`p50` and `p95` are stable run to run; the tail is not. `stalls` and `max` move by a
+few between runs on the same machine — the unthrottled zoom row has been seen at 1 and
+at 6 — so read them as an order of magnitude, and read the medians as the number.
+
+**Acceptance criterion 1 is met**: pan and drag hold 60fps with 220 annotations on a 4K
+asset, with no stalls at all.
+
+The rows below `full` are why the table is worth reading. An unthrottled frame interval
+is pinned to the display: it reports 16.7 ms whether the work uses a tenth of the budget
+or all of it, so on its own it cannot distinguish a healthy build from one about to miss,
+and a regression that halved the margin would leave every number identical. Throttling
+the main thread turns that into something the same instrument can read:
+
+- **a drag still holds 60fps at 10x slower** and breaks between 10x and 20x, so it has
+  roughly an order of magnitude of headroom on this machine;
+- **the zoom breaks between 4x and 10x** — the first gesture to go, exactly as the 880
+  writes per notch predict. Filed as **#131**, which sets out the shape of a fix
+  (`vector-effect="non-scaling-stroke"`, and grips drawn in an unscaled layer) and the
+  reason not to reach for it yet.
+
+An input-to-frame **latency** metric was built first and thrown away: with one input per
+frame it measures where in the frame the input happened to land, and duly reported a p95
+of 16.3 ms for every gesture including the one-annotation control.
+
+### Running it
+
+```
+pnpm --filter @visionset/app bench     # about a minute, one worker, no retries
+```
+
+Three things about that command are deliberate and easy to get wrong:
+
+- **it serves a production build.** `vite dev` runs React's development build and
+  `StrictMode` double-invokes every render; numbers from there are two to five times
+  pessimistic and describe a build nobody ships. `vite preview` fixes both.
+- **it passes `--base /ui/` by hand.** `vite.config.ts` sets the base from `command`, and
+  `vite preview` reports `command` as `"serve"` — so without it the preview server
+  answers at `/` while the build has `/ui/assets/…` baked into its HTML, the SPA fallback
+  returns **200 with `index.html`** for the missing script, and every scenario fails
+  hunting for a canvas on a blank page. Nothing errors.
+- **it never reuses an existing server**, on its own port 5373. The build is part of what
+  is being measured.
+
+And one trap inside the harness, since the same shape will be wanted again: **a CDP
+session's `detach()` silently reverts `Emulation.setCPUThrottlingRate`.** An
+8-million-iteration loop in the page took 14.8 ms at rest, **13.4 ms** after a
+throttle-then-detach, and **292.4 ms** with the session held open. The first version of
+the headroom rows detached, and reported beautiful numbers about nothing.
+
+CI carries the benchmark only on `workflow_dispatch` (`annotator bench (chromium,
+manual)`), which is what #49 asks for. Compare a dispatch against a dispatch — a shared
+runner is not the machine above.

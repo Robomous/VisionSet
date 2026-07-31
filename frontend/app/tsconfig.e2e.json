@@ -15,5 +15,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["e2e", "playwright.config.ts"]
+  "include": ["e2e", "bench", "playwright.config.ts", "playwright.bench.config.ts"]
 }

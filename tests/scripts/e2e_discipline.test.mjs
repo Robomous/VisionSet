@@ -15,6 +15,13 @@
  *
  * When a sleep looks necessary, the demo has stopped exposing the state the
  * scenario needs. The fix is a `data-testid`, not a timeout.
+ *
+ * #49 brought `frontend/app/bench/` under the same rule. That directory times
+ * things, so it is the one place where "wait a moment for it to settle" reads as
+ * reasonable — and the one place a fixed wait does the most damage, since it
+ * lands inside the window being measured. The benchmark waits on
+ * `requestAnimationFrame` instead, which is a frame having happened rather than a
+ * duration having elapsed, so the rule costs it nothing at all.
  */
 
 import assert from "node:assert/strict";
@@ -25,7 +32,13 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SUITE = "frontend/app/e2e";
+// Both browser-driven suites. `bench/` joined the rule with #49 rather than being
+// exempted from it: a benchmark is the file most tempted to sleep — "give it a
+// moment to settle" is the obvious way to write one — and it is also the file a
+// sleep corrupts most, because a fixed wait lands inside the window being timed.
+// `bench/_sampler.ts` waits on `requestAnimationFrame` instead, which is a frame
+// having happened, so the rule costs it nothing.
+const SUITES = ["frontend/app/e2e", "frontend/app/bench"];
 
 // Assembled at runtime from two fragments so this file does not match itself — the
 // same trick, for the same reason, as the synthetic-event scan next door.
@@ -68,14 +81,19 @@ test("the scan finds v1's sync points, and nothing that merely mentions them", (
 });
 
 test("no end-to-end scenario waits on a clock", () => {
-  const listed = spawnSync("git", ["ls-files", "-z", SUITE], { cwd: REPO, encoding: "utf8" });
-  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
-  const tracked = listed.stdout.split("\0").filter((name) => SOURCE.test(name));
-  assert.ok(tracked.length > 0, `the scan found no specs under ${SUITE}, so it proves nothing`);
-
-  const offenders = tracked.flatMap((file) =>
-    sleepsIn(file, readFileSync(path.join(REPO, file), "utf8")),
-  );
+  const offenders = [];
+  for (const suite of SUITES) {
+    const listed = spawnSync("git", ["ls-files", "-z", suite], { cwd: REPO, encoding: "utf8" });
+    assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
+    const tracked = listed.stdout.split("\0").filter((name) => SOURCE.test(name));
+    // Asserted per suite, not over the union: a renamed or emptied directory would
+    // otherwise be covered by its neighbour and the scan would quietly prove less
+    // than it says.
+    assert.ok(tracked.length > 0, `the scan found no sources under ${suite}, so it proves nothing`);
+    offenders.push(
+      ...tracked.flatMap((file) => sleepsIn(file, readFileSync(path.join(REPO, file), "utf8"))),
+    );
+  }
   assert.deepEqual(
     offenders,
     [],

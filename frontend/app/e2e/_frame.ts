@@ -37,6 +37,12 @@ import { expect, type Locator, type Page } from "@playwright/test";
 /** `SAMPLE_ASSET` in `src/demo/sampleAsset.ts`. The frame every coordinate is in. */
 export const ASSET = { width: 1280, height: 720 } as const;
 
+/** Either frame, as `frameOf` takes it. */
+export interface AssetSize {
+  readonly width: number;
+  readonly height: number;
+}
+
 /** How far a committed coordinate may sit from where it was aimed, in asset pixels. */
 export const COORDINATE_SLACK = 2;
 
@@ -58,21 +64,27 @@ export interface Frame {
  *
  * The visibility check is the page's real load barrier — there is no network to go
  * idle, since the asset is a `data:` URI and there is no backend — and it is also
- * what guarantees the fit already ran.
+ * what guarantees the fit already ran. On `?scene=bench` it waits for something
+ * more: that page renders no canvas at all until its 4K raster has been encoded,
+ * so the same check is the readiness barrier there too.
+ *
+ * `asset` defaults to the demo's frame. #49's benchmark page is 3840x2160, and a
+ * zoom read against the wrong width is not a wrong number — it is a *plausible*
+ * one, which is the kind that survives review.
  */
-export async function frameOf(page: Page): Promise<Frame> {
+export async function frameOf(page: Page, asset: AssetSize = ASSET): Promise<Frame> {
   const canvas = page.getByTestId("annotator-canvas");
   await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();
   if (box === null) throw new Error("annotator-canvas has no bounding box");
-  const zoom = box.width / ASSET.width;
+  const zoom = box.width / asset.width;
   // The invariant that is true at *every* zoom, and the one a wrong reading would
   // break: the stage scales uniformly. The fitted band is a different claim — it is
   // only true before anybody zooms — so it is asserted by `expectFitted` in the
   // scenarios that are actually about the fit, not smuggled in here where a wheel
   // test would trip over it.
   expect(zoom).toBeGreaterThan(0);
-  expect(box.height / ASSET.height).toBeCloseTo(zoom, 3);
+  expect(box.height / asset.height).toBeCloseTo(zoom, 3);
   return {
     zoom,
     at: (x, y) => ({ x: Math.round(box.x + x * zoom), y: Math.round(box.y + y * zoom) }),
