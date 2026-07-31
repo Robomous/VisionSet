@@ -24,7 +24,7 @@ const PRIMARY = "rgb(235, 90, 71)";
 const INK = "rgb(37, 41, 73)";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/styleguide.html");
+  await page.goto("/styleguide");
 });
 
 test("the token utilities reach the browser as the contract's values", async ({ page }) => {

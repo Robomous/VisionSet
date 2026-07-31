@@ -51,10 +51,10 @@ export { BENCH_ANNOTATIONS, BENCH_ASSET, benchBoxCentre };
  * leading slash discards the base's path — which would send every bench run to a
  * 404 that looks like an empty page.
  */
-export const BENCH_PAGE = "?scene=bench";
+export const BENCH_PAGE = "/demo?scene=bench";
 
 /** The demo scene, as the benchmark's small-document control. */
-export const DEMO_PAGE = "./";
+export const DEMO_PAGE = "/demo";
 
 /**
  * The same scene with the demo's wire pane attached.
@@ -64,7 +64,7 @@ export const DEMO_PAGE = "./";
  * every pointer-move. `BenchmarkHost` leaves it out and this is what proves the
  * omission was worth something.
  */
-export const BENCH_WIRE_PAGE = "?scene=bench&chrome=wire";
+export const BENCH_WIRE_PAGE = "/demo?scene=bench&chrome=wire";
 
 /** The three things a gesture can make the browser do, counted separately. */
 export interface LayerCounts {

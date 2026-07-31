@@ -38,10 +38,10 @@
 
 import { expect, test } from "@playwright/test";
 
-import { canvasOrigin, drawTriangle, expectCounts, focusCanvas, frameOf, vertices } from "./_frame";
+import { canvasOrigin, drawTriangle, expectCounts, focusCanvas, frameOf, vertices, SHOWCASE } from "./_frame";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto(SHOWCASE);
 });
 
 /**

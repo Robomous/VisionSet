@@ -7,6 +7,33 @@ credential stops working.
 The **visual** contract is [`DESIGN.md`](../DESIGN.md) at the repository root. This
 document is the data half.
 
+## Routes
+
+`@visionset/app` is shell only, and `src/routes.tsx` is the whole of it.
+
+| route | what | behind the token gate |
+| --- | --- | --- |
+| `/` | Home | yes |
+| `/projects`, `/projects/:id`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
+| `/jobs/:jobId` | the annotation page | yes |
+| `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
+| `/styleguide` | the rendered design system | **no** |
+
+The last two need no server and no credential — the showcase's picture is a `data:`
+URI and the styleguide is pure CSS — so putting them behind the gate would ask for a
+token to look at a page that cannot use one. They are also what lets the browser
+suite run with no backend.
+
+The router's basename is `import.meta.env.BASE_URL`, which is what vite substitutes
+for its `base` option — so the router and the bundle cannot disagree about the `/ui`
+prefix the wheel serves under. A **reload** on a client route is a real request for a
+path no file backs; [`api.md`](api.md#where-the-ui-lives) describes the server-side
+fallback that answers it.
+
+The rail is the whole shell: logo, collapse toggle, Home, Projects, sign out. Anything
+richer growing on it is what the thin-app audit exists to catch — a capability in
+`app/` is one the future enterprise UI cannot reuse.
+
 ## No screen calls `fetch`
 
 `frontend/ui-core/src/client.ts` is the only hand-written module that knows how a

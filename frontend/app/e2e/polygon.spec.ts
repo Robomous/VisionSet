@@ -37,10 +37,11 @@ import {
   triangleOf,
   vertices,
   wire,
+  SHOWCASE,
 } from "./_frame";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto(SHOWCASE);
 });
 
 /**
