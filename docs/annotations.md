@@ -234,3 +234,49 @@ The parser is strict about unknown keys as well as missing ones. That is not fus
 hands back what it was given, so a key it silently dropped would be a field the kernel wrote and
 the editor erased. It does **not** re-check bounds — a zero-area box and a two-point polygon are
 refused above, by the models that own the rule, and a second copy would drift.
+
+## Keys are bound in one place, and the table is data
+
+v1 delivered its whole keyboard with one line — `document.addEventListener("keydown", onKey)` —
+over a 210-line `if`/`else` chain, and its polygon confirm button talked to that chain by calling
+`document.dispatchEvent(new KeyboardEvent("keydown", …))`. `frontend/annotator/src/core/input/`
+replaces both. A chord resolves to an **action**, which is plain data; `runAction` is the only
+thing that turns one into a store call.
+
+| chord | action | lineage |
+| --- | --- | --- |
+| `escape` | cancel whatever is in flight | v1 |
+| `enter` | commit whatever is in flight (closes a polygon at ≥3 points) | v1 |
+| `delete` / `backspace` | delete the selected annotations | v1 |
+| `mod+z` | undo | **new** — v1 has no undo at all |
+| `mod+shift+z` | redo | **new** |
+| `mod+a` | select all | **new** |
+| `mod+0` | ask the host to zoom to 100% | v1 |
+| `?` | ask the host for the shortcut sheet | v1 |
+| `v` | select mode — no active class | v1 |
+| `1`–`9` | the schema's first nine classes, in authored order | **new** |
+
+`mod` is ctrl **or** meta, folded once, so one table serves both platforms. A class hotkey on a
+`classification_tag` class toggles the tag rather than making the class active — pressing it twice
+undoes it — and on any other class it sets the active class, emitting a tool change only when the
+*derived tool* actually moved. A digit naming a class the schema no longer declares refuses and
+does nothing, which is the same posture `tagCommand` takes: a binding outlives the class it names,
+and losing a keystroke is better than losing the session.
+
+Not bound, each for a reason: `b`/`p`/`k`/`l`, because the tool is derived from the class here, so
+a tool key *is* a class key; the lane-attribute hotkeys, because attributes belong to a panel; and
+`mod+c`/`mod+v`, which stay unclaimed so the browser keeps them — a clipboard is session state the
+store cannot own, a paste must re-mint ids, v1's 20 px offset is screen pixels where every
+coordinate here is asset pixels, and pasting a tag would break the at-most-one invariant above.
+
+**Remapping is a fold.** `registryOf([...DEFAULT_BINDINGS, ...classHotkeys(schema), ...overrides])`
+— last wins, and an override with a `null` action unbinds a chord. Nothing throws on a duplicate,
+because the fold *is* the remap.
+
+**Nothing here is scoped by a global listener, and it could not be.** `src/core/` cannot name
+`document`, so an adapter attaches `onKeyDown` to the annotator's own focusable root; scoping is
+subtree bubbling, with no listener lifecycle at all. Two booleans do different jobs and should not
+be merged: `resolve(...) !== null` answers *is this keystroke ours*, which is what decides
+`preventDefault`, and `runAction(...).changed` answers *did it do anything*. The rest of what an
+adapter owes — the text-entry guard, Escape surviving it, IME filtering, the `code`-for-digits
+seam on layouts where the digit row is shifted — is listed in `core/input/index.ts`.
