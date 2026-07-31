@@ -139,6 +139,35 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
     await expect(first).toHaveAttribute("title", /draft/i);
   });
 
+  await test.step("the grid fills the pane, and re-flows when the window narrows", async () => {
+    // **#159, and it can only be asserted here.** The gallery rendered one tile per
+    // row at every width because `useColumns`' `ResizeObserver` was attached in an
+    // effect that ran once, while the scroller was still inside `<Async>`'s loading
+    // branch and therefore null. jsdom cannot see any of this: it reports every
+    // element as 0×0, so the virtualizer renders no rows at all there and the
+    // screen's own unit tests passed in exactly the state the bug produced.
+    //
+    // Measured rather than pinned to a number: the pane's width depends on the
+    // rail, the padding and the scrollbar, so the claim is that the rendered
+    // count **agrees with what fits**, which is the property that was false.
+    const wide = await columnsOf(page);
+    expect(wide.rendered).toBe(wide.expected);
+    // The defect's signature, and the assertion that would have caught it: one
+    // tile per row at a viewport wide enough for several.
+    expect(wide.rendered).toBeGreaterThan(1);
+
+    // Narrow far enough that fewer fit, and the count has to follow. A screen that
+    // measured once — which is what the effect did — answers the wide count
+    // forever, so this is the half that proves the observer is attached at all.
+    await page.setViewportSize({ width: 560, height: 900 });
+    await expect.poll(async () => (await columnsOf(page)).rendered).toBeLessThan(wide.rendered);
+    const narrow = await columnsOf(page);
+    expect(narrow.rendered).toBe(narrow.expected);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect.poll(async () => (await columnsOf(page)).rendered).toBe(wide.rendered);
+  });
+
   await test.step("approve the batch, which pins the schema and cuts one job", async () => {
     // Navigated rather than `goBack()`: history depth is an implementation detail
     // of how the previous steps got here, and a cycle this long should not depend
@@ -281,6 +310,35 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
 });
 
 /** Back to the project screen, wherever the last step left the router. */
+/**
+ * What the gallery actually rendered, beside what actually fits.
+ *
+ * Both read off the live DOM: `rendered` counts the children of the first row, and
+ * `fits` recomputes the screen's own arithmetic from the scroller's measured width.
+ * Comparing the two is what makes this a check on the *measurement* rather than on
+ * a number somebody typed — #159's arithmetic was correct throughout and the
+ * measurement never happened.
+ */
+async function columnsOf(page: Page): Promise<{ rendered: number; expected: number }> {
+  await expect(page.getByTestId("gallery-row-0")).toBeVisible();
+  return await page.evaluate(() => {
+    const TILE = 160;
+    const GAP = 12;
+    const scroll = document.querySelector('[data-testid="gallery-scroll"]')!;
+    const rows = [...document.querySelectorAll('[data-testid^="gallery-row-"]')];
+    const tiles = rows.reduce((count, row) => count + row.children.length, 0);
+    const fits = Math.max(1, Math.floor((scroll.clientWidth + GAP) / (TILE + GAP)));
+    return {
+      rendered: rows[0]!.children.length,
+      // A full row, unless the batch is shorter than one. This cycle holds three
+      // assets, so the wide case is bounded by the data rather than by the pane —
+      // which is fine, because one-per-row is what the defect produced and three
+      // is not one.
+      expected: Math.min(fits, tiles),
+    };
+  });
+}
+
 async function openProject(page: Page): Promise<void> {
   await page.getByTestId("rail-projects").click();
   await expect(page.getByTestId(`open-${PROJECT}`)).toBeVisible();
