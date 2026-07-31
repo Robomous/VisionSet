@@ -125,10 +125,14 @@ stays at `0.0.1.dev0` throughout — the alpha tags do not bump it, because noth
 being distributed.
 
 The first artifact anyone installs is the beta: bump `VERSION` to `0.0.1b1`, run
-`pnpm version:sync`, tag `v0.0.1-beta.1`, and publish the wheel to PyPI (`0.0.1b1`) and,
-if the packages are published at all, the frontend packages to npm (`0.0.1-beta.1`).
+`pnpm version:sync`, tag `v0.0.1-beta.1`, and publish the wheel to PyPI as `0.0.1b1`.
 `0.0.1-beta` is *lower* than `0.1.0` in both version orderings, which is why `VERSION`
 sits at `0.0.1.dev0` rather than the `0.1.0.dev0` the repo was bootstrapped with.
+
+**The beta ships to PyPI, and nothing ships to npm** — decided in #69, with the reasoning
+and the whole runbook in [docs/releasing.md](docs/releasing.md). The short version: pip is
+the vehicle the product is designed around, and a pre-release is invisible to a plain
+`pip install`, so publishing one is safe rather than premature.
 
 ## Commits
 
