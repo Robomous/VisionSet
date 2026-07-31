@@ -49,7 +49,7 @@
  *    `SCHEMA_CHANGE_WOULD_ORPHAN` is about.
  * 3. **A `classification_tag` class.** Whole-asset tags have no coordinates;
  *    v1's classification never entered its canvas machine either, and #45 is a
- *    panel.
+ *    panel — `tags.ts`, beside this file, is that panel's engine.
  * 4. **A class declaring `polyline`, `keypoints`, `mask`, `cuboid_3d` or
  *    `polyline_3d`.** Legal in a schema, refused at the annotation — the
  *    eight-names/three-variants split `types.ts` keeps.
@@ -57,7 +57,9 @@
  * `drawableGeometry` is exported separately so a class palette can distinguish
  * 3 and 4 from 1 and 2 and say "this class cannot be drawn here" rather than
  * silently behaving like select. Telling the user is a panel's job; conflating
- * the four would take the information away from it.
+ * the four would take the information away from it. It answers `null` for 3 and
+ * 4 alike, which is why `tags.ts` exports `isTaggableClass`: the two together
+ * split "tagged instead of drawn" from "not usable here at all".
  */
 
 import { classNamed } from "../state/document";
