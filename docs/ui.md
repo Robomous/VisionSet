@@ -46,6 +46,38 @@ Query keys are hierarchical — `["projects"]` → `["projects", id]` →
 invalidating `["projects", id]` after a rename refreshes the project, its schema and
 its version list, and the mutation never has to enumerate what it affected.
 
+### The annotation side panel
+
+`AnnotatorPanel` — Objects and Labels — lives in **`ui-core`**, not in the
+annotator's adapters. The annotator's whole claim is that it *"owns no UI a product
+would want to restyle"*: it ships headless, with no Tailwind and no design tokens,
+so a styled panel inside `adapters/react` would be the first thing an embedder had
+to fight. `ui-core` already depends on the annotator, so the dependency runs the
+right way.
+
+The *capability* went the other way and had to. Hiding an object must remove it
+from the **hit test** as well as the drawing — `resolveTarget` reads the document
+the machine is given, so filtering only the render layer leaves an invisible shape
+catching every click over it, which is worse than not hiding it at all. Only the
+canvas owns that document, so `AnnotatorCanvas` grew a `hiddenIds` prop and the
+panel drives it. **The annotator gained an ability; `ui-core` gained the UI.**
+
+Three rules the panel inherits:
+
+- **One `Selection`, two views of it.** The panel reads and writes the same store
+  the canvas does, so the round trip is a property rather than a synchronisation.
+- **Every write is a command.** Delete goes through `removeAnnotationsCommand`, the
+  path the keyboard takes, so one history entry reads the same however it was
+  asked for.
+- **Class reassignment offers only geometry-compatible classes**, because the
+  kernel judges geometry per class (`DisallowedGeometry`) — offering the rest would
+  be offering a refusal. It applies behind a button, so a keyboard-driven picker
+  does not fill the undo history with states nobody chose.
+
+Visibility is view state and returns the **same document object** when nothing is
+hidden, which is what keeps `AnnotationLayer`'s `memo` bailing out — #49's finding
+about `skipId`, from the other side.
+
 ### The gallery, and the `<img>` that cannot work
 
 **Every route but `/health` and `/openapi.json` needs `Authorization: Bearer`, and
