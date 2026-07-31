@@ -7,6 +7,29 @@ credential stops working.
 The **visual** contract is [`DESIGN.md`](../DESIGN.md) at the repository root. This
 document is the data half.
 
+## What M5 shipped
+
+`@visionset/ui-core` went from a placeholder `tokens.css` and a generated client to
+the whole product: a design system, a data shell, six screens, the annotator's side
+panel and the annotation page. `@visionset/app` is a router, a rail and nothing else.
+
+| | before M5 | after |
+| --- | --- | --- |
+| `ui-core` vitest | 0 | **107** |
+| Playwright (annotator) | 42 | **76** |
+| Playwright (browser cycle) | — | **1**, against a real server |
+| Python | 1923 | **1932** |
+
+The exit criterion — *"with `visionset ui` running, a user completes the entire cycle
+in the browser"* — is not asserted, it is **driven**: `pnpm --filter @visionset/app
+cycle` walks token → project → schema → ingest → approve → annotate → finish →
+complete → promote → publish → verify → export → download against the built bundle
+and the real kernel, on every pull request.
+
+`FORMAT_VERSION` is still **11** and `openapi.json` is byte-identical to
+`v0.0.1-alpha.4`. The milestone's one deliberate Python touch — #58's SPA deep-link
+fallback — is an exception handler, and an exception handler is not an operation.
+
 ## Routes
 
 `@visionset/app` is shell only, and `src/routes.tsx` is the whole of it.
