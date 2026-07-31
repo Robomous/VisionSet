@@ -34,6 +34,58 @@ The rail is the whole shell: logo, collapse toggle, Home, Projects, sign out. An
 richer growing on it is what the thin-app audit exists to catch — a capability in
 `app/` is one the future enterprise UI cannot reuse.
 
+## Screens
+
+A screen is a component in `@visionset/ui-core` and a route in `@visionset/app`. It
+takes **navigation as a callback**, never a router: a screen that called
+`useNavigate` would only work inside a `react-router` tree, which is a dependency
+the future enterprise UI has no reason to share.
+
+Query keys are hierarchical — `["projects"]` → `["projects", id]` →
+`["projects", id, "schema"]` — because TanStack Query matches a **prefix**. So
+invalidating `["projects", id]` after a rename refreshes the project, its schema and
+its version list, and the mutation never has to enumerate what it affected.
+
+### The schema editor, and the two 409s
+
+The editor is where `docs/api.md`'s "branch on the code, never on the status" earns
+its keep, because both refusals are **409** and only one may be retried:
+
+| code | what it means | what the editor offers |
+| --- | --- | --- |
+| `DESTRUCTIVE_SCHEMA_CHANGE` | the new version narrows the contract | **Save anyway**, which retries with `?allow_destructive=true` |
+| `SCHEMA_CHANGE_WOULD_ORPHAN` | annotations already exist under an affected class | **Close**, and nothing else |
+
+A client branching on the status would offer the override for both and loop forever
+on the second — the failure `SchemaChangeWouldOrphan`'s kernel docstring warns
+about, and the reason it is deliberately *not* a subclass of
+`DestructiveSchemaChange`. The missing button is the feature.
+
+There is no preview: `SchemaService.preview` and `compare` exist in the kernel and
+are deliberately unrouted, so the only way to learn a change is destructive is to
+attempt it and read the refusal. That is why the refusal surface is the editor's
+real subject.
+
+Three other decisions the editor inherits rather than invents:
+
+- **A version is immutable**, so the editor drafts and *publishes N+1*. Past
+  versions are read-only because they are read-only — there are no controls, not
+  disabled ones.
+- **`?confirm=true` and `?allow_destructive=true` are different words** and are
+  never merged. `confirm=` guards destroying data (deleting a project);
+  `allow_destructive=` guards narrowing a contract. Each has its own dialog.
+- **A 404 from `GET /schema` is an answer**, not a failure: a project starts
+  schema-less on purpose, so that code becomes an empty draft rather than an error
+  surface.
+
+The geometry picker offers `bbox`, `polygon` and `classification_tag` — the three an
+`Annotation` can carry. `GeometryType` declares eight; the kernel refuses the rest
+at write time with `UnsupportedGeometry`, and offering a choice the API will refuse
+is worse than not offering it.
+
+A class **description** is not editable, because `LabelClassBody` does not carry
+one. Left out rather than stored where it would not survive a round trip.
+
 ## No screen calls `fetch`
 
 `frontend/ui-core/src/client.ts` is the only hand-written module that knows how a
