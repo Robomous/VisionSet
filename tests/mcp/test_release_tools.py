@@ -169,6 +169,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image", "point_cloud", "video"],
             },
             {
+                # #64. Lossy because a VOC `<object>` has a fixed set of children
+                # its consumers index by tag name.
+                "name": "voc",
+                "lossy": True,
+                "geometries": ["bbox"],
+                "modalities": ["image"],
+            },
+            {
                 # #62, and the first format in this repository that writes
                 # anything. Lossy because a label row is five numbers, so
                 # attributes, confidence and provenance never survive.
@@ -178,7 +186,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
         ],
-        "total": 3,
+        "total": 4,
     }
 
 

@@ -353,6 +353,46 @@ Smaller decisions, each of which a reader can see:
 - **`licenses` has one entry named `unspecified`.** VisionSet records no licensing information
   about an asset anywhere, so inventing one would be a claim nobody made.
 
+### The Pascal VOC format
+
+`voc` writes one XML per image under `Annotations/`, the pictures under `JPEGImages/`, and the
+folds as **listings** under `ImageSets/Main/<fold>.txt`.
+
+That last one is the structural difference from its two siblings, and it decides the layout:
+**VOC splits by listing rather than by directory.** A fold's file names stems, and a reader
+resolves each against the one `JPEGImages/` — so every image lives in one flat directory whatever
+fold it is in. Putting them in per-fold directories, as YOLO and COCO do, would make every path in
+those files wrong.
+
+**Coordinates are 1-based and inclusive, which is what "Pascal VOC" means.** The original devkit's
+annotations index from 1, and evaluation code written against them subtracts one — detectron2's
+VOC loader does exactly that, with a comment saying why. A box stored as `x=8, width=16` covers
+0-based pixels 8..23 and is written `<xmin>9</xmin><xmax>24</xmax>`: sixteen pixels, counted the
+way the format counts them. Writing the domain's own numbers through would be off by one against
+every consumer that assumes the devkit, and off by one is the error nobody notices.
+
+Boxes are also **rounded outwards** — `floor` on the near edge, `ceil` on the far one — so the
+integer box covers every pixel the float box touches. Rounding to nearest would shrink a box by up
+to a pixel on each side, which matters most for the small objects a detector is already worst at.
+They are clamped into the image for the reason YOLO's are, and a box whose extent rounds away
+still gets `xmax >= xmin`, because an inverted box gives a reader a negative area rather than an
+error.
+
+`lossy = True` and `supported_geometries` is `{bbox}`. The reason is not YOLO's: a VOC `<object>`
+has a fixed set of children its consumers index by tag name, so there is nowhere to put an
+attribute, a confidence or a provenance — where COCO can carry all three precisely because JSON
+readers ignore keys they do not know.
+
+Two values are constants rather than measurements, and both are said out loud rather than dressed
+up: `<depth>3</depth>`, because VisionSet records an asset's width and height and not its channel
+count while VOC readers expect the element; and `<difficult>0</difficult>` on every object, which
+matters more than it looks — VOC's evaluation *excludes* objects marked `1` from both the ground
+truth and the false positives, so writing one anywhere would silently change what a score means.
+
+There is **no reference-reader smoke test** for this format, unlike the other two. VOC's devkit is
+MATLAB and every Python consumer parses the XML itself, so there is no loader worth pinning a CI
+job to: the document is the contract, and the golden-file tests assert it as text.
+
 ### The destination is the caller's
 
 `dest` is created if it is not there and is **not** emptied if it is — deleting files under a
@@ -399,7 +439,8 @@ prints that list without opening a workspace at all.
 
 `--allow-lossy` is the third gate word, never folded into `--yes` or `--allow-destructive`. And
 `dummy` writes nothing, so a `file_count` of 0 in its report is an export that ran, not one that
-failed. The real ones are [YOLO](#the-yolo-detection-format) and [COCO](#the-coco-format) below.
+failed. The real ones are [YOLO](#the-yolo-detection-format), [COCO](#the-coco-format) and
+[VOC](#the-pascal-voc-format) below.
 
 When an export does leave something behind, the names go to **stderr** with the rest of the prose,
 so `visionset export … | xargs` still receives exactly the directory:

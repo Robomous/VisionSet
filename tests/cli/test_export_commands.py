@@ -112,6 +112,7 @@ def test_format_list_names_the_installed_exporters() -> None:
     assert [row.split() for row in rows[1:]] == [
         ["coco", "no"],
         ["dummy", "no"],
+        ["voc", "yes"],
         ["yolo", "yes"],
     ]
 
@@ -157,6 +158,15 @@ def test_format_list_json_is_the_envelope() -> None:
                 "polyline_3d",
             ],
             "modalities": ["image", "point_cloud", "video"],
+        },
+        {
+            # #64. Lossy for a different reason from `yolo`'s: a VOC `<object>`
+            # has a fixed set of children its consumers index by tag name, so
+            # there is nowhere to put an attribute or a confidence.
+            "name": "voc",
+            "lossy": True,
+            "geometries": ["bbox"],
+            "modalities": ["image"],
         },
         {
             "name": "yolo",
