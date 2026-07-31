@@ -58,11 +58,13 @@ from visionset.kernel.domain import (
     BboxGeometry,
     BySegments,
     BySize,
+    ClassCompatibility,
     ClassCount,
     ClassificationGeometry,
     Dataset,
     DatasetChange,
     DatasetStats,
+    ExportCompatibility,
     Geometry,
     GeometryType,
     ImageFormat,
@@ -1112,6 +1114,61 @@ class ReleaseVerificationOut(BaseModel):
         )
 
 
+# ``reason`` is filled only where ``supported`` is false, and is published rather
+# than derived from the two fields beside it: which capability a format is missing
+# is the format's own wording, and a client re-deriving "polygon is unsupported"
+# from a geometry name would be spelling it a second time.
+class ClassCompatibilityOut(BaseModel):
+    """One class of a release, judged against one format's capabilities."""
+
+    label_class: str
+    geometry: GeometryType
+    supported: bool
+    annotations: int
+    assets: int
+    reason: str | None = None
+
+    @classmethod
+    def of(cls, compatibility: ClassCompatibility) -> Self:
+        return cls(
+            label_class=compatibility.label_class,
+            geometry=compatibility.geometry,
+            supported=compatibility.supported,
+            annotations=compatibility.annotations,
+            assets=compatibility.assets,
+            reason=compatibility.reason,
+        )
+
+
+# Key-for-key the document the kernel writes into an export directory and the one
+# ``visionset.wire`` gives the CLI and MCP. That is #65's first acceptance
+# criterion — the report is user-facing on three surfaces, so there is one
+# spelling of it and not three — and ``format`` rather than ``format_name`` is
+# the wire's word, matching the query parameter a caller just sent.
+class ExportCompatibilityOut(BaseModel):
+    """What one format would drop from one release, worked out before writing."""
+
+    release_id: UUID
+    format: str
+    compatible: bool
+    format_is_lossy: bool
+    excluded_annotations: int
+    excluded_assets: int
+    classes: list[ClassCompatibilityOut]
+
+    @classmethod
+    def of(cls, compatibility: ExportCompatibility) -> Self:
+        return cls(
+            release_id=compatibility.release_id,
+            format=compatibility.format_name,
+            compatible=compatibility.compatible,
+            format_is_lossy=compatibility.format_is_lossy,
+            excluded_annotations=compatibility.excluded_annotations,
+            excluded_assets=compatibility.excluded_assets,
+            classes=[ClassCompatibilityOut.of(one) for one in compatibility.classes],
+        )
+
+
 class SplitAssignmentOut(BaseModel):
     """The folds a release's recipe produces over its frozen asset set."""
 
@@ -1135,14 +1192,26 @@ class SplitAssignmentOut(BaseModel):
 # this deployment: a distribution registering into the ``visionset.formats``
 # entry-point group adds a row here and no line to any contract.
 class FormatOut(BaseModel):
-    """An installed export format."""
+    """An installed export format, and what it can express."""
 
     name: str
+    # Whether the format drops information the kernel can represent — attributes,
+    # confidence, provenance included. A property of the format, never of a
+    # release.
     lossy: bool
+    # The checkable half of `lossy`, added by #65. Sorted, because a set has no
+    # order and a wire shape must: two calls to one build have to agree.
+    geometries: list[str] = []
+    modalities: list[str] = []
 
     @classmethod
     def of(cls, exporter: Exporter) -> Self:
-        return cls(name=exporter.format_name, lossy=exporter.lossy)
+        return cls(
+            name=exporter.format_name,
+            lossy=exporter.lossy,
+            geometries=sorted(one.value for one in exporter.supported_geometries),
+            modalities=sorted(exporter.supported_modalities),
+        )
 
 
 class FormatPage(Page[FormatOut]):

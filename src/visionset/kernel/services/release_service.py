@@ -43,7 +43,7 @@ from __future__ import annotations
 import json
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Final
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -52,8 +52,11 @@ from visionset import __version__
 from visionset.kernel.domain import (
     Annotation,
     Asset,
+    ClassCompatibility,
     Dataset,
+    ExportCompatibility,
     ExportResult,
+    GeometryType,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -326,6 +329,37 @@ class ReleaseService:
 
     # --- handing the snapshot to a format plugin ---------------------------
 
+    def check_export(self, release_id: UUID, exporter: Exporter) -> ExportCompatibility:
+        """What this format would drop from this release, before anything is written.
+
+        Computed from the **frozen manifest**, never from live membership: an
+        export describes a release, and a release is a snapshot. Two runs against
+        one release therefore agree forever, which is what lets one document be
+        shown in a consent dialog, attached to a refusal and written into the
+        output — the three places #65 asks for it, and three chances for them to
+        disagree if it were derived from anything that moves.
+
+        Every class the manifest declares appears, including ones nobody used.
+        That is the report's most useful property and the least obvious: a class
+        with **zero annotations excludes nothing**, however unsupported its
+        geometry, so a schema declaring `mask` does not make every export of it
+        lossy. The row is still there, with its zero, because "this format cannot
+        write masks and you have none" is the answer somebody is looking for.
+
+        `excluded_annotations` is the count somebody weighs; `excluded_assets` is
+        how *wide* the loss is — the number of assets that would arrive carrying
+        at least one label fewer than the release holds. An asset losing one box
+        of forty and an asset losing its only one both count once, which is why
+        the two numbers are published together rather than one being derived.
+
+        Raises:
+            ReleaseNotFound: no such release in this workspace.
+            WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
+        """
+        release = self.get(release_id)
+        manifest = self._read_manifest(release)
+        return _compatibility(release, manifest, exporter)
+
     def export(
         self,
         release_id: UUID,
@@ -374,16 +408,34 @@ class ReleaseService:
             WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
         """
         release = self.get(release_id)
-        if exporter.lossy and not allow_lossy:
+        manifest = self._read_manifest(release)
+        compatibility = _compatibility(release, manifest, exporter)
+        # Consent is required if *either* says so, which is monotone with what #30
+        # shipped — a lossy format still always asks — and adds the case #65 was
+        # filed for: a format declaring itself lossless still cannot silently drop
+        # a geometry it never claimed to write.
+        if (exporter.lossy or not compatibility.compatible) and not allow_lossy:
             raise LossyExportNotConsented(
                 f"format {exporter.format_name!r} cannot carry everything release "
-                f"{release.tag!r} holds; re-run with allow_lossy to accept the loss"
+                f"{release.tag!r} holds; re-run with allow_lossy to accept the loss",
+                compatibility=compatibility,
             )
-        manifest = self._read_manifest(release)
         dest.mkdir(parents=True, exist_ok=True)
         exporter.export(release, manifest, dest)
-        written = [path for path in dest.rglob("*") if path.is_file()]
+        # The report is **excluded from the count**, on both sides: it is not
+        # written until after the walk, and a report left by an earlier run into
+        # the same directory is skipped. Both halves are needed for the same
+        # property — ``file_count`` describes what the *exporter* produced, so
+        # ``DummyExporter`` still reports zero rather than lying, and exporting
+        # twice into one directory still agrees with itself.
+        written = [
+            path
+            for path in dest.rglob("*")
+            if path.is_file() and path.name != EXPORT_REPORT_FILENAME
+        ]
+        _write_report(dest, compatibility)
         return ExportResult(
+            compatibility=compatibility,
             release_id=release.id,
             format_name=exporter.format_name,
             directory=dest,
@@ -604,3 +656,113 @@ def _manifest_subject(release: Release) -> str:
 
 def _asset_subject(asset: ManifestAsset) -> str:
     return f"asset {asset.asset_id} ({asset.content_hash})"
+
+
+#: Where the report lands inside an export directory.
+#:
+#: A fixed name at the root, because #65 asks for the report to be *attached to
+#: the export output* and the output is a directory a format lays out however it
+#: likes. A dotfile would be invisible to the archive a caller downloads, and a
+#: name derived from the format would be one more thing two exporters could
+#: spell differently.
+EXPORT_REPORT_FILENAME: Final = "visionset-export-report.json"
+
+
+def _write_report(dest: Path, compatibility: ExportCompatibility) -> None:
+    """Put the report in the output, after the plugin has written its own files.
+
+    After, and not before: a plugin that clears its own subdirectory would
+    otherwise take it with it, and this is the one file the *kernel* promises is
+    there. It is also why the name is at the root rather than beside anything a
+    format arranges.
+
+    ``sort_keys`` for the reason ``canonical_bytes`` uses it: two exports of one
+    release must produce identical bytes, and a dict's iteration order is not
+    something to leave to chance in a file somebody will diff.
+    """
+    dest.joinpath(EXPORT_REPORT_FILENAME).write_text(
+        json.dumps(
+            # ``by_alias`` is the whole point: this file has to be key-for-key the
+            # document ``wire.export_compatibility`` and ``ExportCompatibilityOut``
+            # publish, or #65's "report format stable across three surfaces" would
+            # be true of the surfaces and false of the artifact.
+            compatibility.model_dump(mode="json", by_alias=True),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> ExportCompatibility:
+    """Judge one manifest against one format's declared capabilities.
+
+    Pure, and takes the manifest rather than reading one, so the two callers —
+    :meth:`ReleaseService.check_export` and :meth:`ReleaseService.export` —
+    cannot disagree about what a release contains.
+
+    **Geometry only, and modality deliberately not.** ``Exporter`` declares
+    ``supported_modalities`` and ``list_formats`` publishes it, but nothing here
+    judges against it: a :class:`ManifestAsset` carries ``asset_id``,
+    ``content_hash``, ``uri`` and the pixel dimensions, and **no modality**.
+    Adding one would change the shape of every manifest — and therefore every
+    release hash ever computed, which is the one number this whole subsystem
+    exists to keep stable.
+
+    Reading the modality off the live ``Asset`` instead would be worse: it would
+    make the report depend on something that can change after publication, and
+    the property that lets one document be shown in a dialog, attached to a
+    refusal and written into the output is precisely that it is derived from the
+    snapshot alone. Recorded rather than skipped quietly; a modality a format
+    cannot open would have to become a field on ``ManifestAsset``, behind a
+    ``MANIFEST_VERSION`` bump, which is its own decision.
+    """
+    geometries = exporter.supported_geometries
+    per_class: dict[str, tuple[GeometryType, int, set[UUID]]] = {}
+    for declared in manifest.classes:
+        per_class[declared.name] = (declared.geometry, 0, set())
+
+    excluded_annotations = 0
+    excluded_assets: set[UUID] = set()
+    for asset in manifest.assets:
+        for annotation in asset.annotations:
+            geometry, count, assets = per_class.get(
+                annotation.label_class,
+                # A class the manifest's own `classes` does not declare cannot
+                # happen — `SchemaChangeWouldOrphan` refuses to remove a class
+                # annotations depend on — but a report that dropped a label it
+                # could not place would be silently wrong, so it is placed by the
+                # geometry it actually carries.
+                (GeometryType(annotation.geometry.type), 0, set()),
+            )
+            per_class[annotation.label_class] = (geometry, count + 1, assets | {asset.asset_id})
+            if geometry not in geometries:
+                excluded_annotations += 1
+                excluded_assets.add(asset.asset_id)
+
+    classes = tuple(
+        ClassCompatibility(
+            label_class=name,
+            geometry=geometry,
+            supported=geometry in geometries,
+            annotations=count,
+            assets=len(assets),
+            reason=(
+                None
+                if geometry in geometries
+                else f"{exporter.format_name} cannot write {geometry.value} geometry"
+            ),
+        )
+        for name, (geometry, count, assets) in per_class.items()
+    )
+
+    return ExportCompatibility(
+        release_id=release.id,
+        format_name=exporter.format_name,
+        compatible=excluded_annotations == 0 and not excluded_assets,
+        format_is_lossy=exporter.lossy,
+        excluded_annotations=excluded_annotations,
+        excluded_assets=len(excluded_assets),
+        classes=classes,
+    )

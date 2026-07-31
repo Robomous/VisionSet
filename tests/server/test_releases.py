@@ -23,9 +23,17 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
-from tests.server._exports import LossyExporter, WritingExporter, with_exporters
+from tests.server._exports import (
+    BoxesOnlyExporter,
+    LossyExporter,
+    PolygonsOnlyExporter,
+    WritingExporter,
+    with_exporters,
+)
 from tests.server._flow import dataset_of, promoted_dataset
 from tests.server._runner import RecordingRunner
+
+from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME
 
 RECIPE = {"train": 0.6, "val": 0.2, "test": 0.2, "seed": 42}
 
@@ -346,7 +354,14 @@ def test_exporting_streams_back_an_archive_of_what_the_plugin_wrote(
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
-    assert _names_in(response.content) == {"manifest.json", "images/listing.txt"}
+    # …plus the compatibility report, which #65 attaches to every export
+    # output so the answer to "what would this format have dropped" travels
+    # with the bytes and not only with the refusal.
+    assert _names_in(response.content) == {
+        "manifest.json",
+        "images/listing.txt",
+        EXPORT_REPORT_FILENAME,
+    }
 
 
 def test_an_unknown_format_is_404_and_names_what_is_installed(
@@ -384,7 +399,7 @@ def test_the_lossy_retry_is_the_identical_request_plus_one_parameter(
     )
 
     assert response.status_code == 200
-    assert _names_in(response.content) == {"boxes-only.txt"}
+    assert _names_in(response.content) == {"boxes-only.txt", EXPORT_REPORT_FILENAME}
 
 
 def test_a_refused_lossy_export_writes_nothing_at_all(
@@ -457,3 +472,97 @@ def test_exporting_leaves_the_release_exactly_as_it_was(client: TestClient, rele
     client.post(f"/releases/{release}/export", params={"format": "writing"})
 
     assert client.get(f"/releases/{release}").json() == before
+
+
+# --- what a format would drop (#65) -------------------------------------------
+
+
+def test_the_pre_flight_says_a_release_is_carried_whole(client: TestClient, release: str) -> None:
+    with_exporters(client.app, BoxesOnlyExporter())
+
+    body = client.get(
+        f"/releases/{release}/export-compatibility", params={"format": "boxes-only"}
+    ).json()
+
+    assert body["compatible"] is True
+    assert (body["excluded_annotations"], body["excluded_assets"]) == (0, 0)
+    assert body["format"] == "boxes-only"
+    assert body["format_is_lossy"] is False
+    # Both declared classes appear, sorted, including the polygon one this flow's
+    # schema declares and nobody labeled with — a class with zero annotations
+    # excludes nothing, however unsupported its geometry, which is why the
+    # release above is `compatible` at all.
+    assert [one["label_class"] for one in body["classes"]] == ["lane", "sign"]
+    lane, sign = body["classes"]
+    assert (lane["supported"], lane["annotations"]) == (False, 0)
+    assert (sign["supported"], sign["reason"]) == (True, None)
+
+
+def test_the_pre_flight_names_what_would_be_dropped(client: TestClient, release: str) -> None:
+    with_exporters(client.app, PolygonsOnlyExporter())
+
+    body = client.get(
+        f"/releases/{release}/export-compatibility", params={"format": "polygons-only"}
+    ).json()
+
+    assert body["compatible"] is False
+    assert body["excluded_annotations"] > 0
+    (sign,) = [one for one in body["classes"] if not one["supported"]]
+    assert sign["reason"] == "polygons-only cannot write bbox geometry"
+
+
+def test_the_pre_flight_writes_nothing_a_later_read_can_see(
+    client: TestClient, release: str
+) -> None:
+    """A GET, and the release is immutable, so asking twice answers the same thing."""
+    with_exporters(client.app, PolygonsOnlyExporter())
+    url = f"/releases/{release}/export-compatibility"
+
+    first = client.get(url, params={"format": "polygons-only"})
+    second = client.get(url, params={"format": "polygons-only"})
+
+    assert first.json() == second.json()
+
+
+def test_an_unknown_format_is_404_from_the_pre_flight_too(client: TestClient, release: str) -> None:
+    with_exporters(client.app, BoxesOnlyExporter())
+
+    response = client.get(f"/releases/{release}/export-compatibility", params={"format": "nope"})
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "EXPORT_FORMAT_NOT_FOUND"
+
+
+def test_a_lossless_format_that_would_drop_a_class_is_refused_with_the_report(
+    client: TestClient, release: str
+) -> None:
+    """#65's second acceptance criterion, and the reason the report is in `detail`.
+
+    A client that gets this 409 can render a consent dialog from it without a
+    second round trip, and it is the same document the pre-flight returns.
+    """
+    with_exporters(client.app, PolygonsOnlyExporter())
+
+    response = client.post(f"/releases/{release}/export", params={"format": "polygons-only"})
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "LOSSY_EXPORT_NOT_CONSENTED"
+    carried = response.json()["detail"]["compatibility"]
+    assert carried["compatible"] is False
+    assert carried["excluded_annotations"] > 0
+    preview = client.get(
+        f"/releases/{release}/export-compatibility", params={"format": "polygons-only"}
+    )
+    assert carried == preview.json()
+
+
+def test_the_report_travels_inside_the_archive_as_well(client: TestClient, release: str) -> None:
+    with_exporters(client.app, PolygonsOnlyExporter())
+
+    response = client.post(
+        f"/releases/{release}/export",
+        params={"format": "polygons-only", "allow_lossy": "true"},
+    )
+
+    assert response.status_code == 200
+    assert EXPORT_REPORT_FILENAME in _names_in(response.content)

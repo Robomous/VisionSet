@@ -24,6 +24,7 @@ from PIL import Image as PillowImage
 from tests.fixtures.media import write_images
 from tests.mcp._flow import call
 
+from visionset.kernel.domain import GeometryType
 from visionset.kernel.services import WorkspaceService
 
 
@@ -158,7 +159,16 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
     assert ok(call("list_releases", project="road-signs"))["total"] == 1
     assert ok(call("verify_release", project="road-signs", tag="v1.0"))["ok"] is True
 
-    assert ok(call("list_formats"))["items"] == [{"name": "dummy", "lossy": False}]
+    assert ok(call("list_formats"))["items"] == [
+        {
+            "name": "dummy",
+            "lossy": False,
+            # #65: what the format can carry. `dummy` declares everything,
+            # which is what makes it the format that never refuses.
+            "geometries": sorted(one.value for one in GeometryType),
+            "modalities": ["image", "point_cloud", "video"],
+        }
+    ]
     exported = ok(
         call(
             "export_release",

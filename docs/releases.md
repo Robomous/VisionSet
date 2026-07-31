@@ -181,6 +181,74 @@ narrowing a contract, and this guards emitting an incomplete *copy* of something
 exactly as it was. The refusal happens before anything is created, so a refused export leaves no
 half-written directory behind.
 
+### What a format can carry, and what this release actually holds
+
+`lossy` is a blanket claim nobody can check. `Exporter.supported_geometries` is the checkable
+half of it: the set of `GeometryType` members the format can write. `supported_modalities` sits
+beside it, declared and published, and is read below.
+
+`ReleaseService.check_export(release_id, exporter)` judges one release's **frozen manifest**
+against one format's declaration and returns an `ExportCompatibility`:
+
+```json
+{
+  "release_id": "…", "format": "boxes-only", "compatible": false,
+  "format_is_lossy": false, "excluded_annotations": 1204, "excluded_assets": 310,
+  "classes": [
+    {"label_class": "lane", "geometry": "polygon", "supported": false,
+     "annotations": 1204, "assets": 310,
+     "reason": "boxes-only cannot write polygon geometry"},
+    {"label_class": "sign", "geometry": "bbox", "supported": true,
+     "annotations": 8800, "assets": 2400, "reason": null}
+  ]
+}
+```
+
+Three properties are worth stating, because each is a decision rather than a detail.
+
+**A class with zero annotations excludes nothing**, however unsupported its geometry. A schema
+that declares `mask` and holds no masks is carried whole by a format that cannot write one. The
+row is still published, with its zeros, because "this format cannot write masks and you have
+none" is an answer somebody is looking for.
+
+**The counts are per class and there are two of them.** `annotations` is what would be lost and
+`assets` is how wide the loss is — a thousand labels over a thousand images and the same thousand
+over ten are the same total and a very different dataset, which is the argument `DatasetStats`
+already makes.
+
+**It is computed from the manifest, never from live membership.** An export describes a release,
+and a release is a snapshot: curating an asset out of the trunk afterwards does not move the
+answer. That is what lets one document be shown in a consent dialog, attached to a refusal and
+written into the output without three chances to disagree.
+
+**Modality is declared but not yet judged against.** A `ManifestAsset` carries no modality —
+adding one would change the shape of every manifest and therefore every release hash ever
+computed — and reading it off the live `Asset` would make the report depend on something that
+moves after publication. `supported_modalities` is published on `GET /formats` and in
+`list_formats` so a caller can see what a format claims; making it part of the verdict needs a
+field on `ManifestAsset` behind a `MANIFEST_VERSION` bump, which is its own decision.
+
+### Consent is required if *either* says so
+
+`export` refuses with `LossyExportNotConsented` when the format declares itself lossy **or** when
+the report says this release would lose something. The first half is what #30 shipped and has not
+moved; the second is the case a capability list makes visible — a format declaring itself
+lossless still cannot silently drop a geometry it never claimed to write.
+
+The refusal carries the report, so a caller can say what it is consenting to without asking
+twice: `LossyExportNotConsented.compatibility` in Python, `detail.compatibility` on the API's 409,
+and — because the MCP envelope is four keys and stays four keys — a hint naming `check_export` for
+an agent.
+
+### Every export writes its own report
+
+A successful export writes **`visionset-export-report.json`** at the root of `dest`: the same
+document, key for key. It is the kernel's file rather than the format's, so it is written *after*
+the plugin runs (a plugin that clears its own subdirectory would otherwise take it along) and is
+**excluded from `ExportResult.file_count` on both sides** — not counted when written, and skipped
+when an earlier run left one behind. That is what keeps "an exporter that writes nothing reports
+zero" true, and keeps exporting twice into one directory agreeing with itself.
+
 ### The destination is the caller's
 
 `dest` is created if it is not there and is **not** emptied if it is — deleting files under a
@@ -229,6 +297,16 @@ prints that list without opening a workspace at all.
 `dummy` — the only exporter this repository ships — writes nothing, so a `file_count` of 0 in its
 report is an export that ran, not one that failed.
 
+When an export does leave something behind, the names go to **stderr** with the rest of the prose,
+so `visionset export … | xargs` still receives exactly the directory:
+
+```
+Not carried by boxes-only: lane (1204). See visionset-export-report.json.
+```
+
+`--json` carries the whole report under `compatibility`, for the caller that never opens the
+directory.
+
 ## Over HTTP
 
 The [API](api.md) is this service, one route per method, plus the format listing.
@@ -240,6 +318,7 @@ GET  /releases/{id}                                   → 200 ReleaseOut
 GET  /releases/{id}/manifest                          → 200 application/json, raw
 GET  /releases/{id}/verify                            → 200 ReleaseVerificationOut
 GET  /releases/{id}/assignment                        → 200 SplitAssignmentOut
+GET  /releases/{id}/export-compatibility?format=      → 200 ExportCompatibilityOut
 POST /releases/{id}/export?format=&allow_lossy=       → 200 application/zip
 GET  /formats                                         → 200 FormatPage
 ```
@@ -271,7 +350,14 @@ describes *this* export and not the last one.
 
 **Which formats exist is a property of the deployment**, so `GET /formats` answers it rather
 than this document. `lossy` is on the row so a client knows before it POSTs whether the export
-will need `allow_lossy=true`, instead of discovering it by getting a 409.
+will need `allow_lossy=true`, instead of discovering it by getting a 409; `geometries` and
+`modalities` beside it are what the format declares it can write.
+
+**`export-compatibility` is the pre-flight, and it is optional.** Same release, same format name,
+and the same document the export refuses with and writes into its own output — a client showing a
+consent dialog asks first, one that would rather be refused does not have to. A GET, because it
+writes nothing and a release is immutable, so the answer is as stable as the release is. The 409
+carries the identical body under `detail.compatibility`.
 
 ## Errors
 
@@ -287,7 +373,7 @@ will need `allow_lossy=true`, instead of discovering it by getting a 409.
 | `UnserializableManifest` | An annotation carries a NaN or infinite coordinate. `Geometry` accepts any float, so such a label can be stored; canonical JSON cannot express it, and writing `null` or the bare token `NaN` would lose data or produce a document no other tool can parse. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
 | `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service — the kernel never sees a name. |
-| `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Retryable with the flag, which is why a client must branch on the code and never on the 409. |
+| `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Raised when the format declares itself lossy **or** when this release's own report is not clean, and it carries that report. Retryable with the flag, which is why a client must branch on the code and never on the 409. |
 
 
 ## In the browser

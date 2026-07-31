@@ -92,6 +92,15 @@ _HINTS: Final[dict[type[BaseException], str]] = {
         "Call `backfill_thumbnails` for this project to render the missing "
         "previews, or ask for `full=true` to read the original bytes."
     ),
+    # The envelope stays four keys — see the module docstring — so the report
+    # itself is not folded into it. What an agent needs is where to read it, and
+    # `check_export` answers with the exact document this refusal was computed
+    # from, for the same release and the same format.
+    LossyExportNotConsented: (
+        "Call `check_export` with the same release and format to see exactly "
+        "which classes would be dropped and how many annotations that is, then "
+        "re-run `export_release` with `allow_lossy=true` to accept the loss."
+    ),
 }
 """A next step this surface can add under the kernel's sentence.
 

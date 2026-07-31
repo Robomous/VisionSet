@@ -550,6 +550,20 @@ class LossyExportNotConsented(VisionSetError):
     stays intact. Nothing in the workspace changes either way.
     """
 
+    #: What the format would drop, attached since #65.
+    #:
+    #: A class attribute with a ``None`` default and **not** a constructor
+    #: parameter, exactly as ``VisionSetError.index`` is — so this error is still
+    #: constructible from one message, ``ERROR_RULES``' exact-correspondence test
+    #: is untouched, and ``test_every_mapped_error_can_be_constructed_with_one_argument``
+    #: still holds. The service sets it as a keyword.
+    compatibility: object | None = None
+
+    def __init__(self, message: str, *, compatibility: object | None = None) -> None:
+        super().__init__(message)
+        if compatibility is not None:
+            self.compatibility = compatibility
+
 
 class ThumbnailNotCached(VisionSetError):
     """No preview has been rendered for this asset.

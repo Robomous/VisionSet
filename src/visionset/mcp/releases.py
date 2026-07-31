@@ -119,6 +119,42 @@ def verify_release(project: ProjectRef, tag: TagRef) -> dict[str, Any]:
     return wire.release_verification(report)
 
 
+def check_export(
+    project: ProjectRef,
+    tag: TagRef,
+    format: Annotated[str, Field(description="An installed exporter's name. See `list_formats`.")],
+) -> dict[str, Any]:
+    """Say what a format would drop from a release, without writing anything.
+
+    Call this before `export_release` when the answer matters. It reads the
+    release's frozen manifest and judges every class in it against what the
+    format declares it can write, so the numbers are exact rather than estimated:
+    `excluded_annotations` is how many labels would not survive and
+    `excluded_assets` is how many assets would arrive with at least one label
+    missing.
+
+    `compatible` true means this format loses nothing from this release, and
+    `export_release` will run without `allow_lossy`. False means it will refuse
+    until you pass it — and the same report comes back with that refusal and is
+    written into the export directory as `visionset-export-report.json`, so
+    calling this first is a convenience, never a requirement.
+
+    A class with zero annotations never makes a release incompatible, however
+    unsupported its geometry: a schema that declares `mask` and holds no masks
+    loses nothing. Those rows are still listed, with their zeros, because "this
+    format cannot write masks and you have none" is worth being able to read.
+
+    `compatible` is not the same question as a format's `lossy` flag in
+    `list_formats`. That flag covers everything a geometry list cannot see —
+    attributes, confidence, provenance — and is true of the format forever;
+    this is about the labels this release actually holds.
+    """
+    with opened_workspace() as workspace:
+        release = resolve_release(workspace, project, tag)
+        report = ReleaseService(workspace).check_export(release.id, exporter(format))
+    return wire.export_compatibility(report)
+
+
 def export_release(
     project: ProjectRef,
     tag: TagRef,
@@ -149,10 +185,17 @@ def export_release(
     exports at separate directories.
 
     A format that cannot express everything the release holds — one that carries
-    boxes but not polygons, say — is declared lossy by the format itself, and
-    refuses until you pass `allow_lossy=true`. That is a different gate from
-    `confirm`: nothing is destroyed, the release stays exactly as it was, and
-    what you are consenting to is an incomplete copy.
+    boxes but not polygons, say — refuses until you pass `allow_lossy=true`. That
+    is a different gate from `confirm`: nothing is destroyed, the release stays
+    exactly as it was, and what you are consenting to is an incomplete copy. Two
+    things trigger it: a format that declares itself lossy, and a format whose
+    declared capabilities cannot carry a class this release actually uses. Call
+    `check_export` for the exact numbers before deciding, or read the same report
+    off the refusal.
+
+    Every successful export also writes `visionset-export-report.json` into
+    `dest`, saying what was and was not carried. It is the kernel's file, not the
+    format's, and it is excluded from `file_count`.
     """
     destination = Path(dest)
     # An exporter writes into `dest` and creates it if missing, so a path that

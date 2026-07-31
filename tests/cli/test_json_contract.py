@@ -36,6 +36,7 @@ from tests.fixtures.samples import (
     COUNTS,
     DATASET,
     DATASET_STATS,
+    EXPORT_COMPATIBILITY,
     EXPORT_RESULT,
     INGEST_FAILURE,
     INGEST_JOB,
@@ -101,6 +102,19 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         models.ReleaseVerificationOut,
     ),
     ("export_format", wire.export_format(DummyExporter()), models.FormatOut),
+    # #65's report is published by all three surfaces, so it is gated like every
+    # other shared shape — and the on-disk copy is checked against the wire
+    # projection in `tests/kernel/test_release_service.py`, which closes the loop.
+    (
+        "export_compatibility",
+        wire.export_compatibility(EXPORT_COMPATIBILITY),
+        models.ExportCompatibilityOut,
+    ),
+    (
+        "class_compatibility",
+        wire.class_compatibility(EXPORT_COMPATIBILITY.classes[0]),
+        models.ClassCompatibilityOut,
+    ),
 ]
 
 IDS = [label for label, _, _ in PAIRS]

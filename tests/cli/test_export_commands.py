@@ -15,15 +15,36 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from pathlib import Path
+from uuid import UUID
 
 import pytest
-from tests.cli._flow import payload, published_release, run, workspace
+from tests.cli._flow import (
+    jobs_of,
+    ok,
+    payload,
+    published_release,
+    run,
+    started_batch,
+    workspace,
+)
 from typer.testing import CliRunner
 
 from visionset.cli.main import app
 from visionset.formats import registry
-from visionset.kernel.domain import Manifest, Release
-from visionset.kernel.services import WORKSPACE_ENV_VAR
+from visionset.kernel.domain import (
+    Annotation,
+    BboxGeometry,
+    GeometryType,
+    Manifest,
+    Release,
+)
+from visionset.kernel.services import (
+    EXPORT_REPORT_FILENAME,
+    WORKSPACE_ENV_VAR,
+    AnnotationService,
+    JobService,
+    WorkspaceService,
+)
 
 
 class LossyExporter:
@@ -31,6 +52,12 @@ class LossyExporter:
 
     format_name = "lossy-sample"
     lossy = True
+
+    #: Everything, so the refusal under test is the *flag's* and not the report's
+    #: — #65 made consent required when either says so, and a double declaring a
+    #: narrower set would make this test pass for the other reason.
+    supported_geometries = frozenset(GeometryType)
+    supported_modalities = frozenset({"image"})
 
     def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
         (dest / "labels.txt").write_text(f"{len(manifest.assets)}\n", encoding="utf-8")
@@ -90,7 +117,27 @@ def test_format_list_needs_no_workspace_at_all(
 def test_format_list_json_is_the_envelope() -> None:
     result = CliRunner().invoke(app, ["format", "list", "--json"])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout)["items"] == [{"name": "dummy", "lossy": False}]
+    # #65 gave a format its capability declaration, so the row carries what it can
+    # express as well as whether it loses anything. `dummy` writes nothing, so it
+    # claims everything — declaring less would make the report describe a loss
+    # that never happens.
+    assert json.loads(result.stdout)["items"] == [
+        {
+            "name": "dummy",
+            "lossy": False,
+            "geometries": [
+                "bbox",
+                "classification_tag",
+                "cuboid_3d",
+                "keypoints",
+                "mask",
+                "polygon",
+                "polyline",
+                "polyline_3d",
+            ],
+            "modalities": ["image", "point_cloud", "video"],
+        }
+    ]
 
 
 # --- export ------------------------------------------------------------------
@@ -122,13 +169,17 @@ def test_the_dummy_exporter_reports_zero_files_and_that_is_correct(
         "--out",
         str(tmp_path / "out"),
     )
-    assert document == {
-        "release_id": document["release_id"],
-        "format": "dummy",
-        "directory": str(tmp_path / "out"),
-        "file_count": 0,
-        "total_bytes": 0,
-    }
+    # Still zero, and #65 is why that took work: the compatibility report is
+    # written into the directory too, so it is excluded from the walk on both
+    # sides — not counted when it is written, and skipped when an earlier run
+    # left one behind.
+    assert document["file_count"] == 0
+    assert document["total_bytes"] == 0
+    assert document["format"] == "dummy"
+    assert document["directory"] == str(tmp_path / "out")
+    # And the report rides on the result, for the caller that never sees the bytes.
+    assert document["compatibility"]["compatible"] is True
+    assert document["compatibility"]["excluded_annotations"] == 0
 
 
 def test_an_unknown_format_exits_one_naming_what_is_installed(root: Path, tmp_path: Path) -> None:
@@ -195,3 +246,120 @@ def test_a_lossy_format_exits_one_until_the_flag(root: Path, tmp_path: Path, los
     document = payload(root, *argv, "--allow-lossy")
     assert document["file_count"] == 1
     assert (out / "labels.txt").is_file()
+
+
+class BoxesOnlyExporter:
+    """Lossless by its own declaration, and unable to write the geometry in play.
+
+    The pair #65 exists for. `lossy` is false, so the refusal below is about what
+    the release holds and not about anything the format said about itself.
+    """
+
+    format_name = "boxes-only"
+    lossy = False
+
+    supported_geometries = frozenset({GeometryType.CLASSIFICATION_TAG})
+    supported_modalities = frozenset({"image"})
+
+    def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
+        (dest / "tags.txt").write_text("nothing to write\n", encoding="utf-8")
+
+
+@pytest.fixture()
+def boxes_only(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    real = registry.exporters
+
+    def with_it() -> dict[str, object]:
+        return {**real(), BoxesOnlyExporter.format_name: BoxesOnlyExporter()}
+
+    monkeypatch.setattr(registry, "exporters", with_it)
+    yield
+
+
+def _labeled_release(root: Path, tmp_path: Path, tag: str = "v1.0") -> tuple[str, Path]:
+    """A release that actually holds labels, which the CLI alone cannot produce.
+
+    ``visionset job mark --progress annotated`` records that somebody labeled an
+    asset while the CLI writes no labels — the wart ``docs/jobs.md`` states out
+    loud — so every release built purely through this surface carries
+    ``annotation_count: 0``, and a report over it is compatible with *any* format
+    however narrow. Writing one box through the kernel is what gives #65's
+    refusal something to exclude.
+    """
+    name, batch = started_batch(root, tmp_path)
+    workspace = WorkspaceService.open(root)
+    try:
+        jobs = JobService(workspace)
+        annotations = AnnotationService(workspace)
+        for identifier in jobs_of(root, batch):
+            job_id = UUID(identifier)
+            jobs.start(job_id)
+            for asset in jobs.next_pending(job_id, 100):
+                annotations.add(
+                    job_id,
+                    [
+                        Annotation(
+                            asset_id=asset.id,
+                            label_class="sign",
+                            schema_version=1,
+                            geometry=BboxGeometry(x=1.0, y=2.0, width=8.0, height=6.0),
+                            provenance="human",
+                        )
+                    ],
+                )
+            jobs.complete(job_id)
+    finally:
+        workspace.close()
+    ok(root, "batch", "complete", batch)
+    ok(root, "batch", "promote", batch)
+    ok(root, "release", "publish", "--tag", tag, "--project", name)
+    return name, tmp_path / "out"
+
+
+def test_a_lossless_format_that_would_drop_a_class_is_refused_too(
+    root: Path, tmp_path: Path, boxes_only: None
+) -> None:
+    name, out = _labeled_release(root, tmp_path)
+
+    refused = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "boxes-only",
+        "--out",
+        str(out),
+    )
+
+    assert refused.exit_code == 1, refused.output
+    assert not out.exists()
+
+
+def test_the_excluded_classes_are_named_on_stderr_so_stdout_stays_the_path(
+    root: Path, tmp_path: Path, boxes_only: None
+) -> None:
+    """`visionset export ... | xargs` still gets exactly the directory."""
+    name, out = _labeled_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "boxes-only",
+        "--out",
+        str(out),
+        "--allow-lossy",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == str(out)
+    assert "Not carried by boxes-only" in result.stderr
+    assert EXPORT_REPORT_FILENAME in result.stderr
+    assert (out / EXPORT_REPORT_FILENAME).is_file()

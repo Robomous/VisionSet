@@ -101,6 +101,8 @@ from visionset.kernel import (
     WorkspaceFormatTooNew,
     WorkspaceNotEmpty,
 )
+from visionset.kernel.domain import ExportCompatibility
+from visionset.server.models import ExportCompatibilityOut
 
 _logger = logging.getLogger(__name__)
 """Never call ``logging.basicConfig`` here — records propagate to root, which
@@ -348,6 +350,20 @@ def _detail_for(exc: BaseException) -> dict[str, Any] | None:
         # directory the *operator* pointed at, not the client — putting it in a
         # response body hands out server filesystem layout. Do not add it back.
         return {"reason": exc.reason}
+    if isinstance(exc, LossyExportNotConsented) and isinstance(
+        exc.compatibility, ExportCompatibility
+    ):
+        # The report, on the refusal itself — #65's second acceptance criterion.
+        # A client that gets this 409 has everything it needs to render a consent
+        # dialog without a second round trip, and it is the *same document*
+        # ``GET /releases/{id}/export-compatibility`` returns and the export
+        # writes into its own output. The ``isinstance`` is not defensive
+        # padding: ``LossyExportNotConsented.compatibility`` is typed ``object |
+        # None`` because ``kernel/errors.py`` may not import a domain model, so
+        # this is where the type comes back.
+        return {
+            "compatibility": ExportCompatibilityOut.of(exc.compatibility).model_dump(mode="json")
+        }
     if isinstance(exc, VisionSetError) and exc.index is not None:
         # Which item of a bulk request was refused. The kernel sets this on the
         # way out of a per-item loop; everything else leaves it ``None``, so the

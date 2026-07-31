@@ -13,7 +13,7 @@ from visionset.kernel.services.dataset_service import DatasetService
 from visionset.kernel.services.ingest_service import IngestService
 from visionset.kernel.services.job_service import JobService
 from visionset.kernel.services.project_service import ProjectService
-from visionset.kernel.services.release_service import ReleaseService
+from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME, ReleaseService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.token_service import TokenService
@@ -28,6 +28,7 @@ from visionset.kernel.services.workspace_service import (
 __all__ = [
     "BLOBS_DIRNAME",
     "DB_FILENAME",
+    "EXPORT_REPORT_FILENAME",
     "WORKSPACE_ENV_VAR",
     "AnnotationService",
     "BatchService",

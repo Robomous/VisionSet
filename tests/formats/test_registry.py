@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from visionset.formats.registry import exporter, exporters, pick
-from visionset.kernel.domain import Annotation, Manifest, Release
+from visionset.kernel.domain import Annotation, GeometryType, Manifest, Release
 from visionset.kernel.errors import ExportFormatNotFound
 
 
@@ -30,6 +30,12 @@ class _AnImporter:
 class _AnExporter:
     format_name = "an-exporter"
     lossy = False
+
+    #: #65's capability declaration. Everything, so this double's *subject* stays
+    #: what it was — the file it writes, or the flag it sets — rather than a
+    #: geometry report nobody wrote this test for.
+    supported_geometries = frozenset(GeometryType)
+    supported_modalities = frozenset({"image"})
 
     def export(self, release: Release, manifest: Manifest, dest: Path) -> None:
         return None
