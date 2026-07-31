@@ -9,6 +9,33 @@ Six internal milestones (M1–M6) got here. The first five ended in a **git tag 
 `v0.0.1-alpha.1` … `v0.0.1-alpha.5`, with `VERSION` sitting at `0.0.1.dev0` throughout, because
 nothing was being distributed. This is the first version that is.
 
+## [Unreleased]
+
+### Fixed
+
+- **The export report said polygons were not carried while YOLO and VOC wrote them as bounding
+  boxes** (#158). `Exporter.supported_geometries` carried one meaning and was read with two
+  intents: the compatibility report treated an unsupported geometry as absent from the output,
+  while both lossy exporters converted it and wrote it. A user was told three annotations would be
+  lost, consented, and received two of them back as boxes under the polygon's own class name — well
+  formed in every way a validator can check, and not what the report promised.
+
+  `Exporter` gained **`degraded_geometries`** (`{polygon}` for `yolo` and `voc`, empty for `coco`
+  and `dummy`), and `ClassCompatibility.supported: bool` became **`status`**, one of `supported` /
+  `degraded` / `dropped`. `excluded_annotations` and `excluded_assets` now count **dropped only**,
+  with `degraded_annotations` / `degraded_assets` beside them; every `reason` says what actually
+  happens to that class. `compatible` is still false for either, so the `allow_lossy` gate did not
+  move — only the accounting became true. `GET /formats` publishes `degraded_geometries`, and
+  `visionset export` prints the two outcomes on separate lines.
+
+  Shipped with the guard that was missing: `tests/formats/test_report_agreement.py` exports one
+  release through **every installed format** and counts the annotations in the artifacts on disk,
+  so a report that disagrees with its own output fails — and a fourth exporter either lands a
+  counter there or is declared non-writing.
+
+  **Breaking for API clients**: `ClassCompatibilityOut.supported` is replaced by `status`, and
+  `ExportCompatibilityOut` gains two fields. Regenerate any generated client.
+
 ## [0.0.1b1] — 2026-07-31
 
 The first published artifact: video in, a training dataset out, and nothing to install but a

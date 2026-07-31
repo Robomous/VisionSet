@@ -651,6 +651,7 @@ class _Recording:
     #: #65's capability declaration. Everything, so this double's subject stays
     #: what it was rather than a geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def __init__(self) -> None:
@@ -681,6 +682,7 @@ class _Lossy:
     #: #65's capability declaration. Everything, so this double's subject stays
     #: what it was rather than a geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def __init__(self) -> None:
@@ -747,6 +749,7 @@ def test_an_exporter_that_writes_nothing_reports_zero(tmp_path: Path) -> None:
         #: #65's capability declaration. Everything, so this double's subject stays
         #: what it was rather than a geometry report nobody wrote this test for.
         supported_geometries = frozenset(GeometryType)
+        degraded_geometries: frozenset[GeometryType] = frozenset()
         supported_modalities = frozenset({"image"})
 
         def export(
@@ -913,6 +916,7 @@ class _BoxesOnly:
     format_name = "boxes-only"
     lossy = False
     supported_geometries = frozenset({GeometryType.BBOX})
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(
@@ -988,7 +992,7 @@ def test_the_report_counts_annotations_and_assets_separately(tmp_path: Path) -> 
     assert (report.excluded_annotations, report.excluded_assets) == (2, 2)
     (lane,) = report.excluded
     assert (lane.label_class, lane.annotations, lane.assets) == ("lane", 2, 2)
-    assert lane.reason == "boxes-only cannot write polygon geometry"
+    assert lane.reason == "boxes-only cannot place a polygon and drops it"
     # Sorted by name, so two reports of one release are the same document.
     assert [one.label_class for one in report.classes] == ["lane", "sign"]
     fixture.close()

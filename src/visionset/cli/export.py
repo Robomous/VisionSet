@@ -87,8 +87,20 @@ def export(
     # still gets exactly the directory. Named classes with a count rather than a
     # total, because "polygon, 1204" is what somebody acts on and a bare total is
     # not; the file in the output has the rest.
+    #
+    # Two lines, not one, and #158 is why: the old single "Not carried" line was
+    # printed for classes the exporter then went on to write as boxes, so the one
+    # sentence a user reads about their export was wrong about half of what it
+    # listed. What disappears and what arrives coarser are different decisions.
     excluded = result.compatibility.excluded
     if excluded:
         listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in excluded)
         note(f"Not carried by {result.format_name}: {listed}. See {EXPORT_REPORT_FILENAME}.")
+    degraded = result.compatibility.degraded
+    if degraded:
+        listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in degraded)
+        note(
+            f"Written in a reduced form by {result.format_name}: {listed}. "
+            f"See {EXPORT_REPORT_FILENAME}."
+        )
     typer.echo(str(result.directory))

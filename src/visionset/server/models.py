@@ -60,6 +60,7 @@ from visionset.kernel.domain import (
     BySize,
     ClassCompatibility,
     ClassCount,
+    ClassExportStatus,
     ClassificationGeometry,
     Dataset,
     DatasetChange,
@@ -1123,7 +1124,11 @@ class ClassCompatibilityOut(BaseModel):
 
     label_class: str
     geometry: GeometryType
-    supported: bool
+    # Three-valued since #158, replacing `supported: bool`. `supported` answered
+    # "written intact?" where `_compatibility` set it and was read as "written at
+    # all?" everywhere else, so a polygon in a YOLO export was reported absent and
+    # written as a box. `dropped` is absent, `degraded` is present and reduced.
+    status: ClassExportStatus
     annotations: int
     assets: int
     reason: str | None = None
@@ -1133,7 +1138,7 @@ class ClassCompatibilityOut(BaseModel):
         return cls(
             label_class=compatibility.label_class,
             geometry=compatibility.geometry,
-            supported=compatibility.supported,
+            status=compatibility.status,
             annotations=compatibility.annotations,
             assets=compatibility.assets,
             reason=compatibility.reason,
@@ -1152,8 +1157,11 @@ class ExportCompatibilityOut(BaseModel):
     format: str
     compatible: bool
     format_is_lossy: bool
+    # Dropped only. The count that used to fold degraded annotations in is #158.
     excluded_annotations: int
     excluded_assets: int
+    degraded_annotations: int
+    degraded_assets: int
     classes: list[ClassCompatibilityOut]
 
     @classmethod
@@ -1165,6 +1173,8 @@ class ExportCompatibilityOut(BaseModel):
             format_is_lossy=compatibility.format_is_lossy,
             excluded_annotations=compatibility.excluded_annotations,
             excluded_assets=compatibility.excluded_assets,
+            degraded_annotations=compatibility.degraded_annotations,
+            degraded_assets=compatibility.degraded_assets,
             classes=[ClassCompatibilityOut.of(one) for one in compatibility.classes],
         )
 
@@ -1202,6 +1212,10 @@ class FormatOut(BaseModel):
     # The checkable half of `lossy`, added by #65. Sorted, because a set has no
     # order and a wire shape must: two calls to one build have to agree.
     geometries: list[str] = []
+    # Geometries this format writes in a reduced form — a polygon arriving as its
+    # bounding box. #158: `geometries` alone reads as the whole answer, and for
+    # `yolo` the whole answer left out that a polygon is written at all.
+    degraded_geometries: list[str] = []
     modalities: list[str] = []
 
     @classmethod
@@ -1210,6 +1224,7 @@ class FormatOut(BaseModel):
             name=exporter.format_name,
             lossy=exporter.lossy,
             geometries=sorted(one.value for one in exporter.supported_geometries),
+            degraded_geometries=sorted(one.value for one in exporter.degraded_geometries),
             modalities=sorted(exporter.supported_modalities),
         )
 

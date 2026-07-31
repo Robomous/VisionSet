@@ -158,6 +158,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "name": "coco",
                 "lossy": False,
                 "geometries": ["bbox", "polygon"],
+                "degraded_geometries": [],
                 "modalities": ["image"],
             },
             {
@@ -166,6 +167,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 # #65: what the format can carry. `dummy` declares everything,
                 # which is what makes it the format that never refuses.
                 "geometries": sorted(one.value for one in GeometryType),
+                "degraded_geometries": [],
                 "modalities": ["image", "point_cloud", "video"],
             },
             {
@@ -174,6 +176,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "name": "voc",
                 "lossy": True,
                 "geometries": ["bbox"],
+                "degraded_geometries": ["polygon"],
                 "modalities": ["image"],
             },
             {
@@ -183,6 +186,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "name": "yolo",
                 "lossy": True,
                 "geometries": ["bbox"],
+                "degraded_geometries": ["polygon"],
                 "modalities": ["image"],
             },
         ],
@@ -250,6 +254,7 @@ class LossyExporter:
     #: what it was — the file it writes, or the flag it sets — rather than a
     #: geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(
@@ -310,6 +315,7 @@ class PolygonsOnlyExporter:
     lossy = False
 
     supported_geometries = frozenset({GeometryType.POLYGON})
+    degraded_geometries: frozenset[GeometryType] = frozenset()
     supported_modalities = frozenset({"image"})
 
     def export(
@@ -344,8 +350,11 @@ def test_check_export_reports_what_a_format_would_drop(
     assert report["format"] == "polygons-probe"
     assert report["format_is_lossy"] is False
     assert report["excluded_annotations"] == 1
-    (sign,) = [one for one in report["classes"] if not one["supported"]]
-    assert sign["reason"] == "polygons-probe cannot write bbox geometry"
+    (sign,) = [one for one in report["classes"] if one["status"] != "supported"]
+    # Dropped, not degraded: this probe declares no `degraded_geometries`, so a
+    # box it cannot write is genuinely absent from the output.
+    assert sign["status"] == "dropped"
+    assert sign["reason"] == "polygons-probe cannot place a bbox and drops it"
 
 
 def test_a_format_that_carries_everything_reports_compatible(

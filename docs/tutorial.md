@@ -215,9 +215,15 @@ boxes. VisionSet works out exactly what that costs *before* writing anything, te
 with counts, and writes the same report into the export as
 `visionset-export-report.json`.
 
+It says which of two different things happens to each class, because they are different decisions:
+
 ```
-Not carried by yolo: lane (37). See visionset-export-report.json.
+Written in a reduced form by yolo: lane (37). See visionset-export-report.json.
+Not carried by yolo: weather (12). See visionset-export-report.json.
 ```
+
+The `lane` polygons *are* in your labels, as boxes; the `weather` tags are not in them at all —
+YOLO has nowhere to put a label with no location.
 
 Choose `--format coco` instead and no consent is needed at all: COCO carries boxes and polygons
 natively, and everything it has no field for rides in a `visionset` object per annotation. That

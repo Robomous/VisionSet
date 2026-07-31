@@ -107,6 +107,11 @@ class CocoExporter:
     #: refuses a release holding one, by class and with a count.
     supported_geometries = frozenset({GeometryType.BBOX, GeometryType.POLYGON})
 
+    #: Empty, and it is the interesting empty set of the four: COCO writes a
+    #: polygon *as a polygon*, with the shoelace area rather than the box's, so it
+    #: reduces nothing. #158's regression guard is that this report did not move.
+    degraded_geometries: frozenset[GeometryType] = frozenset()
+
     supported_modalities = frozenset({"image"})
 
     def export(

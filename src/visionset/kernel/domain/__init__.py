@@ -61,6 +61,7 @@ from visionset.kernel.domain.project import Project
 from visionset.kernel.domain.release import (
     MANIFEST_VERSION,
     ClassCompatibility,
+    ClassExportStatus,
     ExportCompatibility,
     ExportResult,
     Manifest,
@@ -153,6 +154,7 @@ __all__ = [
     "DatasetStats",
     "DomainEvent",
     "ClassCompatibility",
+    "ClassExportStatus",
     "ExportCompatibility",
     "ExportResult",
     "Geometry",
