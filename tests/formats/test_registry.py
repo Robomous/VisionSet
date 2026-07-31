@@ -64,10 +64,13 @@ def test_exporters_are_keyed_by_what_they_call_themselves() -> None:
 
 
 def test_an_unknown_format_is_refused_by_name() -> None:
+    # A name nothing will ever register. It used to be "coco", which #63 made
+    # real — a test whose subject is "not installed" has to name something that
+    # stays that way.
     with pytest.raises(ExportFormatNotFound) as refusal:
-        exporter("coco")
+        exporter("not-a-format")
 
-    assert "coco" in str(refusal.value)
+    assert "not-a-format" in str(refusal.value)
 
 
 def test_the_refusal_lists_what_is_actually_installed() -> None:

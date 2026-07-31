@@ -153,6 +153,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
     assert payload(call("list_formats")) == {
         "items": [
             {
+                # #63. Lossless: boxes and polygons are native, and everything
+                # COCO has no field for rides in a `visionset` object.
+                "name": "coco",
+                "lossy": False,
+                "geometries": ["bbox", "polygon"],
+                "modalities": ["image"],
+            },
+            {
                 "name": "dummy",
                 "lossy": False,
                 # #65: what the format can carry. `dummy` declares everything,
@@ -170,7 +178,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
         ],
-        "total": 2,
+        "total": 3,
     }
 
 

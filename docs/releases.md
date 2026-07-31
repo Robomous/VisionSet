@@ -309,6 +309,50 @@ confidence and provenance never survive — so every export in this format asks 
 but its shape is gone, so #65's report counts it as not carried and says which classes and how
 many. A classification tag has no location at all and is dropped rather than given an invented box.
 
+### The COCO format
+
+`coco` writes COCO instances JSON — **one file per split**, under
+`annotations/instances_<fold>.json`, beside the same `images/<fold>/` layout YOLO uses.
+
+**v1 had two COCO exporters and neither described a dataset.** One skipped every annotation that
+was not a box, the other every one that was not a polygon, so a project holding both — the
+ordinary case, and the reason a schema declares a geometry per class — had to pick an export and
+silently lose the other half. There is one exporter here: COCO has always carried both, and
+`bbox` is a required field on every annotation whether or not it also has a `segmentation`.
+
+**`area` is the polygon's own area, by the shoelace formula, not its bounding box's.** v1 wrote
+`width * height` for a segmentation, which overstates a triangle by exactly two and any concave
+shape by more. That number is not decoration: `pycocotools` buckets detections into
+small/medium/large by it, so every evaluation against such a file reports the wrong breakdown and
+nothing says so.
+
+**This format is not lossy, and that is the point of having a second one.**
+`supported_geometries` is `{bbox, polygon}`, and everything COCO has no field for — attributes,
+confidence, provenance, the annotation's own id — rides in a `"visionset"` object on each
+annotation. COCO is JSON and every reader tolerates keys it does not know; one nested object
+cannot collide with a future COCO field the way four top-level keys could. So a release of boxes
+and polygons exports **clean, with no consent at all**, and #65's report is what refuses a release
+holding a classification tag — which COCO genuinely has nowhere to put.
+
+Smaller decisions, each of which a reader can see:
+
+- **Category ids are 1-based**, COCO's convention rather than ours: id 0 is conventionally
+  background and `pycocotools` treats a missing category id as an error. The order is the frozen
+  schema's, so a class nobody used still has its id.
+- **Image and annotation ids restart at 1 in every fold.** `pycocotools` loads one file at a time
+  and each is its own dataset; ids continuing across folds would leave `instances_val.json`
+  starting at an arbitrary number, which reads as a file with rows missing.
+- **A box gets an empty `segmentation`**, not its own rectangle. A box says where something is,
+  not what shape it is, and writing the rectangle would claim the object fills it — which a mask
+  consumer takes literally.
+- **`iscrowd` is always 0.** A `1` means an RLE region covering many instances, which the domain
+  cannot represent.
+- **`info` carries the release**: tag, publication moment, and the manifest hash — so an export
+  traces back to a release that can be re-verified. Nothing reads the clock, which is why two
+  exports of one release are byte-identical.
+- **`licenses` has one entry named `unspecified`.** VisionSet records no licensing information
+  about an asset anywhere, so inventing one would be a claim nobody made.
+
 ### The destination is the caller's
 
 `dest` is created if it is not there and is **not** emptied if it is — deleting files under a
@@ -355,7 +399,7 @@ prints that list without opening a workspace at all.
 
 `--allow-lossy` is the third gate word, never folded into `--yes` or `--allow-destructive`. And
 `dummy` writes nothing, so a `file_count` of 0 in its report is an export that ran, not one that
-failed. `yolo` is the real one; see [the YOLO format](#the-yolo-detection-format) below.
+failed. The real ones are [YOLO](#the-yolo-detection-format) and [COCO](#the-coco-format) below.
 
 When an export does leave something behind, the names go to **stderr** with the rest of the prose,
 so `visionset export … | xargs` still receives exactly the directory:
