@@ -18,9 +18,15 @@ def declared_version() -> str:
     return VERSION_FILE.read_text(encoding="utf-8").strip()
 
 
-def test_version_file_targets_the_beta_release_line(declared_version: str) -> None:
-    """`0.0.1-beta` is the release target, so VERSION must stay below it in PEP 440 order."""
-    assert declared_version == "0.0.1.dev0"
+def test_version_file_is_the_beta(declared_version: str) -> None:
+    """The first published artifact. Pinned, so a bump is a deliberate edit in two places.
+
+    It was `0.0.1.dev0` through all five alpha tags, because those are git tags and
+    nothing was being distributed. This is the version that goes to PyPI, where
+    PEP 440 hides a pre-release from a plain `pip install` — which is what makes
+    publishing it safe rather than premature. See `docs/releasing.md`.
+    """
+    assert declared_version == "0.0.1b1"
 
 
 def test_installed_distribution_reports_the_declared_version(declared_version: str) -> None:

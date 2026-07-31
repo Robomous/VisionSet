@@ -137,6 +137,11 @@ Common checks: `uv run pytest`, `uv run lint-imports`, `uv run mypy src/visionse
 `pnpm -r build`, `pnpm test`. The full list — including the wheel build and the thirty-minute
 flow gate — is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Releases
+
+[CHANGELOG.md](CHANGELOG.md) — what each version added, and the six milestones that got here.
+[docs/releasing.md](docs/releasing.md) is the runbook for cutting one.
+
 ## License
 
 Apache-2.0 — copyright Robomous Inc. See [LICENSE](LICENSE).
