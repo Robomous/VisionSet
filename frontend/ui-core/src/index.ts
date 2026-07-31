@@ -147,3 +147,29 @@ export {
 } from "./data/errors.js";
 export { DEFAULT_POLL_MS, usePollingQuery, type PollingQueryOptions } from "./data/polling.js";
 export { clearToken, readToken, writeToken } from "./data/session.js";
+
+// Screens (#53 →). Domain UI, so it lives here and not in `@visionset/app`:
+// a capability in the app is one the enterprise UI cannot reuse. Navigation
+// arrives as a callback — a screen that imported a router would only work inside
+// one particular router's tree.
+export { ProjectsScreen, type ProjectsScreenProps } from "./screens/ProjectsScreen.js";
+export { ProjectScreen, type ProjectScreenProps } from "./screens/ProjectScreen.js";
+export { SchemaEditor, type SchemaEditorProps } from "./screens/SchemaEditor.js";
+export {
+  queryKeys,
+  useActiveSchema,
+  useCreateProject,
+  useCreateSchemaVersion,
+  useDeleteProject,
+  useProject,
+  useProjects,
+  useRenameProject,
+  useSchemaVersions,
+  type AttributeBody,
+  type GeometryType,
+  type LabelClassBody,
+  type Project,
+  type ProjectPage,
+  type SchemaVersion,
+  type SchemaVersionPage,
+} from "./screens/queries.js";

@@ -20,15 +20,42 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-/** The token form's one request. Its body is irrelevant; its status is not. */
-async function serveEmptyProjects(page: Page): Promise<void> {
-  await page.route("**/projects*", (route) =>
-    route.fulfill({ status: 200, json: { items: [], total: 0 } }),
-  );
+/**
+ * The token form's one request. Its body is irrelevant; its status is not.
+ *
+ * Matched under **`/api/`**, which is where the app sends everything in
+ * development — vite proxies that prefix so no CORS layer is needed in production
+ * (`docs/ui.md`). Routing `**' + '/projects*` instead would also intercept the
+ * *document* request for `/projects`, because `page.route` sees navigations too:
+ * the browser would receive JSON where it asked for the application, and the
+ * failure reads as "the shell disappeared".
+ */
+async function serveApi(page: Page): Promise<void> {
+  await page.route("**/api/projects**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/schema")) {
+      return route.fulfill({
+        status: 404,
+        json: { code: "SCHEMA_NOT_FOUND", message: "This project has no schema version yet." },
+      });
+    }
+    if (path.endsWith("/schema/versions")) {
+      return route.fulfill({ status: 200, json: { items: [], total: 0 } });
+    }
+    if (/\/api\/projects\/[^/]+$/.test(path)) {
+      return route.fulfill({
+        status: 200,
+        json: { id: PROJECT, name: "highway", description: null },
+      });
+    }
+    return route.fulfill({ status: 200, json: { items: [], total: 0 } });
+  });
 }
 
+const PROJECT = "11111111-1111-4111-8111-111111111111";
+
 async function signIn(page: Page): Promise<void> {
-  await serveEmptyProjects(page);
+  await serveApi(page);
   await page.goto("/");
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
@@ -117,16 +144,16 @@ test("collapsing the rail narrows it and keeps every control reachable", async (
 });
 
 test("a deep link inside the product resolves to its screen", async ({ page }) => {
-  await serveEmptyProjects(page);
-  await page.goto("/projects/11111111-1111-4111-8111-111111111111");
+  await serveApi(page);
+  await page.goto(`/projects/${PROJECT}`);
   // The gate first, because the credential is per tab and this is a fresh one.
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
 
   await expect(page.getByTestId("app-rail")).toBeVisible();
-  // #53's screen, still a placeholder — the claim is that the router put us on it
-  // rather than on Home or on a 404.
-  await expect(page.getByText("Project", { exact: true })).toBeVisible();
+  // #53's project screen — the claim is that the router put us on it rather than
+  // on the list or on a 404.
+  await expect(page.getByTestId("project-screen")).toBeVisible();
   await expect(page).toHaveURL(/\/projects\/11111111/);
 });
 
@@ -141,5 +168,7 @@ test("a client route nobody defined answers inside the shell, not with a blank p
   // a broken application.
   await expect(page.getByTestId("app-rail")).toBeVisible();
   await page.getByRole("link", { name: "Back to Home" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  // Home redirects to the project list: there is nothing else a workspace's front
+  // page could honestly be until a dashboard has numbers to show.
+  await expect(page).toHaveURL(/\/projects$/);
 });
