@@ -64,9 +64,18 @@
  * decoration and must not be "modernised" away.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   JSX,
+  RefObject,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -205,6 +214,28 @@ export interface AnnotatorCanvasProps {
   readonly bindings?: readonly Binding[];
   readonly mint?: IdFactory;
   readonly className?: string;
+  /**
+   * Zoom controls, for a host that has somewhere to put them.
+   *
+   * #50 reported the zoom and did not drive it, because driving it needs an
+   * imperative handle and there was no top bar to hang one off. #56 has one, so
+   * this is that handle — and it is deliberately **two methods and no state**:
+   * `onViewChange` already reports where the stage is, and a controlled `zoom`
+   * prop would make the wheel a round trip through the host on every notch.
+   *
+   * `fit` is exactly what `mod+0` does, which is why the chord stays intercepted
+   * rather than forwarded: there is one implementation and the button and the key
+   * both reach it.
+   */
+  readonly viewRef?: RefObject<AnnotatorView | null>;
+}
+
+/** What a host can do to the stage. Read the position through `onViewChange`. */
+export interface AnnotatorView {
+  /** Multiply the zoom about the pane's centre. `1.2` in, `1 / 1.2` out. */
+  zoomBy(factor: number): void;
+  /** The whole asset, centred — `mod+0`'s own implementation. */
+  fit(): void;
 }
 
 export function AnnotatorCanvas({
@@ -220,6 +251,7 @@ export function AnnotatorCanvas({
   bindings,
   mint = randomUuid,
   className,
+  viewRef,
 }: AnnotatorCanvasProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const { asset, schema } = snapshot.document;
@@ -287,6 +319,22 @@ export function AnnotatorCanvas({
 
   // Before the first paint, so the asset does not flash at native scale first.
   useLayoutEffect(fit, [fit]);
+
+  useImperativeHandle(
+    viewRef,
+    () => ({
+      zoomBy: (factor) => {
+        const pane = paneRef.current;
+        if (pane === null) return;
+        const rect = pane.getBoundingClientRect();
+        // About the pane's centre, which is what a button means by "zoom in".
+        // The wheel zooms about the pointer because that is what a wheel means.
+        applyViewport(zoomAbout(viewNow.current, factor, rect.width / 2, rect.height / 2));
+      },
+      fit,
+    }),
+    [applyViewport, fit],
+  );
 
   // React attaches `wheel` **passively** at its root container, so `onWheel` plus
   // `preventDefault()` silently does nothing and the page scrolls instead of the

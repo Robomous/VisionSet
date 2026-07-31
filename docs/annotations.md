@@ -717,3 +717,22 @@ because a shape you cannot see must not swallow a press. `withoutHidden` returns
 
 Hold that set in state. A freshly allocated `Set` on every render defeats the memo
 before it is consulted — #49's `skipId` finding, one prop over.
+
+
+## The annotation page
+
+`@visionset/ui-core`'s `AnnotationPage` is the browser's whole annotation surface,
+and three of its decisions are worth knowing before changing it:
+
+- **The schema is the batch's pinned version**, fetched by number. The project's
+  active schema is a different question with often a different answer.
+- **The navigator is the batch's asset listing filtered to the job**, not
+  `next_pending_assets` — that route hands out *pending* assets, so it shrinks as
+  the work is done and cannot go back.
+- **There is no autosave.** A save is a diff followed by a refetch (the kernel mints
+  its own ids), so a timer would rebuild the document mid-gesture. Explicit Save,
+  save-on-navigate, and a `beforeunload` guard.
+
+Zoom controls reach `AnnotatorCanvas`'s `viewRef` handle, whose `fit()` is the same
+implementation `mod+0` runs — one behaviour, two doors, which is why the chord is
+still intercepted by the adapter rather than forwarded.

@@ -42,6 +42,7 @@
  */
 
 import {
+  AnnotationPage,
   EmptyState,
   GalleryScreen,
   IngestScreen,
@@ -73,7 +74,7 @@ export function AppRoutes(): JSX.Element {
           <Route path="projects/:projectId" element={<Project />} />
           <Route path="projects/:projectId/ingest" element={<Ingest />} />
           <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
-          <Route path="jobs/:jobId" element={<Placeholder title="Annotate" issue={56} />} />
+          <Route path="jobs/:jobId" element={<Annotate />} />
           <Route
             path="projects/:projectId/dataset"
             element={<Placeholder title="Dataset" issue={57} />}
@@ -131,6 +132,13 @@ function Gallery(): JSX.Element {
   const { projectId, batchId } = useParams();
   if (projectId === undefined || batchId === undefined) return <NotFound />;
   return <GalleryScreen projectId={projectId} batchId={batchId} />;
+}
+
+function Annotate(): JSX.Element {
+  const { jobId } = useParams();
+  const navigate = useNavigate();
+  if (jobId === undefined) return <NotFound />;
+  return <AnnotationPage jobId={jobId} onBack={() => void navigate(-1)} />;
 }
 
 function Ingest(): JSX.Element {
