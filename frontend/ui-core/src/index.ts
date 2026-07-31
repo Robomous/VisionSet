@@ -125,3 +125,25 @@ export {
 export { createApiClient } from "./client.js";
 export type { ApiClientOptions, VisionSetClient } from "./client.js";
 export type { components, operations, paths } from "./generated/api.js";
+
+// The data shell (#52): one client, one query cache, one answer to a 401.
+export {
+  ApiProvider,
+  useApiClient,
+  useApiSession,
+  type ApiProviderProps,
+  type ApiSession,
+} from "./data/ApiProvider.js";
+export { TokenForm, TokenGate, type TokenGateProps } from "./data/TokenGate.js";
+export { Async, type AsyncProps, type AsyncQuery } from "./data/Async.js";
+export {
+  ApiError,
+  MALFORMED_ERROR,
+  NETWORK_ERROR,
+  asApiError,
+  unwrap,
+  type ErrorBody,
+  type FetchResult,
+} from "./data/errors.js";
+export { DEFAULT_POLL_MS, usePollingQuery, type PollingQueryOptions } from "./data/polling.js";
+export { clearToken, readToken, writeToken } from "./data/session.js";
