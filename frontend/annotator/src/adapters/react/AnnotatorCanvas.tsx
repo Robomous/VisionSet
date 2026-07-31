@@ -107,6 +107,7 @@ import { AnnotationLayer } from "./AnnotationLayer";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
 import { classColor, editedId, paintAnnotation } from "./paint";
+import { withoutHidden } from "./visibility";
 import { TransientLayer } from "./TransientLayer";
 
 /** The states a press must hold the pointer for. `drawing-polygon` is not one. */
@@ -182,6 +183,20 @@ export interface AnnotatorCanvasProps {
    */
   readonly onViewChange?: (view: Viewport) => void;
   /**
+   * Annotations to leave out — of the drawing **and** of the hit test.
+   *
+   * A view decision, never a document one: the core document has no `hidden` flag
+   * and must not grow one, because hiding is per viewer and per session and a field
+   * would travel to the API and change a release hash. `visibility.ts` argues it in
+   * full, including why a shape you cannot see must not swallow a press.
+   *
+   * **Hold this in state; never build it inline.** A freshly allocated `Set` on
+   * every render defeats `AnnotationLayer`'s `memo` before it is consulted, which
+   * is #49's finding about `skipId` from the other side — and the difference is a
+   * drag that costs the committed layer three DOM writes instead of six hundred.
+   */
+  readonly hiddenIds?: ReadonlySet<string>;
+  /**
    * Anything core cannot do and this adapter does not own — a help sheet, a
    * "next asset". `reset-zoom` never arrives: the zoom is the adapter's.
    */
@@ -200,6 +215,7 @@ export function AnnotatorCanvas({
   onAnnotationsChange,
   onSelectionChange,
   onViewChange,
+  hiddenIds,
   onHostAction,
   bindings,
   mint = randomUuid,
@@ -217,6 +233,10 @@ export function AnnotatorCanvas({
 
   const viewNow = useRef(view);
   const interactionNow = useRef(interaction);
+  // Read at dispatch time, like `viewNow`: `dispatch` carries `[]`-ish deps on
+  // purpose, and taking a prop into them would rebuild it on every render.
+  const hiddenNow = useRef(hiddenIds);
+  hiddenNow.current = hiddenIds;
   const panNow = useRef<{ readonly x: number; readonly y: number } | null>(null);
 
   const applyViewport = useCallback((next: Viewport) => {
@@ -238,7 +258,12 @@ export function AnnotatorCanvas({
       const turn = transition(interactionNow.current, event, {
         // The **committed** document, never `snapshot.rendered`: handing the
         // machine the preview would make each move compute from the last one.
-        document: store.document,
+        //
+        // Hidden annotations are filtered out here, which is what makes "a shape
+        // you cannot see does not swallow a press" true: `resolveTarget` reads this
+        // document, so hiding only the render layer would leave an invisible shape
+        // catching every click over it.
+        document: withoutHidden(store.document, hiddenNow.current),
         selection: store.selection,
         tool: toolFor(store.document, activeClass),
         tolerances: assetTolerances(viewNow.current.zoom),
@@ -451,6 +476,18 @@ export function AnnotatorCanvas({
     dispatch({ type: "double-click", point, modifiers: modifiersOf(event) });
   }
 
+  // Memoized so the empty case stays identity and `AnnotationLayer` keeps bailing
+  // out — see `visibility.ts`. Two projections, because the machine reads the
+  // committed document and the canvas draws the rendered one.
+  const visibleCommitted = useMemo(
+    () => withoutHidden(snapshot.document, hiddenIds),
+    [snapshot.document, hiddenIds],
+  );
+  const visibleRendered = useMemo(
+    () => withoutHidden(snapshot.rendered, hiddenIds),
+    [snapshot.rendered, hiddenIds],
+  );
+
   const affordance =
     hover === null
       ? { cursor: "default" as const, hot: NO_TARGET }
@@ -458,7 +495,7 @@ export function AnnotatorCanvas({
           interaction,
           // Built from what is **rendered**, where the machine's context is the
           // committed document — `affordance.ts` states that asymmetry.
-          { document: snapshot.rendered, selection: snapshot.selection, tolerances },
+          { document: visibleRendered, selection: snapshot.selection, tolerances },
           tool,
           hover,
         );
@@ -468,7 +505,7 @@ export function AnnotatorCanvas({
   const edited =
     skipId === null
       ? null
-      : paintAnnotation(snapshot.rendered, snapshot.selection, skipId, hotBodyId);
+      : paintAnnotation(visibleRendered, snapshot.selection, skipId, hotBodyId);
 
   const declared =
     activeClass === null ? undefined : schema.classes.find((row) => row.name === activeClass);
@@ -530,7 +567,7 @@ export function AnnotatorCanvas({
             onContextMenu={(event) => event.preventDefault()}
           >
             <AnnotationLayer
-              committed={snapshot.document}
+              committed={visibleCommitted}
               selection={snapshot.selection}
               skipId={skipId}
               hotId={hotBodyId}
