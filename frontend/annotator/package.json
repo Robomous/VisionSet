@@ -1,6 +1,6 @@
 {
   "name": "@visionset/annotator",
-  "version": "0.0.1-dev.0",
+  "version": "0.0.1-beta.1",
   "description": "Headless annotation engine: interaction state machine + geometry + input in pure TypeScript, with replaceable render adapters (React first).",
   "license": "Apache-2.0",
   "type": "module",

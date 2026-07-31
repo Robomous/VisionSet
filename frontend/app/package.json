@@ -1,7 +1,7 @@
 {
   "name": "@visionset/app",
-  "version": "0.0.1-dev.0",
-  "description": "VisionSet OSS product shell. Private \u2014 never published to npm; the compiled bundle ships inside the Python wheel.",
+  "version": "0.0.1-beta.1",
+  "description": "VisionSet OSS product shell. Private — never published to npm; the compiled bundle ships inside the Python wheel.",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",

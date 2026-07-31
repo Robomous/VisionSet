@@ -1,6 +1,6 @@
 {
   "name": "@visionset/ui-core",
-  "version": "0.0.1-dev.0",
+  "version": "0.0.1-beta.1",
   "description": "VisionSet domain components, design tokens, and the generated typed API client. UI primitives: Radix + lucide only.",
   "license": "Apache-2.0",
   "type": "module",
