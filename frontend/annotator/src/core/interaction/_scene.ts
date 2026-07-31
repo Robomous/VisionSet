@@ -193,6 +193,7 @@ export const EVENT_SAMPLES: Readonly<Record<InteractionEventType, readonly Inter
   "pointer-cancel": [{ type: "pointer-cancel" }],
   "double-click": [doubleClick([350, 300]), doubleClick(EMPTY_POINT)],
   cancel: [{ type: "cancel" }],
+  "take-back-point": [{ type: "take-back-point" }],
   commit: [{ type: "commit" }],
   "tool-changed": [{ type: "tool-changed" }],
 };

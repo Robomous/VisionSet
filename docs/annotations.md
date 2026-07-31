@@ -247,7 +247,8 @@ thing that turns one into a store call.
 | --- | --- | --- |
 | `escape` | cancel whatever is in flight | v1 |
 | `enter` | commit whatever is in flight (closes a polygon at ≥3 points) | v1 |
-| `delete` / `backspace` | delete the selected annotations | v1 |
+| `delete` | delete the selected annotations | v1 |
+| `backspace` | take back the last polygon point (while drawing; silent otherwise) | **#129** — v1 spelled it as a right-click |
 | `mod+z` | undo | **new** — v1 has no undo at all |
 | `mod+shift+z` | redo | **new** |
 | `mod+a` | select all | **new** |
@@ -420,17 +421,34 @@ is one key away. Two scenarios hold it: the refusal on a triangle, and the remov
 quadrilateral — because a refusal with no working sibling is indistinguishable from a
 dead code path.
 
-### Two engine behaviours have no adapter path
+### Two engine behaviours have no adapter path, and #129 settled what to do
 
 Found by writing the port. `AnnotatorCanvas.handlePointerDown` answers **every**
 non-primary press with a pan and returns before the machine is told, which is the
-adapter honouring `state.ts`'s contract that a pan forwards nothing. The cost is that
-two interaction-table rows are unreachable in a browser: the secondary press that
-deletes a vertex (reachable instead through the toggle modifier, so the capability
-survives — only v1's gesture for it does not), and the secondary press that takes back
-the last placed polygon point, which has **no other spelling**. `adapter-gaps.spec.ts`
-pins today's behaviour so a later change goes red and says what to update. Filed as
-**#129**, which sets out the two defensible answers.
+adapter honouring `state.ts`'s contract that a pan forwards nothing. Two
+interaction-table rows are therefore unreachable by that gesture in a browser.
+
+**The pan stays.** The alternative — forward the press and pan only when the machine
+did not consume it — loses twice. A conditional pan is unpredictable: right-drag
+would pan on empty canvas and not over a vertex, so whether the gesture works
+depends on where the vertices happen to be. And on macOS **ctrl-click *is* a
+secondary press**, so routing it would make one ctrl-click raise both spellings of
+the vertex delete — v1's own bug, which #44 closed deliberately and
+`machine.test.ts` still guards.
+
+What each capability costs then differs:
+
+- The vertex delete costs **nothing**. The toggle modifier reaches the same call;
+  only v1's gesture is gone.
+- The polygon take-back had **no other spelling at all**, and `mod+z` cannot serve
+  because a pending polygon is not in the command log. So it got one: **`Backspace`**
+  now raises a `take-back-point` intent, which only `drawing-polygon` answers.
+
+That freed a chord rather than inventing one: `delete` and `backspace` used to mean
+the same thing, and the split is the conventional one — `Delete` removes a *thing*,
+`Backspace` takes back the *last thing you did*. It costs a synonym and takes away
+no capability. `adapter-gaps.spec.ts` still pins the pan; `keyboard.spec.ts` holds
+the split and the take-back.
 
 ### The two render layers guard different halves
 

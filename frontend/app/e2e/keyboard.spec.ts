@@ -15,7 +15,15 @@
 
 import { expect, test } from "@playwright/test";
 
-import { drawBbox, expectCounts, focusCanvas, frameOf, wire, SHOWCASE } from "./_frame";
+import {
+  SHOWCASE,
+  drawBbox,
+  expectCounts,
+  focusCanvas,
+  frameOf,
+  vertices,
+  wire,
+} from "./_frame";
 
 test.beforeEach(async ({ page }) => {
   await page.goto(SHOWCASE);
@@ -191,4 +199,78 @@ test("typing in the notes field types, and draws nothing", async ({ page }) => {
   await expect(notes).toHaveValue("vvv1111 delete");
   await expectCounts(page, 1, 1);
   expect(await wire(page)).toHaveLength(1);
+});
+
+/**
+ * #129 split the two delete chords, and this is the behaviour change a user sees.
+ *
+ * They used to mean one thing, so one of them was free — and `Backspace` takes back
+ * *the last thing you did*, which is what it means in every text field and every
+ * drawing tool. It bought a capability that had no spelling at all: v1 took a
+ * polygon point back with a right-click, and the React adapter answers every
+ * non-primary press with a pan.
+ *
+ * What it costs is a synonym, and the pair below is the proof that it is only that.
+ */
+test("Delete removes the selection and Backspace no longer does", async ({ page }) => {
+  const frame = await frameOf(page);
+  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 520, y: 340 });
+  await expectCounts(page, 1, 1);
+
+  // Silent: outside `drawing-polygon` the take-back intent is a square no row
+  // fills, which `machine.ts`'s partial rows make automatic.
+  await page.keyboard.press("Backspace");
+  await expectCounts(page, 1, 1);
+
+  await page.keyboard.press("Delete");
+  await expectCounts(page, 0, 0);
+});
+
+/** And while drawing, it is the take-back — which is the whole point of the swap. */
+test("Backspace takes back the last polygon point, and the ring survives", async ({ page }) => {
+  const frame = await frameOf(page);
+  await focusCanvas(page);
+  await page.keyboard.press("2");
+
+  for (const [x, y] of [
+    [500, 300],
+    [420, 440],
+    [640, 300],
+  ] as const) {
+    await page.mouse.click(frame.at(x, y).x, frame.at(x, y).y);
+  }
+  // Take the third back, then place a different one and close. Three vertices
+  // rather than four is what says the take-back happened.
+  await page.keyboard.press("Backspace");
+  await page.mouse.click(frame.at(580, 440).x, frame.at(580, 440).y);
+  await page.keyboard.press("Enter");
+
+  await expectCounts(page, 1, 1);
+  await expect(vertices(page)).toHaveCount(3);
+});
+
+/** Taking the only point back ends the session rather than leaving an empty one. */
+test("Backspace on a one-point ring returns to idle, and the next press starts fresh", async ({
+  page,
+}) => {
+  const frame = await frameOf(page);
+  await focusCanvas(page);
+  await page.keyboard.press("2");
+
+  await page.mouse.click(frame.at(500, 300).x, frame.at(500, 300).y);
+  await page.keyboard.press("Backspace");
+
+  // A fresh session: three clicks and Enter, not two — if the first point had
+  // survived, this would close a quadrilateral.
+  for (const [x, y] of [
+    [420, 440],
+    [640, 300],
+    [640, 440],
+  ] as const) {
+    await page.mouse.click(frame.at(x, y).x, frame.at(x, y).y);
+  }
+  await page.keyboard.press("Enter");
+
+  await expectCounts(page, 1, 1);
+  await expect(vertices(page)).toHaveCount(3);
 });
