@@ -13,6 +13,24 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **The gallery rendered one tile per row at every viewport width** (#159). `useColumns` attached
+  its `ResizeObserver` in an effect that began `if (element === null) return` — and the scroller it
+  points at lives inside `<Async>`'s children render-prop, so on mount it does not exist yet. The
+  effect took the early return, both of its dependencies were stable, and it never ran again once
+  the real element arrived. `columns` stayed at its initial `1` for the life of the screen; a batch
+  of six 160-px thumbnails occupied one 160-px column of a 1239-px pane.
+
+  The arithmetic was correct throughout, which is why nothing caught it: `columnsFor(1239)` is 7
+  and always was. Now the scroller is taken by a **callback ref** — React calls it with the node on
+  attach and `null` on detach, so an effect keyed on that state re-runs by construction — and
+  `useVirtualizer` reads the same state value, so the two halves of the screen cannot disagree
+  about which element they are measuring.
+
+  The guard is in `frontend/app/cycle/cycle.spec.ts`, against a real browser, because jsdom reports
+  every element as 0×0 and the screen's unit tests were passing in exactly the state the bug
+  produced. It asserts the rendered count agrees with what fits, that it is more than one at a wide
+  viewport, and that narrowing the window re-flows the grid. Verified by mutation, both halves.
+
 - **The annotator was unreachable from inside the UI** (#160). Every gallery tile rendered
   `disabled`, the annotator's own "Open the gallery" button rendered `disabled`, and nothing
   anywhere navigated to `/jobs/:jobId` — so the one thing the product is for could be reached only

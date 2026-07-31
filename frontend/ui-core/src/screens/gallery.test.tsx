@@ -34,7 +34,7 @@ import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { BatchesScreen } from "./BatchesScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
-import { GalleryScreen } from "./GalleryScreen";
+import { GalleryScreen, columnsFor } from "./GalleryScreen";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -273,6 +273,47 @@ describe("the gallery", () => {
     await waitFor(() => expect(screen.queryByText("This batch is empty")).not.toBeNull());
   });
 
+  /**
+   * #159's third acceptance criterion, and it is a criterion about *this file*.
+   *
+   * The gallery rendered one tile per row at every width for the whole beta, and
+   * these tests passed throughout — because jsdom has no `ResizeObserver` and the
+   * screen's own docstring called the resulting one-column fallback
+   * "correct-but-slow rather than wrong". So the tests asserted the broken value as
+   * if it were the intended one, which is the milestone's root pattern: a claim
+   * verified against itself.
+   *
+   * What is pinned here, therefore, is only the honest part — the arithmetic, and
+   * that the fallback is reached **when the observer is genuinely absent** rather
+   * than whenever measurement happens to fail. The count a browser renders is
+   * checked in a browser, in `frontend/app/cycle/cycle.spec.ts`.
+   */
+  it("computes the column count from the pane's width", () => {
+    // The formula was never wrong. `Math.floor((1239 + 12) / (160 + 12))` is 7,
+    // and the reported bug measured a 1239px row rendering one tile.
+    expect(columnsFor(1239)).toBe(7);
+    expect(columnsFor(895)).toBe(5);
+    // Never zero: a pane too narrow for a tile still shows one, clipped, rather
+    // than dividing the item count by nothing.
+    expect(columnsFor(0)).toBe(1);
+    expect(columnsFor(159)).toBe(1);
+    expect(columnsFor(172)).toBe(1);
+    expect(columnsFor(332)).toBe(2);
+  });
+
+  it("falls back to one column only when there is genuinely no observer", async () => {
+    // jsdom has none, so this is the fallback path by construction — and stating
+    // it as a test is what stops the next reader from mistaking a one-column
+    // render here for the intended layout.
+    expect(globalThis.ResizeObserver).toBeUndefined();
+
+    on("GET", /\/assets$/, { status: 200, body: assets(6, 0, 6) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    // The scroller mounts; the virtualizer measures it as 0x0 and renders no rows,
+    // which is why nothing about the grid itself can be asserted from here.
+    const scroll = await screen.findByTestId("gallery-scroll");
+    expect(scroll.getAttribute("data-columns")).toBe("1");
+  });
 });
 
 /**
