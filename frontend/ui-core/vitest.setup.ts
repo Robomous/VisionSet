@@ -15,3 +15,24 @@ import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
 afterEach(cleanup);
+
+/**
+ * Two DOM methods jsdom does not implement, which Radix's `Select` and
+ * `DropdownMenu` call while opening.
+ *
+ * `hasPointerCapture` is part of the Pointer Events API — jsdom implements the
+ * events and not the capture model — and `scrollIntoView` is simply absent.
+ * Neither is a behaviour worth simulating: the first answers "is this pointer
+ * captured", which in a test is always no, and the second scrolls a viewport that
+ * does not exist.
+ *
+ * Without them, opening a `Select` throws inside Radix and the test reads as "the
+ * option is not there" — a component failure for a harness gap, which is the most
+ * misleading shape a test failure has.
+ */
+if (typeof Element !== "undefined") {
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.setPointerCapture ??= () => undefined;
+  Element.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.scrollIntoView ??= () => undefined;
+}

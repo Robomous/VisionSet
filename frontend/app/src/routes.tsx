@@ -41,8 +41,8 @@
  * screen arriving is one import.
  */
 
-import { EmptyState } from "@visionset/ui-core";
-import { Route, Routes, useSearchParams } from "react-router";
+import { EmptyState, ProjectScreen, ProjectsScreen } from "@visionset/ui-core";
+import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router";
 import type { JSX } from "react";
 
 import { AnnotatorDemo } from "./demo/AnnotatorDemo";
@@ -59,9 +59,12 @@ export function AppRoutes(): JSX.Element {
       {/* The product. Everything under here needs a workspace token. */}
       <Route element={<Gated />}>
         <Route element={<AppShell />}>
-          <Route index element={<Placeholder title="Home" issue={58} />} />
-          <Route path="projects" element={<Placeholder title="Projects" issue={53} />} />
-          <Route path="projects/:projectId" element={<Placeholder title="Project" issue={53} />} />
+          {/* Home is the project list. There is nothing else a workspace's front
+              page could honestly be until a dashboard has numbers to show, and a
+              redirect keeps one screen rather than two that drift. */}
+          <Route index element={<Navigate to="/projects" replace />} />
+          <Route path="projects" element={<Projects />} />
+          <Route path="projects/:projectId" element={<Project />} />
           <Route
             path="projects/:projectId/batches/:batchId"
             element={<Placeholder title="Batch" issue={55} />}
@@ -91,6 +94,26 @@ function Showcase(): JSX.Element {
       {bench ? <BenchmarkHost wirePane={query.get("chrome") === "wire"} /> : <AnnotatorDemo />}
     </ShowcaseFrame>
   );
+}
+
+/**
+ * The two #53 screens, and the whole of what composing one means.
+ *
+ * `ui-core` takes navigation as a callback rather than importing a router — a
+ * screen that called `useNavigate` would only work inside a `react-router` tree,
+ * which is a dependency the future enterprise UI has no reason to share. Turning
+ * that callback into a route change is this file's job, and it is three lines.
+ */
+function Projects(): JSX.Element {
+  const navigate = useNavigate();
+  return <ProjectsScreen onOpenProject={(projectId) => void navigate(`/projects/${projectId}`)} />;
+}
+
+function Project(): JSX.Element {
+  const { projectId } = useParams();
+  // The router guarantees the segment exists for this path; the type does not.
+  if (projectId === undefined) return <NotFound />;
+  return <ProjectScreen projectId={projectId} />;
 }
 
 function Placeholder({

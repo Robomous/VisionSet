@@ -260,3 +260,16 @@ The translation happens **outside** the `unit_of_work` block: a constraint viola
 its transaction, so it cannot be caught and recovered from inside one. Any other constraint
 travels on unchanged — it is not this service's to reinterpret. See
 [persistence.md](persistence.md).
+
+
+## In the browser
+
+`@visionset/ui-core`'s schema editor is the surface over everything above, and the
+two rules it exists to honour are the two on this page: a version is **immutable**,
+so the editor drafts and publishes N+1 rather than saving in place; and the two
+refusals are **both 409** with only one override between them, so it branches on the
+`code` and shows "Save anyway" for `DESTRUCTIVE_SCHEMA_CHANGE` and nothing but
+"Close" for `SCHEMA_CHANGE_WOULD_ORPHAN`.
+
+It has no preview, because `preview` and `compare` are unrouted — see
+[ui.md](ui.md#the-schema-editor-and-the-two-409s).
