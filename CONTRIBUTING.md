@@ -33,6 +33,7 @@ artifact is always the pip package).
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
 | Generated API client | `pnpm generate:client` (commit the diff) |
 | Annotator wire fixture | `uv run python scripts/export_wire_fixtures.py` (commit the diff) |
+| MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads |
 
 ## The two machine-enforced boundaries
 
