@@ -288,3 +288,15 @@ will need `allow_lossy=true`, instead of discovering it by getting a 409.
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
 | `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service — the kernel never sees a name. |
 | `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Retryable with the flag, which is why a client must branch on the code and never on the 409. |
+
+
+## In the browser
+
+`@visionset/ui-core`'s dataset screen carries the stats, the release timeline, the
+publish dialog and export. Three things it takes from this page rather than
+re-deciding: a release is immutable, so nothing offers an edit; verification is **on
+demand**, because it re-reads every blob; and a split's fractions are compared with
+the same tolerance the kernel uses, since `0.7 + 0.15 + 0.15` is not `1.0`.
+
+Export consent is `allow_lossy` and never `confirm` — see
+[ui.md](ui.md#the-dataset-its-releases-and-getting-the-data-out).

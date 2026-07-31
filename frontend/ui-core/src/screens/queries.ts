@@ -482,3 +482,197 @@ export function useBatchTransition(batchId: string, move: "start" | "complete") 
     },
   });
 }
+
+// --- datasets, releases and export (#57) -------------------------------------
+
+export type Dataset = components["schemas"]["DatasetOut"];
+export type DatasetStats = components["schemas"]["DatasetStatsOut"];
+export type Release = components["schemas"]["ReleaseOut"];
+export type ReleaseVerification = components["schemas"]["ReleaseVerificationOut"];
+export type Format = components["schemas"]["FormatOut"];
+export type SplitRecipe = components["schemas"]["SplitRecipeBody"];
+
+export const datasetKeys = {
+  dataset: (projectId: string) => ["projects", projectId, "dataset"] as const,
+  stats: (datasetId: string) => ["datasets", datasetId, "stats"] as const,
+  releases: (datasetId: string) => ["datasets", datasetId, "releases"] as const,
+  verification: (releaseId: string) => ["releases", releaseId, "verify"] as const,
+  formats: () => ["formats"] as const,
+};
+
+export function useProjectDataset(projectId: string): UseQueryResult<Dataset, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: datasetKeys.dataset(projectId),
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/projects/{project_id}/dataset", {
+          params: { path: { project_id: projectId } },
+        }),
+      ),
+  });
+}
+
+/**
+ * The trunk's counts, derived per call and never cached by the kernel.
+ *
+ * Per class it reports **both** `annotations` and `assets`, because a thousand
+ * labels over a thousand images and the same thousand over ten are the same total
+ * and a very different dataset. A class the schema declares but nobody used is
+ * *absent* — which classes exist is the schema's answer, read from the schema.
+ */
+export function useDatasetStats(datasetId: string | undefined): UseQueryResult<DatasetStats, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: datasetKeys.stats(datasetId ?? "none"),
+    enabled: datasetId !== undefined,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/datasets/{dataset_id}/stats", {
+          params: { path: { dataset_id: datasetId ?? "" } },
+        }),
+      ),
+  });
+}
+
+export function useReleases(datasetId: string | undefined) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: datasetKeys.releases(datasetId ?? "none"),
+    enabled: datasetId !== undefined,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/datasets/{dataset_id}/releases", {
+          params: { path: { dataset_id: datasetId ?? "" } },
+        }),
+      ),
+  });
+}
+
+/** The installed exporters, each declaring whether it is lossy. */
+export function useFormats() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: datasetKeys.formats(),
+    queryFn: async () => unwrap(await client.GET("/formats", {})),
+    // A plugin set changes when somebody installs a package, not while a tab is
+    // open. Long enough that a dialog does not refetch it on every open.
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Promote a completed batch into the trunk. Idempotent — a union, not an append. */
+export function usePromoteBatch(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (batchId: string) =>
+      unwrap(
+        await client.POST("/batches/{batch_id}/promote", {
+          params: { path: { batch_id: batchId } },
+        }),
+      ),
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: ["projects", projectId] });
+      void queries.invalidateQueries({ queryKey: ["datasets"] });
+    },
+  });
+}
+
+/**
+ * Publish a release: a tag, and optionally a split recipe.
+ *
+ * Tags are **case-sensitive** — the kernel's `ReleaseService.get_by_tag` says so,
+ * unlike a project name, which is unique case-insensitively. Two opposite rules,
+ * each beside its own index, and a surface that guessed would eventually pick the
+ * wrong one.
+ */
+export function usePublishRelease(datasetId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { tag: string; split?: SplitRecipe }) =>
+      unwrap(
+        await client.POST("/datasets/{dataset_id}/releases", {
+          params: { path: { dataset_id: datasetId } },
+          body: { tag: input.tag, ...(input.split === undefined ? {} : { split: input.split }) },
+        }),
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: datasetKeys.releases(datasetId) }),
+  });
+}
+
+/**
+ * Re-read and re-hash every blob the manifest names.
+ *
+ * Not `BlobStore.exists`, which is `is_file()` on a path *named by* the hash and
+ * therefore proves nothing — it only tells `missing` from `corrupt`. A manifest
+ * whose own bytes fail its hash answers `manifest_intact: false, checked: 0` and
+ * stops, which is why the screen reports that case separately.
+ */
+export function useVerifyRelease(releaseId: string): UseQueryResult<ReleaseVerification, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: datasetKeys.verification(releaseId),
+    // On demand: it re-reads every blob in the release, which is not something to
+    // do because a list rendered.
+    enabled: false,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/releases/{release_id}/verify", {
+          params: { path: { release_id: releaseId } },
+        }),
+      ),
+  });
+}
+
+/**
+ * Export a release, and hand the archive to the browser.
+ *
+ * **`allow_lossy` is a third gate word**, beside `confirm=` and
+ * `allow_destructive=`, and the kernel is emphatic that the three are never one
+ * `except`: `confirm` guards destroying data, `allow_destructive` guards narrowing
+ * a contract, and this one guards emitting an *incomplete copy* of something that
+ * stays intact.
+ *
+ * There is no pre-export validation endpoint, so the consent flow is the schema
+ * editor's shape: attempt, read `LOSSY_EXPORT_NOT_CONSENTED` off the 409, ask, and
+ * retry with the flag. `FormatOut.lossy` says which formats can produce it —
+ * declared by the format, because a bbox-only format loses a polygon whether or
+ * not today's dataset holds one.
+ */
+export function useExportRelease(releaseId: string) {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async (input: { format: string; allowLossy?: boolean }) => {
+      const result = await client.POST("/releases/{release_id}/export", {
+        params: {
+          path: { release_id: releaseId },
+          query: {
+            format: input.format,
+            ...(input.allowLossy === true ? { allow_lossy: true } : {}),
+          },
+        },
+        // The route answers `application/zip`; JSON parsing it fails on the first
+        // byte, and the failure would read as a malformed response rather than as
+        // a working export.
+        parseAs: "blob",
+      });
+      return unwrap(result) as unknown as Blob;
+    },
+  });
+}
+
+/** The manifest, byte for byte — never re-serialized, because its hash is *of* it. */
+export function useDownloadManifest(releaseId: string) {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async () => {
+      const result = await client.GET("/releases/{release_id}/manifest", {
+        params: { path: { release_id: releaseId } },
+        parseAs: "blob",
+      });
+      return unwrap(result) as unknown as Blob;
+    },
+  });
+}

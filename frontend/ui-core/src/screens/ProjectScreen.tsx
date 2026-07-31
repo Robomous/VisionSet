@@ -23,7 +23,7 @@
  * and the editor already spells that.
  */
 
-import { History, Pencil, Upload } from "lucide-react";
+import { Boxes, History, Pencil, Upload } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -58,12 +58,14 @@ export interface ProjectScreenProps {
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
+  readonly onOpenDataset?: () => void;
 }
 
 export function ProjectScreen({
   projectId,
   onIngest,
   onOpenBatch,
+  onOpenDataset,
 }: ProjectScreenProps): JSX.Element {
   const project = useProject(projectId);
   const schema = useActiveSchema(projectId);
@@ -87,6 +89,12 @@ export function ProjectScreen({
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {onOpenDataset !== undefined && (
+                <Button variant="secondary" data-testid="go-dataset" onClick={onOpenDataset}>
+                  <Boxes className="size-4" aria-hidden="true" />
+                  Dataset
+                </Button>
+              )}
               {onIngest !== undefined && (
                 <Button variant="primary" data-testid="go-ingest" onClick={onIngest}>
                   <Upload className="size-4" aria-hidden="true" />
