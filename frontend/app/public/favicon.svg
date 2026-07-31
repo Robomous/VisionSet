@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="VisionSet">
+  <!--
+    The product's own subject, drawn small: an annotation box with corner grips,
+    around the thing being labelled.
+
+    Ink `#252949` and Robomous orange `#eb5a47`, both taken from DESIGN.md rather
+    than invented. Four shapes and no gradient, because at 16px a favicon is a
+    silhouette — anything finer than a 2px stroke disappears into one grey square.
+
+    An SVG rather than an `.ico`: `tests/architecture/test_tracked_file_sizes.py`
+    exists to keep binaries out of the repository, and a text asset does not need
+    an exemption to be argued.
+  -->
+  <rect width="32" height="32" rx="7" fill="#252949"/>
+  <!-- The box: corner grips only, which is what makes it read as a selection
+       rather than as a plain frame at this size. -->
+  <g fill="none" stroke="#eb5a47" stroke-width="2.5" stroke-linecap="round">
+    <path d="M9 12.5V9.5A.5.5 0 0 1 9.5 9h3"/>
+    <path d="M19.5 9h3a.5.5 0 0 1 .5.5v3"/>
+    <path d="M23 19.5v3a.5.5 0 0 1-.5.5h-3"/>
+    <path d="M12.5 23h-3a.5.5 0 0 1-.5-.5v-3"/>
+  </g>
+  <circle cx="16" cy="16" r="3" fill="#eb5a47"/>
+</svg>
