@@ -144,3 +144,24 @@ test("the class palette draws the schema's colour and the derived hue side by si
   expect(colours[0]).toBe("rgb(56, 189, 248)");
   expect(new Set(colours).size).toBe(4);
 });
+
+/**
+ * #188: one rule owns the space between a tab bar and its content.
+ *
+ * `TabsContent`'s `mt-3` is that rule, and a consumer adds no gap of its own — so
+ * both specimens sit at the same distance whatever variant they wear. Measured
+ * here as well as on the two real screens, because the styleguide is where a
+ * variant is looked at in isolation and a regression would be seen first.
+ */
+test("both tab variants sit one rhythm step above their content", async ({ page }) => {
+  await page.goto("/styleguide");
+
+  for (const specimen of ["tabs-underline", "tabs-segmented"]) {
+    const scope = page.getByTestId(specimen);
+    const list = await scope.locator('[role="tablist"]').boundingBox();
+    const panel = await scope.locator('[role="tabpanel"][data-state="active"]').boundingBox();
+    expect(list, specimen).not.toBeNull();
+    expect(panel, specimen).not.toBeNull();
+    expect(panel!.y - (list!.y + list!.height), specimen).toBeCloseTo(12, 0);
+  }
+});

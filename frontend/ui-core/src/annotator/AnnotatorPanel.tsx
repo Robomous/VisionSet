@@ -95,8 +95,11 @@ export function AnnotatorPanel({
   const snapshot = useAnnotatorSnapshot(store);
   const drawn = annotationsInDrawOrder(snapshot.document);
 
+  // No `gap-*` on the root: `TabsContent` owns the space between a tab bar and its
+  // content (#188), and a flex gap here would add to it — which is exactly what
+  // this panel used to do, floating the tabs 24px above the content they switch.
   return (
-    <Tabs defaultValue="objects" className="flex w-72 flex-col gap-3" data-testid="annotator-panel">
+    <Tabs defaultValue="objects" className="flex w-72 flex-col" data-testid="annotator-panel">
       {/* The one place the segmented control is still the right shape (#182): two
           equal halves inside a 288px card is a switch, and there is no full-width
           run to hang an underline's hairline on that would not cut the panel in
