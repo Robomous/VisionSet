@@ -51,7 +51,25 @@ const PIXEL = Buffer.from(
   "base64",
 );
 
-async function serveApi(page: Page, sent: Request[]): Promise<void> {
+/**
+ * The stub's progress, which a `PUT` actually moves.
+ *
+ * Every other piece of this stub is static, and that is right for a suite about
+ * what the page *sends*. Progress is the exception because #187 is a claim about
+ * what the page *shows afterwards*: a `PUT` the server accepts and a listing that
+ * keeps answering the old value is exactly the state the defect looked like from
+ * the user's side, and a static stub would reproduce the bug rather than the fix.
+ */
+function progressStore(seed: Readonly<Record<string, string>>): Map<string, string> {
+  return new Map(Object.entries(seed));
+}
+
+async function serveApi(
+  page: Page,
+  sent: Request[],
+  progress: Map<string, string> = progressStore({ "asset-1": "unannotated", "asset-2": "annotated" }),
+): Promise<void> {
+  const stored: Record<string, unknown>[] = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^\/api/, "");
@@ -91,14 +109,37 @@ async function serveApi(page: Page, sent: Request[]): Promise<void> {
     if (path.endsWith("/schema/versions/3")) return route.fulfill({ json: SCHEMA });
     if (path.endsWith("/assets") && path.startsWith("/batches")) {
       return route.fulfill({
-        json: { items: [asset(1, "unannotated"), asset(2, "annotated")], total: 2 },
+        json: {
+          items: [
+            asset(1, progress.get("asset-1") ?? "unannotated"),
+            asset(2, progress.get("asset-2") ?? "annotated"),
+          ],
+          total: 2,
+        },
       });
     }
     if (path.endsWith("/annotations") && request.method() === "GET") {
-      return route.fulfill({ json: { items: [], total: 0 } });
+      return route.fulfill({ json: { items: stored, total: stored.length } });
     }
     if (path.endsWith("/annotations") && request.method() === "POST") {
-      return route.fulfill({ status: 201, json: { items: [], total: 0 } });
+      // Kept, and stamped with a server id — the kernel mints its own and the page
+      // refetches to learn them (`jobQueries.ts`). A stub that answered an empty
+      // list would leave the page permanently dirty and "Saved" unreachable, which
+      // says nothing about the product.
+      const body = JSON.parse(request.postData() ?? "[]") as Record<string, unknown>[];
+      body.forEach((one, at) =>
+        stored.push({
+          ...one,
+          id: `server-${stored.length + at}`,
+          asset_id: "asset-1",
+          schema_version: 3,
+          attributes: {},
+          provenance: "human",
+          model_ref: null,
+          confidence: null,
+        }),
+      );
+      return route.fulfill({ status: 201, json: { items: stored, total: stored.length } });
     }
     if (path.endsWith("/progress") && request.method() === "GET") {
       return route.fulfill({
@@ -113,6 +154,9 @@ async function serveApi(page: Page, sent: Request[]): Promise<void> {
       });
     }
     if (path.endsWith("/progress") && request.method() === "PUT") {
+      const assetId = path.split("/").at(-2) ?? "";
+      const body = JSON.parse(request.postData() ?? "{}") as { progress?: string };
+      if (body.progress !== undefined) progress.set(assetId, body.progress);
       return route.fulfill({ status: 200, json: {} });
     }
     if (path.endsWith("/content")) {
@@ -123,8 +167,8 @@ async function serveApi(page: Page, sent: Request[]): Promise<void> {
   });
 }
 
-async function openJob(page: Page, sent: Request[]): Promise<void> {
-  await serveApi(page, sent);
+async function openJob(page: Page, sent: Request[], progress?: Map<string, string>): Promise<void> {
+  await serveApi(page, sent, progress);
   await page.goto(`/jobs/${JOB}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
@@ -239,6 +283,73 @@ test("Skip settles the asset and advances", async ({ page }) => {
   const put = sent.find((r) => r.method() === "PUT");
   expect(JSON.parse(put?.postData() ?? "{}")).toEqual({ progress: "skipped" });
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
+});
+
+/**
+ * #187: a skipped asset used to be a dead end.
+ *
+ * The kernel is right and was never the problem — `progress_after_annotating`
+ * moves an asset only between `unannotated` and `annotated`, because `skipped` is
+ * a person's decision and drawing a box does not contradict a decision. What was
+ * missing is the door the kernel names: `ASSET_PROGRESS_TRANSITIONS` allows
+ * exactly one exit from `skipped`, and nothing in the browser took it. So a user
+ * could label a skipped asset, watch `Save` succeed, and lose the work at
+ * promotion — `PROMOTABLE_PROGRESS` excludes `skipped`.
+ */
+test("a skipped asset says so, and the page offers the kernel's one way out", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "skipped", "asset-2": "annotated" }));
+
+  // 1. It says so — visibly, not by the absence of something.
+  await expect(page.getByTestId("asset-progress")).toHaveText("Skipped");
+
+  // 2. …and the way back is offered where the decision was made, in place of Skip.
+  await expect(page.getByTestId("skip")).toHaveCount(0);
+  await page.getByTestId("unskip").click();
+
+  await expect.poll(() => sent.filter((r) => r.method() === "PUT").length).toBeGreaterThan(0);
+  const put = sent.find((r) => r.method() === "PUT");
+  // Spelled the way the kernel spells it. `skipped -> unannotated` is the only
+  // edge out; anything else would be asking for a refusal.
+  expect(JSON.parse(put?.postData() ?? "{}")).toEqual({ progress: "unannotated" });
+
+  // 3. Reversing a decision is about *this* asset, so it does not advance the way
+  //    settling one does — the user came back here to work on it.
+  await expect(page.getByTestId("asset-position")).toContainText("1/2");
+
+  // 4. …and the page reflects what actually changed: Skip is offered again, and
+  //    `Accept` stays disabled because `unannotated` is not where that move is
+  //    legal. The gate is the kernel's and is not loosened to paper over this.
+  await expect(page.getByTestId("asset-progress")).toHaveText("Unannotated");
+  await expect(page.getByTestId("skip")).toBeVisible();
+  await expect(page.getByTestId("accept")).toBeDisabled();
+});
+
+test("annotating a skipped asset saves, and the page says why the counter did not move", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "skipped", "asset-2": "annotated" }));
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+
+  await page.getByTestId("save").click();
+  await expect.poll(() => sent.filter((r) => r.method() === "POST").length).toBeGreaterThan(0);
+
+  // The save really happened — this was never the broken half.
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+  // What was broken is that nothing said why the asset is still skipped and the
+  // counter did not move. Now the page does, and the way out is one click away.
+  await expect(page.getByTestId("asset-progress")).toHaveText("Skipped");
+  await expect(page.getByTestId("skipped-notice")).toBeVisible();
+  await expect(page.getByTestId("unskip")).toBeVisible();
 });
 
 /** The reserved slots, drawn so the bar is the shape the design shows. */
