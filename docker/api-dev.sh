@@ -24,7 +24,7 @@ if [ ! -f "$WORKSPACE/visionset.db" ]; then
   echo "compose: minting a token named 'dev' for the browser"
   SECRET="$(uv run visionset token create --name dev --workspace "$WORKSPACE")"
   echo "compose: ----------------------------------------------------------------"
-  echo "compose: sign in at http://localhost:5173 with this token:"
+  echo "compose: sign in at http://localhost:8080 with this token:"
   echo "compose:   $SECRET"
   echo "compose: shown once. For another:"
   echo "compose:   docker compose -f docker/compose.yaml exec api \\"

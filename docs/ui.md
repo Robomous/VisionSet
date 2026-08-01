@@ -464,6 +464,11 @@ polling a state somebody adds later.
 - **Development**: `"/api"`, proxied by vite to `http://127.0.0.1:8000` (override with
   `VISIONSET_API`).
 
+The compose stack adds a third case that changes nothing here: nginx on :8080 answers
+`/api/` itself and forwards it to the API, so the app's request never reaches vite's
+proxy. The app is unchanged either way — it asks its own origin for `/api`, and
+something in front of it knows where the API is. Which is the point of the prefix.
+
 The proxy rather than CORS on the server, and the prefix rather than proxying the
 API's own paths. CORS would put a middleware in front of every response *in
 production too*, and the catch-all `Exception` handler lives in
