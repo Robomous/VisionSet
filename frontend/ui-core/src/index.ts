@@ -177,6 +177,10 @@ export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbna
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
 
+// The way out of a sub-view (#199). Structural, never `navigate(-1)`.
+export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";
+export { parentLabel } from "./patterns/parentLabel.js";
+
 // The floating tool palette (#198). Reports the derived tool; never stores one.
 export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
 

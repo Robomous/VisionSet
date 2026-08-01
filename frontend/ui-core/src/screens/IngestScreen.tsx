@@ -68,6 +68,8 @@ import { AlertTriangle, FileVideo, FolderOpen, Images, RefreshCw, Upload } from 
 import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
+import { BackLink } from "../patterns/BackLink";
+import { parentLabel } from "../patterns/parentLabel";
 import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
@@ -84,6 +86,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import {
   useBatches,
   useIngestJob,
+  useProject,
   useRegisterSource,
   useResumeIngest,
   useStartIngest,
@@ -110,9 +113,12 @@ export interface IngestScreenProps {
    * anybody renders the outcome without the button rather than a dead link.
    */
   readonly onOpenBatch?: (batchId: string) => void;
+  /** Up to the project this is ingesting into (#199). */
+  readonly onBack?: () => void;
 }
 
-export function IngestScreen({ projectId, onOpenBatch }: IngestScreenProps): JSX.Element {
+export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenProps): JSX.Element {
+  const project = useProject(projectId);
   const [files, setFiles] = useState<readonly File[]>([]);
   const [fps, setFps] = useState(String(DEFAULT_EXTRACTION_FPS));
   const [batchChoice, setBatchChoice] = useState(NEW_BATCH);
@@ -204,6 +210,8 @@ export function IngestScreen({ projectId, onOpenBatch }: IngestScreenProps): JSX
 
   return (
     <div className="flex flex-col gap-6" data-testid="ingest-screen">
+      {onBack !== undefined && <BackLink onClick={onBack} label={parentLabel(project.data?.name)} />}
+
       <header className="border-b border-border pb-4">
         <h1 className="text-page font-semibold tracking-tight">Ingest</h1>
         <p className="text-meta text-muted-foreground">

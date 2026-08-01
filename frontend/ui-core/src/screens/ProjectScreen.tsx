@@ -63,6 +63,7 @@ import { useState, type ComponentType, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
+import { BackLink } from "../patterns/BackLink";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
@@ -107,6 +108,15 @@ const TAB_LABELS: Record<ProjectTab, TabLabel> = {
 
 export interface ProjectScreenProps {
   readonly projectId: string;
+  /**
+   * Up to the project list (#199).
+   *
+   * The rail's Projects link reaches the same URL, and that is not a reason to
+   * leave this out: the rail is where you go to *start* somewhere, and a person
+   * inside a project should not have to notice that one of two top-level
+   * destinations happens to be their parent.
+   */
+  readonly onBack?: () => void;
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
@@ -122,6 +132,7 @@ export interface ProjectScreenProps {
 
 export function ProjectScreen({
   projectId,
+  onBack,
   onIngest,
   onOpenBatch,
   onOpenDataset,
@@ -143,6 +154,8 @@ export function ProjectScreen({
 
   return (
     <div className="flex flex-col gap-6" data-testid="project-screen">
+      {onBack !== undefined && <BackLink onClick={onBack} label="Projects" />}
+
       <Async query={project} loadingRows={2}>
         {(loaded) => (
           <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
