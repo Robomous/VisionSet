@@ -7,8 +7,11 @@ uv sync            # Python 3.12+, installs the package editable + dev tools
 pnpm install       # pnpm workspace under frontend/
 ```
 
-Optional services: `docker compose -f docker/compose.yaml up` (dev only — the release
-artifact is always the pip package).
+Or skip all three and run the stack in containers — `docker compose -f docker/compose.yaml up`
+needs nothing installed on the host and no build of any kind. It creates a workspace, mints a
+token and prints it in the `api` logs, serves the API on :8000 and the app on :5173. Dev only;
+the release artifact is always the pip package. Running it on the host stays faster, because a
+bind mount has to poll for file changes rather than being told about them.
 
 ## Checks that must stay green
 
