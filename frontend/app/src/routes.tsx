@@ -111,14 +111,30 @@ function Projects(): JSX.Element {
   return <ProjectsScreen onOpenProject={(projectId) => void navigate(`/projects/${projectId}`)} />;
 }
 
+/**
+ * The project, and the one screen whose *section* is part of the URL.
+ *
+ * #171 split the page into tabs, and a tab that lives only in component state is
+ * lost on reload and cannot be linked to — which was half of what the split was
+ * meant to fix. So `?tab=` is the section, and turning it into a tab is this
+ * file's job the same way turning a callback into a route change is.
+ *
+ * `replace` on the write: a tab is a view of the same resource, not a place, so
+ * clicking through all three and pressing Back should leave the project rather
+ * than walk back through Schema.
+ */
 function Project(): JSX.Element {
   const { projectId } = useParams();
+  const [query, setQuery] = useSearchParams();
   const navigate = useNavigate();
   // The router guarantees the segment exists for this path; the type does not.
   if (projectId === undefined) return <NotFound />;
+  const tab = query.get("tab");
   return (
     <ProjectScreen
       projectId={projectId}
+      {...(tab === null ? {} : { tab })}
+      onTabChange={(next) => setQuery({ tab: next }, { replace: true })}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
       onOpenDataset={() => void navigate(`/projects/${projectId}/dataset`)}

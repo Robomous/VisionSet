@@ -399,6 +399,83 @@ describe("the schema editor", () => {
   });
 });
 
+/**
+ * #171: the sections are tabs, so what is *not* on the page is now an assertion.
+ *
+ * The interesting one is the last: a query that lives in the section that renders
+ * it is a query that follows the tab. That is what makes the split more than
+ * cosmetic, and it is invisible in the rendering — only the request log shows it.
+ */
+describe("the project view's tabs", () => {
+  function project(): void {
+    on("GET", /^\/projects\/[^/]+$/, {
+      status: 200,
+      body: { id: PROJECT, name: "highway", description: null },
+    });
+    on("GET", /^\/projects\/[^/]+\/schema$/, {
+      status: 200,
+      body: { project_id: PROJECT, version: 2, classes: CLASSES },
+    });
+    on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
+    on("GET", /\/batches/, { status: 200, body: { items: [], total: 0 } });
+  }
+
+  it("shows one section at a time, and the other two are not in the DOM", async () => {
+    project();
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+
+    // Schema is where a project opens: it is what the page showed before the
+    // split, and a schema-less project has nothing else worth reading.
+    await screen.findByTestId("schema-editor");
+    expect(screen.queryByTestId("batches-screen")).toBeNull();
+    expect(screen.queryByTestId("version-history")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("tab-batches"));
+    await screen.findByTestId("batches-screen");
+    expect(screen.queryByTestId("schema-editor")).toBeNull();
+    expect(screen.queryByTestId("version-history")).toBeNull();
+  });
+
+  it("opens on the section the URL named, and on the default when it names nothing valid", async () => {
+    project();
+    const { unmount } = render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));
+    await screen.findByTestId("version-history");
+    expect(screen.queryByTestId("schema-editor")).toBeNull();
+    unmount();
+
+    // A stale link, a typo, or `batches` on a host with no batch route: none of
+    // them is an empty page.
+    render(mount(<ProjectScreen projectId={PROJECT} tab="nonsense" />));
+    await screen.findByTestId("schema-editor");
+  });
+
+  it("reports the tab to the host rather than reaching for a router", async () => {
+    project();
+    const changed = vi.fn();
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onTabChange={changed} />));
+
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("tab-versions"));
+    expect(changed).toHaveBeenCalledWith("versions");
+    // Controlled: the host owns the value, so the section does not move until the
+    // URL does. Anything else would make the back button lie.
+    expect(screen.queryByTestId("version-history")).toBeNull();
+  });
+
+  it("does not read the version list until somebody opens the Versions tab", async () => {
+    project();
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await screen.findByTestId("schema-editor");
+    const versionRequests = (): number =>
+      sent.filter((request) => new URL(request.url).pathname.endsWith("/schema/versions")).length;
+    expect(versionRequests()).toBe(0);
+
+    await userEvent.click(screen.getByTestId("tab-versions"));
+    await waitFor(() => expect(versionRequests()).toBe(1));
+  });
+});
+
 describe("version history", () => {
   it("renders every version, marks the active one, and offers no way to edit a past one", async () => {
     on("GET", /^\/projects\/[^/]+$/, {
@@ -420,7 +497,8 @@ describe("version history", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    // Reached through the tab, which is the only way to reach it now (#171).
+    render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));
 
     const history = await screen.findByTestId("version-history");
     // `findBy` on the row, not on the card: the card renders immediately and holds

@@ -160,6 +160,34 @@ test("a deep link inside the product resolves to its screen", async ({ page }) =
   await expect(page).toHaveURL(/\/projects\/11111111/);
 });
 
+/**
+ * #171: the project view's section is in the URL, and this is the only place that
+ * wiring exists.
+ *
+ * `ui-core` is deliberately router-free — it takes the tab as a prop and hands one
+ * back — so a component test can prove the tabs switch and prove the callback
+ * fires, and it cannot prove the two halves are connected. A reload is the whole
+ * point of putting the section in the URL, and a reload is a browser fact.
+ */
+test("the project view's tab is in the URL, and survives a reload", async ({ page }) => {
+  await serveApi(page);
+  await page.goto(`/projects/${PROJECT}?tab=versions`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+
+  // The link opened on the section it named, not on the default.
+  await expect(page.getByTestId("version-history")).toBeVisible();
+  await expect(page.getByTestId("schema-editor")).toHaveCount(0);
+
+  await page.getByTestId("tab-batches").click();
+  await expect(page).toHaveURL(/\?tab=batches$/);
+  await expect(page.getByTestId("batches-screen")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId("batches-screen")).toBeVisible();
+  await expect(page.getByTestId("version-history")).toHaveCount(0);
+});
+
 test("a client route nobody defined answers inside the shell, not with a blank page", async ({
   page,
 }) => {

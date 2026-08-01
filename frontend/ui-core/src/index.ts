@@ -153,7 +153,7 @@ export { clearToken, readToken, writeToken } from "./data/session.js";
 // arrives as a callback — a screen that imported a router would only work inside
 // one particular router's tree.
 export { ProjectsScreen, type ProjectsScreenProps } from "./screens/ProjectsScreen.js";
-export { ProjectScreen, type ProjectScreenProps } from "./screens/ProjectScreen.js";
+export { ProjectScreen, type ProjectScreenProps, type ProjectTab } from "./screens/ProjectScreen.js";
 export { SchemaEditor, type SchemaEditorProps } from "./screens/SchemaEditor.js";
 export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
 export { BatchesScreen, type BatchesScreenProps } from "./screens/BatchesScreen.js";
