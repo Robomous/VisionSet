@@ -172,9 +172,32 @@ then refetches.
 3. **The two cases autosave exists for are covered**: "I forgot" is
    save-on-navigate, "I closed the tab" is the `beforeunload` guard.
 
+#### Reversing a skip is an action, never a side effect of drawing
+
+`progress_after_annotating` moves an asset only `unannotated ↔ annotated`, because
+`skipped` is a person's decision and drawing a box does not contradict a decision.
+That rule is right, and until #187 the browser simply never offered the one exit
+`ASSET_PROGRESS_TRANSITIONS` allows — so a user could label a skipped asset, watch
+the save succeed, and lose the work at promotion, since `PROMOTABLE_PROGRESS`
+excludes `skipped`.
+
+The page closes that with the **explicit** move rather than an implicit one. The
+asset's own progress is always on the bar, and on a skipped asset `Skip` is replaced
+by **Un-skip**, which sends `unannotated` and stays on the asset — settling advances
+because you are finished with it, reversing does not because you have just come back
+to it. Automatic-on-save was rejected: it would overwrite a recorded decision without
+asking, and a decision is somebody's action here the same way `confirm=`,
+`allow_destructive=` and `allow_lossy` are one layer down. A prompt was rejected too
+— a modal in the middle of the annotation loop interrupts the one gesture the page
+exists for, and it leaves a user who only wants to un-skip with nothing to press.
+What the automatic reading was right about is that `Save` must never look inert; it
+does not, because a notice beside the canvas says why the counter stayed put.
+
 **Accept** calls the existing progress endpoint with `accepted`, and is enabled only
 where `ASSET_PROGRESS_TRANSITIONS` allows the move — offering it on an untouched
-asset would be offering a refusal. The zoom `−`/`%`/`+` and fit drive
+asset would be offering a refusal. It is **not** loosened to cover a skipped asset:
+the way to reach `annotated` from `skipped` is to un-skip and annotate, which is
+what the machine says. The zoom `−`/`%`/`+` and fit drive
 `AnnotatorCanvas`'s new `viewRef` handle, whose `fit` is the same implementation
 `mod+0` reaches, which is why that chord stays intercepted rather than forwarded.
 The version dropdown and Merge render **disabled**: they are #127 and post-beta, and
