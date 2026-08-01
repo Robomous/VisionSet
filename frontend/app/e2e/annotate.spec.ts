@@ -688,3 +688,128 @@ test("the project view's tabs use the same one rule", async ({ page }) => {
   await expect(page.getByTestId("project-tabs")).toBeVisible();
   expect(await tabGap(page, "project-tabs")).toBeCloseTo(12, 0);
 });
+
+/**
+ * The tool palette (#198).
+ *
+ * The absence these cover is not "a control is missing" but "the primary gesture
+ * does nothing": the page opens with no active class, `toolFor` answers `select`,
+ * and a drag draws nothing. Every scenario below therefore starts from the page as
+ * it opens and reaches the canvas **through the palette** — the digit row and the
+ * Labels tab are already covered elsewhere and both worked while this was broken.
+ */
+
+/** The stage's rect, which is what a drag's coordinates are taken against. */
+async function stageBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
+  const box = await page.getByTestId("annotator-canvas").boundingBox();
+  if (box === null) throw new Error("no canvas");
+  return box;
+}
+
+test("the palette is on the page as it opens, with select the tool you are in", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const palette = page.getByTestId("tool-palette");
+  await expect(palette).toBeVisible();
+
+  // The schema declares one bbox class and one polygon class, so exactly three
+  // tools plus help. A tag or a `polyline` would add neither.
+  await expect(page.getByTestId("tool-select")).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "false");
+  await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "false");
+  await expect(page.getByTestId("tool-help")).toBeVisible();
+});
+
+test("pressing the box tool and dragging draws an object, from the page as it opens", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // Nothing drawn, and — the part that was broken — no class chosen by anything
+  // other than the palette below.
+  await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+
+  await page.getByTestId("tool-bbox").click();
+  // A palette press reaches the machine through `AnnotatorCanvas`'s `tool-changed`
+  // effect, which lands a tick after the state change, so the drag waits on the
+  // button's own report rather than on a timer.
+  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
+
+  const box = await stageBox(page);
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+  // And it is in the Objects panel, carrying the class the box tool activated.
+  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+  await expect(page.getByTestId("annotator-panel")).toContainText("vehicle");
+});
+
+test("pressing the polygon tool and clicking draws a polygon", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await page.getByTestId("tool-polygon").click();
+  await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "true");
+
+  const box = await stageBox(page);
+  const at = (fx: number, fy: number): [number, number] => [
+    box.x + box.width * fx,
+    box.y + box.height * fy,
+  ];
+  for (const [x, y] of [at(0.35, 0.3), at(0.25, 0.55), at(0.5, 0.55)]) {
+    await page.mouse.click(x, y);
+  }
+  // Enter closes the ring — the close a keyboard can always reach, and the one
+  // `drawTriangle` uses in the showcase suite.
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+  await expect(page.getByTestId("annotator-panel")).toContainText("lane");
+});
+
+test("the palette reports the tool whatever moved the class", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // The tool is derived and never stored, so the digit row and the Labels tab
+  // must light the same button the palette's own press does. A palette holding
+  // its own idea of the tool is the pair v1 spent two mechanisms keeping in step.
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("2");
+  await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("tool-select")).toHaveAttribute("data-active", "false");
+
+  await page.getByTestId("tab-labels").click();
+  await page.getByTestId("label-vehicle").click();
+  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "false");
+});
+
+test("pressing a tool leaves the keyboard alive", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // The claim: the palette refuses the focus a `mousedown` would otherwise take.
+  // If it did not, every chord would be dead until the user clicked back on the
+  // picture — and the failure is silent, which is how #47 found the same class of
+  // bug from the other direction.
+  await page.getByTestId("annotator-root").focus();
+  await page.getByTestId("tool-bbox").click();
+
+  await page.keyboard.press("2");
+  await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "true");
+});
+
+test("the palette's help entry opens the shortcut sheet", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await expect(page.getByTestId("shortcut-sheet")).toHaveCount(0);
+  await page.getByTestId("tool-help").click();
+  await expect(page.getByTestId("shortcut-sheet")).toBeVisible();
+});

@@ -64,6 +64,7 @@ import {
   defaultRegistry,
   annotationsInDrawOrder,
   documentFromWire,
+  toolFor,
   useAnnotatorSnapshot,
   type AnnotatorStore,
   type AnnotatorView,
@@ -95,6 +96,7 @@ import { Button } from "../primitives/Button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { ShortcutSheet } from "./ShortcutSheet";
+import { ToolPalette } from "./ToolPalette";
 import { AssetImage } from "./AssetImage";
 import type { WireAnnotation } from "./jobQueries";
 import {
@@ -578,6 +580,25 @@ function Workspace({
               />
             )}
           </AssetImage>
+
+          {/*
+            The strip is a sibling of the canvas, not a child of it, and the stage
+            is `relative` for exactly this. Putting it inside `AnnotatorCanvas`
+            would mean the engine shipping chrome, and putting it outside the stage
+            would mean it was not floating over the picture.
+
+            `toolFor` is read here rather than held: the tool is derived from the
+            active class and never stored (`core/interaction/tool.ts`), and a second
+            copy on this page would be the pair v1 spent two mechanisms keeping in
+            step.
+          */}
+          <ToolPalette
+            schema={store.document.schema}
+            tool={toolFor(store.document, activeClass)}
+            onActivateClass={setActiveClass}
+            onToggleHelp={() => setHelpOpen((open) => !open)}
+          />
+
           <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-meta text-muted-foreground" data-testid="object-total">
             {drawn} object{drawn === 1 ? "" : "s"}
           </span>
