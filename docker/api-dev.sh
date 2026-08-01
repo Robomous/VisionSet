@@ -1,6 +1,11 @@
 #!/bin/sh
-# Bring up the API for the compose dev stack: make a workspace if there is none,
-# mint the token the browser will ask for, then start uvicorn.
+# Start the API for the compose dev stack: make a workspace if there is none, mint
+# the token the browser will ask for, then start uvicorn.
+#
+# No `uv run`, and that is the point: every dependency is already installed in the
+# image's venv, which is on PATH, so these are plain calls that touch no network
+# and resolve nothing. `uv run` would re-check the environment on every boot, which
+# is the work docker/api.Dockerfile exists to have already done.
 #
 # This is dev-only scaffolding. Nothing here ships in the wheel, and the release
 # artifact is still `pip install visionset` — see docker/compose.yaml.
@@ -16,29 +21,29 @@ WORKSPACE="${VISIONSET_WORKSPACE:?VISIONSET_WORKSPACE must be set}"
 # to report it much later as a 500 with an incident id.
 if [ ! -f "$WORKSPACE/visionset.db" ]; then
   echo "compose: no workspace at $WORKSPACE — creating one"
-  uv run visionset init "$WORKSPACE"
+  visionset init "$WORKSPACE"
 
   # Only on the run that created it. A token secret is shown exactly once by
   # design (`IssuedToken.secret` carries `repr=False`), so there is nothing to
   # re-print on a later boot and pretending otherwise would be a lie.
   echo "compose: minting a token named 'dev' for the browser"
-  SECRET="$(uv run visionset token create --name dev --workspace "$WORKSPACE")"
+  SECRET="$(visionset token create --name dev --workspace "$WORKSPACE")"
   echo "compose: ----------------------------------------------------------------"
   echo "compose: sign in at http://localhost:8080 with this token:"
   echo "compose:   $SECRET"
   echo "compose: shown once. For another:"
   echo "compose:   docker compose -f docker/compose.yaml exec api \\"
-  echo "compose:     uv run visionset token create --name <name>"
+  echo "compose:     visionset token create --name <name>"
   echo "compose: ----------------------------------------------------------------"
 fi
 
 # `--reload-dir` is not tidiness. uvicorn's default watch list is the working
-# directory, which here is the whole bind-mounted repository: `node_modules/`,
-# the `.venv` volume mountpoint, and `workspace-data/` — so every SQLite write
-# during an ingest would restart the server mid-run. `visionset ui` scopes its
-# own `reload_dirs` to the package for exactly this reason; raw uvicorn does not
-# inherit that, so the scope is stated here instead.
-exec uv run uvicorn visionset.server.main:app \
+# directory, which here is the whole bind-mounted repository: `node_modules/` and
+# `workspace-data/` among the rest — so every SQLite write during an ingest would
+# restart the server mid-run. `visionset ui` scopes its own `reload_dirs` to the
+# package for exactly this reason; raw uvicorn does not inherit that, so the scope
+# is stated here instead.
+exec uvicorn visionset.server.main:app \
   --reload \
   --reload-dir /workspace/src \
   --host 0.0.0.0 \

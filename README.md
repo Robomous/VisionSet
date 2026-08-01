@@ -139,8 +139,10 @@ containers instead, with nothing installed on the host and nothing built:
 docker compose -f docker/compose.yaml up
 ```
 
-**The app is at http://localhost:8080** — one port, nginx in front of both services. First boot
-creates a workspace and prints a token in the `api` logs; sign in with that.
+**The app is at http://localhost:8080** — one port, nginx in front of both services. The first run
+builds two images, every later one just starts them; dependencies are installed at build time, so
+starting the stack downloads nothing. First boot creates a workspace and prints a token in the
+`api` logs; sign in with that.
 
 Everything it stores lands in **`workspace-data/`** (git-ignored): SQLite for metadata, a local
 directory for the files, one workspace holding both — the shape MLflow's default mode has, and the
