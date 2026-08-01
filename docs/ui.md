@@ -37,7 +37,7 @@ fallback — is an exception handler, and an exception handler is not an operati
 | route | what | behind the token gate |
 | --- | --- | --- |
 | `/` | Home | yes |
-| `/projects`, `/projects/:id`, `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
+| `/projects`, `/projects/:id` (`?tab=schema\|batches\|versions`), `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
 | `/jobs/:jobId` | the annotation page | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
 | `/styleguide` | the rendered design system | **no** |
@@ -68,6 +68,36 @@ Query keys are hierarchical — `["projects"]` → `["projects", id]` →
 `["projects", id, "schema"]` — because TanStack Query matches a **prefix**. So
 invalidating `["projects", id]` after a rename refreshes the project, its schema and
 its version list, and the mutation never has to enumerate what it affected.
+
+### The project view, and the one screen whose section is in the URL
+
+A project has three sections — its schema, its batches, its version history — and
+they are **tabs**, not four things stacked in one column (#171). The header is not a
+tab: the project's name and the actions that apply to all of it (ingest, dataset,
+rename) sit above the tab list, and the tab list is what says the rest are
+alternatives rather than a sequence. `Schema` is the default, because a project
+starts schema-less on purpose and nothing downstream can be approved without one.
+
+The section travels as **`?tab=`**, so it survives a reload and can be linked to —
+which is most of the point of giving the version history a place of its own. That
+does not put a router inside `ui-core`: `ProjectScreen` takes `tab` as a raw string
+and hands a normalised one back through `onTabChange`, exactly as every other screen
+takes navigation. Normalising is the screen's job, so an unknown value opens on the
+default rather than on nothing. With `onTabChange` absent the tabs are uncontrolled
+and still work, which is what lets a component test — or a host with no router —
+render the screen unchanged.
+
+**Each tab owns its query.** Radix unmounts inactive content, so a query living in
+the section that renders it follows the tab: the version list is read when Versions
+is opened rather than on every visit to a project, and the batch table stops polling
+while another tab is showing. Only `useProject` runs at the top, because the header
+is outside the tabs and always drawn.
+
+No panel repeats its own tab's name as a heading. Radix labels each panel with its
+trigger, so an `<h2>` saying "Batches" under a tab saying "Batches" is a stutter for
+a reader and for a screen reader both; what stays is the line the tab cannot carry —
+where a batch comes from, which version a save would create, why a past version has
+no edit controls.
 
 ### The dataset, its releases, and getting the data out
 

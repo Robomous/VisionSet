@@ -82,7 +82,8 @@ export function BatchesScreen({ projectId, onOpenBatch }: BatchesScreenProps): J
     <div className="flex flex-col gap-4" data-testid="batches-screen">
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h2 className="text-section font-semibold">Batches</h2>
+          {/* The tab is the heading (#171). What is left is the sentence that
+              explains where a batch comes from, which the tab cannot say. */}
           <p className="text-meta text-muted-foreground">
             A batch is born from an ingest. Approving it pins the schema and cuts the jobs.
           </p>
