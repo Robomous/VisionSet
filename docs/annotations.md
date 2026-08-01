@@ -791,3 +791,47 @@ and three of its decisions are worth knowing before changing it:
 Zoom controls reach `AnnotatorCanvas`'s `viewRef` handle, whose `fit()` is the same
 implementation `mod+0` runs — one behaviour, two doors, which is why the chord is
 still intercepted by the adapter rather than forwarded.
+
+
+## The tool palette
+
+`@visionset/ui-core`'s `ToolPalette` is the floating strip on the canvas's left
+edge. It is a **second** implementation of the same rule as the showcase's
+`demo/ToolStrip.tsx`, deliberately: the showcase's whole claim is that the engine
+ships headless — no Tailwind, no tokens, no chrome — so a showcase importing
+product UI would be demonstrating the opposite. What the two share is the rule
+below, not a file.
+
+**The strip reports the tool; it does not hold one.** `toolFor` derives the tool
+from the active class and nothing stores it (`core/interaction/tool.ts`), so a
+press moves the *class* to one that derives the tool asked for. Two consequences
+fall out and both are load-bearing:
+
+- A press whose tool is **already active is a no-op**. Two bbox classes are one
+  bbox tool, and re-pointing the class would silently change what the next shape is
+  labelled without moving the tool. Choosing *which* class is the Labels tab's job.
+- The strip lists one button per distinct **drawable geometry**, from
+  `drawableGeometry` — never one per class, and never a hardcoded list. A
+  `classification_tag` and a `polyline` both answer `null` and neither gets a
+  canvas tool.
+
+**Without it the page opened in a mode where dragging did nothing** (#198). The
+page starts with no active class, so `toolFor` answers `select`; the capability was
+reachable from the Labels tab and the digit row, but neither is discoverable from
+the canvas, and neither is a tool. #145 recorded the same absence as ergonomics,
+which was too generous.
+
+**A palette press reaches the machine one tick later than a digit does.** The click
+sets React state, and `AnnotatorCanvas`'s effect dispatches `tool-changed` on the
+next render, where `runAction` dispatches synchronously. Anything driving the
+palette in a test waits on the button's own `data-active` rather than on a timer.
+
+**The buttons refuse the focus.** `AnnotatorCanvas` reads the keyboard off its own
+root, so a tool press that took the focus would leave every chord dead until the
+user clicked back on the picture — the silent failure #47 met from the other
+direction. `mousedown` is where a browser moves focus, so that is where it is
+refused.
+
+The shortcut in each tooltip is the **digit** `hotkeyForClass` answers, not v1's
+`B`/`P` that `DESIGN.md` still draws: this build binds classes to the digit row
+(#46), and printing a key that does nothing would be worse than printing none.

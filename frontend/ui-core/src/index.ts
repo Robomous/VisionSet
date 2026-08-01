@@ -177,6 +177,9 @@ export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbna
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
 
+// The floating tool palette (#198). Reports the derived tool; never stores one.
+export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
+
 // The annotation page (#56) — where M4's engine meets M3's API.
 export { AnnotationPage, type AnnotationPageProps } from "./annotator/AnnotationPage.js";
 export { AssetImage, type AssetImageProps } from "./annotator/AssetImage.js";
