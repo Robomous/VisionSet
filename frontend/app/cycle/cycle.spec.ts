@@ -168,16 +168,22 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("failures")).toHaveCount(0);
   });
 
+  await test.step("the finished run names the batch it filled, and opens it", async () => {
+    // **#181, and this is the only test anywhere that drives the route the fix
+    // wires.** The run used to reach `completed` and end the page: this step
+    // walked back through the project to find the batch, which is the same shape
+    // as the `jobIdOf` helper #160 deleted — a suite that finds the batch by
+    // another road cannot notice that the screen offers none.
+    await expect(page.getByTestId("run-outcome")).toContainText("cycle-batch");
+    await page.getByTestId("open-batch").click();
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
+  });
+
   await test.step("a draft batch's tiles are inert, and say why", async () => {
     // Before approval there are no jobs, so `BatchAsset.job_id` is null (#29) and
     // an asset has nowhere to go. #160's third criterion: the tile must read as
     // *not yet* rather than as a broken control, so the reason travels on the
     // element a person can hover.
-    //
-    // The ingest step above ends on the ingest screen, so the walk back to the
-    // batch table is the same one every other step makes.
-    await openProject(page, "batches");
-    await page.getByTestId("open-batch-cycle-batch").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
     const first = page.getByTestId(/^tile-/).first();
     await expect(first).toBeDisabled();
