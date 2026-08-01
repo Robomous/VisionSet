@@ -194,6 +194,27 @@ export function hotkeyForClass(
   return CLASS_HOTKEY_DIGITS[index];
 }
 
+/**
+ * The registry an annotator actually runs on: defaults, then the schema's class
+ * hotkeys, then the host's overrides.
+ *
+ * One exported spelling of that fold, because there are now **two** callers who
+ * must agree exactly: the adapter that resolves a keystroke, and the help sheet
+ * that lists what is bound (#189). A sheet built from its own `registryOf(...)`
+ * call is a second spelling free to drift, and drifting is precisely what v1's
+ * hand-written `HelpModal.tsx` did — the failure this file's docstring already
+ * names when it says *the help sheet **is** the registry*.
+ *
+ * Order is the fold's order and is load-bearing: a host override wins over a
+ * class hotkey, which wins over a default.
+ */
+export function defaultRegistry(
+  schema: AnnotationSchema,
+  overrides: readonly Binding[] = [],
+): Registry {
+  return registryOf([...DEFAULT_BINDINGS, ...classHotkeys(schema), ...overrides]);
+}
+
 /** Fold bindings left to right: last wins, `null` unbinds, nothing throws. */
 export function registryOf(bindings: Iterable<Binding>): Registry {
   const registry = new Map<string, Action>();

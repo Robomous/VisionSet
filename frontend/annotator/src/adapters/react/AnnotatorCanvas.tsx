@@ -137,14 +137,12 @@ import { NO_TARGET } from "../../core/interaction/target";
 import { toolFor } from "../../core/interaction/tool";
 import type { Tool } from "../../core/interaction/tool";
 import {
-  DEFAULT_BINDINGS,
   RESET_ZOOM,
-  classHotkeys,
+  defaultRegistry,
   keystrokeOf,
   modifiersOf,
   pointerButton,
   pointerPoint,
-  registryOf,
   resolve,
   runAction,
 } from "../../core/input";
@@ -324,10 +322,9 @@ export function AnnotatorCanvas({
   const tool: Tool = toolFor(snapshot.document, activeClass);
   const tolerances = assetTolerances(view.zoom);
 
-  const registry = useMemo(
-    () => registryOf([...DEFAULT_BINDINGS, ...classHotkeys(schema), ...(bindings ?? [])]),
-    [schema, bindings],
-  );
+  // `defaultRegistry` rather than the fold spelled out here: the help sheet lists
+  // what is bound and must read the *same* map, overrides included (#189).
+  const registry = useMemo(() => defaultRegistry(schema, bindings ?? []), [schema, bindings]);
 
   /** One turn of the machine — the only place `transition` is called. */
   const dispatch = useCallback(

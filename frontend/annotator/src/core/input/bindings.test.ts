@@ -32,6 +32,7 @@ import {
   CLASS_HOTKEY_DIGITS,
   DEFAULT_BINDINGS,
   classAction,
+  defaultRegistry,
   classHotkeys,
   hotkeyForClass,
   registryOf,
@@ -272,5 +273,50 @@ describe("registryOf", () => {
         { chord: "v", action: { kind: "redo" } },
       ]),
     ).not.toThrow();
+  });
+});
+
+/**
+ * The fold, named once (#189).
+ *
+ * `defaultRegistry` exists because two callers must agree exactly: the adapter
+ * that resolves a keystroke, and the help sheet that lists what is bound. A sheet
+ * spelling the fold itself is a second spelling free to drift — which is the
+ * failure v1's hand-written `HelpModal.tsx` had by construction.
+ */
+describe("the registry an annotator actually runs on", () => {
+  it("is the defaults plus the schema's class hotkeys", () => {
+    const registry = defaultRegistry(PALETTE_SCHEMA);
+    for (const binding of DEFAULT_BINDINGS) {
+      expect(registry.get(binding.chord)).toEqual(binding.action);
+    }
+    for (const binding of classHotkeys(PALETTE_SCHEMA)) {
+      expect(registry.get(binding.chord)).toEqual(binding.action);
+    }
+    expect(registry.size).toBe(DEFAULT_BINDINGS.length + classHotkeys(PALETTE_SCHEMA).length);
+  });
+
+  it("carries no class hotkey for a schema with no classes", () => {
+    expect(defaultRegistry(EMPTY_SCHEMA).size).toBe(DEFAULT_BINDINGS.length);
+  });
+
+  it("lets a host override win over a class hotkey, which wins over a default", () => {
+    const registry = defaultRegistry(PALETTE_SCHEMA, [
+      { chord: "1", action: { kind: "undo" } },
+      { chord: "v", action: { kind: "redo" } },
+    ]);
+    expect(registry.get("1")).toEqual({ kind: "undo" });
+    expect(registry.get("v")).toEqual({ kind: "redo" });
+  });
+
+  it("lets a host unbind a default, so the browser keeps the chord", () => {
+    const registry = defaultRegistry(PALETTE_SCHEMA, [{ chord: "mod+0", action: null }]);
+    expect(registry.has("mod+0")).toBe(false);
+  });
+
+  it("agrees with the fold it replaced, which is the whole point of naming it", () => {
+    expect(defaultRegistry(PALETTE_SCHEMA)).toEqual(
+      registryOf([...DEFAULT_BINDINGS, ...classHotkeys(PALETTE_SCHEMA)]),
+    );
   });
 });

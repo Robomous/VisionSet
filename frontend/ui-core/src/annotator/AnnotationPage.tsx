@@ -61,6 +61,7 @@
 import {
   AnnotatorCanvas,
   TOGGLE_HELP,
+  defaultRegistry,
   annotationsInDrawOrder,
   documentFromWire,
   useAnnotatorSnapshot,
@@ -93,6 +94,7 @@ import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 import { AnnotatorPanel } from "./AnnotatorPanel";
+import { ShortcutSheet } from "./ShortcutSheet";
 import { AssetImage } from "./AssetImage";
 import type { WireAnnotation } from "./jobQueries";
 import {
@@ -279,7 +281,29 @@ function Workspace({
   const [activeClass, setActiveClass] = useState<string | null>(null);
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [view, setView] = useState<Viewport | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const viewRef = useRef<AnnotatorView | null>(null);
+
+  /**
+   * The one capability the canvas hands out rather than owning (#189).
+   *
+   * It used to be `(name) => name === TOGGLE_HELP` — which returns **true**, the
+   * value that means *the host handled this*, while rendering nothing. So `?`
+   * was consumed and then discarded: the user got no help, and the engine had
+   * been told the request was served, so nothing else could pick it up.
+   *
+   * `false` for anything else, which is what that return value is for.
+   */
+  function hostAction(name: string): boolean {
+    if (name !== TOGGLE_HELP) return false;
+    setHelpOpen((open) => !open);
+    return true;
+  }
+
+  // The map the canvas itself resolves against, so the sheet cannot list a chord
+  // the engine does not answer to. `AnnotatorCanvas` builds its own from the same
+  // function and no overrides are passed here, so the two agree by construction.
+  const registry = useMemo(() => defaultRegistry(store.document.schema), [store]);
 
   const save = useSaveAnnotations(jobId, asset.id);
   const setProgress = useSetAssetProgress(jobId);
@@ -547,7 +571,7 @@ function Workspace({
                 onViewChange={setView}
                 hiddenIds={hiddenIds}
                 viewRef={viewRef}
-                onHostAction={(name) => name === TOGGLE_HELP}
+                onHostAction={hostAction}
               />
             )}
           </AssetImage>
@@ -564,6 +588,8 @@ function Workspace({
           onActivateClass={setActiveClass}
         />
       </div>
+
+      <ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} registry={registry} />
     </div>
   );
 }

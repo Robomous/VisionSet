@@ -20,7 +20,7 @@
  * A host wires it in four lines:
  *
  * ```ts
- * const registry = registryOf([...DEFAULT_BINDINGS, ...classHotkeys(schema), ...overrides]);
+ * const registry = defaultRegistry(schema, overrides);      // the fold, named once
  * const keystroke = keystrokeOf(event);                     // null: not ours
  * const action = keystroke && resolve(registry, keystroke); // null: not ours
  * if (action) { event.preventDefault(); runAction(action, context).events.forEach(send); }
@@ -90,6 +90,7 @@ export {
   DEFAULT_BINDINGS,
   classAction,
   classHotkeys,
+  defaultRegistry,
   hotkeyForClass,
   registryOf,
   resolve,
