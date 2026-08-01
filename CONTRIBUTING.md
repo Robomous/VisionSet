@@ -16,9 +16,16 @@ needs nothing installed on the host and no build of any kind.
 | Storage | `workspace-data/` (git-ignored): `visionset.db` + `blobs/`. Move it with `VISIONSET_DATA=/path` |
 | Token | minted on first boot, printed in the `api` logs |
 | Behind the proxy | API on :8000 and vite on :5173 are published too, for curl and for reading a vite error without nginx in the way |
+| After a dependency change | `build`, then `down -v` before `up` — node_modules lives in volumes seeded from the image, and Docker seeds a volume only when it is new |
 
-Dev only; the release artifact is always the pip package. Running it on the host stays faster,
-because a bind mount has to poll for file changes rather than being told about them.
+Every dependency is installed at **image build** (`docker/api.Dockerfile`,
+`docker/app.Dockerfile`), both honouring their lockfiles, so starting a container downloads
+nothing — the stack comes up offline. What is left at start is compiling the repository's own two
+TypeScript libraries, which no image can hold because the source does not exist until you write it.
+
+Dev only; the release artifact is always the pip package, and these images are never it. Running
+it on the host stays faster, because a bind mount has to poll for file changes rather than being
+told about them.
 
 ## Checks that must stay green
 
