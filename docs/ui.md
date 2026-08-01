@@ -299,6 +299,31 @@ the library would apply — MIME type, size, per-file rejection — is a rule th
 already owns and refuses better, with the kernel's own reason; duplicating it here
 would be a second spelling of the accepted-format list.
 
+#### A settled run names the batch it filled, and offers two ways on
+
+A run that reaches `completed` or `failed` renders an outcome: the batch's name, a
+button that opens it (`onOpenBatch`, wired to `/projects/{id}/batches/{id}` in
+`routes.tsx` — `ui-core` may not import a router), and a second that clears the form
+so another source can be ingested without reloading. Before #181 there was neither,
+and `Start ingest` stayed `disabled` for the rest of the page's life.
+
+Three things decide the shape:
+
+- **It is offered, never taken.** No redirect on completion, because the same card
+  carries the per-file report and a run with `corrupt` rows is exactly the one whose
+  report must be read. A `failed` run gets the outcome too — a partial run has a
+  batch, and "some of it did land" is the thing nobody would otherwise be told.
+- **`batch_id` is not on the row from the first poll.** `enqueue` stores only the id
+  it was *handed*, which is null whenever the run creates its own batch; the row
+  learns the real one in the transaction that completes the job. So a run in flight
+  has nothing to open, and one that failed before materializing a batch never gets
+  one — which is why the button is conditional rather than decorative. `batch_name`
+  *is* resolved at enqueue, so a partial run can still say where its assets are.
+- **The outcome quotes no number.** `processed` is not the size of the batch on
+  either path: a directory ingest counts refused items into it and a video ingest
+  does not, and content addressing collapses identical items into one asset. The
+  count that is honest is the batch's own, one click away.
+
 ### The schema editor, and the two 409s
 
 The editor is where `docs/api.md`'s "branch on the code, never on the status" earns
@@ -551,3 +576,9 @@ each is about one screen's effect on another:
 
 Each is now owned by the screen the domain says owns it, and the cycle asserts all
 three.
+
+It is also the only place a route's callback wiring is exercised at all. The cycle
+used to reach the batch by walking back through the project after an ingest —
+`jobIdOf`'s shape, the helper #160 deleted for the same reason — so since #181 it
+clicks the run card's own **Open batch** instead. Deleting the `onOpenBatch` prop in
+`routes.tsx` leaves every unit test green and fails this step.

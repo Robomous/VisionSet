@@ -213,9 +213,28 @@ function Annotate(): JSX.Element {
   );
 }
 
+/**
+ * Ingest, and the way out of it.
+ *
+ * #181: this route passed no navigation, so a run that reached `completed` ended
+ * the page — the batch it had just filled was reachable only by walking back to
+ * the project and finding it in the list. `IngestScreen` names the batch itself;
+ * turning that into a URL is this file's job, and it is the same one line as
+ * `Project`'s own `onOpenBatch`.
+ *
+ * The screen refuses a null `batch_id` on its own rather than trusting this
+ * callback to be careful — a run creating its own batch has no id until it
+ * completes, and one that failed first never gets one.
+ */
 function Ingest(): JSX.Element {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   if (projectId === undefined) return <NotFound />;
-  return <IngestScreen projectId={projectId} />;
+  return (
+    <IngestScreen
+      projectId={projectId}
+      onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
+    />
+  );
 }
 
