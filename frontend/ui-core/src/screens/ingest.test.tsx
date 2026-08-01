@@ -397,3 +397,129 @@ describe("watching a run", () => {
     expect(screen.queryByTestId("resume-ingest")).toBeNull();
   });
 });
+
+/**
+ * #181: a settled run used to be a dead end.
+ *
+ * The card reached `completed` and the screen went inert — no route to the batch
+ * it had just filled, and `Start ingest` stayed `disabled` for the rest of the
+ * page's life. Ingest is the product's entry point, so a terminal state naming
+ * no next step leaves a first-time user guessing where their assets went.
+ *
+ * The batch id is what makes the button conditional rather than decorative:
+ * `enqueue` stores only an id it was *handed*, which is null for a run creating
+ * its own batch, and the row learns the real one in the transaction that
+ * completes the job. So "offer it when there is one" is a live branch, not
+ * defensive programming.
+ */
+describe("what a settled run offers next", () => {
+  beforeEach(() => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+    on("POST", /\/ingest-jobs$/, { status: 202, body: job({ state: "running", processed: 0 }) });
+  });
+
+  async function launch(node: JSX.Element): Promise<void> {
+    render(mount(node));
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    await userEvent.click(screen.getByTestId("start-ingest"));
+  }
+
+  it("names the batch a completed run filled and offers to open it", async () => {
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
+    const open = vi.fn();
+    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={open} />);
+
+    const outcome = await screen.findByTestId("run-outcome");
+    expect(outcome.textContent).toContain("drive.mp4");
+    await userEvent.click(screen.getByTestId("open-batch"));
+    // The id, not the name — the route is `/projects/{id}/batches/{id}`, and the
+    // name is a label a user typed that two batches may share.
+    expect(open).toHaveBeenCalledWith("44444444-4444-4444-8444-444444444444");
+  });
+
+  it("offers nothing to open while the run is still going", async () => {
+    // There is nothing to open yet: a run creating its own batch has no id on
+    // the row until the transaction that completes it.
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job({ state: "running", batch_id: null }) });
+    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    await screen.findByTestId("run-progress");
+    expect(screen.queryByTestId("run-outcome")).toBeNull();
+    expect(screen.queryByTestId("open-batch")).toBeNull();
+  });
+
+  it("degrades to no button when the run reached no batch", async () => {
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({ state: "failed", batch_id: null, error: "ffmpeg is not installed" }),
+    });
+    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    const outcome = await screen.findByTestId("run-outcome");
+    expect(outcome.textContent).toContain("never reached a batch");
+    expect(screen.queryByTestId("open-batch")).toBeNull();
+    // The remedy for this one is the resume that is already there.
+    expect(screen.getByTestId("resume-ingest")).not.toBeNull();
+  });
+
+  it("degrades to no button when the host passed nowhere to go", async () => {
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
+    await launch(<IngestScreen projectId={PROJECT} />);
+
+    // `ui-core` may not import a router, so navigation is the shell's to supply
+    // — and a host with no route for a batch still gets the outcome.
+    expect((await screen.findByTestId("run-outcome")).textContent).toContain("drive.mp4");
+    expect(screen.queryByTestId("open-batch")).toBeNull();
+  });
+
+  it("still says where the assets that landed went when the run reported failures", async () => {
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({
+        processed: 3,
+        total: 5,
+        failures: [
+          { name: "notes.txt", kind: "unsupported", reason: "not an image" },
+          { name: "truncated.jpg", kind: "corrupt", reason: "unexpected end of file" },
+        ],
+      }),
+    });
+    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    const outcome = await screen.findByTestId("run-outcome");
+    expect(outcome.textContent).toContain("What this run managed to read");
+    expect(outcome.textContent).toContain("drive.mp4");
+    expect(screen.getByTestId("open-batch")).not.toBeNull();
+    // Both at once, which is the argument against redirecting on completion: the
+    // report is exactly what a partial run needs read.
+    expect(screen.getByTestId("failures")).not.toBeNull();
+  });
+
+  it("goes back to a clean form, so a second source is ingestable without a reload", async () => {
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
+    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await screen.findByTestId("run-outcome");
+
+    await userEvent.click(screen.getByTestId("ingest-another"));
+    expect(screen.queryByTestId("run-card")).toBeNull();
+    expect(screen.queryByTestId("source-card")).toBeNull();
+    expect(screen.queryByTestId("chosen")).toBeNull();
+
+    // And the whole flow runs again on the same page, which is the claim: the
+    // launch used to stay `disabled` for the rest of the page's life.
+    await choose([pick("b.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    expect((screen.getByTestId("start-ingest") as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(screen.getByTestId("start-ingest"));
+
+    await waitFor(() =>
+      expect(
+        sent.filter((r) => r.method === "POST" && r.url.endsWith("/ingest-jobs")),
+      ).toHaveLength(2),
+    );
+  });
+});

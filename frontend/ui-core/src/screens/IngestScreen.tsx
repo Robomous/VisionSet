@@ -31,10 +31,40 @@
  * denominator until it is over. A directory states its total before the first
  * file. A bar that assumed a denominator would be a lie with a percentage on it,
  * so a clip gets a count and an indeterminate state instead.
+ *
+ * ## A settled run is a fork in the road, and it has to name both branches
+ *
+ * #181: the card reached `completed` and the screen went inert — no way to the
+ * batch the run had just filled, and no way to ingest a second source short of
+ * reloading the page, because `Start ingest` is gated on `jobId !== null` and
+ * nothing ever cleared it. Ingest is the *entry point* of the product, so a
+ * terminal state naming no next step leaves a first-time user guessing where
+ * their assets went. So a run that has settled offers exactly two things: open
+ * the batch, and start over with a clean form.
+ *
+ * ## The outcome deliberately quotes no number, and the counters are why
+ *
+ * `processed` is not the size of the batch, on either path. A directory ingest
+ * counts refused items into it (`len(candidates) + len(failures)`) and a video
+ * ingest does not (`len(candidates)` alone), so `processed - failures.length` is
+ * right for one and wrong for the other. And content addressing collapses
+ * identical items into one asset, so even a clean directory run can put fewer
+ * assets in the batch than it read files. The number that is honest is the one
+ * the batch itself reports, and it is one click away: this card says *where*,
+ * and lets the batch say *how many*.
+ *
+ * ## `batch_id` is NOT there from the first poll, which is what the button degrades on
+ *
+ * `enqueue` stores the batch id it was *handed* — null for the common case of a
+ * run creating its own batch — and the row learns the real id in the same
+ * transaction that marks the job `completed`. So a run in flight has nothing to
+ * open, and a run that `failed` before it materialized a batch never gets one.
+ * `batch_name` is resolved at enqueue either way, which is what lets a partial
+ * run still say which batch holds what it managed to read.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, FileVideo, Images, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, FileVideo, FolderOpen, Images, RefreshCw, Upload } from "lucide-react";
 import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
@@ -70,15 +100,27 @@ const NEW_BATCH = "__new__";
 
 export interface IngestScreenProps {
   readonly projectId: string;
+  /**
+   * Open the batch a finished run filled.
+   *
+   * A callback rather than a route, because `ui-core` may not import a router —
+   * turning it into `/projects/{projectId}/batches/{batchId}` is the shell's
+   * job, the way `GalleryScreen`'s `onOpenAsset` and `ProjectScreen`'s
+   * `onOpenBatch` already work. Optional, so a host that has nowhere to send
+   * anybody renders the outcome without the button rather than a dead link.
+   */
+  readonly onOpenBatch?: (batchId: string) => void;
 }
 
-export function IngestScreen({ projectId }: IngestScreenProps): JSX.Element {
+export function IngestScreen({ projectId, onOpenBatch }: IngestScreenProps): JSX.Element {
   const [files, setFiles] = useState<readonly File[]>([]);
   const [fps, setFps] = useState(String(DEFAULT_EXTRACTION_FPS));
   const [batchChoice, setBatchChoice] = useState(NEW_BATCH);
   const [batchName, setBatchName] = useState("");
   const [source, setSource] = useState<Source | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  // Bumped by `again()` and used as the dropzone's `key`. See there.
+  const [attempt, setAttempt] = useState(0);
 
   const register = useRegisterSource(projectId);
   const start = useStartIngest(projectId);
@@ -120,6 +162,33 @@ export function IngestScreen({ projectId }: IngestScreenProps): JSX.Element {
     );
   }
 
+  /**
+   * Back to a clean form — the whole of "ingest a second source without a reload".
+   *
+   * Every piece of the flow is cleared, including both mutations: a stale
+   * `register.isError` left behind would sit above an empty dropzone as a
+   * refusal of files nobody has chosen yet. The run itself is untouched — it is
+   * a row on the server and this is a form, so starting over here neither
+   * cancels nor forgets what was ingested.
+   *
+   * The dropzone is *remounted* rather than reset, because an `<input
+   * type="file">` keeps the selection it already holds: clearing our own `files`
+   * state leaves the element still holding the last pick, and a picker asked for
+   * that same file again may report no change at all. A fresh element has
+   * nothing to compare against.
+   */
+  function again(): void {
+    setFiles([]);
+    setFps(String(DEFAULT_EXTRACTION_FPS));
+    setBatchChoice(NEW_BATCH);
+    setBatchName("");
+    setSource(null);
+    setJobId(null);
+    setAttempt((previous) => previous + 1);
+    register.reset();
+    start.reset();
+  }
+
   function launch(): void {
     if (source === null) return;
     start.mutate(
@@ -150,7 +219,7 @@ export function IngestScreen({ projectId }: IngestScreenProps): JSX.Element {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <Dropzone files={files} onFiles={setFiles} />
+          <Dropzone key={attempt} files={files} onFiles={setFiles} />
 
           {isVideo && (
             <div className="flex max-w-sm flex-col gap-1.5">
@@ -277,7 +346,13 @@ export function IngestScreen({ projectId }: IngestScreenProps): JSX.Element {
         </Card>
       )}
 
-      {jobId !== null && <RunCard job={job.data ?? null} />}
+      {jobId !== null && (
+        <RunCard
+          job={job.data ?? null}
+          {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+          onAgain={again}
+        />
+      )}
     </div>
   );
 }
@@ -291,7 +366,15 @@ function Fact({ label, value }: { readonly label: string; readonly value: string
   );
 }
 
-function RunCard({ job }: { readonly job: IngestJob | null }): JSX.Element {
+function RunCard({
+  job,
+  onOpenBatch,
+  onAgain,
+}: {
+  readonly job: IngestJob | null;
+  readonly onOpenBatch?: (batchId: string) => void;
+  readonly onAgain: () => void;
+}): JSX.Element {
   const resume = useResumeIngest();
 
   return (
@@ -359,10 +442,80 @@ function RunCard({ job }: { readonly job: IngestJob | null }): JSX.Element {
                 </FieldHint>
               </div>
             )}
+
+            {(job.state === "completed" || job.state === "failed") && (
+              <Outcome
+                job={job}
+                {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+                onAgain={onAgain}
+              />
+            )}
           </>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Where the assets went, and what to do about it.
+ *
+ * Rendered for `completed` **and** for `failed`, because a partial run has a
+ * batch too: whatever it managed to read before it stopped is in there, and the
+ * failure report above is precisely the case where a user needs to be told that
+ * some of it did land. That is also the argument against redirecting on
+ * completion — the report and the next step have to be readable at the same
+ * time, and a redirect throws the report away for the runs that most need it.
+ *
+ * The action is *offered*, never taken.
+ */
+function Outcome({
+  job,
+  onOpenBatch,
+  onAgain,
+}: {
+  readonly job: IngestJob;
+  readonly onOpenBatch?: (batchId: string) => void;
+  readonly onAgain: () => void;
+}): JSX.Element {
+  const batchId = job.batch_id ?? null;
+  // Resolved at enqueue, so it survives a run that never reached the batch.
+  const batchName = job.batch_name ?? "the batch";
+  const partial = job.state === "failed" || job.failures.length > 0;
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-4" data-testid="run-outcome">
+      <p className="text-body">
+        {batchId === null ? (
+          // `enqueue` only stores an id it was handed, and one is handed only
+          // when the launch targeted an existing draft. A run that died before
+          // it materialized its own batch therefore has nothing to open — and
+          // saying so is more use than a button that cannot work.
+          <>This run never reached a batch, so there is nothing to open yet.</>
+        ) : partial ? (
+          <>
+            What this run managed to read is in{" "}
+            <strong className="font-medium">{batchName}</strong>.
+          </>
+        ) : (
+          <>
+            Everything this run read is in <strong className="font-medium">{batchName}</strong>.
+          </>
+        )}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {batchId !== null && onOpenBatch !== undefined && (
+          <Button variant="primary" data-testid="open-batch" onClick={() => onOpenBatch(batchId)}>
+            <FolderOpen className="size-4" aria-hidden="true" />
+            Open batch
+          </Button>
+        )}
+        <Button variant="secondary" data-testid="ingest-another" onClick={onAgain}>
+          <Upload className="size-4" aria-hidden="true" />
+          Ingest another source
+        </Button>
+      </div>
+    </div>
   );
 }
 
