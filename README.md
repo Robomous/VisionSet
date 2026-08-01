@@ -136,11 +136,18 @@ Then `uv run visionset ui` and `pnpm --filter @visionset/app dev`. Or run the wh
 containers instead, with nothing installed on the host and nothing built:
 
 ```bash
-docker compose -f docker/compose.yaml up   # API on :8000, app on :5173
+docker compose -f docker/compose.yaml up
 ```
 
-First boot creates a workspace and prints a token in the `api` logs; sign in with it at
-http://localhost:5173. Dev only — the release artifact is always the pip package.
+**The app is at http://localhost:8080** — one port, nginx in front of both services. First boot
+creates a workspace and prints a token in the `api` logs; sign in with that.
+
+Everything it stores lands in **`workspace-data/`** (git-ignored): SQLite for metadata, a local
+directory for the files, one workspace holding both — the shape MLflow's default mode has, and the
+only shape VisionSet has. Put it elsewhere with `VISIONSET_DATA=/path docker compose …`; it is a
+bind mount, so `down -v` does not take your data with it.
+
+Dev only — the release artifact is always the pip package.
 
 Common checks: `uv run pytest`, `uv run lint-imports`, `uv run mypy src/visionset/kernel`,
 `pnpm -r build`, `pnpm test`. The full list — including the wheel build and the thirty-minute
