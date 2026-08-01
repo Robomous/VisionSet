@@ -359,3 +359,136 @@ test("the versioning controls are present and disabled, not absent", async ({ pa
   await expect(page.getByTestId("version-select")).toBeDisabled();
   await expect(page.getByTestId("merge")).toBeDisabled();
 });
+
+/**
+ * #183: the annotation page owns the viewport.
+ *
+ * Every other route in the product is a list or a form, and the shell's padded,
+ * `max-w-7xl` container is right for those. The annotator is the one screen
+ * somebody sits in front of for an hour, and boxing it costs more than looks:
+ * `fitToViewport` derives the zoom from `getBoundingClientRect` on the pane, so a
+ * pane the shell has shrunk means every asset opens smaller than it needs to and
+ * the tolerance constants — all in *screen* pixels, divided by zoom — are applied
+ * at a zoom nobody chose.
+ */
+
+/** Viewport width minus the rail, which is what the page is entitled to. */
+async function paneWidth(page: Page): Promise<number> {
+  const rail = await page.getByTestId("app-rail").boundingBox();
+  const width = page.viewportSize()?.width ?? 0;
+  return width - (rail?.width ?? 0);
+}
+
+test("the annotation page fills the viewport beside the rail, with no cap and no padding", async ({
+  page,
+}) => {
+  // Wider than `max-w-7xl` (1280px), so the cap is a real constraint rather than
+  // one that happens not to bite. At the suite's default 1440 the content area is
+  // 1200 and the cap never engages — which is exactly how this defect survived.
+  await page.setViewportSize({ width: 1800, height: 900 });
+
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const box = await page.getByTestId("annotation-page").boundingBox();
+  expect(box).not.toBeNull();
+  // No gutters: the page is everything to the right of the rail.
+  expect(box!.width).toBeCloseTo(await paneWidth(page), 0);
+  // No padding above the top bar either.
+  expect(box!.y).toBe(0);
+  expect(box!.height).toBe(900);
+});
+
+test("nothing on the annotation page scrolls the document", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // `h-screen` inside a `py-6` container made the document 948px tall in a 900px
+  // window, so the canvas's own badge was cut off and the whole page scrolled.
+  const scrolls = await page.evaluate(() => ({
+    vertical: document.documentElement.scrollHeight > window.innerHeight,
+    horizontal: document.documentElement.scrollWidth > window.innerWidth,
+  }));
+  expect(scrolls).toEqual({ vertical: false, horizontal: false });
+
+  // The badge pinned to the bottom-left of the canvas pane is on screen, which is
+  // the symptom a user actually reported.
+  const badge = await page.getByTestId("object-total").boundingBox();
+  expect(badge).not.toBeNull();
+  expect(badge!.y + badge!.height).toBeLessThanOrEqual(900);
+});
+
+test("collapsing the rail reflows the annotation page to the new width", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const before = (await page.getByTestId("annotation-page").boundingBox())!;
+  await page.getByTestId("rail-collapse").click();
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
+
+  const after = (await page.getByTestId("annotation-page").boundingBox())!;
+  // The whole 180px the rail gave back — 240px expanded, 60px collapsed, the
+  // tokens three things have to agree on.
+  //
+  // Before the fix this was **128**, which is the defect stating itself: at 1440
+  // the expanded pane is 1200 and `max-w-7xl` never engages, but collapsing frees
+  // enough width for the cap to start biting, so the page grew by less than the
+  // rail released and the difference went into gutters.
+  expect(after.width - before.width).toBeCloseTo(180, 0);
+  expect(after.width).toBeCloseTo(await paneWidth(page), 0);
+});
+
+test("every other route keeps the padded, capped container", async ({ page }) => {
+  await page.setViewportSize({ width: 1800, height: 900 });
+
+  const sent: Request[] = [];
+  await serveApi(page, sent);
+  await page.goto("/projects");
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+
+  const main = page.locator("main");
+  await expect(main).toBeVisible();
+  const box = (await main.boundingBox())!;
+  const inner = (await main.locator("> div").first().boundingBox())!;
+
+  // The pane is still the full width beside the rail…
+  expect(box.width).toBeCloseTo(await paneWidth(page), 0);
+  // …and the *content* inside it is capped at 7xl and inset on both axes, which
+  // is right for a list and is what must not move. Measured against the pane's
+  // own origin, because the padding lives inside `<main>` rather than above it.
+  expect(inner.width).toBeLessThanOrEqual(1280);
+  expect(inner.x - box.x).toBeGreaterThan(0);
+  expect(inner.y - box.y).toBeGreaterThan(0);
+});
+
+/**
+ * The rail is continuous across the two panes, whatever the route tree looks like.
+ *
+ * Splitting a shell into two layout routes is the kind of change that quietly
+ * costs local state, and #183 introduced exactly that shape. This asserts the
+ * property rather than the structure — deliberately, because the structure turns
+ * out not to decide it: two sibling `<Route element={<AppShell />}>` branches are
+ * reconciled into one instance and preserve the state too. What must not regress
+ * is the user-visible half, and that is what is written down here.
+ */
+test("the rail keeps its collapsed state when the pane changes", async ({ page }) => {
+  const sent: Request[] = [];
+  // Start inside the **full-bleed** pane, so both crossings below are real.
+  await openJob(page, sent);
+
+  await page.getByTestId("rail-collapse").click();
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
+
+  // Full-bleed → padded, by a client-side navigation. A reload would remount
+  // everything and prove nothing about the route tree.
+  await page.getByTestId("rail-projects").click();
+  await expect(page.locator("main .max-w-7xl")).toBeVisible();
+  await expect(page.getByTestId("annotation-page")).toHaveCount(0);
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
+
+  // …and back the other way.
+  await page.goBack();
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
+});

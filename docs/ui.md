@@ -57,6 +57,37 @@ The rail is the whole shell: logo, collapse toggle, Home, Projects, sign out. An
 richer growing on it is what the thin-app audit exists to catch — a capability in
 `app/` is one the future enterprise UI cannot reuse.
 
+### Two panes, and which one a route gets
+
+`AppShell` renders the rail and a bare `<Outlet/>`; the pane beside it is a **nested
+layout route**, so choosing one is a routing decision and the shell stays
+composition-only.
+
+| pane | routes | treatment |
+| --- | --- | --- |
+| `PaddedPane` | everything else | `px-4 py-6 md:px-6`, content capped at `max-w-7xl` |
+| `FullBleedPane` | `/jobs/:jobId` | the whole viewport beside the rail, `h-screen`, `overflow-hidden` |
+
+A padded, capped column is right for a list or a form and wrong for the one screen
+somebody sits in front of for an hour. Boxing the annotator cost more than looks
+(#183): `fitToViewport` derives the zoom from `getBoundingClientRect` on the pane, so
+a shrunken pane opened every asset smaller than it needed to and applied the
+tolerance constants — all in *screen* pixels, divided by zoom — at a zoom nobody
+chose. `h-screen` *plus* `py-6` also made the document 948px tall in a 900px window,
+so the canvas's own badge was cut off and the whole page scrolled.
+
+`FullBleedPane` is `h-screen` rather than `flex-1`: a flex item stretches to its row,
+the row is `min-h-screen`, and a page taller than the window would drag the rail down
+with it. Pinning the height is what makes "the canvas pane is the only thing with
+`overflow`" structural rather than incidental.
+
+The panes are nested under **one** `AppShell` rather than under two sibling shells,
+so there is a single copy to keep correct. That is *not* what preserves the rail's
+collapsed state across a pane change — measured: two sibling
+`<Route element={<AppShell />}>` branches are reconciled into one instance and
+preserve it too. The behaviour is asserted directly in `e2e/annotate.spec.ts`, which
+is the level that survives either structure.
+
 ## Screens
 
 A screen is a component in `@visionset/ui-core` and a route in `@visionset/app`. It
