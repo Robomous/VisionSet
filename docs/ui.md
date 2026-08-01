@@ -214,12 +214,16 @@ about `skipId`, from the other side.
 
 ### The gallery, and the `<img>` that cannot work
 
-**Every route but `/health` and `/openapi.json` needs `Authorization: Bearer`, and
-an `<img src>` sends no header.** The browser issues that request itself, with
-cookies and nothing else, so pointing an `<img>` at
+**Every route but `/health` and `/openapi.json` needs a credential, and an
+`<img src>` sends no header.** The browser issues that request itself, with cookies
+and nothing else, so pointing an `<img>` at
 `GET /projects/{p}/assets/{a}/thumbnail` produces a 401 and a broken-image icon on
-every tile. There is no cookie session and the API takes no token in the query
-string, so `AssetThumbnail` fetches the bytes with the credentialed client and
+every tile whenever the credential is a token — and the API takes no token in the
+query string. A browser *session* would in fact carry, since a cookie is exactly
+what an `<img>` does send; the mechanism stays because it must work for both, and a
+gallery that rendered only for locally-signed-in users would be the kind of bug
+nobody reproduces. So `AssetThumbnail` fetches the bytes with the credentialed
+client and
 hands the result over as an object URL — which it then **revokes**, because a
 gallery scrolling a thousand assets would otherwise hold a thousand JPEGs alive
 with nothing referencing them.
@@ -377,17 +381,38 @@ Two codes are the client's own, for answers the contract cannot describe:
 `ApiError.incidentId` reads `detail.incident_id`, which is where a 5xx puts the one
 thing a person can quote when the message itself is deliberately withheld.
 
-## The token
+## The credential
 
-There are no accounts. A token is minted out of band —
-`visionset token create --name ui`, which prints the secret exactly once — and the
-browser presents it as `Authorization: Bearer`.
+There are no accounts, and since #179 there is usually nothing to type either.
 
-`TokenGate` shows the app when a token is held and the entry form when it is not.
-The form **verifies before it adopts**: it spends one `GET /projects` with a
-throwaway client and only calls `signIn` on a 200. Storing whatever was pasted and
-letting the first screen fail would put the error on a project list, which then
-reports a problem about projects when the real problem is the credential.
+**On this machine, the server signs the browser in.** `ApiProvider` asks once, with
+`GET /session`; the server answers by setting an `HttpOnly` cookie when the request
+came from loopback *and* addressed the server as loopback. The whole argument — the
+modes, the DNS-rebinding case, why a cookie is safer here than what it replaced —
+is in [auth.md](auth.md#the-browser-session). What matters on this side is that the
+credential is one **no script here can read**, so "am I signed in?" is a question
+the app has to ask rather than answer by looking.
+
+That is why `ApiSession.access` exists and the gate does not test `token !== null`.
+Four states: `checking` (the one round trip, during which `TokenGate` renders
+**nothing** — a login form that flashes in front of somebody who never has to see
+one is worse than a blank frame), `session`, `token`, `none`. The probe runs once
+per mount, which is what keeps `signOut` meaningful: one that could run again would
+sign a machine-local user straight back in, and a 401 on a session would oscillate
+through the gate forever.
+
+**A token is the other credential**, minted out of band with
+`visionset token create --name ui`, presented as `Authorization: Bearer`, and the
+only way in for a browser the server will not sign in — a LAN client, a deployment
+running `never`. The form **verifies before it adopts**: it spends one
+`GET /projects` with a throwaway client and only calls `signIn` on a 200. Storing
+whatever was pasted and letting the first screen fail would put the error on a
+project list, which then reports a problem about projects when the real problem is
+the credential.
+
+In the rail, that same asymmetry is one word: the sign-out control reads **"Use a
+token"** during a session, because it cannot delete a cookie it cannot read — it
+stops using it here, and a reload signs you back in.
 
 Refusals are told apart by what to do next, not by status: a 401 says the token was
 refused (mistyped, revoked, or minted for a different workspace — the API answers

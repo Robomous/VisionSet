@@ -1,10 +1,25 @@
 /**
- * The front door: enter a workspace token, or see the screen that asks for one.
+ * The front door — which, on your own machine, you never see.
  *
- * This is the whole of VisionSet's sign-in. There is no account, no password and
- * no session endpoint — a token is minted out of band with `visionset token create
- * --name <name>`, which prints the secret exactly once, and the browser is just
- * another client presenting it as `Authorization: Bearer`.
+ * There is no account and no password. There are two credentials, and the gate's
+ * whole job is to notice which one applies before showing anybody a form.
+ *
+ * **A browser session.** The server signs in the page it served itself, over an
+ * `HttpOnly` cookie (#179). Opening `visionset ui` on the machine it runs on
+ * reaches the product with nothing typed and nothing copied, because asking
+ * somebody to paste a credential to read their own files off their own disk is
+ * ceremony with no threat model behind it. This component is what asks — once, on
+ * mount, through `ensureAccess` — and until the answer arrives it renders nothing,
+ * which is the difference between a gate and a flash of a login form. Asking from
+ * here rather than from the provider is also what keeps the two ungated routes
+ * from making a request they have no server for.
+ *
+ * **A token**, minted out of band with `visionset token create --name <name>`,
+ * which prints the secret exactly once, and presented as `Authorization: Bearer`
+ * like any other client. It is what a third-party program uses, and it is what a
+ * browser uses when the server will not sign it in by itself — a LAN client of a
+ * `--host 0.0.0.0` server, or a deployment that has turned sessions off. The form
+ * below is for that case, and only for it.
  *
  * ## The token is verified before it is adopted
  *
@@ -31,7 +46,7 @@
  */
 
 import { KeyRound } from "lucide-react";
-import { useState, type FormEvent, type JSX, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
 import { createApiClient } from "../client";
 import { Button } from "../primitives/Button";
@@ -46,16 +61,27 @@ export interface TokenGateProps {
 }
 
 /**
- * Show `children` when there is a token, and the form when there is not.
+ * Show `children` once a credential is held, and the form when none is.
  *
  * A 401 anywhere in the app clears the session (`ApiProvider`), so this component
  * is also the "your token was revoked while you were working" screen — without
  * knowing anything about that, which is the point of handling the 401 in one
  * place.
+ *
+ * `checking` renders **nothing**, deliberately. It lasts one request against a
+ * server on the same machine, and a spinner that appears and vanishes inside a
+ * frame is worse than a frame of nothing — while showing the *form* during it
+ * would put a login screen in front of the one user who never has to see one.
  */
 export function TokenGate({ children }: TokenGateProps): JSX.Element {
-  const { token } = useApiSession();
-  if (token === null) return <TokenForm />;
+  const { access, ensureAccess } = useApiSession();
+  // Asked from here rather than on the provider's mount, so that the two routes
+  // deliberately outside this gate issue no request at all — they have no server
+  // to authenticate against, and on a page with no API behind it a failed probe
+  // is a console error `demo.spec.ts` is right to fail on.
+  useEffect(ensureAccess, [ensureAccess]);
+  if (access === "checking") return <></>;
+  if (access === "none") return <TokenForm />;
   return <>{children}</>;
 }
 
@@ -96,8 +122,9 @@ export function TokenForm(): JSX.Element {
             Connect to a workspace
           </CardTitle>
           <CardDescription>
-            VisionSet has no accounts. Paste an API token for the workspace this server is
-            serving.
+            VisionSet has no accounts. This server did not sign this browser in by itself —
+            because it is not the machine the server runs on, or because sessions are off — so
+            paste an API token for the workspace it is serving.
           </CardDescription>
         </CardHeader>
         <CardContent>

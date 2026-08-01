@@ -91,16 +91,25 @@ export function AppShell(): JSX.Element {
  * Sign out — the rail's account slot, and the only *action* on it.
  *
  * `DESIGN.md` draws an avatar here. There is nobody to draw: VisionSet has no
- * accounts, only a workspace token, so the honest control is the one that forgets
- * it. An avatar with no identity behind it would be chrome pretending to be a
- * feature.
+ * accounts, only a workspace credential, so the honest control is the one that
+ * forgets it. An avatar with no identity behind it would be chrome pretending to
+ * be a feature.
+ *
+ * **The label follows which credential is in use, because "sign out" is a lie
+ * about one of them.** A browser session is issued by the server to the page it
+ * served, and this button cannot delete a cookie it cannot read: what it does is
+ * stop using it *here*, and a reload signs you back in — which is correct on the
+ * machine serving your own files, and would be a broken sign-out button anywhere
+ * else. So on a session it says what it actually does, and it is the way to the
+ * token form for somebody who wants to reach a different workspace.
  */
 function SignOut({ collapsed }: { readonly collapsed: boolean }): JSX.Element {
-  const { signOut } = useApiSession();
+  const { access, signOut } = useApiSession();
+  const label = access === "session" ? "Use a token" : "Sign out";
   return (
-    <RailButton testId="rail-sign-out" label="Sign out" onClick={signOut} wide={!collapsed}>
+    <RailButton testId="rail-sign-out" label={label} onClick={signOut} wide={!collapsed}>
       <LogOut className="size-4 shrink-0" aria-hidden="true" />
-      {!collapsed && <span className="truncate">Sign out</span>}
+      {!collapsed && <span className="truncate">{label}</span>}
     </RailButton>
   );
 }

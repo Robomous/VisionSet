@@ -131,6 +131,7 @@ export {
   ApiProvider,
   useApiClient,
   useApiSession,
+  type Access,
   type ApiProviderProps,
   type ApiSession,
 } from "./data/ApiProvider.js";
