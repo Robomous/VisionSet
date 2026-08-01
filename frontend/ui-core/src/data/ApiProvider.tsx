@@ -6,6 +6,16 @@
  * used, and what happens when that credential stops working — and it hands out the
  * typed client through a hook so that **no module below it ever calls `fetch`**.
  *
+ * ## Two credentials, and only one of them is visible from here
+ *
+ * A **token** is what somebody pastes, and this module holds it. A **browser
+ * session** is what the server gives the page it served itself, as an `HttpOnly`
+ * cookie no script here can read (#179) — so the only way to find out whether this
+ * browser has one is to ask, which is the one request made outside a screen's own
+ * query. `TokenGate` triggers it through `ensureAccess`, and that is why the gate's
+ * input is `access` and not `token !== null`: on your own machine the ordinary
+ * state is authenticated with no token anywhere.
+ *
  * ## The 401 is handled once, in the cache, and that is the point
  *
  * The API answers **one identical 401** for a missing, malformed, unknown or
@@ -45,20 +55,55 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type JSX,
   type ReactNode,
 } from "react";
 
-import { createApiClient, type VisionSetClient } from "../client";
+import { createApiClient, requestSession, type VisionSetClient } from "../client";
 import { asApiError } from "./errors";
 import { clearToken, readToken, writeToken } from "./session";
+
+/**
+ * Which credential is in use, and whether that is settled yet.
+ *
+ * Four states rather than a `token: string | null`, because the credential this
+ * browser is most likely to hold is one it **cannot read** — an `HttpOnly` cookie
+ * the server set on the page it served (#179). "Signed in" is therefore no longer
+ * the same question as "is there a token", and collapsing the two would put the
+ * token form in front of somebody who is already authenticated.
+ *
+ * - `checking` — the one round trip that asks. Nothing below the gate renders yet.
+ * - `session` — the server signed this browser in. No token, and none needed.
+ * - `token` — somebody pasted one, or one was already in `sessionStorage`.
+ * - `none` — neither. The form.
+ */
+export type Access = "checking" | "session" | "token" | "none";
 
 export interface ApiSession {
   /** The typed client, already carrying the credential. */
   readonly client: VisionSetClient;
-  /** The token in use, or `null` when nobody has entered one. */
+  /**
+   * The pasted token in use, or `null`.
+   *
+   * `null` does **not** mean signed out — a browser session is a cookie no script
+   * can read. Ask `access` for that.
+   */
   readonly token: string | null;
+  /** Which credential is in use. The gate's whole input. */
+  readonly access: Access;
+  /**
+   * Ask the server for a browser session, if nobody has yet.
+   *
+   * Called by `TokenGate`, and by nothing else. The probe is **the gate's**
+   * question, not the provider's: two routes are deliberately outside the gate —
+   * the annotator showcase and the styleguide, neither of which has a server to
+   * authenticate against — and a provider that asked on mount would make those
+   * pages issue a request that fails wherever no API is running. Idempotent, so
+   * calling it from an effect on every render costs nothing.
+   */
+  readonly ensureAccess: () => void;
   readonly baseUrl: string;
   /** Adopt a credential. Clears every cached answer taken with the previous one. */
   readonly signIn: (token: string) => void;
@@ -90,7 +135,10 @@ export interface ApiProviderProps {
 export function ApiProvider({ baseUrl, queryClient, children }: ApiProviderProps): JSX.Element {
   // Read once. `sessionStorage` is not reactive and a second read would be a
   // second source of truth for the same fact.
-  const [token, setToken] = useState<string | null>(() => readToken());
+  const [token, setToken] = useState<string | null>(readToken);
+  // A held token is already the answer, so there is nothing to ask and nobody to
+  // show a spinner to: only a browser without one starts out `checking`.
+  const [access, setAccess] = useState<Access>(token === null ? "checking" : "token");
 
   const client = useMemo(
     () => createApiClient({ baseUrl, ...(token === null ? {} : { token }) }),
@@ -126,6 +174,7 @@ export function ApiProvider({ baseUrl, queryClient, children }: ApiProviderProps
     (next: string) => {
       writeToken(next);
       setToken(next);
+      setAccess("token");
       queries.clear();
     },
     [queries],
@@ -134,8 +183,37 @@ export function ApiProvider({ baseUrl, queryClient, children }: ApiProviderProps
   const signOut = useCallback(() => {
     clearToken();
     setToken(null);
+    setAccess("none");
     queries.clear();
   }, [queries]);
+
+  // Ask the server, exactly once and only when something behind the gate is being
+  // rendered, whether it will sign this browser in by itself.
+  //
+  // The guard is not about the cost of a second request — it is what makes
+  // `signOut` mean something: a probe that could run again would sign a
+  // machine-local user straight back in the instant they asked to be signed out,
+  // and a 401 arriving on a cookie session would loop through the gate forever. A
+  // reload asks again, and on your own machine that is the intended way back in.
+  //
+  // **There is deliberately no cleanup that ignores a late answer**, and the first
+  // draft had one. `<StrictMode>` mounts, unmounts and remounts every effect in
+  // development: the first run claimed the ref and armed the "ignore this" flag,
+  // the second returned early because the ref was claimed, and the answer that did
+  // arrive was thrown away by a cleanup for a mount that no longer mattered — so
+  // the gate sat on `checking` forever and the application rendered *nothing*. It
+  // is invisible under `render()` in vitest, which does not use StrictMode; ten
+  // Playwright scenarios found it at once. Nothing here needs cancelling: the
+  // promise resolves once, React 18 removed the unmounted-setState warning, and a
+  // stale answer cannot arrive because the request is only ever made once.
+  const asked = useRef(false);
+  const [wanted, setWanted] = useState(false);
+  const ensureAccess = useCallback(() => setWanted(true), []);
+  useEffect(() => {
+    if (!wanted || access !== "checking" || asked.current) return;
+    asked.current = true;
+    void requestSession(baseUrl).then((issued) => setAccess(issued ? "session" : "none"));
+  }, [wanted, access, baseUrl]);
 
   // Every failure, from either cache, whoever built the client. `subscribe`
   // returns its own unsubscribe, so a remounted provider leaves no listener behind.
@@ -155,8 +233,8 @@ export function ApiProvider({ baseUrl, queryClient, children }: ApiProviderProps
   }, [queries, signOut]);
 
   const session = useMemo<ApiSession>(
-    () => ({ client, token, baseUrl, signIn, signOut }),
-    [client, token, baseUrl, signIn, signOut],
+    () => ({ client, token, access, baseUrl, signIn, signOut, ensureAccess }),
+    [client, token, access, baseUrl, signIn, signOut, ensureAccess],
   );
 
   return (

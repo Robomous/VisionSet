@@ -30,7 +30,11 @@ import { expect, test, type Page } from "@playwright/test";
  * the browser would receive JSON where it asked for the application, and the
  * failure reads as "the shell disappeared".
  */
-async function serveApi(page: Page): Promise<void> {
+async function serveApi(page: Page, { session = false } = {}): Promise<void> {
+  // Every page load asks this first (#179). `false` is this suite's default,
+  // because the gate and the sign-out button are what it is about and both are
+  // only reachable when the server declines to sign the browser in by itself.
+  await page.route("**/api/session", (route) => route.fulfill({ json: { issued: session } }));
   await page.route("**/api/projects**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/schema")) {
@@ -62,7 +66,28 @@ async function signIn(page: Page): Promise<void> {
   await expect(page.getByTestId("app-rail")).toBeVisible();
 }
 
+test("the browser the server signed in never sees the gate", async ({ page }) => {
+  await serveApi(page, { session: true });
+  await page.goto("/");
+
+  // Nothing typed, nothing pasted: #179's whole point, in a browser.
+  await expect(page.getByTestId("app-rail")).toBeVisible();
+  await expect(page.getByTestId("token-input")).toHaveCount(0);
+
+  // The control says what it can actually do. A cookie set by the server is one
+  // no script here can delete, so this stops using it rather than forgetting it.
+  const control = page.getByTestId("rail-sign-out");
+  await expect(control).toContainText("Use a token");
+  await control.click();
+  await expect(page.getByTestId("token-input")).toBeVisible();
+
+  // And a reload asks again, which on your own machine is the way back in.
+  await page.reload();
+  await expect(page.getByTestId("app-rail")).toBeVisible();
+});
+
 test("the product is behind the token gate and the showcase is not", async ({ page }) => {
+  await serveApi(page);
   await page.goto("/");
   await expect(page.getByTestId("token-input")).toBeVisible();
   await expect(page.getByTestId("app-rail")).toHaveCount(0);
