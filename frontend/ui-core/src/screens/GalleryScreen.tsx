@@ -32,7 +32,15 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Async } from "../data/Async";
 import { Badge } from "../primitives/Badge";
 import { AssetThumbnail } from "./AssetThumbnail";
-import { GALLERY_PAGE_SIZE, useBatchAssets, type BatchAsset } from "./queries";
+import { BackLink } from "../patterns/BackLink";
+import { parentLabel } from "../patterns/parentLabel";
+import {
+  GALLERY_PAGE_SIZE,
+  useBatch,
+  useBatchAssets,
+  useProject,
+  type BatchAsset,
+} from "./queries";
 
 /** Tile edge in pixels, and the row height the virtualizer measures against. */
 const TILE = 160;
@@ -61,9 +69,18 @@ export interface GalleryScreenProps {
    * this prop is passed — see `Tile`.
    */
   readonly onOpenAsset?: (asset: BatchAsset) => void;
+  /** Up to the project this batch belongs to (#199). */
+  readonly onBack?: () => void;
 }
 
-export function GalleryScreen({ projectId, batchId, onOpenAsset }: GalleryScreenProps): JSX.Element {
+export function GalleryScreen({
+  projectId,
+  batchId,
+  onOpenAsset,
+  onBack,
+}: GalleryScreenProps): JSX.Element {
+  const project = useProject(projectId);
+  const batch = useBatch(batchId);
   const assets = useBatchAssets(batchId);
   // One node, two consumers, one state value. `useVirtualizer` re-reads
   // `getScrollElement` per call, so handing it the same state the observer is
@@ -105,10 +122,25 @@ export function GalleryScreen({ projectId, batchId, onOpenAsset }: GalleryScreen
 
   return (
     <div className="flex flex-col gap-3" data-testid="gallery">
-      <p className="text-meta text-muted-foreground" data-testid="gallery-count">
-        {items.length} of {total} shown
-        {assets.isFetchingNextPage && " · loading…"}
-      </p>
+      {onBack !== undefined && <BackLink onClick={onBack} label={parentLabel(project.data?.name)} />}
+
+      {/*
+        The header this screen never had (#199). It was the one page in the
+        product that did not say what you were looking at: a grid of thumbnails
+        with a count above it and no batch name anywhere, which is only legible
+        if you remember which tile you clicked.
+      */}
+      <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
+        <div>
+          <h1 className="text-page font-semibold tracking-tight" data-testid="batch-title">
+            {batch.data?.name ?? "Batch"}
+          </h1>
+          <p className="text-meta text-muted-foreground" data-testid="gallery-count">
+            {items.length} of {total} shown
+            {assets.isFetchingNextPage && " · loading…"}
+          </p>
+        </div>
+      </header>
 
       <Async
         query={assets}

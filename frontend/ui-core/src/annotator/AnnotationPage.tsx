@@ -129,10 +129,20 @@ export interface AnnotationPageProps {
    * first rather than showing nothing, since a stale link is not an error state.
    */
   readonly initialAssetId?: string;
-  /** Back to the batch. The app turns it into a route change. */
-  readonly onBack?: () => void;
   /**
-   * The gallery (#55), which the design's grid button jumps to.
+   * The gallery (#55) — the batch this job's assets belong to, and this page's
+   * **parent**. Both the back arrow and the design's grid button go there.
+   *
+   * #199: there used to be a separate `onBack` prop, and the app wired it to
+   * `navigate(-1)`. That is history rather than structure, so it meant a
+   * different thing depending on how the page was reached — the gallery from a
+   * tile, nothing at all on a fresh tab, and one asset at a time after walking
+   * forward through the job. The argument against it is the one this file already
+   * makes two paragraphs down about the grid button, applied to going up.
+   *
+   * Two controls, one destination, and that is not redundancy: the arrow means
+   * *up* and the grid means *show me the grid*. They coincide because the
+   * annotator's parent is the grid, and `DESIGN.md`'s top bar draws both.
    *
    * Handed the project and batch it belongs to, because only this page knows
    * them: a job records its task group, and `job → batch → project` is the walk
@@ -145,7 +155,6 @@ export interface AnnotationPageProps {
 export function AnnotationPage({
   jobId,
   initialAssetId,
-  onBack,
   onOpenGallery,
 }: AnnotationPageProps): JSX.Element {
   const job = useJob(jobId);
@@ -201,7 +210,6 @@ export function AnnotationPage({
       loaded={annotations.data}
       counts={progress.data ?? null}
       onNavigate={setChosen}
-      {...(onBack === undefined ? {} : { onBack })}
       {...(onOpenGallery === undefined
         ? {}
         : {
@@ -229,7 +237,6 @@ interface WorkspaceProps {
     readonly unannotated: number;
   } | null;
   readonly onNavigate: (index: number) => void;
-  readonly onBack?: () => void;
   readonly onOpenGallery?: () => void;
 }
 
@@ -264,7 +271,6 @@ function Workspace({
   loaded,
   counts,
   onNavigate,
-  onBack,
   onOpenGallery,
 }: WorkspaceProps): JSX.Element {
   const store = useMemo<AnnotatorStore>(
@@ -395,7 +401,7 @@ function Workspace({
   return (
     <div className="flex h-screen flex-col" data-testid="annotation-page">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-card px-2">
-        <Button variant="ghost" size="icon" aria-label="Back to the batch" data-testid="back" onClick={onBack} disabled={onBack === undefined}>
+        <Button variant="ghost" size="icon" aria-label="Back to the batch" data-testid="back" onClick={onOpenGallery} disabled={onOpenGallery === undefined}>
           <ArrowLeft className="size-4" />
         </Button>
 
