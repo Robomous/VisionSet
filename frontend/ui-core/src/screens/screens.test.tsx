@@ -436,6 +436,28 @@ describe("the project view's tabs", () => {
     expect(screen.queryByTestId("version-history")).toBeNull();
   });
 
+  it("presents the sections as tabs, with the open one selected and the others not", async () => {
+    project();
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    await screen.findByTestId("schema-editor");
+
+    // Structural, never a class string (#182): the styling changed once already
+    // and will again, but "this section is the open one" is what the keyboard and
+    // a screen reader read, and it is what a restyle must not lose.
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getByTestId("tab-schema").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("tab-schema").dataset.state).toBe("active");
+    for (const other of ["tab-batches", "tab-versions"]) {
+      expect(screen.getByTestId(other).getAttribute("aria-selected")).toBe("false");
+      expect(screen.getByTestId(other).dataset.state).toBe("inactive");
+    }
+
+    await userEvent.click(screen.getByTestId("tab-batches"));
+    await screen.findByTestId("batches-screen");
+    expect(screen.getByTestId("tab-batches").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("tab-schema").getAttribute("aria-selected")).toBe("false");
+  });
+
   it("opens on the section the URL named, and on the default when it names nothing valid", async () => {
     project();
     const { unmount } = render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));

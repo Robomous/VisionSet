@@ -78,7 +78,16 @@ export {
   SheetTrigger,
   type SheetContentProps,
 } from "./primitives/Dialog.js";
-export { Tabs, TabsContent, TabsList, TabsTrigger } from "./primitives/Tabs.js";
+export {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  tabsListVariants,
+  tabsTriggerVariants,
+  type TabsListProps,
+  type TabsVariant,
+} from "./primitives/Tabs.js";
 export {
   Select,
   SelectContent,

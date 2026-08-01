@@ -117,6 +117,7 @@ Map intent → token; never invent a value:
 | Intent | Token |
 |--------|-------|
 | Primary action / accent / active tool | `primary` (`#eb5a47`), hover `primary-hover` |
+| Active navigation (rail item, tab underline) | `primary` — see **Tabs** below |
 | Accent tint (chips, selected rows) | `primary` at 10% alpha, border `primary` |
 | Page / app surface | `background` |
 | Card / popover surface | `card` / `popover` |
@@ -158,6 +159,35 @@ base**, line-height 1.6. One scale — reuse it, don't invent sizes:
   unit, 24px separates page sections. Detail two-column: `1fr / 320px`, stacking below
   `lg`. Breakpoints 640 / 768 / 1024 / 1280.
 
+## Tabs
+
+Two shapes, one component (`primitives/Tabs.tsx`), chosen by a `variant` on `TabsList`
+which every trigger under it inherits. **#182**: they used to be one shape, a segmented
+control, and on the project view that put three pressed-looking buttons directly under
+the page's real buttons.
+
+- **`underline` (the default)** — page sections, GitHub's repository nav. A row on a
+  full-width `border` hairline; the active tab carries a **2px `primary` rule sitting on
+  that hairline** plus `font-semibold` and `foreground` text; an inactive tab carries no
+  border, no fill and no shadow, and gets a `muted` background on hover or focus. The
+  inactive tab keeps the same 2px border at `transparent`, so selecting one does not
+  shift the row.
+- **`segmented`** — a narrow panel's two-way switch: `muted` list, `border`, 12px radius,
+  4px padding, equal-width triggers, the active one raised onto `card` with `shadow-sm`.
+  Used by the annotation side panel and nowhere else so far.
+
+**The active underline is `primary`, and that is not an exception to the accent rule.**
+The rule reserves orange for "primary buttons, active tools and **navigation**" — the
+rail's active item is a solid `bg-primary` fill, and an open section is the same kind of
+statement. A 2px rule is also not a surface fill, which is the accent rule this could
+have broken. (An earlier docstring in `Tabs.tsx` argued the opposite and cited the rail
+as its precedent; the rail says the reverse.)
+
+Focus is **not** styled per variant: `styles.css`'s base layer gives every
+`:focus-visible` element a 2px `ring` outline, and an outline is painted outside the box,
+so it never depended on the segmented chip's fill. The underline variant adds
+`focus-visible:bg-muted` only so the ring encloses a fill rather than the page.
+
 ## The annotation workspace
 
 The page the reference design shows (#56), with measurements verified in v1's source:
@@ -177,7 +207,10 @@ The page the reference design shows (#56), with measurements verified in v1's so
   Tooltips open right with the shortcut ("Select (V)", "Box (B)", "Polygon (P)").
   Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow.
 - **Side panel** (#126): 288px (`w-72`) column, `muted` surface, `border`, 12px radius;
-  two tabs (Objects | Labels) in a 2-col tab list. Object rows: `rounded-md border
+  two tabs (Objects | Labels) in a 2-col tab list — the **`segmented`** variant, named
+  at the call site, and the only surface that uses it (#182): two equal halves at 288px
+  are a switch, and an underline's hairline would cut the panel in two rather than run
+  under a page. Object rows: `rounded-md border
   px-1.5 py-1`, meta-size text `N. class`; **selected = `border-primary` +
   `bg-primary/10`**; hidden = 50% opacity; per-row eye and trash as 24px ghost icon
   buttons. Header row: object count in muted meta text + all-visibility toggle.

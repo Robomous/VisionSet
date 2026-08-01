@@ -97,7 +97,11 @@ export function AnnotatorPanel({
 
   return (
     <Tabs defaultValue="objects" className="flex w-72 flex-col gap-3" data-testid="annotator-panel">
-      <TabsList className="w-full">
+      {/* The one place the segmented control is still the right shape (#182): two
+          equal halves inside a 288px card is a switch, and there is no full-width
+          run to hang an underline's hairline on that would not cut the panel in
+          two. `DESIGN.md`'s side-panel line names the variant. */}
+      <TabsList variant="segmented" className="w-full">
         <TabsTrigger value="objects" data-testid="tab-objects">
           Objects
         </TabsTrigger>
