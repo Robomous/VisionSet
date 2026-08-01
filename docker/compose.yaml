@@ -3,6 +3,17 @@
 #   docker compose -f docker/compose.yaml up                # api + app
 #   docker compose -f docker/compose.yaml --profile postgres up
 #   docker compose -f docker/compose.yaml --profile minio up
+#
+# From a clean checkout this needs nothing installed on the host — no `uv sync`,
+# no `pnpm install`, no `pnpm -r build`, no wheel. First boot creates a workspace,
+# mints a token and prints it in the `api` logs; sign in with it at
+# http://localhost:5173.
+
+# Named, rather than inherited from the directory. Compose derives a project name
+# from the compose file's parent directory, which here is `docker` — a name any
+# other checkout with a `docker/` directory also claims, so the two would share a
+# network name and report each other's containers as orphans.
+name: visionset
 
 services:
   api:
@@ -14,31 +25,71 @@ services:
     environment:
       # Which workspace this server serves. Inside the bind mount, and
       # **/workspace-data/ is already git-ignored, so nothing it writes can be
-      # committed by accident.
-      #
-      # Compose does not create it — `WorkspaceService.init` does. Until it
-      # exists, /health answers normally and every protected route answers
-      # 500 NOT_A_WORKSPACE, which is the intended legible failure rather than
-      # a server that silently serves nothing.
+      # committed by accident. `docker/api-dev.sh` creates it on first boot,
+      # because a stack whose every protected route answers 500 until the reader
+      # knows to run `visionset init` is not a dev environment.
       VISIONSET_WORKSPACE: /workspace/workspace-data/dev
+      # The venv is a volume and uv's cache is in the image's own layer, so they
+      # are on different filesystems and hardlinking is unavailable. Saying so up
+      # front turns a warning on every boot into a stated fact.
+      UV_LINK_MODE: copy
     # Raw uvicorn rather than `uv run visionset ui`, and deliberately so: that
-    # command opens the workspace before starting anything, so it would refuse to
-    # boot until somebody had created one — which is exactly the state described
-    # above that this stack is meant to survive. It also serves the app itself on
-    # :5173, so it needs nothing from the /ui mount.
-    command: uv run uvicorn visionset.server.main:app --reload --host 0.0.0.0 --port 8000
+    # command also serves the compiled bundle at /ui, which in development is
+    # vite's job on :5173 — and building that bundle is exactly what this stack
+    # exists to avoid needing.
+    command: sh /workspace/docker/api-dev.sh
     ports:
       - "8000:8000"
 
   app:
     image: node:24-bookworm-slim
     working_dir: /workspace
+    # Not for ordering — vite serves fine before the API answers, and the proxy
+    # reconnects per request. It is so that `up app` alone still brings up the
+    # thing the app is useless without.
+    depends_on:
+      - api
     volumes:
       - ..:/workspace
-    command: sh -c "corepack enable && pnpm install && pnpm --filter @visionset/app dev --host 0.0.0.0"
+      # One volume per package pnpm installs into, for the reason `api-venv`
+      # exists. A macOS host checkout holds darwin-only native packages (esbuild,
+      # rollup, @tailwindcss/oxide, lightningcss); a Linux `pnpm install` over the
+      # same bind mount rewrites that tree and leaves the host's own `pnpm dev`
+      # broken. pnpm's workspace layout puts a `node_modules/` at the root *and*
+      # in every package, so each needs its own volume — a root-only volume would
+      # still let the container write into `frontend/*/node_modules` on the host.
+      - app-node-modules:/workspace/node_modules
+      - app-annotator-modules:/workspace/frontend/annotator/node_modules
+      - app-ui-core-modules:/workspace/frontend/ui-core/node_modules
+      - app-app-modules:/workspace/frontend/app/node_modules
+      # pnpm's content-addressable store. Its default lives under the container's
+      # home directory, but the bind mount is a different filesystem, so pnpm
+      # relocates the store next to the project — writing `.pnpm-store/` into the
+      # host checkout, which is untracked and therefore easy to miss. Shadowing
+      # pnpm's own chosen path keeps that off the host and makes a second boot
+      # reuse the download instead of fetching 357 packages again.
+      - app-pnpm-store:/workspace/.pnpm-store
+    environment:
+      # Where vite's `/api` proxy points. Without it the config falls back to
+      # `http://127.0.0.1:8000`, which inside this container is this container —
+      # so every API call from the browser dies at the proxy, with a connection
+      # refused that appears nowhere in the api logs.
+      VISIONSET_API: http://api:8000
+      # A bind mount does not deliver inotify events across the host boundary on
+      # macOS or Windows, and vite's watcher is silent when it receives none:
+      # edits simply never reach the browser, which reads as "HMR is broken"
+      # rather than as a mount problem. Polling costs CPU, and is one reason
+      # running the app on the host is still faster.
+      CHOKIDAR_USEPOLLING: "true"
+    command: sh /workspace/docker/app-dev.sh
     ports:
       - "5173:5173"
 
+  # Neither of the two below is wired to anything. The kernel composes exactly one
+  # metadata store (`SqliteMetadataStore`) and one blob store
+  # (`FilesystemBlobStore`), and no code anywhere reads a `DATABASE_URL` or an S3
+  # endpoint — these exist to have somewhere to point a future adapter, which is
+  # why they sit behind profiles and are off by default.
   postgres:
     profiles: ["postgres"]
     image: postgres:16
@@ -66,5 +117,10 @@ services:
 
 volumes:
   api-venv:
+  app-node-modules:
+  app-annotator-modules:
+  app-ui-core-modules:
+  app-app-modules:
+  app-pnpm-store:
   postgres-data:
   minio-data:

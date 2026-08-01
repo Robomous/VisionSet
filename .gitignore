@@ -17,6 +17,11 @@ node_modules/
 frontend/*/dist/
 *.tsbuildinfo
 .pnpm-debug.log*
+# pnpm relocates its content-addressable store next to the project when its
+# default location is on another filesystem — which is what a bind mount is. The
+# compose stack shadows that path with a volume; this is the backstop for any
+# other environment that does the same thing.
+.pnpm-store/
 
 # Playwright output. The browsers themselves live in a per-user cache outside the
 # repository (~/.cache/ms-playwright), so nothing here needs an entry for them.
