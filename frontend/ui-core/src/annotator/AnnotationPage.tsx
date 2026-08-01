@@ -560,7 +560,10 @@ function Workspace({
       )}
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
-        <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-sidebar bg-sidebar-strong">
+        <div
+          className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-stage"
+          data-testid="canvas-stage"
+        >
           <AssetImage projectId={projectId} assetId={asset.id}>
             {(src) => (
               <AnnotatorCanvas
