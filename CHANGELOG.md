@@ -9,7 +9,29 @@ Six internal milestones (M1–M6) got here. The first five ended in a **git tag 
 `v0.0.1-alpha.1` … `v0.0.1-alpha.5`, with `VERSION` sitting at `0.0.1.dev0` throughout, because
 nothing was being distributed. This is the first version that is.
 
-## [Unreleased]
+## [0.0.1b2] — 2026-07-31
+
+The beta corrected. `0.0.1b1` shipped with every CI gate green — 2,000+ Python tests, 700
+annotator vitest, 76 Playwright scenarios, a browser cycle against a real server, and a wheel
+job — and a manual pass over the **built wheel** then found three things that made the
+advertised flow wrong or unusable.
+
+**The gap is the useful finding, and it shaped what this release adds.** Each defect sat in a
+blind spot of an otherwise strong suite, and all three are the same shape: *a claim verified
+against itself rather than against the artifact.* The export tests asserted the counts the code
+intended, never the counts in the bytes on disk. The gallery's own docstring called its
+one-column fallback "correct-but-slow rather than wrong", so its unit tests asserted exactly the
+broken value. Every screen was tested in isolation and nothing walked the app the way a person
+does.
+
+So each fix ships with the guard that was missing, and every one of them was **verified by
+mutation** — reintroducing the defect turns a named test red:
+
+- an export report is now checked against the annotations actually written into the label files,
+  XML documents and COCO JSON, for every installed format;
+- the product is walked end to end **by clicking**, and the helper that let a spec type a job URL
+  is deleted;
+- the gallery's column count is measured in a real browser at two viewport widths.
 
 ### Fixed
 
@@ -176,5 +198,7 @@ them and the numbers say what each one cost.
 | **M4** — the annotator | `v0.0.1-alpha.4` | 2026-07-31 | A headless annotation engine and a React renderer over it: command store, geometry, interaction machine, bbox/polygon/tag tools, 14 issues |
 | **M5** — the browser client | `v0.0.1-alpha.5` | 2026-07-31 | The product shell: design system, data layer, every screen, and a browser cycle test that drives a real server, 12 issues |
 | **M6** — the beta | `v0.0.1-beta.1` | 2026-07-31 | Exporters, the wheel, and the thirty-minute flow as a gate, 11 issues |
+| **beta.2** — the correction | `v0.0.1-beta.2` | 2026-07-31 | Five defects a manual pass over the wheel found, each with the guard that would have caught it, 6 issues |
 
+[0.0.1b2]: https://github.com/Robomous/VisionSet/releases/tag/v0.0.1-beta.2
 [0.0.1b1]: https://github.com/Robomous/VisionSet/releases/tag/v0.0.1-beta.1

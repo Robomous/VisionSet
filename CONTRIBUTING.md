@@ -68,6 +68,7 @@ else derives from it, in lockstep across the monorepo — the Python distributio
 | `0.0.1.dev0` | `0.0.1-dev.0` | Ongoing development on `main` |
 | `0.0.1a1` | `0.0.1-alpha.1` | Reserved; the alpha milestones are tags, not releases |
 | `0.0.1b1` | `0.0.1-beta.1` | The first published beta |
+| `0.0.1b2` | `0.0.1-beta.2` | The beta corrected — defects found by testing the wheel |
 | `0.0.1` | `0.0.1` | First stable release |
 
 Never hand-edit a version anywhere else — change `VERSION`, then run `pnpm version:sync`.

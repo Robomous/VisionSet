@@ -20,7 +20,10 @@ compatibility promises that implies, and nobody has taken it. See [the scope](#t
 
 ## Where the beta ships: **PyPI, as `0.0.1b1`**
 
-Decided for #69, and the argument is short.
+Decided for #69, and the argument is short. It is written about the *first* beta because that is
+when it was made; the current version is **`0.0.1b2`**, the same beta with the three defects a
+manual pass over the wheel found (#164). A published version is never edited in place — a
+correction is another release, which is the same rule a VisionSet release itself follows.
 
 **The whole product is designed around `pip install visionset`.** The README opens with it, the
 wheel carries the UI so there is nothing else to fetch, and #66 exists to prove the artifact
@@ -69,7 +72,7 @@ page does not have them.
 Python distribution and `pnpm version:sync` propagates it to every `frontend/*` package.
 
 ```bash
-echo "0.0.1b1" > VERSION
+echo "0.0.1b2" > VERSION
 pnpm version:sync
 pnpm version:check                                  # must be clean
 uv run python scripts/export_openapi.py             # the spec embeds the version
@@ -97,11 +100,11 @@ rather than the source tree, and the flow drives it from an empty environment.
 ### 3. Tag
 
 ```bash
-git tag v0.0.1-beta.1 && git push origin v0.0.1-beta.1
+git tag v0.0.1-beta.2 && git push origin v0.0.1-beta.2
 ```
 
-Tag names are `v`-prefixed npm-semver (`v0.0.1-beta.1`); the distribution version is PEP 440
-(`0.0.1b1`). They are the same version written two ways, and
+Tag names are `v`-prefixed npm-semver (`v0.0.1-beta.2`); the distribution version is PEP 440
+(`0.0.1b2`). They are the same version written two ways, and
 [CONTRIBUTING.md](../CONTRIBUTING.md#versioning) has the table.
 
 ### 4. Publish
@@ -113,7 +116,7 @@ artifact — or a local `bash scripts/build_dist.sh`.
 
 ```bash
 uv publish dist/*                # or: python -m twine upload dist/*
-gh release create v0.0.1-beta.1 dist/* --title "…" --notes-file CHANGELOG-excerpt.md
+gh release create v0.0.1-beta.2 dist/* --title "…" --notes-file CHANGELOG-excerpt.md
 ```
 
 **Prefer PyPI Trusted Publishing** over a long-lived API token: it authenticates a specific
@@ -129,7 +132,7 @@ The acceptance criterion, and it is not satisfied by the upload succeeding:
 
 ```bash
 cd $(mktemp -d)
-uv venv && uv pip install --no-cache "visionset==0.0.1b1"
+uv venv && uv pip install --no-cache "visionset==0.0.1b2"
 visionset --version          # the version you tagged
 visionset format list        # coco, dummy, voc, yolo
 ```
