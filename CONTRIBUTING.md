@@ -8,10 +8,17 @@ pnpm install       # pnpm workspace under frontend/
 ```
 
 Or skip all three and run the stack in containers — `docker compose -f docker/compose.yaml up`
-needs nothing installed on the host and no build of any kind. It creates a workspace, mints a
-token and prints it in the `api` logs, serves the API on :8000 and the app on :5173. Dev only;
-the release artifact is always the pip package. Running it on the host stays faster, because a
-bind mount has to poll for file changes rather than being told about them.
+needs nothing installed on the host and no build of any kind.
+
+| | |
+| --- | --- |
+| The app | **http://localhost:8080** — nginx, the only port you need |
+| Storage | `workspace-data/` (git-ignored): `visionset.db` + `blobs/`. Move it with `VISIONSET_DATA=/path` |
+| Token | minted on first boot, printed in the `api` logs |
+| Behind the proxy | API on :8000 and vite on :5173 are published too, for curl and for reading a vite error without nginx in the way |
+
+Dev only; the release artifact is always the pip package. Running it on the host stays faster,
+because a bind mount has to poll for file changes rather than being told about them.
 
 ## Checks that must stay green
 

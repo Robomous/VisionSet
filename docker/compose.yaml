@@ -5,9 +5,36 @@
 #   docker compose -f docker/compose.yaml --profile minio up
 #
 # From a clean checkout this needs nothing installed on the host — no `uv sync`,
-# no `pnpm install`, no `pnpm -r build`, no wheel. First boot creates a workspace,
-# mints a token and prints it in the `api` logs; sign in with it at
-# http://localhost:5173.
+# no `pnpm install`, no `pnpm -r build`, no wheel.
+#
+#   The app is at http://localhost:8080
+#
+# That is the only address anyone needs. nginx serves it: `/api/` reaches the API
+# and everything else the vite dev server, so the browser sees one origin. The two
+# services behind it are published as well (:8000 and :5173) for curl, an MCP
+# client config, or reading a vite error without the proxy in the way — they are
+# debugging doors, not the front one.
+#
+# First boot creates a workspace, mints a token and prints it in the `api` logs;
+# sign in with it at http://localhost:8080.
+#
+# Storage — the same shape MLflow's default mode has, because it is the only shape
+# VisionSet has: a local directory for files and SQLite for metadata, both inside
+# one workspace directory, no server and nothing to configure. The kernel composes
+# exactly one metadata store (`SqliteMetadataStore`, `visionset.db`) and one blob
+# store (`FilesystemBlobStore`, `blobs/`). What this file adds is a *named* host
+# directory for it, so the data is somewhere a person chose:
+#
+#   <repo>/workspace-data/          on the host   (git-ignored)
+#   /data/                          in the api container
+#   /data/dev/                      the workspace itself
+#
+# Point it elsewhere with VISIONSET_DATA, which is a host path and may be absolute:
+#
+#   VISIONSET_DATA=~/visionset docker compose -f docker/compose.yaml up
+#
+# It is a bind mount rather than a named volume precisely so `down -v` does not
+# take the data with it.
 
 # Named, rather than inherited from the directory. Compose derives a project name
 # from the compose file's parent directory, which here is `docker` — a name any
@@ -22,13 +49,19 @@ services:
     volumes:
       - ..:/workspace
       - api-venv:/workspace/.venv # keep the container venv off the host checkout
+      # The backend's storage, and the only mount here holding anything a person
+      # would miss. Its default is inside the checkout — `**/workspace-data/` is
+      # already git-ignored, so nothing written here can be committed by accident
+      # — which means the host directory is visible twice in this container, once
+      # as /data and once under /workspace. Same files either way; /data is the
+      # one to think in, and the one that moves when VISIONSET_DATA is set.
+      - ${VISIONSET_DATA:-../workspace-data}:/data
     environment:
-      # Which workspace this server serves. Inside the bind mount, and
-      # **/workspace-data/ is already git-ignored, so nothing it writes can be
-      # committed by accident. `docker/api-dev.sh` creates it on first boot,
-      # because a stack whose every protected route answers 500 until the reader
-      # knows to run `visionset init` is not a dev environment.
-      VISIONSET_WORKSPACE: /workspace/workspace-data/dev
+      # Which workspace this server serves, inside the storage mount above.
+      # `docker/api-dev.sh` creates it on first boot, because a stack whose every
+      # protected route answers 500 until the reader knows to run `visionset init`
+      # is not a dev environment.
+      VISIONSET_WORKSPACE: /data/dev
       # The venv is a volume and uv's cache is in the image's own layer, so they
       # are on different filesystems and hardlinking is unavailable. Saying so up
       # front turns a warning on every boot into a stated fact.
@@ -70,10 +103,12 @@ services:
       # reuse the download instead of fetching 357 packages again.
       - app-pnpm-store:/workspace/.pnpm-store
     environment:
-      # Where vite's `/api` proxy points. Without it the config falls back to
-      # `http://127.0.0.1:8000`, which inside this container is this container —
-      # so every API call from the browser dies at the proxy, with a connection
-      # refused that appears nowhere in the api logs.
+      # Where vite's own `/api` proxy points. Requests arriving through nginx
+      # never reach it — nginx has already routed `/api/` to the API by then — so
+      # this is what makes http://localhost:5173 work as well as :8080. Without it
+      # the config falls back to `http://127.0.0.1:8000`, which inside this
+      # container is this container, and every API call dies at the proxy with a
+      # connection refused that appears nowhere in the api logs.
       VISIONSET_API: http://api:8000
       # A bind mount does not deliver inotify events across the host boundary on
       # macOS or Windows, and vite's watcher is silent when it receives none:
@@ -84,6 +119,21 @@ services:
     command: sh /workspace/docker/app-dev.sh
     ports:
       - "5173:5173"
+
+  # The front door, and the only port anybody needs: http://localhost:8080
+  nginx:
+    image: nginx:1.29-alpine
+    depends_on:
+      - api
+      - app
+    volumes:
+      # Read-only, because nothing should be able to rewrite the routing from
+      # inside the container.
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      # 8080 rather than 80: 80 needs root on Linux to publish, and a dev stack
+      # that has to be started with sudo is one nobody starts.
+      - "8080:80"
 
   # Neither of the two below is wired to anything. The kernel composes exactly one
   # metadata store (`SqliteMetadataStore`) and one blob store
