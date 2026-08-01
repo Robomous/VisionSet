@@ -370,17 +370,42 @@ React Compiler is installed nowhere in this repository, and the annotator ships 
 that a compiler pass in a consuming app could never reach, so those `memo`/`useMemo` calls are
 load-bearing rather than decoration.
 
-### The render layers are inert, and that is not a style choice
+### Nothing drawn is a hit target, and that is not a style choice
 
-Both `<g>` layers carry `pointer-events: none`; the `<svg>` is the only input surface and
-`resolveTarget` is the only hit test. Without it the entire keyboard silently stops working after
-a polygon is closed by clicking its first vertex — the shape is the press's hit target, React 19
-flushes discrete events synchronously so the commit removes it *during* the event, and the
-browser's own focus fixup for the `mousedown` then resolves a detached node, finds nothing, and
-moves focus to `<body>`. No error is reported anywhere.
+`resolveTarget` is the only hit test, and nothing between the input surface and the pixels can be
+pressed. Without that rule the entire keyboard silently stops working after a polygon is closed by
+clicking its first vertex — the shape is the press's hit target, React 19 flushes discrete events
+synchronously so the commit removes it *during* the event, and the browser's own focus fixup for
+the `mousedown` then resolves a detached node, finds nothing, and moves focus to `<body>`. No
+error is reported anywhere.
 
 v1 could not have had this fix: its shapes carried the pointer handlers, so they had to be hit
 targets. A headless hit test is what makes an inert render layer possible in the first place.
+
+### The input surface is the pane, not the picture
+
+The pointer handlers used to sit on the `<svg>`, which is laid out at `asset.width ×
+asset.height` — so the `<svg>` *was* the image rectangle and the hit-testable region was exactly
+the asset. Everything around the picture was dead (#186): a grip on the boundary could not be
+grabbed, a shape could not be selected by the part of it that overhangs, and a press on the
+surround did not clear the selection the way a press on empty canvas does.
+
+That was never a geometry problem. `screenToImage` has no clamp, `resolveTarget` works at negative
+coordinates, and the conversion already read the **pane's** rect — so moving the handlers up one
+element changed no arithmetic at all. The pane also spans the whole viewport and is a `<div>` no
+commit detaches, which makes it a strictly safer host for the focus rule than the `<svg>` was.
+
+The `<svg>`'s *geometry* is deliberately unchanged: `e2e/_frame.ts` reads its `boundingBox()` as
+the asset rect on screen, folding in the zoom, the pan, the pane rect and the body margin in one
+measurement, and every scenario in the suite converts coordinates through it.
+
+**Which declaration keeps a shape from being a hit target was measured, and it is not the obvious
+one.** `pointer-events` is inherited, so the topmost inert element under the pane decides for
+everything below — the **transform wrapper**. Against `e2e/surround.spec.ts`: removing the
+wrapper's `none` fails the scenario; removing the `<svg>`'s alone changes nothing; removing
+`AnnotationLayer`'s changes nothing either, although that same removal reproduced the focus bug
+back when the `<svg>` was the live surface. The redundant declarations stay as defence in depth,
+but only one of them is load-bearing today.
 
 ### Running the demo
 
@@ -467,15 +492,23 @@ the same thing, and the split is the conventional one — `Delete` removes a *th
 no capability. `adapter-gaps.spec.ts` still pins the pan; `keyboard.spec.ts` holds
 the split and the take-back.
 
-### The two render layers guard different halves
+### The two render layers guarded different halves — until the surface moved
 
 #47 fixed a bug where closing a polygon on its first vertex moved focus to `<body>` and
 silently killed every shortcut, and put `pointer-events: none` on both `<g>` layers.
-Measured while writing this suite: they are not redundant. Restoring the attribute on
-`TransientLayer` alone reproduces the original bug exactly and fails **one** scenario —
+Measured while writing this suite: they were not redundant. Restoring the attribute on
+`TransientLayer` alone reproduced the original bug exactly and failed **one** scenario —
 the vertex pressed belongs to the polygon still being drawn. Restoring it on
-`AnnotationLayer` alone leaves that one green and fails **five** others, every one of
+`AnnotationLayer` alone left that one green and failed **five** others, every one of
 which presses on a committed shape.
+
+**#186 removed the precondition rather than the finding.** With the input surface moved
+off the `<svg>` and the transform wrapper inert, `pointer-events` inheritance covers the
+whole subtree, and neither restoration reproduces anything — re-measured against the
+whole suite, each leaves **90 of 90** green. The finding above is not falsified; it
+described a layout that no longer exists. The layers keep their attributes because they
+are what would still hold if the wrapper's were removed, but the scenario that fails
+when the guard goes is `surround.spec.ts`'s, and what it names is the wrapper.
 
 ### No scenario waits on a clock
 

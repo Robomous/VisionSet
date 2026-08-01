@@ -168,3 +168,63 @@ describe("where a double-click would put a vertex", () => {
     expect(nearestInsertion(at, [96, 200])).toEqual({ id: "p", index: 3, point: [100, 200] });
   });
 });
+
+/**
+ * #186: the margin around the picture is a place a pointer can be.
+ *
+ * The adapter used to lay its only input surface out at exactly the asset's
+ * rectangle, so nothing ever asked these questions — and that is the shape of the
+ * defect, because the answers were always right. `resolveTarget` has no notion of
+ * an asset boundary at all: it walks the annotations and compares distances, and a
+ * negative coordinate is just a coordinate. These pin that, so a later "tidy-up"
+ * that clamps a point on the way in fails here rather than in a browser.
+ *
+ * `ASSET` is 640x480, so every point below is genuinely outside it.
+ */
+describe("a point outside the asset resolves like any other", () => {
+  it("reaches a corner handle of a box on the left edge from outside the image", () => {
+    const at = scene([boxAt("a", 0, 200, 300, 100)], "a");
+    // Four asset pixels to the *left* of x = 0, inside the handle's tolerance.
+    // The handle carries the corner's own position, which is on the boundary.
+    expect(resolveTarget(at, [-4, 200])).toEqual({
+      kind: "handle",
+      id: "a",
+      handle: "nw",
+      point: [0, 200],
+    });
+  });
+
+  it("selects a box by the sliver of it that overhangs the image", () => {
+    // Two pixels *outside* the asset and outside the geometry, but inside the
+    // body's own tolerance band — which is the whole gesture #186 restored. The
+    // answer is `body`, not `edge`: this file's third decision is that `edge`
+    // ranks below `body`, and nothing about being out of bounds changes it.
+    const at = scene([boxAt("a", 0, 200, 300, 100)]);
+    expect(resolveTarget(at, [-2, 250])).toEqual({ kind: "body", id: "a" });
+  });
+
+  it("reaches a vertex of a polygon touching the top edge from above the image", () => {
+    const at = scene(
+      [polygonAt("p", [[100, 0], [300, 0], [200, 150]])],
+      "p",
+    );
+    expect(resolveTarget(at, [100, -3])).toEqual({
+      kind: "vertex",
+      id: "p",
+      index: 0,
+      point: [100, 0],
+    });
+  });
+
+  it("answers empty far outside, rather than refusing or throwing", () => {
+    const at = scene([boxAt("a", 100, 100, 50, 50)]);
+    expect(resolveTarget(at, [-500, -500])).toEqual({ kind: "empty" });
+    expect(resolveTarget(at, [5000, 5000])).toEqual({ kind: "empty" });
+  });
+
+  it("proposes an insertion on an edge that runs along the image boundary", () => {
+    const at = scene([polygonAt("p", [[0, 100], [0, 300], [200, 300]])]);
+    // Three pixels to the left of the boundary-hugging first edge.
+    expect(nearestInsertion(at, [-3, 200])).toEqual({ id: "p", index: 0, point: [0, 200] });
+  });
+});
