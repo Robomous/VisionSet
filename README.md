@@ -128,10 +128,19 @@ explain the decisions rather than restate the code.
 ## Development setup
 
 ```bash
-uv sync                                   # Python env + dev tools
-pnpm install                              # frontend workspace
-docker compose -f docker/compose.yaml up  # optional dev services
+uv sync         # Python env + dev tools
+pnpm install    # frontend workspace
 ```
+
+Then `uv run visionset ui` and `pnpm --filter @visionset/app dev`. Or run the whole thing in
+containers instead, with nothing installed on the host and nothing built:
+
+```bash
+docker compose -f docker/compose.yaml up   # API on :8000, app on :5173
+```
+
+First boot creates a workspace and prints a token in the `api` logs; sign in with it at
+http://localhost:5173. Dev only — the release artifact is always the pip package.
 
 Common checks: `uv run pytest`, `uv run lint-imports`, `uv run mypy src/visionset/kernel`,
 `pnpm -r build`, `pnpm test`. The full list — including the wheel build and the thirty-minute
