@@ -21,6 +21,7 @@ colors:
   card: "#ffffff"
   popover: "#ffffff"
   muted: "#f6f8fa"              # subtle fills, hover backgrounds, secondary surfaces
+  stage: "#e1e6eb"              # the annotator's surround — the neutral a picture is judged against
   # Text
   foreground: "#252949"         # primary text (Robomous ink)
   muted-foreground: "#57606a"   # secondary / meta text
@@ -122,6 +123,7 @@ Map intent → token; never invent a value:
 | Page / app surface | `background` |
 | Card / popover surface | `card` / `popover` |
 | Subtle fill / hover / secondary surface | `muted` (`#f6f8fa`) |
+| The stage a picture sits on (annotator surround) | `stage` (`#e1e6eb`) |
 | Primary text | `foreground` (`#252949`) |
 | Secondary / meta text | `muted-foreground` (`#57606a`) |
 | Borders & dividers | `border` (`#d0d7de`) |
@@ -215,6 +217,22 @@ The page the reference design shows (#56), with measurements verified in v1's so
   `bg-primary/10`**; hidden = 50% opacity; per-row eye and trash as 24px ghost icon
   buttons. Header row: object count in muted meta text + all-visibility toggle.
 - **Zoom**: minimum 30%, percent readout between the −/+ buttons.
+
+### The canvas surround
+
+The area around the asset is **`stage`** (`#e1e6eb`), never `muted` and never a dark
+surface (#185). It is a role of its own for two reasons. A dark surround shifts the
+perceived contrast and colour of the photograph inside it, which is a real cost on a
+tool whose whole job is looking closely at pixels — and it was also the only dark
+surface in the product outside the rail, so the one screen somebody sits in front of
+for an hour read as a different application.
+
+It must stay distinguishable from `background` as well as from the image: an asset
+with white borders has to show where it ends. That rules out `background`, `card` and
+`muted`, whose closest channel is five short of white; `stage` clears the same
+measurement by twenty, and `e2e/annotate.spec.ts` asserts the gap rather than the hex.
+
+**The rail keeps its dark treatment.** This is not a theme change.
 
 ### Annotation shape rendering (canvas)
 
