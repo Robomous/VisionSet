@@ -152,8 +152,17 @@ export const TabsContent = forwardRef<
   ElementRef<typeof TabsPrimitive.Content>,
   ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
 >(function TabsContent({ className, ...props }, ref) {
-  // Unchanged, and deliberately not variant-aware: the content is a sibling of the
-  // list, so the context does not reach it, and a second provider around the whole
-  // root to move one margin would be a lot of machinery for 4px.
+  // `mt-3` is **the** rule for the space between a tab bar and its content, and a
+  // consumer must not add a gap of its own (#188). `AnnotatorPanel` was a
+  // `flex flex-col gap-3` around this margin and the two added, so the tabs
+  // floated 24px above the panel they switch.
+  //
+  // The primitive owns it rather than the consumers, because that is the
+  // direction that cannot be forgotten: a `Tabs` which is not a flex column at
+  // all still spaces correctly, and nobody has to know a layout rule to use one.
+  //
+  // Deliberately not variant-aware: the content is a sibling of the list, so the
+  // context does not reach it, and a second provider around the whole root to
+  // move one margin would be a lot of machinery for 4px.
   return <TabsPrimitive.Content ref={ref} className={cn("mt-3", className)} {...props} />;
 });

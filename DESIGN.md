@@ -178,6 +178,15 @@ the page's real buttons.
   4px padding, equal-width triggers, the active one raised onto `card` with `shadow-sm`.
   Used by the annotation side panel and nowhere else so far.
 
+**The space between a tab bar and its content belongs to `TabsContent`, and to nothing
+else.** It is `mt-3` (12px), one declaration, for both variants — and a consumer must
+not add a gap of its own. `AnnotatorPanel` wrapped this margin in a `flex flex-col
+gap-3` and the two added, floating the tabs 24px above the panel they switch (**#188**).
+The primitive owns it rather than the consumers because that is the direction nobody can
+forget: a `Tabs` which is not a flex column at all still spaces correctly. Asserted by
+measurement — the styleguide's two specimens and both real screens — rather than by a
+class string, since a class assertion would have seen both rules and been satisfied.
+
 **The active underline is `primary`, and that is not an exception to the accent rule.**
 The rule reserves orange for "primary buttons, active tools and **navigation**" — the
 rail's active item is a solid `bg-primary` fill, and an open section is the same kind of
