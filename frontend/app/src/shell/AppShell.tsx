@@ -24,6 +24,33 @@
  *
  * `end` on the Home link is load-bearing: without it, `NavLink` treats `/` as a
  * prefix of every route and Home is permanently active.
+ *
+ * ## The shell renders a bare `<Outlet/>`; a nested layout route decides the pane
+ *
+ * Most of the product is a list or a form, and a padded `max-w-7xl` column is
+ * right for those. The annotator is not: it is the one screen somebody sits in
+ * front of for an hour, and boxing it costs real pixels — `fitToViewport` derives
+ * the zoom from the pane's rect, so a shrunken pane opens every asset smaller than
+ * it needs to and applies the tolerance constants at a zoom nobody chose (#183).
+ *
+ * So the choice is a **route**, not a prop and not a `useMatch` here. `PaddedPane`
+ * and `FullBleedPane` are the two `<main>`s, and `routes.tsx` puts each screen
+ * under the one it wants — which keeps this file composition-only, exactly as
+ * #58's thin-app rule asks, and keeps `ui-core` from fighting the container with
+ * negative margins.
+ *
+ * **The panes are nested inside this one layout route, and the reason is not the
+ * one it looks like.** The obvious argument — two sibling shells would each own a
+ * `collapsed` state, so opening an asset would re-expand a rail the user had
+ * collapsed — was tried and is **false**: React reconciles two sibling
+ * `<Route element={<AppShell />}>` branches into the same instance, and the state
+ * survives either way. Measured, not assumed.
+ *
+ * What nesting actually buys is that there is one `AppShell` in the route tree
+ * instead of two that must be kept identical, and that the rail's continuity does
+ * not quietly depend on a reconciliation nobody wrote down. The behaviour itself
+ * is asserted in `e2e/annotate.spec.ts` regardless of the structure, which is the
+ * right level for it.
  */
 
 import { useApiSession } from "@visionset/ui-core";
@@ -75,15 +102,41 @@ export function AppShell(): JSX.Element {
         </div>
       </nav>
 
-      {/* `min-w-0` so a wide table scrolls inside the pane instead of pushing the
-          rail off the screen — the one flex rule this layout would be wrong
-          without. */}
-      <main className="min-w-0 flex-1 px-4 py-6 md:px-6">
-        <div className="mx-auto max-w-7xl">
-          <Outlet />
-        </div>
-      </main>
+      <Outlet />
     </div>
+  );
+}
+
+/**
+ * The pane every list and form gets: padded, and capped at `max-w-7xl`.
+ *
+ * `min-w-0` so a wide table scrolls inside the pane instead of pushing the rail
+ * off the screen — the one flex rule this layout would be wrong without.
+ */
+export function PaddedPane(): JSX.Element {
+  return (
+    <main className="min-w-0 flex-1 px-4 py-6 md:px-6">
+      <div className="mx-auto max-w-7xl">
+        <Outlet />
+      </div>
+    </main>
+  );
+}
+
+/**
+ * The pane the editing surface gets: the whole viewport beside the rail.
+ *
+ * No cap, no padding, and `h-screen` rather than `flex-1` — a flex item stretches
+ * to its *row*, and the row is `min-h-screen`, so a page taller than the window
+ * would drag the rail down with it. Pinning the height here is what makes
+ * "nothing scrolls the document" structural: the only thing with `overflow` is
+ * the canvas pane inside.
+ */
+export function FullBleedPane(): JSX.Element {
+  return (
+    <main className="h-screen min-w-0 flex-1 overflow-hidden">
+      <Outlet />
+    </main>
   );
 }
 

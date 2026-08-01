@@ -55,7 +55,7 @@ import type { JSX } from "react";
 import { AnnotatorDemo } from "./demo/AnnotatorDemo";
 import { BenchmarkHost } from "./demo/BenchmarkHost";
 import { ShowcaseFrame } from "./demo/ShowcaseFrame";
-import { AppShell } from "./shell/AppShell";
+import { AppShell, FullBleedPane, PaddedPane } from "./shell/AppShell";
 import { Gated } from "./shell/Gated";
 import { NotFound } from "./shell/NotFound";
 import { Styleguide } from "./styleguide/Styleguide";
@@ -66,17 +66,36 @@ export function AppRoutes(): JSX.Element {
       {/* The product. Everything under here needs a workspace token. */}
       <Route element={<Gated />}>
         <Route element={<AppShell />}>
-          {/* Home is the project list. There is nothing else a workspace's front
-              page could honestly be until a dashboard has numbers to show, and a
-              redirect keeps one screen rather than two that drift. */}
-          <Route index element={<Navigate to="/projects" replace />} />
-          <Route path="projects" element={<Projects />} />
-          <Route path="projects/:projectId" element={<Project />} />
-          <Route path="projects/:projectId/ingest" element={<Ingest />} />
-          <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
-          <Route path="jobs/:jobId" element={<Annotate />} />
-          <Route path="projects/:projectId/dataset" element={<DatasetView />} />
-          <Route path="*" element={<NotFound />} />
+          {/* Lists and forms: the padded, `max-w-7xl` column. */}
+          <Route element={<PaddedPane />}>
+            {/* Home is the project list. There is nothing else a workspace's front
+                page could honestly be until a dashboard has numbers to show, and a
+                redirect keeps one screen rather than two that drift. */}
+            <Route index element={<Navigate to="/projects" replace />} />
+            <Route path="projects" element={<Projects />} />
+            <Route path="projects/:projectId" element={<Project />} />
+            <Route path="projects/:projectId/ingest" element={<Ingest />} />
+            <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
+            <Route path="projects/:projectId/dataset" element={<DatasetView />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+
+          {/*
+            The editing surface, and the only route that takes the whole viewport
+            (#183). It is a *route* rather than a prop on the shell because that
+            keeps `AppShell` composition-only and keeps `ui-core` from fighting
+            the container from the inside with negative margins.
+
+            Nested under the same shell as the padded pane, so there is one
+            `AppShell` in this tree rather than two that have to be kept
+            identical. It is *not* what preserves the rail's collapsed state —
+            that survives two sibling shells too, because React reconciles them
+            into one instance — and `annotate.spec.ts` asserts the behaviour
+            directly rather than through the structure.
+          */}
+          <Route element={<FullBleedPane />}>
+            <Route path="jobs/:jobId" element={<Annotate />} />
+          </Route>
         </Route>
       </Route>
 
