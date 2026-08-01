@@ -638,3 +638,53 @@ test("what is drawn on the surround stays legible against it", async ({ page }) 
   // on the surround — the one piece of chrome that does.
   expect(badge).not.toBe(stage);
 });
+
+/**
+ * #188: the space between a tab bar and its content was applied twice.
+ *
+ * `AnnotatorPanel` was a `flex flex-col gap-3` and `TabsContent` carries its own
+ * `mt-3`. A flex gap and the child's margin add, so the tabs floated 24px above
+ * the content they switch — about twice what the rhythm asks for.
+ *
+ * The rule is now that **the primitive owns it**: `TabsContent`'s margin is the
+ * one declaration, and a consumer adds no gap of its own. That direction rather
+ * than the other because it makes the primitive self-sufficient — a `Tabs` that
+ * is not a flex column at all still spaces correctly, and a consumer cannot
+ * forget something it never had to know.
+ */
+
+/** The measured distance between the tab bar and the panel below it, in pixels. */
+async function tabGap(page: Page, root: string): Promise<number> {
+  const scope = page.getByTestId(root);
+  const list = await scope.locator('[role="tablist"]').boundingBox();
+  // The active one: Radix keeps every panel mounted and hides the rest, so an
+  // unscoped selector resolves to all of them.
+  const panel = await scope.locator('[role="tabpanel"][data-state="active"]').boundingBox();
+  if (list === null || panel === null) throw new Error(`no tablist/tabpanel under ${root}`);
+  return panel.y - (list.y + list.height);
+}
+
+test("the annotator panel's tabs sit one rhythm step above their content", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // `mt-3` — 0.75rem at the 14px base, so 12px. Measured rather than asserted
+  // against a class string, because the defect was two rules adding up and a
+  // class assertion would have seen both of them and been satisfied.
+  expect(await tabGap(page, "annotator-panel")).toBeCloseTo(12, 0);
+});
+
+test("the project view's tabs use the same one rule", async ({ page }) => {
+  const sent: Request[] = [];
+  await serveApi(page, sent);
+  await page.goto(`/projects/${PROJECT}`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+
+  // Checked at the same time as the panel, per the issue: the same doubling is
+  // possible wherever a `Tabs` sits in a gapped flex column. This one was already
+  // right, and asserting it is what stops a later layout tidy-up from adding a
+  // gap here and rediscovering #188 on a different screen.
+  await expect(page.getByTestId("project-tabs")).toBeVisible();
+  expect(await tabGap(page, "project-tabs")).toBeCloseTo(12, 0);
+});
