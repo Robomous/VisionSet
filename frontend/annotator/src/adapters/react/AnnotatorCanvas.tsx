@@ -12,7 +12,7 @@
  *
  * ```
  * root      tabIndex=0, onKeyDown           the focus root — never a global listener
- *   pane    overflow hidden, the window     what getBoundingClientRect is read from
+ *   pane    overflow hidden, THE INPUT      what getBoundingClientRect is read from
  *     content   translate(pan) scale(zoom)  the only transform
  *       img     asset.width × asset.height  the pixels
  *       svg     viewBox 0 0 w h             SVG user units ARE asset pixels
@@ -23,6 +23,51 @@
  * panned, so the inverse has one moving part. It then goes through
  * `screenToImage` and `pointerPoint`, in that order, which is the single door a
  * coordinate enters the engine by.
+ *
+ * ## The pane is the input surface, and the `<svg>` is only the picture (#186)
+ *
+ * The pointer handlers used to sit on the `<svg>`, which is laid out at
+ * `asset.width × asset.height` — so the `<svg>` *was* the image rectangle and the
+ * hit-testable region was exactly the asset. Everything around the picture was
+ * dead: a grip on the boundary could not be grabbed, a shape could not be selected
+ * by the part of it that overhangs, and a press on the surround did not clear the
+ * selection the way a press on empty canvas does.
+ *
+ * That was never a geometry problem — `screenToImage` has no clamp and
+ * `resolveTarget` works at negative coordinates — and the conversion above already
+ * read the **pane's** rect, so moving the handlers up one element changed no
+ * arithmetic at all.
+ *
+ * **#47's focus rule survives, and is strengthened rather than traded away.** The
+ * bug it fixed was an SVG shape being a press's hit target and then being detached
+ * by that same press, leaving the browser's focus fixup with nothing to resolve.
+ * The invariant is *one input surface, and shapes are never it*. The pane is a
+ * `<div>` that no commit detaches, so it is a strictly safer host for that rule
+ * than the `<svg>` was. Everything between the pane and the pixels is
+ * `pointer-events: none`, which makes "the pane is the only hit target" a fact
+ * `elementFromPoint` can be asked rather than a claim in a comment.
+ *
+ * **Which of those declarations is load-bearing was measured, not reasoned about,
+ * and the answer is not the obvious one.** `pointer-events` is an *inherited* CSS
+ * property, so the topmost inert element under the pane decides for everything
+ * below it — and that is the **transform wrapper**, not the `<svg>` and not the
+ * layers. Against `e2e/surround.spec.ts`:
+ *
+ * - remove the wrapper's `none` → the scenario fails, whatever the `<svg>` says;
+ * - remove the `<svg>`'s `none` alone → **nothing changes**, it inherits;
+ * - remove `AnnotationLayer`'s `pointerEvents="none"` → nothing changes either,
+ *   although that same removal reproduced #47's focus bug back when the `<svg>`
+ *   was live. #48's finding has not been falsified; its precondition is gone.
+ *
+ * The redundant declarations stay: they cost nothing, and each is what would still
+ * hold if the one above it were removed. What they are *not* is the thing standing
+ * between a shape and a press today, and saying otherwise would be a comment that
+ * outlives the code it describes.
+ *
+ * The `<svg>`'s geometry is deliberately unchanged: `e2e/_frame.ts` reads its
+ * `boundingBox()` as *the asset rect on screen*, which folds in the zoom, the pan,
+ * the pane rect and the body margin in one measurement. Every scenario in the
+ * annotator suite converts coordinates through it.
  *
  * ## The seven obligations, and where each one is
  *
@@ -459,7 +504,7 @@ export function AnnotatorCanvas({
     }
   }
 
-  function handlePointerDown(event: ReactPointerEvent<SVGSVGElement>): void {
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     // (7) Named or nothing: a side button forwards no event at all.
     const button = pointerButton(event.button);
     if (button === null) return;
@@ -485,7 +530,7 @@ export function AnnotatorCanvas({
     }
   }
 
-  function handlePointerMove(event: ReactPointerEvent<SVGSVGElement>): void {
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
     const panning = panNow.current;
     if (panning !== null) {
       applyViewport(panBy(viewNow.current, event.clientX - panning.x, event.clientY - panning.y));
@@ -498,7 +543,7 @@ export function AnnotatorCanvas({
     dispatch({ type: "pointer-move", point });
   }
 
-  function handlePointerUp(event: ReactPointerEvent<SVGSVGElement>): void {
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
     if (panNow.current !== null) {
       panNow.current = null;
       return;
@@ -515,7 +560,7 @@ export function AnnotatorCanvas({
     dispatch({ type: "pointer-cancel" });
   }
 
-  function handleDoubleClick(event: ReactMouseEvent<SVGSVGElement>): void {
+  function handleDoubleClick(event: ReactMouseEvent<HTMLDivElement>): void {
     const point = imagePoint(event);
     if (point === null) return;
     // The browser's own double-click window. `events.ts`: core owns no timer, and
@@ -579,7 +624,29 @@ export function AnnotatorCanvas({
       <div
         ref={paneRef}
         data-testid="annotator-pane"
-        style={{ position: "absolute", inset: 0, overflow: "hidden", touchAction: "none" }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          overflow: "hidden",
+          touchAction: "none",
+          cursor: affordance.cursor,
+        }}
+        // (7) The input surface, and the only one — #186. It spans the whole
+        // viewport, so a press in the margin around the picture reaches the
+        // machine with the negative or past-the-edge coordinate it deserves; and
+        // it is a <div> no commit detaches, which is what keeps #47's focus rule
+        // true by construction rather than by luck.
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        // The pane's edge, not the picture's: leaving the image is still hovering
+        // the stage, and the crosshair should follow the pointer out into the
+        // margin rather than vanish at the boundary.
+        onPointerLeave={() => setHover(null)}
+        onDoubleClick={handleDoubleClick}
+        // A secondary-button drag pans; without this it also opens a menu.
+        onContextMenu={(event) => event.preventDefault()}
       >
         <div
           style={{
@@ -588,6 +655,11 @@ export function AnnotatorCanvas({
             height: asset.height,
             transformOrigin: "0 0",
             transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.zoom})`,
+            // Inert too, so the pane really is the *only* hit target rather than
+            // merely the only element carrying handlers. Everything below still
+            // bubbles to it, but "one input surface" is then a fact a test can
+            // read off `elementFromPoint` instead of a claim in a comment.
+            pointerEvents: "none",
           }}
         >
           <img
@@ -604,15 +676,12 @@ export function AnnotatorCanvas({
             width={asset.width}
             height={asset.height}
             viewBox={`0 0 ${asset.width} ${asset.height}`}
-            style={{ position: "absolute", inset: 0, cursor: affordance.cursor }}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerCancel}
-            onPointerLeave={() => setHover(null)}
-            onDoubleClick={handleDoubleClick}
-            // A secondary-button drag pans; without this it also opens a menu.
-            onContextMenu={(event) => event.preventDefault()}
+            // Inert, like the two layers inside it: since #186 the pane is the
+            // input surface, and an element that cannot be a hit target cannot
+            // take the focus with it when a press removes what is drawn on it.
+            // Its *geometry* is unchanged and load-bearing — `e2e/_frame.ts`
+            // measures the asset rect on screen by reading this box.
+            style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
           >
             <AnnotationLayer
               committed={visibleCommitted}
