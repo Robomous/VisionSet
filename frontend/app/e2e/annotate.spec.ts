@@ -422,6 +422,12 @@ test("collapsing the rail reflows the annotation page to the new width", async (
   const sent: Request[] = [];
   await openJob(page, sent);
 
+  // Expanded first: a fresh session starts collapsed (#200), and this scenario is
+  // about what collapsing gives back. Measuring from the default would measure
+  // the same 180px in the other direction and read as the page shrinking.
+  await page.getByTestId("rail-collapse").click();
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
+
   const before = (await page.getByTestId("annotation-page").boundingBox())!;
   await page.getByTestId("rail-collapse").click();
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
@@ -477,20 +483,24 @@ test("the rail keeps its collapsed state when the pane changes", async ({ page }
   // Start inside the **full-bleed** pane, so both crossings below are real.
   await openJob(page, sent);
 
+  // Expanded, which since #200 is the state that is *not* the default — so what
+  // survives the crossing below is a choice somebody made rather than the value
+  // a freshly mounted shell would have produced anyway. That makes this a
+  // stricter scenario than it was, not a looser one.
   await page.getByTestId("rail-collapse").click();
-  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
 
   // Full-bleed → padded, by a client-side navigation. A reload would remount
   // everything and prove nothing about the route tree.
   await page.getByTestId("rail-projects").click();
   await expect(page.locator("main .max-w-7xl")).toBeVisible();
   await expect(page.getByTestId("annotation-page")).toHaveCount(0);
-  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
 
   // …and back the other way.
   await page.goBack();
   await expect(page.getByTestId("annotation-page")).toBeVisible();
-  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
 });
 
 /**

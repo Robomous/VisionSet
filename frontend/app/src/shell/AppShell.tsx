@@ -8,6 +8,18 @@
  * catch: this file is composition and identity, and a capability that lands in it
  * is one the future enterprise UI cannot reuse.
  *
+ * ## It starts collapsed, and the answer lives in one place
+ *
+ * `readRailCollapsed` (#200) is the whole decision: collapsed unless a stored
+ * preference says otherwise. It is in `ui-core` rather than inline here because a
+ * default spelled at a call site is a default that gets spelled twice, and because
+ * a module is testable where a `useState` argument is not.
+ *
+ * The state is read once, in a **lazy initializer**. An effect that corrected the
+ * width on mount would paint the wrong one first, and a rail that visibly snaps
+ * narrow on every page load is worse than one that never collapsed — which is the
+ * shape #159's defect had, one screen over.
+ *
  * ## Why the collapsed width is a token
  *
  * 240px / 60px / 280px are in `ui-core`'s `@theme` rather than here, because three
@@ -53,13 +65,24 @@
  * right level for it.
  */
 
-import { useApiSession } from "@visionset/ui-core";
+import { readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
 import { FolderGit2, Home, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 
 export function AppShell(): JSX.Element {
-  const [collapsed, setCollapsed] = useState(false);
+  // A **lazy initializer**, never an effect (#200): an effect that corrects the
+  // width on mount paints the wrong one first, and a rail that visibly snaps
+  // narrow on every page load is worse than one that never collapsed.
+  const [collapsed, setCollapsed] = useState(readRailCollapsed);
+
+  function toggle(): void {
+    setCollapsed((open) => {
+      const next = !open;
+      writeRailCollapsed(next);
+      return next;
+    });
+  }
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -80,7 +103,7 @@ export function AppShell(): JSX.Element {
           <RailButton
             testId="rail-collapse"
             label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            onClick={() => setCollapsed((open) => !open)}
+            onClick={toggle}
           >
             {collapsed ? (
               <PanelLeftOpen className="size-4" aria-hidden="true" />
