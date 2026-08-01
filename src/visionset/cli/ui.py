@@ -96,7 +96,8 @@ def ui(
     """Serve the API and the UI from this workspace.
 
     The app is served at /ui and the API at the root; / redirects to the app.
-    Every route but /health needs a token — run `visionset token create` first.
+    A browser on this machine needs nothing: the server signs in the page it
+    served. Every other client needs a token — `visionset token create`.
 
     No browser is opened: that is the wrong thing on a headless box or over SSH,
     which is most of where a dataset tool runs, and uvicorn.run offers no
@@ -110,7 +111,11 @@ def ui(
     typer.secho(f"VisionSet {__version__}", err=True, bold=True)
     typer.echo(f"  workspace   {root}", err=True)
     typer.echo(f"  UI and API  {_browsable(host, port)}", err=True)
-    typer.echo("  API token   visionset token create --name <name>", err=True)
+    # Named for who needs one, because since #179 the browser does not: a line
+    # reading "API token" above a page that never asks for one is how somebody
+    # concludes they must mint a credential before they can open their own files.
+    typer.echo("  browser     signed in automatically", err=True)
+    typer.echo("  API clients visionset token create --name <name>", err=True)
     typer.echo("Press Ctrl+C to stop.", err=True)
 
     uvicorn.run(

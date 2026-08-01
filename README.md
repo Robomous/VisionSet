@@ -133,16 +133,41 @@ pnpm install    # frontend workspace
 ```
 
 Then `uv run visionset ui` and `pnpm --filter @visionset/app dev`. Or run the whole thing in
-containers instead, with nothing installed on the host and nothing built:
+containers instead, with nothing installed on the host and nothing built.
+
+### Run it with Docker, and sign in with nothing
 
 ```bash
 docker compose -f docker/compose.yaml up
 ```
 
-**The app is at http://localhost:8080** — one port, nginx in front of both services. The first run
-builds two images, every later one just starts them; dependencies are installed at build time, so
-starting the stack downloads nothing. First boot creates a workspace and prints a token in the
-`api` logs; sign in with that.
+**Open http://localhost:8080. There is no token to find and nothing to paste** — the app opens on
+the project list. The server signs in the browser it served itself, over an `HttpOnly` cookie it
+sets on the first request the page makes; [docs/auth.md](docs/auth.md#the-browser-session) has the
+mechanism and the reasoning.
+
+One port, nginx in front of both services. The first run builds two images, every later one just
+starts them; dependencies are installed at build time, so starting the stack downloads nothing.
+
+A token is still minted on first boot and printed in the `api` logs, because `curl`, the SDK and
+MCP clients have no session and never will:
+
+```bash
+docker compose -f docker/compose.yaml logs api | grep vst_    # if you scrolled past it
+docker compose -f docker/compose.yaml exec api \
+  visionset token create --name <name>                        # or mint another
+```
+
+The browser never needs either. If the page *does* ask for a token, the stack is not the one this
+README describes — check that `VISIONSET_UI_SESSION: always` is set on the `api` service and that
+you are reaching it through port 8080.
+
+> **Why `always` here, and why every port is published on `127.0.0.1`.** The default,
+> `VISIONSET_UI_SESSION=auto`, issues a session only to a client on this machine — and behind a
+> proxy no request ever looks like one, because the peer is nginx. So the compose stack says
+> `always` and pays for it by binding all three ports to loopback. The two lines belong together:
+> `always` on a port open to every interface would hand the workspace to the local network. Set
+> `VISIONSET_UI_SESSION: never` to turn the whole thing off and go back to typing a token.
 
 Everything it stores lands in **`workspace-data/`** (git-ignored): SQLite for metadata, a local
 directory for the files, one workspace holding both — the shape MLflow's default mode has, and the

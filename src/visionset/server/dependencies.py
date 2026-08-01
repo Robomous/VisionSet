@@ -19,6 +19,7 @@ already gives sync routes, which is what the synchronous kernel wants anyway.
 
 from __future__ import annotations
 
+import secrets
 import threading
 from collections.abc import Callable, Sequence
 from typing import Annotated, Final
@@ -38,6 +39,7 @@ from visionset.kernel.services import (
 from visionset.kernel.services import (
     resolve_workspace_root as resolve_workspace_root,
 )
+from visionset.server import session
 from visionset.server.errors import ERROR_RESPONSES
 from visionset.server.runner import IngestRunner
 
@@ -198,24 +200,59 @@ def get_auth_provider(
 
 
 def require_token(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     auth_provider: Annotated[AuthProvider, Depends(get_auth_provider)],
 ) -> str:
-    """Refuse the request unless it carries a live token of this workspace.
+    """Refuse the request unless it carries a live credential of this workspace.
 
-    Missing, malformed, unknown and revoked are **one** answer, deliberately: a
-    401 that distinguished them would let anyone enumerate which credentials
-    exist. The ``HTTPException`` is rendered as an ``ErrorBody`` by the handlers
+    Two credentials are accepted and they are not equals. A **bearer token** is
+    what a program presents: minted by hand with ``visionset token create``,
+    verified through :class:`~visionset.kernel.ports.AuthProvider`, revocable, and
+    the only one that reaches a workspace this server did not hand the browser.
+    A **session cookie** is what the page this server served presents, and it
+    exists so that opening the app on your own machine does not begin by asking
+    you for a credential to read your own files — see
+    :mod:`visionset.server.session`.
+
+    The bearer path is tried first, so a request carrying both is judged on the
+    credential it went out of its way to send, and a stale cookie can never
+    shadow a token somebody passed deliberately.
+
+    Missing, malformed, unknown and revoked are **one** answer, deliberately, and
+    that now spans both credentials: a 401 that distinguished them would let
+    anyone enumerate which credentials exist, and one that distinguished *which
+    kind* was rejected would say whether this server issues sessions at all. The
+    ``HTTPException`` is rendered as an ``ErrorBody`` by the handlers
     ``create_app`` installs, ``headers`` included — which is what keeps the
     ``WWW-Authenticate`` challenge on the response.
     """
-    if credentials is None or not auth_provider.verify(credentials.credentials):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing bearer token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return credentials.credentials
+    if credentials is not None and auth_provider.verify(credentials.credentials):
+        return credentials.credentials
+
+    # Resolved in the body rather than injected, and only when a cookie was
+    # actually sent. A ``Depends(get_workspace)`` here would be resolved by
+    # FastAPI on *every* request before this function runs, which would make a
+    # test that overrides authentication alone start needing a real workspace —
+    # and would open one to answer a request that a bearer token already settled.
+    offered = session.presented(request)
+    root = session.workspace_root() if offered is not None else None
+    # ``compare_digest`` rather than ``==``: the comparison is against a secret,
+    # and the short-circuit in the ordinary operator leaks its length and its
+    # matching prefix through timing. The same reasoning ``TokenService`` applies
+    # to a digest, applied to the one credential that is not one.
+    if (
+        offered is not None
+        and root is not None
+        and secrets.compare_digest(offered, session.secret_for(root))
+    ):
+        return offered
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing bearer token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 WorkspaceDep = Annotated[WorkspaceService, Depends(get_workspace)]

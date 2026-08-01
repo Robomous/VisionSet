@@ -57,7 +57,7 @@ function images(): string[] {
 const PROJECT = "browser-cycle";
 const TAG = "v1";
 
-test("the whole cycle, from a pasted token to a downloaded export", async ({ page }) => {
+test("the whole cycle, from opening the app to a downloaded export", async ({ page }) => {
   test.slow();
 
   // #161's first acceptance criterion, collected across the whole walk rather than
@@ -91,8 +91,20 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
   });
   page.on("requestfailed", (request) => badRequests.push(`failed ${request.url()}`));
 
-  await test.step("connect with a workspace token", async () => {
+  await test.step("open the app, which asks for nothing", async () => {
     await page.goto("./");
+    // #179's first acceptance criterion, against the real thing: `visionset ui`
+    // on this machine, a browser, and the product — nothing typed, nothing
+    // pasted, no token anywhere in this step.
+    await expect(page.getByTestId("app-rail")).toBeVisible();
+    await expect(page.getByTestId("token-input")).toHaveCount(0);
+  });
+
+  await test.step("and a minted token still opens it too", async () => {
+    // The credential a third party uses, exercised in the one place a browser can
+    // still reach the form. The session cookie is *still in the jar* while this
+    // runs, so it is also the proof that the bearer header is tried first.
+    await page.getByTestId("rail-sign-out").click();
     await page.getByTestId("token-input").fill(token());
     await page.getByTestId("token-submit").click();
     // The rail is the product; reaching it means the credential was accepted by

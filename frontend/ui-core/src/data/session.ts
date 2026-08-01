@@ -17,8 +17,19 @@
  * deliberately **not** offered as a "remember me" — an option here is a decision
  * pushed onto somebody with less context than we have.
  *
- * **A cookie.** Would need the server to set it, which means a login endpoint the
- * API does not have and CSRF handling it does not need. Rejected.
+ * **A cookie.** Rejected here, and then adopted for a different job — the
+ * distinction matters, so this paragraph is kept rather than deleted. The
+ * objection was that a cookie needs a *login endpoint*, and it still does: there
+ * is no route that trades a typed token for one. What `GET /session` does instead
+ * is hand the browser the server just served a credential *for being that
+ * browser*, which takes no input and so has nothing to be tricked into — and is
+ * what makes opening the app on your own machine ask for nothing (#179). That
+ * credential never passes through this module: it is `HttpOnly`, so no script here
+ * can read it, which is precisely the property `sessionStorage` cannot offer.
+ *
+ * So the two coexist and answer different questions. The cookie is *this server's
+ * own workspace*. What is stored here is a token somebody pasted, which is the
+ * only way to reach a workspace this browser was **not** served by.
  *
  * `sessionStorage` keeps the credential for the life of the tab, which is the life
  * of the working session, and gives a second useful property for free: it is

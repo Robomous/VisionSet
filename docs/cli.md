@@ -235,13 +235,14 @@ $ visionset ui
 VisionSet 0.0.1.dev0
   workspace   /home/you/datasets/robots
   UI and API  http://127.0.0.1:8000/
-  API token   visionset token create --name <name>
+  browser     signed in automatically
+  API clients visionset token create --name <name>
 Press Ctrl+C to stop.
 ```
 
 | Flag | Default | |
 | --- | --- | --- |
-| `--host` | `127.0.0.1` | Loopback, not `0.0.0.0`. VisionSet is local-first and tokens are minted by hand, so a default that exposed a freshly created — and therefore un-tokened — workspace to the local network would be a decision nobody made. |
+| `--host` | `127.0.0.1` | Loopback, not `0.0.0.0`. VisionSet is local-first and tokens are minted by hand, so a default that exposed a freshly created — and therefore un-tokened — workspace to the local network would be a decision nobody made. Widening it stays safe: a browser is signed in automatically only when it is *on this machine*, so a LAN client still needs a token. See [auth.md](auth.md#the-browser-session). |
 | `--port` | `8000` | Matches `docker/compose.yaml`. |
 | `--reload` | off | Development. Restarts when the installed `visionset` package changes — **not** the working directory, which is uvicorn's own default and which here holds `node_modules/`, `.venv/`, and often the workspace itself. |
 | `--workspace` | see above | |

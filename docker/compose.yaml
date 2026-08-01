@@ -21,14 +21,20 @@
 #
 #   The app is at http://localhost:8080
 #
-# That is the only address anyone needs. nginx serves it: `/api/` reaches the API
-# and everything else the vite dev server, so the browser sees one origin. The two
-# services behind it are published as well (:8000 and :5173) for curl, an MCP
-# client config, or reading a vite error without the proxy in the way — they are
-# debugging doors, not the front one.
+# That is the only address anyone needs, and there is nothing to sign in with:
+# the server issues the browser its own session (#179), so the app opens on the
+# project list. nginx serves it: `/api/` reaches the API and everything else the
+# vite dev server, so the browser sees one origin. The two services behind it are
+# published as well (:8000 and :5173) for curl, an MCP client config, or reading a
+# vite error without the proxy in the way — they are debugging doors, not the
+# front one.
 #
-# First boot creates a workspace, mints a token and prints it in the `api` logs;
-# sign in with it at http://localhost:8080.
+# Every one of those three ports is published on **127.0.0.1 only**. See
+# VISIONSET_UI_SESSION on the api service: this stack signs in whoever asks,
+# which is safe exactly as long as "whoever asks" is somebody on this machine.
+#
+# First boot creates a workspace and mints a token, printed in the `api` logs. The
+# browser does not need it; `curl` and an MCP client do.
 #
 # Storage — the same shape MLflow's default mode has, because it is the only shape
 # VisionSet has: a local directory for files and SQLite for metadata, both inside
@@ -78,13 +84,23 @@ services:
       # protected route answers 500 until the reader knows to run `visionset init`
       # is not a dev environment.
       VISIONSET_WORKSPACE: /data/dev
+      # Sign the browser in without a token (#179). The default, `auto`, issues a
+      # session only to a loopback peer — and behind a proxy no request is ever
+      # from loopback, because the peer is nginx. So this stack says `always`, and
+      # pays for it by publishing every port below on 127.0.0.1: `always` on a
+      # port open to every interface would hand the workspace to the LAN. The two
+      # lines belong together and neither is safe alone.
+      VISIONSET_UI_SESSION: always
     # Raw uvicorn rather than `visionset ui`, and deliberately so: that
     # command also serves the compiled bundle at /ui, which in development is
     # vite's job on :5173 — and building that bundle is exactly what this stack
     # exists to avoid needing.
     command: sh /workspace/docker/api-dev.sh
     ports:
-      - "8000:8000"
+      # Loopback only. See VISIONSET_UI_SESSION above: this server signs any
+      # client in, so the port it does that on must not be reachable from the
+      # network. A bare "8000:8000" publishes on every interface.
+      - "127.0.0.1:8000:8000"
 
   app:
     # Built, not pulled, for the reason `api` is: `pnpm install` belongs to a
@@ -145,7 +161,8 @@ services:
       CHOKIDAR_USEPOLLING: "true"
     command: sh /workspace/docker/app-dev.sh
     ports:
-      - "5173:5173"
+      # Loopback only, for the reason the api service states.
+      - "127.0.0.1:5173:5173"
 
   # The front door, and the only port anybody needs: http://localhost:8080
   nginx:
@@ -159,8 +176,10 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
       # 8080 rather than 80: 80 needs root on Linux to publish, and a dev stack
-      # that has to be started with sudo is one nobody starts.
-      - "8080:80"
+      # that has to be started with sudo is one nobody starts. Loopback only, for
+      # the reason the api service states — this is the door the browser is
+      # signed in through.
+      - "127.0.0.1:8080:80"
 
   # Neither of the two below is wired to anything. The kernel composes exactly one
   # metadata store (`SqliteMetadataStore`) and one blob store

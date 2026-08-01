@@ -55,6 +55,12 @@ async function serveApi(page: Page, sent: Request[]): Promise<void> {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^\/api/, "");
+
+    // Answered before anything is recorded: every page load asks whether this
+    // server will sign the browser in by itself (#179), and here it will not —
+    // this suite is about the annotation page, and it reaches it with a token.
+    if (path === "/session") return route.fulfill({ json: { issued: false } });
+
     sent.push(request);
 
     if (path === `/jobs/${JOB}`) {

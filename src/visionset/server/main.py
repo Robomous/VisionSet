@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from visionset import __version__
+from visionset.server import session
 from visionset.server.dependencies import WorkspaceHandle
 from visionset.server.errors import (
     UNIVERSAL_ERROR_RESPONSES,
@@ -92,6 +93,29 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
 
 
+@router.get("/session", include_in_schema=False)
+async def browser_session(request: Request, response: Response) -> dict[str, bool]:
+    """Hand the page this server served a credential for it, when it may have one.
+
+    The one route in :mod:`visionset.server.session`'s design — see that module
+    for why it is a route at all, and for who counts as "may".
+
+    **Public, and it has to be**: the whole point is a browser that holds no
+    credential yet. Nothing is disclosed by asking — the answer is a boolean about
+    *this* request, not about the workspace — and a client that is not eligible
+    gets ``{"issued": false}`` and the ordinary token form, which is the same
+    answer it would get from a server with no workspace at all.
+
+    **Out of ``openapi.json``, like ``/`` and the bundle mount.** The spec is the
+    contract for a *program*, and a program authenticates with
+    ``Authorization: Bearer``: it should never be handed a credential it did not
+    mint and cannot revoke. Keeping the route out of the schema is also what keeps
+    the committed spec and the generated client byte-identical across this change,
+    which is one of #179's acceptance criteria.
+    """
+    return {"issued": session.issue(request, response)}
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Stop the ingest worker and close the workspace, in that order.
@@ -164,14 +188,14 @@ def _install_ui(app: FastAPI, root: Path) -> None:
     **Nothing here reaches ``openapi.json`` either.** An exception handler is not
     an operation.
     """
-    app.mount(UI_PREFIX, StaticFiles(directory=root, html=True), name="ui")
-
     # `index_file`, not `index`: the redirect route below is `async def index`, and
     # a closure reads the *enclosing scope at call time* — so a name shared with a
     # function defined later in the same function body resolves to the function, and
     # the fallback answers 500 `AttributeError: 'function' object has no attribute
     # 'is_file'`. Three tests found it; the name is the fix.
     index_file = root / INDEX_FILENAME
+
+    app.mount(UI_PREFIX, StaticFiles(directory=root, html=True), name="ui")
 
     async def spa_or_error(request: Request, exc: Exception) -> Response:
         if (

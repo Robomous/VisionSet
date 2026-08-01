@@ -1,8 +1,12 @@
 # Authentication
 
-A VisionSet workspace is operated with an **API token**. There is one kind of credential, it is
-scoped to one workspace, and holding a valid one means holding the whole workspace: granular
-permissions are deliberately not here.
+A VisionSet workspace is operated with an **API token**. It is scoped to one workspace, and
+holding a valid one means holding the whole workspace: granular permissions are deliberately not
+here.
+
+There is a second credential, and it exists so that the token is never something a *person* has
+to handle: the server signs in the browser it served itself, over a cookie nobody types. See
+[the browser session](#the-browser-session). Everything else on this page is about the token.
 
 ```
 visionset token create --name ci     # prints the secret once, on stdout
@@ -100,10 +104,101 @@ one sentence on stderr, **2** a usage error Click raises itself. There is no per
 shell branches on zero versus non-zero, and a person reads the sentence. That is the deliberate
 difference from the REST surface, where a client branches on `code` because it is a program.
 
+## The browser session
+
+Opening the app used to begin by asking for a token. For a local-first tool with no accounts,
+serving your own files off your own disk, that is ceremony with no threat model behind it — and it
+was the first thing anybody saw. So the server issues the page it served a credential of its own:
+
+```
+browser  ->  GET /session
+         <-  200 {"issued": true}
+             Set-Cookie: visionset_session=…; HttpOnly; SameSite=Strict; Path=/
+```
+
+`visionset ui`, then a browser, and you are on the project list. Nothing typed and nothing copied.
+
+**The token is untouched.** `Authorization: Bearer` still authenticates every route, the SDK, the
+CLI, MCP and every third-party client are unaffected, and `AuthProvider.verify(token) -> bool` did
+not widen — only the number of places `require_token` is willing to look. The bearer header is
+tried first, so a credential somebody passed on purpose is never shadowed by a cookie.
+
+**It is not a token, and it is deliberately not a row in the token table.** It has no name, it
+never appears in `visionset token list`, and no agent or script should ever hold one. The secret
+lives at `<workspace>/.ui-session`, mode 0600, created on demand — server-owned workspace state
+like `uploads/` and `exports/`, so nothing in the kernel changed and there was no migration. A
+file rather than a process-local secret because `--reload` restarts the process on every edit, and
+a secret that died with it would sign a developer out every time they saved. **Deleting the file
+is how you revoke it**, and it takes effect on the next request.
+
+### Who is issued one
+
+`VISIONSET_UI_SESSION` — `auto` (the default), `always`, or `never`.
+
+| | Issued to |
+| --- | --- |
+| `auto` | A request from a **loopback peer** that also **addressed this server as loopback** (`localhost`, a `127.0.0.0/8` or `::1` literal, or a `*.localhost` name). |
+| `always` | Everyone. |
+| `never` | Nobody. |
+
+`auto` is what makes `--host 0.0.0.0` safe without a second decision: a client on the LAN is not
+loopback, is issued nothing, and still needs a token somebody minted on purpose. An unrecognised
+value reads as `auto`, because this is evaluated while answering a request and a typo in an
+environment variable must narrow what the server hands out rather than take the server down.
+
+Both halves of `auto` are load-bearing, and the second one is easy to leave out. A page on
+`evil.example` can point that name at `127.0.0.1` and then make requests to it — DNS rebinding.
+The connection genuinely comes *from* loopback, so the peer check says yes; and because the
+browser believes the site is `evil.example` throughout, `SameSite=Strict` says yes too. The one
+thing that page cannot choose is the `Host` header, which is why a loopback server reached by any
+other name asks for a token.
+
+One consequence worth knowing, because it looks like a hole and is not: under `vite dev` the proxy
+sets `changeOrigin`, so the API sees `Host: 127.0.0.1:8000` and this check passes on the browser's
+behalf. Vite keeps its own host allow-list for exactly this reason, and that is the guard on that
+hop — the same one `docker/nginx.conf` documents from the other side.
+
+`always` gives up both checks, and exists for a deployment whose front door is a proxy — behind
+one, no request is ever from loopback, because the peer is the proxy. It is only safe when the
+port that reaches the server is not itself open to the world. The compose stack sets it and
+publishes every port on `127.0.0.1` in the same change; the two lines belong together.
+
+### Why a cookie, and why it is not weaker than what it replaced
+
+`HttpOnly` is **strictly safer than the token was**. That one sat in `sessionStorage`, which any
+script on the page can read; this is one no script can, including ours — which is why the app has
+to *ask* whether it has a session rather than look.
+
+`SameSite=Strict` replaces a protection the API had by accident. The absence of CORS blocks most
+cross-site requests, because a JSON body or a `DELETE` provokes a preflight that fails — but
+`POST /sources/images` is `multipart/form-data`, a CORS-simple request needing no preflight, so a
+page nobody here wrote could otherwise push files into a workspace. `Strict` means the credential
+is not attached to a cross-site request at all.
+
+Cookies work in all three of the shapes this project ships because each already funnels through
+**one origin**: the wheel serves the API at `/` and the bundle at `/ui`, vite proxies `/api`, and
+nginx proxies both. If the app ever talked cross-origin to the API, this would need
+`SameSite=None`, which is worse — the single-origin property is load-bearing.
+
+`GET /session` is **absent from `openapi.json`**, like `/` and the bundle mount. The spec is the
+contract a *program* codes against, and a program authenticates with a token it minted and can
+revoke; it should never be handed a credential it did not ask for. It is also not a login
+endpoint: it takes no input and trades nothing, so there is nothing to talk it into.
+
+### When the form still appears
+
+`TokenForm` is still there, for the cases where the server will not sign a browser in: a LAN
+client of a `--host 0.0.0.0` server, a deployment running `never`, or a loopback server reached by
+a name it does not recognise as itself. In the app's rail, the sign-out control reads **"Use a
+token"** while a session is in use, because that is what it does — it cannot delete a cookie it
+cannot read, so it stops using it *here* and a reload signs you back in. On the machine serving
+your own files that is the right behaviour; anywhere else the credential is a token and the button
+says "Sign out".
+
 ## What a refusal looks like
 
-A missing header, a non-bearer scheme, an empty credential, an unknown token and a revoked token
-are **one answer**, byte for byte:
+A missing header, a non-bearer scheme, an empty credential, an unknown token, a revoked token and
+a session cookie that is not this workspace's are **one answer**, byte for byte:
 
 ```
 HTTP/1.1 401 Unauthorized
@@ -113,7 +208,8 @@ WWW-Authenticate: Bearer
 ```
 
 That uniformity is the point. A 401 that distinguished "no such token" from "revoked" would let
-anyone enumerate a workspace's credentials one request at a time.
+anyone enumerate a workspace's credentials one request at a time — and one that said *which kind*
+of credential it rejected would say whether this server issues sessions at all.
 
 A failure to *decide* is not a refusal. If the store is unreachable or damaged, `verify` raises
 rather than answering `False`, and the client sees a 503 (`WORKSPACE_BUSY`) or a 500
