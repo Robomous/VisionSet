@@ -161,6 +161,45 @@ base**, line-height 1.6. One scale — reuse it, don't invent sizes:
   unit, 24px separates page sections. Detail two-column: `1fr / 320px`, stacking below
   `lg`. Breakpoints 640 / 768 / 1024 / 1280.
 
+## Navigation rules
+
+VisionSet is an **application**, not a website. Somebody who walks into a sub-view has
+to be able to walk back out of it *from the screen*, without reaching for the browser
+and without knowing the URL scheme. Before **#199** five of the six sub-views offered
+nothing at all and the sixth offered history, so this section exists to keep the rule
+from being rediscovered one screen at a time.
+
+- **Every sub-view declares a parent, and the back affordance goes there
+  structurally.** `navigate(-1)` is not a parent: it means the gallery when you
+  clicked a tile, nothing at all on a fresh tab, and one asset at a time after
+  walking forward through a job. The destination has to be the same however the page
+  was reached — clicked through, pasted, reloaded, or walked forward from a sibling.
+  The parents live in one `PARENT` table in `app/src/routes.tsx`, because a parent is
+  a fact about the route table and `ui-core` deliberately has no router.
+- **The affordance names its destination.** "Back" alone is a promise about history;
+  "Projects", or a project's own name, is a promise about structure — the one the
+  control can keep. A name that has not loaded yet falls back to the noun
+  (`parentLabel`) rather than to nothing, so the control does not change width under
+  a cursor that is already aiming at it.
+- **Placement follows the pane.** On a padded page it is `patterns/BackLink.tsx`
+  directly above the page header: meta-size, muted, a 14px `ArrowLeft`, pulled left
+  by the gutter (`-ml-1`) so its text aligns with the `<h1>` beneath it. On the
+  full-bleed editor it is the first control in the 44px top bar, as a 36px ghost icon
+  button — the shape that bar is already built from.
+- **A screen takes it as an optional callback, never a route.** The same rule every
+  forward edge follows: `ui-core` may not import a router, so a host that has nowhere
+  to send anybody renders no control rather than a dead one.
+- **The rail is for top-level destinations only.** Per-screen return navigation never
+  lives on it — that is what lets it name where it goes, and what keeps the rail the
+  four things `## Layout` gives it.
+- **The browser's Back button stays correct, and is never the only way out.** Nothing
+  here replaces it; a `replace` navigation is still right where a change is a view of
+  the same resource rather than a place (#171's tabs).
+- **Two controls may share one destination when they mean different things.** The
+  annotation page's arrow means *up* and its grid button means *show me the grid*;
+  they coincide because the annotator's parent is the grid. That is not redundancy,
+  and the top bar below draws both.
+
 ## Tabs
 
 Two shapes, one component (`primitives/Tabs.tsx`), chosen by a `variant` on `TabsList`

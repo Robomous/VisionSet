@@ -56,14 +56,17 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { BackLink } from "../patterns/BackLink";
+import { parentLabel } from "../patterns/parentLabel";
 import { saveBlob } from "./download";
 import {
   useDatasetStats,
   useDownloadManifest,
   useExportRelease,
   useFormats,
-  usePublishRelease,
+  useProject,
   useProjectDataset,
+  usePublishRelease,
   useReleases,
   useVerifyRelease,
   type Release,
@@ -74,9 +77,12 @@ const LOSSY = "LOSSY_EXPORT_NOT_CONSENTED";
 
 export interface DatasetScreenProps {
   readonly projectId: string;
+  /** Up to the project this trunk belongs to (#199). */
+  readonly onBack?: () => void;
 }
 
-export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
+export function DatasetScreen({ projectId, onBack }: DatasetScreenProps): JSX.Element {
+  const project = useProject(projectId);
   const dataset = useProjectDataset(projectId);
   const stats = useDatasetStats(dataset.data?.id);
   const releases = useReleases(dataset.data?.id);
@@ -84,6 +90,8 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
 
   return (
     <div className="flex flex-col gap-6" data-testid="dataset-screen">
+      {onBack !== undefined && <BackLink onClick={onBack} label={parentLabel(project.data?.name)} />}
+
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div>
           <h1 className="text-page font-semibold tracking-tight">Dataset</h1>

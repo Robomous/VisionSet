@@ -249,9 +249,16 @@ describe("the gallery", () => {
     on("GET", /\/assets$/, { status: 200, body: assets(100, 0, 250) });
 
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
-    await waitFor(() => expect(sent.length).toBeGreaterThan(0));
+    // Found by path, not by position: since #199 the screen also reads the
+    // project and the batch to name its parent and its own header, and which of
+    // the three lands first is not something this claim is about.
+    const window_ = await waitFor(() => {
+      const request = sent.find((one) => new URL(one.url).pathname.endsWith("/assets"));
+      if (request === undefined) throw new Error("no asset window requested");
+      return request;
+    });
 
-    const query = new URL(sent[0].url).searchParams;
+    const query = new URL(window_.url).searchParams;
     expect(query.get("limit")).toBe("100");
     expect(query.get("offset")).toBe("0");
   });

@@ -131,6 +131,29 @@ function Projects(): JSX.Element {
 }
 
 /**
+ * Every sub-view's parent, in one place (#199).
+ *
+ * A back affordance navigates to its **declared parent**, never `navigate(-1)`:
+ * the destination has to be the same whether the page was reached by clicking
+ * through, by pasting a URL, by reloading, or by walking forward from a sibling.
+ * History cannot promise that, and on a fresh tab it leaves the application
+ * entirely.
+ *
+ * The parents live here rather than in the screens because a parent is a fact
+ * about the *route table*, and `ui-core` deliberately does not have one — the note
+ * on `Projects` above is the same rule from the other side. `DESIGN.md`'s
+ * **Navigation rules** is the prose half of this table.
+ *
+ * The gallery's parent carries `?tab=batches`, because landing on the project's
+ * default Schema tab after leaving a batch is landing somewhere you were not.
+ */
+const PARENT = {
+  projects: "/projects",
+  project: (projectId: string) => `/projects/${projectId}`,
+  batches: (projectId: string) => `/projects/${projectId}?tab=batches`,
+} as const;
+
+/**
  * The project, and the one screen whose *section* is part of the URL.
  *
  * #171 split the page into tabs, and a tab that lives only in component state is
@@ -152,6 +175,7 @@ function Project(): JSX.Element {
   return (
     <ProjectScreen
       projectId={projectId}
+      onBack={() => void navigate(PARENT.projects)}
       {...(tab === null ? {} : { tab })}
       onTabChange={(next) => setQuery({ tab: next }, { replace: true })}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
@@ -186,6 +210,7 @@ function Gallery(): JSX.Element {
     <GalleryScreen
       projectId={projectId}
       batchId={batchId}
+      onBack={() => void navigate(PARENT.batches(projectId))}
       onOpenAsset={(asset) => {
         if (asset.job_id === null || asset.job_id === undefined) return;
         void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
@@ -196,8 +221,11 @@ function Gallery(): JSX.Element {
 
 function DatasetView(): JSX.Element {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   if (projectId === undefined) return <NotFound />;
-  return <DatasetScreen projectId={projectId} />;
+  return (
+    <DatasetScreen projectId={projectId} onBack={() => void navigate(PARENT.project(projectId))} />
+  );
 }
 
 /**
@@ -213,6 +241,12 @@ function DatasetView(): JSX.Element {
  * grid button means "show me this batch", and it has to mean that whether the
  * annotator was reached by clicking a tile, by pasting a URL, or by walking
  * forward from another asset.
+ *
+ * #199 applied that same argument to the **back arrow**, which was the one control
+ * left in the product still wired to history. So this route passes one callback and
+ * the page drives both controls with it: the batch gallery is this page's parent,
+ * the arrow means *up* and the grid means *show me the grid*, and they coincide
+ * because the annotator's parent is the grid.
  */
 function Annotate(): JSX.Element {
   const { jobId } = useParams();
@@ -224,7 +258,6 @@ function Annotate(): JSX.Element {
     <AnnotationPage
       jobId={jobId}
       {...(asset === null ? {} : { initialAssetId: asset })}
-      onBack={() => void navigate(-1)}
       onOpenGallery={(projectId, batchId) =>
         void navigate(`/projects/${projectId}/batches/${batchId}`)
       }
@@ -252,6 +285,7 @@ function Ingest(): JSX.Element {
   return (
     <IngestScreen
       projectId={projectId}
+      onBack={() => void navigate(PARENT.project(projectId))}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
     />
   );
