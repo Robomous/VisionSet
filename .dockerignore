@@ -1,0 +1,46 @@
+# What the docker build context is allowed to contain.
+#
+# Both dev images copy only manifests and lockfiles — the source arrives by bind
+# mount at run time — so almost everything here would be sent to the daemon and
+# then ignored. On a working checkout that is hundreds of megabytes of
+# node_modules and .venv per build, which is slow enough to be worth a file.
+#
+# It is also a correctness guard: a build context carrying `workspace-data/` would
+# put somebody's annotated assets into the daemon's tarball.
+
+# Dependency trees. Rebuilt inside the images, and platform-specific besides.
+node_modules/
+.venv/
+.pnpm-store/
+
+# Build output. `frontend/*/dist` is produced by the app container at start, and
+# `src/visionset/_static` by `pnpm bundle:static` for the wheel — neither belongs
+# to a dev image.
+frontend/*/dist/
+dist/
+build/
+*.tsbuildinfo
+src/visionset/_static/*
+!src/visionset/_static/.gitkeep
+
+# Workspaces. Somebody's data, never a build input.
+**/workspace-data/
+
+# Version control and tooling state.
+.git/
+.github/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+__pycache__/
+*.py[cod]
+htmlcov/
+coverage.xml
+.playwright-mcp/
+test-results/
+playwright-report/
+
+# Local agent configuration, which is never committed and never a build input.
+.claude/
+.cursor/
+CLAUDE.md

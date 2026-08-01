@@ -5,7 +5,19 @@
 #   docker compose -f docker/compose.yaml --profile minio up
 #
 # From a clean checkout this needs nothing installed on the host — no `uv sync`,
-# no `pnpm install`, no `pnpm -r build`, no wheel.
+# no `pnpm install`, no `pnpm -r build`, no wheel. `up` builds the two images the
+# first time; after that it starts them.
+#
+# Every dependency is resolved, downloaded and installed at **build** time, in
+# docker/api.Dockerfile and docker/app.Dockerfile. Starting a container downloads
+# nothing. After changing a dependency:
+#
+#   docker compose -f docker/compose.yaml build
+#   docker compose -f docker/compose.yaml down -v && … up
+#
+# The `down -v` is not optional for a frontend dependency: node_modules lives in
+# named volumes seeded from the image, and Docker seeds a volume only when it is
+# new, so a rebuilt image cannot reach one that already has contents.
 #
 #   The app is at http://localhost:8080
 #
@@ -44,11 +56,15 @@ name: visionset
 
 services:
   api:
-    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    # Built, not pulled: every Python dependency is installed into the image, so
+    # starting this service starts a server rather than resolving 53 packages
+    # first. `docker/api.Dockerfile` says why each layer is where it is.
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
     working_dir: /workspace
     volumes:
       - ..:/workspace
-      - api-venv:/workspace/.venv # keep the container venv off the host checkout
       # The backend's storage, and the only mount here holding anything a person
       # would miss. Its default is inside the checkout — `**/workspace-data/` is
       # already git-ignored, so nothing written here can be committed by accident
@@ -62,11 +78,7 @@ services:
       # protected route answers 500 until the reader knows to run `visionset init`
       # is not a dev environment.
       VISIONSET_WORKSPACE: /data/dev
-      # The venv is a volume and uv's cache is in the image's own layer, so they
-      # are on different filesystems and hardlinking is unavailable. Saying so up
-      # front turns a warning on every boot into a stated fact.
-      UV_LINK_MODE: copy
-    # Raw uvicorn rather than `uv run visionset ui`, and deliberately so: that
+    # Raw uvicorn rather than `visionset ui`, and deliberately so: that
     # command also serves the compiled bundle at /ui, which in development is
     # vite's job on :5173 — and building that bundle is exactly what this stack
     # exists to avoid needing.
@@ -75,7 +87,11 @@ services:
       - "8000:8000"
 
   app:
-    image: node:24-bookworm-slim
+    # Built, not pulled, for the reason `api` is: `pnpm install` belongs to a
+    # build. See docker/app.Dockerfile.
+    build:
+      context: ..
+      dockerfile: docker/app.Dockerfile
     working_dir: /workspace
     # Not for ordering — vite serves fine before the API answers, and the proxy
     # reconnects per request. It is so that `up app` alone still brings up the
@@ -84,23 +100,34 @@ services:
       - api
     volumes:
       - ..:/workspace
-      # One volume per package pnpm installs into, for the reason `api-venv`
-      # exists. A macOS host checkout holds darwin-only native packages (esbuild,
-      # rollup, @tailwindcss/oxide, lightningcss); a Linux `pnpm install` over the
-      # same bind mount rewrites that tree and leaves the host's own `pnpm dev`
-      # broken. pnpm's workspace layout puts a `node_modules/` at the root *and*
-      # in every package, so each needs its own volume — a root-only volume would
-      # still let the container write into `frontend/*/node_modules` on the host.
+      # One volume per directory pnpm installed into during the image build.
+      #
+      # Two jobs, and it is worth separating them. First, they carry the build's
+      # output past the bind mount: `..:/workspace` covers the whole tree, so
+      # without these the host's `node_modules/` — or its absence — would shadow
+      # what the image installed. Docker seeds a *new* named volume from the image
+      # content at that path, which is what makes the install survive.
+      #
+      # Second, they keep the container off the host's tree. A macOS checkout holds
+      # darwin-only native packages (esbuild, rollup, @tailwindcss/oxide,
+      # lightningcss) that a Linux install would overwrite.
+      #
+      # pnpm's workspace layout puts a `node_modules/` at the root *and* in every
+      # package, so each needs its own volume — a root-only volume would still let
+      # the container write into `frontend/*/node_modules` on the host.
+      #
+      # Consequence worth knowing: these are seeded once, at creation. After
+      # changing a dependency, `build` then `down -v` — a rebuilt image does not
+      # reach a volume that already has contents.
       - app-node-modules:/workspace/node_modules
       - app-annotator-modules:/workspace/frontend/annotator/node_modules
       - app-ui-core-modules:/workspace/frontend/ui-core/node_modules
       - app-app-modules:/workspace/frontend/app/node_modules
-      # pnpm's content-addressable store. Its default lives under the container's
-      # home directory, but the bind mount is a different filesystem, so pnpm
-      # relocates the store next to the project — writing `.pnpm-store/` into the
-      # host checkout, which is untracked and therefore easy to miss. Shadowing
-      # pnpm's own chosen path keeps that off the host and makes a second boot
-      # reuse the download instead of fetching 357 packages again.
+      # Nothing installs at run time any more, so this is a guard rather than a
+      # cache: pnpm relocates its store next to the project when its default is on
+      # another filesystem, and a bind mount always is. Without it, a
+      # `docker compose exec app pnpm …` would write `.pnpm-store/` into the host
+      # checkout.
       - app-pnpm-store:/workspace/.pnpm-store
     environment:
       # Where vite's own `/api` proxy points. Requests arriving through nginx
@@ -166,7 +193,6 @@ services:
       - minio-data:/data
 
 volumes:
-  api-venv:
   app-node-modules:
   app-annotator-modules:
   app-ui-core-modules:
