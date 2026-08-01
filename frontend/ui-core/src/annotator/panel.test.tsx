@@ -69,6 +69,19 @@ function mount(
   );
 }
 
+describe("the panel's tab bar", () => {
+  it("keeps the segmented switch the page's sections gave up (#182)", () => {
+    render(mount(storeWith([])));
+
+    // `DESIGN.md` pins this panel as a 2-col tab list, and #182 moved everything
+    // else to the underline bar. Two equal halves at 288px are a switch, and this
+    // is the assertion that stops the default sweeping the exception along with it.
+    expect(screen.getByRole("tablist").dataset.variant).toBe("segmented");
+    expect(screen.getByTestId("tab-objects").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("tab-labels").getAttribute("aria-selected")).toBe("false");
+  });
+});
+
 describe("the Objects tab", () => {
   it("numbers the annotations in draw order and names each one's class", () => {
     const store = storeWith([annotation("a", "vehicle", "bbox"), annotation("b", "lane", "polygon")]);

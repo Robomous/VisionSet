@@ -14,6 +14,8 @@
  */
 
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { JSX } from "react";
 import { describe, expect, it } from "vitest";
 
 import { Alert, Badge } from "./Badge";
@@ -22,6 +24,7 @@ import { Card, CardTitle } from "./Card";
 import { Progress } from "./Feedback";
 import { FieldError, Input, Label } from "./Input";
 import { Table, TableBody, TableEmpty } from "./Table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
 
 describe("Button", () => {
   it("defaults to type=button, so a Cancel does not submit its form", () => {
@@ -120,6 +123,88 @@ describe("Card and Table", () => {
     );
     expect(screen.getByRole("table")).not.toBeNull();
     expect(screen.getByText("No batches yet")).not.toBeNull();
+  });
+});
+
+/**
+ * The tab bar, asserted on what it *means* rather than on what it looks like
+ * (#182).
+ *
+ * The distinction between the open section and the other two has to survive a
+ * restyling, so nothing here matches a class string — a test that pinned
+ * `bg-card` would have failed on the very change it was supposed to protect, and
+ * a test that pinned `border-primary` would fail on the next one. What is asserted
+ * is the part a screen reader and the keyboard both read: the roles, `aria-selected`,
+ * Radix's `data-state`, and that only the open panel is in the tree at all.
+ *
+ * The one thing here that is about *appearance* is the variant cascade, and it is
+ * asserted through `data-variant` for the same reason: dropping the context in
+ * `TabsList` would leave a segmented list full of underlined triggers, which is a
+ * regression no role can see.
+ */
+describe("Tabs", () => {
+  function bar(variant?: "underline" | "segmented"): JSX.Element {
+    return (
+      <Tabs defaultValue="schema">
+        <TabsList {...(variant === undefined ? {} : { variant })} aria-label="Sections">
+          <TabsTrigger value="schema">Schema</TabsTrigger>
+          <TabsTrigger value="batches">Batches</TabsTrigger>
+        </TabsList>
+        <TabsContent value="schema">the classes</TabsContent>
+        <TabsContent value="batches">the batches</TabsContent>
+      </Tabs>
+    );
+  }
+
+  it("marks the open section as the selected tab and the others as not", () => {
+    render(bar());
+
+    const [schema, batches] = screen.getAllByRole("tab");
+    expect(schema.getAttribute("aria-selected")).toBe("true");
+    expect(schema.dataset.state).toBe("active");
+    expect(batches.getAttribute("aria-selected")).toBe("false");
+    expect(batches.dataset.state).toBe("inactive");
+  });
+
+  it("moves the selection when the tab is clicked, so the state is the source of the styling", async () => {
+    render(bar());
+
+    await userEvent.click(screen.getByRole("tab", { name: "Batches" }));
+    expect(screen.getByRole("tab", { name: "Batches" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Schema" }).getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("keeps only the open panel in the tree, and labels it with its tab", () => {
+    render(bar());
+
+    const panels = screen.getAllByRole("tabpanel");
+    expect(panels).toHaveLength(1);
+    expect(panels[0]?.textContent).toBe("the classes");
+    expect(screen.getByRole("tablist").getAttribute("aria-label")).toBe("Sections");
+  });
+
+  it("is operable from the keyboard, because every trigger is a real button", async () => {
+    render(bar());
+
+    // Radix's roving tabindex: one stop for the whole bar, arrows move within it.
+    await userEvent.tab();
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Schema" }));
+
+    await userEvent.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Batches" }));
+    expect(screen.getByRole("tab", { name: "Batches" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("hands every trigger the list's variant, so a bar cannot be half of each", () => {
+    const { rerender } = render(bar("segmented"));
+    expect(screen.getByRole("tablist").dataset.variant).toBe("segmented");
+    for (const tab of screen.getAllByRole("tab")) expect(tab.dataset.variant).toBe("segmented");
+
+    // The default is the page's tab bar: the narrow panel is the exception and
+    // names itself, not the other way round.
+    rerender(bar());
+    expect(screen.getByRole("tablist").dataset.variant).toBe("underline");
+    for (const tab of screen.getAllByRole("tab")) expect(tab.dataset.variant).toBe("underline");
   });
 });
 

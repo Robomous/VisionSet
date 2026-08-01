@@ -22,6 +22,10 @@ import { expect, test } from "@playwright/test";
 const PRIMARY = "rgb(235, 90, 71)";
 /** `--color-foreground`. */
 const INK = "rgb(37, 41, 73)";
+/** `--color-muted` — the hover and focus fill. */
+const MUTED = "rgb(246, 248, 250)";
+/** What a computed colour reads as when nothing painted: no fill, no border. */
+const NOTHING = "rgba(0, 0, 0, 0)";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/styleguide");
@@ -67,6 +71,62 @@ test("a dialog traps focus, closes on Escape and returns focus to its trigger", 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
+});
+
+/**
+ * #182's actual claim, which is a claim about pixels.
+ *
+ * `primitives.test.tsx` asserts the *meaning* — `aria-selected`, `data-state`, one
+ * panel in the tree — and deliberately matches no class string, so it would stay
+ * green through a restyle that made all three tabs look identical. The difference
+ * between an active tab and an inactive one is a computed colour, and jsdom
+ * computes nothing from a stylesheet. This is where that is checked.
+ */
+test("the active tab wears the accent rule and an inactive one wears no chrome", async ({
+  page,
+}) => {
+  const bar = page.getByTestId("tabs-underline");
+  const open = bar.getByRole("tab", { name: "Batches" });
+  const shut = bar.getByRole("tab", { name: "About" });
+
+  await expect(open).toHaveCSS("border-bottom-color", PRIMARY);
+  // The report's complaint, inverted into an assertion: no fill, no border, no
+  // shadow. An inactive tab must not read as a button somebody has not pressed.
+  await expect(shut).toHaveCSS("border-bottom-color", NOTHING);
+  await expect(shut).toHaveCSS("background-color", NOTHING);
+  await expect(shut).toHaveCSS("box-shadow", "none");
+
+  await shut.click();
+  await expect(shut).toHaveCSS("border-bottom-color", PRIMARY);
+  await expect(open).toHaveCSS("border-bottom-color", NOTHING);
+});
+
+test("the segmented variant still ships, for the 288px panel it exists for", async ({ page }) => {
+  const panel = page.getByTestId("tabs-segmented");
+  // Raised onto `card` inside a `muted` list — the shape a two-way switch wants,
+  // and the one the page's section bar no longer uses.
+  await expect(panel.getByRole("tab", { name: "Objects" })).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+  await expect(panel.getByRole("tab", { name: "Labels" })).toHaveCSS("background-color", NOTHING);
+});
+
+test("focus is visible on a tab that has no fill to draw it against", async ({ page }) => {
+  // Arrive by keyboard, because `:focus-visible` is the point — and from the last
+  // focusable before the bar, so this is one press rather than a hunt.
+  await page.getByLabel("Description").focus();
+  await page.keyboard.press("Tab");
+
+  const focused = page.getByTestId("tabs-underline").getByRole("tab", { name: "Batches" });
+  await expect(focused).toBeFocused();
+  // The ring comes from `styles.css`'s base layer and is drawn *outside* the box,
+  // so it never depended on the chip the underline variant dropped. The variant
+  // adds the fill the ring encloses, which is what "still clearly visible" means
+  // once the tab is otherwise bare.
+  await expect(focused).toHaveCSS("outline-color", PRIMARY);
+  await expect(focused).toHaveCSS("outline-width", "2px");
+  await expect(focused).toHaveCSS("background-color", MUTED);
 });
 
 test("the class palette draws the schema's colour and the derived hue side by side", async ({
