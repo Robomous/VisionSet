@@ -122,7 +122,10 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
     <section className="flex flex-col gap-4" data-testid="schema-editor">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-section font-semibold">Schema</h2>
+          {/* No heading: the tab above says "Schema" (#171), and Radix labels this
+              panel with that trigger, so an `<h2>` here would repeat the word to
+              a reader and to a screen reader both. The line that follows says the
+              thing the tab cannot — which version saving would create. */}
           <p className="text-meta text-muted-foreground">
             {active === null
               ? "This project has no schema yet. Saving creates version 1."

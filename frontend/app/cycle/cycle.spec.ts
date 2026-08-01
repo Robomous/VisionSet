@@ -131,6 +131,9 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
     }
 
     await page.getByTestId("save-schema").click();
+    // The history is its own tab since #171, so the published version is checked
+    // where it now lives rather than further down the same page.
+    await page.getByTestId("tab-versions").click();
     await expect(page.getByTestId("version-1")).toBeVisible();
     await expect(page.getByTestId("version-1")).toContainText("active");
   });
@@ -161,7 +164,7 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
     //
     // The ingest step above ends on the ingest screen, so the walk back to the
     // batch table is the same one every other step makes.
-    await openProject(page);
+    await openProject(page, "batches");
     await page.getByTestId("open-batch-cycle-batch").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
     const first = page.getByTestId(/^tile-/).first();
@@ -203,7 +206,7 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
     // Navigated rather than `goBack()`: history depth is an implementation detail
     // of how the previous steps got here, and a cycle this long should not depend
     // on it.
-    await openProject(page);
+    await openProject(page, "batches");
     await expect(page.getByTestId("batches-table")).toBeVisible();
     await expect(page.getByTestId("batch-cycle-batch")).toContainText("draft");
 
@@ -224,7 +227,7 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
     // read out of the API — which is exactly what this spec used to do, and what
     // made a defect that blocked the whole product invisible to a green suite.
     // Nothing here types a URL.
-    await openProject(page);
+    await openProject(page, "batches");
     await page.getByTestId("open-batch-cycle-batch").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
 
@@ -294,7 +297,7 @@ test("the whole cycle, from a pasted token to a downloaded export", async ({ pag
   });
 
   await test.step("complete the batch", async () => {
-    await openProject(page);
+    await openProject(page, "batches");
     await expect(page.getByTestId("batches-table")).toBeVisible();
     await page.getByTestId("complete-cycle-batch").click();
     await expect(page.getByTestId("state-cycle-batch")).toHaveText("completed", {
@@ -395,11 +398,20 @@ async function columnsOf(page: Page): Promise<{ rendered: number; expected: numb
   });
 }
 
-async function openProject(page: Page): Promise<void> {
+/**
+ * The walk back to a project, and to one of its sections.
+ *
+ * #171 put the schema, the batches and the version history behind tabs, so
+ * "reach the batch table" is now two clicks rather than one. It is clicked rather
+ * than reached by `?tab=`, for the same reason nothing here types a URL: a step
+ * that navigates by address cannot notice that the control is missing.
+ */
+async function openProject(page: Page, tab: "schema" | "batches" | "versions"): Promise<void> {
   await page.getByTestId("rail-projects").click();
   await expect(page.getByTestId(`open-${PROJECT}`)).toBeVisible();
   await page.getByTestId(`open-${PROJECT}`).click();
   await expect(page.getByTestId("project-screen")).toBeVisible();
+  if (tab !== "schema") await page.getByTestId(`tab-${tab}`).click();
 }
 
 /*
