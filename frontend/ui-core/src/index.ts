@@ -175,6 +175,7 @@ export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbna
 // The annotation page's side panel (#126). Driven entirely by the `AnnotatorStore`
 // the page already holds — no second door to the document.
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
+export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
 
 // The annotation page (#56) — where M4's engine meets M3's API.
 export { AnnotationPage, type AnnotationPageProps } from "./annotator/AnnotationPage.js";

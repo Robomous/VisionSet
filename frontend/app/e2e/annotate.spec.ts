@@ -492,3 +492,65 @@ test("the rail keeps its collapsed state when the pane changes", async ({ page }
   await expect(page.getByTestId("annotation-page")).toBeVisible();
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
 });
+
+/**
+ * #189: `?` used to be *claimed* rather than absent.
+ *
+ * The page passed `onHostAction={(name) => name === TOGGLE_HELP}`. Returning
+ * `true` means **the host handled this action**, so pressing `?` — a real binding
+ * in `core/input/bindings.ts` — was consumed and then discarded. The user got
+ * nothing, and the engine had been told the request was served, so nothing else
+ * could pick it up.
+ */
+test("? opens the shortcut sheet, and ? closes it again", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("?");
+  await expect(page.getByTestId("shortcut-sheet")).toBeVisible();
+
+  await page.keyboard.press("?");
+  await expect(page.getByTestId("shortcut-sheet")).toHaveCount(0);
+});
+
+test("Escape closes the shortcut sheet", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("?");
+  await expect(page.getByTestId("shortcut-sheet")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("shortcut-sheet")).toHaveCount(0);
+});
+
+test("the sheet lists the engine's own bindings, and the schema's class hotkeys", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("?");
+  const sheet = page.getByTestId("shortcut-sheet");
+  await expect(sheet).toBeVisible();
+
+  // Engine rows, addressed by the chord they were registered under — which is
+  // what makes this a claim about the registry rather than about this markup.
+  for (const chord of ["escape", "enter", "delete", "backspace", "mod+z", "mod+shift+z", "mod+a", "mod+0", "?", "v"]) {
+    await expect(sheet.locator(`[data-chord="${chord}"]`)).toHaveCount(1);
+  }
+
+  // …and the class hotkeys are the *pinned schema's* two classes, in authored
+  // order, with no third digit invented.
+  const classes = sheet.getByTestId("shortcut-class-rows");
+  await expect(classes.locator("[data-chord]")).toHaveCount(2);
+  await expect(classes.locator('[data-chord="1"]')).toContainText("vehicle");
+  await expect(classes.locator('[data-chord="2"]')).toContainText("lane");
+
+  // The chords deliberately left to the browser are stated rather than omitted.
+  await expect(sheet.getByTestId("shortcut-unbound")).toContainText("C");
+  await expect(sheet.getByTestId("shortcut-unbound")).toContainText("V");
+});

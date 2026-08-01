@@ -169,6 +169,7 @@ export {
   chordOf,
   classAction,
   classHotkeys,
+  defaultRegistry,
   hotkeyForClass,
   keystrokeOf,
   modifiersOf,
