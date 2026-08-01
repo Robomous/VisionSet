@@ -41,6 +41,15 @@
   --color-muted: #f6f8fa;
   --color-muted-foreground: #57606a;
 
+  /*
+   * The stage a picture sits on (#185): the surround around an asset in the
+   * annotator. A role of its own rather than `muted` or `card`, because it is
+   * neither a subtle fill nor a surface content sits *in* — it is the neutral a
+   * photograph is judged against, and it has to stay distinguishable from
+   * `background` so an asset with white borders still shows where it ends.
+   */
+  --color-stage: #e1e6eb;
+
   /* Lines and focus. */
   --color-border: #d0d7de;
   --color-input: #d0d7de;

@@ -554,3 +554,87 @@ test("the sheet lists the engine's own bindings, and the schema's class hotkeys"
   await expect(sheet.getByTestId("shortcut-unbound")).toContainText("C");
   await expect(sheet.getByTestId("shortcut-unbound")).toContainText("V");
 });
+
+/**
+ * #185: the surround was the rail's near-black navy.
+ *
+ * The canvas pane was `bg-sidebar-strong` (`#111827`) — the only dark surface in
+ * the product outside the rail, so the page read as a different application. It
+ * also cost accuracy rather than only looks: a dark surround shifts the perceived
+ * contrast and colour of the photograph inside it, on a tool whose whole job is
+ * looking closely at pixels.
+ */
+
+/** `rgb(r, g, b)` as three numbers, so a colour can be reasoned about. */
+function channels(colour: string): readonly number[] {
+  return (colour.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+}
+
+test("the canvas surround is a light neutral, not the rail's dark chrome", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const stage = await page
+    .getByTestId("canvas-stage")
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+  const rail = await page
+    .getByTestId("app-rail")
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+
+  // Light: every channel well above the midpoint. `#111827` fails all three.
+  expect(channels(stage).every((value) => value > 200)).toBe(true);
+  // Neutral: no channel dominates, so the picture is judged against grey.
+  expect(Math.max(...channels(stage)) - Math.min(...channels(stage))).toBeLessThan(24);
+  // …and it is emphatically not the rail's treatment, which stays dark.
+  expect(stage).not.toBe(rail);
+  expect(channels(rail).every((value) => value < 80)).toBe(true);
+});
+
+/**
+ * A guard on the *new* value rather than a regression test — the dark surround
+ * passed this one, being obviously distinguishable from white.
+ *
+ * What it rejects is the tempting wrong fix: reaching for an existing surface
+ * token. `background` and `card` are `#ffffff`, and `muted` is `#f6f8fa`, whose
+ * closest channel is five short of white — so an asset with white borders would
+ * bleed into its own surround. Measured against a minimum gap of ten, which
+ * `muted` fails and `stage` (`#e1e6eb`, gap 20) clears.
+ */
+test("the surround is distinguishable from the page and from a white image edge", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const [stage, body] = await Promise.all([
+    page.getByTestId("canvas-stage").evaluate((node) => getComputedStyle(node).backgroundColor),
+    page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+  ]);
+
+  // The asset is drawn on white in this stub, and the page behind it is white
+  // too. A surround equal to either would hide where the picture ends.
+  expect(stage).not.toBe(body);
+  const gap = Math.min(...channels(body).map((value, at) => value - channels(stage)[at]));
+  expect(gap).toBeGreaterThanOrEqual(10);
+});
+
+/**
+ * The third acceptance criterion, and also a guard rather than a regression test:
+ * a dark surround passed it too. It fails if a later change makes the stage equal
+ * to `muted`, which is what the badge is filled with.
+ */
+test("what is drawn on the surround stays legible against it", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const stage = await page
+    .getByTestId("canvas-stage")
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+  const badge = await page
+    .getByTestId("object-total")
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+
+  // The `0 objects` badge is pinned to the pane's bottom-left and sits directly
+  // on the surround — the one piece of chrome that does.
+  expect(badge).not.toBe(stage);
+});

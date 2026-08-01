@@ -40,6 +40,11 @@ export const COLOR = {
   muted: "#f6f8fa",
   "muted-foreground": "#57606a",
 
+  // The stage a picture sits on (#185) — the annotator's surround. Its own role:
+  // not a subtle fill and not a surface content sits in, but the neutral a
+  // photograph is judged against.
+  stage: "#e1e6eb",
+
   border: "#d0d7de",
   input: "#d0d7de",
   ring: "#eb5a47",
