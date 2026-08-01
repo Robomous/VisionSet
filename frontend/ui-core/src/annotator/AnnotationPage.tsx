@@ -32,6 +32,30 @@
  * post-beta; they render **disabled** so the layout is the one the design shows and
  * a later task fills them in rather than moving everything along. Everything else
  * on the bar is real.
+ *
+ * ## Reversing a skip is an action, never a side effect of drawing (#187)
+ *
+ * `progress_after_annotating` moves an asset only `unannotated ↔ annotated`, and
+ * its docstring says why: `skipped` is a person's decision, and drawing a box does
+ * not contradict a decision. That rule is right and is not what was broken — what
+ * was broken is that the browser never offered the one exit
+ * `ASSET_PROGRESS_TRANSITIONS` allows (`skipped → unannotated`), so a user could
+ * label a skipped asset, watch the save succeed, and lose the work at promotion
+ * (`PROMOTABLE_PROGRESS` excludes `skipped`).
+ *
+ * Of the three ways to close that hole, this page takes the **explicit** one: the
+ * asset's progress is always on the bar, and on a skipped asset `Skip` is replaced
+ * by `Un-skip`. Not automatic-on-save, which is friendlier and was rejected —
+ * un-skipping silently would overwrite a recorded decision without asking, and
+ * this repository's standing rule is that a decision is somebody's action
+ * (`confirm=`, `allow_destructive=`, `allow_lossy` are all the same rule one layer
+ * down). Not a prompt either: a modal in the middle of the annotation loop
+ * interrupts the one gesture the page exists for, and it would still leave a user
+ * who simply wants to un-skip with nothing to press.
+ *
+ * What the automatic reading was right about is that `Save` must never look inert.
+ * It does not: the save happens, and the notice beside it says why the counter
+ * stayed where it is and what to press.
  */
 
 import {
@@ -59,6 +83,7 @@ import {
   Plus,
   Save,
   SkipForward,
+  Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 
@@ -325,6 +350,20 @@ function Workspace({
     });
   }
 
+  /**
+   * `skipped → unannotated`, the only edge out (#187).
+   *
+   * Deliberately **not** `settle`: settling an asset is finishing with it and
+   * advancing, while reversing a skip is the opposite — the user came back to this
+   * asset to work on it, so moving them off it would undo the point of the click.
+   * Work in progress is still committed first, for the same reason navigating is.
+   */
+  const skipped = asset.progress === "skipped";
+
+  function unskip(): void {
+    void commit(() => setProgress.mutate({ assetId: asset.id, progress: "unannotated" }));
+  }
+
   const drawn = annotationsInDrawOrder(snapshot.document).length;
 
   return (
@@ -383,16 +422,43 @@ function Workspace({
         </Button>
 
         <div className="ml-auto flex items-center gap-2">
+          {/*
+            The asset's own state, always on the bar (#187). Before this, `skipped`
+            was visible only as the absence of things — a counter that would not
+            move and an `Accept` that stayed disabled — which reads as the page
+            being broken rather than as a decision somebody made.
+          */}
+          <AssetProgressState progress={asset.progress ?? "unannotated"} />
+
           <SaveState dirty={dirty} pending={save.isPending} error={save.isError ? asApiError(save.error).code : null} />
 
           <Button variant="primary" size="sm" data-testid="save" disabled={!dirty || save.isPending} onClick={() => void commit()}>
             <Save className="size-4" />
             Save
           </Button>
-          <Button variant="secondary" size="sm" data-testid="skip" onClick={() => settle("skipped")}>
-            <SkipForward className="size-4" />
-            Skip
-          </Button>
+          {/*
+            One slot, two moves, because they are the same decision read forwards
+            and backwards. Offering `Skip` on an already-skipped asset would be
+            offering a refusal — `ASSET_PROGRESS_TRANSITIONS` gives `skipped` one
+            exit and it is not itself.
+          */}
+          {skipped ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="unskip"
+              disabled={setProgress.isPending}
+              onClick={unskip}
+            >
+              <Undo2 className="size-4" />
+              Un-skip
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" data-testid="skip" onClick={() => settle("skipped")}>
+              <SkipForward className="size-4" />
+              Skip
+            </Button>
+          )}
           {/*
             Enabled only where the kernel's own machine allows the move. `accepted`
             is reachable from `annotated` and `review_pending`; offering it on an
@@ -453,6 +519,22 @@ function Workspace({
         </div>
       </header>
 
+      {/*
+        Why the counter did not move, said where the work is happening (#187).
+        Rendered whenever the asset is skipped rather than only after a save: the
+        user who is about to draw deserves it more than the one who already has.
+      */}
+      {skipped && (
+        <p
+          className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-meta text-destructive"
+          data-testid="skipped-notice"
+        >
+          <SkipForward className="size-3.5 shrink-0" aria-hidden="true" />
+          This asset is skipped, so it will not reach the dataset and its annotations will not
+          count towards the job. Un-skip it to put it back in play.
+        </p>
+      )}
+
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-sidebar bg-sidebar-strong">
           <AssetImage projectId={projectId} assetId={asset.id}>
@@ -483,6 +565,34 @@ function Workspace({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * The asset's own progress, spelled for a person (#187).
+ *
+ * `skipped` is the one value that changes what the rest of the bar means, so it is
+ * the one that gets a colour: everything else is a neutral statement of fact.
+ * `AssetProgress`'s five members are covered by the map, which is what keeps a new
+ * kernel state from rendering as a blank badge — the `ProgressCounts` bargain, one
+ * layer up.
+ */
+const PROGRESS_LABELS: Readonly<Record<string, string>> = {
+  unannotated: "Unannotated",
+  annotated: "Annotated",
+  skipped: "Skipped",
+  review_pending: "In review",
+  accepted: "Accepted",
+};
+
+function AssetProgressState({ progress }: { readonly progress: string }): JSX.Element {
+  return (
+    <Badge
+      variant={progress === "skipped" ? "destructive" : "neutral"}
+      data-testid="asset-progress"
+    >
+      {PROGRESS_LABELS[progress] ?? progress}
+    </Badge>
   );
 }
 
