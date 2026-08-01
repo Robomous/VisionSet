@@ -224,6 +224,28 @@ exists for, and it leaves a user who only wants to un-skip with nothing to press
 What the automatic reading was right about is that `Save` must never look inert; it
 does not, because a notice beside the canvas says why the counter stayed put.
 
+#### `?` opens a sheet built from the binding table, not from a copy of it
+
+The page used to pass `onHostAction={(name) => name === TOGGLE_HELP}`. Returning `true`
+means *the host handled this action*, so pressing `?` — a real binding in
+`core/input/bindings.ts` — was consumed and then discarded: the user got nothing, and
+the engine had been told the request was served, so nothing else could pick it up
+(#189). An unhandled host action now returns `false`, which is what that value is for.
+
+`ShortcutSheet` takes a `Registry` and renders whatever is in it. It is the same map
+the canvas resolves keystrokes against, because both call **`defaultRegistry(schema,
+overrides)`** — one exported spelling of the fold, added so the two callers cannot
+drift. Delete a binding and a row disappears; add a class to the schema and a digit
+appears. Both are mutation-tested, which is the check v1's hand-written
+`HelpModal.tsx` never had.
+
+The English is not derived: an action's `kind` is a discriminant, so a
+`Record<ActionKind, …>` turns one into a sentence, and a ninth action kind fails to
+compile rather than rendering a blank row. Host actions stay open — core enumerates no
+capability — so an unknown name renders as itself. `mod+c` / `mod+v` are listed as
+**deliberately unbound**, because a user who cannot find them has no way to tell "not
+implemented" from "not listed".
+
 **Accept** calls the existing progress endpoint with `accepted`, and is enabled only
 where `ASSET_PROGRESS_TRANSITIONS` allows the move — offering it on an untouched
 asset would be offering a refusal. It is **not** loosened to cover a skipped asset:

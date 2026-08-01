@@ -274,6 +274,11 @@ thing that turns one into a store call.
 | `v` | select mode — no active class | v1 |
 | `1`–`9` | the schema's first nine classes, in authored order | **new** |
 
+The three-part fold — defaults, then `classHotkeys(schema)`, then a host's overrides — is
+**`defaultRegistry(schema, overrides)`**, exported so the adapter that resolves a keystroke and
+the product's shortcut sheet read the same map (#189). A sheet that spelled the fold itself would
+be free to drift, which is what v1's hand-written `HelpModal.tsx` did by construction.
+
 `mod` is ctrl **or** meta, folded once, so one table serves both platforms. A class hotkey on a
 `classification_tag` class toggles the tag rather than making the class active — pressing it twice
 undoes it — and on any other class it sets the active class, emitting a tool change only when the
