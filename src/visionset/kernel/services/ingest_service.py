@@ -779,7 +779,8 @@ class IngestService:
             for candidate in candidates:
                 stored = known.get(candidate.content_hash)
                 if stored is None:
-                    stored = uow.assets.add(candidate.model_copy(update={"ingested_at": stamped_at}))
+                    arriving = candidate.model_copy(update={"ingested_at": stamped_at})
+                    stored = uow.assets.add(arriving)
                     known[stored.content_hash] = stored
                     created.append(stored.id)
                 elif stored.thumbnail_hash is None and candidate.thumbnail_hash is not None:
