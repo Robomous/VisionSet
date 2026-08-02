@@ -121,6 +121,22 @@ async function serveApi(page: Page): Promise<void> {
         },
       });
     }
+    // The project's own counts (#207). The catch-all below answers every
+    // *collection* with an empty page, which is the wrong document for this one —
+    // and a stub answering a shape the endpoint never sends tests nothing.
+    if (path === `/projects/${PROJECT}/stats`) {
+      return route.fulfill({
+        json: {
+          project_id: PROJECT,
+          asset_count: 1,
+          annotated_asset_count: 0,
+          annotation_count: 0,
+          class_count: 1,
+          annotated_pct: 0,
+          classes: [],
+        },
+      });
+    }
     if (path.endsWith("/annotations")) return route.fulfill({ json: { items: [], total: 0 } });
     if (path.endsWith("/content")) return route.fulfill({ contentType: "image/png", body: PIXEL });
     // Everything else a screen may ask for: an empty collection is a legal answer

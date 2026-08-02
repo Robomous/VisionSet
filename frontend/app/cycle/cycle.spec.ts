@@ -123,6 +123,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("declare a schema with all three geometries", async () => {
+    // A brand-new project opens on Overview since #210, and its empty state is
+    // the honest first thing to see — there is no data to describe yet. The
+    // schema is a tab away.
+    await expect(page.getByTestId("overview-empty")).toBeVisible();
+    await page.getByTestId("tab-schema").click();
+
     // A project starts schema-less on purpose, so the editor opens on an empty
     // draft rather than an error.
     await expect(page.getByTestId("schema-editor")).toContainText("Saving creates version 1");

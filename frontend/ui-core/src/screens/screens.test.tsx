@@ -197,7 +197,7 @@ describe("the schema editor", () => {
     });
     on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
 
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
 
     await waitFor(() => expect(screen.queryByTestId("schema-editor")).not.toBeNull());
     expect(screen.queryByTestId("schema-error")).toBeNull();
@@ -211,7 +211,7 @@ describe("the schema editor", () => {
       body: { project_id: PROJECT, version: 4, classes: CLASSES },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
     expect(screen.getByTestId("schema-editor").textContent).toContain("Saving creates version 4");
 
@@ -254,7 +254,7 @@ describe("the schema editor", () => {
           };
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("remove-class-1"));
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -279,7 +279,7 @@ describe("the schema editor", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("remove-class-1"));
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -296,7 +296,7 @@ describe("the schema editor", () => {
 
   it("offers only the three geometries an annotation can carry", async () => {
     projectWithSchema();
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
 
     await userEvent.click(screen.getByTestId("class-geometry-0"));
@@ -321,7 +321,7 @@ describe("the schema editor", () => {
    */
   it("previews a derived class in the colour it is actually drawn in", async () => {
     projectWithSchema();
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
 
     // `lane` declares no colour, so `classColor` derives one. Computed here from
@@ -351,7 +351,7 @@ describe("the schema editor", () => {
       body: { project_id: PROJECT, version: 4, classes: CLASSES },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
     // Dirty by something that is not the colour — an untouched draft is not
     // saveable at all, which is itself the first half of the guarantee.
@@ -379,7 +379,7 @@ describe("the schema editor", () => {
       body: { project_id: PROJECT, version: 4, classes: CLASSES },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} />));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("clear-color-0"));
 
@@ -418,20 +418,38 @@ describe("the project view's tabs", () => {
     });
     on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
     on("GET", /\/batches/, { status: 200, body: { items: [], total: 0 } });
+    // Overview is the default tab since #210, so its two reads are part of
+    // opening a project at all.
+    on("GET", /\/stats$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        asset_count: 12,
+        annotated_asset_count: 3,
+        annotation_count: 20,
+        class_count: 2,
+        annotated_pct: 25,
+        classes: [{ label_class: "vehicle", annotations: 20, assets: 3 }],
+      },
+    });
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
   }
 
-  it("shows one section at a time, and the other two are not in the DOM", async () => {
+  it("shows one section at a time, and the others are not in the DOM", async () => {
     project();
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
 
-    // Schema is where a project opens: it is what the page showed before the
-    // split, and a schema-less project has nothing else worth reading.
-    await screen.findByTestId("schema-editor");
+    // Overview is where a project opens since #210: a project page's subject is
+    // its data, and the schema editor renders the same for an empty project and
+    // a hundred-thousand-image one.
+    await screen.findByTestId("overview-panel");
+    expect(screen.queryByTestId("schema-editor")).toBeNull();
     expect(screen.queryByTestId("batches-screen")).toBeNull();
     expect(screen.queryByTestId("version-history")).toBeNull();
 
     await userEvent.click(screen.getByTestId("tab-batches"));
     await screen.findByTestId("batches-screen");
+    expect(screen.queryByTestId("overview-panel")).toBeNull();
     expect(screen.queryByTestId("schema-editor")).toBeNull();
     expect(screen.queryByTestId("version-history")).toBeNull();
   });
@@ -439,15 +457,15 @@ describe("the project view's tabs", () => {
   it("presents the sections as tabs, with the open one selected and the others not", async () => {
     project();
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
-    await screen.findByTestId("schema-editor");
+    await screen.findByTestId("overview-panel");
 
     // Structural, never a class string (#182): the styling changed once already
     // and will again, but "this section is the open one" is what the keyboard and
     // a screen reader read, and it is what a restyle must not lose.
-    expect(screen.getAllByRole("tab")).toHaveLength(3);
-    expect(screen.getByTestId("tab-schema").getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("tab-schema").dataset.state).toBe("active");
-    for (const other of ["tab-batches", "tab-versions"]) {
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getByTestId("tab-overview").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("tab-overview").dataset.state).toBe("active");
+    for (const other of ["tab-schema", "tab-batches", "tab-versions"]) {
       expect(screen.getByTestId(other).getAttribute("aria-selected")).toBe("false");
       expect(screen.getByTestId(other).dataset.state).toBe("inactive");
     }
@@ -455,7 +473,7 @@ describe("the project view's tabs", () => {
     await userEvent.click(screen.getByTestId("tab-batches"));
     await screen.findByTestId("batches-screen");
     expect(screen.getByTestId("tab-batches").getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("tab-schema").getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByTestId("tab-overview").getAttribute("aria-selected")).toBe("false");
   });
 
   it("opens on the section the URL named, and on the default when it names nothing valid", async () => {
@@ -466,9 +484,49 @@ describe("the project view's tabs", () => {
     unmount();
 
     // A stale link, a typo, or `batches` on a host with no batch route: none of
-    // them is an empty page.
+    // them is an empty page. The default they land on is Overview since #210.
     render(mount(<ProjectScreen projectId={PROJECT} tab="nonsense" />));
-    await screen.findByTestId("schema-editor");
+    await screen.findByTestId("overview-panel");
+  });
+
+  it("opens on Overview, and offers the four sections in order", async () => {
+    // #210 reversed #171's choice of Schema. A schema editor is configuration,
+    // and it renders identically for an empty project and a 100k-image one —
+    // which is the test `DESIGN.md` principle 6 states, about this page.
+    project();
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+
+    await screen.findByTestId("overview-panel");
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
+      "Schema",
+      "Batches",
+      "Versions",
+    ]);
+  });
+
+  it("still opens on Overview for a host with no batch route", async () => {
+    project();
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await screen.findByTestId("overview-panel");
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
+      "Schema",
+      "Versions",
+    ]);
+  });
+
+  it("round-trips ?tab=overview, so the default is addressable too", async () => {
+    // The default being addressable is what makes a link to it survive the
+    // default moving again.
+    project();
+    const changed = vi.fn();
+    render(mount(<ProjectScreen projectId={PROJECT} tab="overview" onTabChange={changed} />));
+
+    await screen.findByTestId("overview-panel");
+    await userEvent.click(screen.getByTestId("tab-versions"));
+    expect(changed).toHaveBeenCalledWith("versions");
   });
 
   it("reports the tab to the host rather than reaching for a router", async () => {
@@ -488,7 +546,7 @@ describe("the project view's tabs", () => {
     project();
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
-    await screen.findByTestId("schema-editor");
+    await screen.findByTestId("overview-panel");
     const versionRequests = (): number =>
       sent.filter((request) => new URL(request.url).pathname.endsWith("/schema/versions")).length;
     expect(versionRequests()).toBe(0);
@@ -632,7 +690,9 @@ describe("the project header", () => {
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
     await screen.findByTestId("project-chips");
-    await waitFor(() => expect(screen.queryByTestId("schema-editor")).not.toBeNull());
+    // Wait on the *counted* chip, whose request also settles the schema one, so
+    // the assertion below is about an answer rather than about a pending query.
+    await waitFor(() => expect(screen.queryByTestId("chip-images")).not.toBeNull());
     expect(screen.queryByTestId("chip-version")).toBeNull();
   });
 
