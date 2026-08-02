@@ -79,6 +79,11 @@ from visionset.kernel.services import (
     WorkspaceService,
 )
 
+# Private, and imported deliberately: the sort key is module level precisely so
+# each of its four terms can be shown to be load-bearing against constructed
+# assets, which a real ingest cannot arrange.
+from visionset.kernel.services.ingest_service import _in_stable_order
+
 
 class _NoFfmpeg:
     """A `VideoProcessor` on a machine with no decoder installed.
@@ -1982,3 +1987,102 @@ def test_listing_an_unknown_project_is_project_not_found(tmp_path: Path) -> None
     with pytest.raises(ProjectNotFound):
         fixture.ingest.assets(uuid4())
     fixture.close()
+
+
+def test_the_listing_sorts_rather_than_returning_the_store_s_own_order(tmp_path: Path) -> None:
+    """Written straight through the unit of work, deliberately out of order.
+
+    Every test above reaches this state through `ingest`, which inserts in the
+    order it read — and SQLite hands rows back in insertion order, so those tests
+    pass whether or not anything sorts. Mutation testing caught exactly that:
+    deleting the `sorted(...)` left them all green. This one scrambles the
+    insertion order so the sort is the only thing that could produce the answer.
+    """
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    with fixture.workspace.unit_of_work() as uow:
+        for index, name in enumerate(["c.png", "a.png", "b.png"]):
+            uow.assets.add(
+                Asset(
+                    project_id=fixture.project.id,
+                    content_hash=f"{index:064x}",
+                    uri=f"/tmp/in/{name}",
+                    source_id=source.id,
+                )
+            )
+
+    listed = fixture.ingest.assets(fixture.project.id)
+
+    assert [Path(asset.uri).name for asset in listed] == ["a.png", "b.png", "c.png"]
+    fixture.close()
+
+
+# --- the sort key itself -------------------------------------------------------
+#
+# Module level so it can be exercised against constructed assets, which is the
+# only way to control the arrangement precisely enough to prove each term of the
+# key is load-bearing. The service tests above go through a real ingest, and a
+# real ingest cannot produce two sources whose assets interleave by path.
+
+
+def _sortable(
+    project_id: UUID, *, uri: str, source: UUID | None = None, frame: int | None = None
+) -> Asset:
+    """One asset built to be sorted. Not `_asset` above — that name is taken, and
+    shadowing it silently broke six of its tests until pytest said so.
+
+    `frame_timestamp` travels with `frame_index` because the domain refuses one
+    without the other; the value is arbitrary and never read by the sort.
+    """
+    return Asset(
+        project_id=project_id,
+        content_hash=f"{abs(hash(uri)):064x}"[:64],
+        uri=uri,
+        source_id=source,
+        frame_index=frame,
+        frame_timestamp=None if frame is None else float(frame),
+    )
+
+
+def test_the_key_groups_by_source_even_when_the_paths_interleave() -> None:
+    project = uuid4()
+    first, second = sorted([uuid4(), uuid4()], key=str)
+    scrambled = [
+        _sortable(project, uri="a.png", source=first),
+        _sortable(project, uri="b.png", source=second),
+        _sortable(project, uri="c.png", source=first),
+        _sortable(project, uri="d.png", source=second),
+    ]
+
+    ordered = sorted(scrambled, key=_in_stable_order)
+
+    # Sorted by path alone this would be a, b, c, d — one asset from each source
+    # in turn. Grouping is what the source term buys.
+    assert [asset.source_id for asset in ordered] == [first, first, second, second]
+    assert [asset.uri for asset in ordered] == ["a.png", "c.png", "b.png", "d.png"]
+
+
+def test_the_key_orders_frames_numerically_not_as_text() -> None:
+    project, source = uuid4(), uuid4()
+    scrambled = [
+        _sortable(project, uri="clip.mp4#frame=10", source=source, frame=10),
+        _sortable(project, uri="clip.mp4#frame=2", source=source, frame=2),
+        _sortable(project, uri="clip.mp4#frame=1", source=source, frame=1),
+    ]
+
+    ordered = sorted(scrambled, key=_in_stable_order)
+
+    # By uri as text this is #frame=1, #frame=10, #frame=2.
+    assert [asset.frame_index for asset in ordered] == [1, 2, 10]
+
+
+def test_the_key_is_a_total_order_so_two_identical_rows_still_have_one() -> None:
+    """The id term. Without it two assets alike in every other column would
+    compare equal, and `sorted` would leave them in whatever order it found."""
+    project, source = uuid4(), uuid4()
+    twins = [_sortable(project, uri="same.png", source=source) for _ in range(2)]
+
+    forward = sorted(twins, key=_in_stable_order)
+    backward = sorted(list(reversed(twins)), key=_in_stable_order)
+
+    assert [asset.id for asset in forward] == [asset.id for asset in backward]
