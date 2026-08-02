@@ -107,11 +107,20 @@ property of the schema rather than a version number a client could guess.
 `GET /datasets/{id}/assets` is the curated trunk's. A project page reads the first, a gallery
 the second, a release the third.
 
-The project listing's **order is deterministic and it is not chronological**, and that is a
-limitation rather than a preference: nothing in the schema records when an asset arrived (#216).
-Assets are grouped by source, then ordered by frame index within a clip, then by path, then by
-id — so a clip's frames come back in order and a directory's stills in filename order, and two
-calls can never disagree. What cannot be asked for yet is "the six most recent".
+The project listing is **ordered by arrival, newest first**, which #216 is what made possible:
+until `Asset.ingested_at` existed nothing recorded when an asset arrived, and the listing was
+deterministic but arbitrary. A whole ingest run shares one timestamp, so *within* a run the
+order falls through to the one that means something — grouped by source, then by frame index
+within a clip, then by path, then by id, so a clip's frames come back in order and a directory's
+stills in filename order, and two calls can never disagree.
+
+**An asset with no recorded arrival sorts last.** That is every asset ingested before v0.1.0,
+and it cannot be backfilled — the information exists nowhere, and `Source.registered_at` is not
+the proxy it looks like, because registration is idempotent on `(kind, path, extraction_fps)`
+and is never rewritten. Sorting them last is the only reading that degrades quietly: treating
+the missing value as the epoch invents a date, and treating it as *now* would pin the oldest
+rows in the product to the top of a "recent" list forever. A workspace that has ingested nothing
+since upgrading therefore looks exactly as it did before.
 
 **There are two stats endpoints, and they disagree on purpose.**
 `GET /projects/{id}/stats` counts every asset ingested into the project, whatever batch it
@@ -121,11 +130,15 @@ none in the second, and both numbers are true — they answer "what does this pr
 "what would I train on?", which are different questions. Neither is derivable from the other, so
 a client showing a project page reads the first and a client shaping a release reads the second.
 
-Two smaller rules the project's stats carry: `class_count` is what the **active schema version
+Three smaller rules the project's stats carry: `class_count` is what the **active schema version
 declares**, so a project that has authored an ontology and labeled nothing still reports its
-classes, while `classes` lists only the ones somebody has used; and `annotated_pct` is **`0` for
-a project with no assets**, never `null` and never an error. Both are one place rather than in
-every caller.
+classes, while `classes` lists only the ones somebody has used; `annotated_pct` is **`0` for
+a project with no assets**, never `null` and never an error; and `last_ingest_at` is the newest
+`Asset.ingested_at` in the project, **`null` when unknown**. Null there means *unknown*, not
+*never*: a project whose assets all predate v0.1.0 reads null, and so does an empty one, and the
+two are deliberately not distinguished because no caller can act differently on them. A count
+has an honest identity element and a date does not, which is why this one is not defaulted the
+way `annotated_pct` is.
 
 A **collection** hangs off whatever owns it; an individually addressable **resource** does not.
 A source belongs to one project, so listing and creating happen under it — but a source has an

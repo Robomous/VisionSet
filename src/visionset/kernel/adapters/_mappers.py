@@ -7,16 +7,20 @@ directions of the conversion; the repository in
 fifteen times against fifteen tables.
 
 Most entities are flat — every field is a column — and share
-``_flat_mapping``. The nine that are not say so explicitly:
+``_flat_mapping``. The ten that are not say so explicitly:
 
 - ``AnnotationSchema``, ``Annotation`` and ``IngestJob`` hold immutable nested
   values, encoded as JSON.
 - ``Batch`` and ``AnnotationJob`` own child tables, so their mappings carry a
   ``sync_children`` hook and rebuild their collections on read.
-- ``DatasetChange``, ``Release``, ``Source`` and ``Token`` encode a
+- ``Asset``, ``DatasetChange``, ``Release``, ``Source`` and ``Token`` encode a
   timezone-aware timestamp, which a ``String`` column must be handed as text
   rather than as a ``datetime``. ``Source`` also carries a nested
   ``VideoProvenance`` as JSON.
+
+``Asset`` is the newest of those and the only one that *became* one: it was flat
+until migration 13 gave it ``ingested_at``. Adding a timestamp to an entity
+costs it its flat mapping, which is worth knowing before adding the next one.
 """
 
 from __future__ import annotations
@@ -43,6 +47,7 @@ from visionset.kernel.domain import (
     DatasetChange,
     DatasetMember,
     Geometry,
+    ImageFormat,
     IngestFailure,
     IngestJob,
     IngestState,
@@ -238,6 +243,49 @@ def _source_to_domain(_: Session, row: Any) -> Source:
     )
 
 
+def _asset_to_row(entity: Asset) -> t.Base:
+    """Spelled out since migration 13, for ``_release_to_row``'s reason.
+
+    ``ingested_at`` made this the fifth entity that cannot use
+    ``_flat_mapping``: it dumps in python mode and would hand a ``datetime`` to
+    a ``String`` column, which sqlite3 accepts through a deprecated adapter and
+    writes in a second format alongside every other timestamp in the schema.
+    """
+    return t.AssetRow(
+        id=entity.id,
+        project_id=entity.project_id,
+        modality=entity.modality,
+        content_hash=entity.content_hash,
+        uri=entity.uri,
+        width=entity.width,
+        height=entity.height,
+        format=entity.format,
+        source_id=entity.source_id,
+        frame_index=entity.frame_index,
+        frame_timestamp=entity.frame_timestamp,
+        thumbnail_hash=entity.thumbnail_hash,
+        ingested_at=None if entity.ingested_at is None else entity.ingested_at.isoformat(),
+    )
+
+
+def _asset_to_domain(_: Session, row: Any) -> Asset:
+    return Asset(
+        id=row.id,
+        project_id=row.project_id,
+        modality=row.modality,
+        content_hash=row.content_hash,
+        uri=row.uri,
+        width=row.width,
+        height=row.height,
+        format=None if row.format is None else ImageFormat(row.format),
+        source_id=row.source_id,
+        frame_index=row.frame_index,
+        frame_timestamp=row.frame_timestamp,
+        thumbnail_hash=row.thumbnail_hash,
+        ingested_at=None if row.ingested_at is None else datetime.fromisoformat(row.ingested_at),
+    )
+
+
 def _token_to_row(entity: Token) -> t.Base:
     return t.TokenRow(
         id=entity.id,
@@ -368,7 +416,12 @@ def _job_sync_children(session: Session, entity: AnnotationJob) -> None:
 
 WORKSPACES = _flat_mapping(Workspace, t.WorkspaceRow, None)
 PROJECTS = _flat_mapping(Project, t.ProjectRow, "workspace_id")
-ASSETS = _flat_mapping(Asset, t.AssetRow, "project_id")
+ASSETS = EntityMapping(
+    row=t.AssetRow,
+    parent_column="project_id",
+    to_row=_asset_to_row,
+    to_domain=_asset_to_domain,
+)
 TASK_GROUPS = _flat_mapping(TaskGroup, t.TaskGroupRow, "batch_id")
 DATASETS = _flat_mapping(Dataset, t.DatasetRow, "project_id")
 DATASET_MEMBERS = _flat_mapping(DatasetMember, t.DatasetMemberRow, "dataset_id")

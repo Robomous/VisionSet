@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -68,6 +69,31 @@ class Asset(BaseModel):
     #: for all three, and reads exactly this state. Declared last, after the
     #: columns migration 8 added, because it arrives by ``ALTER TABLE`` too.
     thumbnail_hash: str | None = None
+    #: When these bytes first arrived in this project, or NULL when unknown.
+    #:
+    #: **First arrival, not last sighting** — the rule every provenance field
+    #: beside it follows. Identity is content, so the second ingest of the same
+    #: bytes writes no row and therefore does not touch this; "recent" answers
+    #: *new to this project*, not *touched most recently*. That is the honest
+    #: reading, because the second sighting created nothing.
+    #:
+    #: NULL means the row predates the column (#216) and **cannot be backfilled**:
+    #: the information exists nowhere. ``Source.registered_at`` is not the proxy
+    #: it looks like, since registration is idempotent on
+    #: ``(kind, path, extraction_fps)`` and is never rewritten — so re-ingesting a
+    #: directory that gained a thousand files does not move it. Any invented
+    #: value would be a plausible-looking wrong answer, which is worse than an
+    #: admitted gap, so every consumer defines what unknown means instead:
+    #: ``ProjectStats.last_ingest_at`` goes NULL and ``IngestService.assets``
+    #: sorts these last.
+    #:
+    #: Defaulted to ``None`` and stamped by ``IngestService``, which is
+    #: ``Token.revoked_at``'s shape rather than the ``default_factory`` the four
+    #: non-nullable timestamps use: a factory would make every ``Asset(...)``
+    #: built anywhere claim an arrival, and this column's whole value is that
+    #: NULL stays NULL. Declared last, after ``thumbnail_hash``, because it
+    #: arrives by ``ALTER TABLE`` too.
+    ingested_at: datetime | None = None
 
     @field_validator("content_hash", "thumbnail_hash")
     @classmethod
@@ -81,6 +107,20 @@ class Asset(BaseModel):
         """
         if value is not None and not _SHA256_HEX.fullmatch(value):
             raise ValueError(f"{info.field_name} must be 64 lowercase hex chars (SHA-256)")
+        return value
+
+    @field_validator("ingested_at")
+    @classmethod
+    def _ingested_at_is_timezone_aware(cls, value: datetime | None) -> datetime | None:
+        """The convention every timestamp in the domain follows.
+
+        A naive datetime is rejected rather than assumed to be UTC: the store
+        keeps ISO-8601 text, so an unqualified value read back would be
+        indistinguishable from a qualified one and quietly wrong by the writer's
+        offset from UTC.
+        """
+        if value is not None and value.tzinfo is None:
+            raise ValueError("ingested_at must be timezone-aware (UTC)")
         return value
 
     @model_validator(mode="after")

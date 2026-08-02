@@ -995,6 +995,17 @@ class ProjectStatsOut(BaseModel):
     # having in one place instead of in every caller.
     annotated_pct: float
     classes: list[ClassCountOut]
+    # Nullable, and null does not mean "never". It means no asset in this
+    # project records an arrival — which is every asset ingested before v0.1.0,
+    # since the column cannot be backfilled. Clients render nothing rather than
+    # a stand-in date.
+    last_ingest_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp of the most recent asset ingest. Null when unknown "
+            "(assets ingested before v0.1.0)."
+        ),
+    )
 
     @classmethod
     def of(cls, stats: ProjectStats) -> Self:
@@ -1006,6 +1017,7 @@ class ProjectStatsOut(BaseModel):
             class_count=stats.class_count,
             annotated_pct=stats.annotated_fraction * 100,
             classes=[ClassCountOut.of(count) for count in stats.per_class],
+            last_ingest_at=stats.last_ingest_at,
         )
 
 

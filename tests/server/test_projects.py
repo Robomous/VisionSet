@@ -7,6 +7,7 @@ that fail together and tell you nothing extra.
 """
 
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -325,7 +326,17 @@ def test_the_stats_body_carries_every_documented_field(client: TestClient) -> No
         "class_count",
         "annotated_pct",
         "classes",
+        "last_ingest_at",
     }
+
+
+def test_a_project_that_has_ingested_nothing_reports_no_last_ingest(client: TestClient) -> None:
+    """Present and null, never absent — a client reads one shape whatever the answer."""
+    project_id = created(client, "road-signs")["id"]
+
+    body = client.get(f"/projects/{project_id}/stats").json()
+
+    assert body["last_ingest_at"] is None
 
 
 def test_stats_count_assets_an_ingest_produced_before_anybody_promoted_them(
@@ -345,6 +356,22 @@ def test_stats_count_assets_an_ingest_produced_before_anybody_promoted_them(
 
     assert project["asset_count"] == 4
     assert trunk["asset_count"] == 0
+
+
+def test_an_ingest_gives_the_project_a_last_ingest_timestamp(
+    flow_client: TestClient, stats_runner: RecordingRunner, tmp_path: Path
+) -> None:
+    """The chip's data, end to end: null before an ingest and a real moment after one."""
+    project_id = project_with_schema(flow_client)
+    assert flow_client.get(f"/projects/{project_id}/stats").json()["last_ingest_at"] is None
+
+    batch_from_ingest(flow_client, stats_runner, tmp_path, project_id, images=2)
+
+    reported = flow_client.get(f"/projects/{project_id}/stats").json()["last_ingest_at"]
+    assert reported is not None
+    # Parsed rather than pattern-matched: what matters is that a client can turn
+    # it into a moment, and that the offset survived the trip as UTC.
+    assert datetime.fromisoformat(reported).tzinfo is not None
 
 
 def test_annotated_pct_is_a_percentage_of_the_projects_own_assets(

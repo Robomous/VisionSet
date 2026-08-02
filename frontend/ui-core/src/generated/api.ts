@@ -2217,6 +2217,11 @@ export interface components {
             /** Classes */
             classes: components["schemas"]["ClassCountOut"][];
             /**
+             * Last Ingest At
+             * @description Timestamp of the most recent asset ingest. Null when unknown (assets ingested before v0.1.0).
+             */
+            last_ingest_at?: string | null;
+            /**
              * Project Id
              * Format: uuid
              */

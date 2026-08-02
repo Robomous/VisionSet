@@ -115,6 +115,10 @@ class ProjectService:
         classes exist is a fact about the ontology, and a project that has just
         declared five classes and labeled nothing has five of them.
 
+        ``last_ingest_at`` comes off the assets this walk has already read, so it
+        costs no extra query. It is NULL when no asset records an arrival, which
+        means *unknown* rather than *never* — see the field's own note.
+
         One walk per asset — the N+1 ``DatasetService.stats`` and
         ``JobService.project_progress`` already accept at this scale, and for the
         same reason: keeping a query language out of ``Repository`` is worth more
@@ -144,6 +148,11 @@ class ProjectService:
                     per_class.setdefault(label_class, [0, 0])[1] += 1
                 for annotation in found:
                     per_class[annotation.label_class][0] += 1
+        # Off the assets already read, so "when did data last arrive" costs no
+        # round trip. ``max`` of an empty sequence raises, and every asset
+        # predating migration 13 is filtered out rather than defaulted, so a
+        # project holding only those reads NULL — unknown, not the epoch.
+        arrivals = [asset.ingested_at for asset in assets if asset.ingested_at is not None]
         return ProjectStats(
             project_id=project.id,
             asset_count=len(assets),
@@ -154,6 +163,7 @@ class ProjectService:
                 ClassCount(label_class=name, annotations=counts[0], assets=counts[1])
                 for name, counts in per_class.items()
             ),
+            last_ingest_at=max(arrivals) if arrivals else None,
         )
 
     # --- writing -----------------------------------------------------------

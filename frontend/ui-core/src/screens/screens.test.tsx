@@ -825,6 +825,9 @@ describe("the project header", () => {
     class_count: 3,
     annotated_pct: 62.0,
     classes: [],
+    // Null by default, which is what an upgraded workspace reports for every
+    // asset written before migration 13 — the state that cannot be backfilled.
+    last_ingest_at: null as unknown,
   };
 
   function headerFor(options: {
@@ -832,6 +835,7 @@ describe("the project header", () => {
     schema?: boolean;
     stats?: boolean;
     batchState?: string;
+    lastIngest?: unknown;
   }): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
@@ -846,7 +850,10 @@ describe("the project header", () => {
     });
     on("GET", /\/stats$/, {
       status: options.stats === false ? 500 : 200,
-      body: options.stats === false ? { code: "BOOM", message: "no" } : STATS,
+      body:
+        options.stats === false
+          ? { code: "BOOM", message: "no" }
+          : { ...STATS, last_ingest_at: options.lastIngest ?? null },
     });
     on("GET", /\/batches$/, {
       status: 200,
@@ -931,6 +938,63 @@ describe("the project header", () => {
     expect((await screen.findByTestId("chip-images")).textContent).toContain(
       (1248).toLocaleString(undefined),
     );
+  });
+
+  it("chips when data last arrived, relative inside a week", async () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    headerFor({ lastIngest: twoDaysAgo });
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    expect((await screen.findByTestId("chip-ingested")).textContent).toBe("Ingested 2d ago");
+  });
+
+  it("chips an absolute date once the ingest is older than a week", async () => {
+    const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+    headerFor({ lastIngest: longAgo.toISOString() });
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    // The date the browser would write, not a hardcoded format: `formatWhen`
+    // deliberately follows the viewer's locale.
+    expect((await screen.findByTestId("chip-ingested")).textContent).toBe(
+      `Ingested ${longAgo.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })}`,
+    );
+  });
+
+  it("omits the ingest chip when nothing records an arrival", async () => {
+    // Null is not "never ingested" — it is *unknown*, because every asset in
+    // this project predates migration 13 and cannot be backfilled (#216). Same
+    // rule as a missing description: omitted, never placeheld.
+    headerFor({});
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await screen.findByTestId("project-chips");
+    await waitFor(() => expect(screen.queryByTestId("chip-images")).not.toBeNull());
+    expect(screen.queryByTestId("chip-ingested")).toBeNull();
+    expect(document.body.textContent).not.toContain("Ingested");
+  });
+
+  it("survives a stats document whose timestamp is not a string", async () => {
+    // The generated client validates the response *status*, never its shape, so
+    // a plausible-but-wrong document arrives intact. During #206–#213 exactly
+    // this white-screened three surfaces; here the chip is simply absent.
+    headerFor({ lastIngest: 1_754_000_000 });
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await waitFor(() => expect(screen.queryByTestId("chip-images")).not.toBeNull());
+    expect(screen.queryByTestId("chip-ingested")).toBeNull();
+    expect(screen.getByTestId("project-title").textContent).toBe("highway");
+  });
+
+  it("omits the ingest chip when the timestamp will not parse", async () => {
+    headerFor({ lastIngest: "not-a-date" });
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await waitFor(() => expect(screen.queryByTestId("chip-images")).not.toBeNull());
+    expect(screen.queryByTestId("chip-ingested")).toBeNull();
   });
 
   it("offers Annotate when a batch is open for annotation, and opens that batch", async () => {

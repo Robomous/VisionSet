@@ -492,6 +492,50 @@ def _enforce_one_tag_per_asset_and_class(connection: Connection) -> None:
     connection.execute(CreateIndex(ANNOTATION_TAG_UNIQUE, if_not_exists=True))
 
 
+def _add_asset_ingested_at(connection: Connection) -> None:
+    """Give an asset somewhere to record when it arrived.
+
+    #216: nothing in the schema answered "when did this data get here".
+    ``Asset`` carried identity, provenance and a thumbnail hash, ``IngestJob``
+    carried state and counters, and neither carried a clock — so "the six most
+    recent images" and "last ingest" were both unanswerable, and #207 and #208
+    shipped without them.
+
+    Migration 10's shape exactly: a nullable column added to ``asset``, the one
+    table that can only ever be *altered*. It has four ``ON DELETE CASCADE``
+    children (``batch_asset``, ``annotation``, ``dataset_member``,
+    ``annotation_job_asset``) and under ``PRAGMA foreign_keys = ON`` a rebuild
+    would take all four silently.
+
+    **No backfill, and that is the decision rather than the omission.** Existing
+    rows get NULL and keep it forever. Every candidate value would be a
+    fabrication: migration time records when somebody upgraded, file mtime
+    describes a file this store does not own, and ``Source.registered_at`` is
+    idempotent on ``(kind, path, extraction_fps)`` and never rewritten — so it
+    would report the *first* registration for assets that arrived on the
+    thousandth. A plausible-looking wrong timestamp is worse than an admitted
+    gap, because nothing downstream can tell it is wrong. The consumers define
+    what unknown means instead: ``last_ingest_at`` goes NULL, and
+    ``IngestService.assets`` sorts these last.
+
+    So NULL here is unlike ``thumbnail_hash``'s NULL, which looks identical and
+    is not: that one has a remedy (``backfill_thumbnails``) because a preview
+    can be re-rendered from bytes that are still there. This one has none.
+
+    Idempotent the way 3 to 5, 9 and 10 are — the inspector check inside
+    ``_add_column`` *is* the ``checkfirst``, because migration 1 is
+    ``create_all`` of current metadata.
+
+    Needs its own undo in the tests' ``_downgrade_to_version_one``, for
+    migration 10's reason: nothing below rebuilds ``asset``, so nothing removes
+    this column on the way to generation 1. The flip side is the same too — the
+    walk back exercises this ``ALTER`` for real on the way up.
+    """
+    # ``.c`` is typed as the generic column collection; the entry is a real
+    # ``Column``, which is what ``CreateColumn`` needs.
+    _add_column(connection, cast(Column[object], AssetRow.__table__.c.ingested_at))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -548,6 +592,11 @@ MIGRATIONS: list[Migration] = [
         version=12,
         name="one_classification_tag_per_asset_and_class",
         upgrade=_enforce_one_tag_per_asset_and_class,
+    ),
+    Migration(
+        version=13,
+        name="asset_ingested_at",
+        upgrade=_add_asset_ingested_at,
     ),
 ]
 
