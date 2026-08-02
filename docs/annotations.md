@@ -62,7 +62,8 @@ schemas.create_version(project.id, [...])  # the project is now on version 2
 annotations.add(job.id, [...])  # still judged by version 1
 ```
 
-Work is judged against `Batch.schema_version`, pinned at approval and never moved. That is the
+Work is judged against `Batch.schema_version`, pinned at approval and moved only by an explicit
+`repin` ([batches.md](batches.md)). That is the
 whole point of pinning: a schema that evolved mid-batch would change the rules under work
 already in flight. See [batches.md](batches.md).
 

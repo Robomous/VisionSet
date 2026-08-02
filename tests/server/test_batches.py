@@ -15,7 +15,14 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
-from tests.server._flow import batch_from_ingest, project_with_schema
+from tests.server._flow import (
+    LANE,
+    SIGN,
+    annotated_batch,
+    asset_ids,
+    batch_from_ingest,
+    project_with_schema,
+)
 from tests.server._runner import RecordingRunner
 
 
@@ -370,7 +377,7 @@ def test_a_project_with_no_schema_has_nothing_to_pin(
     assert response.json()["code"] == "SCHEMA_NOT_FOUND"
 
 
-@pytest.mark.parametrize("action", ["approve", "start", "complete"])
+@pytest.mark.parametrize("action", ["approve", "start", "complete", "repin"])
 def test_a_lifecycle_move_on_an_unknown_batch_is_404(client: TestClient, action: str) -> None:
     response = client.post(f"/batches/{uuid4()}/{action}")
 
@@ -430,3 +437,112 @@ def test_ingesting_into_an_approved_batch_is_refused_before_any_job_row(
     assert response.status_code == 409
     assert response.json()["code"] == "BATCH_NOT_EDITABLE"
     assert client.get(f"/sources/{source}/ingest-jobs").json() == {"items": [], "total": 0}
+
+
+# --- re-pinning the schema version (#229) ------------------------------------
+
+
+def new_version(client: TestClient, project: str, *classes: object, **query: object) -> object:
+    return client.post(
+        f"/projects/{project}/schema/versions", json={"classes": list(classes)}, params=query
+    )
+
+
+def approved(client: TestClient, batch_id: str) -> None:
+    client.post(f"/batches/{batch_id}/approve")
+
+
+def test_a_class_added_after_approval_reaches_the_batch_through_repin(
+    client: TestClient, project: str, ingested: str
+) -> None:
+    approved(client, ingested)
+    new_version(client, project, SIGN, LANE, {"name": "crossing", "geometry": "bbox"})
+
+    response = client.post(f"/batches/{ingested}/repin")
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == 2
+    assert client.get(f"/batches/{ingested}").json()["schema_version"] == 2
+
+
+def test_repinning_onto_the_pinned_version_is_a_no_op(
+    client: TestClient, project: str, ingested: str
+) -> None:
+    approved(client, ingested)
+    before = client.get(f"/batches/{ingested}").json()
+
+    response = client.post(f"/batches/{ingested}/repin")
+
+    assert response.status_code == 200
+    assert response.json() == before
+
+
+def test_a_narrowing_repin_is_409_and_the_flag_is_the_retry(
+    client: TestClient, project: str, ingested: str
+) -> None:
+    """The same request plus one query parameter — the convention `docs/api.md` sets."""
+    approved(client, ingested)
+    new_version(client, project, SIGN, allow_destructive=True)
+
+    refused = client.post(f"/batches/{ingested}/repin")
+
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "DESTRUCTIVE_SCHEMA_CHANGE"
+    assert client.get(f"/batches/{ingested}").json()["schema_version"] == 1
+
+    retried = client.post(f"/batches/{ingested}/repin", params={"allow_destructive": True})
+
+    assert retried.status_code == 200
+    assert retried.json()["schema_version"] == 2
+
+
+def test_a_repin_that_would_orphan_this_batchs_labels_has_no_flag(
+    client: TestClient, tmp_path: Path, runner: RecordingRunner
+) -> None:
+    """Two 409s, and only one of them is retryable — branch on `code`, not status."""
+    project = project_with_schema(client)
+    batch_id = batch_from_ingest(client, runner, tmp_path, project, images=2)
+    client.post(f"/batches/{batch_id}/approve")
+    client.post(f"/batches/{batch_id}/start")
+    job_id = client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
+    client.post(f"/jobs/{job_id}/start")
+    # Version 2 drops `lane`; it is creatable because nothing is labeled `lane`
+    # yet. The label arrives afterwards, judged against this batch's own pin of 1.
+    new_version(client, project, SIGN, allow_destructive=True)
+    written = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            {
+                "asset_id": asset_ids(client, batch_id)[0],
+                "label_class": "lane",
+                "geometry": {"type": "polygon", "points": [[0, 0], [4, 0], [4, 4]]},
+                "provenance": "human",
+            }
+        ],
+    )
+    assert written.status_code == 201
+
+    response = client.post(f"/batches/{batch_id}/repin", params={"allow_destructive": True})
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SCHEMA_CHANGE_WOULD_ORPHAN"
+    assert client.get(f"/batches/{batch_id}").json()["schema_version"] == 1
+
+
+def test_a_draft_has_no_pin_to_move(client: TestClient, project: str, ingested: str) -> None:
+    response = client.post(f"/batches/{ingested}/repin")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "INVALID_TRANSITION"
+
+
+def test_a_completed_batchs_pin_is_history(
+    client: TestClient, tmp_path: Path, runner: RecordingRunner
+) -> None:
+    project, batch_id = annotated_batch(client, runner, tmp_path, images=2)
+    new_version(client, project, SIGN, LANE, {"name": "crossing", "geometry": "bbox"})
+
+    response = client.post(f"/batches/{batch_id}/repin")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "INVALID_TRANSITION"

@@ -2,7 +2,7 @@
 
 M3's exit criterion turned into a regression guard for the leg an agent uses. The
 `tests/mcp/` suite drives the protocol over a paired in-memory stream, which
-proves the thirty-three tools; this proves the **transport** — that
+proves the thirty-four tools; this proves the **transport** — that
 `visionset mcp` spawns, that stdout carries JSON-RPC and nothing else, and that
 the workspace reaches the server through the environment the command sets.
 Before this existed, `tests/cli/test_mcp_command.py` mocked `subprocess.run`, so
@@ -58,16 +58,17 @@ def summary(example: ModuleType, tmp_path_factory: pytest.TempPathFactory) -> An
 def test_the_server_was_reached_over_a_real_pipe(summary: Any) -> None:
     """`visionset mcp` spawned, handed over the workspace, and listed its tools.
 
-    Thirty-three: #35's thirty, plus `preview_schema_change`, `backfill_thumbnails`
-    and #65's `check_export` — and *not* `delete_project`, which #108 moved out of
-    the default listing. The example starts the server the way a client does, with
-    no `--allow-destructive`, so what it counts is what an agent is offered.
+    Thirty-four: #35's thirty, plus `preview_schema_change`, `backfill_thumbnails`,
+    #65's `check_export` and #229's `repin_batch` — and *not* `delete_project`,
+    which #108 moved out of the default listing. The example starts the server the
+    way a client does, with no `--allow-destructive`, so what it counts is what an
+    agent is offered.
 
     Asserting it exactly is deliberate: a tool that silently fails to register is
     logged and discarded by FastMCP rather than raised, so a count is the only
     thing that notices.
     """
-    assert summary.tool_count == 33
+    assert summary.tool_count == 34
     assert summary.project_id
     assert summary.schema_version == 1
 

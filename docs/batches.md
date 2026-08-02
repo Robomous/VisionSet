@@ -60,7 +60,7 @@ progress states themselves belong to the job service — see [jobs.md](jobs.md).
 ## Approval pins the schema version
 
 `Batch.schema_version` is `None` while a draft, and set once at approval from the project's
-**active** version. It is never moved afterwards:
+**active** version. It never *follows* the active version:
 
 ```python
 batches.approve(batch.id)  # pins version 2
@@ -74,6 +74,43 @@ validated against the pinned version, not against whatever is newest.
 
 Approving a project that has no schema raises `SchemaNotFound`. Creating version 1 here would
 be a second door to a schema, and [schemas.md](schemas.md) has only one.
+
+## Moving the pin: `repin`
+
+The pin moves only when somebody asks:
+
+```python
+batches.repin(batch.id)  # → pinned to 3, the current active version
+```
+
+This exists because the common case is *adding* a class, and without it a label class created
+after approval is invisible in every batch already in flight — the annotator would have to
+abandon a batch to use the label they just made. What the pin protects is a stable validation
+target and jobs partitioned against it; neither is harmed by a wider contract. It does **not**
+protect release reproducibility, which the system already treats as mixed: `publish` stamps the
+manifest with the *active* version while annotations carry their batch-pinned ones.
+
+The gate is the same classifier `create_version` uses, asked from the other end
+([schemas.md](schemas.md)):
+
+| The active version, against the pinned one | What `repin` does |
+| --- | --- |
+| Additive (a class added, an optional attribute, a wider `select`) | Goes through, no flag |
+| Destructive, nothing in this batch labeled under it | `DestructiveSchemaChange`; retry with `allow_destructive=True` |
+| Destructive, and this batch holds labels under an affected class | `SchemaChangeWouldOrphan`, and **no flag overrides it** |
+
+The orphan check is scoped to **this batch**: only labels judged by this pin are at stake, so a
+label written in some other batch does not block a re-pin here. That is the one place this
+refusal differs from `SchemaService`'s project-wide one.
+
+Legal only while the batch is `approved` or `in_annotation` — `REPINNABLE_STATES` in
+`kernel/domain/batch.py`. A draft has no pin yet; a completed batch's pin is **history**, and
+rewriting it would rewrite the record rather than the rules. Both refuse with
+`InvalidTransition`.
+
+Re-pinning onto the version already pinned is a no-op: the same batch comes back, nothing is
+written and nothing is announced. Annotations already written keep the `schema_version` they
+were stamped with — only new writes are judged against the new pin.
 
 ## The partition is exact
 

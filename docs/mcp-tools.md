@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-Thirty-three tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+Thirty-four tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -28,6 +28,7 @@ Thirty-three tools, in the order an agent meets them: make a project, give it a 
 | `get_batch` | `batch_id` | Read one batch: its state, its schema pin, its progress and its jobs. |
 | `approve_batch` | `batch_id`, `jobs_of`? | Freeze a batch, pin the project's active schema, and cut it into jobs. |
 | `start_batch` | `batch_id` | Open an approved batch for annotation. |
+| `repin_batch` | `batch_id`, `allow_destructive`? | Move a batch's schema pin onto the project's *current* active version. |
 | `list_batch_assets` | `batch_id`, `limit`?, `offset`? | List a batch's assets, with the job each belongs to and its progress. |
 | `get_job` | `job_id` | Read a job: its state, its counts, and the batch and schema it answers to. |
 | `start_job` | `job_id` | Mark a job as being worked on. Call this before you write anything. |

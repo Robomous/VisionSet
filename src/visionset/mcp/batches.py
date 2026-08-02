@@ -127,6 +127,44 @@ def start_batch(batch_id: BatchRef) -> dict[str, Any]:
         return _batch_payload(workspace, started.id)
 
 
+def repin_batch(
+    batch_id: BatchRef,
+    allow_destructive: Annotated[
+        bool,
+        Field(
+            description=(
+                "Proceed even though the active version narrows what the pinned "
+                "one allowed. Only set this after reading the refusal."
+            )
+        ),
+    ] = False,
+) -> dict[str, Any]:
+    """Move a batch's schema pin onto the project's *current* active version.
+
+    The pin does not follow the schema on its own, so a class you add with
+    `create_schema_version` is invisible inside a batch that was approved before
+    it — every annotation there is judged against the pinned version. This is how
+    you make the new class usable without abandoning the batch, and it is the
+    second half of "add a label class while annotating".
+
+    Adding a class is additive and needs no flag. If the new version *narrows*
+    what the pin allowed — a class removed, a geometry changed, an attribute made
+    required — this refuses and tells you to retry with `allow_destructive`. If
+    the batch already holds annotations under a class the change would break, it
+    refuses with **no** `retry_with`: nothing overrides that, and the remedy is a
+    wider schema version, not a louder yes.
+
+    Legal only while the batch is `approved` or `in_annotation`. Re-pinning onto
+    the version already pinned changes nothing. Annotations already written keep
+    the version they were stamped with.
+    """
+    with opened_workspace() as workspace:
+        repinned = BatchService(workspace).repin(
+            identifier(batch_id, what="batch_id"), allow_destructive=allow_destructive
+        )
+        return _batch_payload(workspace, repinned.id)
+
+
 def complete_batch(batch_id: BatchRef) -> dict[str, Any]:
     """Close a batch, once every one of its jobs is complete.
 

@@ -19,15 +19,19 @@ from visionset.kernel import (
     BatchNotEditable,
     BatchNotFound,
     ConfirmationRequired,
+    DestructiveSchemaChange,
     EmptyBatch,
     InvalidName,
     InvalidPartition,
     InvalidTransition,
     ProjectNotFound,
+    SchemaChangeWouldOrphan,
     SchemaNotFound,
+    WorkspaceCorrupt,
 )
 from visionset.kernel.domain import (
     BATCH_TRANSITIONS,
+    REPINNABLE_STATES,
     Annotation,
     AnnotationJobState,
     Asset,
@@ -38,6 +42,7 @@ from visionset.kernel.domain import (
     BySize,
     GeometryType,
     LabelClass,
+    PolygonGeometry,
     SingleJob,
 )
 from visionset.kernel.services import (
@@ -502,4 +507,170 @@ def test_deleting_a_batch_leaves_the_annotations_alone(tmp_path: Path) -> None:
     with fixture.workspace.unit_of_work() as uow:
         assert len(uow.annotations.list(fixture.assets[0])) == 1
         assert uow.assets.get(fixture.assets[0]) is not None
+    fixture.close()
+
+
+# --- re-pinning: the one way the pin moves ------------------------------------
+
+
+def _annotate(fixture: Fixture, asset_id: UUID, label_class: str, version: int) -> None:
+    """Put one annotation on an asset, the way the delete tests above do.
+
+    Straight through the unit of work rather than ``AnnotationService``: what
+    these tests need is a label sitting under a class, and routing it through the
+    service would drag a job and a progress transition in with it.
+    """
+    geometry = (
+        BboxGeometry(x=0, y=0, width=4, height=4)
+        if label_class == "sign"
+        else PolygonGeometry(points=[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0)])
+    )
+    with fixture.workspace.unit_of_work() as uow:
+        uow.annotations.add(
+            Annotation(
+                asset_id=asset_id,
+                label_class=label_class,
+                schema_version=version,
+                geometry=geometry,
+                provenance="human",
+            )
+        )
+
+
+@pytest.mark.parametrize("state", list(BatchState), ids=lambda s: s.value)
+def test_repinning_is_legal_exactly_where_the_domain_says_it_is(
+    tmp_path: Path, state: BatchState
+) -> None:
+    """Every BatchState, checked against ``REPINNABLE_STATES`` itself.
+
+    Reads the set rather than restating it, the way the transition sweep above
+    reads ``BATCH_TRANSITIONS``, so the test cannot drift from the rule.
+    """
+    fixture = Fixture(tmp_path)
+    batch_id = fixture.in_state(state)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+
+    if state in REPINNABLE_STATES:
+        assert fixture.batches.repin(batch_id).schema_version == 2
+    else:
+        with pytest.raises(InvalidTransition, match="schema pin cannot move"):
+            fixture.batches.repin(batch_id)
+        assert fixture.batches.get(batch_id).schema_version == (
+            None if state is BatchState.DRAFT else 1
+        )
+    fixture.close()
+
+
+def test_a_new_class_re_pins_with_no_flag(tmp_path: Path) -> None:
+    """The overwhelmingly common change, and the whole point of the operation."""
+    fixture = Fixture(tmp_path)
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+
+    repinned = fixture.batches.repin(batch_id)
+
+    assert repinned.schema_version == 2
+    assert fixture.batches.get(batch_id).schema_version == 2
+    pinned = fixture.schemas.get(fixture.project.id, 2)
+    assert [c.name for c in pinned.classes] == ["sign", "lane"]
+    fixture.close()
+
+
+def test_re_pinning_onto_the_version_already_pinned_changes_nothing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    batch_id = fixture.in_state(BatchState.APPROVED)
+
+    before = fixture.batches.get(batch_id)
+    assert fixture.batches.repin(batch_id) == before
+    assert fixture.batches.get(batch_id) == before
+    fixture.close()
+
+
+def test_a_narrowing_schema_needs_the_flag(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN], allow_destructive=True)
+
+    with pytest.raises(DestructiveSchemaChange, match="allow_destructive=True"):
+        fixture.batches.repin(batch_id)
+    assert fixture.batches.get(batch_id).schema_version == 2
+
+    assert fixture.batches.repin(batch_id, allow_destructive=True).schema_version == 3
+    fixture.close()
+
+
+def test_the_flag_does_not_help_when_this_batch_holds_the_labels(tmp_path: Path) -> None:
+    """The batch-scoped sibling of ``SchemaChangeWouldOrphan``. No override."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    # Version 3 is creatable because nothing is labeled 'lane' yet; the label
+    # arrives afterwards, judged against this batch's own pin of 2.
+    fixture.schemas.create_version(fixture.project.id, [SIGN], allow_destructive=True)
+    _annotate(fixture, fixture.assets[0], "lane", version=2)
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'lane' \\(1\\)"):
+        fixture.batches.repin(batch_id, allow_destructive=True)
+    assert fixture.batches.get(batch_id).schema_version == 2
+    fixture.close()
+
+
+def test_a_label_in_another_batch_does_not_block_this_one(tmp_path: Path) -> None:
+    """The scope is what makes this different from ``SchemaService``'s refusal.
+
+    That one asks about the whole project, because it is narrowing the project's
+    contract. This one asks about one batch, because only labels judged by *this*
+    pin are at stake.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    mine = fixture.batches.create(fixture.project.id, "mine", fixture.assets[:2])
+    theirs = fixture.batches.create(fixture.project.id, "theirs", fixture.assets[2:])
+    fixture.batches.approve(mine.id)
+    fixture.batches.approve(theirs.id)
+    fixture.schemas.create_version(fixture.project.id, [SIGN], allow_destructive=True)
+    _annotate(fixture, fixture.assets[2], "lane", version=2)
+
+    assert fixture.batches.repin(mine.id, allow_destructive=True).schema_version == 3
+
+    with pytest.raises(SchemaChangeWouldOrphan):
+        fixture.batches.repin(theirs.id, allow_destructive=True)
+    fixture.close()
+
+
+def test_annotations_already_written_keep_the_version_they_were_stamped_with(
+    tmp_path: Path,
+) -> None:
+    """Releases already mix versions; a re-pin does not rewrite history either."""
+    fixture = Fixture(tmp_path)
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    _annotate(fixture, fixture.assets[0], "sign", version=1)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+
+    fixture.batches.repin(batch_id)
+
+    with fixture.workspace.unit_of_work() as uow:
+        assert [a.schema_version for a in uow.annotations.list(fixture.assets[0])] == [1]
+    fixture.close()
+
+
+def test_re_pinning_an_unknown_batch_is_not_found(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(BatchNotFound):
+        fixture.batches.repin(uuid4())
+    fixture.close()
+
+
+def test_a_batch_pinned_to_a_version_that_is_not_stored_is_corruption(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    batch_id = fixture.in_state(BatchState.APPROVED)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    with fixture.workspace.unit_of_work() as uow:
+        batch = uow.batches.get(batch_id)
+        assert batch is not None
+        uow.batches.update(batch.model_copy(update={"schema_version": 99}))
+
+    with pytest.raises(WorkspaceCorrupt, match="not stored"):
+        fixture.batches.repin(batch_id)
     fixture.close()

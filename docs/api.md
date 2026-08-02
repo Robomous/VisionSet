@@ -61,6 +61,7 @@ GET    /projects/{project_id}/batches
 GET    /batches/{batch_id}
 POST   /batches/{batch_id}/approve                        with a partition spec
 POST   /batches/{batch_id}/start
+POST   /batches/{batch_id}/repin                          ?allow_destructive=
 POST   /batches/{batch_id}/complete
 GET    /batches/{batch_id}/jobs
 GET    /batches/{batch_id}/assets                         paged
