@@ -1879,3 +1879,106 @@ def test_reading_a_preview_never_renders_one(tmp_path: Path) -> None:
 
     assert fixture.blob_count() == before
     fixture.close()
+
+
+# --- listing a project's assets (#208) -----------------------------------------
+
+
+def test_a_project_with_no_assets_lists_nothing_rather_than_refusing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    assert fixture.ingest.assets(fixture.project.id) == []
+    fixture.close()
+
+
+def test_stills_come_back_in_filename_order(tmp_path: Path) -> None:
+    """A directory is walked sorted, so this is the order somebody's own file
+    browser shows — the closest thing to "in order" the stored columns support."""
+    fixture = Fixture(tmp_path)
+    paths = write_images(fixture.stills, count=5)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+
+    listed = fixture.ingest.assets(fixture.project.id)
+
+    assert [asset.uri for asset in listed] == [str(path) for path in sorted(paths)]
+    fixture.close()
+
+
+def test_a_clips_frames_come_back_in_frame_order_not_lexicographic_uri_order(
+    tmp_path: Path,
+) -> None:
+    """The reason the sort key is not simply the uri.
+
+    A frame's uri is `{path}#frame={n}`, so sorting those as strings puts
+    `#frame=10` between `#frame=1` and `#frame=2`. With ten or more frames that
+    is visible; with nine it is not, which is why the clip below is long enough
+    to have a two-digit index.
+    """
+    fixture = Fixture(tmp_path)
+    clip = fixture.clip()
+    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=10.0)
+    fixture.ingest.ingest(source.id)
+
+    listed = fixture.ingest.assets(fixture.project.id)
+    indexes = [asset.frame_index for asset in listed]
+
+    assert len(indexes) > 10, "the clip must be long enough to reach a two-digit index"
+    assert indexes == sorted(index for index in indexes if index is not None)
+    fixture.close()
+
+
+def test_two_sources_do_not_interleave(tmp_path: Path) -> None:
+    """Grouped by source, so a clip's frames stay together rather than being
+    shuffled through a directory's stills."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=3)
+    stills = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    other = fixture.tmp_path / "more-stills"
+    other.mkdir()
+    write_images(other, count=3, first_seed=100)
+    second = fixture.sources.register_images(fixture.project.id, other)
+    fixture.ingest.ingest(stills.id)
+    fixture.ingest.ingest(second.id)
+
+    listed = fixture.ingest.assets(fixture.project.id)
+    sources = [asset.source_id for asset in listed]
+
+    # Every asset of one source is contiguous: the list of sources, deduplicated
+    # in order, has one entry per source rather than alternating.
+    collapsed = [
+        key for index, key in enumerate(sources) if index == 0 or sources[index - 1] != key
+    ]
+    assert len(collapsed) == len(set(sources)) == 2
+    fixture.close()
+
+
+def test_the_order_is_the_same_on_every_call(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=5)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+
+    first = [asset.id for asset in fixture.ingest.assets(fixture.project.id)]
+    again = [asset.id for asset in fixture.ingest.assets(fixture.project.id)]
+
+    assert first == again
+    fixture.close()
+
+
+def test_listing_one_project_never_reaches_into_another(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=3)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    neighbour = fixture.projects.create("neighbour")
+
+    assert len(fixture.ingest.assets(fixture.project.id)) == 3
+    assert fixture.ingest.assets(neighbour.id) == []
+    fixture.close()
+
+
+def test_listing_an_unknown_project_is_project_not_found(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(ProjectNotFound):
+        fixture.ingest.assets(uuid4())
+    fixture.close()

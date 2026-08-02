@@ -35,7 +35,7 @@ from visionset.kernel.ports import THUMBNAIL_FORMAT
 from visionset.kernel.services import IngestService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
-from visionset.server.models import AssetOut
+from visionset.server.models import AssetOut, AssetPage, LimitQuery, OffsetQuery, window
 
 router = protected_router(prefix="/projects/{project_id}/assets", tags=["assets"])
 
@@ -93,6 +93,37 @@ _THUMBNAIL_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
 
 def _media_type(asset: Asset) -> str:
     return _OCTET_STREAM if asset.format is None else _MEDIA_TYPES[asset.format]
+
+
+@router.get("", responses=documented(404))
+def list_project_assets(
+    workspace: WorkspaceDep,
+    project_id: UUID,
+    limit: LimitQuery = None,
+    offset: OffsetQuery = 0,
+) -> AssetPage:
+    """Every asset ingested into the project, in a stable order.
+
+    The third asset listing, and the one that had been missing: the other two
+    window a *batch* and the curated *trunk*, and neither answers "show me this
+    project". A project page asking for six sample tiles passes `limit=6` and
+    reads `total` for the rest.
+
+    **The order is deterministic and it is not chronological.** Nothing records
+    when an asset arrived, so assets are grouped by source, then by frame index
+    for a clip, then by path for a directory, then by id. The practical effect is
+    that a clip's frames come back in order and a directory's stills in filename
+    order; the practical limit is that "the six most recent" cannot be asked for
+    yet.
+
+    `total` is every asset in the project, never the size of this page, so a
+    client showing six tiles computes its own overflow from `total - 6`.
+    """
+    found = IngestService(workspace).assets(project_id)
+    return AssetPage(
+        items=[AssetOut.of(asset) for asset in window(found, limit=limit, offset=offset)],
+        total=len(found),
+    )
 
 
 @router.get("/{asset_id}", responses=documented(404))
