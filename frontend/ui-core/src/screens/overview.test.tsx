@@ -20,6 +20,21 @@ import { OverviewPanel } from "./OverviewPanel";
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 
+// Every field `AssetOut` declares beyond the id and project. The server sends all of
+// them on every asset, so a fixture that omits them is not a smaller answer — it is a
+// document the endpoint never sends, and `unwrap` now says so.
+const ASSET_REST = {
+  modality: "image",
+  content_hash: "0".repeat(64),
+  width: 640,
+  height: 480,
+  format: "png",
+  source_id: null,
+  frame_index: null,
+  frame_timestamp: null,
+  thumbnail_hash: null,
+} as const;
+
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
 
@@ -228,8 +243,8 @@ describe("the Overview panel", () => {
   it("computes the overflow from the project total, not from the page", async () => {
     serve(statsOf(), {
       items: [
-        { id: "a", project_id: PROJECT, thumbnail_hash: null, modality: "image" },
-        { id: "b", project_id: PROJECT, thumbnail_hash: null, modality: "image" },
+        { id: "a", project_id: PROJECT, ...ASSET_REST },
+        { id: "b", project_id: PROJECT, ...ASSET_REST },
       ],
       total: 1245,
     });
@@ -242,7 +257,7 @@ describe("the Overview panel", () => {
 
   it("renders no overflow tile when the project fits in the grid", async () => {
     serve(statsOf(), {
-      items: [{ id: "a", project_id: PROJECT, thumbnail_hash: null, modality: "image" }],
+      items: [{ id: "a", project_id: PROJECT, ...ASSET_REST }],
       total: 1,
     });
     render(mount(<OverviewPanel projectId={PROJECT} />));

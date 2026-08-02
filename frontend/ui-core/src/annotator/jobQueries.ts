@@ -49,6 +49,20 @@ import {
 
 import { useApiClient } from "../data/ApiProvider";
 import { unwrap } from "../data/errors";
+import {
+  checkAddAnnotations,
+  checkCompleteJob,
+  checkDeleteAnnotations,
+  checkGetBatch,
+  checkGetJob,
+  checkGetJobProgress,
+  checkGetSchemaVersion,
+  checkListAssetAnnotations,
+  checkListBatchAssets,
+  checkSetAssetProgress,
+  checkStartJob,
+  checkUpdateAnnotations,
+} from "../generated/checks";
 import type { components } from "../generated/api";
 import { batchKeys, type Batch, type BatchAsset } from "../screens/queries";
 
@@ -92,7 +106,10 @@ export function useJob(jobId: string): UseQueryResult<Job, Error> {
   return useQuery({
     queryKey: jobKeys.job(jobId),
     queryFn: async () =>
-      unwrap(await client.GET("/jobs/{job_id}", { params: { path: { job_id: jobId } } })),
+      unwrap(
+        await client.GET("/jobs/{job_id}", { params: { path: { job_id: jobId } } }),
+        checkGetJob,
+      ),
   });
 }
 
@@ -103,6 +120,7 @@ export function useJobProgress(jobId: string): UseQueryResult<ProgressCounts, Er
     queryFn: async () =>
       unwrap(
         await client.GET("/jobs/{job_id}/progress", { params: { path: { job_id: jobId } } }),
+        checkGetJobProgress,
       ),
   });
 }
@@ -115,6 +133,7 @@ export function useBatchOf(batchId: string | undefined): UseQueryResult<Batch, E
     queryFn: async () =>
       unwrap(
         await client.GET("/batches/{batch_id}", { params: { path: { batch_id: batchId ?? "" } } }),
+        checkGetBatch,
       ),
   });
 }
@@ -138,6 +157,7 @@ export function usePinnedSchema(
         await client.GET("/projects/{project_id}/schema/versions/{version}", {
           params: { path: { project_id: projectId ?? "", version: version ?? 0 } },
         }),
+        checkGetSchemaVersion,
       ),
   });
 }
@@ -159,6 +179,7 @@ export function useJobAssets(
         await client.GET("/batches/{batch_id}/assets", {
           params: { path: { batch_id: batchId ?? "" }, query: { limit: 1000, offset: 0 } },
         }),
+        checkListBatchAssets,
       );
       return page.items.filter((asset) => asset.job_id === jobId);
     },
@@ -202,6 +223,7 @@ export function useAssetAnnotations(
         await client.GET("/jobs/{job_id}/assets/{asset_id}/annotations", {
           params: { path: { job_id: jobId, asset_id: assetId ?? "" } },
         }),
+        checkListAssetAnnotations,
       ).items,
   });
 }
@@ -282,6 +304,7 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
           await client.DELETE("/jobs/{job_id}/annotations", {
             params: { path: { job_id: jobId }, query: { id: [...plan.deleted] } },
           }),
+        checkDeleteAnnotations,
         );
       }
       if (plan.updated.length > 0) {
@@ -295,6 +318,7 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
             // proves it — `tests/scripts/` checks the mirror against the spec.
             body: plan.updated.map(toAnnotationUpdate) as never,
           }),
+        checkUpdateAnnotations,
         );
       }
       if (plan.created.length > 0) {
@@ -303,6 +327,7 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
             params: { path: { job_id: jobId } },
             body: plan.created.map(toAnnotationCreate) as never,
           }),
+        checkAddAnnotations,
         );
       }
     },
@@ -333,6 +358,7 @@ export function useSetAssetProgress(jobId: string) {
           params: { path: { job_id: jobId, asset_id: input.assetId } },
           body: { progress: input.progress },
         }),
+        checkSetAssetProgress,
       ),
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
@@ -358,11 +384,15 @@ export function useJobTransition(jobId: string, move: "start" | "complete") {
   const queries = useQueryClient();
   return useMutation({
     mutationFn: async () =>
-      unwrap(
-        move === "start"
-          ? await client.POST("/jobs/{job_id}/start", { params: { path: { job_id: jobId } } })
-          : await client.POST("/jobs/{job_id}/complete", { params: { path: { job_id: jobId } } }),
-      ),
+      move === "start"
+        ? unwrap(
+            await client.POST("/jobs/{job_id}/start", { params: { path: { job_id: jobId } } }),
+            checkStartJob,
+          )
+        : unwrap(
+            await client.POST("/jobs/{job_id}/complete", { params: { path: { job_id: jobId } } }),
+            checkCompleteJob,
+          ),
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: jobKeys.job(jobId) });
       void queries.invalidateQueries({ queryKey: ["projects"] });

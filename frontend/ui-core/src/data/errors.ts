@@ -18,6 +18,8 @@
  * it is the reason no screen in this repository ever writes `if (error)` by hand.
  */
 
+import { firstMismatch, type Check } from "./check";
+
 /**
  * The shape every VisionSet error response carries.
  *
@@ -119,8 +121,25 @@ export interface FetchResult<T> {
  * `ApiError`, under `MALFORMED_RESPONSE`. That case is a proxy or a gateway
  * answering on the API's behalf, and rendering its HTML in a toast is worse than
  * saying so.
+ *
+ * ## The `check` argument, and why it is not optional
+ *
+ * `openapi-fetch` types a response off the contract and verifies nothing at
+ * runtime, so this function used to return `result.data` unexamined — a
+ * well-formed JSON document of the wrong type reached a screen intact, and one
+ * `undefined` in a formatter took the page down with it. That happened three
+ * times during #206–#213. `check` closes it: pass the generated check for the
+ * operation being called, from `../generated/checks`.
+ *
+ * It is required rather than optional because an optional gate is one every new
+ * call site may forget, and the ones that forgot would be the ones that broke.
+ * But note what the compiler does and does not buy here: a *missing* check fails
+ * to compile, while a *wrong* one does not — a type predicate is assignable
+ * whenever its asserted type is, so `unwrap(projectResult, checkDatasetOut)`
+ * compiles and silently re-narrows. Pairing each call with its own operation is
+ * therefore enforced by `tests/scripts/checks_wiring.test.mjs`, not by `tsc`.
  */
-export function unwrap<T>(result: FetchResult<T>): T {
+export function unwrap<T>(result: FetchResult<T>, check: Check<T>): T {
   if (result.error !== undefined) {
     if (isErrorBody(result.error)) throw new ApiError(result.error, result.response.status);
     throw new ApiError(
@@ -131,10 +150,35 @@ export function unwrap<T>(result: FetchResult<T>): T {
       result.response.status,
     );
   }
-  if (result.data === undefined) {
-    // A 204 typed as `never`, reached by a caller expecting a body. Not a
-    // theoretical case: `delete_annotations` and `delete_project` both answer 204.
-    return undefined as T;
+
+  // A failure that carried no body at all. `openapi-fetch` reports one as
+  // `{error: undefined}` — see its `Content-Length: 0` branch — which the check
+  // above cannot see, so without this a 500 saying nothing would fall through to
+  // the data branch and read as a successful empty answer.
+  if (result.response.status < 200 || result.response.status >= 300) {
+    throw new ApiError(
+      {
+        code: MALFORMED_ERROR,
+        message: `The server answered ${result.response.status} with no body at all.`,
+      },
+      result.response.status,
+    );
   }
-  return result.data;
+
+  // `result.data` is `undefined` for a 204 — and for a 200 with an empty body,
+  // which is why the check is consulted rather than short-circuited. The 204
+  // operations pass `checkNoContent`, so "this answer carries nothing" is stated
+  // by the contract instead of inferred from the absence of bytes.
+  const mismatch = firstMismatch(check, result.data);
+  if (mismatch !== null) {
+    throw new ApiError(
+      {
+        code: MALFORMED_ERROR,
+        message: `The server answered ${result.response.status} with a body this client does not recognise: ${mismatch}.`,
+        detail: { expected: mismatch },
+      },
+      result.response.status,
+    );
+  }
+  return result.data as T;
 }

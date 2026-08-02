@@ -20,6 +20,11 @@ import { writeToken } from "../data/session";
 import { DatasetScreen } from "./DatasetScreen";
 
 const API = "http://visionset.test";
+// The three list fields `FormatOut` declares with a default. A default means the
+// server serializes them every time, which is why the contract types them as always
+// present rather than optional.
+const FORMAT_REST = { geometries: [], modalities: [], degraded_geometries: [] } as const;
+
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";
 const RELEASE = "33333333-3333-4333-8333-333333333333";
@@ -109,7 +114,7 @@ function baseline(): void {
   on("GET", /\/releases$/, { status: 200, body: { items: [RELEASE_ROW], total: 1 } });
   on("GET", /\/formats$/, {
     status: 200,
-    body: { items: [{ name: "dummy", lossy: false }, { name: "yolo", lossy: true }], total: 2 },
+    body: { items: [{ name: "dummy", lossy: false, ...FORMAT_REST }, { name: "yolo", lossy: true, ...FORMAT_REST }], total: 2 },
   });
 }
 

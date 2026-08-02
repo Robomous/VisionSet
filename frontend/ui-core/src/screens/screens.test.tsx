@@ -977,16 +977,18 @@ describe("the project header", () => {
     expect(document.body.textContent).not.toContain("Ingested");
   });
 
-  it("survives a stats document whose timestamp is not a string", async () => {
-    // The generated client validates the response *status*, never its shape, so
-    // a plausible-but-wrong document arrives intact. During #206–#213 exactly
-    // this white-screened three surfaces; here the chip is simply absent.
+  it("refuses a stats document whose timestamp is not a string", async () => {
+    // #225 moved this assertion rather than removing it. It used to read "the chip
+    // is simply absent", which was the *symptom* of a document nobody had checked:
+    // during #206–#213 the same wrong body white-screened three surfaces, and the
+    // fix was a hand-written guard at each render site. Now the check runs at
+    // `unwrap`, so the query fails, both chips stay away, and the page still stands.
     headerFor({ lastIngest: 1_754_000_000 });
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
-    await waitFor(() => expect(screen.queryByTestId("chip-images")).not.toBeNull());
+    await waitFor(() => expect(screen.getByTestId("project-title").textContent).toBe("highway"));
+    expect(screen.queryByTestId("chip-images")).toBeNull();
     expect(screen.queryByTestId("chip-ingested")).toBeNull();
-    expect(screen.getByTestId("project-title").textContent).toBe("highway");
   });
 
   it("omits the ingest chip when the timestamp will not parse", async () => {

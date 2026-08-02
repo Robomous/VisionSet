@@ -31,6 +31,40 @@ import {
 import { useApiClient } from "../data/ApiProvider";
 import { usePollingQuery } from "../data/polling";
 import { unwrap } from "../data/errors";
+import {
+  checkApproveBatch,
+  checkCreateProject,
+  checkCompleteBatch,
+  checkCreateSchemaVersion,
+  checkDatasetStats,
+  checkDeleteProject,
+  checkExportRelease,
+  checkGetActiveSchema,
+  checkGetBatch,
+  checkGetIngestJob,
+  checkGetProject,
+  checkGetProjectDataset,
+  checkGetProjectStats,
+  checkGetReleaseManifest,
+  checkListBatchAssets,
+  checkListBatchJobs,
+  checkListBatches,
+  checkListFormats,
+  checkListProjectAssets,
+  checkListProjects,
+  checkListReleases,
+  checkListSchemaVersions,
+  checkListSources,
+  checkPromoteBatch,
+  checkPublishRelease,
+  checkRegisterImageSource,
+  checkRegisterVideoSource,
+  checkRenameProject,
+  checkResumeIngest,
+  checkStartBatch,
+  checkStartIngest,
+  checkVerifyRelease,
+} from "../generated/checks";
 import type { components } from "../generated/api";
 
 export type Project = components["schemas"]["ProjectOut"];
@@ -60,7 +94,7 @@ export function useProjects(): UseQueryResult<ProjectPage, Error> {
   const client = useApiClient();
   return useQuery({
     queryKey: queryKeys.projects(),
-    queryFn: async () => unwrap(await client.GET("/projects", {})),
+    queryFn: async () => unwrap(await client.GET("/projects", {}), checkListProjects),
   });
 }
 
@@ -69,7 +103,12 @@ export function useProject(projectId: string): UseQueryResult<Project, Error> {
   return useQuery({
     queryKey: queryKeys.project(projectId),
     queryFn: async () =>
-      unwrap(await client.GET("/projects/{project_id}", { params: { path: { project_id: projectId } } })),
+      unwrap(
+        await client.GET("/projects/{project_id}", {
+          params: { path: { project_id: projectId } },
+        }),
+        checkGetProject,
+      ),
   });
 }
 
@@ -90,6 +129,7 @@ export function useProjectStats(projectId: string): UseQueryResult<ProjectStats,
         await client.GET("/projects/{project_id}/stats", {
           params: { path: { project_id: projectId } },
         }),
+        checkGetProjectStats,
       ),
   });
 }
@@ -117,6 +157,7 @@ export function useProjectAssets(
             ...(limit === undefined ? {} : { query: { limit } }),
           },
         }),
+        checkListProjectAssets,
       ),
   });
 }
@@ -126,7 +167,7 @@ export function useCreateProject() {
   const queries = useQueryClient();
   return useMutation({
     mutationFn: async (body: { name: string; description?: string | null }) =>
-      unwrap(await client.POST("/projects", { body })),
+      unwrap(await client.POST("/projects", { body }), checkCreateProject),
     onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.projects() }),
   });
 }
@@ -141,6 +182,7 @@ export function useRenameProject(projectId: string) {
           params: { path: { project_id: projectId } },
           body: { name },
         }),
+        checkRenameProject,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.projects() }),
   });
@@ -163,6 +205,7 @@ export function useDeleteProject() {
         await client.DELETE("/projects/{project_id}", {
           params: { path: { project_id: projectId }, query: { confirm: true } },
         }),
+        checkDeleteProject,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.projects() }),
   });
@@ -185,6 +228,7 @@ export function useActiveSchema(projectId: string): UseQueryResult<SchemaVersion
         await client.GET("/projects/{project_id}/schema", {
           params: { path: { project_id: projectId } },
         }),
+        checkGetActiveSchema,
       ),
     // A schema-less project answers 404 on every attempt; retrying is three more
     // round trips to learn the same thing.
@@ -212,6 +256,7 @@ export function useSchemaVersions(projectId: string): UseQueryResult<SchemaVersi
         await client.GET("/projects/{project_id}/schema/versions", {
           params: { path: { project_id: projectId } },
         }),
+        checkListSchemaVersions,
       ),
   });
 }
@@ -248,6 +293,7 @@ export function useCreateSchemaVersion(projectId: string) {
           },
           body: { classes: [...input.classes] },
         }),
+        checkCreateSchemaVersion,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
   });
@@ -300,6 +346,7 @@ export function useSources(projectId: string): UseQueryResult<SourcePage, Error>
         await client.GET("/projects/{project_id}/sources", {
           params: { path: { project_id: projectId } },
         }),
+        checkListSources,
       ),
   });
 }
@@ -313,6 +360,7 @@ export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> 
         await client.GET("/projects/{project_id}/batches", {
           params: { path: { project_id: projectId } },
         }),
+        checkListBatches,
       ),
   });
 }
@@ -344,6 +392,7 @@ export function useRegisterSource(projectId: string) {
               body: { file: input.files[0] as unknown as string, extraction_fps: extractionFps },
               bodySerializer: formData,
             }),
+            checkRegisterVideoSource,
           )
         : unwrap(
             await client.POST("/projects/{project_id}/sources/images", {
@@ -351,6 +400,7 @@ export function useRegisterSource(projectId: string) {
               body: { files: input.files as unknown as string[] },
               bodySerializer: formData,
             }),
+          checkRegisterImageSource,
           );
       return source;
     },
@@ -384,6 +434,7 @@ export function useStartIngest(projectId: string) {
             ...(input.batchName === undefined ? {} : { batch_name: input.batchName }),
           },
         }),
+        checkStartIngest,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: ["projects", projectId] }),
   });
@@ -403,6 +454,7 @@ export function useIngestJob(jobId: string | null): UseQueryResult<IngestJob, Er
     queryFn: async () =>
       unwrap(
         await client.GET("/ingest-jobs/{job_id}", { params: { path: { job_id: jobId ?? "" } } }),
+        checkGetIngestJob,
       ),
     isSettled: (job) => job.state === "completed" || job.state === "failed",
     enabled: jobId !== null,
@@ -425,6 +477,7 @@ export function useResumeIngest() {
     mutationFn: async (jobId: string) =>
       unwrap(
         await client.POST("/ingest-jobs/{job_id}/resume", { params: { path: { job_id: jobId } } }),
+        checkResumeIngest,
       ),
     onSuccess: (_data, jobId) =>
       queries.invalidateQueries({ queryKey: ingestKeys.ingestJob(jobId) }),
@@ -453,7 +506,10 @@ export function useBatch(batchId: string): UseQueryResult<Batch, Error> {
   return useQuery({
     queryKey: batchKeys.batch(batchId),
     queryFn: async () =>
-      unwrap(await client.GET("/batches/{batch_id}", { params: { path: { batch_id: batchId } } })),
+      unwrap(
+        await client.GET("/batches/{batch_id}", { params: { path: { batch_id: batchId } } }),
+        checkGetBatch,
+      ),
   });
 }
 
@@ -465,6 +521,7 @@ export function useBatchJobs(batchId: string, enabled = true) {
     queryFn: async () =>
       unwrap(
         await client.GET("/batches/{batch_id}/jobs", { params: { path: { batch_id: batchId } } }),
+        checkListBatchJobs,
       ),
   });
 }
@@ -492,6 +549,7 @@ export function useBatchAssets(batchId: string) {
             query: { limit: GALLERY_PAGE_SIZE, offset: pageParam },
           },
         }),
+        checkListBatchAssets,
       ),
     getNextPageParam: (last, pages) => {
       const seen = pages.reduce((count, page) => count + page.items.length, 0);
@@ -519,6 +577,7 @@ export function useApproveBatch(batchId: string) {
           params: { path: { batch_id: batchId } },
           body: partition === undefined ? {} : { partition },
         }),
+        checkApproveBatch,
       ),
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
@@ -533,15 +592,22 @@ export function useBatchTransition(batchId: string, move: "start" | "complete") 
   const queries = useQueryClient();
   return useMutation({
     mutationFn: async () =>
-      unwrap(
-        move === "start"
-          ? await client.POST("/batches/{batch_id}/start", {
-              params: { path: { batch_id: batchId } },
-            })
-          : await client.POST("/batches/{batch_id}/complete", {
+      // One `unwrap` around a ternary would pair two operations with one check. They
+      // answer the same schema today, so it would work and then quietly stop working
+      // the day they diverge — `checks_wiring.test.mjs` refuses it for that reason.
+      move === "start"
+        ? unwrap(
+            await client.POST("/batches/{batch_id}/start", {
               params: { path: { batch_id: batchId } },
             }),
-      ),
+            checkStartBatch,
+          )
+        : unwrap(
+            await client.POST("/batches/{batch_id}/complete", {
+              params: { path: { batch_id: batchId } },
+            }),
+            checkCompleteBatch,
+          ),
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: ["projects"] });
@@ -575,6 +641,7 @@ export function useProjectDataset(projectId: string): UseQueryResult<Dataset, Er
         await client.GET("/projects/{project_id}/dataset", {
           params: { path: { project_id: projectId } },
         }),
+        checkGetProjectDataset,
       ),
   });
 }
@@ -597,6 +664,7 @@ export function useDatasetStats(datasetId: string | undefined): UseQueryResult<D
         await client.GET("/datasets/{dataset_id}/stats", {
           params: { path: { dataset_id: datasetId ?? "" } },
         }),
+        checkDatasetStats,
       ),
   });
 }
@@ -611,6 +679,7 @@ export function useReleases(datasetId: string | undefined) {
         await client.GET("/datasets/{dataset_id}/releases", {
           params: { path: { dataset_id: datasetId ?? "" } },
         }),
+        checkListReleases,
       ),
   });
 }
@@ -620,7 +689,7 @@ export function useFormats() {
   const client = useApiClient();
   return useQuery({
     queryKey: datasetKeys.formats(),
-    queryFn: async () => unwrap(await client.GET("/formats", {})),
+    queryFn: async () => unwrap(await client.GET("/formats", {}), checkListFormats),
     // A plugin set changes when somebody installs a package, not while a tab is
     // open. Long enough that a dialog does not refetch it on every open.
     staleTime: 5 * 60_000,
@@ -637,6 +706,7 @@ export function usePromoteBatch(projectId: string) {
         await client.POST("/batches/{batch_id}/promote", {
           params: { path: { batch_id: batchId } },
         }),
+        checkPromoteBatch,
       ),
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: ["projects", projectId] });
@@ -663,6 +733,7 @@ export function usePublishRelease(datasetId: string) {
           params: { path: { dataset_id: datasetId } },
           body: { tag: input.tag, ...(input.split === undefined ? {} : { split: input.split }) },
         }),
+        checkPublishRelease,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: datasetKeys.releases(datasetId) }),
   });
@@ -688,6 +759,7 @@ export function useVerifyRelease(releaseId: string): UseQueryResult<ReleaseVerif
         await client.GET("/releases/{release_id}/verify", {
           params: { path: { release_id: releaseId } },
         }),
+        checkVerifyRelease,
       ),
   });
 }
@@ -724,7 +796,11 @@ export function useExportRelease(releaseId: string) {
         // a working export.
         parseAs: "blob",
       });
-      return unwrap(result) as unknown as Blob;
+      // `checkExportRelease` is `checkBlob`: the contract declares this response with an
+      // empty schema, which is OpenAPI for "bytes, and nothing more to say". It replaces a
+      // `as unknown as Blob` that asserted the same thing and verified none of it — an
+      // error page served as JSON and read as a blob would have been saved as `release.zip`.
+      return unwrap(result, checkExportRelease);
     },
   });
 }
@@ -738,7 +814,7 @@ export function useDownloadManifest(releaseId: string) {
         params: { path: { release_id: releaseId } },
         parseAs: "blob",
       });
-      return unwrap(result) as unknown as Blob;
+      return unwrap(result, checkGetReleaseManifest);
     },
   });
 }

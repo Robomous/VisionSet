@@ -73,20 +73,13 @@ export function OverviewPanel({
     );
   }
 
-  // Read through zeroes rather than straight off the body. `unwrap` checks the
-  // status and not the *shape*, so a response that is well-formed JSON and the
-  // wrong document reaches here intact — and this is the landing tab, so one
-  // `undefined` in `formatCount` takes the entire project view down with it.
-  // That is not hypothetical: it is how #211's delete dialog and this panel both
-  // white-screened against a stub answering the wrong collection.
-  const counted = {
-    asset_count: stats.data.asset_count ?? 0,
-    annotated_asset_count: stats.data.annotated_asset_count ?? 0,
-    annotation_count: stats.data.annotation_count ?? 0,
-    class_count: stats.data.class_count ?? 0,
-    annotated_pct: stats.data.annotated_pct ?? 0,
-    classes: stats.data.classes ?? [],
-  };
+  // Read straight off the body. Until #225 this went through `?? 0` on every field,
+  // because `unwrap` checked the status and not the shape and a wrong document
+  // reached this — the landing tab — where one `undefined` in `formatCount` took the
+  // whole project view down. The check now runs at `unwrap`, so a body that gets
+  // here has the fields the contract declares, and reading them defensively would
+  // only hide the next thing that goes wrong.
+  const counted = stats.data;
   if (counted.asset_count === 0) {
     return (
       // Wrapped rather than given a testid: `EmptyState` is shared and takes a
