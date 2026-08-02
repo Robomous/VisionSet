@@ -270,6 +270,18 @@ class AssetRow(Base):
     #: assets and filters in Python, which is the shape ``Repository.list``
     #: already has. No foreign key either — it names a blob, not a row.
     thumbnail_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: When these bytes first arrived in this project, added by migration 13.
+    #:
+    #: ISO-8601 text, the convention every timestamp in this schema follows —
+    #: SQLite's ``DATETIME`` drops the timezone, and a stored offset is the whole
+    #: point. Sorting works anyway: ISO-8601 in UTC is lexicographically ordered.
+    #:
+    #: Nullable, and unlike ``thumbnail_hash`` this NULL is *permanent*. A
+    #: preview can be rendered later; an arrival that nobody recorded cannot be
+    #: recovered, so there is no backfill and no remedy — see ``Asset``'s own
+    #: note. Unindexed: the one query over it sorts a project's assets after
+    #: ``Repository.list`` has already read them.
+    ingested_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: The same bytes are the same asset: the backstop under the ingest pipeline's

@@ -89,6 +89,10 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
         # has no generation twin of
         # ``test_migration_nine_alters_a_table_migration_eight_rebuilt``.
         connection.execute(text("drop index if exists uq_asset_project_content_hash"))
+        # Migration 13's undo, and it needs its own line for migration 10's
+        # reason: ``asset`` is only ever altered, so nothing below takes this
+        # column away for free.
+        connection.execute(text("alter table asset drop column ingested_at"))
         connection.execute(text("alter table asset drop column thumbnail_hash"))
         connection.execute(text("alter table asset drop column frame_timestamp"))
         connection.execute(text("alter table asset drop column frame_index"))

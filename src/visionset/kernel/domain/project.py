@@ -1,6 +1,7 @@
 # usage: from visionset.kernel.domain import Project
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -60,6 +61,18 @@ class ProjectStats(BaseModel):
     #: declared-but-unused class is absent here and still counted above — the
     #: same split ``DatasetStats.per_class`` documents.
     per_class: tuple[ClassCount, ...] = ()
+    #: When data last arrived, or NULL when no asset here records an arrival.
+    #:
+    #: The newest ``Asset.ingested_at`` in the project. NULL has one meaning and
+    #: it is not "never ingested" — it is **unknown**: every asset predates
+    #: migration 13, which cannot be backfilled (#216). A project with no assets
+    #: at all reads NULL too, and the two are deliberately not distinguished,
+    #: because the only caller is a chip that omits itself either way.
+    #:
+    #: Unlike ``annotated_fraction``, this is *not* derived to a zero when there
+    #: is nothing to derive it from. A count has an honest identity element and a
+    #: date does not: any stand-in would name a moment nobody chose.
+    last_ingest_at: datetime | None = None
 
     @property
     def annotated_fraction(self) -> float:

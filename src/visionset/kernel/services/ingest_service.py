@@ -74,6 +74,7 @@ that itself.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
@@ -159,24 +160,19 @@ class IngestService:
             return asset
 
     def assets(self, project_id: UUID) -> list[Asset]:
-        """Every asset of that project, in a stable order.
+        """Every asset of that project, most recently ingested first.
 
         The collection side of "one door to an ``Asset``". Until #208 the only
         asset listings on the wire were per *batch* and per *dataset* — one
         window onto a work unit, one onto the curated trunk — and neither
         answers "show me this project", which is what a project page asks.
 
-        **The order is deterministic and it is not chronological**, which is a
-        limitation rather than a choice. Nothing in the schema records when an
-        asset arrived: ``Asset`` carries no timestamp and neither does
-        ``IngestJob`` (#216). ``Source.registered_at`` is not the proxy it looks
-        like either — registration is idempotent on
-        ``(kind, path, extraction_fps)`` and the timestamp is never rewritten, so
-        re-ingesting a directory that gained a thousand files adds a thousand
-        assets and does not move it.
-
-        So the sort is the most meaningful total order the stored columns can
-        support:
+        **Recency first, and it is stable within a run.** #208 shipped this in a
+        deterministic but arbitrary order, because nothing recorded when an asset
+        arrived; migration 13 added ``Asset.ingested_at`` (#216) and this is its
+        first reader. A whole ingest shares one timestamp, so the sort inside a
+        run falls through to ``_in_stable_order``, which is the order that
+        actually means something:
 
         1. ``source_id``, so one clip's frames stay together rather than
            interleaving with a directory's stills;
@@ -189,15 +185,32 @@ class IngestService:
            in their own file browser;
         4. ``id``, so the order is total and two calls can never disagree.
 
-        A stable order is what the caller actually needs: a gallery whose tiles
-        reshuffle on every poll is worse than one showing an arbitrary six.
+        **An asset with no arrival sorts last, never first.** NULL means the row
+        predates migration 13 and cannot be backfilled, so the alternative
+        readings are both wrong: treating it as the epoch is a fabricated date,
+        and treating it as *now* would pin the oldest rows in the product to the
+        top of a "recent" list forever. Last is the one answer that degrades
+        quietly — a project that never ingested since the upgrade looks exactly
+        as it did before, in ``_in_stable_order``.
+
+        Sorted in two passes rather than by one composite key, because
+        "descending by a value that may be missing" has no honest spelling as a
+        tuple: negating a datetime is not defined, and every sentinel that makes
+        it sortable is a date nobody chose. Both passes are stable, so the
+        tiebreak survives.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
             project = self._require_project(uow, project_id)
-            return sorted(uow.assets.list(project.id), key=_in_stable_order)
+            stored = sorted(uow.assets.list(project.id), key=_in_stable_order)
+        # Pair each asset with its arrival so the sort key is a plain datetime
+        # and mypy never has to be told the ``None`` was filtered out.
+        arrived = [(asset.ingested_at, asset) for asset in stored if asset.ingested_at is not None]
+        arrived.sort(key=lambda pair: pair[0], reverse=True)
+        unknown = [asset for asset in stored if asset.ingested_at is None]
+        return [asset for _, asset in arrived] + unknown
 
     def open_content(self, asset: Asset) -> BinaryIO:
         """The asset's own bytes, as a handle the caller reads and closes.
@@ -743,7 +756,21 @@ class IngestService:
         replaced: a second encode yields the same blob on this machine and a
         different one on another, so the swap would cost a write and buy
         nothing.
+
+        ``ingested_at`` is stamped **here**, and this is the only place in the
+        product that writes it. Here rather than where the candidates are built,
+        because the column means "when the row was first written" and this is
+        that moment — which is also what makes the dedup branch correct without
+        saying anything: a deduplicated candidate never reaches ``add``, so the
+        stored arrival goes on naming the run that created it.
+
+        One timestamp for the whole run, read once before the loop rather than
+        per asset. A single ingest is a single arrival, so a thousand stills
+        differing by microseconds would be false precision — and it leaves the
+        ordering *within* a run to ``_in_stable_order``, which has actual
+        meaning, rather than to whichever file the loop reached first.
         """
+        stamped_at = datetime.now(UTC)
         assets: list[Asset] = []
         created: list[UUID] = []
         seen: set[UUID] = set()
@@ -752,7 +779,7 @@ class IngestService:
             for candidate in candidates:
                 stored = known.get(candidate.content_hash)
                 if stored is None:
-                    stored = uow.assets.add(candidate)
+                    stored = uow.assets.add(candidate.model_copy(update={"ingested_at": stamped_at}))
                     known[stored.content_hash] = stored
                     created.append(stored.id)
                 elif stored.thumbnail_hash is None and candidate.thumbnail_hash is not None:
