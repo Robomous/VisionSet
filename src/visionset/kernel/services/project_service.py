@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from visionset.kernel.domain import Dataset, Project
+from visionset.kernel.domain import ClassCount, Dataset, Project, ProjectStats
 from visionset.kernel.errors import (
     ConfirmationRequired,
     ConstraintViolated,
@@ -35,6 +35,7 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
+from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 #: SQLite's own wording when ``uq_project_workspace_name`` refuses a write. The
@@ -48,6 +49,7 @@ class ProjectService:
 
     def __init__(self, workspace: WorkspaceService) -> None:
         self._workspace = workspace
+        self._schemas = SchemaService(workspace)
 
     # --- reading -----------------------------------------------------------
 
@@ -92,6 +94,67 @@ class ProjectService:
         with self._workspace.unit_of_work() as uow:
             project = self._require(uow, project_id)
             return self.require_dataset(uow, project.id)
+
+    def stats(self, project_id: UUID) -> ProjectStats:
+        """What the project holds, counted — overall and per label class.
+
+        The sibling of ``DatasetService.stats``, and the difference is the *set*
+        being counted. That one walks the curated trunk, which an asset reaches
+        only by being promoted out of a completed batch; this one walks every
+        asset in the project. A project mid-annotation has a full first number
+        and a zero second one, and both are true.
+
+        Derived on every call, never cached, for the reason ``DatasetStats``
+        gives: a stored aggregate is a second source of truth for something a
+        walk already answers. There is no caching layer here and none is
+        warranted yet — the cost below is one indexed read plus one per asset,
+        and a cache would need invalidating on every annotation write, which is
+        the hottest path in the product.
+
+        ``class_count`` comes off the **schema**, not off the annotations. Which
+        classes exist is a fact about the ontology, and a project that has just
+        declared five classes and labeled nothing has five of them.
+
+        One walk per asset — the N+1 ``DatasetService.stats`` and
+        ``JobService.project_progress`` already accept at this scale, and for the
+        same reason: keeping a query language out of ``Repository`` is worth more
+        than the round trips cost. When it does start to cost, the fix is a
+        method on the port (``annotations.count_for_project``) implemented in the
+        adapter, never a SQLAlchemy import in a service.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            project = self._require(uow, project_id)
+            active = self._schemas.active(uow, project.id)
+            assets = uow.assets.list(project.id)
+            annotations = 0
+            annotated_assets = 0
+            per_class: dict[str, list[int]] = {}
+            for asset in assets:
+                found = uow.annotations.list(asset.id)
+                if not found:
+                    continue
+                annotated_assets += 1
+                annotations += len(found)
+                # Distinct classes first, so the per-asset tally counts each
+                # class once however many times it was drawn on this asset.
+                for label_class in {annotation.label_class for annotation in found}:
+                    per_class.setdefault(label_class, [0, 0])[1] += 1
+                for annotation in found:
+                    per_class[annotation.label_class][0] += 1
+        return ProjectStats(
+            project_id=project.id,
+            asset_count=len(assets),
+            annotated_asset_count=annotated_assets,
+            annotation_count=annotations,
+            class_count=0 if active is None else len(active.classes),
+            per_class=tuple(
+                ClassCount(label_class=name, annotations=counts[0], assets=counts[1])
+                for name, counts in per_class.items()
+            ),
+        )
 
     # --- writing -----------------------------------------------------------
 

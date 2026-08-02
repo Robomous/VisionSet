@@ -1846,6 +1846,54 @@
         "title": "ProjectRename",
         "type": "object"
       },
+      "ProjectStatsOut": {
+        "description": "What the project holds, counted \u2014 everything ingested, not only the trunk.",
+        "properties": {
+          "annotated_asset_count": {
+            "title": "Annotated Asset Count",
+            "type": "integer"
+          },
+          "annotated_pct": {
+            "title": "Annotated Pct",
+            "type": "number"
+          },
+          "annotation_count": {
+            "title": "Annotation Count",
+            "type": "integer"
+          },
+          "asset_count": {
+            "title": "Asset Count",
+            "type": "integer"
+          },
+          "class_count": {
+            "title": "Class Count",
+            "type": "integer"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/ClassCountOut"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "asset_count",
+          "annotated_asset_count",
+          "annotation_count",
+          "class_count",
+          "annotated_pct",
+          "classes"
+        ],
+        "title": "ProjectStatsOut",
+        "type": "object"
+      },
       "ReleaseCreate": {
         "additionalProperties": false,
         "description": "What publishing a release needs.",
@@ -6631,6 +6679,95 @@
         "summary": "Register Video Source",
         "tags": [
           "sources"
+        ]
+      }
+    },
+    "/projects/{project_id}/stats": {
+      "get": {
+        "description": "What the project holds, counted \u2014 overall and per label class.\n\nCounts **everything ingested**, whatever batch it landed in and whether or\nnot anybody has promoted it. `GET /datasets/{dataset_id}/stats` is the\nsibling that counts the curated trunk, and the two disagree by design: a\nproject mid-annotation has assets here and none there.\n\n`class_count` is what the active schema version declares, so a project that\nhas just authored an ontology and labeled nothing reports its classes.\n`annotated_pct` is `0` for a project with no assets, never `null`.\n\n`classes` lists only classes somebody has actually used, ordered by name.",
+        "operationId": "get_project_stats",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectStatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Project Stats",
+        "tags": [
+          "projects"
         ]
       }
     },
