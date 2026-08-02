@@ -58,7 +58,17 @@
  * and the editor already spells that.
  */
 
-import { Boxes, History, Layers, Pencil, Shapes, Upload } from "lucide-react";
+import {
+  Boxes,
+  History,
+  Layers,
+  MoreHorizontal,
+  PenLine,
+  Pencil,
+  Shapes,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useState, type ComponentType, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -69,9 +79,18 @@ import { Button } from "../primitives/Button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogTitle,
 } from "../primitives/Dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../primitives/Menu";
+import { formatCount } from "../lib/format";
 import { FieldError, Input, Label } from "../primitives/Input";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
@@ -80,9 +99,13 @@ import { BatchesScreen } from "./BatchesScreen";
 import { SchemaEditor } from "./SchemaEditor";
 import {
   useActiveSchema,
+  useBatches,
+  useDeleteProject,
   useProject,
+  useProjectStats,
   useRenameProject,
   useSchemaVersions,
+  type Project,
   type SchemaVersion,
 } from "./queries";
 
@@ -122,6 +145,12 @@ export interface ProjectScreenProps {
   readonly onOpenBatch?: (batchId: string) => void;
   readonly onOpenDataset?: () => void;
   /**
+   * Where to go once the project is gone. Absent means the overflow menu still
+   * deletes, and the caller is left on a screen whose subject no longer exists —
+   * so a host with a route table wires it and one without does not offer it.
+   */
+  readonly onDeleted?: () => void;
+  /**
    * Which section to show, as it arrived from `?tab=` — a raw string, normalised
    * here, so a host never has to know what the valid values are.
    */
@@ -136,11 +165,13 @@ export function ProjectScreen({
   onIngest,
   onOpenBatch,
   onOpenDataset,
+  onDeleted,
   tab,
   onTabChange,
 }: ProjectScreenProps): JSX.Element {
   const project = useProject(projectId);
   const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Batches are offered only when the host can open one. A table whose every row
   // is a dead link is #160's bug with a tab in front of it, and a host that cannot
@@ -158,34 +189,14 @@ export function ProjectScreen({
 
       <Async query={project} loadingRows={2}>
         {(loaded) => (
-          <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
-            <div>
-              <h1 className="text-page font-semibold tracking-tight" data-testid="project-title">
-                {loaded.name}
-              </h1>
-              <p className="text-meta text-muted-foreground">
-                {loaded.description ?? "No description."}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {onOpenDataset !== undefined && (
-                <Button variant="secondary" data-testid="go-dataset" onClick={onOpenDataset}>
-                  <Boxes className="size-4" aria-hidden="true" />
-                  Dataset
-                </Button>
-              )}
-              {onIngest !== undefined && (
-                <Button variant="primary" data-testid="go-ingest" onClick={onIngest}>
-                  <Upload className="size-4" aria-hidden="true" />
-                  Ingest
-                </Button>
-              )}
-              <Button variant="secondary" data-testid="rename-project" onClick={() => setRenaming(true)}>
-                <Pencil className="size-4" aria-hidden="true" />
-                Rename
-              </Button>
-            </div>
-          </header>
+          <ProjectHeader
+            project={loaded}
+            onIngest={onIngest}
+            onOpenBatch={onOpenBatch}
+            onOpenDataset={onOpenDataset}
+            onRename={() => setRenaming(true)}
+            onDelete={() => setDeleting(true)}
+          />
         )}
       </Async>
 
@@ -238,7 +249,248 @@ export function ProjectScreen({
         open={renaming}
         onClose={() => setRenaming(false)}
       />
+
+      {/* Mounted only while it is open. Radix portals its content when open, but
+          the children of `DialogContent` are an *argument* and are therefore
+          evaluated on every render of this screen regardless — so a closed
+          dialog was formatting counts it did not have, and one `undefined` took
+          the whole page down. Not rendering it is cheaper than guarding it. */}
+      {deleting && (
+        <DeleteDialog
+          projectId={projectId}
+          name={project.data?.name ?? ""}
+          onClose={() => setDeleting(false)}
+          {...(onDeleted === undefined ? {} : { onDeleted })}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Deleting a project, with the blast radius counted rather than gestured at.
+ *
+ * `DESIGN.md`: a confirmation names what will be destroyed. "Are you sure?" with
+ * no number is a speed bump, not a confirmation — and this cascade is the largest
+ * in the product, taking every batch, job, annotation, dataset member and release
+ * with it.
+ *
+ * The numbers come from #207's stats, which is the reason this dialog could be
+ * written at all: before it there was no way to say how much a delete costs
+ * without walking the API. While they are still loading the dialog says so and
+ * the button waits, because a confirmation that understates what it destroys is
+ * worse than one that takes a moment.
+ *
+ * **Blobs are not destroyed and the dialog says so.** Content is shared by hash
+ * across projects, so no project can know it is the last owner — the wording
+ * exists to stop somebody believing this reclaims disk.
+ */
+function DeleteDialog({
+  projectId,
+  name,
+  onClose,
+  onDeleted,
+}: {
+  readonly projectId: string;
+  readonly name: string;
+  readonly onClose: () => void;
+  readonly onDeleted?: () => void;
+}): JSX.Element {
+  const stats = useProjectStats(projectId);
+  const remove = useDeleteProject();
+
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent data-testid="delete-dialog">
+        <DialogTitle>Delete {name}?</DialogTitle>
+        <DialogDescription data-testid="delete-blast-radius">
+          {stats.data?.asset_count === undefined
+            ? "Counting what this would destroy…"
+            : `Deletes the project, ${formatCount(stats.data.asset_count)} ${
+                stats.data.asset_count === 1 ? "image" : "images"
+              } and ${formatCount(stats.data.annotation_count)} ${
+                stats.data.annotation_count === 1 ? "annotation" : "annotations"
+              }, with every batch, job and release under it. The stored image files are shared by
+              content and are not removed.`}
+        </DialogDescription>
+        {remove.isError && (
+          <FieldError data-testid="delete-error">
+            {asApiError(remove.error).code}: {asApiError(remove.error).message}
+          </FieldError>
+        )}
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            data-testid="delete-submit"
+            // Waiting on a count is not the same as being disabled with no
+            // explanation: the description above says what it is waiting for.
+            disabled={stats.data?.asset_count === undefined || remove.isPending}
+            onClick={() =>
+              remove.mutate(projectId, {
+                onSuccess: () => {
+                  onClose();
+                  onDeleted?.();
+                },
+              })
+            }
+          >
+            {remove.isPending ? "Deleting…" : "Delete project"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Who the project is, and what to do about it.
+ *
+ * ## Four lines, two buttons, and an overflow (#211, `DESIGN.md`)
+ *
+ * The header used to be a title, the literal string "No description.", and three
+ * equal-weight buttons — Dataset, Ingest, Rename. Nothing said what kind of
+ * project it was, what schema was live, or what to do next; and the one line it
+ * spent on a *missing* description was a line about a field rather than about
+ * anybody's project. Absent now renders nothing.
+ *
+ * ## The chips that are here, and the three that are not
+ *
+ * `DESIGN.md`: **a chip with no data is omitted, never rendered as a
+ * placeholder.** The design asks for task type, sensor modality, active version
+ * and last ingest. Exactly one of those has a source: `ProjectOut` carries `id`,
+ * `name` and `description` and nothing else, and nothing in the schema records
+ * when an asset arrived (#216 — `Source.registered_at` is not the proxy it looks
+ * like, because registration is idempotent and never rewrites it).
+ *
+ * So the version chip ships and the other three do not. Inventing a field to fill
+ * one, or rendering "Unknown", is the "No description." mistake with a border
+ * around it.
+ *
+ * The counted chip — `n images` — is the exception worth having, because #207
+ * genuinely answers it and a project page that never mentions how much data it
+ * holds is the thing this whole redesign is about.
+ *
+ * ## Annotate is the primary action, and it is absent rather than disabled
+ *
+ * `DESIGN.md`'s action-forward rule: a project page's answer to "what now?" is
+ * never "rename this". A project has no annotate route of its own — the annotator
+ * opens a *job* — so the CTA opens the batch that is currently `in_annotation`,
+ * which is the one place work can actually happen.
+ *
+ * With no such batch there is nowhere to send anybody, and the button is **not
+ * rendered** rather than rendered grey: a disabled control that never says what
+ * would enable it is forbidden, and #160 is the same bug from the other side.
+ * Ingest becomes the primary in that state, which is also the honest next step.
+ *
+ * ## Two queries the header now runs
+ *
+ * #171 moved the schema queries into the tab that shows them, so opening a
+ * project stopped fetching a version list nobody looked at. This adds two back —
+ * deliberately, and they are not the same thing: `useActiveSchema` and
+ * `useProjectStats` are what the header *renders*, and the header is always
+ * drawn. Both share their query key with the tab that also wants them, so the
+ * Schema tab now opens against a warm cache rather than a cold one.
+ */
+function ProjectHeader({
+  project,
+  onIngest,
+  onOpenBatch,
+  onOpenDataset,
+  onRename,
+  onDelete,
+}: {
+  readonly project: Project;
+  readonly onIngest?: () => void;
+  readonly onOpenBatch?: (batchId: string) => void;
+  readonly onOpenDataset?: () => void;
+  readonly onRename: () => void;
+  readonly onDelete: () => void;
+}): JSX.Element {
+  const schema = useActiveSchema(project.id);
+  const stats = useProjectStats(project.id);
+  const batches = useBatches(project.id);
+
+  // The batch work can actually happen in. `in_annotation` is the only state an
+  // annotation may be written into (#9), so this is not a preference — anything
+  // else would send somebody to a gallery that refuses every save.
+  const open = batches.data?.items.find((batch) => batch.state === "in_annotation");
+  const annotate = open !== undefined && onOpenBatch !== undefined ? () => onOpenBatch(open.id) : undefined;
+
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <h1 className="text-page font-semibold tracking-tight" data-testid="project-title">
+          {project.name}
+        </h1>
+        {/* Nothing at all when there is no description — not a placeholder. */}
+        {project.description !== null && project.description !== "" && (
+          <p className="text-body text-muted-foreground" data-testid="project-description">
+            {project.description}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-1.5" data-testid="project-chips">
+          {schema.data !== undefined && (
+            <Badge variant="outline" data-testid="chip-version">
+              v{schema.data.version} active
+            </Badge>
+          )}
+          {stats.data !== undefined && stats.data.asset_count > 0 && (
+            <Badge variant="outline" data-testid="chip-images">
+              {formatCount(stats.data.asset_count)}{" "}
+              {stats.data.asset_count === 1 ? "image" : "images"}
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {annotate !== undefined && (
+          <Button variant="primary" data-testid="go-annotate" onClick={annotate}>
+            <PenLine className="size-4" aria-hidden="true" />
+            Annotate
+          </Button>
+        )}
+        {onIngest !== undefined && (
+          <Button
+            // Primary only when Annotate is not, so the page always has exactly
+            // one primary action rather than two or none.
+            variant={annotate === undefined ? "primary" : "secondary"}
+            data-testid="go-ingest"
+            onClick={onIngest}
+          >
+            <Upload className="size-4" aria-hidden="true" />
+            Ingest
+          </Button>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" size="icon" aria-label="More actions" data-testid="project-menu">
+              <MoreHorizontal className="size-4" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem data-testid="rename-project" onSelect={onRename}>
+              <Pencil className="size-4" aria-hidden="true" />
+              Rename
+            </DropdownMenuItem>
+            {onOpenDataset !== undefined && (
+              <DropdownMenuItem data-testid="go-dataset" onSelect={onOpenDataset}>
+                <Boxes className="size-4" aria-hidden="true" />
+                Dataset
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem destructive data-testid="delete-project" onSelect={onDelete}>
+              <Trash2 className="size-4" aria-hidden="true" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
   );
 }
 
