@@ -30,6 +30,7 @@ visionset release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N
 visionset release list --project P
 visionset release verify TAG --project P
 visionset export --project P --release TAG --format F --out DIR [--allow-lossy]
+visionset export --project P --release TAG --format F --check   # writes nothing; exit 1 = it loses something
 visionset format list                                    # no --workspace: it opens nothing
 
 visionset backfill-thumbnails --project P
@@ -344,6 +345,31 @@ finding a plugin itself. `format list` says which are installed.
 A release tag is **case-sensitive** where a project name is not: a tag is an identifier, not a label
 somebody reads. `--allow-lossy` is a third gate word beside `--yes` and `--allow-destructive`, never
 merged with either. See [releases.md](releases.md#at-a-terminal).
+
+**`export --check` asks the question without committing to it.** It prints the per-class
+compatibility report — one row per class: name, geometry, what happens to it, how many annotations
+and assets, and why — and writes nothing. `--out` is not required under it; `--allow-lossy` is
+accepted and does nothing, because consent has nothing to apply to and refusing the combination
+would break the one property the flag was chosen for, that both invocations take the same arguments.
+
+It is a flag rather than a `release compatibility` command because the arguments that decide the
+answer are exactly `export`'s, and a second command would restate every one of them.
+
+**It exits 1 when the answer is no**, on `release verify`'s precedent — the check ran, and it found
+loss — using the same `EXIT_ANSWER_IS_NO`. The predicate is the one `ReleaseService.export` itself
+gates on, `plugin.lossy or not report.compatible`, and **not** `compatible` alone: a format that
+declares itself lossy asks for consent even over a release whose every class it can carry, because
+that declaration covers attributes, confidence and provenance — none of which is a class, and none
+of which the per-class table can show. So:
+
+```bash
+visionset export --check -p road-signs --release v1.0 -f yolo && \
+  visionset export -p road-signs --release v1.0 -f yolo --out ./out
+```
+
+means what it looks like. The table is on **stdout** and the summary on stderr, so `| cut` gets
+classes and nothing else; `--json` prints `visionset.wire.export_compatibility`, the same document
+the REST route and the MCP tool publish.
 
 ### `visionset backfill-thumbnails`
 

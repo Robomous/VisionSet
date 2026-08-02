@@ -425,3 +425,164 @@ def test_the_excluded_classes_are_named_on_stderr_so_stdout_stays_the_path(
     assert "Not carried by boxes-only" in result.stderr
     assert EXPORT_REPORT_FILENAME in result.stderr
     assert (out / EXPORT_REPORT_FILENAME).is_file()
+
+
+# --- export --check ----------------------------------------------------------
+#
+# #163: the report `ReleaseService.check_export` computes reached REST and MCP and
+# stopped there, so the only way to learn what an export would cost from a
+# terminal was to attempt one and read a sentence naming neither the classes nor
+# the counts.
+
+
+def test_check_prints_the_per_class_report_and_writes_nothing(
+    root: Path, tmp_path: Path, boxes_only: None
+) -> None:
+    name, out = _labeled_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "boxes-only",
+        "--check",
+    )
+
+    # Exit 1 because the answer is no — `release verify`'s precedent, and what
+    # makes `visionset export --check ... && visionset export ...` mean anything.
+    assert result.exit_code == 1, result.output
+    rows = result.stdout.splitlines()
+    assert rows[0].split() == ["CLASS", "GEOMETRY", "STATUS", "ANNOTATIONS", "ASSETS", "REASON"]
+    # The class, its geometry, what happens to it and how much of it there is —
+    # the four things the refusal alone could never say.
+    assert any(row.startswith("sign") and "bbox" in row and "dropped" in row for row in rows[1:])
+    assert any("6" in row for row in rows[1:]), rows
+
+    # Nothing written, anywhere. `--out` was not even given.
+    assert not out.exists()
+
+
+def test_check_needs_no_out_at_all(root: Path, tmp_path: Path) -> None:
+    # The flag makes `--out` optional rather than ignored: a required option for
+    # a command that writes nothing is a path somebody has to invent.
+    name = published_release(root, tmp_path)
+    result = run(root, "export", "-p", name, "--release", "v1.0", "--format", "dummy", "--check")
+    assert result.exit_code == 0, result.output
+
+
+def test_export_without_check_still_requires_out(root: Path, tmp_path: Path) -> None:
+    # Exit 2, Click's own: the mistake is in the command line, and nothing has
+    # been resolved or opened yet.
+    name = published_release(root, tmp_path)
+    result = run(root, "export", "-p", name, "--release", "v1.0", "--format", "dummy")
+    assert result.exit_code == 2, result.output
+
+
+def test_check_exits_zero_when_the_format_carries_everything(root: Path, tmp_path: Path) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+    result = run(root, "export", "-p", name, "--release", "v1.0", "--format", "dummy", "--check")
+    assert result.exit_code == 0, result.output
+    assert "carries everything" in result.stderr
+
+
+def test_check_says_so_when_the_format_declares_itself_lossy(
+    root: Path, tmp_path: Path, lossy: None
+) -> None:
+    """A clean table beside a refusal reads as a bug unless the blanket flag is stated.
+
+    ``lossy-sample`` claims every geometry, so the per-class table has nothing to
+    report — and the export still asks for consent, because the format's own
+    declaration covers attributes, confidence and provenance, none of which is a
+    class.
+    """
+    name, _ = _labeled_release(root, tmp_path)
+
+    result = run(
+        root, "export", "-p", name, "--release", "v1.0", "--format", "lossy-sample", "--check"
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "declares itself lossy" in result.stderr
+
+
+def test_check_json_is_the_report_the_other_two_surfaces_publish(
+    root: Path, tmp_path: Path, boxes_only: None
+) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "boxes-only",
+        "--check",
+        "--json",
+    )
+
+    assert result.exit_code == 1, result.output
+    document = json.loads(result.stdout)
+    # `visionset.wire.export_compatibility`, which `tests/cli/test_json_contract.py`
+    # already holds key-for-key against `server.models.ExportCompatibilityOut` —
+    # so this asserts the command reached the shared projection rather than
+    # spelling a twentieth one of its own.
+    assert document["format"] == "boxes-only"
+    assert document["compatible"] is False
+    assert document["excluded_annotations"] == 6
+    # "gone" and "coarser" stay apart, which is #158's whole finding.
+    assert document["degraded_annotations"] == 0
+    assert [one["label_class"] for one in document["classes"]] == ["sign"]
+    assert document["classes"][0]["status"] == "dropped"
+
+
+def test_check_prints_the_table_on_stdout_and_the_prose_on_stderr(
+    root: Path, tmp_path: Path, boxes_only: None
+) -> None:
+    """`visionset export --check ... | cut -f1` gets classes and nothing else."""
+    name, _ = _labeled_release(root, tmp_path)
+
+    result = run(
+        root, "export", "-p", name, "--release", "v1.0", "--format", "boxes-only", "--check"
+    )
+
+    assert "would drop" in result.stderr
+    assert "would drop" not in result.stdout
+    assert "--allow-lossy" in result.stderr
+
+
+def test_the_refusal_names_the_flag_a_person_types(
+    root: Path, tmp_path: Path, boxes_only: None
+) -> None:
+    """#163's second half: the kernel says `allow_lossy`, the terminal wants `--allow-lossy`.
+
+    The kernel's own sentence is unchanged — it is the domain's, and bending it
+    toward one surface is what ``_HINTS`` exists to avoid. The remedy is added
+    under it, by the surface that knows what a person can type.
+    """
+    name, out = _labeled_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "boxes-only",
+        "--out",
+        str(out),
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "--allow-lossy" in result.stderr
+    # …and it names the one command that answers the question the refusal raises
+    # and cannot itself answer.
+    assert "--check" in result.stderr
