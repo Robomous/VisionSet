@@ -48,7 +48,7 @@ told about them.
 | The 30-minute flow | `uv run python examples/thirty_minute_flow.py` — the vision document's success metric end to end. CI's `30-minute flow (wheel, end to end)` job runs it from the **installed wheel** in an empty venv, with `ultralytics` required there |
 | Version sync | `pnpm version:check` |
 | OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
-| Generated API client | `pnpm generate:client` (commit the diff) |
+| Generated API client | `pnpm generate:client` (commit the diff) — writes **two** artifacts under `frontend/ui-core/src/generated/`: `api.ts` (the types) and `checks.ts` (the runtime response checks `unwrap` takes). CI diffs the whole directory. |
 | Annotator wire fixture | `uv run python scripts/export_wire_fixtures.py` (commit the diff) |
 | MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads |
 

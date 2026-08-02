@@ -171,6 +171,12 @@ export {
   type ErrorBody,
   type FetchResult,
 } from "./data/errors.js";
+// `unwrap` takes a check, so a consumer calling it needs the type and the checks for
+// the operations it calls. The combinators themselves stay unexported: they are the
+// generator's vocabulary, and a hand-written check would be a second spelling of the
+// contract — exactly what `generated/checks.ts` exists to prevent.
+export { type Check } from "./data/check.js";
+export * as checks from "./generated/checks.js";
 export { DEFAULT_POLL_MS, usePollingQuery, type PollingQueryOptions } from "./data/polling.js";
 export { clearToken, readToken, writeToken } from "./data/session.js";
 
