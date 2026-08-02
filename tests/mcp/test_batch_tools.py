@@ -5,7 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.mcp._flow import BBOX, call, error, ingested, open_batch, payload, schema
+from tests.mcp._flow import (
+    BBOX,
+    SCHEMA_CLASSES,
+    call,
+    error,
+    ingested,
+    open_batch,
+    payload,
+    schema,
+)
 
 
 def test_a_freshly_ingested_batch_is_a_draft_with_no_jobs_and_no_pin(
@@ -178,3 +187,85 @@ def test_a_malformed_batch_id_is_refused_before_the_kernel_sees_it(
     ingested(monkeypatch, tmp_path, count=1)
     refusal = error(call("get_batch", batch_id="not-a-uuid"))
     assert "must be a UUID" in refusal["message"]
+
+
+# --- re-pinning: the second half of "add a class while annotating" ------------
+
+
+def test_a_class_created_mid_batch_reaches_it_through_repin(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The agent-shaped sequence #229 exists for: create the class, then re-pin."""
+    project, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    payload(
+        call(
+            "create_schema_version",
+            project=project,
+            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometry": "bbox"}],
+        )
+    )
+    assert payload(call("get_batch", batch_id=batch_id))["schema_version"] == 1
+
+    repinned = payload(call("repin_batch", batch_id=batch_id))
+
+    assert repinned["schema_version"] == 2
+    assert payload(call("get_batch", batch_id=batch_id))["schema_version"] == 2
+
+
+def test_a_narrowing_repin_names_the_flag_that_retries_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, batch_id, _job = open_batch(monkeypatch, tmp_path, count=1)
+    payload(
+        call(
+            "create_schema_version",
+            project=project,
+            classes=[{"name": "crossing", "geometry": "bbox"}],
+            allow_destructive=True,
+        )
+    )
+
+    refused = error(call("repin_batch", batch_id=batch_id))
+
+    assert refused["retry_with"] == "allow_destructive"
+    assert (
+        payload(call("repin_batch", batch_id=batch_id, allow_destructive=True))["schema_version"]
+        == 2
+    )
+
+
+def test_a_repin_that_would_orphan_this_batchs_labels_offers_no_retry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`retry_with` is null, which is the whole reason it is published instead of a code."""
+    project, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=1)
+    asset_id = payload(call("next_pending_assets", job_id=job_id))["items"][0]["id"]
+    payload(call("start_job", job_id=job_id))
+    payload(
+        call(
+            "create_schema_version",
+            project=project,
+            classes=[{"name": "crossing", "geometry": "bbox"}],
+            allow_destructive=True,
+        )
+    )
+    payload(
+        call(
+            "add_annotations",
+            job_id=job_id,
+            annotations=[
+                {
+                    "asset_id": asset_id,
+                    "label_class": "sign",
+                    "geometry": BBOX,
+                    "provenance": "human",
+                }
+            ],
+        )
+    )
+
+    refused = error(call("repin_batch", batch_id=batch_id, allow_destructive=True))
+
+    assert refused["retry_with"] is None
+    assert "sign" in refused["message"]
+    assert payload(call("get_batch", batch_id=batch_id))["schema_version"] == 1

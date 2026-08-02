@@ -180,10 +180,10 @@ back to. The stable list is the batch's asset listing filtered to this job —
 needs.
 
 **The schema is the batch's pinned version, never the project's active one.**
-Approval pins the active version and it never moves. An annotator judged against a
-newer schema would offer classes the API then refuses, and the refusal would be
-correct while the screen looked broken. The page walks job → batch → *that
-version*.
+Approval pins the active version, and it moves only through an explicit `repin`. An
+annotator judged against a newer schema would offer classes the API then refuses, and
+the refusal would be correct while the screen looked broken. The page walks job → batch
+→ *that version*.
 
 **Saving is a diff, and then a reload.** The annotator mints client-side ids and
 the kernel mints its own (#40 declined a `rebaseAnnotationId` for this reason), so

@@ -9,7 +9,12 @@ Convention reminders encoded here:
 
 from visionset.kernel.domain.annotation import Annotation, Provenance
 from visionset.kernel.domain.asset import Asset
-from visionset.kernel.domain.batch import BATCH_TRANSITIONS, Batch, BatchState
+from visionset.kernel.domain.batch import (
+    BATCH_TRANSITIONS,
+    REPINNABLE_STATES,
+    Batch,
+    BatchState,
+)
 from visionset.kernel.domain.dataset import (
     ClassCount,
     Dataset,
@@ -124,6 +129,7 @@ __all__ = [
     "JOB_TRANSITIONS",
     "MANIFEST_VERSION",
     "PROMOTABLE_PROGRESS",
+    "REPINNABLE_STATES",
     "SECRET_BYTES",
     "SECRET_PREFIX",
     "SETTLED_PROGRESS",

@@ -11,10 +11,12 @@ is where that freezing happens, and four things follow from it:
   would leave it in no job, and removing one would leave a job describing work
   that no longer exists. Excluding an asset from that point on is a per-asset
   ``skipped`` decision — recorded, not erased — which lands with the job service.
-- **The schema version is pinned once.** ``Batch.schema_version`` is ``None``
-  while a draft and set at approval from the project's active version. It is
-  never moved: a schema that evolved mid-batch would change the rules under work
-  already in flight, which is exactly what versioning exists to prevent.
+- **The schema version is pinned at approval, and moves only when asked.**
+  ``Batch.schema_version`` is ``None`` while a draft and set at approval from the
+  project's active version. It never *follows* the active version — a schema that
+  evolved mid-batch would change the rules under work already in flight, which is
+  exactly what versioning exists to prevent. :meth:`BatchService.repin` is the one
+  way it moves, and somebody has to ask for it; see that method for the gates.
 - **The partition is exact.** Disjoint segments whose union is the batch — see
   ``domain/partition.py`` for why both halves are load-bearing.
 - **Completion is derived.** ``complete`` recomputes from the jobs rather than
@@ -36,18 +38,23 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     BATCH_TRANSITIONS,
+    REPINNABLE_STATES,
     AnnotationJob,
     AnnotationJobState,
+    AnnotationSchema,
     Asset,
     AssetProgress,
     Batch,
     BatchApproved,
     BatchCompleted,
     BatchState,
+    ChangeKind,
     Partition,
     Project,
+    SchemaDiff,
     SingleJob,
     TaskGroup,
+    diff_classes,
     normalize_name,
     partition_assets,
     require_move,
@@ -58,8 +65,11 @@ from visionset.kernel.errors import (
     BatchNotEditable,
     BatchNotFound,
     ConfirmationRequired,
+    DestructiveSchemaChange,
     EmptyBatch,
+    InvalidTransition,
     ProjectNotFound,
+    SchemaChangeWouldOrphan,
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
@@ -259,6 +269,68 @@ class BatchService:
         """
         return self._move(batch_id, BatchState.IN_ANNOTATION)
 
+    def repin(self, batch_id: UUID, *, allow_destructive: bool = False) -> Batch:
+        """Move the batch's schema pin onto the project's current active version.
+
+        Explicit, never automatic. The pin protects two things — a stable
+        validation target mid-batch, and jobs already partitioned against it —
+        and neither is harmed by *adding* a class, which is the overwhelmingly
+        common change and the one that otherwise forces somebody to abandon a
+        batch to use a label they just created. What the pin does not protect is
+        release reproducibility: ``ReleaseService.publish`` already stamps the
+        manifest with the *active* version while annotations carry their
+        batch-pinned ones, so the system already tolerates mixed versions.
+
+        The gate is the schema classifier, not a new rule: ``diff_classes`` judges
+        the pinned classes against the active ones, an additive verdict goes
+        through untouched, and a narrowing one needs ``allow_destructive`` — the
+        same two refusals ``SchemaService.create_version`` makes, in the same
+        order and with the same vocabulary, because it is the same question asked
+        from the other end. The orphan refusal is scoped to **this batch**: only
+        labels written into it are at stake, so a class removed project-wide is
+        still re-pinnable here if nobody in this batch used it.
+
+        Annotations already written keep the version they were stamped with; only
+        new writes are judged against the new pin. That is the mixed-version
+        posture releases already have, not a new one.
+
+        Re-pinning onto the version already pinned is a no-op: the same batch
+        comes back, nothing is written, and nothing is announced.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            InvalidTransition: the batch is not ``approved`` or ``in_annotation``
+                — a draft has no pin yet and a completed batch's pin is history.
+            SchemaNotFound: the project has no schema at all.
+            WorkspaceCorrupt: the pinned version is not stored.
+            DestructiveSchemaChange: the active version narrows what the pinned
+                one allowed, and ``allow_destructive`` was not ``True``.
+            SchemaChangeWouldOrphan: annotations in *this batch* sit under a class
+                the change would break. No flag overrides this.
+        """
+        with self._workspace.unit_of_work() as uow:
+            batch = self.require_batch(uow, batch_id)
+            if batch.state not in REPINNABLE_STATES:
+                legal = ", ".join(sorted(state.value for state in REPINNABLE_STATES))
+                raise InvalidTransition(
+                    f"{_subject(batch)} is {batch.state.value!r}, so its schema pin cannot "
+                    f"move; re-pinning is only legal while a batch is {legal}"
+                )
+
+            active = self._schemas.require_active(uow, batch.project_id)
+            # A draft cannot reach here, so the pin is set — but the read is a
+            # lookup either way, and a pin naming a version nobody stored is the
+            # cascade guarantee failing rather than a caller's mistake.
+            pinned = self._pinned_schema(uow, batch)
+            if pinned.version == active.version:
+                return batch
+
+            diff = diff_classes(pinned.classes, active.classes)
+            if diff.is_destructive:
+                self._refuse_narrowing(uow, batch, diff, allow_destructive)
+
+            return uow.batches.update(batch.model_copy(update={"schema_version": active.version}))
+
     def complete(self, batch_id: UUID) -> Batch:
         """Close the batch, if every one of its jobs is done.
 
@@ -314,6 +386,52 @@ class BatchService:
                     f"their progress; pass confirm=True to proceed"
                 )
             uow.batches.delete(batch.id)
+
+    # --- the re-pin gates, mirroring SchemaService's ------------------------
+
+    def _pinned_schema(self, uow: UnitOfWork, batch: Batch) -> AnnotationSchema:
+        """The version this batch is judged against, read inside the caller's transaction.
+
+        ``WorkspaceCorrupt`` rather than ``SchemaNotFound`` for the reason
+        ``assets_of`` gives about a member that is not stored: schema versions are
+        never deleted except by their project's cascade, which takes this batch
+        with them, so a pin naming nothing is a guarantee failing rather than
+        anybody's mistake.
+        """
+        for schema in uow.schemas.list(batch.project_id):
+            if schema.version == batch.schema_version:
+                return schema
+        raise WorkspaceCorrupt(
+            f"batch {batch.name!r} is pinned to schema version {batch.schema_version}, "
+            f"which is not stored"
+        )
+
+    def _refuse_narrowing(
+        self, uow: UnitOfWork, batch: Batch, diff: SchemaDiff, allow_destructive: bool
+    ) -> None:
+        """Let a narrowing re-pin through only if it was asked for and is safe.
+
+        ``SchemaService._refuse_narrowing`` in the same two steps and the same
+        order — intent first, then facts on disk — because it is the same pair of
+        questions. What differs is the scope of the second: there the facts are
+        every annotation in the project, here only the ones written into this
+        batch, since a re-pin cannot orphan a label that is not judged by this pin.
+        """
+        if not allow_destructive:
+            raise DestructiveSchemaChange(
+                f"re-pinning batch {batch.name!r} onto the active schema version narrows what "
+                f"it allows ({diff.describe(ChangeKind.DESTRUCTIVE)}); pass "
+                f"allow_destructive=True to proceed"
+            )
+        annotated = _annotated_classes(uow, batch)
+        affected = sorted(diff.destructive_classes & annotated.keys())
+        if affected:
+            counted = ", ".join(f"{name!r} ({annotated[name]})" for name in affected)
+            raise SchemaChangeWouldOrphan(
+                f"cannot re-pin batch {batch.name!r}: it already holds annotations under "
+                f"{counted}. Migrating them onto a new version is not supported yet, and "
+                f"the kernel will not orphan them"
+            )
 
     # --- the transition table, consulted rather than restated ---------------
     # ``require_move`` lives in ``domain/transitions.py``; every machine in this
@@ -383,6 +501,25 @@ class BatchService:
 def _subject(batch: Batch) -> str:
     """How a refused move names the batch. One spelling, so refusals read alike."""
     return f"batch {batch.name!r}"
+
+
+def _annotated_classes(uow: UnitOfWork, batch: Batch) -> dict[str, int]:
+    """How many annotations each label class has *inside this batch*.
+
+    ``SchemaService._annotated_classes`` over one batch's membership rather than
+    a whole project, and N + 1 for the same reason: ``Repository.list`` takes a
+    single ``parent_id`` and an Annotation's parent is its Asset. When it starts
+    to cost, the fix is a method on the port, never a SQLAlchemy import here.
+
+    Reads ``batch.asset_ids`` directly rather than through ``assets_of``: the
+    asset rows themselves are not wanted, only their annotations, and a missing
+    membership row would refuse a re-pin over a fact this question does not need.
+    """
+    counts: dict[str, int] = {}
+    for asset_id in batch.asset_ids:
+        for annotation in uow.annotations.list(asset_id):
+            counts[annotation.label_class] = counts.get(annotation.label_class, 0) + 1
+    return counts
 
 
 def assets_of(uow: UnitOfWork, batch: Batch) -> list[Asset]:

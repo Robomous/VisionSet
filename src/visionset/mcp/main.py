@@ -4,7 +4,7 @@ The fourth client of the kernel SDK, beside the REST API, the CLI and the SDK
 itself. Every tool is a thin mapping onto one or two service calls; nothing is
 decided here that the kernel has not already decided.
 
-**Thirty-three tools, out of fifty candidates.** Each REST task from #27 to #30
+**Thirty-four tools, out of fifty candidates.** Each REST task from #27 to #30
 recorded which MCP tools its capability implied, and this is the sweep that
 settled them one by one. The parity rule means *evaluated*, not *implemented*:
 tool-selection accuracy degrades with count, so a tool ships only when an agent
@@ -89,6 +89,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (batches.get_batch, READS),
     (batches.approve_batch, WRITES),
     (batches.start_batch, WRITES),
+    (batches.repin_batch, WRITES),
     (batches.list_batch_assets, READS),
     (jobs.get_job, READS),
     (jobs.start_job, WRITES),

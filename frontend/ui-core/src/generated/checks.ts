@@ -240,6 +240,7 @@ export const checkRegisterImageSource = checkSourceOut;
 export const checkRegisterVideoSource = checkSourceOut;
 export const checkRemoveDatasetAsset = checkNoContent;
 export const checkRenameProject = checkProjectOut;
+export const checkRepinBatch = checkBatchOut;
 export const checkResumeIngest = checkIngestJobOut;
 export const checkSetAssetProgress = checkAssetProgressOut;
 export const checkStartBatch = checkBatchOut;

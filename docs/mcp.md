@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it — see
 
 ## The tools
 
-Thirty-three by default, listed in the order an agent meets them, plus one offered only on
+Thirty-four by default, listed in the order an agent meets them, plus one offered only on
 request — see [above](#destructive-tools-are-not-offered-unless-you-ask).
 
 ### Projects and schema
@@ -109,6 +109,7 @@ request — see [above](#destructive-tools-are-not-offered-unless-you-ask).
 | `get_batch` | One batch: state, schema pin, progress, jobs. |
 | `approve_batch` | Freeze it, pin the schema, cut it into jobs. |
 | `start_batch` | Open it for annotation. |
+| `repin_batch` | Move its schema pin onto the current active version. |
 | `list_batch_assets` | What is in it, paged, with each asset's job and progress. |
 | `complete_batch` | Close it, once every job is complete. |
 | `promote_batch` | Move the finished assets into the dataset. |

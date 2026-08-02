@@ -22,7 +22,7 @@ export interface paths {
          *     `progress` counts every asset of every job in the batch, so a draft — which
          *     has no jobs yet — reports zeros across the board while `asset_count` is
          *     already whatever the ingest gathered. `schema_version` is null until approval
-         *     pins one, and never moves after.
+         *     pins one, and moves after that only through `repin`.
          */
         get: operations["get_batch"];
         put?: never;
@@ -171,6 +171,45 @@ export interface paths {
          *     A batch that has not reached `completed` is 409 `BATCH_NOT_COMPLETE`.
          */
         post: operations["promote_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/batches/{batch_id}/repin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Repin Batch
+         * @description Move the batch's schema pin onto the project's current active version.
+         *
+         *     Explicit, never automatic — the pin does not follow the schema, because a
+         *     contract that moved under work in flight is what versioning exists to
+         *     prevent. This is how a class added *after* approval becomes usable in a batch
+         *     somebody is already annotating, without abandoning it.
+         *
+         *     Adding a class is additive and goes through with no flag. A change that
+         *     narrows what the pin allowed — a class removed, a geometry changed, an
+         *     attribute made required — is 409 `DESTRUCTIVE_SCHEMA_CHANGE`; retry the
+         *     identical request with `?allow_destructive=true`. If this batch already holds
+         *     annotations under a class the change would break, it is 409
+         *     `SCHEMA_CHANGE_WOULD_ORPHAN` and **no flag overrides it** — branch on the
+         *     code, never on the status. The orphan check is scoped to this batch: a label
+         *     written in some *other* batch does not block this one.
+         *
+         *     Legal only while the batch is `approved` or `in_annotation`; a draft has no
+         *     pin yet and a completed batch's pin is history, both 409
+         *     `INVALID_TRANSITION`. Re-pinning onto the version already pinned changes
+         *     nothing. Annotations already written keep the version they were stamped with.
+         */
+        post: operations["repin_batch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2844,6 +2883,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssetPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    repin_batch: {
+        parameters: {
+            query?: {
+                allow_destructive?: boolean;
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

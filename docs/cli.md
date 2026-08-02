@@ -385,7 +385,7 @@ digest is stored, and why revocation does not free the name — in [auth.md](aut
 
 ## `visionset mcp`
 
-Starts the MCP server on stdio, serving this workspace to an agent. Thirty-three tools covering
+Starts the MCP server on stdio, serving this workspace to an agent. Thirty-four tools covering
 the whole cycle; [mcp.md](mcp.md) has the list, how to configure a client, and what a tool refusal
 looks like.
 

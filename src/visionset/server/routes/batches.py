@@ -18,7 +18,8 @@ The lifecycle *is* here, because without it nothing downstream is reachable: an
 annotation may only be written into a batch that is ``in_annotation``, and a
 completed batch is what makes its assets promotable. Approve pins the schema
 version and cuts the batch into jobs; start opens it; complete is derived from
-the jobs rather than declared.
+the jobs rather than declared. ``repin`` is the one route that moves a pin after
+approval, and it is a request rather than a consequence — see its handler.
 
 Handlers are ``def``, not ``async def``, for the reason ``projects.py`` gives.
 """
@@ -68,7 +69,7 @@ def get_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     `progress` counts every asset of every job in the batch, so a draft — which
     has no jobs yet — reports zeros across the board while `asset_count` is
     already whatever the ingest gathered. `schema_version` is null until approval
-    pins one, and never moves after.
+    pins one, and moves after that only through `repin`.
     """
     batch = BatchService(workspace).get(batch_id)
     return BatchOut.of(batch, JobService(workspace).batch_progress(batch.id))
@@ -105,6 +106,35 @@ def approve_batch(
 def start_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     """Open the batch for annotation. Nothing may be written into it before this."""
     batch = BatchService(workspace).start(batch_id)
+    return BatchOut.of(batch, JobService(workspace).batch_progress(batch.id))
+
+
+@router.post("/{batch_id}/repin", responses=documented(404, 409))
+def repin_batch(
+    workspace: WorkspaceDep, batch_id: UUID, allow_destructive: bool = False
+) -> BatchOut:
+    """Move the batch's schema pin onto the project's current active version.
+
+    Explicit, never automatic — the pin does not follow the schema, because a
+    contract that moved under work in flight is what versioning exists to
+    prevent. This is how a class added *after* approval becomes usable in a batch
+    somebody is already annotating, without abandoning it.
+
+    Adding a class is additive and goes through with no flag. A change that
+    narrows what the pin allowed — a class removed, a geometry changed, an
+    attribute made required — is 409 `DESTRUCTIVE_SCHEMA_CHANGE`; retry the
+    identical request with `?allow_destructive=true`. If this batch already holds
+    annotations under a class the change would break, it is 409
+    `SCHEMA_CHANGE_WOULD_ORPHAN` and **no flag overrides it** — branch on the
+    code, never on the status. The orphan check is scoped to this batch: a label
+    written in some *other* batch does not block this one.
+
+    Legal only while the batch is `approved` or `in_annotation`; a draft has no
+    pin yet and a completed batch's pin is history, both 409
+    `INVALID_TRANSITION`. Re-pinning onto the version already pinned changes
+    nothing. Annotations already written keep the version they were stamped with.
+    """
+    batch = BatchService(workspace).repin(batch_id, allow_destructive=allow_destructive)
     return BatchOut.of(batch, JobService(workspace).batch_progress(batch.id))
 
 
