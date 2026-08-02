@@ -158,6 +158,47 @@ class IngestService:
                 raise AssetNotFound(f"no asset {asset_id} in project {project.name!r}")
             return asset
 
+    def assets(self, project_id: UUID) -> list[Asset]:
+        """Every asset of that project, in a stable order.
+
+        The collection side of "one door to an ``Asset``". Until #208 the only
+        asset listings on the wire were per *batch* and per *dataset* — one
+        window onto a work unit, one onto the curated trunk — and neither
+        answers "show me this project", which is what a project page asks.
+
+        **The order is deterministic and it is not chronological**, which is a
+        limitation rather than a choice. Nothing in the schema records when an
+        asset arrived: ``Asset`` carries no timestamp and neither does
+        ``IngestJob`` (#216). ``Source.registered_at`` is not the proxy it looks
+        like either — registration is idempotent on
+        ``(kind, path, extraction_fps)`` and the timestamp is never rewritten, so
+        re-ingesting a directory that gained a thousand files adds a thousand
+        assets and does not move it.
+
+        So the sort is the most meaningful total order the stored columns can
+        support:
+
+        1. ``source_id``, so one clip's frames stay together rather than
+           interleaving with a directory's stills;
+        2. ``frame_index``, so a clip's frames come out **in order** — the one
+           place a sequence genuinely exists. Lexicographic ``uri`` would not do
+           it: a frame's uri is ``{path}#frame={n}``, and that sorts ``#frame=10``
+           before ``#frame=2``;
+        3. ``uri``, which for a directory ingest is the filename, and a directory
+           is walked sorted — so stills come back in the order somebody sees them
+           in their own file browser;
+        4. ``id``, so the order is total and two calls can never disagree.
+
+        A stable order is what the caller actually needs: a gallery whose tiles
+        reshuffle on every poll is worse than one showing an arbitrary six.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            project = self._require_project(uow, project_id)
+            return sorted(uow.assets.list(project.id), key=_in_stable_order)
+
     def open_content(self, asset: Asset) -> BinaryIO:
         """The asset's own bytes, as a handle the caller reads and closes.
 
@@ -858,6 +899,25 @@ class IngestService:
 def _subject(job_id: UUID) -> str:
     """How a refused move names the run. One spelling, so refusals read alike."""
     return f"ingest job {job_id}"
+
+
+def _in_stable_order(asset: Asset) -> tuple[str, int, str, str]:
+    """The sort key :meth:`IngestService.assets` documents.
+
+    Module level rather than a lambda so the reasoning has somewhere to live and
+    a test can exercise it against assets alone.
+
+    ``-1`` stands in for a NULL ``frame_index`` because a still has none and
+    ``None`` cannot be compared with an ``int``. It sorts stills before frames
+    within one source, which is a distinction no source actually makes: a source
+    is a directory or a clip, never both.
+    """
+    return (
+        str(asset.source_id or ""),
+        -1 if asset.frame_index is None else asset.frame_index,
+        asset.uri,
+        str(asset.id),
+    )
 
 
 def _open_blob(blobs: BlobStore, content_hash: str, subject: str) -> BinaryIO:

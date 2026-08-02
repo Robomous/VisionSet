@@ -5520,6 +5520,127 @@
         ]
       }
     },
+    "/projects/{project_id}/assets": {
+      "get": {
+        "description": "Every asset ingested into the project, in a stable order.\n\nThe third asset listing, and the one that had been missing: the other two\nwindow a *batch* and the curated *trunk*, and neither answers \"show me this\nproject\". A project page asking for six sample tiles passes `limit=6` and\nreads `total` for the rest.\n\n**The order is deterministic and it is not chronological.** Nothing records\nwhen an asset arrived, so assets are grouped by source, then by frame index\nfor a clip, then by path for a directory, then by id. The practical effect is\nthat a clip's frames come back in order and a directory's stills in filename\norder; the practical limit is that \"the six most recent\" cannot be asked for\nyet.\n\n`total` is every asset in the project, never the size of this page, so a\nclient showing six tiles computes its own overflow from `total - 6`.",
+        "operationId": "list_project_assets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "How many items to return. Everything from `offset` on by default.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many items to return. Everything from `offset` on by default.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "How many items to skip. Counts from the start of the collection.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "How many items to skip. Counts from the start of the collection.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Project Assets",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/projects/{project_id}/assets/{asset_id}": {
       "get": {
         "description": "One ingested item, by id.\n\nAn asset belonging to a different project reads as 404 rather than 403, like\nevery cross-scope reference here.\n\n`content_hash` identifies the bytes and `thumbnail_hash` the cached preview,\nbut neither is a URL \u2014 the two routes below are, and they take this asset's\nid.",

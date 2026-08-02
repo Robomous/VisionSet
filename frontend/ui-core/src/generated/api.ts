@@ -786,6 +786,41 @@ export interface paths {
         patch: operations["rename_project"];
         trace?: never;
     };
+    "/projects/{project_id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Assets
+         * @description Every asset ingested into the project, in a stable order.
+         *
+         *     The third asset listing, and the one that had been missing: the other two
+         *     window a *batch* and the curated *trunk*, and neither answers "show me this
+         *     project". A project page asking for six sample tiles passes `limit=6` and
+         *     reads `total` for the rest.
+         *
+         *     **The order is deterministic and it is not chronological.** Nothing records
+         *     when an asset arrived, so assets are grouped by source, then by frame index
+         *     for a clip, then by path for a directory, then by id. The practical effect is
+         *     that a clip's frames come back in order and a directory's stills in filename
+         *     order; the practical limit is that "the six most recent" cannot be asked for
+         *     yet.
+         *
+         *     `total` is every asset in the project, never the size of this page, so a
+         *     client showing six tiles computes its own overflow from `total - 6`.
+         */
+        get: operations["list_project_assets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/assets/{asset_id}": {
         parameters: {
             query?: never;
@@ -4727,6 +4762,78 @@ export interface operations {
             };
             /** @description The resource's state refuses this request */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_project_assets: {
+        parameters: {
+            query?: {
+                /** @description How many items to return. Everything from `offset` on by default. */
+                limit?: number | null;
+                /** @description How many items to skip. Counts from the start of the collection. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

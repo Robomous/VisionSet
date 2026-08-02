@@ -41,6 +41,7 @@ GET    /projects/{project_id}
 PATCH  /projects/{project_id}
 DELETE /projects/{project_id}
 GET    /projects/{project_id}/stats                       everything ingested
+GET    /projects/{project_id}/assets                      paged, every asset
 GET    /projects/{project_id}/schema                      the version in force
 POST   /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions
@@ -99,6 +100,18 @@ validates is a lie a client will eventually rely on.
 
 The active schema is the collection's **parent**, not a member of it, because "in force" is a
 property of the schema rather than a version number a client could guess.
+
+**There are three asset listings, and they window different things.**
+`GET /projects/{id}/assets` is every asset the project holds;
+`GET /batches/{id}/assets` is one work unit's, in membership order;
+`GET /datasets/{id}/assets` is the curated trunk's. A project page reads the first, a gallery
+the second, a release the third.
+
+The project listing's **order is deterministic and it is not chronological**, and that is a
+limitation rather than a preference: nothing in the schema records when an asset arrived (#216).
+Assets are grouped by source, then ordered by frame index within a clip, then by path, then by
+id — so a clip's frames come back in order and a directory's stills in filename order, and two
+calls can never disagree. What cannot be asked for yet is "the six most recent".
 
 **There are two stats endpoints, and they disagree on purpose.**
 `GET /projects/{id}/stats` counts every asset ingested into the project, whatever batch it
