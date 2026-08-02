@@ -40,6 +40,7 @@ GET    /projects
 GET    /projects/{project_id}
 PATCH  /projects/{project_id}
 DELETE /projects/{project_id}
+GET    /projects/{project_id}/stats                       everything ingested
 GET    /projects/{project_id}/schema                      the version in force
 POST   /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions
@@ -98,6 +99,20 @@ validates is a lie a client will eventually rely on.
 
 The active schema is the collection's **parent**, not a member of it, because "in force" is a
 property of the schema rather than a version number a client could guess.
+
+**There are two stats endpoints, and they disagree on purpose.**
+`GET /projects/{id}/stats` counts every asset ingested into the project, whatever batch it
+landed in; `GET /datasets/{id}/stats` counts the curated trunk, which an asset reaches only by
+being promoted out of a completed batch. A project mid-annotation has assets in the first and
+none in the second, and both numbers are true — they answer "what does this project hold?" and
+"what would I train on?", which are different questions. Neither is derivable from the other, so
+a client showing a project page reads the first and a client shaping a release reads the second.
+
+Two smaller rules the project's stats carry: `class_count` is what the **active schema version
+declares**, so a project that has authored an ontology and labeled nothing still reports its
+classes, while `classes` lists only the ones somebody has used; and `annotated_pct` is **`0` for
+a project with no assets**, never `null` and never an error. Both are one place rather than in
+every caller.
 
 A **collection** hangs off whatever owns it; an individually addressable **resource** does not.
 A source belongs to one project, so listing and creating happen under it — but a source has an
