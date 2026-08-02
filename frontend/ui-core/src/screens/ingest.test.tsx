@@ -204,11 +204,14 @@ describe("registering a source", () => {
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("drive.mp4", "video/mp4")]);
 
-    // The rate field appears only for a clip, and it is decided *now* — the probe
-    // does not exist yet, because `extraction_fps` is part of what the source is.
+    // The rate is asked in a dialog at the moment of registration, and it is
+    // decided *now* — the probe does not exist yet, because `extraction_fps` is
+    // part of what the source is.
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("extraction-rate-dialog");
     await userEvent.clear(screen.getByTestId("extraction-fps"));
     await userEvent.type(screen.getByTestId("extraction-fps"), "2");
-    await userEvent.click(screen.getByTestId("register-source"));
+    await userEvent.click(screen.getByTestId("extraction-rate-accept"));
 
     await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
     const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
@@ -233,6 +236,7 @@ describe("registering a source", () => {
     expect(screen.queryByTestId("probe")).toBeNull();
 
     await userEvent.click(screen.getByTestId("register-source"));
+    await userEvent.click(await screen.findByTestId("extraction-rate-accept"));
 
     const probe = await screen.findByTestId("probe");
     expect(probe.textContent).toContain("29.97");
@@ -253,6 +257,114 @@ describe("registering a source", () => {
 
     const error = await screen.findByTestId("register-error");
     expect(error.textContent).toContain("UNSUPPORTED_MEDIA");
+  });
+});
+
+/**
+ * The rate is asked in a modal, and Cancel means nothing happened (#234).
+ *
+ * The claim that needs a test is the *negative* one. A dialog that opens and takes
+ * a value is visible in the request it produces — the suite above already asserts
+ * that — but "Cancel registers nothing" is only observable as the absence of a
+ * request, so nothing else in this file can catch a cancel path that uploads
+ * anyway.
+ */
+describe("the extraction rate is asked before a clip is registered", () => {
+  beforeEach(() => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+  });
+
+  it("asks nothing until the registration is actually attempted", async () => {
+    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+
+    // Choosing a clip is not deciding how to decompose it. The rate used to sit
+    // inline under the dropzone, inside a step titled "Choose files".
+    expect(screen.queryByTestId("extraction-rate-dialog")).toBeNull();
+    expect(screen.queryByTestId("extraction-fps")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("register-source"));
+
+    const dialog = await screen.findByTestId("extraction-rate-dialog");
+    // It names the clip it is about — a modal that covers the form it came from
+    // cannot rely on what is behind it to say what it is asking about.
+    expect(dialog.textContent).toContain("drive.mp4");
+    expect(within(dialog).getByTestId("extraction-fps")).not.toBeNull();
+
+    // The rate gate moved here from `register-source`, which no longer knows the
+    // value. `<input type="number">` reports a rejected keystroke as an empty
+    // string, so a blank field is reachable by typing rather than only by pasting.
+    await userEvent.clear(screen.getByTestId("extraction-fps"));
+    expect((screen.getByTestId("extraction-rate-accept") as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it("registers nothing when the dialog is cancelled, and keeps the file", async () => {
+    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("extraction-rate-dialog");
+
+    // Edited and *then* abandoned, because the draft lives in the dialog: a rate
+    // left on the screen would be uploaded by the next press of `Register source`.
+    await userEvent.clear(screen.getByTestId("extraction-fps"));
+    await userEvent.type(screen.getByTestId("extraction-fps"), "7");
+    await userEvent.click(screen.getByTestId("extraction-rate-cancel"));
+
+    await waitFor(() => expect(screen.queryByTestId("extraction-rate-dialog")).toBeNull());
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
+    expect(screen.queryByTestId("source-card")).toBeNull();
+    // Backing out of the rate does not cost the selection — the file is still
+    // chosen and the button is still live.
+    expect(screen.getByTestId("chosen").textContent).toContain("drive.mp4");
+    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(false);
+
+    // And the abandoned `7` went with it: reopening shows the default, not the draft.
+    await userEvent.click(screen.getByTestId("register-source"));
+    const reopened = await screen.findByTestId("extraction-fps");
+    expect((reopened as HTMLInputElement).value).toBe("1");
+  });
+
+  it("never asks about images, which have no rate to ask about", async () => {
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+
+    await screen.findByTestId("source-card");
+    expect(screen.queryByTestId("extraction-rate-dialog")).toBeNull();
+    const posted = sent.find((r) => r.method === "POST") as Request;
+    expect(new URL(posted.url).pathname).toMatch(/\/sources\/images$/);
+  });
+
+  it("keeps a refused rate inside the dialog, where it can be corrected", async () => {
+    on("POST", /\/sources\/video$/, {
+      status: 422,
+      body: { code: "UNSUPPORTED_MEDIA", message: "drive.mp4 is not a video." },
+    });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("extraction-rate-dialog");
+    await userEvent.clear(screen.getByTestId("extraction-fps"));
+    await userEvent.type(screen.getByTestId("extraction-fps"), "4");
+    await userEvent.click(screen.getByTestId("extraction-rate-accept"));
+
+    // The dialog stays open and owns the refusal. Closing it would put the message
+    // on the card while the value that caused it lived one press away — and there
+    // would be two `register-error` nodes on the page, which `getByTestId` refuses.
+    const dialog = await screen.findByTestId("extraction-rate-dialog");
+    const error = await within(dialog).findByTestId("register-error");
+    expect(error.textContent).toContain("UNSUPPORTED_MEDIA");
+    expect(screen.getAllByTestId("register-error")).toHaveLength(1);
+    expect((screen.getByTestId("extraction-fps") as HTMLInputElement).value).toBe("4");
   });
 });
 
