@@ -8,12 +8,22 @@
  * on any project with a few classes and more than two batches the history sat below
  * the fold and the batches were reached by scrolling past a form.
  *
- * So the three *sections* are tabs and the header is not. The header names the
- * project and carries the actions that apply to all of it — ingest, dataset, rename
- * — and a tab list under it is what says the rest are alternatives rather than a
- * sequence. `Schema` is the default because it is what the page opened on before,
- * and because a project three seconds old has nothing else worth showing: it starts
- * schema-less on purpose (#6) and nothing downstream can be approved without one.
+ * So the *sections* are tabs and the header is not. The header names the project
+ * and carries the actions that apply to all of it, and a tab list under it is what
+ * says the rest are alternatives rather than a sequence.
+ *
+ * ## Overview is the default, and that reverses #171 on purpose (#210)
+ *
+ * #171 opened on `Schema`, because "a project three seconds old has nothing else
+ * worth showing". That was true when the alternative was an empty batch table. It
+ * stopped being true the moment #212 existed: a schema editor is *configuration*,
+ * and it renders identically for an empty project and a hundred-thousand-image
+ * one — which is `DESIGN.md` principle 6's own counter-example, written about
+ * this page.
+ *
+ * The three-second-old project is still answered. Overview's empty state invites
+ * the first **ingest**, which is genuinely the next thing to do; an empty schema
+ * form is a question about an ontology for data nobody has yet.
  *
  * ## The tab is in the URL, and `ui-core` still imports no router
  *
@@ -62,6 +72,7 @@ import {
   Boxes,
   History,
   Layers,
+  LayoutDashboard,
   MoreHorizontal,
   PenLine,
   Pencil,
@@ -96,6 +107,7 @@ import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import { BatchesScreen } from "./BatchesScreen";
+import { OverviewPanel } from "./OverviewPanel";
 import { SchemaEditor } from "./SchemaEditor";
 import {
   useActiveSchema,
@@ -112,11 +124,23 @@ import {
 /** What `SchemaService.require_active` raises for a project that has none. */
 const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 
-/** The three sections, and the tab a `?tab=` value has to name to reach one. */
-export type ProjectTab = "schema" | "batches" | "versions";
+/** The four sections, and the tab a `?tab=` value has to name to reach one. */
+export type ProjectTab = "overview" | "schema" | "batches" | "versions";
 
-/** The one a project opens on, and where an unrecognised `?tab=` lands. */
-const DEFAULT_TAB: ProjectTab = "schema";
+/**
+ * The one a project opens on, and where an unrecognised `?tab=` lands.
+ *
+ * **Overview since #210**, and the reversal is deliberate. #171 chose Schema
+ * because "a project three seconds old has nothing else worth showing" — which
+ * was true when the alternative was an empty batch table, and stopped being true
+ * the moment #212 existed. A schema editor is *configuration*, and a project page
+ * opening on configuration is `DESIGN.md` principle 6's own counter-example.
+ *
+ * A three-second-old project is still handled: Overview's empty state invites the
+ * first ingest, which is the next thing to do, where an empty schema form is a
+ * question about an ontology nobody has data for yet.
+ */
+const DEFAULT_TAB: ProjectTab = "overview";
 
 interface TabLabel {
   readonly label: string;
@@ -124,6 +148,7 @@ interface TabLabel {
 }
 
 const TAB_LABELS: Record<ProjectTab, TabLabel> = {
+  overview: { label: "Overview", icon: LayoutDashboard },
   schema: { label: "Schema", icon: Shapes },
   batches: { label: "Batches", icon: Layers },
   versions: { label: "Versions", icon: History },
@@ -170,6 +195,9 @@ export function ProjectScreen({
   onTabChange,
 }: ProjectScreenProps): JSX.Element {
   const project = useProject(projectId);
+  // Already read by the header; naming it here too costs nothing (one query key,
+  // one request) and is what lets the Overview colour its bars from the schema.
+  const schema = useActiveSchema(projectId);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -178,7 +206,9 @@ export function ProjectScreen({
   // navigate to a batch is better off not being told there is a section it cannot
   // use — which is exactly what this screen did with the section before the split.
   const available: readonly ProjectTab[] =
-    onOpenBatch === undefined ? ["schema", "versions"] : ["schema", "batches", "versions"];
+    onOpenBatch === undefined
+      ? ["overview", "schema", "versions"]
+      : ["overview", "schema", "batches", "versions"];
   // `find`, not a cast: an unknown value, a stale link, or `batches` on a host that
   // has no batch route all resolve to the default rather than to an empty page.
   const current = available.find((one) => one === tab) ?? DEFAULT_TAB;
@@ -227,6 +257,18 @@ export function ProjectScreen({
             );
           })}
         </TabsList>
+
+        <TabsContent value="overview">
+          {/* The declared classes travel down so a distribution bar shows the
+              colour the schema authored rather than only the derived hue. The
+              query is shared with the Schema tab, so this costs no request. */}
+          <OverviewPanel
+            projectId={projectId}
+            {...(schema.data === undefined ? {} : { classes: schema.data.classes })}
+            {...(onIngest === undefined ? {} : { onIngest })}
+            {...(onOpenDataset === undefined ? {} : { onBrowseDataset: onOpenDataset })}
+          />
+        </TabsContent>
 
         <TabsContent value="schema">
           <SchemaSection projectId={projectId} />

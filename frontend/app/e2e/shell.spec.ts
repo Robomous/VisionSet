@@ -228,9 +228,11 @@ test("the project view's tab is in the URL, and survives a reload", async ({ pag
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
 
-  // The link opened on the section it named, not on the default.
+  // The link opened on the section it named, not on the default — which is
+  // Overview since #210.
   await expect(page.getByTestId("version-history")).toBeVisible();
-  await expect(page.getByTestId("schema-editor")).toHaveCount(0);
+  await expect(page.getByTestId("overview-panel")).toHaveCount(0);
+  await expect(page.getByTestId("overview-empty")).toHaveCount(0);
 
   await page.getByTestId("tab-batches").click();
   await expect(page).toHaveURL(/\?tab=batches$/);

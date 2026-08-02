@@ -73,7 +73,20 @@ export function OverviewPanel({
     );
   }
 
-  const counted = stats.data;
+  // Read through zeroes rather than straight off the body. `unwrap` checks the
+  // status and not the *shape*, so a response that is well-formed JSON and the
+  // wrong document reaches here intact — and this is the landing tab, so one
+  // `undefined` in `formatCount` takes the entire project view down with it.
+  // That is not hypothetical: it is how #211's delete dialog and this panel both
+  // white-screened against a stub answering the wrong collection.
+  const counted = {
+    asset_count: stats.data.asset_count ?? 0,
+    annotated_asset_count: stats.data.annotated_asset_count ?? 0,
+    annotation_count: stats.data.annotation_count ?? 0,
+    class_count: stats.data.class_count ?? 0,
+    annotated_pct: stats.data.annotated_pct ?? 0,
+    classes: stats.data.classes ?? [],
+  };
   if (counted.asset_count === 0) {
     return (
       // Wrapped rather than given a testid: `EmptyState` is shared and takes a
