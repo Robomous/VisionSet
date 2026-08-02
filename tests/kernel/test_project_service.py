@@ -7,6 +7,7 @@ test — and the release here exists only to be cascaded away and to name a blob
 that must survive it.
 """
 
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -655,4 +656,87 @@ def test_stats_for_an_unknown_project_is_project_not_found(tmp_path: Path) -> No
     workspace, projects = _service(tmp_path)
     with pytest.raises(ProjectNotFound):
         projects.stats(uuid4())
+    workspace.close()
+
+
+# --- stats: when data last arrived (#216) --------------------------------------
+
+
+def _arrived(workspace: WorkspaceService, project_id: UUID, *when: datetime | None) -> None:
+    """One asset per argument, each carrying that arrival — ``None`` for unknown.
+
+    Written straight through the unit of work for ``_labeled``'s reason, and for
+    one more: a row with no arrival is what migration 13 leaves behind, and no
+    operation can produce one.
+    """
+    with workspace.unit_of_work() as uow:
+        for index, moment in enumerate(when):
+            uow.assets.add(
+                Asset(
+                    project_id=project_id,
+                    content_hash=f"{index:064x}",
+                    uri=f"/tmp/in/{index}.png",
+                    ingested_at=moment,
+                )
+            )
+
+
+def test_last_ingest_at_is_the_newest_arrival(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("dated")
+    newest = datetime(2026, 3, 2, 9, 30, tzinfo=UTC)
+    _arrived(
+        workspace,
+        project.id,
+        datetime(2026, 1, 4, 12, 0, tzinfo=UTC),
+        newest,
+        datetime(2026, 2, 9, 8, 15, tzinfo=UTC),
+    )
+
+    assert projects.stats(project.id).last_ingest_at == newest
+    workspace.close()
+
+
+def test_an_asset_with_no_arrival_does_not_hide_one_that_has_it(tmp_path: Path) -> None:
+    """Mixed is the state every upgraded workspace lands in, and the answer is the known one.
+
+    The failure this rules out is a `max` over the raw column: `None` is not
+    comparable with a `datetime`, so an unfiltered walk raises rather than
+    answering — and any sentinel that makes it comparable is a date nobody chose.
+    """
+    workspace, projects = _service(tmp_path)
+    project = projects.create("mixed")
+    known = datetime(2026, 5, 6, 7, 8, tzinfo=UTC)
+    _arrived(workspace, project.id, None, known, None)
+
+    assert projects.stats(project.id).last_ingest_at == known
+    workspace.close()
+
+
+def test_last_ingest_at_is_null_when_no_asset_records_one(tmp_path: Path) -> None:
+    """Unknown, not never — and the two are deliberately not distinguished."""
+    workspace, projects = _service(tmp_path)
+    project = projects.create("legacy")
+    _arrived(workspace, project.id, None, None)
+
+    assert projects.stats(project.id).last_ingest_at is None
+    workspace.close()
+
+
+def test_last_ingest_at_is_null_for_a_project_holding_nothing(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("empty")
+
+    assert projects.stats(project.id).last_ingest_at is None
+    workspace.close()
+
+
+def test_last_ingest_at_belongs_to_its_own_project(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    mine = projects.create("mine")
+    theirs = projects.create("theirs")
+    _arrived(workspace, mine.id, datetime(2026, 1, 1, tzinfo=UTC))
+    _arrived(workspace, theirs.id, datetime(2026, 9, 9, tzinfo=UTC))
+
+    assert projects.stats(mine.id).last_ingest_at == datetime(2026, 1, 1, tzinfo=UTC)
     workspace.close()
