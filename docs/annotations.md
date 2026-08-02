@@ -835,3 +835,39 @@ refused.
 The shortcut in each tooltip is the **digit** `hotkeyForClass` answers, not v1's
 `B`/`P` that `DESIGN.md` still draws: this build binds classes to the digit row
 (#46), and printing a key that does nothing would be worse than printing none.
+
+
+## The minimum viewport
+
+The annotation page has a floor, and saying so is the feature. Below
+**`ANNOTATOR_MIN_VIEWPORT_PX` (768, a standard iPad in portrait, and Tailwind's
+`md`)** it renders an explanation instead of the editor: what the minimum is, why
+there is one, and a way back to the batch (#184).
+
+The number is 768 rather than something measured off the top bar's eleven controls
+because it has to agree with the breakpoint every other screen already stacks at.
+A second number would make the annotator disappear at a width where nothing else
+changed, which is a boundary nobody can predict from the outside.
+
+**It follows the viewport, never the device.** `matchMedia`, not a user-agent
+read: rotating a tablet, dragging a desktop window narrow and opening devtools all
+cross this boundary without changing the device, and a sniff would call a 1400px
+iPad Pro a phone and a 700px desktop window a workstation. It is a *subscription*
+through `useSyncExternalStore` rather than a read on mount, so there is no window
+in which the page believes a stale answer.
+
+**Nothing is mounted and hidden.** The check lives in the exported
+`AnnotationPage` and the whole of the old body moved into `JobScreen`, so under
+the floor there is no store, no canvas and no engine — because `AnnotatorCanvas`
+measures its pane to derive the fit zoom, and a canvas laid out inside a
+`display: none` ancestor measures **zero**. A CSS-only treatment would leave the
+editor holding a zoom nobody chose the moment somebody widened the window.
+
+The explanation runs exactly two reads — job → batch — so it can offer the way
+out, and nothing else. On a phone there is no rail beside this page and, on a
+fresh tab, no history behind it, so an explanation with no exit would be the dead
+end #199 removed everywhere else.
+
+**Nothing else in the product gains a floor.** Lists, forms and the gallery are
+usable on a phone and stay that way; `e2e/viewport.spec.ts` drives them at 390px
+and asserts it.

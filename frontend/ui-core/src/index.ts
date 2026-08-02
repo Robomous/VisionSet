@@ -191,6 +191,13 @@ export { parentLabel } from "./patterns/parentLabel.js";
 // The floating tool palette (#198). Reports the derived tool; never stores one.
 export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
 
+// The annotator's minimum viewport (#184). Followed live, never sniffed.
+export {
+  ANNOTATOR_MIN_VIEWPORT_PX,
+  atLeastQuery,
+  useViewportAtLeast,
+} from "./annotator/viewportFloor.js";
+
 // The annotation page (#56) — where M4's engine meets M3's API.
 export { AnnotationPage, type AnnotationPageProps } from "./annotator/AnnotationPage.js";
 export { AssetImage, type AssetImageProps } from "./annotator/AssetImage.js";
