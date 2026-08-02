@@ -17,6 +17,24 @@
  * was wrong, registering again at a different one produces a **second source** —
  * deliberately, since idempotency is on `(kind, path, extraction_fps)`.
  *
+ * ## So the rate is asked in a modal, at the moment of registration (#234)
+ *
+ * It used to be an inline field under the dropzone, inside a step titled "Choose
+ * files" — which is not what it is about, and which put an irreversible decision in
+ * a control a user could scroll past without reading. `Register source` is the last
+ * moment the value can still be changed, so that is where it is asked.
+ *
+ * Two rules the dialog holds, and both are load-bearing. **Cancel registers
+ * nothing**: no request, no source, and the chosen file stays chosen, so backing
+ * out costs the selection nothing. And the draft rate lives *in the dialog*, not on
+ * the screen, which is what makes that true of an edit as well as of the whole
+ * gesture — a rate typed and then cancelled leaves no trace to be uploaded by the
+ * next press.
+ *
+ * A refusal renders **inside** the dialog and leaves it open, because a rate the
+ * server would not take has to be correctable where it was typed. Images never see
+ * any of this: they have no rate, so `Register source` uploads them directly.
+ *
  * ## Refusals split by when they can be known
  *
  * #28's rule, and it decides what this screen shows where. Anything the *request*
@@ -65,7 +83,15 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, FileVideo, FolderOpen, Images, RefreshCw, Upload } from "lucide-react";
-import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type JSX } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+  type JSX,
+} from "react";
 
 import { asApiError } from "../data/errors";
 import { BackLink } from "../patterns/BackLink";
@@ -73,6 +99,13 @@ import { parentLabel } from "../patterns/parentLabel";
 import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "../primitives/Dialog";
 import { Progress } from "../primitives/Feedback";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
 import {
@@ -125,6 +158,8 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   const [batchName, setBatchName] = useState("");
   const [source, setSource] = useState<Source | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  // Whether the extraction-rate dialog is open. Only ever true for a clip.
+  const [asking, setAsking] = useState(false);
   // Bumped by `again()` and used as the dropzone's `key`. See there.
   const [attempt, setAttempt] = useState(0);
 
@@ -161,10 +196,39 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   // with 409 `BATCH_NOT_EDITABLE`, so offering one would be offering a refusal.
   const draftBatches = (batches.data?.items ?? []).filter((batch) => batch.state === "draft");
 
+  /**
+   * The primary action of step 1 — which for a clip does not register anything.
+   *
+   * A video needs a rate, and the rate is asked rather than assumed, so this opens
+   * the dialog and the *dialog* registers. Images have no rate to ask about, so
+   * they go straight up.
+   */
   function upload(): void {
+    if (isVideo) {
+      setAsking(true);
+      return;
+    }
+    register.mutate({ files }, { onSuccess: (registered) => setSource(registered) });
+  }
+
+  /**
+   * Accepting the dialog: register the clip at the rate that was confirmed.
+   *
+   * The rate is written back to the screen before the request, so `again()` has one
+   * place to clear and a second attempt after a refusal opens on the rate that was
+   * refused rather than on the default. The dialog closes on success only — a
+   * refusal leaves it open, holding its own draft, so it can be corrected there.
+   */
+  function registerVideo(rate: number): void {
+    setFps(String(rate));
     register.mutate(
-      { files, ...(isVideo ? { extractionFps: Number(fps) } : {}) },
-      { onSuccess: (registered) => setSource(registered) },
+      { files, extractionFps: rate },
+      {
+        onSuccess: (registered) => {
+          setSource(registered);
+          setAsking(false);
+        },
+      },
     );
   }
 
@@ -190,6 +254,7 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
     setBatchName("");
     setSource(null);
     setJobId(null);
+    setAsking(false);
     setAttempt((previous) => previous + 1);
     register.reset();
     start.reset();
@@ -229,27 +294,10 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
         <CardContent className="flex flex-col gap-4">
           <Dropzone key={attempt} files={files} onFiles={setFiles} />
 
-          {isVideo && (
-            <div className="flex max-w-sm flex-col gap-1.5">
-              <Label htmlFor="extraction-fps">Extraction rate (fps)</Label>
-              <Input
-                id="extraction-fps"
-                data-testid="extraction-fps"
-                type="number"
-                min="0.1"
-                step="0.1"
-                value={fps}
-                onChange={(event) => setFps(event.target.value)}
-              />
-              <FieldHint>
-                Chosen before the clip is probed — the rate is part of what the source{" "}
-                <em>is</em>, so it has to be decided at registration. Registering the same clip
-                at another rate creates a second source.
-              </FieldHint>
-            </div>
-          )}
-
-          {register.isError && (
+          {/* While the dialog is open it owns the refusal — one `register-error`
+              on the page at a time, shown where the value that caused it was
+              typed. */}
+          {!asking && register.isError && (
             <FieldError data-testid="register-error">
               {asApiError(register.error).code}: {asApiError(register.error).message}
             </FieldError>
@@ -259,7 +307,10 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
             <Button
               variant="primary"
               data-testid="register-source"
-              disabled={files.length === 0 || register.isPending || Number(fps) <= 0}
+              // No `fps` term: the rate is not on this card any more, and a button
+              // disabled by a value nobody can see is a control with no explanation.
+              // The dialog's own action holds that gate.
+              disabled={files.length === 0 || register.isPending}
               onClick={upload}
             >
               {register.isPending ? "Uploading…" : "Register source"}
@@ -361,7 +412,128 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
           onAgain={again}
         />
       )}
+
+      {/* Mounted only while it is open. Radix portals its content, but the children
+          of `DialogContent` are an *argument* and are evaluated on every render of
+          this screen regardless — and mounting on demand is also what seeds the
+          dialog's draft rate with a plain `useState` instead of an effect. */}
+      {asking && files.length === 1 && (
+        <ExtractionRateDialog
+          fileName={files[0].name}
+          initial={fps}
+          pending={register.isPending}
+          error={register.isError ? register.error : null}
+          onAccept={registerVideo}
+          onCancel={() => {
+            setAsking(false);
+            register.reset();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * The extraction rate, asked before a clip is registered (#234).
+ *
+ * The rate cannot be changed later — source idempotency is on
+ * `(kind, path, extraction_fps)`, so re-registering the same clip at another rate
+ * produces a *second* source rather than correcting the first. `DESIGN.md` asks a
+ * dialog standing in front of something irreversible to say what it costs, so the
+ * description states that rather than leaving it to a hint under a field.
+ *
+ * The draft lives here, not on the screen. That is the whole of "Cancel takes no
+ * action": a rate typed and then abandoned goes with the dialog, so the next press
+ * of `Register source` opens on the last *accepted* value and never on a discarded
+ * one. Escape, the overlay and `DialogContent`'s own close button all arrive as
+ * `onOpenChange(false)`, so there is one cancel path and not four.
+ *
+ * The accept gate is `Number.isFinite(rate) && rate > 0` rather than the `!(rate
+ * <= 0)` the button it replaces used, because **every comparison with `NaN` is
+ * false** — so `<= 0` would let a `NaN` through and upload `extraction_fps=NaN`.
+ * `Number("")` is `0`, but an `<input type="number">` also reports a rejected
+ * keystroke as an empty string, so both are reachable by typing rather than only by
+ * pasting.
+ */
+function ExtractionRateDialog({
+  fileName,
+  initial,
+  pending,
+  error,
+  onAccept,
+  onCancel,
+}: {
+  readonly fileName: string;
+  readonly initial: string;
+  readonly pending: boolean;
+  readonly error: unknown;
+  readonly onAccept: (rate: number) => void;
+  readonly onCancel: () => void;
+}): JSX.Element {
+  const [draft, setDraft] = useState(initial);
+  const rate = Number(draft);
+  const usable = Number.isFinite(rate) && rate > 0;
+
+  function submit(event: FormEvent): void {
+    event.preventDefault();
+    if (!usable || pending) return;
+    onAccept(rate);
+  }
+
+  return (
+    <Dialog open onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent data-testid="extraction-rate-dialog">
+        <DialogTitle>Extraction rate</DialogTitle>
+        <DialogDescription>
+          <strong className="font-medium">{fileName}</strong> is decomposed into frames at this
+          rate. It is chosen before the clip is probed, because the rate is part of what the
+          source <em>is</em> — registering the same clip at another rate creates a second
+          source rather than changing this one.
+        </DialogDescription>
+        <form className="flex flex-col gap-3" onSubmit={submit}>
+          <div className="flex max-w-xs flex-col gap-1.5">
+            <Label htmlFor="extraction-fps">Frames per second</Label>
+            <Input
+              id="extraction-fps"
+              data-testid="extraction-fps"
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              autoFocus
+            />
+            <FieldHint>The kernel's default is one frame per second.</FieldHint>
+          </div>
+
+          {error !== null && (
+            <FieldError data-testid="register-error">
+              {asApiError(error).code}: {asApiError(error).message}
+            </FieldError>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              data-testid="extraction-rate-cancel"
+              disabled={pending}
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              data-testid="extraction-rate-accept"
+              disabled={!usable || pending}
+            >
+              {pending ? "Uploading…" : "Register"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
