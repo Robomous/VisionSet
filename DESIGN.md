@@ -101,8 +101,11 @@ navigation, links, and focus rings. A dark rail (`#1f2937`) frames a bright cont
 2. **Radix + lucide only for primitives** (decision H, epic #51). v1 built on shadcn/ui,
    which is Radix + Tailwind — the same constraint from the other end. FontAwesome is v1
    legacy and does not come along.
-3. **Content over chrome.** Generous whitespace, subtle borders, minimal shadows, no
-   gradients, quiet hover/focus effects. Orange is an accent, never a surface fill.
+3. **Content over chrome.** Subtle borders, minimal shadows, no gradients, quiet
+   hover/focus effects. Orange is an accent, never a surface fill. Whitespace is generous
+   on forms and lists, where the content is a few things a person reads one at a time —
+   and **is not a substitute for information**: see principle 7, which governs the
+   surfaces whose content is a dataset.
 4. **Accessible by default.** Real `<button>`/`<a>` elements, visible `focus-visible`
    rings, keyboard operability, and every async surface has loading / empty / error
    states (skeletons preserve layout; errors are destructive alerts with a recovery
@@ -110,6 +113,28 @@ navigation, links, and focus rings. A dark rail (`#1f2937`) frames a bright cont
    action).
 5. **Consistency beats novelty.** A new screen should be indistinguishable in styling
    from the existing ones.
+
+**Added 2026-08-01 (#206)**, for the surfaces whose subject is a dataset rather than a form:
+
+6. **Data first.** VisionSet is a dataset tool, and every project-level screen surfaces real
+   data — counts, distributions, samples — before configuration. **The test: if a screen
+   would render identically for an empty project and a 100k-image one, it is wrong.** The
+   project view failed it for its whole life before #212, because it opened on a schema
+   editor and a schema is the same document either way.
+7. **Density over whitespace, on data surfaces.** Our users are ML engineers and
+   professional annotators working with large ontologies — a fifty-class ontology is
+   ordinary. Prefer compact lists, tables and two-panel layouts to spacious single-column
+   forms. This does not license crowding: it licenses *showing more of the thing the user
+   came for*, which is the same instinct as principle 3 applied to a screen whose content
+   is plural.
+8. **Action-forward.** Every major screen answers "what do I do next?" with exactly one
+   primary CTA. On a project page that action is annotating.
+9. **Never disable without explanation.** A button either stays enabled and answers with a
+   message, or it carries an adjacent explanation of what would enable it, or it is not
+   rendered at all. **A bare disabled grey button is forbidden** — it is a question the
+   interface refuses to answer. #160 is the same bug from the other side: a control that
+   rendered `disabled` because a callback was missing made the annotator unreachable, and
+   nothing on screen said so.
 
 ## Colors
 
@@ -238,6 +263,94 @@ Focus is **not** styled per variant: `styles.css`'s base layer gives every
 so it never depended on the segmented chip's fill. The underline variant adds
 `focus-visible:bg-muted` only so the ring encloses a fill rather than the page.
 
+## Project surfaces
+
+The project view is the face of a project, and principle 6 is the rule it kept failing: it
+opened on the schema editor, which is configuration, and a schema renders the same for a
+project with nothing in it and a project with a hundred thousand images. This section is
+what #207–#213 build against.
+
+### The project header
+
+Four lines and two buttons, in this order:
+
+1. The back affordance (`← Projects`), per **Navigation rules**.
+2. The project name, at the page-title role.
+3. The description **if there is one**. If there is not, render *nothing* — the string "No
+   description." spends a line telling somebody about a field rather than about their
+   project, which is principle 6 in miniature.
+4. Metadata chips, left to right: task type, sensor modality, active schema version
+   (`v1 active`), last ingest (`Ingested 2d ago`).
+
+**A chip with no data is omitted, never rendered as a placeholder.** Half of these have no
+source on the wire today — `ProjectOut` carries `id`, `name` and `description` — so a
+project shows the chips that can be answered and no others. Inventing a field to fill a
+chip, or rendering `Unknown`, is the "No description." mistake with a border around it.
+
+Actions are right-aligned: one **primary CTA**, one **secondary**, and an overflow menu
+(`⋯`) for the rest. Never more than two visible buttons plus the overflow. On the project
+page the primary is **Annotate**, because principle 8 asks what the user came to do and the
+answer is never "rename this".
+
+### Numbers
+
+- Stat values use **tabular figures** (`font-variant-numeric: tabular-nums`), so a number
+  that updates does not shift the ones beside it.
+- Counts ≥ 1000 carry locale-aware thousands separators. One shared helper, not a call-site
+  decision — `6431` and `6,431` appearing on the same screen is how that goes wrong.
+- Relative times under 7 days (`2d ago`), absolute beyond (`Jan 14, 2026`).
+- A percentage derived from a zero denominator is `0`, never `NaN` and never hidden.
+
+### Versioning is ambient, not modal
+
+Schema version state is a **persistent status line** — `Version 1 active · unsaved changes
+create v2` — and not a tooltip, a dialog, or a disabled save button. The user should never
+have to press something to discover what pressing it would do.
+
+Its corollary, from principle 9: **Save version is always enabled.** Pressing it with no
+changes shows a toast and issues no request. The editor it replaces rendered a permanently
+grey button on a project with nothing to save, which told the user their schema was broken.
+
+### Destructive actions state their blast radius
+
+A confirmation dialog names what will be destroyed, counted: *"Deletes the class and 4,372
+annotations across 3 versions."* A dialog that asks "are you sure?" without saying what
+`yes` costs is not a confirmation, it is a speed bump. Where the count cannot be obtained
+accurately, the action does not ship with a dialog that guesses.
+
+### Components
+
+Presentational contracts, all in `ui-core`, all data-only — no fetching, no router:
+
+| component | contract |
+|---|---|
+| `StatCard` | muted meta-size label above a large value, tinted surface, **no border**. Used in grids of 3–4. Optional context line under the value. |
+| `DistributionBar` | one row of a bar chart: swatch · fixed-width label · proportional bar in the class colour · right-aligned count. **All bars in one chart share a single max-value scale.** |
+| `ClassListRow` | swatch + name + a `geometry · count` secondary line. Selected = tinted background + 2px left accent rule. The whole row is the click target, and it is a real `<button>`. |
+| `EmptyState` | icon + a headline naming the space + one line of body + a verb-first CTA. Never a bare "No items". |
+| `ThumbnailGrid` | square tiles, 6px gap, `sm` radius. The last tile becomes a `+N` overflow linking onward. Missing thumbnails show a photo icon on `muted` — **never a broken-image glyph**. |
+| Chip | `primitives/Badge.tsx`, which already is one. It gains variants; it is not reimplemented. |
+
+**Class colour is data, not chrome.** It appears as a small swatch or a thin bar and never
+floods a card or a row — that is the accent rule (principle 3) applied to a colour the
+*kernel* chose. The single derivation lives in `frontend/ui-core/src/palette.ts`
+(`classColor`, schema colour first, else a name hash); a second path is what #162 was.
+
+### Lists and filtering
+
+Any list that can exceed ~20 rows carries a filter input. Filtering is client-side and
+instant, matches a name substring case-insensitively, and never hides the count of what it
+filtered out.
+
+### Copy
+
+- No exclamation marks. No "successfully". No "please".
+- An error is **what happened plus what to do**, one sentence each. The API's error contract
+  already separates the two (`docs/api.md`); the UI does not merge them back together.
+- An empty state is an **invitation**, not an apology: "Ingest your first batch to see stats
+  here", never "Nothing here yet".
+- Sentence case everywhere — buttons, tabs, labels, headings. "Add class", not "Add Class".
+
 ## The annotation workspace
 
 The page the reference design shows (#56), with measurements verified in v1's source:
@@ -358,3 +471,19 @@ workspace components (`AnnotationToolHeader` / `AnnotationToolStrip` /
 `AnnotationSidePanel`). The reference screenshots are described in the 2026-07-30 design
 comment on #51. The version-control affordances (branch dropdown, Merge) are recorded in
 #127 and are post-beta; their top-bar slots render disabled.
+
+**2026-08-01 (#206)** added principles 6–9, the whole of **Project surfaces**, and the
+qualification to principle 3, ahead of the project view redesign (#207–#213).
+
+That brief also specified a **second type scale** — 1200px content width, 20px page title,
+13px body, and "two weights only, no 500" — and it was **deliberately not adopted**. The
+shipped scale is 14px base, a 1.5rem title, `max-w-7xl`, and a 500-weight label role, and it
+is not prose: `styles.css` carries it as Tailwind `@theme` tokens, `tokens.ts` mirrors it,
+`tokens.test.ts` gates the two against each other in both directions, and
+`design_tokens.test.mjs` fails the build on a hardcoded colour. Adopting the other scale
+meant retuning the tokens and restyling every shipped screen — projects, gallery, dataset,
+ingest, batches, and the annotator — in order to change a page that had not been built yet.
+
+So the new **rules** landed on the existing **values**. Nothing in this revision changes a
+token, a size, or a weight. Recorded here rather than in a merged pull request body, because
+the next person to read the brief will find the same conflict and deserves the answer.
