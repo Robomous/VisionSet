@@ -36,7 +36,7 @@
  * gigabytes.
  */
 
-import { ImageOff } from "lucide-react";
+import { Image as ImageIcon, ImageOff } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 
 import { useApiClient } from "../data/ApiProvider";
@@ -101,7 +101,17 @@ export function AssetThumbnail({
         }
         className={`flex items-center justify-center bg-muted text-muted-foreground ${className ?? ""}`}
       >
-        <ImageOff className="size-5" aria-hidden="true" />
+        {/* A preview that was never cached is not a preview that broke, and
+            `DESIGN.md` forbids a broken-image glyph for the first. NULL is the
+            ordinary state of an asset ingested before the cache existed or one
+            whose bytes would not render (#21) — the asset is fine. A fetch that
+            actually failed keeps the crossed-out icon, because that one *is* a
+            failure. */}
+        {failed ? (
+          <ImageOff className="size-5" aria-hidden="true" />
+        ) : (
+          <ImageIcon className="size-5" aria-hidden="true" />
+        )}
         <span className="sr-only">{alt}</span>
       </div>
     );
