@@ -20,7 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
-from tests.server._flow import project_with_schema
+from tests.server._flow import batch_from_ingest, project_with_schema
 from tests.server._runner import RecordingRunner
 
 from visionset.kernel.domain import ImageFormat
@@ -269,3 +269,128 @@ def test_the_binary_routes_are_protected_like_every_other(client: TestClient) ->
         response = anonymous.get(f"/projects/{uuid4()}/assets/{uuid4()}/content")
 
     assert response.status_code == 401
+
+
+# --- the project's own asset listing (#208) ------------------------------------
+#
+# The third asset listing, and the one that had been missing: the other two
+# window a batch and the curated trunk. What is asserted here is the wire — the
+# envelope, the window, and that `total` counts the project rather than the page.
+
+
+def test_a_project_with_no_assets_answers_an_empty_page_rather_than_404(
+    client: TestClient,
+) -> None:
+    project_id = client.post("/projects", json={"name": "empty"}).json()["id"]
+
+    response = client.get(f"/projects/{project_id}/assets")
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0}
+
+
+def test_the_listing_carries_every_asset_of_the_project(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(client)
+    batch_from_ingest(client, runner, tmp_path, project_id, images=4)
+
+    body = client.get(f"/projects/{project_id}/assets").json()
+
+    assert body["total"] == 4
+    assert len(body["items"]) == 4
+
+
+def test_limit_bounds_the_page_and_total_still_counts_the_project(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    """What the Overview's six tiles and its `+N` overflow are computed from."""
+    project_id = project_with_schema(client)
+    batch_from_ingest(client, runner, tmp_path, project_id, images=5)
+
+    body = client.get(f"/projects/{project_id}/assets", params={"limit": 2}).json()
+
+    assert len(body["items"]) == 2
+    assert body["total"] == 5
+
+
+def test_the_order_is_the_same_on_every_call(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    """Stability is the property the gallery actually needs.
+
+    Nothing records arrival order (#216), so this cannot assert recency — but a
+    listing that reshuffled between polls would make the tiles jump under a
+    cursor, which is worse than an arbitrary six.
+    """
+    project_id = project_with_schema(client)
+    batch_from_ingest(client, runner, tmp_path, project_id, images=5)
+
+    first = [asset["id"] for asset in client.get(f"/projects/{project_id}/assets").json()["items"]]
+    again = [asset["id"] for asset in client.get(f"/projects/{project_id}/assets").json()["items"]]
+
+    assert first == again
+
+
+def test_a_window_is_a_prefix_of_the_whole_listing(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    """A client paging with `limit` sees the same sequence it would have seen whole."""
+    project_id = project_with_schema(client)
+    batch_from_ingest(client, runner, tmp_path, project_id, images=5)
+
+    whole = [asset["id"] for asset in client.get(f"/projects/{project_id}/assets").json()["items"]]
+    windowed = client.get(f"/projects/{project_id}/assets", params={"limit": 2, "offset": 1}).json()
+
+    assert [asset["id"] for asset in windowed["items"]] == whole[1:3]
+
+
+def test_an_offset_past_the_end_is_an_empty_page_and_not_an_error(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(client)
+    batch_from_ingest(client, runner, tmp_path, project_id, images=2)
+
+    response = client.get(f"/projects/{project_id}/assets", params={"offset": 99})
+
+    assert response.status_code == 200
+    assert (response.json()["items"], response.json()["total"]) == ([], 2)
+
+
+def test_an_asset_carries_the_thumbnail_hash_a_tile_decides_on(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    """A NULL hash is a placeholder tile, not a broken image — so it must travel."""
+    project_id = project_with_schema(client)
+    batch_from_ingest(client, runner, tmp_path, project_id, images=1)
+
+    (asset,) = client.get(f"/projects/{project_id}/assets").json()["items"]
+
+    assert "thumbnail_hash" in asset
+    assert (asset["width"], asset["height"]) != (None, None)
+
+
+def test_the_listing_never_reaches_into_another_project(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    mine = project_with_schema(client, name="mine")
+    theirs = project_with_schema(client, name="theirs")
+    batch_from_ingest(client, runner, tmp_path, mine, images=3)
+
+    assert client.get(f"/projects/{mine}/assets").json()["total"] == 3
+    assert client.get(f"/projects/{theirs}/assets").json()["total"] == 0
+
+
+def test_listing_an_unknown_project_is_404_project_not_found(client: TestClient) -> None:
+    response = client.get(f"/projects/{uuid4()}/assets")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROJECT_NOT_FOUND"
+
+
+def test_a_non_positive_limit_is_refused_rather_than_silently_ignored(
+    client: TestClient,
+) -> None:
+    project_id = client.post("/projects", json={"name": "empty"}).json()["id"]
+
+    assert client.get(f"/projects/{project_id}/assets", params={"limit": 0}).status_code == 422
