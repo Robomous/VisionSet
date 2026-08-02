@@ -540,7 +540,8 @@ class ProgressCounts(BaseModel):
 # ``asset_ids`` is deliberately absent: membership is the paged listing's job,
 # and a batch of fifty thousand frames would otherwise ship its whole roll call
 # on every read of its name. ``schema_version`` is null exactly while the batch
-# is a draft — approval is what pins one, and it never moves after.
+# is a draft — approval is what pins one, and after that it moves only
+# through an explicit re-pin.
 class BatchOut(BaseModel):
     """A curated slice of a project's assets that moves through annotation together."""
 

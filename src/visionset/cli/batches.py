@@ -48,7 +48,7 @@ Module-level for the ``get_type_hints`` reason ``WorkspaceOption`` is.
 _COLUMNS: Final = ("ID", "NAME", "STATE", "SCHEMA", "ASSETS", "ANNOTATED", "SETTLED")
 
 _NO_SCHEMA: Final = "-"
-"""What a draft shows: approval is what pins a version, and it never moves after."""
+"""What a draft shows: approval is what pins a version, and only ``repin`` moves it."""
 
 _ACTOR: Final = "cli"
 """Who the dataset change log records for a promotion made at a terminal."""

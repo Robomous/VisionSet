@@ -17,11 +17,12 @@ Four things shape this module:
   offending annotation in the sequence the caller passed, because nothing was
   written and the message alone cannot say which one it was.
 - **The version is the batch's, not the project's.** Every write is judged
-  against ``Batch.schema_version`` — pinned at approval and never moved — so a
-  ``create_version`` while annotators are working does not change the rules under
-  them. The service *stamps* that version onto what it stores, the way it lets
-  ``id`` generate itself: whatever a caller put in the field is replaced, because
-  the pin is a fact about the batch, not an opinion of the writer.
+  against ``Batch.schema_version`` — pinned at approval and moved only by an
+  explicit ``BatchService.repin`` — so a ``create_version`` while annotators are
+  working does not change the rules under them. The service *stamps* that version
+  onto what it stores, the way it lets ``id`` generate itself: whatever a caller
+  put in the field is replaced, because the pin is a fact about the batch, not an
+  opinion of the writer.
 - **There is no ``InvalidProvenance``.** ``provenance='model'`` requiring a
   ``model_ref``, and ``confidence`` inside [0, 1], are validators on the model
   (``domain/annotation.py``). An ``Annotation`` that breaks either cannot be

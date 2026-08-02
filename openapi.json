@@ -2364,7 +2364,7 @@
   "paths": {
     "/batches/{batch_id}": {
       "get": {
-        "description": "The batch, with how far its assets have got.\n\n`progress` counts every asset of every job in the batch, so a draft \u2014 which\nhas no jobs yet \u2014 reports zeros across the board while `asset_count` is\nalready whatever the ingest gathered. `schema_version` is null until approval\npins one, and never moves after.",
+        "description": "The batch, with how far its assets have got.\n\n`progress` counts every asset of every job in the batch, so a draft \u2014 which\nhas no jobs yet \u2014 reports zeros across the board while `asset_count` is\nalready whatever the ingest gathered. `schema_version` is null until approval\npins one, and moves after that only through `repin`.",
         "operationId": "get_batch",
         "parameters": [
           {
@@ -2970,6 +2970,115 @@
           }
         ],
         "summary": "Promote Batch",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
+    "/batches/{batch_id}/repin": {
+      "post": {
+        "description": "Move the batch's schema pin onto the project's current active version.\n\nExplicit, never automatic \u2014 the pin does not follow the schema, because a\ncontract that moved under work in flight is what versioning exists to\nprevent. This is how a class added *after* approval becomes usable in a batch\nsomebody is already annotating, without abandoning it.\n\nAdding a class is additive and goes through with no flag. A change that\nnarrows what the pin allowed \u2014 a class removed, a geometry changed, an\nattribute made required \u2014 is 409 `DESTRUCTIVE_SCHEMA_CHANGE`; retry the\nidentical request with `?allow_destructive=true`. If this batch already holds\nannotations under a class the change would break, it is 409\n`SCHEMA_CHANGE_WOULD_ORPHAN` and **no flag overrides it** \u2014 branch on the\ncode, never on the status. The orphan check is scoped to this batch: a label\nwritten in some *other* batch does not block this one.\n\nLegal only while the batch is `approved` or `in_annotation`; a draft has no\npin yet and a completed batch's pin is history, both 409\n`INVALID_TRANSITION`. Re-pinning onto the version already pinned changes\nnothing. Annotations already written keep the version they were stamped with.",
+        "operationId": "repin_batch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "allow_destructive",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Allow Destructive",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Repin Batch",
         "tags": [
           "batches"
         ]

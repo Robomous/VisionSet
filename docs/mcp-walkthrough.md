@@ -1,6 +1,6 @@
 # The MCP walkthrough
 
-[mcp.md](mcp.md) is the reference: thirty-three tools, what each is for, and the rules they all
+[mcp.md](mcp.md) is the reference: thirty-four tools, what each is for, and the rules they all
 follow. This one is about a *session* — the cycle in the order an agent meets it, and then what
 happened when a model that had never seen this repository was pointed at the server and asked to do
 the job.

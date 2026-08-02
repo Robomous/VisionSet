@@ -82,7 +82,7 @@ def render() -> str:
         (
             "Always offered",
             TOOLS,
-            "Thirty-three tools, in the order an agent meets them: make a project, give it a "
+            "Thirty-four tools, in the order an agent meets them: make a project, give it a "
             "schema, put images in it, work through them, promote, publish, export.",
         ),
         (
