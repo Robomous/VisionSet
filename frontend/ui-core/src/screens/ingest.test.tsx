@@ -26,6 +26,16 @@ import { writeToken } from "../data/session";
 import { IngestScreen } from "./IngestScreen";
 
 const API = "http://visionset.test";
+// `ProgressCounts` is six counters and the server always sends all six.
+const NO_PROGRESS = {
+  unannotated: 0,
+  annotated: 0,
+  review_pending: 0,
+  accepted: 0,
+  skipped: 0,
+  total: 0,
+} as const;
+
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const SOURCE = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
@@ -252,8 +262,8 @@ describe("launching a run", () => {
       status: 200,
       body: {
         items: [
-          { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: {} },
-          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: {} },
+          { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: NO_PROGRESS },
+          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS },
         ],
         total: 2,
       },

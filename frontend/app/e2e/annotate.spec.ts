@@ -157,7 +157,13 @@ async function serveApi(
       const assetId = path.split("/").at(-2) ?? "";
       const body = JSON.parse(request.postData() ?? "{}") as { progress?: string };
       if (body.progress !== undefined) progress.set(assetId, body.progress);
-      return route.fulfill({ status: 200, json: {} });
+      // `AssetProgressOut`, not `{}`. The route answers where the asset now is, and a
+      // stub that answered an empty object was describing a response the endpoint has
+      // never sent — the exact habit #225 makes impossible.
+      return route.fulfill({
+        status: 200,
+        json: { asset_id: assetId, progress: progress.get(assetId) ?? "unannotated" },
+      });
     }
     if (path.endsWith("/content")) {
       return route.fulfill({ contentType: "image/png", body: PIXEL });

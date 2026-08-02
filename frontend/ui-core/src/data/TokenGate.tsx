@@ -54,6 +54,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../pr
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
 import { useApiSession } from "./ApiProvider";
 import { asApiError, NETWORK_ERROR, unwrap } from "./errors";
+import { checkListProjects } from "../generated/checks";
 
 export interface TokenGateProps {
   /** Rendered once a credential is held. */
@@ -104,7 +105,10 @@ export function TokenForm(): JSX.Element {
       // away — only its status is the question. There is deliberately no `limit`:
       // `docs/api.md` gives paging parameters to exactly one collection, the batch
       // asset listing, and this one does not have them.
-      unwrap(await probe.GET("/projects", {}));
+      // Checked like every other read, even though the answer is discarded: a server
+      // that cannot answer `/projects` in the contract's shape is not one to sign into,
+      // and an exemption here would be a hole the wiring gate has to allowlist forever.
+      unwrap(await probe.GET("/projects", {}), checkListProjects);
       signIn(candidate);
     } catch (cause) {
       setFailure(refusalOf(cause));

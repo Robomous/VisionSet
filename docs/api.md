@@ -525,6 +525,49 @@ One consequence worth knowing: `openapi.json` embeds `info.version` from the rep
 but the generated client contains only `paths`, `components` and `operations`. A version bump moves
 the spec and leaves the client byte-identical. The two gates are genuinely independent.
 
+### Responses are checked, not assumed
+
+`openapi-typescript` gives every response a static type off the contract and verifies
+nothing at runtime. That gap is real: a well-formed JSON document of the *wrong* type
+satisfies the compiler, reaches a screen intact, and takes the page down in the first
+formatter that reads a field it does not have. It happened three times while the project
+view was being rebuilt.
+
+So `pnpm generate:client` emits a second committed artifact beside the types —
+`frontend/ui-core/src/generated/checks.ts`, one check per schema a 2xx JSON response can
+carry, plus one alias per operation named after its `operationId` — and `unwrap` takes one:
+
+```ts
+import { checkGetProjectStats } from "@visionset/ui-core";
+
+const stats = unwrap(
+  await api.GET("/projects/{project_id}/stats", { params: { path: { project_id: id } } }),
+  checkGetProjectStats,
+);
+```
+
+A body that does not match is an `ApiError` under `MALFORMED_RESPONSE`, carrying the path
+that disagreed (`/classes/2/annotations should be an integer`) — the same treatment an
+unrecognisable *error* body has always had. The argument is in
+`frontend/ui-core/src/data/check.ts`; three parts of it are worth stating here, because
+each is a decision somebody will otherwise try to "fix":
+
+- **Unknown keys pass.** `additionalProperties: false` constrains what the API *accepts*,
+  not what it may one day *send*. A client that refused an added field would turn every
+  backward-compatible release into a broken page.
+- **`format` is not enforced.** A `uuid` is checked as a string and no further. A renderer
+  is protected by the type; rejecting a legal ISO-8601 variant would be a new bug.
+- **A property with a `default` is treated as always present.** A default means the server
+  serializes it every time, which is why `openapi-typescript` types it as non-optional —
+  and the check has to agree with the type or it would not compile against it.
+
+The parameter is required, so a call site cannot forget it. It does **not** stop a call
+site passing the *wrong* check: a type predicate is assignable whenever its asserted type
+is, so `unwrap(projectResult, checkDatasetOut)` compiles and silently re-narrows. Pairing
+each call with its own operation is enforced by `tests/scripts/checks_wiring.test.mjs`
+instead — which is not a theoretical safeguard, since it caught two mispaired calls the
+compiler accepted on the day it was written.
+
 ### Binary responses type as `unknown`
 
 Four operations answer with bytes rather than JSON — asset content, thumbnails, the release

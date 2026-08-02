@@ -346,7 +346,12 @@ function DeleteDialog({
       <DialogContent data-testid="delete-dialog">
         <DialogTitle>Delete {name}?</DialogTitle>
         <DialogDescription data-testid="delete-blast-radius">
-          {stats.data?.asset_count === undefined
+          {/* `stats.data === undefined` means the query has not answered yet — not
+              that the body might be missing a field. Until #225 this asked about the
+              field, because a wrong document could arrive with the count absent and
+              `formatCount(undefined)` white-screened the dialog. The check at `unwrap`
+              is what lets this ask the question it actually means. */}
+          {stats.data === undefined
             ? "Counting what this would destroy…"
             : `Deletes the project, ${formatCount(stats.data.asset_count)} ${
                 stats.data.asset_count === 1 ? "image" : "images"
@@ -369,7 +374,7 @@ function DeleteDialog({
             data-testid="delete-submit"
             // Waiting on a count is not the same as being disabled with no
             // explanation: the description above says what it is waiting for.
-            disabled={stats.data?.asset_count === undefined || remove.isPending}
+            disabled={stats.data === undefined || remove.isPending}
             onClick={() =>
               remove.mutate(projectId, {
                 onSuccess: () => {
@@ -492,13 +497,15 @@ function ProjectHeader({
               {stats.data.asset_count === 1 ? "image" : "images"}
             </Badge>
           )}
-          {/* Typed `string | null`, and checked for being a string anyway. The
-              generated client validates the response *status* and not its
-              shape, so a plausible-but-wrong document reaches here intact — and
-              `formatWhen` on a non-string is the white-screen that cost three
-              surfaces during #206–#213. `formatWhen` also answers "" for an
-              unparseable date, which is the second thing worth not rendering. */}
-          {typeof stats.data?.last_ingest_at === "string" &&
+          {/* Two different questions, and both still need asking. The first is
+              nullability: the field really is `string | null` — null means nothing
+              has been ingested, or was ingested before #216 recorded it. The second
+              is the one risk #225 deliberately leaves open: the check at `unwrap`
+              validates `date-time` as a *string* and no further, on purpose, so a
+              string that will not parse still reaches here and `formatWhen` answers
+              "". What is gone is the third question this used to ask — whether the
+              value was a string at all. */}
+          {stats.data?.last_ingest_at != null &&
             formatWhen(stats.data.last_ingest_at) !== "" && (
               <Badge variant="outline" data-testid="chip-ingested">
                 Ingested {formatWhen(stats.data.last_ingest_at)}
