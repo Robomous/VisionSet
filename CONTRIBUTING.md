@@ -68,6 +68,21 @@ told about them.
 
 If a change fights either boundary, the change is wrong — not the boundary.
 
+## The visual contract
+
+Any change to `@visionset/app` or `@visionset/ui-core` is governed by
+[`DESIGN.md`](DESIGN.md) at the repository root — **read it before building or changing a
+screen**, not after. It owns the tokens, the type scale, the navigation rules, the tab
+shapes, the annotation workspace, and (since #206) the rules for project-level data
+surfaces: what a header carries, how numbers are formatted, and why a disabled button with
+no explanation is forbidden.
+
+It is prose over running code, not decoration. `frontend/ui-core/src/styles.css` carries the
+tokens and `tokens.ts` mirrors them, gated against each other in both directions by
+`tokens.test.ts`; `tests/scripts/design_tokens.test.mjs` fails the build on a hardcoded
+colour in any tracked frontend source. A screen that needs a value the file does not have
+is a reason to amend the file, never to inline the value.
+
 ## Versioning
 
 The repo-root `VERSION` file is the single source of truth, in PEP 440 form. Everything
