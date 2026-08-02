@@ -595,14 +595,51 @@ with equality rather than as a ceiling.
 | a drag's moves cost the committed layer nothing | **0** mutations across the moves, at 4 moves and at 60 |
 | …and the whole gesture is a constant | **3** records: removal, re-insertion, hover fill |
 | a pan touches neither render layer | **0** and **0**; one style write per move on the stage `<div>` |
-| one wheel notch rewrites every shape | **880** records — four attributes on each of 220 |
+| one wheel notch touches no annotation | **0** records, and **6** on the stage |
 | drawing a box reaches the committed layer once | **1** |
 
-The 880 is the finding, and it is a consequence of a rule worth keeping: every stroke
-width, grip size and label size goes through `screenPx(…, zoom)` so that a 2-pixel stroke
-is two *screen* pixels at every zoom (#41's tolerance finding, pointed at rendering). A
-wheel notch changes `zoom`, so `AnnotationLayer`'s `memo` correctly fails to bail out and
-the whole document is rewritten. Pan and drag are O(1) in the document; zoom is O(n).
+That wheel row read **880** — four attributes on each of 220 shapes — until #131. Every
+stroke width, label size and label lift went through `screenPx(…, zoom)`, so that a
+2-pixel stroke is two *screen* pixels at every zoom (#41's tolerance finding, pointed at
+rendering); `zoom` was therefore an input to every shape, `AnnotationLayer`'s `memo`
+correctly failed to bail out, and the whole document was rewritten on every notch.
+
+Those four sizes are now CSS custom properties published once by the stage
+(`stageScreenSizes` in `Shapes.tsx`), which inherit, so the per-shape attributes no longer
+mention the zoom and a notch costs six style writes on one element instead of `4 × n`.
+Pan, drag and zoom are now all O(1) in the document.
+
+**`vector-effect="non-scaling-stroke"`, which #131 proposed, does nothing here**, and that
+was measured rather than reasoned about. It compensates for transforms up to the *SVG
+viewport*, while this stage scales an HTML **ancestor** of the `<svg>` with a CSS
+transform. Two identical rects, one carrying the attribute and one not, paint the same
+width at every zoom — 2.05px at zoom 1, 4.05 at 2, 8.05 at 4.
+
+### The 880 was real, and it was not what cost the frames
+
+This is the part worth reading twice, because the obvious inference from the table above
+is wrong. Removing all 880 writes **did not move a single frame time**: the zoom still
+breaks between 4x and 10x, at the same p95 and the same stall count.
+
+Three measurements, each removing one candidate:
+
+| removed | zoom p95 @ 10x | stalls |
+| --- | --- | --- |
+| nothing (the shipped build) | 83.3 | 68 |
+| the React re-render (`memo` given a comparator that ignores `zoom`) | 83.3 | 74 |
+| the 4K image (`display: none` on the `<img>`) | 83.3 | 72 |
+| all 220 shapes (`display: none` on the committed layer) | 66.7 | 65 |
+| — the same gesture on the small demo scene | **16.8** | **1** |
+
+So neither the DOM writes, nor React's render of 220 components, nor the 4K image is the
+cost; and hiding every shape recovers only about a fifth of it while still missing the
+budget fourfold. What is left is the browser's own raster and compositing of a scaled
+stage, which is not work this codebase does and not work `vector-effect` or an unscaled
+grip layer would have avoided either.
+
+The document-size dependence is real — the small scene zooms perfectly at the same
+throttle — but it is a raster cost, not a React one. #131's diagnosis named the writes;
+the writes are gone and the ceiling has not moved.
 
 ### The recorded baseline
 
@@ -641,10 +678,10 @@ the main thread turns that into something the same instrument can read:
 
 - **a drag still holds 60fps at 10x slower** and breaks between 10x and 20x, so it has
   roughly an order of magnitude of headroom on this machine;
-- **the zoom breaks between 4x and 10x** — the first gesture to go, exactly as the 880
-  writes per notch predict. Filed as **#131**, which sets out the shape of a fix
-  (`vector-effect="non-scaling-stroke"`, and grips drawn in an unscaled layer) and the
-  reason not to reach for it yet.
+- **the zoom breaks between 4x and 10x** — the first gesture to go. This baseline was
+  recorded before #131 and is left as it was; #131 removed the 880 writes per notch and
+  **these numbers did not move**, which is the finding written up above. The ceiling is
+  the browser's raster of a scaled stage, and it is still where it was.
 
 An input-to-frame **latency** metric was built first and thrown away: with one input per
 frame it measures where in the frame the input happened to land, and duly reported a p95
