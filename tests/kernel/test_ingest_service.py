@@ -2096,12 +2096,42 @@ def test_a_deduplicated_re_sighting_does_not_move_the_arrival(tmp_path: Path) ->
     fixture.close()
 
 
-def test_filling_a_missing_thumbnail_leaves_the_arrival_alone(tmp_path: Path) -> None:
-    """The one branch that *writes* to a deduplicated asset must not carry a date in.
+def test_a_dedup_that_fills_a_missing_thumbnail_leaves_the_arrival_alone(
+    tmp_path: Path,
+) -> None:
+    """`_store`'s one branch that *writes* to a deduplicated asset.
 
-    `Repository.update` is a whole-row replace, so the cache fill is the one
-    place a stale or freshly-stamped arrival could be written over the real one.
+    `Repository.update` is a whole-row replace, so this is the single place a
+    second sighting can put its own date on a row it did not create. Reaching it
+    needs all three conditions at once — the content is already stored, its
+    preview is missing, and the arriving candidate has one — which is why the
+    two dedup tests above do not: their stored asset already has a thumbnail, so
+    the branch is never entered.
+
+    Mutation-tested: stamping `ingested_at` in that `model_copy` leaves every
+    other test in this file green and turns this one red.
     """
+    fixture = Fixture(tmp_path)
+    other = tmp_path / "second"
+    write_image(fixture.stills / "shared.png", seed=11)
+    write_image(other / "shared.png", seed=11)
+    first = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    second = fixture.sources.register_images(fixture.project.id, other)
+    original = fixture.ingest.ingest(first.id).assets[0]
+    # Exactly the state a pre-#21 asset is in: content stored, no preview.
+    with fixture.workspace.unit_of_work() as uow:
+        uow.assets.update(original.model_copy(update={"thumbnail_hash": None}))
+
+    again = fixture.ingest.ingest(second.id).assets[0]
+
+    assert again.id == original.id
+    assert again.thumbnail_hash is not None, "the fill branch was not reached"
+    assert again.ingested_at == original.ingested_at
+    fixture.close()
+
+
+def test_backfilling_a_thumbnail_leaves_the_arrival_alone(tmp_path: Path) -> None:
+    """The other writer of a stored asset, and the same rule applies to it."""
     fixture = Fixture(tmp_path)
     write_image(fixture.stills / "shared.png", seed=11)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)

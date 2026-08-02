@@ -92,6 +92,17 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
         # Migration 13's undo, and it needs its own line for migration 10's
         # reason: ``asset`` is only ever altered, so nothing below takes this
         # column away for free.
+        #
+        # Unlike migrations 11 and 12, leaving this line out fails the test
+        # rather than passing quietly — and the mechanism is worth knowing,
+        # because it is the reverse of the trap. The column would survive the
+        # downgrade and migration 13 would ``checkfirst``-skip, exactly as
+        # migration 11 would; but the four columns dropped *below* this line get
+        # re-added by ``ALTER`` on the way up, and SQLite appends. So the
+        # migrated table would carry ``ingested_at`` in the middle where the
+        # fresh one has it last, and ``_schema`` compares ``CREATE TABLE`` text.
+        # Being the newest column on an alter-only table is what makes the
+        # omission loud; the next one added here will be in the same position.
         connection.execute(text("alter table asset drop column ingested_at"))
         connection.execute(text("alter table asset drop column thumbnail_hash"))
         connection.execute(text("alter table asset drop column frame_timestamp"))
