@@ -183,6 +183,23 @@ describe("the schema editor", () => {
     });
   }
 
+  /**
+   * Select a class and remove it from the draft, through the confirmation.
+   *
+   * Three steps rather than one since #213: only the *selected* class has a
+   * detail panel, and removal states its blast radius before it happens.
+   */
+  /** Open one class's detail panel. Only the selected class has one since #213. */
+  async function selectClass(index: number): Promise<void> {
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[index]);
+  }
+
+  async function removeClass(index: number): Promise<void> {
+    await selectClass(index);
+    await userEvent.click(screen.getByTestId(`remove-class-${index}`));
+    await userEvent.click(await screen.findByTestId("remove-class-confirm"));
+  }
+
   it("treats a schema-less project as an empty draft, not as an error", async () => {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
@@ -201,7 +218,7 @@ describe("the schema editor", () => {
 
     await waitFor(() => expect(screen.queryByTestId("schema-editor")).not.toBeNull());
     expect(screen.queryByTestId("schema-error")).toBeNull();
-    expect(screen.getByTestId("schema-editor").textContent).toContain("Saving creates version 1");
+    expect(screen.getByTestId("schema-status").textContent).toContain("Saving creates version 1");
   });
 
   it("edits a draft and publishes it as the next version", async () => {
@@ -213,20 +230,25 @@ describe("the schema editor", () => {
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
-    expect(screen.getByTestId("schema-editor").textContent).toContain("Saving creates version 4");
+    // Versioning is ambient (#213): one persistent line saying what saving would
+    // do, rather than a disabled button somebody has to press to find out.
+    expect(screen.getByTestId("schema-status").textContent).toContain("Version 3 active");
+    expect(screen.getByTestId("schema-status").textContent).toContain("v4");
 
-    // Nothing has changed, so there is nothing to publish — a version that
-    // declares exactly what the last one did is a version nobody should be able to
-    // create by accident.
-    expect(screen.getByTestId("save-schema")).toHaveProperty("disabled", true);
+    // Nothing has changed, and the button is **enabled anyway** — it answers
+    // rather than sitting grey. Nothing is sent.
+    expect(screen.getByTestId("save-schema")).toHaveProperty("disabled", false);
+    await userEvent.click(screen.getByTestId("save-schema"));
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
 
     await userEvent.click(screen.getByTestId("add-class"));
-    // …and a nameless class is not saveable either. `normalize_name` refuses a
-    // blank, so this is the API's rule mirrored rather than a second one.
-    expect(screen.getByTestId("save-schema")).toHaveProperty("disabled", true);
+    // …and a nameless class is refused the same way, not by a grey button.
+    // `normalize_name` refuses a blank, so this mirrors the API's rule.
+    await userEvent.click(screen.getByTestId("save-schema"));
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
 
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-    expect(screen.queryByTestId("schema-dirty")).not.toBeNull();
+    expect(screen.getByTestId("schema-status").textContent).toContain("unsaved changes");
     await userEvent.click(screen.getByTestId("save-schema"));
 
     await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
@@ -256,7 +278,7 @@ describe("the schema editor", () => {
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("remove-class-1"));
+    await removeClass(1);
     await userEvent.click(screen.getByTestId("save-schema"));
 
     const dialog = await screen.findByTestId("destructive-dialog");
@@ -281,7 +303,7 @@ describe("the schema editor", () => {
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("remove-class-1"));
+    await removeClass(1);
     await userEvent.click(screen.getByTestId("save-schema"));
 
     const dialog = await screen.findByTestId("orphan-dialog");
@@ -332,11 +354,14 @@ describe("the schema editor", () => {
       classColor({ name: "lane", geometry: "polygon", color: null, attributes: [] }, "lane"),
     );
     expect(derived).not.toBeNull();
+    // One panel at a time since #213, so each class is asserted from its own.
+    await selectClass(1);
     expect(screen.getByTestId("class-color-1")).toHaveProperty("value", derived);
     // Never the neutral, which is what it used to be for every derived class.
     expect(screen.getByTestId("class-color-1")).not.toHaveProperty("value", "#888888");
 
     // And a declared colour is still itself.
+    await selectClass(0);
     expect(screen.getByTestId("class-color-0")).toHaveProperty("value", "#38bdf8");
   });
 
@@ -353,9 +378,11 @@ describe("the schema editor", () => {
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
-    // Dirty by something that is not the colour — an untouched draft is not
-    // saveable at all, which is itself the first half of the guarantee.
-    expect(screen.getByTestId("save-schema")).toHaveProperty("disabled", true);
+    // Dirty by something that is not the colour. An untouched draft sends
+    // nothing — the button answers instead of being grey (#213), and that
+    // refusal is itself the first half of the guarantee.
+    await userEvent.click(screen.getByTestId("save-schema"));
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -406,6 +433,198 @@ describe("the schema editor", () => {
  * it is a query that follows the tab. That is what makes the split more than
  * cosmetic, and it is invisible in the rendering — only the request log shows it.
  */
+describe("the schema editor's two panels", () => {
+  /** Fifty classes: an ordinary Physical AI ontology, and what the stack broke at. */
+  const MANY = Array.from({ length: 50 }, (_, index) => ({
+    name: `class-${String(index).padStart(2, "0")}`,
+    geometry: "bbox",
+    color: null,
+    attributes: [],
+  }));
+
+  function withClasses(classes: unknown[]): void {
+    on("GET", /^\/projects\/[^/]+$/, {
+      status: 200,
+      body: { id: PROJECT, name: "highway", description: null },
+    });
+    on("GET", /^\/projects\/[^/]+\/schema$/, {
+      status: 200,
+      body: { project_id: PROJECT, version: 1, classes },
+    });
+    on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
+    on("GET", /\/stats$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        asset_count: 10,
+        annotated_asset_count: 5,
+        annotation_count: 4372,
+        class_count: classes.length,
+        annotated_pct: 50,
+        classes: [{ label_class: "class-00", annotations: 4372, assets: 5 }],
+      },
+    });
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+    on("GET", /\/batches/, { status: 200, body: { items: [], total: 0 } });
+  }
+
+  it("shows every class in the list and only the selected one in full", async () => {
+    // The whole point of the layout. Fifty stacked full-width cards is what this
+    // replaces, and it is unusable well before fifty.
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+    await screen.findByTestId("class-list");
+    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(50);
+    expect(screen.queryByTestId("class-name-0")).not.toBeNull();
+    expect(screen.queryByTestId("class-name-1")).toBeNull();
+    expect(screen.queryByTestId("class-name-49")).toBeNull();
+  });
+
+  it("opens the class a row names, not the row's position in a filtered list", async () => {
+    // The trap the filter creates: a row's index in the *view* is not its index
+    // in the schema, and writing through the wrong one edits a different class.
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-filter");
+
+    await userEvent.type(screen.getByTestId("class-filter"), "class-42");
+    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[0]);
+    expect(screen.getByTestId("class-name-42")).toHaveProperty("value", "class-42");
+  });
+
+  it("filters case-insensitively on a substring", async () => {
+    withClasses([
+      { name: "Vehicle", geometry: "bbox", color: null, attributes: [] },
+      { name: "lane", geometry: "polygon", color: null, attributes: [] },
+    ]);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-filter");
+
+    await userEvent.type(screen.getByTestId("class-filter"), "EHIC");
+    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(1);
+  });
+
+  it("says so when a filter matches nothing, rather than showing an empty box", async () => {
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-filter");
+
+    await userEvent.type(screen.getByTestId("class-filter"), "zzz");
+    expect(screen.queryByTestId("filter-empty")).not.toBeNull();
+  });
+
+  it("walks the list with the arrow keys", async () => {
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    const rows = screen.getByTestId("class-list").querySelectorAll("button");
+    rows[0].focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.queryByTestId("class-name-1")).not.toBeNull();
+
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.queryByTestId("class-name-2")).not.toBeNull();
+
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.queryByTestId("class-name-1")).not.toBeNull();
+  });
+
+  it("does not walk off either end of the list", async () => {
+    withClasses(MANY.slice(0, 2));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    screen.getByTestId("class-list").querySelectorAll("button")[0].focus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.queryByTestId("class-name-0")).not.toBeNull();
+
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(screen.queryByTestId("class-name-1")).not.toBeNull();
+  });
+
+  it("adds a class and selects it, so the panel is showing what was just made", async () => {
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("add-class"));
+
+    expect(screen.getByTestId("class-name-50")).toHaveProperty("value", "");
+  });
+
+  it("clears the filter when adding, or the new class would be hidden by it", async () => {
+    // A new class has an empty name, so *any* filter hides the row that was just
+    // created — and the panel would be editing something the list does not show.
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-filter");
+
+    await userEvent.type(screen.getByTestId("class-filter"), "class-42");
+    await userEvent.click(screen.getByTestId("add-class"));
+
+    expect(screen.getByTestId("class-filter")).toHaveProperty("value", "");
+    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(51);
+  });
+
+  it("states the blast radius when the class being removed carries annotations", async () => {
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("remove-class-0"));
+
+    const said = (await screen.findByTestId("remove-class-blast-radius")).textContent ?? "";
+    expect(said).toContain((4372).toLocaleString(undefined));
+    // And that this removal cannot be published at all, which is the fact that
+    // matters: the orphan refusal has no override.
+    expect(said).toContain("no override");
+  });
+
+  it("says a removal costs nothing when nobody has used the class", async () => {
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
+    await userEvent.click(screen.getByTestId("remove-class-1"));
+
+    const said = (await screen.findByTestId("remove-class-blast-radius")).textContent ?? "";
+    expect(said).toContain("costs nothing");
+  });
+
+  it("shows each class's annotation count in its panel header", async () => {
+    withClasses(MANY);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+    // The panel renders before the counts arrive — it has a class to show and
+    // does not wait on a number to show it — so this waits for the count rather
+    // than for the header.
+    await screen.findByTestId("class-count-0");
+    await waitFor(() =>
+      expect(screen.getByTestId("class-count-0").textContent).toContain(
+        (4372).toLocaleString(undefined),
+      ),
+    );
+  });
+
+  it("lands on the neighbour after a removal rather than on an empty panel", async () => {
+    withClasses(MANY.slice(0, 3));
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("class-list");
+
+    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[2]);
+    await userEvent.click(screen.getByTestId("remove-class-2"));
+    await userEvent.click(await screen.findByTestId("remove-class-confirm"));
+
+    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2);
+    expect(screen.queryByTestId("class-name-1")).not.toBeNull();
+  });
+});
+
 describe("the project view's tabs", () => {
   function project(): void {
     on("GET", /^\/projects\/[^/]+$/, {
