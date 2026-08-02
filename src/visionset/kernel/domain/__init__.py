@@ -57,7 +57,7 @@ from visionset.kernel.domain.partition import (
     SingleJob,
     partition_assets,
 )
-from visionset.kernel.domain.project import Project
+from visionset.kernel.domain.project import Project, ProjectStats
 from visionset.kernel.domain.release import (
     MANIFEST_VERSION,
     ClassCompatibility,
@@ -175,6 +175,7 @@ __all__ = [
     "Partition",
     "PolygonGeometry",
     "Project",
+    "ProjectStats",
     "Provenance",
     "Release",
     "ReleasePublished",

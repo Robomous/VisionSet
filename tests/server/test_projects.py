@@ -13,6 +13,14 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
+from tests.server._flow import (
+    a_box,
+    asset_ids,
+    batch_from_ingest,
+    dataset_of,
+    project_with_schema,
+)
+from tests.server._runner import RecordingRunner
 
 
 @pytest.fixture()
@@ -269,3 +277,112 @@ def test_every_project_route_refuses_a_request_without_a_token(
 
     assert response.status_code == 401, f"{method} {url}"
     assert response.json()["code"] == "UNAUTHORIZED"
+
+
+# --- stats -------------------------------------------------------------------
+#
+# The wire's half of #207. That the numbers are *right* is
+# `tests/kernel/test_project_service.py`'s subject; what is asserted here is that
+# they reach a client in the documented shape, and that the one field the wire
+# adds — `annotated_pct`, derived from two the domain already carries — is
+# computed rather than passed through.
+
+
+@pytest.fixture()
+def stats_runner() -> RecordingRunner:
+    return RecordingRunner()
+
+
+@pytest.fixture()
+def flow_client(tmp_path: Path, stats_runner: RecordingRunner) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", runner=stats_runner) as made:
+        yield made
+
+
+def test_a_fresh_project_answers_zeroes_rather_than_404(client: TestClient) -> None:
+    project_id = created(client, "road-signs")["id"]
+
+    response = client.get(f"/projects/{project_id}/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["asset_count"] == 0
+    assert body["annotation_count"] == 0
+    assert body["annotated_pct"] == 0
+    assert body["classes"] == []
+
+
+def test_the_stats_body_carries_every_documented_field(client: TestClient) -> None:
+    project_id = created(client, "road-signs")["id"]
+
+    body = client.get(f"/projects/{project_id}/stats").json()
+
+    assert set(body) == {
+        "project_id",
+        "asset_count",
+        "annotated_asset_count",
+        "annotation_count",
+        "class_count",
+        "annotated_pct",
+        "classes",
+    }
+
+
+def test_stats_count_assets_an_ingest_produced_before_anybody_promoted_them(
+    flow_client: TestClient, stats_runner: RecordingRunner, tmp_path: Path
+) -> None:
+    """The endpoint's whole reason to exist, asserted against its sibling.
+
+    The same project, read two ways: four ingested assets here, and a trunk that
+    is still empty because nothing has been promoted.
+    """
+    project_id = project_with_schema(flow_client)
+    batch_from_ingest(flow_client, stats_runner, tmp_path, project_id, images=4)
+
+    project = flow_client.get(f"/projects/{project_id}/stats").json()
+    dataset_id = dataset_of(flow_client, project_id)
+    trunk = flow_client.get(f"/datasets/{dataset_id}/stats").json()
+
+    assert project["asset_count"] == 4
+    assert trunk["asset_count"] == 0
+
+
+def test_annotated_pct_is_a_percentage_of_the_projects_own_assets(
+    flow_client: TestClient, stats_runner: RecordingRunner, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(flow_client)
+    batch_id = batch_from_ingest(flow_client, stats_runner, tmp_path, project_id, images=4)
+    flow_client.post(f"/batches/{batch_id}/approve")
+    flow_client.post(f"/batches/{batch_id}/start")
+    job_id = flow_client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
+    flow_client.post(f"/jobs/{job_id}/start")
+    first = asset_ids(flow_client, batch_id)[0]
+    flow_client.post(f"/jobs/{job_id}/annotations", json=[a_box(first)])
+
+    body = flow_client.get(f"/projects/{project_id}/stats").json()
+
+    assert (body["annotated_asset_count"], body["asset_count"]) == (1, 4)
+    assert body["annotated_pct"] == 25.0
+
+
+def test_declared_classes_are_counted_even_when_nobody_has_used_them(
+    flow_client: TestClient,
+) -> None:
+    """`project_with_schema` declares two; this project has labeled neither."""
+    project_id = project_with_schema(flow_client)
+
+    body = flow_client.get(f"/projects/{project_id}/stats").json()
+
+    assert body["class_count"] == 2
+    assert body["classes"] == []
+
+
+def test_stats_for_an_unknown_project_is_404_project_not_found(client: TestClient) -> None:
+    response = client.get(f"/projects/{uuid4()}/stats")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROJECT_NOT_FOUND"
+
+
+def test_stats_for_a_malformed_project_id_is_422_not_404(client: TestClient) -> None:
+    assert client.get("/projects/not-a-uuid/stats").status_code == 422
