@@ -101,7 +101,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../primitives/Menu";
-import { formatCount } from "../lib/format";
+import { formatCount, formatWhen } from "../lib/format";
 import { FieldError, Input, Label } from "../primitives/Input";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
@@ -398,18 +398,25 @@ function DeleteDialog({
  * spent on a *missing* description was a line about a field rather than about
  * anybody's project. Absent now renders nothing.
  *
- * ## The chips that are here, and the three that are not
+ * ## The chips that are here, and the two that are not
  *
  * `DESIGN.md`: **a chip with no data is omitted, never rendered as a
  * placeholder.** The design asks for task type, sensor modality, active version
- * and last ingest. Exactly one of those has a source: `ProjectOut` carries `id`,
- * `name` and `description` and nothing else, and nothing in the schema records
- * when an asset arrived (#216 — `Source.registered_at` is not the proxy it looks
- * like, because registration is idempotent and never rewrites it).
+ * and last ingest. Two of those have a source and two do not: `ProjectOut`
+ * carries `id`, `name` and `description` and nothing else.
  *
- * So the version chip ships and the other three do not. Inventing a field to fill
- * one, or rendering "Unknown", is the "No description." mistake with a border
- * around it.
+ * So the version and last-ingest chips ship, and task type and modality do not.
+ * Inventing a field to fill one, or rendering "Unknown", is the "No
+ * description." mistake with a border around it.
+ *
+ * Last ingest needed a migration to become answerable: until #216 nothing
+ * recorded when an asset arrived, and `Source.registered_at` was not the proxy
+ * it looked like, because registration is idempotent on
+ * `(kind, path, extraction_fps)` and is never rewritten. `Asset.ingested_at` is
+ * what answers it now — and it is **nullable forever**, since rows written
+ * before that migration cannot be backfilled from anything. A null reaches the
+ * same rule as a missing description: the chip is omitted, with no branch of its
+ * own, which is why the omitted case needs no code beyond the guard below.
  *
  * The counted chip — `n images` — is the exception worth having, because #207
  * genuinely answers it and a project page that never mentions how much data it
@@ -485,6 +492,18 @@ function ProjectHeader({
               {stats.data.asset_count === 1 ? "image" : "images"}
             </Badge>
           )}
+          {/* Typed `string | null`, and checked for being a string anyway. The
+              generated client validates the response *status* and not its
+              shape, so a plausible-but-wrong document reaches here intact — and
+              `formatWhen` on a non-string is the white-screen that cost three
+              surfaces during #206–#213. `formatWhen` also answers "" for an
+              unparseable date, which is the second thing worth not rendering. */}
+          {typeof stats.data?.last_ingest_at === "string" &&
+            formatWhen(stats.data.last_ingest_at) !== "" && (
+              <Badge variant="outline" data-testid="chip-ingested">
+                Ingested {formatWhen(stats.data.last_ingest_at)}
+              </Badge>
+            )}
         </div>
       </div>
 

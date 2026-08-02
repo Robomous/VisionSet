@@ -134,6 +134,10 @@ async function serveApi(page: Page): Promise<void> {
           class_count: 1,
           annotated_pct: 0,
           classes: [],
+          // Null is what the endpoint sends for a project whose assets
+          // predate v0.1.0, and for one holding none. Present, not omitted:
+          // a stub answering a shape the endpoint never sends tests nothing.
+          last_ingest_at: null,
         },
       });
     }

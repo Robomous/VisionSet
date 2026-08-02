@@ -12,6 +12,7 @@ counted on disk because that is the acceptance criterion in the issue, and "the
 same asset" compares ids rather than row counts.
 """
 
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
@@ -1998,6 +1999,222 @@ def test_the_listing_sorts_rather_than_returning_the_store_s_own_order(tmp_path:
     deleting the `sorted(...)` left them all green. This one scrambles the
     insertion order so the sort is the only thing that could produce the answer.
     """
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    with fixture.workspace.unit_of_work() as uow:
+        for index, name in enumerate(["c.png", "a.png", "b.png"]):
+            uow.assets.add(
+                Asset(
+                    project_id=fixture.project.id,
+                    content_hash=f"{index:064x}",
+                    uri=f"/tmp/in/{name}",
+                    source_id=source.id,
+                )
+            )
+
+    listed = fixture.ingest.assets(fixture.project.id)
+
+    assert [Path(asset.uri).name for asset in listed] == ["a.png", "b.png", "c.png"]
+    fixture.close()
+
+
+# --- when an asset arrived (#216) ----------------------------------------------
+
+
+def test_an_ingested_asset_records_when_it_arrived(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    before = datetime.now(UTC)
+
+    result = fixture.ingest.ingest(source.id)
+
+    after = datetime.now(UTC)
+    for asset in result.assets:
+        assert asset.ingested_at is not None
+        assert before <= asset.ingested_at <= after
+    fixture.close()
+
+
+def test_the_arrival_survives_the_round_trip_through_the_store(tmp_path: Path) -> None:
+    """The mapper hand-written for this column, exercised as a read rather than a write.
+
+    `Asset` stopped being a flat mapping when it gained a timestamp: a `String`
+    column has to be handed ISO text, and `_flat_mapping` would hand it a
+    `datetime` through a deprecated sqlite3 adapter. Comparing the value that
+    comes back out of a *fresh* read is what proves both directions agree.
+    """
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    written = fixture.ingest.ingest(source.id).assets[0]
+    read_back = fixture.ingest.asset(fixture.project.id, written.id)
+
+    assert read_back.ingested_at == written.ingested_at
+    assert read_back.ingested_at is not None
+    assert read_back.ingested_at.tzinfo is not None
+    fixture.close()
+
+
+def test_one_run_stamps_every_asset_with_one_moment(tmp_path: Path) -> None:
+    """A single ingest is a single arrival, so the run shares one timestamp.
+
+    What it buys is the tiebreak: with one moment across the run, the order
+    inside it falls through to `_in_stable_order`, which means something, rather
+    than to whichever file the loop reached first.
+    """
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=5)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert len({asset.ingested_at for asset in result.assets}) == 1
+    fixture.close()
+
+
+def test_a_deduplicated_re_sighting_does_not_move_the_arrival(tmp_path: Path) -> None:
+    """Identity is content, so the second sighting created nothing to date.
+
+    The sibling of `test_the_first_origin_wins_when_the_same_bytes_arrive_again`:
+    an arrival is provenance too, and "recent" therefore answers *new to this
+    project* rather than *touched most recently*.
+    """
+    fixture = Fixture(tmp_path)
+    other = tmp_path / "second"
+    write_image(fixture.stills / "shared.png", seed=7)
+    write_image(other / "shared.png", seed=7)
+    first = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    second = fixture.sources.register_images(fixture.project.id, other)
+    original = fixture.ingest.ingest(first.id).assets[0]
+
+    again = fixture.ingest.ingest(second.id).assets[0]
+
+    assert again.id == original.id
+    assert again.ingested_at == original.ingested_at
+    fixture.close()
+
+
+def test_a_dedup_that_fills_a_missing_thumbnail_leaves_the_arrival_alone(
+    tmp_path: Path,
+) -> None:
+    """`_store`'s one branch that *writes* to a deduplicated asset.
+
+    `Repository.update` is a whole-row replace, so this is the single place a
+    second sighting can put its own date on a row it did not create. Reaching it
+    needs all three conditions at once — the content is already stored, its
+    preview is missing, and the arriving candidate has one — which is why the
+    two dedup tests above do not: their stored asset already has a thumbnail, so
+    the branch is never entered.
+
+    Mutation-tested: stamping `ingested_at` in that `model_copy` leaves every
+    other test in this file green and turns this one red.
+    """
+    fixture = Fixture(tmp_path)
+    other = tmp_path / "second"
+    write_image(fixture.stills / "shared.png", seed=11)
+    write_image(other / "shared.png", seed=11)
+    first = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    second = fixture.sources.register_images(fixture.project.id, other)
+    original = fixture.ingest.ingest(first.id).assets[0]
+    # Exactly the state a pre-#21 asset is in: content stored, no preview.
+    with fixture.workspace.unit_of_work() as uow:
+        uow.assets.update(original.model_copy(update={"thumbnail_hash": None}))
+
+    again = fixture.ingest.ingest(second.id).assets[0]
+
+    assert again.id == original.id
+    assert again.thumbnail_hash is not None, "the fill branch was not reached"
+    assert again.ingested_at == original.ingested_at
+    fixture.close()
+
+
+def test_backfilling_a_thumbnail_leaves_the_arrival_alone(tmp_path: Path) -> None:
+    """The other writer of a stored asset, and the same rule applies to it."""
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "shared.png", seed=11)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    original = fixture.ingest.ingest(source.id).assets[0]
+    with fixture.workspace.unit_of_work() as uow:
+        uow.assets.update(original.model_copy(update={"thumbnail_hash": None}))
+
+    refilled = fixture.ingest.backfill_thumbnails(fixture.project.id)
+    asset = fixture.ingest.asset(fixture.project.id, original.id)
+
+    assert refilled.filled == (original.id,)
+    assert asset.thumbnail_hash is not None
+    assert asset.ingested_at == original.ingested_at
+    fixture.close()
+
+
+# --- the listing is ordered by arrival ------------------------------------------
+
+
+def test_the_newest_ingest_comes_first(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    older = tmp_path / "older"
+    write_image(older / "old.png", seed=1)
+    write_image(fixture.stills / "new.png", seed=2)
+    first = fixture.sources.register_images(fixture.project.id, older)
+    second = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(first.id)
+    fixture.ingest.ingest(second.id)
+
+    listed = fixture.ingest.assets(fixture.project.id)
+
+    assert [Path(asset.uri).name for asset in listed] == ["new.png", "old.png"]
+    fixture.close()
+
+
+def test_assets_of_one_run_keep_the_stable_order_inside_it(tmp_path: Path) -> None:
+    """Recency orders the runs; `_in_stable_order` orders what is inside one."""
+    fixture = Fixture(tmp_path)
+    for name in ["c.png", "a.png", "b.png"]:
+        write_image(fixture.stills / name, seed=hash(name) % 1000)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+
+    listed = fixture.ingest.assets(fixture.project.id)
+
+    assert [Path(asset.uri).name for asset in listed] == ["a.png", "b.png", "c.png"]
+    fixture.close()
+
+
+def test_an_asset_with_no_recorded_arrival_sorts_last(tmp_path: Path) -> None:
+    """A pre-migration row degrades quietly: it goes to the back, never the front.
+
+    Both other readings are wrong. Treating NULL as the epoch invents a date;
+    treating it as *now* would pin the oldest rows in the product to the top of a
+    "recent" list forever.
+    """
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "ingested.png", seed=4)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(source.id)
+    # Written straight through the unit of work: a row with no arrival is
+    # exactly what migration 13 leaves behind and no operation can produce.
+    with fixture.workspace.unit_of_work() as uow:
+        uow.assets.add(
+            Asset(
+                project_id=fixture.project.id,
+                content_hash=f"{99:064x}",
+                uri="/tmp/in/aaa-sorts-first-by-name.png",
+                source_id=source.id,
+            )
+        )
+
+    listed = fixture.ingest.assets(fixture.project.id)
+
+    assert [Path(asset.uri).name for asset in listed] == [
+        "ingested.png",
+        "aaa-sorts-first-by-name.png",
+    ]
+    fixture.close()
+
+
+def test_pre_migration_assets_keep_the_stable_order_among_themselves(tmp_path: Path) -> None:
+    """With nothing to be recent about, the listing is exactly what #208 shipped."""
     fixture = Fixture(tmp_path)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
     with fixture.workspace.unit_of_work() as uow:

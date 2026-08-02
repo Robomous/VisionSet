@@ -1876,6 +1876,19 @@
             "title": "Classes",
             "type": "array"
           },
+          "last_ingest_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp of the most recent asset ingest. Null when unknown (assets ingested before v0.1.0).",
+            "title": "Last Ingest At"
+          },
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
