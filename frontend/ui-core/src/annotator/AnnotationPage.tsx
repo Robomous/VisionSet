@@ -33,6 +33,17 @@
  * a later task fills them in rather than moving everything along. Everything else
  * on the bar is real.
  *
+ * ## There is a minimum viewport, and the decision is made before anything mounts
+ *
+ * #184: below `ANNOTATOR_MIN_VIEWPORT_PX` this page renders an explanation
+ * instead of the editor. The check is in the exported component and the whole of
+ * the old one moved into `JobScreen`, so a narrow viewport mounts **no store, no
+ * canvas and no engine** — not a hidden one. That is not tidiness:
+ * `AnnotatorCanvas` measures its pane to derive the fit zoom, and a canvas laid
+ * out inside a `display: none` ancestor measures **zero**, so a CSS-only
+ * treatment would leave the editor holding a zoom nobody chose the moment
+ * somebody widened the window.
+ *
  * ## Reversing a skip is an action, never a side effect of drawing (#187)
  *
  * `progress_after_annotating` moves an asset only `unannotated ↔ annotated`, and
@@ -82,6 +93,7 @@ import {
   Grid3x3,
   Maximize2,
   Minus,
+  MonitorSmartphone,
   Plus,
   Save,
   SkipForward,
@@ -90,13 +102,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
-import { ErrorState, LoadingState } from "../patterns/AsyncStates";
+import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { ShortcutSheet } from "./ShortcutSheet";
 import { ToolPalette } from "./ToolPalette";
+import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
 import type { WireAnnotation } from "./jobQueries";
 import {
@@ -152,7 +165,70 @@ export interface AnnotationPageProps {
   readonly onOpenGallery?: (projectId: string, batchId: string) => void;
 }
 
-export function AnnotationPage({
+export function AnnotationPage(props: AnnotationPageProps): JSX.Element {
+  const roomy = useViewportAtLeast(ANNOTATOR_MIN_VIEWPORT_PX);
+  if (!roomy) {
+    return (
+      <TooNarrow
+        jobId={props.jobId}
+        {...(props.onOpenGallery === undefined ? {} : { onOpenGallery: props.onOpenGallery })}
+      />
+    );
+  }
+  return <JobScreen {...props} />;
+}
+
+/**
+ * Under the floor: what the minimum is, why there is one, and a way out (#184).
+ *
+ * A way out matters more here than the explanation does. Somebody who followed a
+ * link from a phone has no rail beside them and, on a fresh tab, no history to
+ * fall back on — so a screen that only said "too small" would be the dead end
+ * #199 spent a whole issue removing everywhere else.
+ *
+ * It runs the two reads that resolve the destination — job → batch, the walk
+ * `AnnotationPage` does for its own reasons — and **nothing else**. No schema, no
+ * asset listing, no annotations, no store, no canvas. The button appears when the
+ * walk lands and the explanation never waits for it, because the sentence is
+ * useful on its own and a spinner in front of it would not be.
+ */
+function TooNarrow({
+  jobId,
+  onOpenGallery,
+}: {
+  readonly jobId: string;
+  readonly onOpenGallery?: (projectId: string, batchId: string) => void;
+}): JSX.Element {
+  const job = useJob(jobId);
+  const batch = useBatchOf(job.data?.batch_id);
+  const destination = batch.data;
+
+  return (
+    <div className="flex h-full items-center justify-center p-6" data-testid="viewport-too-narrow">
+      <EmptyState
+        icon={<MonitorSmartphone className="size-8" />}
+        title="This screen is too narrow to annotate on"
+        description={`Annotating is precision work on a large surface: the editor needs at least ${ANNOTATOR_MIN_VIEWPORT_PX}px of width for the canvas, the tools and the object list to coexist. Rotate to landscape, widen the window, or open this job on a larger screen.`}
+        {...(onOpenGallery === undefined || destination === undefined
+          ? {}
+          : {
+              action: (
+                <Button
+                  variant="secondary"
+                  data-testid="too-narrow-gallery"
+                  onClick={() => onOpenGallery(destination.project_id, destination.id)}
+                >
+                  <Grid3x3 className="size-4" aria-hidden="true" />
+                  Back to the batch
+                </Button>
+              ),
+            })}
+      />
+    </div>
+  );
+}
+
+function JobScreen({
   jobId,
   initialAssetId,
   onOpenGallery,
