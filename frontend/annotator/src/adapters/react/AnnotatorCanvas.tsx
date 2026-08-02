@@ -159,6 +159,7 @@ import { AnnotationLayer } from "./AnnotationLayer";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
 import { classColor, editedId, paintAnnotation } from "./paint";
+import { stageScreenSizes } from "./Shapes";
 import { withoutHidden } from "./visibility";
 import { TransientLayer } from "./TransientLayer";
 
@@ -657,6 +658,13 @@ export function AnnotatorCanvas({
             // bubbles to it, but "one input surface" is then a fact a test can
             // read off `elementFromPoint` instead of a claim in a comment.
             pointerEvents: "none",
+            // Every screen-pixel size the committed document draws with, published
+            // once here for the whole subtree to inherit (#131). This is the only
+            // place a zoom change has to be written: without it, `zoom` is an input
+            // to every shape and one wheel notch rewrites four attributes on each
+            // of them. The stage was already the element a zoom writes to, so this
+            // rides along on a style update that was happening anyway.
+            ...stageScreenSizes(view.zoom),
           }}
         >
           <img

@@ -39,11 +39,19 @@
  * v1 could not have this fix: its shapes carried the handlers, so they *had* to be
  * hit targets. A headless hit test is what makes an inert render layer possible.
  *
- * ## Every size is a screen size
+ * ## Every size is a screen size, and most of them are variables
  *
  * The `<svg>` is laid out at the asset's native size inside a scaled wrapper, so
  * a user unit is an asset pixel. A 2 written here would be 2 *asset* pixels.
- * Everything visual therefore goes through `screenPx(…, zoom)` — see `paint.ts`.
+ * Everything visual is therefore divided by the zoom — but *where* that division
+ * happens matters, and #131 moved it.
+ *
+ * Anything drawn once per annotation reads a CSS custom property published by the
+ * stage (`stageScreenSizes`), so its attributes never mention the zoom and a wheel
+ * notch costs one style write rather than four per shape. Anything drawn only for
+ * a *selected* shape — grips, vertex dots — still divides here through
+ * `screenPx(…, zoom)`, because there is at most a handful of them and a variable
+ * per grip attribute would buy nothing.
  */
 
 import type { JSX } from "react";
@@ -69,6 +77,60 @@ export const VERTEX_PX = 4.5;
 /** Class label type size, in screen pixels. */
 export const LABEL_PX = 12;
 
+/** The dark halo behind a label, in screen pixels — `paint-order: stroke` under it. */
+export const LABEL_HALO_PX = 3;
+
+/** How far the label sits above its anchor, in screen pixels. */
+export const LABEL_LIFT_PX = 4;
+
+/**
+ * The screen sizes a whole document draws with, as CSS custom properties for the
+ * stage to carry.
+ *
+ * ## Why these are variables rather than attributes (#131)
+ *
+ * A stroke width written as an attribute is `screenPx(2, zoom)`, so `zoom` is an
+ * input to every shape: a wheel notch changes it, `AnnotationLayer`'s `memo`
+ * correctly fails to bail out, and React rewrites four attributes on every
+ * annotation. #49 measured **880 records for one notch** on the 220-annotation
+ * bench scene, against 0 for a pan and 3 for a whole drag, and put the zoom first
+ * in line to break on the CPU-throttle ladder.
+ *
+ * A custom property inherits, so the same numbers written **once on the stage**
+ * reach every shape without React touching any of them. The per-shape attributes
+ * stop mentioning the zoom, the diff finds no work, and a notch costs one style
+ * write instead of `4 × n`.
+ *
+ * ## Why not `vector-effect="non-scaling-stroke"`, which #131 proposed
+ *
+ * Because it does nothing here, and that is measured rather than reasoned about.
+ * It compensates for transforms up to the **SVG viewport**, and this stage scales
+ * an HTML *ancestor* of the `<svg>` with a CSS transform. Two identical rects, one
+ * carrying the attribute and one not, paint the same width at every zoom — 2.05px
+ * at zoom 1, 4.05 at 2, 8.05 at 4. It would also have reached only two of the four
+ * attributes, since a label's size and lift are not strokes.
+ *
+ * ## What stays on `screenPx`, which is not an oversight
+ *
+ * Grips and vertex dots, drawn only for a *selected* shape and so contributing
+ * nothing to the 880; and everything in `TransientLayer`, which is not memoized
+ * because its props move by design, so making it zoom-independent would buy
+ * nothing. `screenPx` is still the rule for anything that is not a whole document.
+ */
+export function stageScreenSizes(zoom: number): Readonly<Record<string, string>> {
+  const ratio = (screenPixels: number): string => String(screenPx(screenPixels, zoom));
+  const length = (screenPixels: number): string => `${screenPx(screenPixels, zoom)}px`;
+  return {
+    "--vs-stroke": ratio(STROKE_PX),
+    "--vs-stroke-selected": ratio(SELECTED_STROKE_PX),
+    "--vs-label-size": length(LABEL_PX),
+    "--vs-label-halo": ratio(LABEL_HALO_PX),
+    // Negative: the label sits *above* its anchor, and the lift is applied with
+    // the CSS `translate` property so that `y` can stay a plain asset coordinate.
+    "--vs-label-lift": `${-screenPx(LABEL_LIFT_PX, zoom)}px`,
+  };
+}
+
 /** How translucent a shape's interior is. A fill, not a colour — see `classColor`. */
 const FILL_OPACITY = 0.12;
 
@@ -90,13 +152,23 @@ interface ShapeProps {
   readonly zoom: number;
 }
 
+/**
+ * Which of the stage's two stroke variables a shape draws with.
+ *
+ * A `var()` reference and not a number, so the string is the same at every zoom —
+ * see `stageScreenSizes`. It still changes when the shape is *selected*, which is
+ * a document change and not a viewport one.
+ */
+function strokeOf(selected: boolean): string {
+  return selected ? "var(--vs-stroke-selected)" : "var(--vs-stroke)";
+}
+
 /** An axis-aligned box: its outline, its interior, and nothing else. */
-export function BboxShape({ geometry, color, hot, selected, zoom }: {
+export function BboxShape({ geometry, color, hot, selected }: {
   readonly geometry: BboxGeometry;
   readonly color: string;
   readonly hot: boolean;
   readonly selected: boolean;
-  readonly zoom: number;
 }): JSX.Element {
   return (
     <rect
@@ -107,18 +179,17 @@ export function BboxShape({ geometry, color, hot, selected, zoom }: {
       fill={color}
       fillOpacity={hot ? HOT_FILL_OPACITY : FILL_OPACITY}
       stroke={color}
-      strokeWidth={screenPx(selected ? SELECTED_STROKE_PX : STROKE_PX, zoom)}
+      style={{ strokeWidth: strokeOf(selected) }}
     />
   );
 }
 
 /** A closed polygon. The closing edge is implicit, so `<polygon>` and not `<polyline>`. */
-export function PolygonShape({ geometry, color, hot, selected, zoom }: {
+export function PolygonShape({ geometry, color, hot, selected }: {
   readonly geometry: PolygonGeometry;
   readonly color: string;
   readonly hot: boolean;
   readonly selected: boolean;
-  readonly zoom: number;
 }): JSX.Element {
   return (
     <polygon
@@ -126,7 +197,7 @@ export function PolygonShape({ geometry, color, hot, selected, zoom }: {
       fill={color}
       fillOpacity={hot ? HOT_FILL_OPACITY : FILL_OPACITY}
       stroke={color}
-      strokeWidth={screenPx(selected ? SELECTED_STROKE_PX : STROKE_PX, zoom)}
+      style={{ strokeWidth: strokeOf(selected) }}
       strokeLinejoin="round"
     />
   );
@@ -196,21 +267,30 @@ export function Vertices({ points, color, zoom, hotIndex }: {
   );
 }
 
-/** The class name, above the shape. Hidden when the zoom makes it unreadable. */
-export function ShapeLabel({ shape, zoom }: ShapeProps): JSX.Element | null {
-  const size = screenPx(LABEL_PX, zoom);
+/**
+ * The class name, above the shape.
+ *
+ * `y` is the anchor itself — a plain asset coordinate — and the screen-pixel lift
+ * above it rides on the CSS `translate` property instead of being subtracted here.
+ * That is what keeps every one of this element's attributes free of the zoom:
+ * three of the four writes #131 measured were on this `<text>`.
+ */
+export function ShapeLabel({ shape }: { readonly shape: PaintedAnnotation }): JSX.Element {
   const [x, y] = labelAnchor(shape);
   return (
     <text
       x={x}
-      y={y - screenPx(4, zoom)}
+      y={y}
       fill={shape.color}
-      fontSize={size}
       fontFamily="system-ui, sans-serif"
       paintOrder="stroke"
       stroke="#000000"
-      strokeWidth={screenPx(3, zoom)}
       strokeOpacity={0.45}
+      style={{
+        fontSize: "var(--vs-label-size)",
+        strokeWidth: "var(--vs-label-halo)",
+        translate: "0 var(--vs-label-lift)",
+      }}
     >
       {shape.labelClass}
     </text>
@@ -234,7 +314,6 @@ export function AnnotationShape({ shape, zoom }: ShapeProps): JSX.Element {
           color={shape.color}
           hot={shape.hot}
           selected={shape.selected}
-          zoom={zoom}
         />
       ) : (
         <PolygonShape
@@ -242,10 +321,9 @@ export function AnnotationShape({ shape, zoom }: ShapeProps): JSX.Element {
           color={shape.color}
           hot={shape.hot}
           selected={shape.selected}
-          zoom={zoom}
         />
       )}
-      <ShapeLabel shape={shape} zoom={zoom} />
+      <ShapeLabel shape={shape} />
       {shape.selected && shape.geometry.type === "bbox" && (
         <Grips geometry={shape.geometry} color={shape.color} zoom={zoom} hotHandle={null} />
       )}

@@ -195,9 +195,7 @@ test("a pan writes the stage transform and touches neither render layer", async 
   expect(counts.transient).toBe(0);
 });
 
-test("one wheel notch rewrites four attributes on every annotation — the expensive gesture", async ({
-  page,
-}) => {
+test("one wheel notch writes the stage and touches no annotation at all", async ({ page }) => {
   const frame = await frameOf(page, BENCH_ASSET);
 
   const at = frame.at(1920, 1080);
@@ -205,24 +203,66 @@ test("one wheel notch rewrites four attributes on every annotation — the expen
   await watchLayers(page);
   await page.mouse.wheel(0, -120);
 
-  // A wheel event is not a discrete React event, so the commit lands on a later
-  // task than the dispatch. Polled on the state, never slept on.
-  await expect.poll(async () => (await layerCounts(page)).committed).toBeGreaterThan(0);
+  // Poll the **stage**, which is where a zoom now writes. A wheel event is not a
+  // discrete React event, so the commit lands on a later task than the dispatch.
+  // Polled on state, never slept on.
+  await expect.poll(async () => (await layerCounts(page)).stage).toBeGreaterThan(0);
   const counts = await layerCounts(page);
 
-  // Recorded rather than hidden, because this is the one gesture whose cost is
-  // O(annotations). Every stroke width, grip size and label size goes through
-  // `screenPx(…, zoom)` — which is what makes a 2-pixel stroke two *screen*
-  // pixels at every zoom, #41's finding pointed at rendering — so a wheel notch
-  // changes `zoom`, `AnnotationLayer`'s `memo` correctly fails to bail out, and
-  // React rewrites four attributes on each of the 220 shapes.
+  // #131. This assertion used to read `4 * BENCH_ANNOTATIONS` — **880 records for
+  // one notch** — because every stroke width, label size and label lift went
+  // through `screenPx(…, zoom)`, so `zoom` was an input to every shape,
+  // `AnnotationLayer`'s `memo` correctly failed to bail out, and React rewrote
+  // four attributes on each of the 220 shapes. It was the one gesture whose cost
+  // was O(annotations), and the first to break on the CPU-throttle ladder.
+  //
+  // Those four sizes are now CSS custom properties published once by the stage
+  // (`stageScreenSizes`), so the per-shape attributes no longer mention the zoom
+  // and the diff finds nothing to do. The number moved 880 → 0, deliberately, and
+  // this comment is the record of it.
   //
   // Exactly one notch, so exactly one commit: several notches can be coalesced
   // into one render on a busy machine, which is fine for a timing run and would
   // make an exact count flaky.
-  expect(counts.committed).toBe(4 * BENCH_ANNOTATIONS);
-  expect(counts.stage).toBe(1);
+  expect(counts.committed).toBe(0);
   expect(counts.transient).toBe(0);
+  // Six records on the stage, and the whole trade is in this line: React writes
+  // style properties one at a time, so a notch touches the `transform` plus the
+  // five variables and each lands as its own record. The stage cost went 1 → 6
+  // and the document cost went 880 → 0, and — the part that matters — six is a
+  // constant, where 880 was `4 × the number of annotations`.
+  expect(counts.stage).toBe(6);
+});
+
+test("a zoom still leaves a stroke two screen pixels wide, which is what it was for", async ({
+  page,
+}) => {
+  // The other half of #131, and the reason the count above is allowed to be zero:
+  // a layer that never redraws would also score 0, and would be wrong. `stroke-width`
+  // is resolved in SVG user units — asset pixels here — so a constant *screen* width
+  // means the computed value tracks 1/zoom.
+  const frame = await frameOf(page, BENCH_ASSET);
+  const strokeAtThisZoom = async (): Promise<number> => {
+    const width = await page
+      .getByTestId("annotation-layer")
+      .locator("rect")
+      .first()
+      .evaluate((node) => Number.parseFloat(getComputedStyle(node).strokeWidth));
+    const box = await page.getByTestId("annotator-canvas").boundingBox();
+    if (box === null) throw new Error("the canvas has no box");
+    return width * (box.width / BENCH_ASSET.width);
+  };
+
+  expect(await strokeAtThisZoom()).toBeCloseTo(2, 1);
+
+  const at = frame.at(1920, 1080);
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.wheel(0, -600);
+  await expect
+    .poll(async () => (await page.getByTestId("annotator-canvas").boundingBox())?.width ?? 0)
+    .toBeGreaterThan(frame.zoom * BENCH_ASSET.width * 1.5);
+
+  expect(await strokeAtThisZoom()).toBeCloseTo(2, 1);
 });
 
 test("drawing a box leaves the committed layer alone until the gesture ends", async ({ page }) => {
