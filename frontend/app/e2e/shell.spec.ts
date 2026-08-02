@@ -76,8 +76,12 @@ test("the browser the server signed in never sees the gate", async ({ page }) =>
 
   // The control says what it can actually do. A cookie set by the server is one
   // no script here can delete, so this stops using it rather than forgetting it.
+  // Read off the accessible name rather than the text: the rail starts collapsed
+  // (#200) and a collapsed rail deliberately drops its labels, keeping them in
+  // `aria-label` and `title` so no destination is lost. That is the string a
+  // screen reader and a tooltip both get, which makes it the stronger assertion.
   const control = page.getByTestId("rail-sign-out");
-  await expect(control).toContainText("Use a token");
+  await expect(control).toHaveAttribute("aria-label", "Use a token");
   await control.click();
   await expect(page.getByTestId("token-input")).toBeVisible();
 
@@ -159,7 +163,13 @@ test("collapsing the rail narrows it and keeps every control reachable", async (
   await signIn(page);
   const rail = page.getByTestId("app-rail");
 
+  // Expanded first, because collapsed is now where a fresh session starts (#200)
+  // — so this scenario has to open the rail before it can claim that closing it
+  // narrows anything. The claim itself is unchanged.
+  await page.getByTestId("rail-collapse").click();
+  await expect(rail).toHaveAttribute("data-collapsed", "false");
   const wide = (await rail.boundingBox())?.width ?? 0;
+
   await page.getByTestId("rail-collapse").click();
   await expect(rail).toHaveAttribute("data-collapsed", "true");
 
@@ -227,4 +237,52 @@ test("a client route nobody defined answers inside the shell, not with a blank p
   // Home redirects to the project list: there is nothing else a workspace's front
   // page could honestly be until a dashboard has numbers to show.
   await expect(page).toHaveURL(/\/projects$/);
+});
+
+/**
+ * The rail starts collapsed (#200).
+ *
+ * The unit tests hold the logic — absent key, unparseable value, refused storage
+ * all resolve to the default — and cannot see whether anything calls it. These
+ * two are the browser half: what a fresh session actually renders, and that a
+ * choice survives a reload, which is a browser fact and nothing else.
+ *
+ * `localStorage` is cleared explicitly rather than trusted to be empty: Playwright
+ * gives each test a fresh context, but a scenario that depended on that silently
+ * would stop meaning anything the day somebody reused one.
+ */
+test("a fresh session opens with the rail collapsed", async ({ page }) => {
+  await serveApi(page);
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+
+  const rail = page.getByTestId("app-rail");
+  await expect(rail).toHaveAttribute("data-collapsed", "true");
+  // Narrow, not merely labelled narrow: 60px is the collapsed token and 240 the
+  // expanded one, so anything under half of 240 can only be the former.
+  expect((await rail.boundingBox())?.width ?? 0).toBeLessThan(120);
+});
+
+test("a stored preference beats the default, and survives a reload", async ({ page }) => {
+  await signIn(page);
+  const rail = page.getByTestId("app-rail");
+  await expect(rail).toHaveAttribute("data-collapsed", "true");
+
+  await page.getByTestId("rail-collapse").click();
+  await expect(rail).toHaveAttribute("data-collapsed", "false");
+
+  // The whole reason the preference is in `localStorage` rather than in state: a
+  // default that resets on every page load is not a default, it is a reset.
+  await page.reload();
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
+
+  // And back — the stored value follows the choice in both directions rather than
+  // only recording that somebody once expanded it.
+  await page.getByTestId("rail-collapse").click();
+  await page.reload();
+  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
 });

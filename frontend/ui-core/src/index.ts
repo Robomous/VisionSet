@@ -177,6 +177,13 @@ export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbna
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
 
+// Whether the rail starts collapsed (#200). One declaration, guarded storage.
+export {
+  RAIL_COLLAPSED_BY_DEFAULT,
+  readRailCollapsed,
+  writeRailCollapsed,
+} from "./data/railState.js";
+
 // The way out of a sub-view (#199). Structural, never `navigate(-1)`.
 export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";
 export { parentLabel } from "./patterns/parentLabel.js";
