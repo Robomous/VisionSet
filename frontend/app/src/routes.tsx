@@ -181,6 +181,9 @@ function Project(): JSX.Element {
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
       onOpenDataset={() => void navigate(`/projects/${projectId}/dataset`)}
+      // A deleted project's own URL is a 404 waiting to happen, so the parent is
+      // where to land — and `replace`, because Back should not walk into it.
+      onDeleted={() => void navigate(PARENT.projects, { replace: true })}
     />
   );
 }

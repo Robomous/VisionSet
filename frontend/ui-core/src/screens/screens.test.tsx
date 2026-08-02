@@ -538,3 +538,184 @@ describe("version history", () => {
     expect(within(history).queryAllByRole("textbox")).toHaveLength(0);
   });
 });
+
+describe("the project header", () => {
+  const STATS = {
+    project_id: PROJECT,
+    asset_count: 1248,
+    annotated_asset_count: 774,
+    annotation_count: 6431,
+    class_count: 3,
+    annotated_pct: 62.0,
+    classes: [],
+  };
+
+  function headerFor(options: {
+    description?: string | null;
+    schema?: boolean;
+    stats?: boolean;
+    batchState?: string;
+  }): void {
+    on("GET", /^\/projects\/[^/]+$/, {
+      status: 200,
+      body: { id: PROJECT, name: "highway", description: options.description ?? null },
+    });
+    on("GET", /^\/projects\/[^/]+\/schema$/, {
+      status: options.schema === false ? 404 : 200,
+      body:
+        options.schema === false
+          ? { code: "SCHEMA_NOT_FOUND", message: "none yet" }
+          : { project_id: PROJECT, version: 3, classes: CLASSES },
+    });
+    on("GET", /\/stats$/, {
+      status: options.stats === false ? 500 : 200,
+      body: options.stats === false ? { code: "BOOM", message: "no" } : STATS,
+    });
+    on("GET", /\/batches$/, {
+      status: 200,
+      body:
+        options.batchState === undefined
+          ? { items: [], total: 0 }
+          : {
+              items: [
+                {
+                  id: "22222222-2222-4222-8222-222222222222",
+                  project_id: PROJECT,
+                  name: "drive-01",
+                  state: options.batchState,
+                  asset_count: 4,
+                  schema_version: 1,
+                  progress: {
+                    unannotated: 4,
+                    annotated: 0,
+                    skipped: 0,
+                    review_pending: 0,
+                    accepted: 0,
+                    total: 4,
+                  },
+                },
+              ],
+              total: 1,
+            },
+    });
+    on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
+  }
+
+  it("renders nothing at all where a description is absent", async () => {
+    // Not "No description." — a line about a field rather than about a project.
+    headerFor({});
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await screen.findByTestId("project-title");
+    expect(screen.queryByTestId("project-description")).toBeNull();
+    expect(document.body.textContent).not.toContain("No description");
+  });
+
+  it("shows a description when there is one", async () => {
+    headerFor({ description: "M4 survey" });
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    expect((await screen.findByTestId("project-description")).textContent).toBe("M4 survey");
+  });
+
+  it("chips the active schema version", async () => {
+    headerFor({});
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    expect((await screen.findByTestId("chip-version")).textContent).toContain("v3 active");
+  });
+
+  it("omits the version chip for a schema-less project rather than placeholding it", async () => {
+    // `DESIGN.md`: a chip with no data is omitted, never rendered as a
+    // placeholder. A project three seconds old is the ordinary case.
+    headerFor({ schema: false });
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await screen.findByTestId("project-chips");
+    await waitFor(() => expect(screen.queryByTestId("schema-editor")).not.toBeNull());
+    expect(screen.queryByTestId("chip-version")).toBeNull();
+  });
+
+  it("omits the image chip when the count cannot be read", async () => {
+    headerFor({ stats: false });
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await screen.findByTestId("project-chips");
+    await waitFor(() => expect(screen.queryByTestId("chip-version")).not.toBeNull());
+    expect(screen.queryByTestId("chip-images")).toBeNull();
+  });
+
+  it("formats the image count rather than printing a bare integer", async () => {
+    headerFor({});
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    expect((await screen.findByTestId("chip-images")).textContent).toContain(
+      (1248).toLocaleString(undefined),
+    );
+  });
+
+  it("offers Annotate when a batch is open for annotation, and opens that batch", async () => {
+    const opened = vi.fn();
+    headerFor({ batchState: "in_annotation" });
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />));
+
+    await userEvent.click(await screen.findByTestId("go-annotate"));
+
+    expect(opened).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222");
+  });
+
+  it("does not render Annotate at all when no batch is open for annotation", async () => {
+    // `DESIGN.md`'s never-disable rule, and #160 from the other side: a control
+    // that leads nowhere is absent, not grey.
+    headerFor({ batchState: "draft" });
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />));
+
+    await screen.findByTestId("go-ingest");
+    expect(screen.queryByTestId("go-annotate")).toBeNull();
+  });
+
+  it("moves Rename and Dataset into the overflow, so only two buttons show", async () => {
+    headerFor({ batchState: "in_annotation" });
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} onOpenDataset={vi.fn()} />));
+
+    await screen.findByTestId("go-annotate");
+    // Rename and Dataset are behind the menu, so they are not in the document yet.
+    expect(screen.queryByTestId("rename-project")).toBeNull();
+    expect(screen.queryByTestId("go-dataset")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("project-menu"));
+
+    expect(await screen.findByTestId("rename-project")).not.toBeNull();
+    expect(screen.queryByTestId("go-dataset")).not.toBeNull();
+    expect(screen.queryByTestId("delete-project")).not.toBeNull();
+  });
+
+  it("states the blast radius in counted terms before deleting anything", async () => {
+    headerFor({});
+    render(mount(<ProjectScreen projectId={PROJECT} />));
+
+    await screen.findByTestId("project-menu");
+    await userEvent.click(screen.getByTestId("project-menu"));
+    await userEvent.click(await screen.findByTestId("delete-project"));
+
+    const said = (await screen.findByTestId("delete-blast-radius")).textContent ?? "";
+    expect(said).toContain((1248).toLocaleString(undefined));
+    expect(said).toContain((6431).toLocaleString(undefined));
+    // The one thing a delete does *not* do, said out loud.
+    expect(said).toContain("not removed");
+  });
+
+  it("sends the delete and then hands the host somewhere to go", async () => {
+    headerFor({});
+    on("DELETE", /^\/projects\/[^/]+$/, { status: 204 });
+    const gone = vi.fn();
+    render(mount(<ProjectScreen projectId={PROJECT} onDeleted={gone} />));
+
+    await screen.findByTestId("project-menu");
+    await userEvent.click(screen.getByTestId("project-menu"));
+    await userEvent.click(await screen.findByTestId("delete-project"));
+    await userEvent.click(await screen.findByTestId("delete-submit"));
+
+    await waitFor(() => expect(gone).toHaveBeenCalledOnce());
+  });
+});

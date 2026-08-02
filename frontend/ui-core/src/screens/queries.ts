@@ -40,12 +40,15 @@ export type SchemaVersionPage = components["schemas"]["SchemaVersionPage"];
 export type LabelClassBody = components["schemas"]["LabelClassBody"];
 export type AttributeBody = components["schemas"]["AttributeBody"];
 export type GeometryType = components["schemas"]["GeometryType"];
+export type ProjectStats = components["schemas"]["ProjectStatsOut"];
+export type ClassCount = components["schemas"]["ClassCountOut"];
 
 /** One place the key space is written down. Prefixes are the invalidation API. */
 export const queryKeys = {
   projects: () => ["projects"] as const,
   project: (projectId: string) => ["projects", projectId] as const,
   activeSchema: (projectId: string) => ["projects", projectId, "schema"] as const,
+  projectStats: (projectId: string) => ["projects", projectId, "stats"] as const,
   schemaVersions: (projectId: string) => ["projects", projectId, "schema", "versions"] as const,
 };
 
@@ -63,6 +66,27 @@ export function useProject(projectId: string): UseQueryResult<Project, Error> {
     queryKey: queryKeys.project(projectId),
     queryFn: async () =>
       unwrap(await client.GET("/projects/{project_id}", { params: { path: { project_id: projectId } } })),
+  });
+}
+
+/**
+ * What the project holds, counted — everything ingested, not only the trunk.
+ *
+ * The sibling of `useDatasetStats`, and the two disagree on purpose: a dataset is
+ * the curated trunk, so a project that has ingested a thousand images and
+ * promoted none reads zero through that one. `docs/api.md` says which question
+ * each answers.
+ */
+export function useProjectStats(projectId: string): UseQueryResult<ProjectStats, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.projectStats(projectId),
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/projects/{project_id}/stats", {
+          params: { path: { project_id: projectId } },
+        }),
+      ),
   });
 }
 
@@ -134,6 +158,17 @@ export function useActiveSchema(projectId: string): UseQueryResult<SchemaVersion
     // A schema-less project answers 404 on every attempt; retrying is three more
     // round trips to learn the same thing.
     retry: false,
+    // And neither does a *second observer* mounting on the already-failed query,
+    // which is what `retryOnMount` does by default. #211 put a copy of this hook
+    // in the project header, and because the header mounts after `Async`
+    // resolves the project — later than the Schema tab underneath it — the
+    // arriving observer refetched an error that cannot change, re-rendered the
+    // section into `isPending`, and the editor never appeared at all.
+    //
+    // The rule is the same one the line above states: this 404 is a stable
+    // answer about the project, not a transient failure. Asking again is asking
+    // the same question.
+    retryOnMount: false,
   });
 }
 

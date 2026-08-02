@@ -331,6 +331,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("publish a release", async () => {
+    // Dataset moved into the header's overflow menu with #211: a project page
+    // shows one primary action and one secondary, and curation is neither.
+    await page.getByTestId("project-menu").click();
     await page.getByTestId("go-dataset").click();
     await expect(page.getByTestId("dataset-stats")).toContainText("3");
     await expect(page.getByTestId("dataset-screen")).toBeVisible();

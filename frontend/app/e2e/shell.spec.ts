@@ -52,6 +52,24 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
         json: { id: PROJECT, name: "highway", description: null },
       });
     }
+    // #211's header counts the project, and the catch-all below answers every
+    // *collection* with an empty page — which is the wrong shape for this one.
+    // A stub that answers a shape the endpoint never sends tests nothing, and
+    // this one took the page down with it.
+    if (path.endsWith("/stats")) {
+      return route.fulfill({
+        status: 200,
+        json: {
+          project_id: PROJECT,
+          asset_count: 0,
+          annotated_asset_count: 0,
+          annotation_count: 0,
+          class_count: 0,
+          annotated_pct: 0,
+          classes: [],
+        },
+      });
+    }
     return route.fulfill({ status: 200, json: { items: [], total: 0 } });
   });
 }
