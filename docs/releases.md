@@ -497,6 +497,30 @@ Not carried by boxes-only: lane (1204). See visionset-export-report.json.
 `--json` carries the whole report under `compatibility`, for the caller that never opens the
 directory.
 
+**`export --check` is how you see that report before committing to anything** (#163). Until it
+landed, `check_export` was reachable over HTTP and from MCP and from nowhere at a terminal, so the
+only way to find out what an export would cost was to attempt one and read a refusal naming neither
+the classes nor the counts:
+
+```bash
+$ visionset export --check -p road-signs --release v1.0 -f boxes-only
+CLASS  GEOMETRY  STATUS   ANNOTATIONS  ASSETS  REASON
+sign   bbox      dropped  6            6       boxes-only cannot write bbox
+boxes-only would drop 6 annotation(s) across 6 asset(s), and write 0 annotation(s) across 0
+asset(s) in a reduced form.
+Re-run without --check and with --allow-lossy to export anyway.
+```
+
+Exit **1**, on `release verify`'s precedent, and on the same predicate `export` gates on — see
+[Consent is required if *either* says so](#consent-is-required-if-either-says-so): a lossy format
+exits 1 here even when the table is clean, because otherwise `--check && export` would promise
+something the export then refuses.
+
+The refusal from a real `export` now also names the flag a person types. The kernel's sentence says
+`allow_lossy`, which is the service parameter; `cli/_errors.py`'s `_HINTS` adds `--allow-lossy` and
+`--check` underneath, which is the surface supplying a remedy without bending a domain message
+toward one caller. See [cli.md](cli.md#visionset-release-and-visionset-export).
+
 ## Over HTTP
 
 The [API](api.md) is this service, one route per method, plus the format listing.

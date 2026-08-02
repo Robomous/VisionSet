@@ -31,7 +31,7 @@ from typing import Final
 
 import typer
 
-from visionset.kernel import NotAWorkspace, VisionSetError
+from visionset.kernel import LossyExportNotConsented, NotAWorkspace, VisionSetError
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
 EXIT_DOMAIN_ERROR: Final = 1
@@ -60,6 +60,15 @@ _HINTS: Final[dict[type[BaseException], str]] = {
     # line here is the surface adding its own remedy, which is what a surface is
     # for.
     NotAWorkspace: f"Point at one with --workspace, or set {WORKSPACE_ENV_VAR}.",
+    # The kernel's sentence says "re-run with allow_lossy", which is the *service*
+    # parameter — a person at a terminal types `--allow-lossy`, and no amount of
+    # reading the message tells them so. It also names the one command that
+    # answers the question the refusal raises and the message cannot: the refusal
+    # carries the report, and nothing on stderr prints it.
+    LossyExportNotConsented: (
+        "Re-run with --allow-lossy to accept the loss, or with --check to see "
+        "exactly what it costs, class by class."
+    ),
 }
 """A remedy a *terminal* can act on, printed under the error's own sentence.
 
