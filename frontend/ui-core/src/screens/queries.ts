@@ -42,6 +42,8 @@ export type AttributeBody = components["schemas"]["AttributeBody"];
 export type GeometryType = components["schemas"]["GeometryType"];
 export type ProjectStats = components["schemas"]["ProjectStatsOut"];
 export type ClassCount = components["schemas"]["ClassCountOut"];
+export type Asset = components["schemas"]["AssetOut"];
+export type AssetPage = components["schemas"]["AssetPage"];
 
 /** One place the key space is written down. Prefixes are the invalidation API. */
 export const queryKeys = {
@@ -49,6 +51,8 @@ export const queryKeys = {
   project: (projectId: string) => ["projects", projectId] as const,
   activeSchema: (projectId: string) => ["projects", projectId, "schema"] as const,
   projectStats: (projectId: string) => ["projects", projectId, "stats"] as const,
+  projectAssets: (projectId: string, limit?: number) =>
+    ["projects", projectId, "assets", limit ?? "all"] as const,
   schemaVersions: (projectId: string) => ["projects", projectId, "schema", "versions"] as const,
 };
 
@@ -85,6 +89,33 @@ export function useProjectStats(projectId: string): UseQueryResult<ProjectStats,
       unwrap(
         await client.GET("/projects/{project_id}/stats", {
           params: { path: { project_id: projectId } },
+        }),
+      ),
+  });
+}
+
+/**
+ * A window onto the project's own assets — the third asset listing (#208).
+ *
+ * `total` counts the project rather than the page, which is what lets six sample
+ * tiles compute their own `+N` overflow without a second request. The order is
+ * stable and deliberately **not** chronological: nothing records when an asset
+ * arrived (#216), so this cannot be "the six most recent" yet.
+ */
+export function useProjectAssets(
+  projectId: string,
+  limit?: number,
+): UseQueryResult<AssetPage, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.projectAssets(projectId, limit),
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/projects/{project_id}/assets", {
+          params: {
+            path: { project_id: projectId },
+            ...(limit === undefined ? {} : { query: { limit } }),
+          },
         }),
       ),
   });

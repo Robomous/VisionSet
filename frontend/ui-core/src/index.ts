@@ -188,6 +188,16 @@ export { DatasetScreen, type DatasetScreenProps } from "./screens/DatasetScreen.
 export { saveBlob } from "./screens/download.js";
 export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
 
+// The Overview panel (#212) and the heuristic it shows, exported separately so
+// the rule can be replaced without touching the screen that renders it.
+export { OverviewPanel, type OverviewPanelProps } from "./screens/OverviewPanel.js";
+export {
+  imbalanceNote,
+  IMBALANCE_MIN_CLASSES,
+  IMBALANCE_SHARE,
+  type ClassShare,
+} from "./screens/imbalance.js";
+
 // The annotation page's side panel (#126). Driven entirely by the `AnnotatorStore`
 // the page already holds — no second door to the document.
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
