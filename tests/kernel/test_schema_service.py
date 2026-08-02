@@ -518,7 +518,10 @@ def test_a_lost_version_race_is_reported_as_a_conflict(
     def _stale(self: SchemaService, uow: object, project_id: UUID) -> AnnotationSchema | None:
         return None  # as if nothing were stored yet, so the next version is 1 again
 
-    monkeypatch.setattr(SchemaService, "_active", _stale)
+    # `active` rather than `_active` since #207 promoted it: `ProjectService.stats`
+    # needs the "no schema yet" answer without an exception, and the seam a race
+    # is simulated through is the same one.
+    monkeypatch.setattr(SchemaService, "active", _stale)
     with pytest.raises(SchemaVersionConflict, match="retry"):
         schemas.create_version(project.id, [SIGN])
     workspace.close()

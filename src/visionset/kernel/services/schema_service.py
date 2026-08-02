@@ -154,7 +154,7 @@ class SchemaService:
         """
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
-            active = self._active(uow, project_id)
+            active = self.active(uow, project_id)
             return diff_classes(() if active is None else active.classes, classes)
 
     # --- writing: the only door --------------------------------------------
@@ -193,7 +193,7 @@ class SchemaService:
                 self._require_project(uow, project_id)
                 _require_coherent(proposed)
 
-                active = self._active(uow, project_id)
+                active = self.active(uow, project_id)
                 diff = diff_classes(() if active is None else active.classes, proposed)
                 if diff.is_destructive:
                     self._refuse_narrowing(uow, project_id, diff, allow_destructive)
@@ -254,7 +254,19 @@ class SchemaService:
     def _by_version(self, uow: UnitOfWork, project_id: UUID) -> dict[int, AnnotationSchema]:
         return {schema.version: schema for schema in uow.schemas.list(project_id)}
 
-    def _active(self, uow: UnitOfWork, project_id: UUID) -> AnnotationSchema | None:
+    def active(self, uow: UnitOfWork, project_id: UUID) -> AnnotationSchema | None:
+        """The version in force, or ``None`` for a project that has no schema yet.
+
+        Public — promoted from a private helper by #207 rather than copied,
+        because "active is the highest version" is a doctrine and a second
+        spelling of it is free to drift. ``ProjectService.stats`` needs the
+        *count* of declared classes for a project that may legitimately have
+        none, and :meth:`require_active` answers that ordinary state with an
+        exception. Taking a ``uow`` for :meth:`require_active`'s reason: the
+        caller is already inside its own transaction.
+
+        Does NOT check the project — every caller has already resolved one.
+        """
         return max(uow.schemas.list(project_id), key=lambda schema: schema.version, default=None)
 
     def require_active(self, uow: UnitOfWork, project_id: UUID) -> AnnotationSchema:
@@ -269,7 +281,7 @@ class SchemaService:
         Raises:
             SchemaNotFound: the project has no schema yet.
         """
-        active = self._active(uow, project_id)
+        active = self.active(uow, project_id)
         if active is None:
             raise SchemaNotFound(
                 f"project {project_id} has no schema yet; create version 1 with create_version"

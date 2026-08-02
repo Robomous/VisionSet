@@ -486,3 +486,173 @@ def test_a_project_and_its_dataset_survive_a_reopen(tmp_path: Path) -> None:
     assert [(p.name, p.description) for p in reread.list()] == [("signs", "street furniture")]
     assert reread.get_dataset(project.id).name == "signs"
     reopened.close()
+
+
+# --- stats: what the project holds, not what the trunk holds -------------------
+
+
+def _labeled(
+    workspace: WorkspaceService,
+    project_id: UUID,
+    *,
+    assets: int,
+    classes: dict[str, int] | None = None,
+) -> list[UUID]:
+    """``assets`` assets, the first of them carrying ``classes`` annotations each.
+
+    Everything is written straight through the unit of work, `_populate`'s reason:
+    reaching the same state through `IngestService` and `AnnotationService` would
+    make every assertion below depend on two doors that are not under test.
+    """
+    made: list[UUID] = []
+    with workspace.unit_of_work() as uow:
+        for index in range(assets):
+            content_hash = f"{index:064x}"
+            asset = uow.assets.add(
+                Asset(
+                    project_id=project_id,
+                    content_hash=content_hash,
+                    uri=f"/tmp/in/{index}.png",
+                )
+            )
+            made.append(asset.id)
+        for label_class, count in (classes or {}).items():
+            for _ in range(count):
+                uow.annotations.add(
+                    Annotation(
+                        asset_id=made[0],
+                        label_class=label_class,
+                        schema_version=1,
+                        geometry=BboxGeometry(x=0, y=0, width=4, height=4),
+                        provenance="human",
+                    )
+                )
+    return made
+
+
+def _schema(workspace: WorkspaceService, project_id: UUID, *names: str) -> None:
+    with workspace.unit_of_work() as uow:
+        uow.schemas.add(
+            AnnotationSchema(
+                project_id=project_id,
+                version=1,
+                classes=[LabelClass(name=name, geometry=GeometryType.BBOX) for name in names],
+            )
+        )
+
+
+def test_a_project_with_nothing_in_it_counts_zero_rather_than_refusing(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+
+    stats = projects.stats(project.id)
+
+    assert (stats.asset_count, stats.annotation_count, stats.class_count) == (0, 0, 0)
+    assert stats.per_class == ()
+    workspace.close()
+
+
+def test_an_empty_project_is_zero_percent_annotated_rather_than_a_division_by_zero(
+    tmp_path: Path,
+) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+
+    assert projects.stats(project.id).annotated_fraction == 0.0
+    workspace.close()
+
+
+def test_every_ingested_asset_is_counted_however_far_it_got(tmp_path: Path) -> None:
+    """The whole reason this is not `DatasetService.stats`.
+
+    Nothing here is promoted — there is no dataset member at all — and the count
+    is still four. Read through the trunk the same project reads as empty.
+    """
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    _labeled(workspace, project.id, assets=4)
+
+    assert projects.stats(project.id).asset_count == 4
+    workspace.close()
+
+
+def test_only_assets_carrying_a_label_count_as_annotated(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    _labeled(workspace, project.id, assets=4, classes={"sign": 3})
+
+    stats = projects.stats(project.id)
+
+    # Three annotations, all on the first asset: one asset annotated out of four.
+    assert (stats.annotated_asset_count, stats.annotation_count) == (1, 3)
+    assert stats.annotated_fraction == 0.25
+    workspace.close()
+
+
+def test_a_class_is_counted_once_per_asset_and_once_per_annotation(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    _labeled(workspace, project.id, assets=2, classes={"sign": 5})
+
+    (sign,) = projects.stats(project.id).per_class
+
+    assert (sign.label_class, sign.annotations, sign.assets) == ("sign", 5, 1)
+    workspace.close()
+
+
+def test_classes_are_counted_from_the_schema_not_from_what_anybody_labeled(
+    tmp_path: Path,
+) -> None:
+    """A declared class nobody has used is still a class the project has."""
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    _schema(workspace, project.id, "sign", "lane", "pole")
+    _labeled(workspace, project.id, assets=1, classes={"sign": 2})
+
+    stats = projects.stats(project.id)
+
+    assert stats.class_count == 3
+    assert [count.label_class for count in stats.per_class] == ["sign"]
+    workspace.close()
+
+
+def test_a_project_with_no_schema_reports_no_classes_rather_than_raising(tmp_path: Path) -> None:
+    """Schema-less is the state every project starts in, not a failure (#6)."""
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    _labeled(workspace, project.id, assets=1, classes={"sign": 1})
+
+    assert projects.stats(project.id).class_count == 0
+    workspace.close()
+
+
+def test_per_class_is_ordered_by_name_whatever_order_the_walk_found_them(
+    tmp_path: Path,
+) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    _labeled(workspace, project.id, assets=1, classes={"zebra": 1, "ant": 1, "moose": 1})
+
+    found = [count.label_class for count in projects.stats(project.id).per_class]
+
+    assert found == ["ant", "moose", "zebra"]
+    workspace.close()
+
+
+def test_stats_count_one_project_and_never_its_neighbour(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    mine = projects.create("mine")
+    theirs = projects.create("theirs")
+    _labeled(workspace, mine.id, assets=2, classes={"sign": 1})
+    _labeled(workspace, theirs.id, assets=7, classes={"lane": 4})
+
+    assert projects.stats(mine.id).asset_count == 2
+    assert projects.stats(theirs.id).asset_count == 7
+    workspace.close()
+
+
+def test_stats_for_an_unknown_project_is_project_not_found(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    with pytest.raises(ProjectNotFound):
+        projects.stats(uuid4())
+    workspace.close()

@@ -1073,6 +1073,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Stats
+         * @description What the project holds, counted — overall and per label class.
+         *
+         *     Counts **everything ingested**, whatever batch it landed in and whether or
+         *     not anybody has promoted it. `GET /datasets/{dataset_id}/stats` is the
+         *     sibling that counts the curated trunk, and the two disagree by design: a
+         *     project mid-annotation has assets here and none there.
+         *
+         *     `class_count` is what the active schema version declares, so a project that
+         *     has just authored an ontology and labeled nothing reports its classes.
+         *     `annotated_pct` is `0` for a project with no assets, never `null`.
+         *
+         *     `classes` lists only classes somebody has actually used, ordered by name.
+         */
+        get: operations["get_project_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/releases/{release_id}": {
         parameters: {
             query?: never;
@@ -2132,6 +2163,29 @@ export interface components {
         ProjectRename: {
             /** Name */
             name: string;
+        };
+        /**
+         * ProjectStatsOut
+         * @description What the project holds, counted — everything ingested, not only the trunk.
+         */
+        ProjectStatsOut: {
+            /** Annotated Asset Count */
+            annotated_asset_count: number;
+            /** Annotated Pct */
+            annotated_pct: number;
+            /** Annotation Count */
+            annotation_count: number;
+            /** Asset Count */
+            asset_count: number;
+            /** Class Count */
+            class_count: number;
+            /** Classes */
+            classes: components["schemas"]["ClassCountOut"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
         };
         /**
          * ReleaseCreate
@@ -5495,6 +5549,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_project_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectStatsOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

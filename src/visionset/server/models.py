@@ -77,6 +77,7 @@ from visionset.kernel.domain import (
     Partition,
     PolygonGeometry,
     Project,
+    ProjectStats,
     Release,
     ReleaseVerification,
     SingleJob,
@@ -970,6 +971,40 @@ class DatasetStatsOut(BaseModel):
             asset_count=stats.asset_count,
             annotated_asset_count=stats.annotated_asset_count,
             annotation_count=stats.annotation_count,
+            classes=[ClassCountOut.of(count) for count in stats.per_class],
+        )
+
+
+# Declared here, beside its sibling, rather than up with the other project models
+# — it is built out of ``ClassCountOut``, which the trunk's stats introduced, and
+# a shared component belongs after the thing that defines it. Reading the two
+# stats shapes next to each other is also the point: they differ in exactly two
+# fields, and both of those differences are load-bearing.
+class ProjectStatsOut(BaseModel):
+    """What the project holds, counted — everything ingested, not only the trunk."""
+
+    project_id: UUID
+    asset_count: int
+    annotated_asset_count: int
+    annotation_count: int
+    # The trunk's stats carry no equivalent, because which classes a schema
+    # declares is a question about the project and not about a curated subset.
+    class_count: int
+    # Derived on the domain model and published rather than left to the client:
+    # zero assets is 0.0 and not a division by zero, and that rule is worth
+    # having in one place instead of in every caller.
+    annotated_pct: float
+    classes: list[ClassCountOut]
+
+    @classmethod
+    def of(cls, stats: ProjectStats) -> Self:
+        return cls(
+            project_id=stats.project_id,
+            asset_count=stats.asset_count,
+            annotated_asset_count=stats.annotated_asset_count,
+            annotation_count=stats.annotation_count,
+            class_count=stats.class_count,
+            annotated_pct=stats.annotated_fraction * 100,
             classes=[ClassCountOut.of(count) for count in stats.per_class],
         )
 

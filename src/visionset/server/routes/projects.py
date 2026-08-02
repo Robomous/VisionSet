@@ -27,6 +27,7 @@ from visionset.server.models import (
     ProjectOut,
     ProjectPage,
     ProjectRename,
+    ProjectStatsOut,
 )
 
 router = protected_router(prefix="/projects", tags=["projects"])
@@ -49,6 +50,24 @@ def list_projects(workspace: WorkspaceDep) -> ProjectPage:
 def get_project(workspace: WorkspaceDep, project_id: UUID) -> ProjectOut:
     """The project with that id."""
     return ProjectOut.of(ProjectService(workspace).get(project_id))
+
+
+@router.get("/{project_id}/stats", responses=documented(404))
+def get_project_stats(workspace: WorkspaceDep, project_id: UUID) -> ProjectStatsOut:
+    """What the project holds, counted — overall and per label class.
+
+    Counts **everything ingested**, whatever batch it landed in and whether or
+    not anybody has promoted it. `GET /datasets/{dataset_id}/stats` is the
+    sibling that counts the curated trunk, and the two disagree by design: a
+    project mid-annotation has assets here and none there.
+
+    `class_count` is what the active schema version declares, so a project that
+    has just authored an ontology and labeled nothing reports its classes.
+    `annotated_pct` is `0` for a project with no assets, never `null`.
+
+    `classes` lists only classes somebody has actually used, ordered by name.
+    """
+    return ProjectStatsOut.of(ProjectService(workspace).stats(project_id))
 
 
 @router.patch("/{project_id}", responses=documented(404, 409))
