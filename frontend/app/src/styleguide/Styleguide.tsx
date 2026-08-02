@@ -26,7 +26,13 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  ClassListRow,
   COLOR,
+  DistributionBar,
+  formatCount,
+  formatPercent,
+  StatCard,
+  ThumbnailGrid,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -86,6 +92,20 @@ const BATCHES = [
   { name: "drive-02", state: "draft", assets: 96, done: 0 },
   { name: "night-run", state: "completed", assets: 1204, done: 1204 },
 ] as const;
+
+// Sorted descending, because that is the order the chart is drawn in and the
+// first row is where its shared max comes from. The tail is deliberately tiny:
+// a class at 1% is what a proportional bar has to survive without vanishing.
+const DISTRIBUTION = [
+  { name: "dog", count: 4372 },
+  { name: "person", count: 1544 },
+  { name: "bicycle", count: 515 },
+  { name: "traffic light", count: 61 },
+] as const;
+
+// Forty of them, which is an ordinary Physical AI ontology and the size the
+// old stacked-card schema editor became unusable at.
+const ONTOLOGY = Array.from({ length: 40 }, (_, index) => `class-${String(index + 1).padStart(2, "0")}`);
 
 export function Styleguide(): JSX.Element {
   return (
@@ -353,6 +373,77 @@ export function Styleguide(): JSX.Element {
               incidentId="7f1c9a2e"
               onRetry={() => toast("Retried")}
             />
+          </div>
+        </Section>
+
+        <Section
+          title="Data surfaces"
+          description="The parts a project page is built from (#209). Shown at their awkward sizes, because those are the ones that break."
+        >
+          <div className="flex flex-col gap-6">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <StatCard label="Images" value={formatCount(1248)} />
+              <StatCard label="Annotations" value={formatCount(6431)} />
+              <StatCard label="Classes" value={formatCount(3)} />
+              <StatCard
+                label="Annotated"
+                value={formatPercent(62)}
+                context={`${formatCount(774)} of ${formatCount(1248)}`}
+              />
+            </div>
+
+            {/* A seven-digit count beside a single digit: the case tabular
+                figures and thousands separators exist for. */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <StatCard label="Annotations" value={formatCount(1234567)} />
+              <StatCard label="Classes" value={formatCount(1)} />
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                {DISTRIBUTION.map((row) => (
+                  <DistributionBar
+                    key={row.name}
+                    label={row.name}
+                    count={row.count}
+                    // One max for the whole chart, which is what makes the bars
+                    // comparable. Derived once, here, and never per row.
+                    max={DISTRIBUTION[0].count}
+                    color={classColor(undefined, row.name)}
+                  />
+                ))}
+              </div>
+
+              {/* Two real tiles, four placeholders and a "+N" — the state the
+                  Overview is in whenever thumbnails are missing (#21). */}
+              <ThumbnailGrid
+                tiles={[
+                  <div key="a" className="size-full bg-primary/20" />,
+                  <div key="b" className="size-full bg-primary/10" />,
+                  <div key="c" className="size-full" />,
+                  <div key="d" className="size-full" />,
+                  <div key="e" className="size-full" />,
+                ]}
+                overflow={1243}
+                onOverflow={() => toast("Browse dataset")}
+              />
+            </div>
+
+            {/* Forty classes is an ordinary Physical AI ontology, and the reason
+                the schema editor stopped being a stack of full-width cards. */}
+            <div className="max-h-64 w-60 overflow-y-auto rounded-lg border border-border">
+              {ONTOLOGY.map((name, index) => (
+                <ClassListRow
+                  key={name}
+                  name={name}
+                  geometry={index % 3 === 0 ? "polygon" : "bbox"}
+                  count={(index + 1) * 137}
+                  color={classColor(undefined, name)}
+                  selected={index === 1}
+                  onSelect={() => toast(`Selected ${name}`)}
+                />
+              ))}
+            </div>
           </div>
         </Section>
       </div>

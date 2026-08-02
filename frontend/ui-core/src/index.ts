@@ -129,6 +129,22 @@ export {
   type LoadingStateProps,
 } from "./patterns/AsyncStates.js";
 
+// The data-surface parts (#209). Four rather than six: `EmptyState` is already
+// above and Chip is `Badge`, so neither is respelled here.
+export {
+  ClassListRow,
+  DistributionBar,
+  StatCard,
+  ThumbnailGrid,
+  type ClassListRowProps,
+  type DistributionBarProps,
+  type StatCardProps,
+  type ThumbnailGridProps,
+} from "./patterns/DataDisplay.js";
+
+// How a number and a moment are written, so eight screens do not each decide.
+export { formatCount, formatPercent, formatWhen } from "./lib/format.js";
+
 // The typed client, and the generated contract under the names every
 // openapi-typescript consumer expects.
 export { createApiClient } from "./client.js";
