@@ -593,11 +593,18 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
     <div className="flex flex-col gap-4" data-testid="version-history">
       {/* Titled by its tab, like the other two panels (#171). The line that stays
           is the one the tab cannot carry: these are read-only *because* versions
-          are, not because the screen chose not to offer controls. */}
+          are, not because the screen chose not to offer controls.
+
+          This table and the Schema tab's navigator (#232) overlap on purpose and
+          answer different questions. This is the *ledger* — every version at once,
+          scannable. That one is the *reader* — one version at a time, with what it
+          changed against its predecessor. Folding either into the other would mean
+          removing a tab, which is a navigation change nobody asked for. */}
       <header className="border-b border-border pb-4">
         <p className="text-meta text-muted-foreground">
           Every version this project has declared. They are 1..N, never updated and never
-          deleted — a restore is a new version with the old classes.
+          deleted — a restore is a new version with the old classes. Open the Schema tab to
+          read one, with what it changed.
         </p>
       </header>
       <div>
@@ -618,6 +625,8 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-24">Version</TableHead>
+                    <TableHead className="w-40">Published</TableHead>
+                    <TableHead>Why</TableHead>
                     <TableHead>Classes</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -629,6 +638,17 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
                         <TableCell className="flex items-center gap-2">
                           v{entry.version}
                           {entry.version === active && <Badge variant="accent">active</Badge>}
+                        </TableCell>
+                        {/* Both are null for a version published before #230, and
+                            nothing backfills either — an em dash is the honest
+                            rendering of a moment nobody recorded. */}
+                        <TableCell className="text-muted-foreground">
+                          {entry.created_at == null ? "—" : formatWhen(entry.created_at)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {entry.description == null || entry.description === ""
+                            ? "—"
+                            : entry.description}
                         </TableCell>
                         <TableCell className="text-muted-foreground">{summarise(entry)}</TableCell>
                       </TableRow>

@@ -433,6 +433,263 @@ describe("the schema editor", () => {
  * it is a query that follows the tab. That is what makes the split more than
  * cosmetic, and it is invisible in the rendering — only the request log shows it.
  */
+describe("the schema version history", () => {
+  /**
+   * Three versions with descriptions and moments, the shape #230 put on the wire.
+   *
+   * Descriptions differ per version on purpose: a history whose entries all said
+   * the same thing would pass an assertion that the *selected* one is shown while
+   * actually showing any of them.
+   */
+  const VERSIONS = [
+    {
+      project_id: PROJECT,
+      version: 1,
+      classes: [CLASSES[0]],
+      description: "the first contract",
+      created_at: "2026-07-01T09:00:00Z",
+    },
+    {
+      project_id: PROJECT,
+      version: 2,
+      classes: CLASSES,
+      description: "lanes too",
+      created_at: "2026-07-15T09:00:00Z",
+    },
+    {
+      project_id: PROJECT,
+      version: 3,
+      classes: CLASSES,
+      description: null,
+      created_at: "2026-08-01T09:00:00Z",
+    },
+  ];
+
+  /**
+   * The project, its active version, and its history.
+   *
+   * ``active`` is passed rather than derived from ``items`` because the two are
+   * separate routes and the screen reads them separately — a fixture that derived
+   * one from the other would hide the case where they disagree, which is exactly
+   * what a stale refetch looks like.
+   */
+  function withHistory(items: unknown[] = VERSIONS, active: unknown = VERSIONS[2]): void {
+    on("GET", /^\/projects\/[^/]+$/, {
+      status: 200,
+      body: { id: PROJECT, name: "highway", description: null },
+    });
+    on("GET", /^\/projects\/[^/]+\/schema$/, { status: 200, body: active });
+    on("GET", /schema\/versions$/, { status: 200, body: { items, total: items.length } });
+  }
+
+  function withDiff(answer: unknown): void {
+    on("GET", /schema\/compare/, { status: 200, body: answer });
+  }
+
+  const NOTHING = { is_destructive: false, destructive_classes: [], changes: [] };
+
+  async function open(): Promise<void> {
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await screen.findByTestId("version-navigator");
+  }
+
+  async function view(version: number): Promise<void> {
+    // Radix's Select is a listbox, not a native one — open it, then pick.
+    await userEvent.click(screen.getByTestId("version-picker"));
+    await userEvent.click(await screen.findByRole("option", { name: new RegExp(`^v${version}`) }));
+  }
+
+  it("lists every version, newest first, and says which one is active", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    await open();
+
+    await userEvent.click(screen.getByTestId("version-picker"));
+    const options = await screen.findAllByRole("option");
+
+    expect(options.map((option) => option.textContent)).toEqual([
+      "v3 · active",
+      "v2",
+      "v1",
+    ]);
+  });
+
+  it("does not render a navigator for a project with one version", async () => {
+    // A selector with one entry is furniture. There is no history to navigate.
+    withHistory([VERSIONS[2]], VERSIONS[2]);
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+    await screen.findByTestId("schema-editor");
+    expect(screen.queryByTestId("version-navigator")).toBeNull();
+  });
+
+  it("renders a past version with no edit affordance at all", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    await open();
+    expect(screen.queryByTestId("save-schema")).not.toBeNull();
+
+    await view(1);
+
+    // Absent, not disabled: a disabled control says "not now", and there is no
+    // now — a published version is immutable.
+    await waitFor(() => expect(screen.queryByTestId("past-version")).not.toBeNull());
+    expect(screen.queryByTestId("save-schema")).toBeNull();
+    expect(screen.queryByTestId("add-class")).toBeNull();
+    expect(screen.queryByTestId("version-note")).toBeNull();
+    expect(screen.queryByTestId("class-list")).toBeNull();
+    expect(screen.getByTestId("schema-status").textContent).toContain("read-only");
+  });
+
+  it("returns to the editor, unchanged, when the navigator is left alone again", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    await open();
+    await view(1);
+    await screen.findByTestId("past-version");
+
+    await userEvent.click(screen.getByTestId("back-to-active"));
+
+    await waitFor(() => expect(screen.queryByTestId("save-schema")).not.toBeNull());
+    expect(screen.getByTestId("schema-status").textContent).toContain("Version 3 active");
+  });
+
+  it("shows the selected version's own description, and says so when there is none", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    await open();
+
+    // v3 is active and was published without one.
+    expect(screen.getByTestId("version-description").textContent).toContain("No description");
+
+    await view(2);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("version-description").textContent).toContain("lanes too"),
+    );
+  });
+
+  it("renders the diff the API returned, never one computed here", async () => {
+    withHistory();
+    withDiff({
+      is_destructive: true,
+      destructive_classes: ["lane"],
+      changes: [
+        { kind: "additive", label_class: "crossing", attribute: null, detail: "class 'crossing' added" },
+        { kind: "destructive", label_class: "lane", attribute: null, detail: "class 'lane' removed" },
+      ],
+    });
+    await open();
+
+    const diff = await screen.findByTestId("version-diff");
+
+    // `detail` verbatim: it is the string the kernel's own 409 is built from, so
+    // a sentence here and a sentence in a refusal are the same sentence.
+    expect(diff.textContent).toContain("class 'crossing' added");
+    expect(diff.textContent).toContain("class 'lane' removed");
+    expect(within(diff).getAllByText("destructive")).toHaveLength(1);
+    expect(within(diff).getAllByText("additive")).toHaveLength(1);
+  });
+
+  it("asks about the selected version against its predecessor", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    await open();
+    await waitFor(() =>
+      expect(sent.some((r) => r.url.includes("from=2&to=3"))).toBe(true),
+    );
+
+    await view(2);
+
+    await waitFor(() => expect(sent.some((r) => r.url.includes("from=1&to=2"))).toBe(true));
+  });
+
+  it("asks nothing about version 1, because there is nothing before it", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    await open();
+    await view(1);
+
+    await screen.findByTestId("version-diff-none");
+    // `from=0` is a 422, so the query is disabled rather than sent with a guess.
+    expect(sent.some((r) => r.url.includes("from=0"))).toBe(false);
+  });
+
+  it("publishes the description written beside Save", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    on("POST", /schema\/versions$/, { status: 201, body: { ...VERSIONS[2], version: 4 } });
+    await open();
+
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+    await userEvent.type(screen.getByTestId("version-note"), "added pedestrians");
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const request = sent.find((r) => r.method === "POST");
+    expect(JSON.parse(bodies.get(request!) ?? "{}").description).toBe("added pedestrians");
+  });
+
+  it("omits the key entirely when nobody wrote one", async () => {
+    // Blank is legal and the API stores null either way; sending `""` would make
+    // an empty box look like a decision in the request log.
+    withHistory();
+    withDiff(NOTHING);
+    on("POST", /schema\/versions$/, { status: 201, body: { ...VERSIONS[2], version: 4 } });
+    await open();
+
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const request = sent.find((r) => r.method === "POST");
+    expect("description" in JSON.parse(bodies.get(request!) ?? "{}")).toBe(false);
+  });
+
+  it("shows a published description as soon as the refetch lands", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    const published = {
+      project_id: PROJECT,
+      version: 4,
+      classes: CLASSES,
+      description: "added pedestrians",
+      created_at: "2026-08-02T09:00:00Z",
+    };
+    on("POST", /schema\/versions$/, { status: 201, body: published });
+    await open();
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+
+    // The refetch after the save finds a fourth version, which is what the
+    // history renders — this is the round trip, not the mutation's own answer.
+    handlers.length = 0;
+    withHistory([...VERSIONS, published], published);
+    withDiff(NOTHING);
+    on("POST", /schema\/versions$/, { status: 201, body: published });
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("version-description").textContent).toContain(
+        "added pedestrians",
+      ),
+    );
+  });
+
+  it("says so rather than going blank when the comparison cannot be loaded", async () => {
+    withHistory();
+    on("GET", /schema\/compare/, { status: 500, body: { code: "INTERNAL_ERROR", message: "no" } });
+    await open();
+
+    await screen.findByTestId("version-diff-error");
+    // The editor itself is unaffected: a diff is context, not the contract.
+    expect(screen.queryByTestId("save-schema")).not.toBeNull();
+  });
+});
+
 describe("the schema editor's two panels", () => {
   /** Fifty classes: an ordinary Physical AI ontology, and what the stack broke at. */
   const MANY = Array.from({ length: 50 }, (_, index) => ({
@@ -813,6 +1070,41 @@ describe("version history", () => {
     // Read-only is structural rather than disabled: there are no controls at all.
     expect(within(history).queryAllByRole("button")).toHaveLength(0);
     expect(within(history).queryAllByRole("textbox")).toHaveLength(0);
+  });
+
+  it("shows why and when, and an em dash for a version that recorded neither", async () => {
+    // #230's two fields on the ledger. Both are null for a version published
+    // before the migration, and nothing backfills either — so the row has to say
+    // "not recorded" rather than go blank, which reads as a rendering bug.
+    on("GET", /^\/projects\/[^/]+$/, {
+      status: 200,
+      body: { id: PROJECT, name: "highway", description: null },
+    });
+    on("GET", /schema\/versions$/, {
+      status: 200,
+      body: {
+        items: [
+          { project_id: PROJECT, version: 1, classes: CLASSES, description: null, created_at: null },
+          {
+            project_id: PROJECT,
+            version: 2,
+            classes: CLASSES,
+            description: "split vehicle into car and truck",
+            created_at: "2026-07-15T09:00:00Z",
+          },
+        ],
+        total: 2,
+      },
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));
+
+    const history = await screen.findByTestId("version-history");
+    await within(history).findByTestId("version-1");
+    expect(within(history).getByTestId("version-2").textContent).toContain(
+      "split vehicle into car and truck",
+    );
+    expect(within(history).getByTestId("version-1").textContent).toContain("—");
   });
 });
 

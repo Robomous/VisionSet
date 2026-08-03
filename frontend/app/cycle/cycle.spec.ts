@@ -289,6 +289,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId(/^tile-/).first().click();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.getByTestId("asset-position")).toContainText("1/3");
+    // The batch's pin, named on the screen (#232). Not the project's active
+    // version — they are the same number here because nothing has published
+    // since approval, and the point is that the annotator says which one it is
+    // judged against, since #229 made the pin movable.
+    await expect(page.getByTestId("pinned-schema")).toHaveText("v1");
 
     // 1 — a box.
     await drawBox(page);
