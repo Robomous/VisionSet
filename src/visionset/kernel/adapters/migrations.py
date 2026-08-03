@@ -575,6 +575,34 @@ def _add_schema_description_and_created_at(connection: Connection) -> None:
         _add_column(connection, cast(Column[object], AnnotationSchemaRow.__table__.c[name]))
 
 
+def _add_source_display_name(connection: Connection) -> None:
+    """Give a source a name a caller stated, apart from the one its path implies.
+
+    #245: an HTTP upload of stills is staged under a content-addressed directory
+    (#28), so the basename every surface derived a name from is a 64-character
+    digest. The stated name is optional and NULL means nobody said — the
+    resolution to "what do we call this source" lives on ``Source.name``, in the
+    domain, so the API and the CLI cannot drift apart re-deriving it.
+
+    Migration 13's shape: a nullable column on an ``ALTER``-only path. **No
+    backfill** — a digest-named source stays digest-named until somebody states
+    otherwise, because inventing a label is the plausible-wrong-timestamp
+    mistake with a string.
+
+    Idempotent the way 3 to 5, 9, 10, 13 and 14 are: ``_add_column``'s inspector
+    check is the ``checkfirst``.
+
+    **Needs NO undo in the tests' ``_downgrade_to_version_one``** — migration
+    7's undo drops the ``source`` table whole, taking this column with it. The
+    flip side is migration 9's trap: on the way back up, migration 7 rebuilds
+    the table from ``_tables`` *including* this column, so the walk never runs
+    this ``ALTER`` for real. ``test_migration_fifteen_alters_a_table_migration_
+    seven_rebuilt`` exercises it from a database stamped at generation 14, which
+    is what an actually-shipped workspace is.
+    """
+    _add_column(connection, cast(Column[object], SourceRow.__table__.c["display_name"]))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -641,6 +669,11 @@ MIGRATIONS: list[Migration] = [
         version=14,
         name="schema_description_and_created_at",
         upgrade=_add_schema_description_and_created_at,
+    ),
+    Migration(
+        version=15,
+        name="source_display_name",
+        upgrade=_add_source_display_name,
     ),
 ]
 

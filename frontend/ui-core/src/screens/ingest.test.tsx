@@ -204,6 +204,10 @@ describe("registering a source", () => {
     // Repeated under one name, because that is what `list[UploadFile]` reads. A
     // single part holding an array is silently one file with a stringified name.
     expect((form as FormData).getAll("files")).toHaveLength(2);
+    // And the source is named (#245): blank field, so the suggestion — the first
+    // file's *stem*, because "a.png" is a file and "a" is a thing you can call a
+    // source. Without a name the server would call it by the upload's digest.
+    expect((form as FormData).get("name")).toBe("a");
   });
 
   it("sends a clip with the extraction rate, chosen before anything is probed", async () => {
@@ -224,6 +228,10 @@ describe("registering a source", () => {
     // The clip rides under `file` — singular, unlike the images' repeated `files`,
     // because `register_video_source` takes one `UploadFile`.
     //
+    // A clip states no name (#245): its filename already is one, and the wire
+    // does not take the parameter on the video route.
+    expect(form.has("name")).toBe(false);
+
     // Its *contents* are not asserted, and that is a limit of the harness rather
     // than a gap in the claim: jsdom's `File` and undici's `FormData` are two
     // realms, so a real `File` appended here is coerced to a string exactly as a
@@ -311,6 +319,30 @@ describe("the selection panel", () => {
     expect(names.textContent).not.toContain("p3.png");
     expect(names.textContent).toContain("+2 more");
     expect(screen.getByTestId("chosen").textContent).toBe("5 files");
+  });
+
+  it("names the source from the field, and suggests the first file's stem", async () => {
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
+
+    const field = screen.getByTestId("source-name") as HTMLInputElement;
+    // The placeholder is what a blank submits — the batch-name pattern.
+    expect(field.placeholder).toBe("a");
+
+    await userEvent.type(field, "vacation shots");
+    await userEvent.click(screen.getByTestId("register-source"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
+    expect(form.get("name")).toBe("vacation shots");
+  });
+
+  it("offers no name field for a clip, whose filename already is one", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+    expect(screen.queryByTestId("source-name")).toBeNull();
   });
 
   it("shows the rate for a clip, with the second-source consequence beside it", async () => {

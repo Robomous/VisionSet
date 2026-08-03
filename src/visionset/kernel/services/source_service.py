@@ -46,7 +46,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from uuid import UUID
 
-from visionset.kernel.domain import Project, Source, SourceKind, VideoProvenance, canonical_path
+from visionset.kernel.domain import (
+    Project,
+    Source,
+    SourceKind,
+    VideoProvenance,
+    canonical_path,
+    normalize_name,
+)
 from visionset.kernel.errors import ProjectNotFound, SourceNotFound
 from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS, UnitOfWork
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -77,6 +84,7 @@ class SourceService:
         directory: Path,
         *,
         capture_params: Mapping[str, str] | None = None,
+        display_name: str | None = None,
     ) -> Source:
         """Record a directory of stills as an origin for this project.
 
@@ -88,8 +96,18 @@ class SourceService:
         existing source. Differing ``capture_params`` are written onto it rather
         than making a second one — see the module docstring.
 
+        ``display_name`` is what to *call* the source (#245) — the answer for an
+        origin whose basename is unreadable, which over HTTP is every image
+        upload (the staging directory is content-addressed, so the basename is a
+        digest). It is not part of the identity key: providing a new one renames
+        the existing source, and ``None`` leaves whatever is stored alone —
+        every nameless re-registration would otherwise erase the name somebody
+        stated. Only this method takes it, deliberately: a clip's basename *is*
+        its filename, so ``register_video`` has no caller with this problem yet.
+
         Raises:
             ProjectNotFound: no such project in this workspace.
+            InvalidName: ``display_name`` was provided and is blank.
             FileNotFoundError: there is nothing at ``directory``.
             NotADirectoryError: ``directory`` is there but is not one.
         """
@@ -102,6 +120,9 @@ class SourceService:
             path,
             video=None,
             capture_params=capture_params,
+            display_name=(
+                None if display_name is None else normalize_name(display_name, what="source name")
+            ),
         )
 
     def register_video(
@@ -179,6 +200,7 @@ class SourceService:
         *,
         video: VideoProvenance | None,
         capture_params: Mapping[str, str] | None,
+        display_name: str | None = None,
     ) -> Source:
         """Add the source, or return the one that already stands for this origin."""
         params = dict(capture_params or {})
@@ -192,20 +214,28 @@ class SourceService:
                     None if stored.video is None else stored.video.extraction_fps
                 ) != extraction_fps:
                     continue
-                if stored.video == video and stored.capture_params == params:
+                # ``None`` means the caller said nothing, which must keep the
+                # stored name — not erase it. A provided name renames: a label
+                # is curation, not provenance, so the last statement wins.
+                changes: dict[str, object] = {}
+                if stored.video != video or stored.capture_params != params:
+                    # The path and parameters match, so this is the same source;
+                    # the file behind it moved on. Refresh what was read off it
+                    # rather than leaving a record that describes bytes nobody
+                    # can produce any more.
+                    changes["video"] = video
+                    changes["capture_params"] = params
+                if display_name is not None and stored.display_name != display_name:
+                    changes["display_name"] = display_name
+                if not changes:
                     return stored
-                # The path is the same and the parameters are the same, so this
-                # is the same source; the file behind it moved on. Refresh what
-                # was read off it rather than leaving a record that describes
-                # bytes nobody can produce any more.
-                return uow.sources.update(
-                    stored.model_copy(update={"video": video, "capture_params": params})
-                )
+                return uow.sources.update(stored.model_copy(update=changes))
             return uow.sources.add(
                 Source(
                     project_id=project_id,
                     kind=kind,
                     path=path,
+                    display_name=display_name,
                     capture_params=params,
                     video=video,
                 )

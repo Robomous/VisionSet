@@ -38,7 +38,6 @@ columns one at a time — applied to the wire.
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from typing import Annotated, Literal, Self
 from uuid import UUID, uuid4
 
@@ -432,7 +431,11 @@ class SourceOut(BaseModel):
             id=source.id,
             project_id=source.project_id,
             kind=source.kind,
-            name=Path(source.path).name,
+            # The domain's one spelling of "what to call this source" (#245):
+            # the stated display name, else the path's last segment. Deriving
+            # from ``path`` here again is how this and ``visionset.wire`` would
+            # eventually answer differently.
+            name=source.name,
             registered_at=source.registered_at,
             video=None if source.video is None else VideoProvenanceOut.of(source.video),
         )
