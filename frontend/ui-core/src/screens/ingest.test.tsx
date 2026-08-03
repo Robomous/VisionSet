@@ -285,6 +285,9 @@ describe("the selection panel", () => {
     const selection = screen.getByTestId("selection");
     expect(within(selection).getByTestId("chosen").textContent).toBe("2 files");
     expect(selection.textContent).toContain("images");
+    // A bunch reads back its contents, not only its count.
+    expect(within(selection).getByTestId("selection-names").textContent).toContain("a.png");
+    expect(within(selection).getByTestId("selection-names").textContent).toContain("b.png");
     // Images have no rate, anywhere — not a hidden field, not a dialog.
     expect(screen.queryByTestId("extraction-fps")).toBeNull();
 
@@ -293,6 +296,21 @@ describe("the selection panel", () => {
     expect(sent.some((r) => r.method === "POST")).toBe(false);
     // And the flow is back at its start, dropzone included.
     expect(screen.getByTestId("file-input")).not.toBeNull();
+  });
+
+  it("previews three names of a large bunch and counts the rest", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose(
+      ["p0", "p1", "p2", "p3", "p4"].map((name) => pick(`${name}.png`, "image/png")),
+    );
+
+    const names = screen.getByTestId("selection-names");
+    expect(names.textContent).toContain("p0.png");
+    expect(names.textContent).toContain("p2.png");
+    // Recognition, not inventory: the fourth name is a count, not a row.
+    expect(names.textContent).not.toContain("p3.png");
+    expect(names.textContent).toContain("+2 more");
+    expect(screen.getByTestId("chosen").textContent).toBe("5 files");
   });
 
   it("shows the rate for a clip, with the second-source consequence beside it", async () => {
@@ -412,19 +430,54 @@ describe("one step at a time", () => {
     expect(screen.queryByTestId("register-source")).toBeNull();
   });
 
-  it("start over walks back to a clean first step", async () => {
+  it("change files walks back to a clean first step", async () => {
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
 
-    await userEvent.click(screen.getByTestId("restart"));
+    // The back lives in step 2's own footer and names the step it returns to.
+    await userEvent.click(screen.getByTestId("back-to-files"));
 
     expect(state("step-1")).toBe("active");
     expect(state("step-2")).toBe("upcoming");
     expect(screen.queryByTestId("source-card")).toBeNull();
     expect(screen.queryByTestId("selection")).toBeNull();
     expect(screen.getByTestId("file-input")).not.toBeNull();
+  });
+
+  it("shortens a digest-named source instead of printing 64 hex characters", async () => {
+    // A staged upload of images is named by its content digest — the server
+    // stages parts under `uploads/<digest>/` and `SourceOut.name` is that
+    // directory's basename. The full string survives in `title`; the visible
+    // text does not shout hex at the user. The naming itself is a recorded
+    // cross-surface wart (#245), not this screen's to fix.
+    const digest = "4a3192814961e3d8b7f84a79dedfd8ecd7aaab876b0630cdcdf7536b3ad352c6";
+    handlers.length = 0;
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+    on("POST", /\/sources\/images$/, {
+      status: 201,
+      body: { ...IMAGE_SOURCE, name: digest },
+    });
+    on("POST", /\/ingest-jobs$/, {
+      status: 202,
+      body: job({ state: "running", processed: 0, batch_name: digest }),
+    });
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job({ batch_name: digest }) });
+
+    render(mount(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+
+    expect(screen.getByTestId("source-card").textContent).toContain("4a319281…");
+    expect(screen.getByTestId("source-card").textContent).not.toContain(digest);
+
+    await userEvent.click(screen.getByTestId("start-ingest"));
+    const outcome = await screen.findByTestId("run-outcome");
+    expect(outcome.textContent).toContain("4a319281…");
+    expect(outcome.textContent).not.toContain(digest);
+    expect(screen.getByTestId("step-2-summary").textContent).not.toContain(digest);
   });
 
   it("launching collapses step 2 and hands the flow to the run", async () => {
@@ -441,8 +494,10 @@ describe("one step at a time", () => {
     expect(screen.getByTestId("step-2-summary").textContent).toContain("photos");
     expect(screen.queryByTestId("start-ingest")).toBeNull();
     expect(screen.queryByTestId("target-batch")).toBeNull();
-    // And a run in flight is committed — the walk-back control is gone too.
-    expect(screen.queryByTestId("restart")).toBeNull();
+    // A run in flight cannot be un-launched, so no back control of any kind
+    // survives the launch — a back that cancels nothing would be a lie.
+    expect(screen.queryByTestId("back-to-files")).toBeNull();
+    expect(screen.queryByTestId("rerun-source")).toBeNull();
   });
 });
 
@@ -696,6 +751,33 @@ describe("what a settled run offers next", () => {
     // Both at once, which is the argument against redirecting on completion: the
     // report is exactly what a partial run needs read.
     expect(screen.getByTestId("failures")).not.toBeNull();
+  });
+
+  it("walks back to step 2 with the same source, for a run into another batch", async () => {
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
+    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await screen.findByTestId("run-outcome");
+
+    await userEvent.click(screen.getByTestId("rerun-source"));
+
+    // Step 2 again, with the *registered* source — nothing was re-uploaded and
+    // step 1 stays collapsed, because the point is reusing the decision.
+    expect(screen.getByTestId("step-2").dataset.state).toBe("active");
+    expect(screen.getByTestId("step-1").dataset.state).toBe("complete");
+    expect(screen.getByTestId("step-3").dataset.state).toBe("upcoming");
+    expect(screen.queryByTestId("run-card")).toBeNull();
+    expect(screen.getByTestId("source-card").textContent).toContain("photos");
+    expect(
+      sent.filter((r) => r.method === "POST" && r.url.endsWith("/sources/images")),
+    ).toHaveLength(1);
+
+    // And the second launch is real.
+    await userEvent.click(screen.getByTestId("start-ingest"));
+    await waitFor(() =>
+      expect(
+        sent.filter((r) => r.method === "POST" && r.url.endsWith("/ingest-jobs")),
+      ).toHaveLength(2),
+    );
   });
 
   it("goes back to a clean form, so a second source is ingestable without a reload", async () => {

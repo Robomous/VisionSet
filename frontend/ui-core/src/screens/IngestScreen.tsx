@@ -72,8 +72,19 @@
  * reloading the page, because `Start ingest` is gated on `jobId !== null` and
  * nothing ever cleared it. Ingest is the *entry point* of the product, so a
  * terminal state naming no next step leaves a first-time user guessing where
- * their assets went. So a run that has settled offers exactly two things: open
- * the batch, and start over with a clean form.
+ * their assets went. So a run that has settled offers the batch, a second run
+ * with the same source into another batch, and a clean start with a new one.
+ *
+ * ## Every step names its way back, and a run in flight has none
+ *
+ * Step 2's footer carries "Change files" — a full restart, named for the step
+ * it returns to; the registered source stays on the server, since registration
+ * is idempotent and there is nothing to undo. A settled run's outcome carries
+ * "Ingest into another batch" (back to step 2, source kept) beside "Ingest
+ * another source" (back to step 1, everything reset). A run *in flight* is a
+ * row on the server that cannot be un-launched, so it deliberately offers no
+ * back control at all — a back that cancels nothing would be a lie with an
+ * arrow on it.
  *
  * ## The outcome deliberately quotes no number, and the counters are why
  *
@@ -99,6 +110,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowLeft,
   Check,
   FileVideo,
   FolderOpen,
@@ -290,6 +302,21 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
     start.reset();
   }
 
+  /**
+   * Back from a settled run to step 2, keeping the source.
+   *
+   * Re-ingesting a registered source is free — registration is idempotent and
+   * content addressing deduplicates — so "the same frames into a different
+   * batch" is a real second run, not a re-upload. Only the run and the batch
+   * choice reset; the source, being the thing reused, stays.
+   */
+  function rerun(): void {
+    setJobId(null);
+    setBatchChoice(NEW_BATCH);
+    setBatchName("");
+    start.reset();
+  }
+
   function launch(event: FormEvent): void {
     event.preventDefault();
     if (source === null || start.isPending) return;
@@ -333,16 +360,6 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
           testId="step-1"
           state={activeStep === 1 ? "active" : "complete"}
           summary={`${chosenLabel} · ${formatBytes(totalBytes)}`}
-          action={
-            // Only before the launch: a run in flight is a row on the server,
-            // and the way back from a *settled* one is the outcome's own button.
-            jobId === null ? (
-              <Button variant="ghost" size="sm" data-testid="restart" onClick={again}>
-                <RotateCcw className="size-4" aria-hidden="true" />
-                Start over
-              </Button>
-            ) : undefined
-          }
         >
           <Card className="mt-2">
             <CardContent className="pt-4">
@@ -395,7 +412,9 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
           testId="step-2"
           state={activeStep === 2 ? "active" : activeStep === 3 ? "complete" : "upcoming"}
           hint="Pick the target batch once the source is registered."
-          summary={source !== null ? `${source.name} → ${batchLabel}` : undefined}
+          summary={
+            source !== null ? `${sourceLabel(source.name)} → ${sourceLabel(batchLabel)}` : undefined
+          }
         >
           {source !== null && (
             <Card className="mt-2" data-testid="source-card">
@@ -407,7 +426,9 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
                     ) : (
                       <Images className="size-4 text-muted-foreground" aria-hidden="true" />
                     )}
-                    <span className="text-body font-medium">{source.name}</span>
+                    <span className="text-body font-medium" title={source.name}>
+                      {sourceLabel(source.name)}
+                    </span>
                     <Badge>{source.kind}</Badge>
                   </div>
 
@@ -472,7 +493,15 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
                     </FieldError>
                   )}
 
-                  <div className="flex justify-end">
+                  <div className="flex items-center justify-between">
+                    {/* The back names the step it returns to. It is a full
+                        restart — the registered source stays on the server
+                        (registration is idempotent, nothing to undo), but every
+                        setting on this screen resets with the files. */}
+                    <Button variant="ghost" data-testid="back-to-files" onClick={again}>
+                      <ArrowLeft className="size-4" aria-hidden="true" />
+                      Change files
+                    </Button>
                     <Button
                       type="submit"
                       variant="primary"
@@ -519,6 +548,7 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
             job={job.data ?? null}
             {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
             onAgain={again}
+            onRerun={rerun}
           />
         </Step>
       </ol>
@@ -543,7 +573,6 @@ function Step({
   done = false,
   hint,
   summary,
-  action,
   aside,
   last = false,
   testId,
@@ -556,7 +585,6 @@ function Step({
   readonly done?: boolean;
   readonly hint?: string;
   readonly summary?: string;
-  readonly action?: ReactNode;
   readonly aside?: ReactNode;
   readonly last?: boolean;
   readonly testId: string;
@@ -598,7 +626,6 @@ function Step({
             {title}
           </h2>
           {aside}
-          {state === "complete" && action !== undefined && <div className="ml-auto">{action}</div>}
         </div>
         {state === "upcoming" && hint !== undefined && (
           <p className="text-meta text-muted-foreground">{hint}</p>
@@ -661,6 +688,19 @@ function SelectionPanel({
             {kind} · {formatBytes(totalBytes)}
             {clip !== null && ` · ${clip.durationSeconds.toFixed(1)} s`}
           </p>
+          {/* A bunch reads back its *contents*, not only its count — the first
+              few names are what let somebody catch "that is the wrong folder"
+              before a single byte uploads. Three, because the point is
+              recognition, not inventory; the batch says the rest. */}
+          {files.length > 1 && (
+            <p className="truncate text-meta text-muted-foreground" data-testid="selection-names">
+              {files
+                .slice(0, 3)
+                .map((file) => file.name)
+                .join(" · ")}
+              {files.length > 3 && ` · +${formatCount(files.length - 3)} more`}
+            </p>
+          )}
         </div>
         <Button
           variant="ghost"
@@ -714,6 +754,22 @@ function SelectionPanel({
   );
 }
 
+/**
+ * A source's name, fit for a sentence.
+ *
+ * A video source is named by its file — `clip.mp4`, fine as it is. A **staged
+ * upload of images** is named by its content digest, because the server stages
+ * parts under `uploads/<digest>/` and `SourceOut.name` is that directory's
+ * basename — 64 hex characters nobody can read, in the step summary, the
+ * default batch name and the outcome sentence. Rendered defensively on the
+ * `IngestFailure.name` precedent: shorten for display, keep the full string in
+ * `title`, and never invent a name the source does not have. The naming itself
+ * is a cross-surface wart, recorded as #245.
+ */
+function sourceLabel(name: string): string {
+  return /^[0-9a-f]{64}$/.test(name) ? `${name.slice(0, 8)}…` : name;
+}
+
 function Fact({ label, value }: { readonly label: string; readonly value: string }): JSX.Element {
   return (
     <div>
@@ -727,10 +783,12 @@ function RunCard({
   job,
   onOpenBatch,
   onAgain,
+  onRerun,
 }: {
   readonly job: IngestJob | null;
   readonly onOpenBatch?: (batchId: string) => void;
   readonly onAgain: () => void;
+  readonly onRerun: () => void;
 }): JSX.Element {
   const resume = useResumeIngest();
 
@@ -792,6 +850,7 @@ function RunCard({
                 job={job}
                 {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
                 onAgain={onAgain}
+                onRerun={onRerun}
               />
             )}
           </>
@@ -817,10 +876,12 @@ function Outcome({
   job,
   onOpenBatch,
   onAgain,
+  onRerun,
 }: {
   readonly job: IngestJob;
   readonly onOpenBatch?: (batchId: string) => void;
   readonly onAgain: () => void;
+  readonly onRerun: () => void;
 }): JSX.Element {
   const batchId = job.batch_id ?? null;
   // Resolved at enqueue, so it survives a run that never reached the batch.
@@ -839,11 +900,18 @@ function Outcome({
         ) : partial ? (
           <>
             What this run managed to read is in{" "}
-            <strong className="font-medium">{batchName}</strong>.
+            <strong className="font-medium" title={batchName}>
+              {sourceLabel(batchName)}
+            </strong>
+            .
           </>
         ) : (
           <>
-            Everything this run read is in <strong className="font-medium">{batchName}</strong>.
+            Everything this run read is in{" "}
+            <strong className="font-medium" title={batchName}>
+              {sourceLabel(batchName)}
+            </strong>
+            .
           </>
         )}
       </p>
@@ -854,6 +922,13 @@ function Outcome({
             Open batch
           </Button>
         )}
+        {/* Back to step 2, source kept: the same frames into a different batch
+            is a real second run — registration is idempotent and content
+            addressing makes re-reading free. */}
+        <Button variant="secondary" data-testid="rerun-source" onClick={onRerun}>
+          <RotateCcw className="size-4" aria-hidden="true" />
+          Ingest into another batch
+        </Button>
         <Button variant="secondary" data-testid="ingest-another" onClick={onAgain}>
           <Upload className="size-4" aria-hidden="true" />
           Ingest another source
