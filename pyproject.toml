@@ -21,8 +21,8 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.7",
-    "fastapi>=0.115",
-    "uvicorn>=0.30",
+    "fastapi>=0.141.1",
+    "uvicorn>=0.52.0",
     "typer>=0.12",
     "mcp>=1.2",
     "sqlalchemy>=2.0",
@@ -63,7 +63,7 @@ dev = [
     # already as a transitive dependency of `mcp`, `httpx` and `starlette` —
     # which is exactly why it is declared, the `python-multipart` reason.
     "anyio>=4.5",
-    "ruff>=0.5",
+    "ruff>=0.16.1",
     "mypy>=1.10",
     "import-linter>=2.0",
 ]
