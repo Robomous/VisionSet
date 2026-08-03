@@ -149,9 +149,9 @@ class ProjectService:
                 for annotation in found:
                     per_class[annotation.label_class][0] += 1
         # Off the assets already read, so "when did data last arrive" costs no
-        # round trip. ``max`` of an empty sequence raises, and every asset
-        # predating migration 13 is filtered out rather than defaulted, so a
-        # project holding only those reads NULL — unknown, not the epoch.
+        # round trip. ``max`` of an empty sequence raises, and an asset with no
+        # recorded arrival is filtered out rather than defaulted, so a project
+        # holding only those reads NULL — unknown, not the epoch.
         arrivals = [asset.ingested_at for asset in assets if asset.ingested_at is not None]
         return ProjectStats(
             project_id=project.id,

@@ -63,11 +63,10 @@ class Asset(BaseModel):
     #: promised within a Pillow build rather than across them. Losing every
     #: thumbnail blob loses only the CPU time to render them again.
     #:
-    #: NULL therefore has one meaning with three causes — an asset written
-    #: before the cache existed, one whose bytes would not render, or one a run
-    #: has not reached yet. ``IngestService.backfill_thumbnails`` is the remedy
-    #: for all three, and reads exactly this state. Declared last, after the
-    #: columns migration 8 added, because it arrives by ``ALTER TABLE`` too.
+    #: NULL therefore has one meaning with two causes — bytes that would not
+    #: render, or an asset a run has not reached yet.
+    #: ``IngestService.backfill_thumbnails`` is the remedy for both, and reads
+    #: exactly this state.
     thumbnail_hash: str | None = None
     #: When these bytes first arrived in this project, or NULL when unknown.
     #:

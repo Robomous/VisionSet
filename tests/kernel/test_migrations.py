@@ -1,12 +1,60 @@
+"""What the schema baseline creates, and the machinery that guards the next one.
+
+There is one migration now — see ``migrations.py`` for why the fourteen that
+preceded it are gone — so the questions worth asking here changed shape. What a
+particular generation added is no longer a question anybody can have. What
+``_tables`` produces on disk still is, and so does whether re-running the list
+is safe, because both of those become load-bearing again the moment a second
+migration is appended.
+
+The comparison helper (``_schema``) and the fresh-versus-fresh equivalence test
+are kept for exactly that reason: they are what a second migration will be
+judged against. They caught two real bugs while the chain existed (an added
+column declared in the wrong position, and a migration whose only exercise ran
+through an earlier rebuild), and rebuilding them from scratch under time
+pressure is how that class of bug gets back in.
+"""
+
 from pathlib import Path
 
 import pytest
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from visionset.kernel import WorkspaceCorrupt
 from visionset.kernel.adapters import SqliteMetadataStore
+from visionset.kernel.adapters._tables import Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
+
+#: Every uniqueness rule the store carries as a real index, and what makes each
+#: one recognizable in ``sqlite_master``. A service-level rule with nothing
+#: underneath it is a wish (``docs/persistence.md``), and these indexes are the
+#: backstop — so the baseline creating all of them is asserted directly rather
+#: than left to whichever service happens to exercise one.
+_UNIQUENESS_INDEXES = {
+    # Case-insensitive, so that two projects cannot differ only in capitals.
+    "uq_project_workspace_name": ("workspace_id", "NOCASE"),
+    "uq_token_workspace_name": ("workspace_id", "NOCASE"),
+    # Per project, not globally: two projects may hold one photograph.
+    "uq_asset_project_content_hash": ("project_id", "content_hash"),
+    # The fourth term is an *expression*, and it is the half that can rot
+    # silently: a three-column index would refuse a clip's second extraction
+    # rate, and a nullable fourth column would collide with nothing at all,
+    # because SQLite treats NULLs in a unique index as distinct.
+    "uq_source_project_kind_path_fps": ("json_extract", "coalesce"),
+    # Partial, so it constrains classification tags and nothing else: two boxes
+    # under one class are two facts, two tags of one class are one statement
+    # made twice.
+    "uq_annotation_asset_classification": ("classification_tag", "WHERE"),
+}
+
+
+def _schema(store: SqliteMetadataStore) -> set[str]:
+    """Every ``CREATE`` statement SQLite has on file, normalized to a set."""
+    with store.engine.connect() as connection:
+        rows = connection.execute(
+            text("select sql from sqlite_master where sql is not null")
+        ).scalars()
+        return {" ".join(sql.split()) for sql in rows}
 
 
 def test_format_version_is_derived_from_the_last_migration() -> None:
@@ -23,668 +71,42 @@ def test_every_migration_is_named() -> None:
         assert migration.name
 
 
-def _schema(store: SqliteMetadataStore) -> set[str]:
-    """Every ``CREATE`` statement SQLite has on file, normalized to a set."""
-    with store.engine.connect() as connection:
-        rows = connection.execute(
-            text("select sql from sqlite_master where sql is not null")
-        ).scalars()
-        return {" ".join(sql.split()) for sql in rows}
-
-
-def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
-    """Undo everything after migration 1, and restamp the file as generation 1.
-
-    Every migration added here needs its undo added here too — the fresh-versus-
-    migrated test below is only as strong as how far back this walks.
-    """
-    with store.engine.begin() as connection:
-        connection.execute(text("drop index if exists uq_project_workspace_name"))
-        connection.execute(text("alter table batch drop column schema_version"))
-        connection.execute(text("alter table annotation_job_asset drop column position"))
-        connection.execute(text("alter table annotation drop column attributes"))
-        # Migration 6 rebuilt this table rather than altering it, so undoing it
-        # means writing the old shape out by hand. This is the only DDL in the
-        # file that cannot be borrowed from ``_tables``, for the good reason that
-        # ``_tables`` no longer describes it.
-        connection.execute(text("drop table release"))
-        connection.execute(
-            text(
-                "CREATE TABLE release ("
-                " id CHAR(32) NOT NULL,"
-                " dataset_id CHAR(32) NOT NULL,"
-                " tag VARCHAR NOT NULL,"
-                " manifest JSON NOT NULL,"
-                " PRIMARY KEY (id),"
-                " FOREIGN KEY(dataset_id) REFERENCES dataset (id) ON DELETE CASCADE)"
-            )
-        )
-        connection.execute(text("CREATE INDEX ix_release_dataset_id ON release (dataset_id)"))
-        # Migration 7 rebuilt ``source`` for the same kind of reason, so its undo
-        # is hand-written too. ``ingest_job`` keeps a ``REFERENCES source (id)``
-        # across this window; SQLite resolves foreign-key targets at DML time,
-        # not at DDL time, so the gap between the drop and the create is safe.
-        connection.execute(text("drop table source"))
-        connection.execute(
-            text(
-                "CREATE TABLE source ("
-                " id CHAR(32) NOT NULL,"
-                " project_id CHAR(32) NOT NULL,"
-                " kind VARCHAR NOT NULL,"
-                " uri VARCHAR NOT NULL,"
-                " PRIMARY KEY (id),"
-                " FOREIGN KEY(project_id) REFERENCES project (id) ON DELETE CASCADE)"
-            )
-        )
-        connection.execute(text("CREATE INDEX ix_source_project_id ON source (project_id)"))
-        # Migrations 10 and 8's undo, newest column first. The index goes before
-        # the columns it names, because SQLite refuses to drop a column an index
-        # still references.
-        #
-        # Migration 10 needs its own line where migration 9 needed none:
-        # ``asset`` is only ever altered — it has four cascading children and
-        # legitimate pre-pipeline rows — so nothing below rebuilds it and takes
-        # ``thumbnail_hash`` away for free. The compensation is that migration
-        # 10's real ``ALTER`` runs on the way back up from here, which is why it
-        # has no generation twin of
-        # ``test_migration_nine_alters_a_table_migration_eight_rebuilt``.
-        connection.execute(text("drop index if exists uq_asset_project_content_hash"))
-        # Migration 13's undo, and it needs its own line for migration 10's
-        # reason: ``asset`` is only ever altered, so nothing below takes this
-        # column away for free.
-        #
-        # Unlike migrations 11 and 12, leaving this line out fails the test
-        # rather than passing quietly — and the mechanism is worth knowing,
-        # because it is the reverse of the trap. The column would survive the
-        # downgrade and migration 13 would ``checkfirst``-skip, exactly as
-        # migration 11 would; but the four columns dropped *below* this line get
-        # re-added by ``ALTER`` on the way up, and SQLite appends. So the
-        # migrated table would carry ``ingested_at`` in the middle where the
-        # fresh one has it last, and ``_schema`` compares ``CREATE TABLE`` text.
-        # Being the newest column on an alter-only table is what makes the
-        # omission loud; the next one added here will be in the same position.
-        connection.execute(text("alter table asset drop column ingested_at"))
-        connection.execute(text("alter table asset drop column thumbnail_hash"))
-        connection.execute(text("alter table asset drop column frame_timestamp"))
-        connection.execute(text("alter table asset drop column frame_index"))
-        connection.execute(text("alter table asset drop column source_id"))
-        connection.execute(text("alter table asset drop column format"))
-        # ``ingest_job.batch_id`` sits in a foreign-key clause, and SQLite
-        # refuses to drop such a column at all — the constraint would be left
-        # naming something that is gone. Migration 8 rebuilds this table for the
-        # same underlying reason, so its undo is a rebuild too. It is empty here.
-        #
-        # This rebuild is also migration 9's undo: its four columns live on this
-        # same table, so restoring the generation-1 shape removes them with
-        # everything else. That is why nothing below mentions them — and why
-        # ``test_migration_nine_alters_a_table_migration_eight_rebuilt`` exists,
-        # because from here migration 8 re-creates the table whole and 9 never
-        # runs as the ``ALTER`` that a real generation-8 database gets.
-        connection.execute(text("drop table ingest_job"))
-        connection.execute(
-            text(
-                "CREATE TABLE ingest_job ("
-                " id CHAR(32) NOT NULL,"
-                " source_id CHAR(32) NOT NULL,"
-                " state VARCHAR NOT NULL,"
-                " error VARCHAR,"
-                " PRIMARY KEY (id),"
-                " FOREIGN KEY(source_id) REFERENCES source (id) ON DELETE CASCADE)"
-            )
-        )
-        connection.execute(text("CREATE INDEX ix_ingest_job_source_id ON ingest_job (source_id)"))
-        # Migration 11's undo. One line, because SQLite drops a table's indexes
-        # with it, and order-free, because nothing references ``token``.
-        #
-        # This line is also the only thing that exercises migration 11. Without
-        # it the fresh-versus-migrated test below would still pass: the table
-        # would survive the downgrade and migration 11 would ``checkfirst``-skip,
-        # so the ``CREATE`` nobody ran would be reported as agreeing with itself.
-        connection.execute(text("drop table token"))
-        # Migration 12's undo. One line, and it is the *only* thing that
-        # exercises that migration: ``annotation`` is only ever altered, so
-        # nothing above rebuilds it and takes the index away for free — the same
-        # position migration 11 is in, and the opposite of migration 9's.
-        connection.execute(text("drop index if exists uq_annotation_asset_classification"))
-        # Migration 14's undo, and it is in migrations 11 and 12's position
-        # rather than 13's — which is the *quiet* one. ``annotation_schema`` is
-        # only ever altered, and these are the only columns ever added to it, so
-        # nothing above takes them away. Leaving these two lines out would let
-        # the fresh-versus-migrated test pass anyway: the columns would survive
-        # the downgrade, migration 14 would ``checkfirst``-skip, and a pair of
-        # ``ALTER``s nobody ran would be reported as agreeing with themselves.
-        # ``test_migration_fourteen_alters_the_schema_table_for_real`` is the
-        # second guard, for exactly that reason.
-        connection.execute(text("alter table annotation_schema drop column created_at"))
-        connection.execute(text("alter table annotation_schema drop column description"))
-        connection.execute(text("update _visionset_meta set format_version = 1"))
-
-
-def test_migration_two_creates_the_project_name_index(tmp_path: Path) -> None:
+def test_a_fresh_database_is_created_at_the_baseline(tmp_path: Path) -> None:
     store = SqliteMetadataStore(tmp_path / "visionset.db")
     store.initialize()
-    assert any("uq_project_workspace_name" in sql for sql in _schema(store))
+    assert store.format_version == FORMAT_VERSION == 1
     store.close()
 
 
-def test_migration_three_gives_a_batch_its_schema_version_pin(tmp_path: Path) -> None:
+def test_the_baseline_creates_every_table_the_row_classes_declare(tmp_path: Path) -> None:
+    """``_tables`` is generation 1, so nothing may be declared and not created."""
     store = SqliteMetadataStore(tmp_path / "visionset.db")
     store.initialize()
     with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("batch")}
-    assert "schema_version" in columns
+        created = set(inspect(connection).get_table_names())
+    assert set(Base.metadata.tables) <= created
     store.close()
 
 
-def test_migration_four_gives_per_asset_progress_an_explicit_order(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("annotation_job_asset")}
-    assert "position" in columns
-    store.close()
-
-
-def test_migration_five_gives_an_annotation_its_attribute_values(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("annotation")}
-    assert "attributes" in columns
-    store.close()
-
-
-def test_migration_six_repoints_a_release_at_a_manifest_in_the_blob_store(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("release")}
-    assert "manifest_hash" in columns
-    assert "manifest" not in columns
-    store.close()
-
-
-def test_migration_six_makes_a_release_tag_unique_within_its_dataset(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    assert any("uq_release_dataset_tag" in sql for sql in _schema(store))
-    store.close()
-
-
-def test_migration_six_refuses_a_workspace_that_still_holds_a_pre_release_row(
-    tmp_path: Path,
+@pytest.mark.parametrize(("index", "terms"), sorted(_UNIQUENESS_INDEXES.items()))
+def test_the_baseline_carries_each_uniqueness_index(
+    tmp_path: Path, index: str, terms: tuple[str, ...]
 ) -> None:
-    """A row it cannot make correct is refused, never silently dropped.
-
-    Nothing could write one before ``ReleaseService`` existed, which is what
-    licences the drop — but that is a claim about a build, not about a file, so
-    the migration checks rather than assumes.
-    """
     store = SqliteMetadataStore(tmp_path / "visionset.db")
     store.initialize()
-    _downgrade_to_version_one(store)
-    with store.engine.begin() as connection:
-        # A real parent chain, because foreign keys are on: the point of the test
-        # is the row in ``release``, not a way around the constraints.
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-        connection.execute(
-            text("insert into dataset (id, project_id, name) values ('d', 'p', 'proj')")
-        )
-        connection.execute(
-            text(
-                "insert into release (id, dataset_id, tag, manifest) values ('r', 'd', 'v1', '{}')"
-            )
-        )
-
-    with pytest.raises(WorkspaceCorrupt, match="before ReleaseService existed"):
-        store.initialize()
+    statement = next((sql for sql in _schema(store) if index in sql), None)
+    assert statement is not None, f"{index} is not in the baseline schema"
+    for term in terms:
+        assert term in statement
     store.close()
 
 
-def test_migration_seven_gives_a_source_its_provenance(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("source")}
-    assert {"path", "registered_at", "capture_params", "video"} <= columns
-    assert "uri" not in columns
-    store.close()
-
-
-def test_migration_seven_keeps_the_source_project_index(tmp_path: Path) -> None:
-    """The rebuild re-creates the table from ``_tables``, indexes included.
-
-    Worth its own test: migration 6 dropped a table carrying a
-    ``UniqueConstraint``, not an ``Index``, so this path was never exercised.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    assert any("ix_source_project_id" in sql for sql in _schema(store))
-    store.close()
-
-
-@pytest.mark.parametrize(
-    ("table", "insert"),
-    [
-        (
-            "source",
-            "insert into source (id, project_id, kind, uri) "
-            "values ('s', 'p', 'local_folder', '/in')",
-        ),
-        (
-            "ingest_job",
-            "insert into source (id, project_id, kind, uri) "
-            "values ('s', 'p', 'local_folder', '/in');"
-            "insert into ingest_job (id, source_id, state) values ('j', 's', 'pending')",
-        ),
-    ],
-)
-def test_migration_seven_refuses_a_workspace_that_still_holds_pre_provenance_rows(
-    tmp_path: Path, table: str, insert: str
-) -> None:
-    """Neither the source nor its children are dropped on the quiet.
-
-    ``ingest_job.source_id`` is ``ON DELETE CASCADE`` and the store turns foreign
-    keys on for every connection, so ``DROP TABLE source`` would take the jobs
-    with it *without raising*. Counting only ``source`` would let a workspace
-    with jobs slip through, which is why the migration counts both — and why the
-    second case here exists at all.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    _downgrade_to_version_one(store)
-    with store.engine.begin() as connection:
-        # A real parent chain, because foreign keys are on.
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-        for statement in insert.split(";"):
-            connection.execute(text(statement))
-
-    with pytest.raises(WorkspaceCorrupt, match="before SourceService existed"):
-        store.initialize()
-
-    # And the rows are still there — refused, not emptied.
-    with store.engine.connect() as connection:
-        assert connection.execute(text(f"select count(*) from {table}")).scalar_one() == 1
-    store.close()
-
-
-def test_migration_eight_gives_an_asset_its_origin(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("asset")}
-    assert {"format", "source_id", "frame_index", "frame_timestamp"} <= columns
-    store.close()
-
-
-def test_migration_eight_links_an_ingest_job_to_its_batch(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("ingest_job")}
-    assert "batch_id" in columns
-    store.close()
-
-
-def test_migration_eight_makes_content_unique_within_a_project(tmp_path: Path) -> None:
-    """Per project, not globally: two projects may hold one photograph."""
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    index = next(sql for sql in _schema(store) if "uq_asset_project_content_hash" in sql)
-    assert "project_id" in index
-    store.close()
-
-
-def test_migration_eight_puts_an_index_under_the_source_idempotency_rule(tmp_path: Path) -> None:
-    """The fourth term is the expression, and it is the half that can rot silently.
-
-    A three-column index over ``(project_id, kind, path)`` would look right and
-    would refuse a clip's second extraction rate, which is a legitimate second
-    source; a nullable fourth column would collide with nothing at all, because
-    SQLite treats NULLs in a unique index as distinct.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    index = next(sql for sql in _schema(store) if "uq_source_project_kind_path_fps" in sql)
-    assert "json_extract" in index
-    assert "coalesce" in index
-    store.close()
-
-
-def test_migration_eight_refuses_a_workspace_holding_duplicate_assets(tmp_path: Path) -> None:
-    """Refused, not merged: each duplicate may carry its own annotations."""
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    _downgrade_to_version_one(store)
-    with store.engine.begin() as connection:
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-        for asset_id in ("a1", "a2"):
-            connection.execute(
-                text(
-                    "insert into asset (id, project_id, modality, content_hash, uri) "
-                    f"values ('{asset_id}', 'p', 'image', 'deadbeef', '/x.png')"
-                )
-            )
-
-    with pytest.raises(WorkspaceCorrupt, match="duplicate assets"):
-        store.initialize()
-
-    # And the rows are still there — refused, not emptied.
-    with store.engine.connect() as connection:
-        assert connection.execute(text("select count(*) from asset")).scalar_one() == 2
-    store.close()
-
-
-def test_migration_eight_refuses_a_workspace_holding_duplicate_sources(tmp_path: Path) -> None:
-    """The rule #18 shipped as a pre-check, meeting data written while it was one."""
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.begin() as connection:
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-        # The index has to go before the rows it would refuse, which is exactly
-        # the situation a workspace written by the previous build is in.
-        connection.execute(text("drop index uq_source_project_kind_path_fps"))
-        for source_id in ("s1", "s2"):
-            connection.execute(
-                text(
-                    "insert into source (id, project_id, kind, path, registered_at, "
-                    f"capture_params) values ('{source_id}', 'p', 'image_directory', '/in', "
-                    "'2026-07-27T00:00:00+00:00', '{}')"
-                )
-            )
-        connection.execute(text("update _visionset_meta set format_version = 7"))
-
-    with pytest.raises(WorkspaceCorrupt, match="duplicate sources"):
-        store.initialize()
-
-    with store.engine.connect() as connection:
-        assert connection.execute(text("select count(*) from source")).scalar_one() == 2
-    store.close()
-
-
-def test_migration_eight_refuses_a_workspace_that_still_holds_a_pre_ingest_job(
-    tmp_path: Path,
-) -> None:
-    """``ingest_job`` is rebuilt, so like migrations 6 and 7 it counts first.
-
-    Set up at generation 7 rather than 1, so that migration 8's own count is
-    what fires: from generation 1 migration 7 refuses the workspace before this
-    ever runs, because a pre-#18 source is what such a job always hangs from.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.begin() as connection:
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-        connection.execute(
-            text(
-                "insert into source (id, project_id, kind, path, registered_at, capture_params) "
-                "values ('s', 'p', 'image_directory', '/in', '2026-07-27T00:00:00+00:00', '{}')"
-            )
-        )
-        # Rebuilt rather than altered, for the reason migration 8 rebuilds it:
-        # SQLite will not drop a column that a foreign-key clause names.
-        connection.execute(text("drop table ingest_job"))
-        connection.execute(
-            text(
-                "CREATE TABLE ingest_job ("
-                " id CHAR(32) NOT NULL,"
-                " source_id CHAR(32) NOT NULL,"
-                " state VARCHAR NOT NULL,"
-                " error VARCHAR,"
-                " PRIMARY KEY (id),"
-                " FOREIGN KEY(source_id) REFERENCES source (id) ON DELETE CASCADE)"
-            )
-        )
-        connection.execute(
-            text("insert into ingest_job (id, source_id, state) values ('j', 's', 'pending')")
-        )
-        connection.execute(text("update _visionset_meta set format_version = 7"))
-
-    with pytest.raises(WorkspaceCorrupt, match="before IngestService existed"):
-        store.initialize()
-
-    with store.engine.connect() as connection:
-        assert connection.execute(text("select count(*) from ingest_job")).scalar_one() == 1
-    store.close()
-
-
-#: What migration 9 adds, and therefore what generation 8 did not have.
-_MIGRATION_NINE_COLUMNS = ("batch_name", "processed", "total", "failures")
-
-
-def _downgrade_to_generation_eight(store: SqliteMetadataStore) -> None:
-    """Take ``ingest_job`` back to the shape migration 8's rebuild left it in.
-
-    Four ``DROP COLUMN``s rather than a hand-written ``CREATE TABLE``, and that
-    is not only convenience. These tests compare ``sqlite_master`` *text*, and
-    SQLite rewrites the stored statement by deleting the dropped column's
-    definition and leaving every other character alone — so what is left is
-    exactly what ``table.create()`` wrote, where a retyped baseline would differ
-    in whitespace and fail for a reason about this file rather than the schema.
-
-    That these drops are even possible is migration 9's own argument restated:
-    none of the four carries a foreign key, which is why it could be an ``ALTER``
-    at all where migration 8 needed a rebuild.
-    """
-    with store.engine.begin() as connection:
-        for column in _MIGRATION_NINE_COLUMNS:
-            connection.execute(text(f"alter table ingest_job drop column {column}"))
-        connection.execute(text("update _visionset_meta set format_version = 8"))
-
-
-def test_migration_nine_gives_a_run_its_progress_and_its_report(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("ingest_job")}
-    assert {"batch_name", "processed", "total", "failures"} <= columns
-    store.close()
-
-
-def test_migration_nine_alters_a_table_migration_eight_rebuilt(tmp_path: Path) -> None:
-    """The ``ALTER`` path, which the fresh-versus-migrated test cannot reach.
-
-    That test walks back to generation 1, from where migration 8 re-creates
-    ``ingest_job`` whole — including migration 9's columns, since it builds from
-    ``_tables`` — so migration 9 finds them present and does nothing. A database
-    this build actually wrote is stamped at 8, and migration 9 reaches it as four
-    ``ALTER TABLE ... ADD COLUMN`` statements instead.
-
-    That is the path the declared-last rule exists for: SQLite appends an added
-    column, so the two spellings of ``CREATE TABLE ingest_job`` agree only while
-    those four stay at the end of ``IngestJobRow``.
-    """
-    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
-    fresh.initialize()
-    expected = _schema(fresh)
-    fresh.close()
-
-    legacy = SqliteMetadataStore(tmp_path / "legacy.db")
-    legacy.initialize()
-    _downgrade_to_generation_eight(legacy)
-    assert _schema(legacy) != expected  # the four columns really are gone
-
-    legacy.initialize()  # migration 9 alone, as an ALTER
-    assert _schema(legacy) == expected
-    assert legacy.format_version == FORMAT_VERSION
-    legacy.close()
-
-
-def test_migration_nine_keeps_the_runs_a_workspace_already_recorded(tmp_path: Path) -> None:
-    """Four columns with an honest value for a row written before them.
-
-    Nothing is refused and nothing is dropped here, unlike migrations 6 to 8:
-    a pre-#19 run counted nothing and reported nothing, which is exactly what
-    ``0`` and ``[]`` say, and NULL is what a run that named no batch meant.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.begin() as connection:
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-        connection.execute(
-            text(
-                "insert into source (id, project_id, kind, path, registered_at, capture_params) "
-                "values ('s', 'p', 'image_directory', '/in', '2026-07-27T00:00:00+00:00', '{}')"
-            )
-        )
-    _downgrade_to_generation_eight(store)
-    with store.engine.begin() as connection:
-        connection.execute(
-            text("insert into ingest_job (id, source_id, state) values ('j', 's', 'completed')")
-        )
-
-    store.initialize()
-
-    with store.engine.connect() as connection:
-        row = connection.execute(
-            text("select batch_name, processed, total, failures from ingest_job where id = 'j'")
-        ).one()
-    assert row == (None, 0, None, "[]")
-    store.close()
-
-
-def _downgrade_to_generation_nine(store: SqliteMetadataStore) -> None:
-    """Take ``asset`` back to the shape migration 8's ``ALTER``s left it in.
-
-    A ``DROP COLUMN`` rather than a hand-written ``CREATE TABLE``, for the
-    reason ``_downgrade_to_generation_eight`` gives: these tests compare
-    ``sqlite_master`` *text*, and SQLite rewrites the stored statement by
-    deleting the dropped column's definition and leaving every other character
-    alone, where a retyped baseline would differ in whitespace and fail for a
-    reason about this file rather than about the schema.
-    """
-    with store.engine.begin() as connection:
-        connection.execute(text("alter table asset drop column thumbnail_hash"))
-        connection.execute(text("update _visionset_meta set format_version = 9"))
-
-
-def test_migration_ten_gives_an_asset_a_place_for_its_preview(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("asset")}
-    assert "thumbnail_hash" in columns
-    store.close()
-
-
-def test_migration_ten_leaves_an_asset_it_did_not_render_alone(tmp_path: Path) -> None:
-    """NULL is the ordinary state of a cache, not a legacy value to tolerate.
-
-    Nothing is refused and nothing is dropped, and here that is easier to claim
-    than it was for migration 9: an asset written before this column has no
-    preview, which is precisely what NULL says, and
-    ``IngestService.backfill_thumbnails`` is the remedy that reads it.
-
-    There is no schema twin of
-    ``test_migration_nine_alters_a_table_migration_eight_rebuilt`` because
-    migration 10 does not need one. That test exists because migration 8
-    *rebuilds* ``ingest_job``, so a walk back to generation 1 re-creates
-    migration 9's columns from ``_tables`` and 9 never runs as an ``ALTER``.
-    ``asset`` is only ever altered, so
-    ``test_a_fresh_database_and_a_migrated_one_have_the_same_schema`` already
-    exercises this migration's real ``ALTER TABLE ... ADD COLUMN``.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.begin() as connection:
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-    _downgrade_to_generation_nine(store)
-    with store.engine.begin() as connection:
-        connection.execute(
-            text(
-                "insert into asset (id, project_id, modality, content_hash, uri) "
-                f"values ('a', 'p', 'image', '{'a' * 64}', '/in/one.png')"
-            )
-        )
-
-    store.initialize()
-
-    with store.engine.connect() as connection:
-        row = connection.execute(
-            text("select thumbnail_hash from asset where id = 'a'")
-        ).scalar_one()
-    assert row is None
-    assert store.format_version == FORMAT_VERSION
-    store.close()
-
-
-def test_migration_eleven_gives_a_workspace_somewhere_to_keep_its_tokens(tmp_path: Path) -> None:
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        columns = {c["name"] for c in inspect(connection).get_columns("token")}
-    assert columns == {"id", "workspace_id", "name", "secret_hash", "created_at", "revoked_at"}
-    store.close()
-
-
-def test_migration_eleven_brings_its_indexes_with_it(tmp_path: Path) -> None:
-    """``Table.create`` emits the indexes too, which is why none is issued alone.
-
-    Migration 8 had to learn the hard way that an index can go missing from a
-    creation path — it re-issued a ``CREATE`` for one SQLAlchemy could not
-    reflect. Here the claim is the opposite one and it is worth pinning: if
-    ``checkfirst`` on a table ever stopped carrying its indexes, uniqueness would
-    quietly stop being enforced and every name collision would land in the store.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    with store.engine.connect() as connection:
-        indexes = {i["name"] for i in inspect(connection).get_indexes("token")}
-    assert {"ix_token_workspace_id", "uq_token_workspace_name"} <= indexes
-    store.close()
-
-
-def test_migration_eleven_creates_the_table_on_a_database_that_predates_it(
-    tmp_path: Path,
-) -> None:
-    """The real exercise: from generation 1 the table is gone, so this one builds it.
-
-    ``_downgrade_to_version_one`` drops ``token``, and that line is the only
-    thing that makes this migration run at all — see the comment there. Without
-    it the fresh-versus-migrated test would compare a table nobody re-created
-    against itself.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    _downgrade_to_version_one(store)
-    with store.engine.connect() as connection:
-        assert not inspect(connection).has_table("token")
-
-    store.initialize()
-
-    with store.engine.connect() as connection:
-        assert inspect(connection).has_table("token")
-        indexes = {i["name"] for i in inspect(connection).get_indexes("token")}
-    assert {"ix_token_workspace_id", "uq_token_workspace_name"} <= indexes
-    assert store.format_version == FORMAT_VERSION
-    store.close()
-
-
-def test_migration_eleven_makes_a_token_name_unique_within_its_workspace(tmp_path: Path) -> None:
-    """The index is the guarantee; ``TokenService`` supplies the sentence.
-
-    Case-insensitively, so that ``token revoke ci`` cannot find two credentials.
+def test_a_uniqueness_index_actually_refuses_a_duplicate(tmp_path: Path) -> None:
+    """One of them exercised for real, so the parametrized test above means something.
+
+    ``token`` is the subject because its rule is the case-insensitive one, which
+    a plain ``CREATE UNIQUE INDEX`` would not give: without ``COLLATE NOCASE``
+    ``token revoke ci`` could find two credentials.
     """
     store = SqliteMetadataStore(tmp_path / "visionset.db")
     store.initialize()
@@ -706,262 +128,83 @@ def test_migration_eleven_makes_a_token_name_unique_within_its_workspace(tmp_pat
     store.close()
 
 
-def test_a_fresh_database_and_a_migrated_one_have_the_same_schema(tmp_path: Path) -> None:
-    """Migration 1 is ``create_all`` of *current* metadata, so the two paths differ.
+def test_two_fresh_databases_have_the_same_schema(tmp_path: Path) -> None:
+    """The equivalence machinery, kept for the migration that comes after this one.
 
-    A fresh file gets every later migration's change from migration 1; an
-    existing file gets each one from the migration itself. If those ever
-    disagree, a workspace's behavior depends on when it was created — which is
-    the bug this test exists to catch.
+    While the chain existed this compared a *fresh* file against one walked back
+    to generation 1 and migrated forward, and that comparison is what caught a
+    column declared in the wrong position. With a single baseline the two paths
+    coincide, so today it proves only that schema creation is deterministic —
+    a weak claim, deliberately kept, because the second migration turns it back
+    into the strong one and ``_schema`` is the piece that would otherwise be
+    rewritten from memory.
     """
-    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
-    fresh.initialize()
-    expected = _schema(fresh)
-    fresh.close()
+    first = SqliteMetadataStore(tmp_path / "first.db")
+    first.initialize()
+    expected = _schema(first)
+    first.close()
 
-    legacy = SqliteMetadataStore(tmp_path / "legacy.db")
-    legacy.initialize()
-    _downgrade_to_version_one(legacy)
-    assert _schema(legacy) != expected  # the downgrade really removed something
-    legacy.initialize()  # migrates 1 -> FORMAT_VERSION
-
-    assert _schema(legacy) == expected
-    assert legacy.format_version == FORMAT_VERSION
-    legacy.close()
+    second = SqliteMetadataStore(tmp_path / "second.db")
+    second.initialize()
+    assert _schema(second) == expected
+    second.close()
 
 
-def test_every_migration_after_the_first_is_idempotent(tmp_path: Path) -> None:
-    """They run against fresh databases that already carry their change."""
+def test_running_every_migration_again_changes_nothing(tmp_path: Path) -> None:
+    """Idempotency, and now it covers the baseline rather than skipping it.
+
+    While the chain existed this loop started at ``MIGRATIONS[1:]``, because
+    migration 1 was the thing every later one had to be idempotent *against*.
+    The baseline is ``create_all``, which is ``checkfirst`` by default, so it can
+    be held to the same standard as anything appended after it — and the next
+    migration inherits a test that already runs the whole list.
+    """
     store = SqliteMetadataStore(tmp_path / "visionset.db")
     store.initialize()
+    before = _schema(store)
+
     with store.engine.begin() as connection:
-        for migration in MIGRATIONS[1:]:
+        for migration in MIGRATIONS:
             migration.upgrade(connection)
-    store.close()
 
-
-def test_migration_twelve_makes_a_second_tag_on_one_asset_impossible(tmp_path: Path) -> None:
-    """The index is partial, so it constrains tags and nothing else."""
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    assert any("uq_annotation_asset_classification" in sql for sql in _schema(store))
-    store.close()
-
-
-def test_migration_twelve_collapses_duplicates_a_workspace_already_carried(
-    tmp_path: Path,
-) -> None:
-    """The backfill, and the reason it collapses rather than refusing.
-
-    Duplicates were legal before this migration, so a workspace can hold them —
-    and refusing to open one would leave its owner with a remedy they cannot
-    apply, since this product ships no SQL console. The survivor is the
-    lexicographically smallest id, which is arbitrary by construction (the rows
-    are one statement) and, more importantly, deterministic.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    _downgrade_to_version_one(store)
-
-    with store.engine.begin() as connection:
-        # A real parent chain, because foreign keys are on.
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-        connection.execute(
-            text(
-                "insert into asset (id, project_id, modality, uri, content_hash)"
-                " values ('0000000000000000000000000000000a', 'p', 'image', 'f.png', 'h')"
-            )
-        )
-        for annotation_id, geometry in (
-            ("00000000000000000000000000000001", '{"type": "classification_tag"}'),
-            ("00000000000000000000000000000002", '{"type": "classification_tag"}'),
-            # A second class on the same asset is a different statement and stays.
-            ("00000000000000000000000000000003", '{"type": "classification_tag"}'),
-            # And two boxes under one class are the normal case, which is why the
-            # index is partial rather than a rule about the table.
-            (
-                "00000000000000000000000000000004",
-                '{"type": "bbox", "x": 0, "y": 0, "width": 1, "height": 1}',
-            ),
-            (
-                "00000000000000000000000000000005",
-                '{"type": "bbox", "x": 2, "y": 2, "width": 1, "height": 1}',
-            ),
-        ):
-            label = "night" if annotation_id.endswith("3") else "daytime"
-            connection.execute(
-                text(
-                    "insert into annotation (id, asset_id, label_class, schema_version,"
-                    " geometry, provenance)"
-                    " values (:id, :asset, :label, 1, :geometry, 'human')"
-                ),
-                {
-                    "id": annotation_id,
-                    "asset": "0000000000000000000000000000000a",
-                    "label": label,
-                    "geometry": geometry,
-                },
-            )
-
-    store.initialize()
-
-    with store.engine.begin() as connection:
-        surviving = sorted(
-            row[0] for row in connection.execute(text("select id from annotation")).fetchall()
-        )
-    # The first of the two `daytime` tags survives; the second is gone; the
-    # `night` tag and both boxes are untouched.
-    assert surviving == [
-        "00000000000000000000000000000001",
-        "00000000000000000000000000000003",
-        "00000000000000000000000000000004",
-        "00000000000000000000000000000005",
-    ]
-    store.close()
-
-
-def test_migration_fourteen_alters_the_schema_table_for_real(tmp_path: Path) -> None:
-    """From generation 1 the two columns are gone, so this migration adds them.
-
-    ``_downgrade_to_version_one`` drops them, and those lines are the only thing
-    that makes migration 14 run at all — it is in migrations 11 and 12's
-    position, not 13's, because ``annotation_schema`` gained nothing else by
-    ``ALTER`` and so nothing above removes these for free. Without the undo, a
-    pair of ``ALTER``s nobody ran would be reported as agreeing with themselves.
-
-    The order is asserted, not just the presence: SQLite appends an added column,
-    so ``description`` before ``created_at`` here is what makes the fresh table's
-    ``CREATE TABLE`` text match the migrated one's.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    _downgrade_to_version_one(store)
-    with store.engine.connect() as connection:
-        before = [c["name"] for c in inspect(connection).get_columns("annotation_schema")]
-    assert "description" not in before and "created_at" not in before
-
-    store.initialize()
-
-    with store.engine.connect() as connection:
-        after = [c["name"] for c in inspect(connection).get_columns("annotation_schema")]
-    assert after[-2:] == ["description", "created_at"]
+    assert _schema(store) == before
     assert store.format_version == FORMAT_VERSION
     store.close()
 
 
-def test_a_schema_version_written_before_migration_fourteen_reads_back_with_nulls(
-    tmp_path: Path,
+#: The tail of every table whose last columns arrived by ``ALTER TABLE``, and
+#: which therefore must not be reordered. See the test below.
+_DECLARED_TAILS = {
+    "annotation_schema": ["description", "created_at"],
+    "source": ["display_name"],
+    "asset": ["thumbnail_hash", "ingested_at"],
+}
+
+
+@pytest.mark.parametrize(("table", "tail"), sorted(_DECLARED_TAILS.items()))
+def test_the_newest_columns_are_declared_last_on_their_row_class(
+    tmp_path: Path, table: str, tail: list[str]
 ) -> None:
-    """No backfill: a version nobody described keeps saying so, forever.
+    """The column-order assertion from #230, kept and widened against the baseline.
 
-    Every candidate value would be a fabrication — migration time records when
-    somebody upgraded, not when the version was written — and a plausible-looking
-    wrong timestamp is worse than an admitted gap, because nothing downstream can
-    tell it is wrong. Migration 13 made the same call for ``asset.ingested_at``.
+    SQLite *appends* a column added by ``ALTER TABLE``, so a column declared
+    anywhere but last makes the ``create_all`` path and the migration path emit
+    different ``CREATE TABLE`` text. That is what this asserted while the chain
+    existed, by comparing a fresh file against a migrated one.
+
+    With one baseline there is no migrated file to compare against, and this is
+    deliberately the weaker claim: it pins the *declared* tail and asserts the
+    baseline puts it on disk in that order. A tautology today — ``create_all``
+    emits declared order — and not one tomorrow, because the moment a migration
+    appends a column to one of these tables, a reordering silently splits the two
+    creation paths and there would be nothing on record saying which order was
+    right. This is that record.
     """
     store = SqliteMetadataStore(tmp_path / "visionset.db")
     store.initialize()
-    _downgrade_to_version_one(store)
-    with store.engine.begin() as connection:
-        # A real parent chain, because foreign keys are on.
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'roads')")
-        )
-        connection.execute(
-            text(
-                "insert into annotation_schema (id, project_id, version, classes) "
-                "values ('s', 'p', 1, '[]')"
-            )
-        )
-
-    store.initialize()
-
     with store.engine.connect() as connection:
-        row = connection.execute(
-            text("select description, created_at from annotation_schema where id = 's'")
-        ).one()
-    assert row.description is None
-    assert row.created_at is None
-    store.close()
-
-
-def _downgrade_to_generation_fourteen(store: SqliteMetadataStore) -> None:
-    """Take ``source`` back to the shape a pre-#245 build left it in.
-
-    A ``DROP COLUMN`` rather than a hand-written ``CREATE TABLE``, for
-    ``_downgrade_to_generation_eight``'s reason: these tests compare
-    ``sqlite_master`` *text*, and SQLite rewrites the stored statement by
-    deleting the dropped column's definition and leaving every other character
-    alone — a retyped baseline would differ in whitespace and fail for a reason
-    about this file rather than the schema.
-    """
-    with store.engine.begin() as connection:
-        connection.execute(text("alter table source drop column display_name"))
-        connection.execute(text("update _visionset_meta set format_version = 14"))
-
-
-def test_migration_fifteen_alters_a_table_migration_seven_rebuilt(tmp_path: Path) -> None:
-    """The ``ALTER`` path, which the fresh-versus-migrated test cannot reach.
-
-    That test walks back to generation 1, from where migration 7 re-creates
-    ``source`` whole from ``_tables`` — *including* ``display_name`` — so
-    migration 15 finds the column present and does nothing. A database this
-    build actually wrote is stamped at 14, and migration 15 reaches it as an
-    ``ALTER TABLE ... ADD COLUMN`` instead. Migration 9's trap, on migration 7's
-    rebuild: without this test the only exercised path is the vacuous one.
-
-    This is also why ``_downgrade_to_version_one`` needs **no** line for this
-    column — its ``drop table source`` takes it away for free — and why
-    ``display_name`` must stay declared last on ``SourceRow``: SQLite appends an
-    added column, so the two spellings of ``CREATE TABLE source`` agree only
-    while it sits at the end.
-    """
-    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
-    fresh.initialize()
-    expected = _schema(fresh)
-    fresh.close()
-
-    legacy = SqliteMetadataStore(tmp_path / "legacy.db")
-    legacy.initialize()
-    _downgrade_to_generation_fourteen(legacy)
-    assert _schema(legacy) != expected  # the column really is gone
-
-    legacy.initialize()  # migration 15 alone, as an ALTER
-    assert _schema(legacy) == expected
-    assert legacy.format_version == FORMAT_VERSION
-    legacy.close()
-
-
-def test_a_source_written_before_migration_fifteen_reads_back_unnamed(tmp_path: Path) -> None:
-    """NULL for a row that predates the column, and NULL is the honest value.
-
-    Nobody stated a name for a pre-#245 source, which is exactly what ``None``
-    says; backfilling the path's basename would freeze today's derivation into a
-    column the domain deliberately re-derives on read.
-    """
-    store = SqliteMetadataStore(tmp_path / "visionset.db")
-    store.initialize()
-    _downgrade_to_generation_fourteen(store)
-    with store.engine.begin() as connection:
-        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
-        connection.execute(
-            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
-        )
-        connection.execute(
-            text(
-                "insert into source (id, project_id, kind, path, registered_at, capture_params) "
-                "values ('s', 'p', 'image_directory', '/data/photos', "
-                "'2026-08-01T00:00:00+00:00', '{}')"
-            )
-        )
-
-    store.initialize()
-
-    with store.engine.connect() as connection:
-        row = connection.execute(text("select display_name from source where id = 's'")).one()
-    assert row.display_name is None
+        created = [c["name"] for c in inspect(connection).get_columns(table)]
+    declared = [column.name for column in Base.metadata.tables[table].columns]
+    assert created == declared
+    assert declared[-len(tail) :] == tail
     store.close()
