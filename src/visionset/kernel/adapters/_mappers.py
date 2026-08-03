@@ -233,6 +233,7 @@ def _source_to_row(entity: Source) -> t.Base:
         project_id=entity.project_id,
         kind=entity.kind,
         path=entity.path,
+        display_name=entity.display_name,
         # Spelled out for the reason ``_release_to_row`` is: ``_flat_mapping``
         # dumps in python mode and would hand a ``datetime`` to a ``String``
         # column, which sqlite3 accepts through a deprecated adapter and writes
@@ -249,6 +250,7 @@ def _source_to_domain(_: Session, row: Any) -> Source:
         project_id=row.project_id,
         kind=SourceKind(row.kind),
         path=row.path,
+        display_name=row.display_name,
         registered_at=datetime.fromisoformat(row.registered_at),
         capture_params=row.capture_params,
         video=None if row.video is None else VideoProvenance.model_validate(row.video),

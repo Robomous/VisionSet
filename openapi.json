@@ -901,6 +901,18 @@
             },
             "title": "Files",
             "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What to call the source. Without one it is named by its staged directory, whose basename is a content digest \u2014 64 hex characters nobody can read. Registering the same files again with a new name renames the existing source rather than creating a second one.",
+            "title": "Name"
           }
         },
         "required": [
@@ -6950,7 +6962,7 @@
     },
     "/projects/{project_id}/sources/images": {
       "post": {
-        "description": "Offer a project a folder of stills.\n\nThe parts are staged as one directory and that directory becomes the source.\nUploading the same files again returns the **same** source rather than a\nsecond one: staging is content-addressed, so identical bytes under identical\nfilenames land on the same path, and registration is idempotent on that path.\n\nNothing is decoded here \u2014 what the files turn out to be is read at ingest,\nand a file that is not an image is reported there rather than refused now.",
+        "description": "Offer a project a folder of stills.\n\nThe parts are staged as one directory and that directory becomes the source.\nUploading the same files again returns the **same** source rather than a\nsecond one: staging is content-addressed, so identical bytes under identical\nfilenames land on the same path, and registration is idempotent on that path.\n\nNothing is decoded here \u2014 what the files turn out to be is read at ingest,\nand a file that is not an image is reported there rather than refused now.\n\n`name` exists because the staged path's basename is a digest (#245); a blank\none is refused by the kernel's own `InvalidName` (422), the #28 rule \u2014 the\ndomain already refuses with a mapped error, so no wire validator restates it.",
         "operationId": "register_image_source",
         "parameters": [
           {

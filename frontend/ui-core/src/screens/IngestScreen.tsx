@@ -188,6 +188,8 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   const project = useProject(projectId);
   const [files, setFiles] = useState<readonly File[]>([]);
   const [fps, setFps] = useState(String(DEFAULT_EXTRACTION_FPS));
+  // What to call an image source (#245). Empty means "use the suggestion".
+  const [sourceName, setSourceName] = useState("");
   const [batchChoice, setBatchChoice] = useState(NEW_BATCH);
   const [batchName, setBatchName] = useState("");
   const [source, setSource] = useState<Source | null>(null);
@@ -246,6 +248,13 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   // with 409 `BATCH_NOT_EDITABLE`, so offering one would be offering a refusal.
   const draftBatches = (batches.data?.items ?? []).filter((batch) => batch.state === "draft");
 
+  // What an image source is called unless the user types otherwise (#245).
+  // Without a stated name the server calls the source by its staged directory,
+  // whose basename is a content digest — 64 hex characters that then become the
+  // default batch name too. The first file's stem is deterministic, editable
+  // right there, and honest: it names what was actually picked.
+  const suggestedName = files.length > 0 && !isVideo ? stem(files[0].name) : "";
+
   // #234's gate, kept: every comparison with NaN is false, so `<= 0` alone would
   // wave a NaN through and upload `extraction_fps=NaN`.
   const rate = Number(fps);
@@ -260,8 +269,15 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   function upload(event: FormEvent): void {
     event.preventDefault();
     if (!canRegister) return;
+    // A video's name is its filename, so only images state one. Blank falls
+    // back to the suggestion the placeholder shows — the batch-name pattern.
+    const stated = (sourceName.trim() === "" ? suggestedName : sourceName.trim()).trim();
     register.mutate(
-      { files, ...(isVideo ? { extractionFps: rate } : {}) },
+      {
+        files,
+        ...(isVideo ? { extractionFps: rate } : {}),
+        ...(isVideo || stated === "" ? {} : { name: stated }),
+      },
       { onSuccess: (registered) => setSource(registered) },
     );
   }
@@ -277,6 +293,7 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   function clearFiles(): void {
     setFiles([]);
     setFps(String(DEFAULT_EXTRACTION_FPS));
+    setSourceName("");
     setAttempt((previous) => previous + 1);
     register.reset();
   }
@@ -293,6 +310,7 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   function again(): void {
     setFiles([]);
     setFps(String(DEFAULT_EXTRACTION_FPS));
+    setSourceName("");
     setBatchChoice(NEW_BATCH);
     setBatchName("");
     setSource(null);
@@ -373,6 +391,9 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
                     clip={clip}
                     fps={fps}
                     onFps={setFps}
+                    sourceName={sourceName}
+                    onSourceName={setSourceName}
+                    suggestedName={suggestedName}
                     estimate={
                       clip !== null && usableRate
                         ? Math.floor(clip.durationSeconds * rate)
@@ -656,6 +677,9 @@ function SelectionPanel({
   clip,
   fps,
   onFps,
+  sourceName,
+  onSourceName,
+  suggestedName,
   estimate,
   onClear,
 }: {
@@ -664,6 +688,9 @@ function SelectionPanel({
   readonly clip: ClipProbe | null;
   readonly fps: string;
   readonly onFps: (value: string) => void;
+  readonly sourceName: string;
+  readonly onSourceName: (value: string) => void;
+  readonly suggestedName: string;
   readonly estimate: number | null;
   readonly onClear: () => void;
 }): JSX.Element {
@@ -712,6 +739,25 @@ function SelectionPanel({
           <X className="size-4" aria-hidden="true" />
         </Button>
       </div>
+
+      {!isVideo && (
+        <div className="border-t border-border p-3">
+          <div className="flex max-w-sm flex-col gap-1.5">
+            <Label htmlFor="source-name">Source name</Label>
+            <Input
+              id="source-name"
+              data-testid="source-name"
+              value={sourceName}
+              placeholder={suggestedName}
+              onChange={(event) => onSourceName(event.target.value)}
+            />
+            <FieldHint>
+              Names the source — and the new batch inherits it. Without one the server calls
+              both by the upload&apos;s content digest.
+            </FieldHint>
+          </div>
+        </div>
+      )}
 
       {isVideo && (
         <div className="flex flex-col gap-3 border-t border-border p-3 md:flex-row md:items-center md:justify-between">
@@ -768,6 +814,11 @@ function SelectionPanel({
  */
 function sourceLabel(name: string): string {
   return /^[0-9a-f]{64}$/.test(name) ? `${name.slice(0, 8)}…` : name;
+}
+
+/** The filename without its last extension: `photo-0.png` → `photo-0`. */
+function stem(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "");
 }
 
 function Fact({ label, value }: { readonly label: string; readonly value: string }): JSX.Element {

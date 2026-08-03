@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePath
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -118,6 +118,16 @@ class Source(BaseModel):
     site, whatever the person running the ingest wants on the record. Nothing in
     the kernel branches on it and nothing validates it, which is exactly why the
     values are ``str``: a typed value would imply someone was checking.
+
+    :attr:`display_name` is what a caller asked this source to be *called*
+    (#245), and ``None`` means nobody said. It exists because not every path has
+    a readable last segment: an HTTP upload of stills is staged under a
+    content-addressed directory, so its basename is a 64-character digest, while
+    a CLI directory or a clip carries a name a person chose. Like
+    ``capture_params`` it is **not** part of the source's identity — renaming
+    must not fork one origin into two — and unlike ``registered_at`` a provided
+    value *does* refresh the stored one, because a label is curation, not
+    provenance.
     """
 
     model_config = ConfigDict(validate_assignment=True)
@@ -126,9 +136,21 @@ class Source(BaseModel):
     project_id: UUID
     kind: SourceKind
     path: str
+    display_name: str | None = None
     registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     capture_params: dict[str, str] = Field(default_factory=dict)
     video: VideoProvenance | None = None
+
+    @property
+    def name(self) -> str:
+        """What to call this source: the stated name, else the path's last segment.
+
+        The one spelling of the resolution. Both wire projections
+        (``server.models.SourceOut`` and ``visionset.wire.source``) publish this
+        rather than re-deriving from ``path`` — two derivations is how the API
+        and the CLI would eventually answer differently.
+        """
+        return self.display_name if self.display_name is not None else PurePath(self.path).name
 
     @field_validator("registered_at")
     @classmethod

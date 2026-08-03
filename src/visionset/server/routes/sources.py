@@ -58,6 +58,17 @@ def register_image_source(
     workspace: WorkspaceDep,
     project_id: UUID,
     files: Annotated[list[UploadFile], File(description="The images, as one multipart part each.")],
+    name: Annotated[
+        str | None,
+        Form(
+            description=(
+                "What to call the source. Without one it is named by its staged "
+                "directory, whose basename is a content digest — 64 hex characters "
+                "nobody can read. Registering the same files again with a new name "
+                "renames the existing source rather than creating a second one."
+            ),
+        ),
+    ] = None,
 ) -> SourceOut:
     """Offer a project a folder of stills.
 
@@ -68,12 +79,18 @@ def register_image_source(
 
     Nothing is decoded here — what the files turn out to be is read at ingest,
     and a file that is not an image is reported there rather than refused now.
+
+    `name` exists because the staged path's basename is a digest (#245); a blank
+    one is refused by the kernel's own `InvalidName` (422), the #28 rule — the
+    domain already refuses with a mapped error, so no wire validator restates it.
     """
     # ``capture_params`` is not on the wire. It is an opaque operator-supplied
     # mapping, and threading a JSON object through a multipart form is a
     # contract decision with no caller asking for it yet.
     staged = stage(workspace.root, files)
-    return SourceOut.of(SourceService(workspace).register_images(project_id, staged.directory))
+    return SourceOut.of(
+        SourceService(workspace).register_images(project_id, staged.directory, display_name=name)
+    )
 
 
 @project_router.post("/video", status_code=status.HTTP_201_CREATED, responses=documented(404))

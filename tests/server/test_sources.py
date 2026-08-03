@@ -116,6 +116,86 @@ def test_uploading_images_to_an_unknown_project_is_404(client: TestClient, tmp_p
     assert response.json()["code"] == "PROJECT_NOT_FOUND"
 
 
+# --- the display name (#245) -------------------------------------------------
+
+
+def test_a_stated_name_becomes_the_source_name(
+    client: TestClient, project: str, tmp_path: Path
+) -> None:
+    response = client.post(
+        f"/projects/{project}/sources/images",
+        files=[image_part(tmp_path, "a.png", 1)],
+        data={"name": "dashcam morning run"},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["name"] == "dashcam morning run"
+
+
+def test_an_unnamed_upload_is_still_called_by_its_staged_digest(
+    client: TestClient, project: str, tmp_path: Path
+) -> None:
+    """The pre-#245 default, pinned as the default rather than fixed by stealth.
+
+    Staging is content-addressed, so the directory an upload registers is named
+    by a sha-256 digest — which is what an upload that states no name is called.
+    Whether the UI *offers* a name is its business; the wire must not invent one.
+    """
+    response = post_images(client, project, image_part(tmp_path, "a.png", 1))
+
+    assert response.status_code == 201, response.text
+    name = response.json()["name"]
+    assert len(name) == 64 and set(name) <= set("0123456789abcdef")
+
+
+def test_reuploading_with_a_new_name_renames_the_same_source(
+    client: TestClient, project: str, tmp_path: Path
+) -> None:
+    """Identity is the content-addressed path; the name is a label on it."""
+    first = client.post(
+        f"/projects/{project}/sources/images",
+        files=[image_part(tmp_path, "a.png", 1)],
+        data={"name": "one"},
+    )
+    second = client.post(
+        f"/projects/{project}/sources/images",
+        files=[image_part(tmp_path, "a.png", 1)],
+        data={"name": "two"},
+    )
+
+    assert second.json()["id"] == first.json()["id"]
+    assert second.json()["name"] == "two"
+
+
+def test_a_nameless_reupload_keeps_the_stated_name(
+    client: TestClient, project: str, tmp_path: Path
+) -> None:
+    named = client.post(
+        f"/projects/{project}/sources/images",
+        files=[image_part(tmp_path, "a.png", 1)],
+        data={"name": "kept"},
+    )
+    again = post_images(client, project, image_part(tmp_path, "a.png", 1))
+
+    assert again.json()["id"] == named.json()["id"]
+    assert again.json()["name"] == "kept"
+
+
+def test_a_blank_name_is_422_with_the_kernel_wording(
+    client: TestClient, project: str, tmp_path: Path
+) -> None:
+    """#28's rule: the domain refuses with a mapped error, so no wire validator
+    restates it — the refusal below is ``InvalidName``'s own."""
+    response = client.post(
+        f"/projects/{project}/sources/images",
+        files=[image_part(tmp_path, "a.png", 1)],
+        data={"name": "   "},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "INVALID_NAME"
+
+
 # --- registering a clip ------------------------------------------------------
 
 
