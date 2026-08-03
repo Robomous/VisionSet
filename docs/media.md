@@ -331,6 +331,12 @@ exactly like a passing one. CI installs ffmpeg and sets `VISIONSET_REQUIRE_FFMPE
 that skip into a hard error, so a broken install step goes red rather than quietly shrinking the
 suite.
 
+The same reasoning reaches the containers. `docker/api.Dockerfile` installs ffmpeg with apt,
+because `uv sync` cannot, and CI's `docker` job builds that image and runs this page's video
+tests inside it. Without that step the compose stack starts, serves and ingests stills perfectly
+well, and answers 500 `MEDIA_TOOL_UNAVAILABLE` the first time somebody uploads a clip — the lazy
+check being what moves the failure that far from the missing binary.
+
 Neither library needs an import-linter change. The contracts forbid *frameworks* inside the
 kernel — FastAPI, Typer, MCP, uvicorn — not third-party libraries, and ffmpeg is reached through
 `subprocess` and is not an import at all.

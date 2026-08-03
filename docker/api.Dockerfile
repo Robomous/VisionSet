@@ -7,6 +7,24 @@
 # with --reload.
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+# ffmpeg is a binary, not a Python dependency, so `uv sync` below structurally
+# cannot bring it: pyproject.toml declares it nowhere and could not. The API
+# decodes video out of process — `ffprobe` when a video source is registered,
+# `ffmpeg` when frames are extracted — and `FfmpegVideoProcessor` looks for both
+# per call rather than at import. That is why an image without them starts, serves
+# and ingests stills perfectly well, and answers 500 MEDIA_TOOL_UNAVAILABLE the
+# first time somebody uploads a clip.
+#
+# The Debian package ships `ffmpeg` and `ffprobe` together, and the flags match
+# the CI `python` job and the adapter's own install hint, so there is one spelling
+# of how ffmpeg is installed on Debian rather than three.
+#
+# Ahead of the dependency manifests below on purpose: those change often, this
+# does not, so a dependency edit re-runs `uv sync` and leaves apt alone.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # The venv lives outside /workspace, which the bind mount replaces wholesale at run
 # time. A venv under the mount point would be shadowed by the host checkout and
 # have to be rebuilt on every boot — which is the thing this file exists to stop.

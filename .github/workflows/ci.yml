@@ -518,3 +518,50 @@ jobs:
             echo "::error::openapi.json is stale — run 'uv run python scripts/export_openapi.py' and commit the result."
             exit 1
           }
+
+  # The only job that touches docker/. Every other job installs the environment its
+  # own way, so until this existed the dev stack was unverified by construction —
+  # which is how its image came to be missing ffmpeg without a single red build.
+  #
+  # The image, not the compose file: `up` would need the frontend image, nginx and
+  # a browser to say anything, while what can actually rot here is what the api
+  # image contains.
+  docker:
+    name: dev image (docker/api.Dockerfile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the api dev image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/api.Dockerfile
+          load: true
+          tags: visionset-api-dev:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Both binaries are on PATH
+        run: |
+          docker run --rm visionset-api-dev:ci ffprobe -version
+          docker run --rm visionset-api-dev:ci ffmpeg -version
+
+      # The assertion that means something. A version banner proves a package is
+      # installed; this proves the kernel can reach it — `_require_tool`, the probe,
+      # the frame extraction, PYTHONPATH and the dev-group venv, all of it. Run the
+      # way docker/compose.yaml runs the container, source bind-mounted at
+      # /workspace, so a change to either file is exercised the way it will be used.
+      #
+      # VISIONSET_REQUIRE_FFMPEG=1 for the reason the `python` job sets it: without
+      # it a missing binary skips the suite, and a silently skipped video test looks
+      # exactly like a passing one — which is precisely the failure being guarded.
+      - name: The image can decode video
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -e VISIONSET_REQUIRE_FFMPEG=1 \
+            visionset-api-dev:ci \
+            pytest tests/kernel/test_video_processor.py -q

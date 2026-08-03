@@ -192,4 +192,6 @@ increments; every commit should leave the checks above green.
   already trips it.
 - Video tests need the **ffmpeg** binary (`brew install ffmpeg` / `sudo apt-get install
   ffmpeg`). Without it they skip locally; CI installs it and sets `VISIONSET_REQUIRE_FFMPEG=1`,
-  which turns that skip into a hard failure so a broken install cannot pass unnoticed.
+  which turns that skip into a hard failure so a broken install cannot pass unnoticed. The
+  container route needs nothing on the host — `docker/api.Dockerfile` installs it into the image,
+  and CI's `docker` job builds that image and runs the video tests inside it.

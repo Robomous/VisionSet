@@ -36,6 +36,15 @@
 # First boot creates a workspace and mints a token, printed in the `api` logs. The
 # browser does not need it; `curl` and an MCP client do.
 #
+# Video works here too, and needs nothing on the host: ffmpeg is a binary rather
+# than a Python dependency, so docker/api.Dockerfile installs it into the api image
+# — see the comment there. After pulling a change to that file, rebuild:
+#
+#   docker compose -f docker/compose.yaml build api
+#
+# A rebuild, not `down -v`. That one is for the frontend's node_modules volumes and
+# takes nothing here; the api service has no volume holding an installed thing.
+#
 # Storage — the same shape MLflow's default mode has, because it is the only shape
 # VisionSet has: a local directory for files and SQLite for metadata, both inside
 # one workspace directory, no server and nothing to configure. The kernel composes
