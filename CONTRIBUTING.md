@@ -3,8 +3,9 @@
 ## Dev setup
 
 ```bash
-uv sync            # Python 3.12+, installs the package editable + dev tools
-pnpm install       # pnpm workspace under frontend/
+uv sync                        # Python 3.12+, installs the package editable + dev tools
+pnpm install                   # pnpm workspace under frontend/
+bash scripts/setup_agents.sh   # optional: expose .agents/skills/ to coding agents
 ```
 
 Or skip all three and run the stack in containers — `docker compose -f docker/compose.yaml up`
