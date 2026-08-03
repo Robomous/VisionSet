@@ -29,28 +29,44 @@ told about them.
 
 ## Checks that must stay green
 
-| Check | Command |
-| --- | --- |
-| Python tests | `uv run pytest` |
-| Import contracts | `uv run lint-imports` |
-| Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` |
-| Lint/format | `uv run ruff check .` / `uv run ruff format .` |
-| Frontend build + tests | `pnpm -r build && pnpm test` |
-| Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built |
-| Annotator headless boundary | `pnpm --filter @visionset/annotator lint` |
-| Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) |
-| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset ui`; needs `uv sync` and `playwright install chromium` |
-| Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated |
-| Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server |
-| Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror |
-| Format smoke (ultralytics, pycocotools) | `uv sync --group yolo --group coco && uv run pytest tests/formats/test_*_smoke.py` — their own groups because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run only those files and `uv sync` again afterwards; skips without them, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` / `VISIONSET_REQUIRE_PYCOCOTOOLS=1` so a broken install goes red |
-| Wheel (build, install, serve) | `bash scripts/build_dist.sh && VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging` — builds the UI into `_static/`, builds the wheel, installs it in a fresh venv and serves `/ui/` from it. Opt-in locally (it costs about a minute); CI's `wheel` job runs it and uploads the artifact |
-| The 30-minute flow | `uv run python examples/thirty_minute_flow.py` — the vision document's success metric end to end. CI's `30-minute flow (wheel, end to end)` job runs it from the **installed wheel** in an empty venv, with `ultralytics` required there |
-| Version sync | `pnpm version:check` |
-| OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) |
-| Generated API client | `pnpm generate:client` (commit the diff) — writes **two** artifacts under `frontend/ui-core/src/generated/`: `api.ts` (the types) and `checks.ts` (the runtime response checks `unwrap` takes). CI diffs the whole directory. |
-| Annotator wire fixture | `uv run python scripts/export_wire_fixtures.py` (commit the diff) |
-| MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads |
+**Run them with `bash scripts/check.sh`** (or `pnpm check` — the same script). It is the
+canonical invocation for humans and agents alike: it runs the inner loop below, collects
+*every* failure rather than stopping at the first, and carries `set -euo pipefail`. Take a
+subset with `bash scripts/check.sh python`, `frontend` or `generated`.
+
+**Never pipe a test runner through `tail` or `head` when the exit code matters.** A
+pipeline's status is the *last* command's, so `uv run pytest -q | tail -20` exits 0 while
+the suite fails — `tail` succeeded at printing lines. That masked a real broken test
+through two task cycles during the #229–#233 run. If you need less output, redirect to a
+file and read it (`uv run pytest -q > /tmp/out.log 2>&1; echo $?`), or use the script
+above.
+
+The table below is the full list, and it is wider than the script: the wheel build, the
+30-minute flow, the format smoke tests and everything Playwright are left to CI because
+each costs minutes or needs its own install.
+
+| Check | Command | In `check.sh` |
+| --- | --- | --- |
+| Python tests | `uv run pytest` | `python` |
+| Import contracts | `uv run lint-imports` | `python` |
+| Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` | `python` |
+| Lint/format | `uv run ruff check .` / `uv run ruff format .` | `python` |
+| Frontend build + tests | `pnpm -r build && pnpm test` | `frontend` |
+| Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built | `frontend` |
+| Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
+| Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) | — CI |
+| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset ui`; needs `uv sync` and `playwright install chromium` | — CI |
+| Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated | — manual |
+| Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server | part of `frontend` |
+| Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror | part of `frontend` |
+| Format smoke (ultralytics, pycocotools) | `uv sync --group yolo --group coco && uv run pytest tests/formats/test_*_smoke.py` — their own groups because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run only those files and `uv sync` again afterwards; skips without them, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` / `VISIONSET_REQUIRE_PYCOCOTOOLS=1` so a broken install goes red | — CI |
+| Wheel (build, install, serve) | `bash scripts/build_dist.sh && VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging` — builds the UI into `_static/`, builds the wheel, installs it in a fresh venv and serves `/ui/` from it. Opt-in locally (it costs about a minute); CI's `wheel` job runs it and uploads the artifact | — CI |
+| The 30-minute flow | `uv run python examples/thirty_minute_flow.py` — the vision document's success metric end to end. CI's `30-minute flow (wheel, end to end)` job runs it from the **installed wheel** in an empty venv, with `ultralytics` required there | — CI |
+| Version sync | `pnpm version:check` | `generated` |
+| OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) | `generated` |
+| Generated API client | `pnpm generate:client` (commit the diff) — writes **two** artifacts under `frontend/ui-core/src/generated/`: `api.ts` (the types) and `checks.ts` (the runtime response checks `unwrap` takes). CI diffs the whole directory. | `generated` |
+| Annotator wire fixture | `uv run python scripts/export_wire_fixtures.py` (commit the diff) | part of `python` |
+| MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads | `generated` |
 
 ## The two machine-enforced boundaries
 
