@@ -19,9 +19,9 @@ shipped tool on one screen, and gives the three cross-cutting decisions exactly
 one place to live —
 
 * ``guarded`` wraps every body, so a kernel refusal arrives as the error envelope
-  rather than as an exception whose text FastMCP would ship to the client anyway,
+  rather than as an exception whose text MCPServer would ship to the client anyway,
   prefixed and unstructured;
-* ``inspect.cleandoc`` is passed as ``description=`` because FastMCP otherwise
+* ``inspect.cleandoc`` is passed as ``description=`` because MCPServer otherwise
   ships ``__doc__`` **raw** — indentation and all — into the listing an agent
   reads;
 * ``ToolAnnotations`` says whether a tool reads or writes. They are *hints* and
@@ -29,7 +29,7 @@ one place to live —
   ``tests/mcp/test_registration.py`` asserts the two agree rather than trusting
   that they do.
 
-A duplicate name would not raise: FastMCP logs a warning and silently discards
+A duplicate name would not raise: MCPServer logs a warning and silently discards
 the second registration. That same test asserts the server lists exactly as many
 tools as this table holds.
 
@@ -45,7 +45,7 @@ import os
 from collections.abc import Callable
 from typing import Any, Final
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 from visionset.mcp import (
@@ -62,13 +62,13 @@ from visionset.mcp import (
 )
 from visionset.mcp._errors import guarded
 
-READS: Final = ToolAnnotations(readOnlyHint=True)
+READS: Final = ToolAnnotations(read_only_hint=True)
 """Reads rows and changes nothing."""
 
-WRITES: Final = ToolAnnotations(readOnlyHint=False, destructiveHint=False)
+WRITES: Final = ToolAnnotations(read_only_hint=False, destructive_hint=False)
 """Changes state, but only ever adds to it or advances it."""
 
-DESTROYS: Final = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+DESTROYS: Final = ToolAnnotations(read_only_hint=False, destructive_hint=True)
 """Removes something that cannot be recovered. Carries ``confirm``."""
 
 TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
@@ -188,7 +188,7 @@ def registered_tools() -> tuple[tuple[Callable[..., Any], ToolAnnotations], ...]
     return TOOLS + DESTRUCTIVE_TOOLS
 
 
-def build_server(*, allow_destructive: bool | None = None) -> FastMCP:
+def build_server(*, allow_destructive: bool | None = None) -> MCPServer:
     """A server offering exactly the tools this configuration asks for.
 
     A factory rather than a module-level registration, and the reason is the same
@@ -205,7 +205,7 @@ def build_server(*, allow_destructive: bool | None = None) -> FastMCP:
     documentation **here**, once, rather than at each definition — so neither can
     be forgotten by the next tool, and ``test_registration.py`` asserts it.
     """
-    built = FastMCP("visionset")
+    built = MCPServer("visionset")
     offered = TOOLS if allow_destructive is False else registered_tools()
     if allow_destructive is True:
         offered = TOOLS + DESTRUCTIVE_TOOLS

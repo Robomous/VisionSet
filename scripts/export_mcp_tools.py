@@ -3,7 +3,7 @@
 **Generated rather than curated**, and the difference matters here more than it
 does for most documentation. A tool description in this surface is not prose
 about the code — it *is* the interface: it is the only thing a model reads before
-choosing, and FastMCP ships it verbatim to every client. A hand-written reference
+choosing, and MCPServer ships it verbatim to every client. A hand-written reference
 would be a second copy of a contract, free to drift from the one being served, and
 the drift would be invisible until an agent behaved on the wrong information.
 
@@ -56,7 +56,7 @@ error envelope, and the three gate words.
 def _takes(tool: Callable[..., Any]) -> str:
     """What a tool takes, with a `?` on anything that has a default.
 
-    Read off the real signature rather than off the JSON schema: FastMCP builds
+    Read off the real signature rather than off the JSON schema: MCPServer builds
     the schema from exactly this, and going through the server would mean
     starting one to document it.
     """

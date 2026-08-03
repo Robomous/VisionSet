@@ -78,7 +78,7 @@ def test_the_server_advertises_exactly_the_shipped_tools() -> None:
 
 
 def test_every_registered_tool_reaches_the_listing() -> None:
-    # A duplicate name does not raise: FastMCP logs a warning and discards the
+    # A duplicate name does not raise: MCPServer logs a warning and discards the
     # second registration silently, so a copy-paste slip would leave a tool that
     # simply is not there. Counting is what catches it.
     assert len(tool_names()) == len(TOOLS)
@@ -98,7 +98,7 @@ def test_the_gated_listing_is_exactly_the_shipped_set_plus_the_destructive_one()
 def test_every_tool_has_a_description_written_for_an_agent(name: str) -> None:
     described = tool_schemas()[name].description
     assert described
-    # `inspect.cleandoc` is applied at registration because FastMCP ships `__doc__`
+    # `inspect.cleandoc` is applied at registration because MCPServer ships `__doc__`
     # raw. Without it every description after the first line arrives indented.
     assert not described.startswith(" ")
     assert "\n    " not in described
@@ -106,10 +106,10 @@ def test_every_tool_has_a_description_written_for_an_agent(name: str) -> None:
 
 @pytest.mark.parametrize("name", sorted(SHIPPED))
 def test_every_parameter_of_every_tool_is_documented(name: str) -> None:
-    # There is no docstring-argument parser anywhere in FastMCP, so a parameter is
+    # There is no docstring-argument parser anywhere in MCPServer, so a parameter is
     # documented only if it carries `Annotated[..., Field(description=...)]`. A
     # bare `project: str` tells a model nothing about what to put there.
-    properties = tool_schemas()[name].inputSchema.get("properties", {})
+    properties = tool_schemas()[name].input_schema.get("properties", {})
     undocumented = [p for p, schema in properties.items() if not schema.get("description")]
     assert undocumented == []
 
@@ -119,12 +119,12 @@ def test_a_tool_that_can_destroy_data_says_so_and_takes_confirm() -> None:
     # This is what keeps the two from drifting apart, in both directions.
     listed = tool_schemas()
     gated = {
-        name for name in SHIPPED if "confirm" in listed[name].inputSchema.get("properties", {})
+        name for name in SHIPPED if "confirm" in listed[name].input_schema.get("properties", {})
     }
     hinted = {
         name
         for name in SHIPPED
-        if listed[name].annotations is not None and listed[name].annotations.destructiveHint
+        if listed[name].annotations is not None and listed[name].annotations.destructive_hint
     }
     assert gated == hinted
 
@@ -178,7 +178,7 @@ def test_the_destructive_tools_keep_the_confirm_and_hint_agreement(
 
     Checked against the table rather than a live listing, because the server
     registers at import and this process imported it without the flag — building
-    a second `FastMCP` here would test a registry nothing runs.
+    a second `MCPServer` here would test a registry nothing runs.
     """
     for tool, hints in DESTRUCTIVE_TOOLS:
         assert hints is DESTROYS
@@ -218,7 +218,7 @@ def test_every_tool_body_is_wrapped_so_a_refusal_cannot_escape() -> None:
 
 
 def server_tool(name: str) -> object:
-    """The callable FastMCP actually registered under that name."""
+    """The callable MCPServer actually registered under that name."""
     from visionset.mcp.main import server
 
     found = server._tool_manager.get_tool(name)

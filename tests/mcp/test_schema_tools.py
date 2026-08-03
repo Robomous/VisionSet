@@ -146,15 +146,15 @@ def test_the_domain_refuses_a_malformed_class_before_the_body_runs(
     result = call(
         "create_schema_version", project=named, classes=[{"name": "  ", "geometry": "bbox"}]
     )
-    assert result.isError
+    assert result.is_error
     assert "classes.0.name" in result.content[0].text
 
 
 def test_the_label_class_schema_reaches_the_agent_with_the_domain_docstrings() -> None:
-    # The reason the domain model goes into the signature at all: FastMCP puts its
+    # The reason the domain model goes into the signature at all: MCPServer puts its
     # docstring into `$defs`, which is the best guidance an agent gets about what
     # a class is. A hand-written body would have thrown it away.
-    definitions = tool_schemas()["create_schema_version"].inputSchema["$defs"]
+    definitions = tool_schemas()["create_schema_version"].input_schema["$defs"]
     assert "LabelClass" in definitions
     assert "Attribute" in definitions
     assert definitions["LabelClass"]["description"]
@@ -267,4 +267,4 @@ def test_version_zero_is_a_malformed_request_rather_than_a_domain_refusal(
 
     result = call("compare_schema_versions", project=named, from_version=0, to_version=1)
 
-    assert result.isError
+    assert result.is_error

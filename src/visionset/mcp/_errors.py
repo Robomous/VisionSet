@@ -28,7 +28,7 @@ the full table, ``ERROR_RULES``' code column gets promoted beside
 **Every tool is wrapped once, in ``main.py``'s registration table**, rather than
 each body decorating itself. One spelling that cannot be forgotten, and
 ``test_registration.py`` asserts every registered tool went through it. Letting
-an exception escape instead is not neutral: FastMCP catches it, prepends
+an exception escape instead is not neutral: MCPServer catches it, prepends
 ``"Error executing tool X: "`` and ships ``str(exc)`` to the client anyway — the
 same disclosure with none of the structure.
 
@@ -145,14 +145,14 @@ def _envelope(exc: VisionSetError) -> dict[str, Any]:
 def guarded[**P, T](fn: Callable[P, T]) -> Callable[P, T | dict[str, Any]]:
     """Turn any kernel refusal raised by ``fn`` into the error envelope.
 
-    ``functools.wraps`` is load-bearing rather than cosmetic: FastMCP builds a
+    ``functools.wraps`` is load-bearing rather than cosmetic: MCPServer builds a
     tool's ``inputSchema`` from ``inspect.signature(fn, eval_str=True)`` and its
     description from ``fn.__doc__``, and the signature call follows ``__wrapped__``
     back to the annotations' own module. Without it every tool would take
     ``*args, **kwargs`` and document nothing.
 
     **A tool that returns ``CallToolResult`` gets its refusal wrapped in one too**,
-    and that is not a detail. FastMCP puts a returned ``dict`` into
+    and that is not a detail. MCPServer puts a returned ``dict`` into
     ``structuredContent`` only when the declared return type is a mapping; from a
     tool declared ``-> CallToolResult`` the same dict comes back as JSON text with
     ``structuredContent`` **null**. ``get_asset_image`` is the one such tool, and
@@ -172,7 +172,7 @@ def guarded[**P, T](fn: Callable[P, T]) -> Callable[P, T | dict[str, Any]]:
                 return envelope
             rendered = CallToolResult(
                 content=[TextContent(type="text", text=json.dumps(envelope, indent=2))],
-                structuredContent=envelope,
+                structured_content=envelope,
             )
             return rendered  # type: ignore[return-value]
 

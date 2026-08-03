@@ -47,7 +47,7 @@ from __future__ import annotations
 import io
 from typing import Annotated, Any, Final
 
-from mcp.server.fastmcp.utilities.types import Image
+from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
 from pydantic import Field
 
@@ -105,7 +105,7 @@ def _preview(workspace: WorkspaceService, asset: Asset) -> CallToolResult:
         content=[
             Image(data=buffer.getvalue(), format=SUFFIXES[THUMBNAIL_FORMAT]).to_image_content()
         ],
-        structuredContent=_payload(
+        structured_content=_payload(
             asset, sent=(measured.width, measured.height), resolution="thumbnail"
         ),
     )
@@ -130,11 +130,11 @@ def _original(workspace: WorkspaceService, asset: Asset) -> CallToolResult:
                     ),
                 )
             ],
-            structuredContent=payload,
+            structured_content=payload,
         )
     return CallToolResult(
         content=[Image(data=data, format=SUFFIXES[asset.format]).to_image_content()],
-        structuredContent=payload,
+        structured_content=payload,
     )
 
 

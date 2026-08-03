@@ -67,7 +67,7 @@ def test_the_server_was_reached_over_a_real_pipe(summary: Any) -> None:
 
     Counted against the registry rather than a literal, and that is the point of
     this assertion rather than a convenience. A tool that fails to register is
-    logged and discarded by FastMCP rather than raised, so comparing the number
+    logged and discarded by MCPServer rather than raised, so comparing the number
     that crossed the pipe to the number the table declares is what notices — a
     literal only notices that *some* number changed, and goes stale on every tool
     anybody adds. Which tools ship is asserted by name in

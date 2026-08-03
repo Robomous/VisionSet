@@ -123,7 +123,7 @@ def test_provenance_model_without_a_reference_is_a_malformed_request(
         "add_annotations",
         job_id=job_id,
         annotations=[{**_label(assets[0]), "model_ref": None}],
-    ).isError
+    ).is_error
 
 
 def test_a_geometry_with_no_type_cannot_pick_a_variant(
@@ -139,7 +139,7 @@ def test_a_geometry_with_no_type_cannot_pick_a_variant(
         job_id=job_id,
         annotations=[_label(assets[0], geometry={"x": 1.0, "y": 2.0, "width": 3.0, "height": 4.0})],
     )
-    assert result.isError
+    assert result.is_error
     assert "union_tag_not_found" in result.content[0].text or "type" in result.content[0].text
 
 

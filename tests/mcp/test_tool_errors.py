@@ -58,8 +58,8 @@ def test_a_domain_refusal_is_a_result_and_not_a_protocol_error(
 ) -> None:
     workspace(monkeypatch, tmp_path)
     result = call("get_project", project="nope")
-    assert result.isError is False
-    assert result.structuredContent is not None
+    assert result.is_error is False
+    assert result.structured_content is not None
 
 
 def test_a_malformed_argument_is_a_protocol_error_naming_the_field(
@@ -67,24 +67,24 @@ def test_a_malformed_argument_is_a_protocol_error_naming_the_field(
 ) -> None:
     named = project(monkeypatch, tmp_path)
     result = call("get_schema", project=named, version=0)
-    assert result.isError
+    assert result.is_error
     assert "version" in result.content[0].text
 
 
 def test_a_missing_required_argument_is_a_protocol_error() -> None:
     result = call("get_project")
-    assert result.isError
+    assert result.is_error
 
 
 def test_an_unknown_tool_is_a_protocol_error() -> None:
     result = call("no_such_tool")
-    assert result.isError
+    assert result.is_error
 
 
 def test_nothing_leaks_a_traceback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # `guarded` catches only `VisionSetError`; every kernel call that raises
     # outside the family is guarded at its own call site instead. If one were
-    # missed, FastMCP would ship the exception's text prefixed with
+    # missed, MCPServer would ship the exception's text prefixed with
     # "Error executing tool", which is what this looks for.
     named = schema(monkeypatch, tmp_path)
     for result in (
@@ -93,7 +93,7 @@ def test_nothing_leaks_a_traceback(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         call("get_batch", batch_id="not-a-uuid"),
         call("list_batch_assets", batch_id="not-a-uuid"),
     ):
-        assert not result.isError, result.content
+        assert not result.is_error, result.content
         assert "Traceback" not in str(result.content)
 
 
@@ -172,14 +172,14 @@ def test_a_bulk_refusal_carries_the_position_and_an_ordinary_one_does_not(
 def test_the_one_tool_returning_image_content_still_refuses_in_the_envelope(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # `get_asset_image` declares `-> CallToolResult`, and FastMCP would put a
+    # `get_asset_image` declares `-> CallToolResult`, and MCPServer would put a
     # returned dict into a text block with `structuredContent` null. `guarded`
     # wraps the envelope for exactly this tool so a client parses one shape.
     from uuid import uuid4
 
     named, _ = ingested(monkeypatch, tmp_path, count=1)
     result = call("get_asset_image", project=named, asset_id=str(uuid4()))
-    assert result.structuredContent is not None
-    assert set(result.structuredContent["error"]) == {"message", "retry_with", "hint", "index"}
+    assert result.structured_content is not None
+    assert set(result.structured_content["error"]) == {"message", "retry_with", "hint", "index"}
     # And the text half says the same thing, for a client that reads only content.
     assert "error" in result.content[0].text
