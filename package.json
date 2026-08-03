@@ -4,6 +4,7 @@
   "description": "Root workspace for Robomous VisionSet. Version source of truth is the VERSION file.",
   "scripts": {
     "build": "pnpm -r build",
+    "check": "bash scripts/check.sh",
     "test": "pnpm -r test && pnpm test:scripts",
     "test:scripts": "node --test \"tests/scripts/*.test.mjs\"",
     "lint": "pnpm -r lint",
