@@ -33,6 +33,8 @@ const SCHEMA: AnnotationSchema = {
     { name: "sign", geometry: "bbox", color: "#ff0000", attributes: [] },
     { name: "lane", geometry: "polygon", color: null, attributes: [] },
   ],
+  description: null,
+  created_at: null,
 };
 
 /** A minimal annotation. The tests that care about a field set it explicitly. */

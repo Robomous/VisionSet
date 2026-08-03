@@ -1039,6 +1039,11 @@ export interface paths {
          *
          *     The body is the whole proposed version; versions are never edited in place.
          *
+         *     `description` is this version's commit message — written once, here, and
+         *     never afterwards, because a version is immutable and there is no route that
+         *     edits one. Blank is legal and comes back as null. `created_at` is stamped by
+         *     the server, so it is a response field and not a request one.
+         *
          *     Removing a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`
          *     until `allow_destructive=true` says so deliberately. If annotations already
          *     exist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`
@@ -2354,6 +2359,8 @@ export interface components {
              * @default []
              */
             classes: components["schemas"]["LabelClassBody"][];
+            /** Description */
+            description?: string | null;
         };
         /**
          * SchemaVersionOut
@@ -2362,6 +2369,10 @@ export interface components {
         SchemaVersionOut: {
             /** Classes */
             classes: components["schemas"]["LabelClassBody"][];
+            /** Created At */
+            created_at?: string | null;
+            /** Description */
+            description?: string | null;
             /**
              * Project Id
              * Format: uuid

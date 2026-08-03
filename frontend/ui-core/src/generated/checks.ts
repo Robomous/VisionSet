@@ -167,7 +167,7 @@ export const checkLabelClassBody: Check<Schemas["LabelClassBody"]> =
   /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometry": [true, checkGeometryType], "name": [true, isString] } as const);
 
 export const checkSchemaVersionOut: Check<Schemas["SchemaVersionOut"]> =
-  /*#__PURE__*/ object({ "classes": [true, arrayOf(checkLabelClassBody)], "project_id": [true, isString], "version": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "classes": [true, arrayOf(checkLabelClassBody)], "created_at": [false, either([isString, isNull] as const)], "description": [false, either([isString, isNull] as const)], "project_id": [true, isString], "version": [true, isInteger] } as const);
 
 export const checkSchemaVersionPage: Check<Schemas["SchemaVersionPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkSchemaVersionOut)], "total": [true, isInteger] } as const);

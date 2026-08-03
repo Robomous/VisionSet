@@ -71,6 +71,41 @@ attributes and changed colors.
 Schema rows are deleted only as part of deleting their project, through the database's
 `ON DELETE CASCADE` — see [projects.md](projects.md).
 
+## A version says why it exists, and when
+
+```python
+schemas.create_version(project.id, classes, description="split 'vehicle' into car and truck")
+```
+
+`description` is the version's **commit message**, and `created_at` is stamped by the
+service at publish. Together they are what makes a version history readable as history
+rather than as a pile of class lists.
+
+**The description is written once and can never be edited.** That is not a missing feature —
+it is the immutability rule this whole page is about, applied to one more field. There is no
+`update` on `SchemaService`, no `PATCH` route, and the model is frozen, so the three doors
+that would have to exist all deliberately do not:
+
+```python
+version = schemas.get(project.id, 1)
+version.description = "second thoughts"  # ValidationError
+```
+
+Ongoing, editable discussion *about* a version is a different feature and does not belong on
+a frozen artifact. Write the description the way you would write a commit message: for
+whoever reads it later, not for yourself this afternoon.
+
+A blank description is legal and stored as `None` — an empty commit message is an ordinary
+thing to publish, so this is not [`normalize_name`](../src/visionset/kernel/domain/names.py)
+and it does not refuse. What it *does* borrow from that rule is the tidying: NFC-normalized
+and stripped, in a validator on the domain model, so no door can write an untidied one.
+
+**Both fields are `None` for a version published before migration 14, and nothing backfills
+either.** A description nobody wrote has no honest value, and migration time records when
+somebody upgraded rather than when the version was written — a plausible-looking wrong
+timestamp is worse than an admitted gap, because nothing downstream can tell it is wrong.
+`Asset.ingested_at` made the same call for the same reason.
+
 ## The active version is derived, not stored
 
 `get_active` returns the highest version. There is no `active` column, because the version

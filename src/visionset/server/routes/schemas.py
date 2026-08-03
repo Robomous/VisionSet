@@ -48,6 +48,11 @@ def create_schema_version(
 
     The body is the whole proposed version; versions are never edited in place.
 
+    `description` is this version's commit message — written once, here, and
+    never afterwards, because a version is immutable and there is no route that
+    edits one. Blank is legal and comes back as null. `created_at` is stamped by
+    the server, so it is a response field and not a request one.
+
     Removing a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`
     until `allow_destructive=true` says so deliberately. If annotations already
     exist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`
@@ -56,7 +61,10 @@ def create_schema_version(
     """
     classes = [label_class.to_domain() for label_class in body.classes]
     created = SchemaService(workspace).create_version(
-        project_id, classes, allow_destructive=allow_destructive
+        project_id,
+        classes,
+        description=body.description,
+        allow_destructive=allow_destructive,
     )
     return SchemaVersionOut.of(created)
 

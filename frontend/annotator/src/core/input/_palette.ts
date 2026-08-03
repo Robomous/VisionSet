@@ -97,6 +97,8 @@ export const PALETTE_SCHEMA: AnnotationSchema = {
   project_id: "project-46",
   version: 3,
   classes: PALETTE,
+  description: null,
+  created_at: null,
 };
 
 /** A schema declaring nothing. Every class hotkey question has an empty case. */
@@ -104,6 +106,8 @@ export const EMPTY_SCHEMA: AnnotationSchema = {
   project_id: "project-46",
   version: 3,
   classes: [],
+  description: null,
+  created_at: null,
 };
 
 /** A schema of `count` bbox classes named `c1…cN`, for the past-the-ninth cases. */

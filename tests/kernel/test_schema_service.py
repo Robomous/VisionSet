@@ -12,6 +12,7 @@ here still comes through `SchemaService`.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -534,4 +535,114 @@ def test_any_other_constraint_travels_on_unchanged(tmp_path: Path) -> None:
 
     with pytest.raises(ConstraintViolated), workspace.unit_of_work() as uow:
         uow.schemas.add(AnnotationSchema(project_id=uuid4(), version=1, classes=(SIGN,)))
+    workspace.close()
+
+
+# --- the commit message, and when it was written ------------------------------
+
+
+def test_a_version_records_why_it_exists_and_when(tmp_path: Path) -> None:
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    before = datetime.now(UTC)
+
+    created = schemas.create_version(project.id, [SIGN], description="the first contract")
+
+    assert created.description == "the first contract"
+    assert created.created_at is not None
+    assert before <= created.created_at <= datetime.now(UTC)
+    assert created.created_at.tzinfo is not None
+    workspace.close()
+
+
+def test_the_moment_survives_a_round_trip_through_the_store(tmp_path: Path) -> None:
+    """Byte-identically: the store keeps ISO-8601 text, and a naive read would be
+    wrong by the writer's offset from UTC."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    created = schemas.create_version(project.id, [SIGN], description="v1")
+
+    read = schemas.get(project.id, 1)
+
+    assert read.created_at == created.created_at
+    assert read.created_at is not None
+    assert read.created_at.isoformat() == created.created_at.isoformat()  # type: ignore[union-attr]
+    assert read.description == "v1"
+    workspace.close()
+
+
+def test_a_version_published_without_a_description_has_none(tmp_path: Path) -> None:
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+
+    created = schemas.create_version(project.id, [SIGN])
+
+    assert created.description is None
+    assert schemas.get(project.id, 1).description is None
+    workspace.close()
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t "])
+def test_a_blank_description_is_none_rather_than_a_refusal(tmp_path: Path, blank: str) -> None:
+    """An empty commit message is legal — this is not ``normalize_name``."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+
+    created = schemas.create_version(project.id, [SIGN], description=blank)
+
+    assert created.description is None
+    workspace.close()
+
+
+def test_a_description_is_stripped_and_nfc_normalized(tmp_path: Path) -> None:
+    """``normalize_name``'s temperament with the refusal removed: two spellings
+    that render identically must not be two different strings."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+
+    # Spelled out with escapes rather than pasted: a literal that is already
+    # composed would make this test assert only the strip, and pass whether or
+    # not anything normalizes at all.
+    decomposed = "  cafe\u0301 pass  "
+    composed = "caf\u00e9 pass"
+    assert decomposed.strip() != composed
+
+    created = schemas.create_version(project.id, [SIGN], description=decomposed)
+
+    assert created.description == composed
+    workspace.close()
+
+
+def test_the_description_cannot_be_edited_because_the_model_is_frozen(tmp_path: Path) -> None:
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    created = schemas.create_version(project.id, [SIGN], description="as published")
+
+    with pytest.raises(ValidationError):
+        created.description = "second thoughts"  # type: ignore[misc]
+    workspace.close()
+
+
+def test_a_naive_moment_is_refused_rather_than_assumed_to_be_utc(tmp_path: Path) -> None:
+    workspace, projects, _ = _services(tmp_path)
+    project = projects.create("roads")
+
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        AnnotationSchema(
+            project_id=project.id, version=1, created_at=datetime(2026, 8, 2, 12, 0, 0)
+        )
+    workspace.close()
+
+
+def test_each_version_carries_its_own_description(tmp_path: Path) -> None:
+    """A version history is only worth showing if the entries differ."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    schemas.create_version(project.id, [SIGN], description="first")
+    schemas.create_version(project.id, [SIGN, LANE], description="lanes too")
+
+    versions = schemas.list_versions(project.id)
+
+    assert [v.description for v in versions] == ["first", "lanes too"]
+    assert all(v.created_at is not None for v in versions)
     workspace.close()

@@ -161,8 +161,11 @@ MIGRATIONS: list[Migration] = [
     Migration(version=9, name="ingest_job_progress", upgrade=...),
     Migration(version=10, name="asset_thumbnail", upgrade=...),
     Migration(version=11, name="api_tokens", upgrade=...),
+    Migration(version=12, name="one_classification_tag_per_asset_and_class", upgrade=...),
+    Migration(version=13, name="asset_ingested_at", upgrade=...),
+    Migration(version=14, name="schema_description_and_created_at", upgrade=...),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 11
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 14
 ```
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -323,3 +326,28 @@ Duplicates were legal before this migration, so refusing would leave a workspace
 unopenable with a remedy its owner cannot apply. The survivor is the
 lexicographically smallest `id`: arbitrary by construction, and deterministic, which
 is the property that matters when two machines migrate the same copy.
+
+## Migration 14 — a schema version says why it exists, and when
+
+`FORMAT_VERSION` moves to **14**. Two nullable columns on `annotation_schema`:
+`description` TEXT and `created_at` TEXT (ISO-8601 with offset, the timestamps rule
+in `_tables.py`). Both land together because they answer the same question from two
+sides, and splitting them would mean two `ALTER` passes over one table for one
+feature.
+
+Migration 13's shape: an alter-only table, so both columns are declared **last** on
+`AnnotationSchemaRow` — SQLite appends an added column, and anywhere else the
+`create_all` and migration paths would emit different `CREATE TABLE` text.
+
+**No backfill.** A version published before this migration has no description because
+nobody wrote one, and no creation moment because nothing recorded it; migration time
+would record when somebody upgraded, which is a different fact wearing the right type.
+[schemas.md](schemas.md) states the same rule from the caller's side.
+
+**Its undo in the tests' `_downgrade_to_version_one` is what exercises it**, and this
+one is in migrations 11 and 12's position rather than 13's — the *quiet* one. Nothing
+above rebuilds `annotation_schema` and nothing else was ever added to it by `ALTER`,
+so without the two drop lines the columns would survive the downgrade, migration 14
+would `checkfirst`-skip, and a pair of `ALTER`s nobody ran would be reported as
+agreeing with themselves. `test_migration_fourteen_alters_the_schema_table_for_real`
+is the second guard for exactly that, and it asserts column *order*, not just presence.

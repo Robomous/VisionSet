@@ -5,6 +5,7 @@ the next one. The rest is reading, plus the two gates on narrowing the contract.
 """
 
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -294,3 +295,73 @@ def test_every_schema_route_refuses_a_request_without_a_token(
 
     assert response.status_code == 401, f"{method} {suffix}"
     assert response.json()["code"] == "UNAUTHORIZED"
+
+
+# --- the commit message, and when it was written (#230) -----------------------
+
+
+def test_a_version_carries_its_description_and_a_server_stamped_moment(
+    client: TestClient, project: str
+) -> None:
+    response = client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [a_class("sign")], "description": "the first contract"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["description"] == "the first contract"
+    assert body["created_at"] is not None
+    # Parsed rather than pattern-matched: the claim is that it is a real UTC
+    # instant, not that it looks like one.
+    assert datetime.fromisoformat(body["created_at"]).tzinfo is not None
+
+
+def test_a_version_published_without_a_description_answers_null(
+    client: TestClient, project: str
+) -> None:
+    body = post_version(client, project, a_class("sign")).json()
+
+    assert body["description"] is None
+
+
+def test_a_blank_description_is_null_rather_than_422(client: TestClient, project: str) -> None:
+    """An empty commit message is legal. This is not a name."""
+    response = client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [a_class("sign")], "description": "   "},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["description"] is None
+
+
+def test_the_listing_carries_each_versions_own_description(
+    client: TestClient, project: str
+) -> None:
+    client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [a_class("sign")], "description": "first"},
+    )
+    client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [a_class("sign"), a_class("lane")], "description": "lanes too"},
+    )
+
+    items = client.get(f"/projects/{project}/schema/versions").json()["items"]
+
+    assert [item["description"] for item in items] == ["first", "lanes too"]
+    assert all(item["created_at"] for item in items)
+
+
+def test_there_is_no_route_that_edits_a_published_description(
+    client: TestClient, project: str
+) -> None:
+    """A version is immutable, so its commit message is too — by having no door."""
+    post_version(client, project, a_class("sign"))
+
+    for method in (client.patch, client.put):
+        response = method(
+            f"/projects/{project}/schema/versions/1", json={"description": "second thoughts"}
+        )
+        assert response.status_code in (404, 405), response.status_code

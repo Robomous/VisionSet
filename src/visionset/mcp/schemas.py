@@ -117,6 +117,15 @@ def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[st
 def create_schema_version(
     project: ProjectRef,
     classes: ClassesParam,
+    description: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Why this version exists, in one or two sentences. Written once "
+                "and never editable afterwards — a version's commit message."
+            )
+        ),
+    ] = None,
     allow_destructive: Annotated[
         bool,
         Field(
@@ -137,6 +146,10 @@ def create_schema_version(
     Send the whole contract every time — a class omitted is a class removed.
     Call `preview_schema_change` first if you are not creating the first version.
 
+    `description` is this version's commit message: say what changed and why.
+    It is stored verbatim and can never be edited, so write it as a record rather
+    than as a note to yourself. Omitting it is legal.
+
     Three refusals to expect. A class bound to a geometry VisionSet has not
     implemented is rejected outright. A narrowing change is rejected until you
     pass `allow_destructive=true`. And a narrowing change that would orphan
@@ -147,6 +160,9 @@ def create_schema_version(
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
         created = SchemaService(workspace).create_version(
-            resolved.id, classes, allow_destructive=allow_destructive
+            resolved.id,
+            classes,
+            description=description,
+            allow_destructive=allow_destructive,
         )
     return wire.schema_version(created)

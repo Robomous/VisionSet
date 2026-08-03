@@ -158,3 +158,45 @@ def test_the_label_class_schema_reaches_the_agent_with_the_domain_docstrings() -
     assert "LabelClass" in definitions
     assert "Attribute" in definitions
     assert definitions["LabelClass"]["description"]
+
+
+# --- the commit message, and when it was written (#230) -----------------------
+
+
+def test_a_version_carries_the_description_the_agent_wrote(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = project(monkeypatch, tmp_path)
+    created = payload(
+        call(
+            "create_schema_version",
+            project=named,
+            classes=[{"name": "sign", "geometry": "bbox"}],
+            description="the first contract",
+        )
+    )
+
+    assert created["description"] == "the first contract"
+    assert created["created_at"] is not None
+
+    read = payload(call("get_schema", project=named))
+    assert read["schema"]["description"] == "the first contract"
+
+
+def test_a_version_created_without_one_reports_null_rather_than_omitting_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Always present, so an agent reads a value rather than inferring from absence."""
+    named = project(monkeypatch, tmp_path)
+
+    created = payload(
+        call(
+            "create_schema_version",
+            project=named,
+            classes=[{"name": "sign", "geometry": "bbox"}],
+        )
+    )
+
+    assert "description" in created
+    assert created["description"] is None
+    assert created["created_at"] is not None

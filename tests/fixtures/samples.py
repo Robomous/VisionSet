@@ -84,6 +84,12 @@ SCHEMA_VERSION = AnnotationSchema(
             ),
         ),
     ),
+    # Both populated on purpose: a sample carrying ``None`` where a real value
+    # belongs lets that half of the projection go unchecked, and ``created_at``
+    # is the one field in this model whose two spellings can disagree — the wire
+    # writes it as text and the round-trip gate is what catches a drifting format.
+    description="added the faded condition",
+    created_at=_WHEN,
 )
 
 DATASET = Dataset(

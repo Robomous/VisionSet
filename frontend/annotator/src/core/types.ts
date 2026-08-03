@@ -204,11 +204,20 @@ export interface LabelClass {
  *
  * `classes` order is the schema's own and is preserved — it is authored, and a
  * class list is what a surface renders as a palette.
+ *
+ * `description` and `created_at` are carried rather than dropped, because this is
+ * a mirror and not a projection: `SchemaVersionOut` has them, so this does. The
+ * engine reads neither — they are a version's commit message and the moment it
+ * was published — but a host rendering "you are annotating against version 3,
+ * published Tuesday" should not have to fetch the same object twice to say so.
+ * Both are `null` for a version published before they existed.
  */
 export interface AnnotationSchema {
   readonly project_id: string;
   readonly version: number;
   readonly classes: readonly LabelClass[];
+  readonly description: string | null;
+  readonly created_at: string | null;
 }
 
 /**

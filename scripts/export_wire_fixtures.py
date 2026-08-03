@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, get_args
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -76,12 +77,21 @@ def _schema() -> AnnotationSchema:
 
     One class per geometry is not decoration either: an annotator picks a class
     and gets a geometry, so #43-#45 each need one to draw with.
+
+    ``description`` and ``created_at`` are populated rather than left null for the
+    reason the classes are: a fixture carrying ``null`` in a nullable field proves
+    the mirror can parse ``null`` and nothing else. The null half is covered by
+    ``wire.test.ts``, which is where a hand-written payload belongs. The moment is
+    a fixed literal, never ``now()`` — this file is committed and diffed, so a
+    clock in it would make every regeneration a change.
     """
     populated = SCHEMA_VERSION.classes[0]
     assert populated.geometry is GeometryType.BBOX, "the sample class is the bbox one"
     return AnnotationSchema(
         project_id=_PROJECT_ID,
         version=SCHEMA_VERSION.version,
+        description="the fixture's contract: one class per carryable geometry",
+        created_at=datetime(2026, 8, 2, 12, 34, 56, 789012, tzinfo=UTC),
         classes=(
             populated,
             # No colour, no attributes. A renderer must choose its own colour for
