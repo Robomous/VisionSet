@@ -10,6 +10,13 @@
 # compromised and yanked shortly after release never reaches a PR here. It
 # applies to *version* updates only — Dependabot security updates stay
 # immediate by design, which is what we want.
+#
+# `ignore` is for a version this repository cannot take *yet* — a major whose
+# ecosystem has not caught up. Every entry must name the blocker and the
+# condition that retires it, because an ignore with no expiry is a pin nobody
+# remembers choosing. The uv ecosystem has no such entry: nothing on the Python
+# side is held back today, and inventing a rule with no blocker behind it would
+# be exactly that unowned pin.
 version: 2
 updates:
   - package-ecosystem: "uv"
@@ -42,6 +49,23 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # TypeScript 7 is the native port, released from microsoft/typescript-go;
+      # it is `latest` on npm, so Dependabot is right to offer it and no setting
+      # would hold it back. Two dev toolchains refuse it and neither has any
+      # release that supports it: typescript-eslint hard-errors
+      # "typescript-eslint does not support TS 7.0." and declares
+      # `typescript: ">=4.8.4 <6.1.0"`, and openapi-typescript crashes on
+      # `ts.factory.createKeywordTypeNode`, which breaks the generated-client
+      # drift gate. Taking 7 behind two separate TS-5 pins would make the repo
+      # read as "on TypeScript 7" while both gates policing it still ran 5.x.
+      #
+      # Remove this the day typescript-eslint ships a TS 7 line. This repository
+      # is on 6.0.3, which is the last version both toolchains accept, and the
+      # two changes 6.0 required — an explicit `rootDir` and an explicit `types`
+      # list, both now committed — are the same ones 7 wants. See #264.
+      - dependency-name: "typescript"
+        versions: [">= 7"]
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(deps)"

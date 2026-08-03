@@ -14,9 +14,11 @@
   // `setTimeout`, `console`, `fetch` and `AbortController` — so buying the harness would cost the
   // timer ban on the engine. The value half of the rule covers those files instead.
   //
-  // `types: []` is load-bearing rather than tidiness: tsconfig.json names no `types`, so every
-  // installed @types package is ambient. Without this line, adding @types/node for the harness would
-  // silently re-admit the ambient host into the engine's own compile.
+  // `types: []` is load-bearing rather than tidiness: tsconfig.json names `types: ["node"]` for the
+  // harness — TypeScript 6 no longer makes an installed @types package ambient on its own, so it has
+  // to — and this line is what stops that inheritance re-admitting the host into the engine's own
+  // compile. It was equally load-bearing before TS 6, when the ambient set was every installed
+  // @types package rather than a named one.
   //
   // `jsx: "preserve"` is load-bearing too, and it is the trap in this file. `types: []` blocks the
   // *automatic* @types inclusion but not the one `jsx: "react-jsx"` performs: that setting makes the

@@ -11,8 +11,19 @@
     "noFallthroughCasesInSwitch": true,
     "isolatedModules": true,
     "skipLibCheck": true,
+    // TypeScript 6 stopped pulling every installed @types package into the
+    // ambient scope; a package that is needed must now be named. `node` is here
+    // for the harness only — `src/core/_fixture.ts` reads the kernel-written
+    // wire fixture through `node:fs`. tsconfig.core.json narrows this back to
+    // `[]`, which is what keeps the host out of the engine's own compile.
+    "types": ["node"],
     "declaration": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    // TypeScript 6 stopped inferring the common source directory when that
+    // inference shapes the output layout (error TS5011). `src` is what 5.x
+    // inferred; stating it changes nothing about `dist/` and is what the
+    // compiler now requires.
+    "rootDir": "src"
   },
   "include": ["src"]
 }

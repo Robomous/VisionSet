@@ -85,6 +85,13 @@ test("a DOM global and a DOM type in a signature both fail the core project", ()
         extends: path.join(PACKAGE, "tsconfig.core.json"),
         include: [],
         files: [probe],
+        // The scratch directory is a sibling of `src`, and the committed config sets
+        // `rootDir: "src"` (TypeScript 6 stopped inferring it). Left inherited, the probe
+        // reports TS6059 "not under rootDir" and nothing else — a gate that fails for the
+        // wrong reason is a gate that proves nothing. Pointing it at the scratch directory
+        // does not soften what is under test: the boundary is `lib`, `types` and `jsx`,
+        // and this project emits nothing for a rootDir to lay out.
+        compilerOptions: { rootDir: scratch },
       }),
     );
 
