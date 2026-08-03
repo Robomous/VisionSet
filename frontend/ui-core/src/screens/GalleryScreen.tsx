@@ -290,7 +290,15 @@ export function GalleryScreen({
         isEmpty={() => total === 0}
       >
         {() => (
-          <div ref={attach} data-testid="gallery-grid" data-columns={columns}>
+          <div
+            ref={attach}
+            data-testid="gallery-grid"
+            data-columns={columns}
+            // The *input* to the layout, published beside its output so a browser
+            // spec can compute what ought to fit and compare. Asserting
+            // `data-columns` against itself is the #159 mistake in a new costume.
+            data-min-column={minColumn}
+          >
             {shown.length === 0 ? (
               <p
                 className="py-8 text-center text-meta text-muted-foreground"
@@ -631,6 +639,7 @@ function Tile({
     <div
       data-testid={`tile-${asset.id}`}
       data-selected={selected ? "true" : undefined}
+      data-pending={pending ? "true" : undefined}
       className={
         "group relative flex flex-col gap-1 rounded-md" +
         (selected ? " ring-2 ring-primary" : "") +
