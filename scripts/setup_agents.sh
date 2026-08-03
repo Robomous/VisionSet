@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Creates per-skill symlinks so each skill resolves at the flat depth coding agents
+# expect: .claude/skills/{name}/SKILL.md and .cursor/skills/{name}/SKILL.md.
+#
+# The canonical, committed source is .agents/skills/{category}/{name}/ — the category
+# layer is for human organisation only; the generated symlink trees are git-ignored.
+#
+# Run once after cloning:
+#   bash scripts/setup_agents.sh
+#
+# Safe to re-run — existing symlinks are replaced, real directories are never touched.
+# On Windows, run it from Git Bash or WSL.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AGENTS_DIR="$REPO_ROOT/.agents/skills"
+
+# Ensure destination is a plain directory (remove an older single-symlink layout if present).
+ensure_dir() {
+  local dir="$1"
+  if [ -L "$dir" ]; then
+    rm "$dir"
+    echo "  removed old symlink: $dir"
+  fi
+  mkdir -p "$dir"
+}
+
+# Create (or replace) a single per-skill symlink.
+link_skill() {
+  local category="$1"   # backend | frontend | infra
+  local skill_name="$2" # e.g. python-setup
+  local dest_dir="$3"   # e.g. $REPO_ROOT/.claude/skills
+
+  local link_path="$dest_dir/$skill_name"
+  # Relative from dest_dir/{skill_name} back to repo root, then into .agents/skills.
+  local target="../../.agents/skills/$category/$skill_name"
+
+  if [ -L "$link_path" ]; then
+    rm "$link_path"
+  elif [ -e "$link_path" ]; then
+    echo "ERROR: $link_path exists and is not a symlink. Remove it manually." >&2
+    exit 1
+  fi
+
+  ln -s "$target" "$link_path"
+  echo "  linked: $link_path -> $target"
+}
+
+echo "Setting up agent skill symlinks..."
+
+ensure_dir "$REPO_ROOT/.claude/skills"
+ensure_dir "$REPO_ROOT/.cursor/skills"
+
+for category_dir in "$AGENTS_DIR"/*/; do
+  [ -d "$category_dir" ] || continue
+  category="$(basename "$category_dir")"
+  for skill_dir in "$category_dir"*/; do
+    [ -d "$skill_dir" ] || continue
+    skill_name="$(basename "$skill_dir")"
+    link_skill "$category" "$skill_name" "$REPO_ROOT/.claude/skills"
+    link_skill "$category" "$skill_name" "$REPO_ROOT/.cursor/skills"
+  done
+done
+
+echo "Done."
