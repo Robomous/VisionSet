@@ -224,6 +224,14 @@ from being rediscovered one screen at a time.
   annotation page's arrow means *up* and its grid button means *show me the grid*;
   they coincide because the annotator's parent is the grid. That is not redundancy,
   and the top bar below draws both.
+- **Not everything selectable is a place.** A tab is in the query string (#171)
+  because somebody links to it and returns to it; the schema version somebody is
+  glancing at (#232) is component state, because it is a lens on the tab they are
+  already in. The test is whether the thing survives being pasted to a colleague as
+  a destination — if the answer is "they would want the current one instead", it is
+  view state and the URL should not carry it. Getting this wrong in the other
+  direction is worse than it looks: `ui-core` has no router, so every URL-borne
+  choice has to be threaded through the host as a prop and a callback.
 
 ## Tabs
 
