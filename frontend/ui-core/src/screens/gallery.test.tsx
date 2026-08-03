@@ -239,6 +239,7 @@ describe("the gallery", () => {
         frame_index: offset + index,
         frame_timestamp: null,
         thumbnail_hash: offset + index === 0 ? null : "cafebabe",
+        ingested_at: "2026-08-01T09:00:00Z",
         job_id: null,
         progress: "unannotated",
       })),

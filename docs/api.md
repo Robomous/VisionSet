@@ -124,6 +124,13 @@ the missing value as the epoch invents a date, and treating it as *now* would pi
 rows in the product to the top of a "recent" list forever. A workspace that has ingested nothing
 since upgrading therefore looks exactly as it did before.
 
+**`ingested_at` is on every asset payload, and null still means *unknown*.** Until #283 the
+field decided the project listing's order and reached no client at all — the only thing that
+crossed the boundary was the project-level aggregate, `ProjectStats.last_ingest_at`. It is now
+on `AssetOut`, and therefore on `BatchAssetOut`, which inherits it. A client deriving an age
+from it renders three states rather than two: a moment, and *unknown*, which is neither a
+moment nor zero. The batch view's header is the first caller.
+
 **There are two stats endpoints, and they disagree on purpose.**
 `GET /projects/{id}/stats` counts every asset ingested into the project, whatever batch it
 landed in; `GET /datasets/{id}/stats` counts the curated trunk, which an asset reaches only by

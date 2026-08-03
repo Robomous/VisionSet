@@ -33,6 +33,10 @@ const ASSET_REST = {
   frame_index: null,
   frame_timestamp: null,
   thumbnail_hash: null,
+  // Null is a legitimate value and the *key* is what the shape check wants:
+  // #283 made the field required on the wire, and an asset ingested before
+  // #216 existed genuinely has no arrival to report.
+  ingested_at: null,
 } as const;
 
 type Answer = { status: number; body?: unknown };
