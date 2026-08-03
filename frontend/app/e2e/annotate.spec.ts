@@ -40,6 +40,7 @@ function asset(index: number, progress: string): Record<string, unknown> {
     frame_index: index,
     frame_timestamp: null,
     thumbnail_hash: null,
+    ingested_at: null,
     job_id: JOB,
     progress,
   };

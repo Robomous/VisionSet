@@ -35,39 +35,11 @@ import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/Dialog";
-import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
-import { Progress } from "../primitives/Feedback";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/Select";
+import { FieldError } from "../primitives/Input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
-import {
-  useApproveBatch,
-  useBatchTransition,
-  useBatches,
-  usePromoteBatch,
-  type Batch,
-  type ProgressCounts,
-} from "./queries";
-
-/** `BatchState`, and how each reads. The order is the machine's own. */
-const STATE_VARIANT: Record<string, "neutral" | "accent" | "outline"> = {
-  draft: "neutral",
-  approved: "outline",
-  in_annotation: "accent",
-  completed: "outline",
-};
+import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
+import { BATCH_STATE_VARIANT } from "./batchState";
+import { useBatchTransition, useBatches, usePromoteBatch, type Batch } from "./queries";
 
 export interface BatchesScreenProps {
   readonly projectId: string;
@@ -124,7 +96,7 @@ export function BatchesScreen({ projectId, onOpenBatch }: BatchesScreenProps): J
                     </Button>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STATE_VARIANT[batch.state] ?? "neutral"} data-testid={`state-${batch.name}`}>
+                    <Badge variant={BATCH_STATE_VARIANT[batch.state] ?? "neutral"} data-testid={`state-${batch.name}`}>
                       {batch.state}
                     </Badge>
                   </TableCell>
@@ -137,7 +109,7 @@ export function BatchesScreen({ projectId, onOpenBatch }: BatchesScreenProps): J
                       : `v${batch.schema_version}`}
                   </TableCell>
                   <TableCell>
-                    <ProgressBar counts={batch.progress} />
+                    <BatchProgressBar counts={batch.progress} />
                   </TableCell>
                   <TableCell className="text-right">
                     <Lifecycle
@@ -153,29 +125,6 @@ export function BatchesScreen({ projectId, onOpenBatch }: BatchesScreenProps): J
       </Async>
 
       <ApproveDialog batch={approving} onClose={() => setApproving(null)} />
-    </div>
-  );
-}
-
-/**
- * The counts, as one bar and a readout.
- *
- * `ProgressCounts` is a fixed-field model rather than a map, which is what lets
- * this name each state instead of iterating whatever came back — the same bargain
- * the wire model made so a new state fails the suite instead of degrading a UI.
- */
-function ProgressBar({ counts }: { readonly counts: ProgressCounts }): JSX.Element {
-  const settled = counts.annotated + counts.skipped + counts.accepted;
-  return (
-    <div className="flex flex-col gap-1">
-      <Progress
-        aria-label="Annotation progress"
-        value={counts.total === 0 ? 0 : Math.round((settled / counts.total) * 100)}
-      />
-      <span className="text-meta text-muted-foreground">
-        {counts.annotated} annotated · {counts.skipped} skipped · {counts.accepted} accepted ·{" "}
-        {counts.unannotated} to do
-      </span>
     </div>
   );
 }
@@ -270,101 +219,4 @@ function Lifecycle({
   // Every state is answered above; `approved` and `in_annotation` are the two
   // middle rows and `draft`/`completed` the ends.
   return null;
-}
-
-function ApproveDialog({
-  batch,
-  onClose,
-}: {
-  readonly batch: Batch | null;
-  readonly onClose: () => void;
-}): JSX.Element {
-  // `"single"`, not `"single_job"` — the tag is `SingleJob.kind`'s value and the
-  // generated client refused the guess, which is the whole reason the contract is
-  // generated rather than hand-written.
-  const [kind, setKind] = useState<"single" | "by_size">("single");
-  const [size, setSize] = useState("50");
-  const approve = useApproveBatch(batch?.id ?? "");
-
-  const count = Number(size);
-  const jobs = batch === null ? 0 : Math.ceil(batch.asset_count / Math.max(count, 1));
-
-  function submit(): void {
-    approve.mutate(
-      // `kind` is always explicit. A discriminated union's tag emitted by default
-      // reads as optional in the schema while pydantic needs it in the dict to
-      // pick a variant, so omitting it fails with `union_tag_not_found`.
-      kind === "single" ? { kind: "single" } : { kind: "by_size", size: count },
-      { onSuccess: onClose },
-    );
-  }
-
-  return (
-    <Dialog open={batch !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="approve-dialog">
-        <DialogTitle>Approve {batch?.name}</DialogTitle>
-        <DialogDescription>
-          Membership freezes, the project&rsquo;s active schema version pins to this batch, and
-          the assets are cut into jobs. None of it is reversible — there is no route back to
-          draft.
-        </DialogDescription>
-
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="partition-kind">Partition</Label>
-            <Select value={kind} onValueChange={(next) => setKind(next as typeof kind)}>
-              <SelectTrigger id="partition-kind" data-testid="partition-kind">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="single">One job for the whole batch</SelectItem>
-                <SelectItem value="by_size">Jobs of N assets</SelectItem>
-              </SelectContent>
-            </Select>
-            <FieldHint>
-              The cut is exact — disjoint, and every asset in one job. An explicit list of
-              segments is the SDK&rsquo;s and the API&rsquo;s, not a form&rsquo;s.
-            </FieldHint>
-          </div>
-
-          {kind === "by_size" && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="partition-size">Assets per job</Label>
-              <Input
-                id="partition-size"
-                data-testid="partition-size"
-                type="number"
-                min="1"
-                value={size}
-                onChange={(event) => setSize(event.target.value)}
-              />
-              <FieldHint data-testid="partition-preview">
-                {batch?.asset_count ?? 0} assets → {jobs} job{jobs === 1 ? "" : "s"}
-              </FieldHint>
-            </div>
-          )}
-
-          {approve.isError && (
-            <FieldError data-testid="approve-error">
-              {asApiError(approve.error).code}: {asApiError(approve.error).message}
-            </FieldError>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            data-testid="approve-submit"
-            disabled={approve.isPending || (kind === "by_size" && !(count >= 1))}
-            onClick={submit}
-          >
-            {approve.isPending ? "Approving…" : "Approve"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
