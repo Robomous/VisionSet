@@ -17,23 +17,38 @@
  * was wrong, registering again at a different one produces a **second source** —
  * deliberately, since idempotency is on `(kind, path, extraction_fps)`.
  *
- * ## So the rate is asked in a modal, at the moment of registration (#234)
+ * ## One step is active at a time (#243, superseding #234's modal)
  *
- * It used to be an inline field under the dropzone, inside a step titled "Choose
- * files" — which is not what it is about, and which put an irreversible decision in
- * a control a user could scroll past without reading. `Register source` is the last
- * moment the value can still be changed, so that is where it is asked.
+ * The screen is a vertical stepper: three steps always visible, exactly one
+ * active. Which one is **derived** from the data — a run in flight is step 3, a
+ * registered source is step 2, otherwise step 1 — never stored, so it cannot
+ * disagree with the flow. A completed step collapses to a one-line summary of
+ * what was decided and keeps **no live controls**, which also closes a real
+ * hole: the old layout left step 1's dropzone active under an open step 2, so a
+ * user could swap the files while the source card still described the old
+ * ones, and nothing handled that. An upcoming step shows its number and one
+ * line of what it will ask — the road ahead is what makes three cards read as
+ * one workflow instead of appearing from nowhere.
  *
- * Two rules the dialog holds, and both are load-bearing. **Cancel registers
- * nothing**: no request, no source, and the chosen file stays chosen, so backing
- * out costs the selection nothing. And the draft rate lives *in the dialog*, not on
- * the screen, which is what makes that true of an edit as well as of the whole
- * gesture — a rate typed and then cancelled leaves no trace to be uploaded by the
- * next press.
+ * The extraction rate went inline (pre-#234) → modal (#234) → inline again,
+ * and the constant through all three is the *decision*, which is made at
+ * registration or never. The modal was dropped with the flow redesign: with
+ * one active step there is no competing surface for the field to be lost in,
+ * and the modal's real complaint was choosing blind, which the browser-side
+ * estimate below answers better than a dialog did. #234's
+ * `Number.isFinite(rate) && rate > 0` gate survives on `Register source` —
+ * every comparison with `NaN` is false, so a `<= 0` spelling would upload
+ * `extraction_fps=NaN` — and with the field adjacent and visible, the disabled
+ * button has its explanation next to it (`DESIGN.md` principle 9).
  *
- * A refusal renders **inside** the dialog and leaves it open, because a rate the
- * server would not take has to be correctable where it was typed. Images never see
- * any of this: they have no rate, so `Register source` uploads them directly.
+ * ## The browser reads the clip, so the rate is not chosen blind
+ *
+ * The fps must be chosen before the server's probe exists — but a browser can
+ * read a clip's *duration* locally (`clipProbe.ts`) without uploading a byte,
+ * and duration is what turns a rate into "≈ N frames". The estimate is
+ * advisory; the probe in step 2 stays the authoritative record. Where the
+ * browser cannot read the clip (an unsupported codec — or jsdom, which has no
+ * media pipeline at all), the panel simply shows no estimate.
  *
  * ## Refusals split by when they can be known
  *
@@ -82,7 +97,17 @@
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, FileVideo, FolderOpen, Images, RefreshCw, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  FileVideo,
+  FolderOpen,
+  Images,
+  RefreshCw,
+  RotateCcw,
+  Upload,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -91,21 +116,17 @@ import {
   type DragEvent,
   type FormEvent,
   type JSX,
+  type ReactNode,
 } from "react";
 
 import { asApiError } from "../data/errors";
+import { cn } from "../lib/cn";
+import { formatBytes, formatCount } from "../lib/format";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from "../primitives/Dialog";
+import { Card, CardContent } from "../primitives/Card";
 import { Progress } from "../primitives/Feedback";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
 import {
@@ -116,6 +137,7 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { probeClip, type ClipProbe } from "./clipProbe";
 import {
   useBatches,
   useIngestJob,
@@ -158,9 +180,9 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   const [batchName, setBatchName] = useState("");
   const [source, setSource] = useState<Source | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  // Whether the extraction-rate dialog is open. Only ever true for a clip.
-  const [asking, setAsking] = useState(false);
-  // Bumped by `again()` and used as the dropzone's `key`. See there.
+  // The browser's own read of a chosen clip. Null while unread or unreadable.
+  const [clip, setClip] = useState<ClipProbe | null>(null);
+  // Bumped by `again()`/`clearFiles()` and used as the dropzone's `key`. See there.
   const [attempt, setAttempt] = useState(0);
 
   const register = useRegisterSource(projectId);
@@ -192,44 +214,59 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
   // lives and the two can disagree.
   const isVideo = useMemo(() => files.length === 1 && files[0].type.startsWith("video/"), [files]);
 
+  // Ask the browser what the clip is, so the rate row can estimate frames. The
+  // stale flag is the whole cancellation story: `probeClip`'s promise may settle
+  // after the selection changed — or never, where there is no media pipeline —
+  // and a late answer must not describe the previous file.
+  useEffect(() => {
+    setClip(null);
+    if (!(files.length === 1 && files[0].type.startsWith("video/"))) return;
+    let stale = false;
+    void probeClip(files[0]).then((probe) => {
+      if (!stale) setClip(probe);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [files]);
+
   // Only a draft batch may take an ingest. Anything else is refused at the launch
   // with 409 `BATCH_NOT_EDITABLE`, so offering one would be offering a refusal.
   const draftBatches = (batches.data?.items ?? []).filter((batch) => batch.state === "draft");
 
-  /**
-   * The primary action of step 1 — which for a clip does not register anything.
-   *
-   * A video needs a rate, and the rate is asked rather than assumed, so this opens
-   * the dialog and the *dialog* registers. Images have no rate to ask about, so
-   * they go straight up.
-   */
-  function upload(): void {
-    if (isVideo) {
-      setAsking(true);
-      return;
-    }
-    register.mutate({ files }, { onSuccess: (registered) => setSource(registered) });
+  // #234's gate, kept: every comparison with NaN is false, so `<= 0` alone would
+  // wave a NaN through and upload `extraction_fps=NaN`.
+  const rate = Number(fps);
+  const usableRate = Number.isFinite(rate) && rate > 0;
+  const canRegister = files.length > 0 && !register.isPending && (!isVideo || usableRate);
+
+  // Which step is live — derived, never stored, so it cannot disagree with the
+  // data: a run (in flight or settled) is step 3, a registered source is step 2,
+  // otherwise the user is still choosing files.
+  const activeStep = jobId !== null ? 3 : source !== null ? 2 : 1;
+
+  function upload(event: FormEvent): void {
+    event.preventDefault();
+    if (!canRegister) return;
+    register.mutate(
+      { files, ...(isVideo ? { extractionFps: rate } : {}) },
+      { onSuccess: (registered) => setSource(registered) },
+    );
   }
 
   /**
-   * Accepting the dialog: register the clip at the rate that was confirmed.
+   * Empty the selection without touching anything downstream — there is nothing
+   * downstream yet, since this control only exists while step 1 is active.
    *
-   * The rate is written back to the screen before the request, so `again()` has one
-   * place to clear and a second attempt after a refusal opens on the rate that was
-   * refused rather than on the default. The dialog closes on success only — a
-   * refusal leaves it open, holding its own draft, so it can be corrected there.
+   * The dropzone is *remounted*, not reset: an `<input type="file">` keeps the
+   * selection it already holds, and a picker asked for the same file again may
+   * report no change at all. A fresh element has nothing to compare against.
    */
-  function registerVideo(rate: number): void {
-    setFps(String(rate));
-    register.mutate(
-      { files, extractionFps: rate },
-      {
-        onSuccess: (registered) => {
-          setSource(registered);
-          setAsking(false);
-        },
-      },
-    );
+  function clearFiles(): void {
+    setFiles([]);
+    setFps(String(DEFAULT_EXTRACTION_FPS));
+    setAttempt((previous) => previous + 1);
+    register.reset();
   }
 
   /**
@@ -240,12 +277,6 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
    * refusal of files nobody has chosen yet. The run itself is untouched — it is
    * a row on the server and this is a form, so starting over here neither
    * cancels nor forgets what was ingested.
-   *
-   * The dropzone is *remounted* rather than reset, because an `<input
-   * type="file">` keeps the selection it already holds: clearing our own `files`
-   * state leaves the element still holding the last pick, and a picker asked for
-   * that same file again may report no change at all. A fresh element has
-   * nothing to compare against.
    */
   function again(): void {
     setFiles([]);
@@ -254,14 +285,14 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
     setBatchName("");
     setSource(null);
     setJobId(null);
-    setAsking(false);
     setAttempt((previous) => previous + 1);
     register.reset();
     start.reset();
   }
 
-  function launch(): void {
-    if (source === null) return;
+  function launch(event: FormEvent): void {
+    event.preventDefault();
+    if (source === null || start.isPending) return;
     start.mutate(
       {
         sourceId: source.id,
@@ -272,6 +303,17 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
       { onSuccess: (launched) => setJobId(launched.id) },
     );
   }
+
+  const chosenLabel = files.length === 1 ? files[0].name : `${files.length} files`;
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  // What step 2 decided, for its collapsed summary. Derived from the same state
+  // the launch read, so it cannot name a batch the run was not aimed at.
+  const batchLabel =
+    batchChoice === NEW_BATCH
+      ? batchName.trim() === ""
+        ? (source?.name ?? "")
+        : batchName.trim()
+      : (draftBatches.find((batch) => batch.id === batchChoice)?.name ?? "the batch");
 
   return (
     <div className="flex flex-col gap-6" data-testid="ingest-screen">
@@ -284,256 +326,391 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
         </p>
       </header>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="size-4 text-muted-foreground" aria-hidden="true" />
-            1 · Choose files
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <Dropzone key={attempt} files={files} onFiles={setFiles} />
-
-          {/* While the dialog is open it owns the refusal — one `register-error`
-              on the page at a time, shown where the value that caused it was
-              typed. */}
-          {!asking && register.isError && (
-            <FieldError data-testid="register-error">
-              {asApiError(register.error).code}: {asApiError(register.error).message}
-            </FieldError>
-          )}
-
-          <div>
-            <Button
-              variant="primary"
-              data-testid="register-source"
-              // No `fps` term: the rate is not on this card any more, and a button
-              // disabled by a value nobody can see is a control with no explanation.
-              // The dialog's own action holds that gate.
-              disabled={files.length === 0 || register.isPending}
-              onClick={upload}
-            >
-              {register.isPending ? "Uploading…" : "Register source"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {source !== null && (
-        <Card data-testid="source-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {source.kind === "video" ? (
-                <FileVideo className="size-4 text-muted-foreground" aria-hidden="true" />
-              ) : (
-                <Images className="size-4 text-muted-foreground" aria-hidden="true" />
-              )}
-              2 · {source.name}
-              <Badge>{source.kind}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {source.video !== null && source.video !== undefined && (
-              <dl className="grid grid-cols-2 gap-2 text-body md:grid-cols-3" data-testid="probe">
-                <Fact label="Native fps" value={source.video.fps.toFixed(2)} />
-                <Fact label="Extraction fps" value={String(source.video.extraction_fps)} />
-                <Fact
-                  label="Duration"
-                  value={`${source.video.duration_seconds.toFixed(1)} s`}
-                />
-                <Fact label="Size" value={`${source.video.width}×${source.video.height}`} />
-                <Fact label="Codec" value={source.video.codec} />
-                <Fact
-                  label="Frames expected"
-                  value={String(
-                    Math.floor(source.video.duration_seconds * source.video.extraction_fps),
-                  )}
-                />
-              </dl>
-            )}
-
-            <div className="grid max-w-2xl gap-4 md:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="target-batch">Target batch</Label>
-                <Select value={batchChoice} onValueChange={setBatchChoice}>
-                  <SelectTrigger id="target-batch" data-testid="target-batch">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NEW_BATCH}>New batch</SelectItem>
-                    {draftBatches.map((batch) => (
-                      <SelectItem key={batch.id} value={batch.id}>
-                        {batch.name} ({batch.asset_count})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldHint>Only a draft batch can take new assets.</FieldHint>
-              </div>
-              {batchChoice === NEW_BATCH && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="batch-name">New batch name</Label>
-                  <Input
-                    id="batch-name"
-                    data-testid="batch-name"
-                    value={batchName}
-                    placeholder={source.name}
-                    onChange={(event) => setBatchName(event.target.value)}
-                  />
-                  <FieldHint>Defaults to the source name.</FieldHint>
-                </div>
-              )}
-            </div>
-
-            {start.isError && (
-              <FieldError data-testid="start-error">
-                {asApiError(start.error).code}: {asApiError(start.error).message}
-              </FieldError>
-            )}
-
-            <div>
-              <Button
-                variant="primary"
-                data-testid="start-ingest"
-                disabled={start.isPending || jobId !== null}
-                onClick={launch}
-              >
-                {start.isPending ? "Starting…" : "Start ingest"}
+      <ol className="flex flex-col">
+        <Step
+          index={1}
+          title="Choose files"
+          testId="step-1"
+          state={activeStep === 1 ? "active" : "complete"}
+          summary={`${chosenLabel} · ${formatBytes(totalBytes)}`}
+          action={
+            // Only before the launch: a run in flight is a row on the server,
+            // and the way back from a *settled* one is the outcome's own button.
+            jobId === null ? (
+              <Button variant="ghost" size="sm" data-testid="restart" onClick={again}>
+                <RotateCcw className="size-4" aria-hidden="true" />
+                Start over
               </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            ) : undefined
+          }
+        >
+          <Card className="mt-2">
+            <CardContent className="pt-4">
+              <form className="flex flex-col gap-4" onSubmit={upload}>
+                <Dropzone key={attempt} onFiles={setFiles} />
 
-      {jobId !== null && (
-        <RunCard
-          job={job.data ?? null}
-          {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
-          onAgain={again}
-        />
-      )}
+                {files.length > 0 && (
+                  <SelectionPanel
+                    files={files}
+                    isVideo={isVideo}
+                    clip={clip}
+                    fps={fps}
+                    onFps={setFps}
+                    estimate={
+                      clip !== null && usableRate
+                        ? Math.floor(clip.durationSeconds * rate)
+                        : null
+                    }
+                    onClear={clearFiles}
+                  />
+                )}
 
-      {/* Mounted only while it is open. Radix portals its content, but the children
-          of `DialogContent` are an *argument* and are evaluated on every render of
-          this screen regardless — and mounting on demand is also what seeds the
-          dialog's draft rate with a plain `useState` instead of an effect. */}
-      {asking && files.length === 1 && (
-        <ExtractionRateDialog
-          fileName={files[0].name}
-          initial={fps}
-          pending={register.isPending}
-          error={register.isError ? register.error : null}
-          onAccept={registerVideo}
-          onCancel={() => {
-            setAsking(false);
-            register.reset();
-          }}
-        />
-      )}
+                {register.isError && (
+                  <FieldError data-testid="register-error">
+                    {asApiError(register.error).code}: {asApiError(register.error).message}
+                  </FieldError>
+                )}
+
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    data-testid="register-source"
+                    // Explained by adjacency (`DESIGN.md` principle 9): with no
+                    // files the dropzone above says what to do, and with a bad
+                    // rate the field it came from is right there.
+                    disabled={!canRegister}
+                  >
+                    {register.isPending ? "Uploading…" : "Register source"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </Step>
+
+        <Step
+          index={2}
+          title="Configure the run"
+          testId="step-2"
+          state={activeStep === 2 ? "active" : activeStep === 3 ? "complete" : "upcoming"}
+          hint="Pick the target batch once the source is registered."
+          summary={source !== null ? `${source.name} → ${batchLabel}` : undefined}
+        >
+          {source !== null && (
+            <Card className="mt-2" data-testid="source-card">
+              <CardContent className="pt-4">
+                <form className="flex flex-col gap-4" onSubmit={launch}>
+                  <div className="flex items-center gap-2">
+                    {source.kind === "video" ? (
+                      <FileVideo className="size-4 text-muted-foreground" aria-hidden="true" />
+                    ) : (
+                      <Images className="size-4 text-muted-foreground" aria-hidden="true" />
+                    )}
+                    <span className="text-body font-medium">{source.name}</span>
+                    <Badge>{source.kind}</Badge>
+                  </div>
+
+                  {source.video !== null && source.video !== undefined && (
+                    <dl
+                      className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-muted p-4 text-body md:grid-cols-3"
+                      data-testid="probe"
+                    >
+                      <Fact label="Native fps" value={source.video.fps.toFixed(2)} />
+                      <Fact label="Extraction fps" value={String(source.video.extraction_fps)} />
+                      <Fact
+                        label="Duration"
+                        value={`${source.video.duration_seconds.toFixed(1)} s`}
+                      />
+                      <Fact label="Size" value={`${source.video.width}×${source.video.height}`} />
+                      <Fact label="Codec" value={source.video.codec} />
+                      <Fact
+                        label="Frames expected"
+                        value={String(
+                          Math.floor(source.video.duration_seconds * source.video.extraction_fps),
+                        )}
+                      />
+                    </dl>
+                  )}
+
+                  <div className="grid max-w-2xl gap-4 md:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="target-batch">Target batch</Label>
+                      <Select value={batchChoice} onValueChange={setBatchChoice}>
+                        <SelectTrigger id="target-batch" data-testid="target-batch">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NEW_BATCH}>New batch</SelectItem>
+                          {draftBatches.map((batch) => (
+                            <SelectItem key={batch.id} value={batch.id}>
+                              {batch.name} ({batch.asset_count})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FieldHint>Only a draft batch can take new assets.</FieldHint>
+                    </div>
+                    {batchChoice === NEW_BATCH && (
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="batch-name">New batch name</Label>
+                        <Input
+                          id="batch-name"
+                          data-testid="batch-name"
+                          value={batchName}
+                          placeholder={source.name}
+                          onChange={(event) => setBatchName(event.target.value)}
+                        />
+                        <FieldHint>Defaults to the source name.</FieldHint>
+                      </div>
+                    )}
+                  </div>
+
+                  {start.isError && (
+                    <FieldError data-testid="start-error">
+                      {asApiError(start.error).code}: {asApiError(start.error).message}
+                    </FieldError>
+                  )}
+
+                  <div className="flex justify-end">
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      data-testid="start-ingest"
+                      disabled={start.isPending}
+                    >
+                      {start.isPending ? "Starting…" : "Start ingest"}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+        </Step>
+
+        <Step
+          index={3}
+          title="Run"
+          testId="step-3"
+          last
+          state={activeStep === 3 ? "active" : "upcoming"}
+          // The marker turns into a check while the content stays live: a
+          // completed run is done *and* still worth reading.
+          done={settled === "completed"}
+          hint="Watch the frames land in a batch."
+          aside={
+            activeStep === 3 && job.data !== undefined ? (
+              <Badge
+                variant={
+                  job.data.state === "failed"
+                    ? "destructive"
+                    : job.data.state === "completed"
+                      ? "outline"
+                      : "accent"
+                }
+                data-testid="run-state"
+              >
+                {job.data.state}
+              </Badge>
+            ) : undefined
+          }
+        >
+          <RunCard
+            job={job.data ?? null}
+            {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+            onAgain={again}
+          />
+        </Step>
+      </ol>
     </div>
   );
 }
 
 /**
- * The extraction rate, asked before a clip is registered (#234).
+ * One row of the workflow: marker, rail, and whichever of three bodies its
+ * state earns — the active card, a completed summary, or an upcoming hint.
  *
- * The rate cannot be changed later — source idempotency is on
- * `(kind, path, extraction_fps)`, so re-registering the same clip at another rate
- * produces a *second* source rather than correcting the first. `DESIGN.md` asks a
- * dialog standing in front of something irreversible to say what it costs, so the
- * description states that rather than leaving it to a hint under a field.
- *
- * The draft lives here, not on the screen. That is the whole of "Cancel takes no
- * action": a rate typed and then abandoned goes with the dialog, so the next press
- * of `Register source` opens on the last *accepted* value and never on a discarded
- * one. Escape, the overlay and `DialogContent`'s own close button all arrive as
- * `onOpenChange(false)`, so there is one cancel path and not four.
- *
- * The accept gate is `Number.isFinite(rate) && rate > 0` rather than the `!(rate
- * <= 0)` the button it replaces used, because **every comparison with `NaN` is
- * false** — so `<= 0` would let a `NaN` through and upload `extraction_fps=NaN`.
- * `Number("")` is `0`, but an `<input type="number">` also reports a rejected
- * keystroke as an empty string, so both are reachable by typing rather than only by
- * pasting.
+ * `state` is passed in rather than computed here because the screen derives it
+ * from the data in one expression; a step judging its own state would be a
+ * second copy of that expression per step. `data-state` is published for the
+ * tests, which assert the *choreography* — one active step at a time, completed
+ * steps keep no live controls — rather than any class string.
  */
-function ExtractionRateDialog({
-  fileName,
-  initial,
-  pending,
-  error,
-  onAccept,
-  onCancel,
+function Step({
+  index,
+  title,
+  state,
+  done = false,
+  hint,
+  summary,
+  action,
+  aside,
+  last = false,
+  testId,
+  children,
 }: {
-  readonly fileName: string;
-  readonly initial: string;
-  readonly pending: boolean;
-  readonly error: unknown;
-  readonly onAccept: (rate: number) => void;
-  readonly onCancel: () => void;
+  readonly index: number;
+  readonly title: string;
+  readonly state: "upcoming" | "active" | "complete";
+  /** Show the check while staying active — for the step whose end is the flow's end. */
+  readonly done?: boolean;
+  readonly hint?: string;
+  readonly summary?: string;
+  readonly action?: ReactNode;
+  readonly aside?: ReactNode;
+  readonly last?: boolean;
+  readonly testId: string;
+  readonly children?: ReactNode;
 }): JSX.Element {
-  const [draft, setDraft] = useState(initial);
-  const rate = Number(draft);
-  const usable = Number.isFinite(rate) && rate > 0;
+  const checked = state === "complete" || done;
+  return (
+    <li
+      className="flex gap-4"
+      data-testid={testId}
+      data-state={state}
+      aria-current={state === "active" ? "step" : undefined}
+    >
+      <div className="flex flex-col items-center">
+        <span
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-full text-meta font-semibold",
+            checked
+              ? "border border-border bg-muted text-foreground"
+              : state === "active"
+                ? "bg-primary text-primary-foreground"
+                : "border border-border bg-card text-muted-foreground",
+          )}
+          aria-hidden="true"
+        >
+          {checked ? <Check className="size-3.5" /> : index}
+        </span>
+        {!last && <div className="mt-1 w-px flex-1 bg-border" aria-hidden="true" />}
+      </div>
 
-  function submit(event: FormEvent): void {
-    event.preventDefault();
-    if (!usable || pending) return;
-    onAccept(rate);
-  }
+      <div className={cn("flex min-w-0 flex-1 flex-col gap-1", last ? "pb-0" : "pb-8")}>
+        <div className="flex min-h-7 flex-wrap items-center gap-2">
+          <h2
+            className={cn(
+              state === "active" ? "text-section font-semibold" : "text-body font-medium",
+              state === "upcoming" && "text-muted-foreground",
+            )}
+          >
+            {title}
+          </h2>
+          {aside}
+          {state === "complete" && action !== undefined && <div className="ml-auto">{action}</div>}
+        </div>
+        {state === "upcoming" && hint !== undefined && (
+          <p className="text-meta text-muted-foreground">{hint}</p>
+        )}
+        {state === "complete" && summary !== undefined && (
+          <p className="truncate text-body text-muted-foreground" data-testid={`${testId}-summary`}>
+            {summary}
+          </p>
+        )}
+        {state === "active" && children}
+      </div>
+    </li>
+  );
+}
+
+/**
+ * The selection, read back before anything uploads.
+ *
+ * This panel is where the extraction rate lives for a clip — a structured,
+ * full-width row instead of the lone corner field it used to be. The estimate
+ * beside it is the browser's own duration read times the typed rate, `floor`ed
+ * to match the server's "Frames expected" exactly; it renders only when both
+ * halves exist, so an unreadable clip degrades to the field alone.
+ */
+function SelectionPanel({
+  files,
+  isVideo,
+  clip,
+  fps,
+  onFps,
+  estimate,
+  onClear,
+}: {
+  readonly files: readonly File[];
+  readonly isVideo: boolean;
+  readonly clip: ClipProbe | null;
+  readonly fps: string;
+  readonly onFps: (value: string) => void;
+  readonly estimate: number | null;
+  readonly onClear: () => void;
+}): JSX.Element {
+  const kind = isVideo ? "video" : files.length === 1 ? "image" : "images";
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
 
   return (
-    <Dialog open onOpenChange={(next) => !next && onCancel()}>
-      <DialogContent data-testid="extraction-rate-dialog">
-        <DialogTitle>Extraction rate</DialogTitle>
-        <DialogDescription>
-          <strong className="font-medium">{fileName}</strong> is decomposed into frames at this
-          rate. It is chosen before the clip is probed, because the rate is part of what the
-          source <em>is</em> — registering the same clip at another rate creates a second
-          source rather than changing this one.
-        </DialogDescription>
-        <form className="flex flex-col gap-3" onSubmit={submit}>
-          <div className="flex max-w-xs flex-col gap-1.5">
-            <Label htmlFor="extraction-fps">Frames per second</Label>
-            <Input
-              id="extraction-fps"
-              data-testid="extraction-fps"
-              type="number"
-              min="0.1"
-              step="0.1"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              autoFocus
-            />
-            <FieldHint>The kernel's default is one frame per second.</FieldHint>
-          </div>
-
-          {error !== null && (
-            <FieldError data-testid="register-error">
-              {asApiError(error).code}: {asApiError(error).message}
-            </FieldError>
+    <div className="flex flex-col rounded-lg border border-border" data-testid="selection">
+      <div className="flex items-center gap-3 p-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">
+          {isVideo ? (
+            <FileVideo className="size-4 text-muted-foreground" aria-hidden="true" />
+          ) : (
+            <Images className="size-4 text-muted-foreground" aria-hidden="true" />
           )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-body font-medium" data-testid="chosen">
+            {files.length === 1 ? files[0].name : `${files.length} files`}
+          </p>
+          <p className="text-meta text-muted-foreground">
+            {kind} · {formatBytes(totalBytes)}
+            {clip !== null && ` · ${clip.durationSeconds.toFixed(1)} s`}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          data-testid="clear-files"
+          aria-label="Clear selection"
+          onClick={onClear}
+        >
+          <X className="size-4" aria-hidden="true" />
+        </Button>
+      </div>
 
-          <DialogFooter>
-            <Button
-              variant="secondary"
-              data-testid="extraction-rate-cancel"
-              disabled={pending}
-              onClick={onCancel}
+      {isVideo && (
+        <div className="flex flex-col gap-3 border-t border-border p-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="extraction-fps">Extraction rate</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="extraction-fps"
+                data-testid="extraction-fps"
+                type="number"
+                min="0.1"
+                step="0.1"
+                className="w-24 tabular-nums"
+                value={fps}
+                onChange={(event) => onFps(event.target.value)}
+              />
+              <span className="text-body text-muted-foreground">fps</span>
+            </div>
+            <FieldHint>
+              Part of what the source <em>is</em> — the same clip registered at another rate
+              becomes a second source.
+            </FieldHint>
+          </div>
+          {estimate !== null && (
+            <p
+              className="text-body text-muted-foreground"
+              data-testid="frames-estimate"
+              title="The browser's own reading of the clip; the probe after registration is the authoritative one."
             >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              data-testid="extraction-rate-accept"
-              disabled={!usable || pending}
-            >
-              {pending ? "Uploading…" : "Register"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+              ≈{" "}
+              <span className="font-medium tabular-nums text-foreground">
+                {formatCount(estimate)}
+              </span>{" "}
+              frames
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -541,7 +718,7 @@ function Fact({ label, value }: { readonly label: string; readonly value: string
   return (
     <div>
       <dt className="text-meta text-muted-foreground">{label}</dt>
-      <dd className="font-medium">{value}</dd>
+      <dd className="font-medium tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -558,21 +735,8 @@ function RunCard({
   const resume = useResumeIngest();
 
   return (
-    <Card data-testid="run-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          3 · Run
-          {job !== null && (
-            <Badge
-              variant={job.state === "failed" ? "destructive" : job.state === "completed" ? "outline" : "accent"}
-              data-testid="run-state"
-            >
-              {job.state}
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+    <Card className="mt-2" data-testid="run-card">
+      <CardContent className="flex flex-col gap-4 pt-4">
         {job === null ? (
           <p className="text-body text-muted-foreground">Starting…</p>
         ) : (
@@ -669,7 +833,7 @@ function Outcome({
         {batchId === null ? (
           // `enqueue` only stores an id it was handed, and one is handed only
           // when the launch targeted an existing draft. A run that died before
-          // it materialized its own batch therefore has nothing to open — and
+          // it materialized a batch therefore has nothing to open — and
           // saying so is more use than a button that cannot work.
           <>This run never reached a batch, so there is nothing to open yet.</>
         ) : partial ? (
@@ -780,14 +944,11 @@ function basename(name: string): string {
  * kernel's own reason. Duplicating that in the browser would be a second spelling
  * of the accepted-format list, and the two would drift. What is left is a `drop`
  * handler and a hidden `<input>`.
+ *
+ * What was chosen renders in `SelectionPanel`, not here — the zone stays a
+ * standing invitation, and dropping again replaces the selection.
  */
-function Dropzone({
-  files,
-  onFiles,
-}: {
-  readonly files: readonly File[];
-  readonly onFiles: (files: readonly File[]) => void;
-}): JSX.Element {
+function Dropzone({ onFiles }: { readonly onFiles: (files: readonly File[]) => void }): JSX.Element {
   const [over, setOver] = useState(false);
 
   function take(list: FileList | null): void {
@@ -831,11 +992,6 @@ function Dropzone({
         className="sr-only"
         onChange={(event: ChangeEvent<HTMLInputElement>) => take(event.target.files)}
       />
-      {files.length > 0 && (
-        <p className="text-meta text-muted-foreground" data-testid="chosen">
-          {files.length === 1 ? files[0].name : `${files.length} files`}
-        </p>
-      )}
     </div>
   );
 }

@@ -23,7 +23,15 @@ import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
+import { probeClip } from "./clipProbe";
 import { IngestScreen } from "./IngestScreen";
+
+// The browser-side clip read is substituted whole. The default — a promise that
+// never settles — is exactly what the real module does under jsdom, which has no
+// media pipeline; tests that want an estimate resolve it explicitly.
+vi.mock("./clipProbe", () => ({
+  probeClip: vi.fn(() => new Promise(() => {})),
+}));
 
 const API = "http://visionset.test";
 // `ProgressCounts` is six counters and the server always sends all six.
@@ -204,14 +212,11 @@ describe("registering a source", () => {
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("drive.mp4", "video/mp4")]);
 
-    // The rate is asked in a dialog at the moment of registration, and it is
-    // decided *now* — the probe does not exist yet, because `extraction_fps` is
-    // part of what the source is.
-    await userEvent.click(screen.getByTestId("register-source"));
-    await screen.findByTestId("extraction-rate-dialog");
+    // The rate lives in the selection panel and is decided *now* — the probe
+    // does not exist yet, because `extraction_fps` is part of what the source is.
     await userEvent.clear(screen.getByTestId("extraction-fps"));
     await userEvent.type(screen.getByTestId("extraction-fps"), "2");
-    await userEvent.click(screen.getByTestId("extraction-rate-accept"));
+    await userEvent.click(screen.getByTestId("register-source"));
 
     await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
     const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
@@ -236,7 +241,6 @@ describe("registering a source", () => {
     expect(screen.queryByTestId("probe")).toBeNull();
 
     await userEvent.click(screen.getByTestId("register-source"));
-    await userEvent.click(await screen.findByTestId("extraction-rate-accept"));
 
     const probe = await screen.findByTestId("probe");
     expect(probe.textContent).toContain("29.97");
@@ -261,110 +265,184 @@ describe("registering a source", () => {
 });
 
 /**
- * The rate is asked in a modal, and Cancel means nothing happened (#234).
+ * The selection panel: what was chosen, read back before anything uploads.
  *
- * The claim that needs a test is the *negative* one. A dialog that opens and takes
- * a value is visible in the request it produces — the suite above already asserts
- * that — but "Cancel registers nothing" is only observable as the absence of a
- * request, so nothing else in this file can catch a cancel path that uploads
- * anyway.
+ * The rate went inline → modal (#234) → inline (#243), and what survives every
+ * arrangement is the pair of claims here: the rate exists only for a clip, and a
+ * rate the request could not carry disables the registration — with the
+ * explanation adjacent, which is what made the inline return legal under
+ * `DESIGN.md` principle 9.
  */
-describe("the extraction rate is asked before a clip is registered", () => {
+describe("the selection panel", () => {
   beforeEach(() => {
     on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
   });
 
-  it("asks nothing until the registration is actually attempted", async () => {
-    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
-
-    render(mount(<IngestScreen projectId={PROJECT} />));
-    await choose([pick("drive.mp4", "video/mp4")]);
-
-    // Choosing a clip is not deciding how to decompose it. The rate used to sit
-    // inline under the dropzone, inside a step titled "Choose files".
-    expect(screen.queryByTestId("extraction-rate-dialog")).toBeNull();
-    expect(screen.queryByTestId("extraction-fps")).toBeNull();
-
-    await userEvent.click(screen.getByTestId("register-source"));
-
-    const dialog = await screen.findByTestId("extraction-rate-dialog");
-    // It names the clip it is about — a modal that covers the form it came from
-    // cannot rely on what is behind it to say what it is asking about.
-    expect(dialog.textContent).toContain("drive.mp4");
-    expect(within(dialog).getByTestId("extraction-fps")).not.toBeNull();
-
-    // The rate gate moved here from `register-source`, which no longer knows the
-    // value. `<input type="number">` reports a rejected keystroke as an empty
-    // string, so a blank field is reachable by typing rather than only by pasting.
-    await userEvent.clear(screen.getByTestId("extraction-fps"));
-    expect((screen.getByTestId("extraction-rate-accept") as HTMLButtonElement).disabled).toBe(
-      true,
-    );
-  });
-
-  it("registers nothing when the dialog is cancelled, and keeps the file", async () => {
-    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
-
-    render(mount(<IngestScreen projectId={PROJECT} />));
-    await choose([pick("drive.mp4", "video/mp4")]);
-    await userEvent.click(screen.getByTestId("register-source"));
-    await screen.findByTestId("extraction-rate-dialog");
-
-    // Edited and *then* abandoned, because the draft lives in the dialog: a rate
-    // left on the screen would be uploaded by the next press of `Register source`.
-    await userEvent.clear(screen.getByTestId("extraction-fps"));
-    await userEvent.type(screen.getByTestId("extraction-fps"), "7");
-    await userEvent.click(screen.getByTestId("extraction-rate-cancel"));
-
-    await waitFor(() => expect(screen.queryByTestId("extraction-rate-dialog")).toBeNull());
-    expect(sent.some((r) => r.method === "POST")).toBe(false);
-    expect(screen.queryByTestId("source-card")).toBeNull();
-    // Backing out of the rate does not cost the selection — the file is still
-    // chosen and the button is still live.
-    expect(screen.getByTestId("chosen").textContent).toContain("drive.mp4");
-    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(false);
-
-    // And the abandoned `7` went with it: reopening shows the default, not the draft.
-    await userEvent.click(screen.getByTestId("register-source"));
-    const reopened = await screen.findByTestId("extraction-fps");
-    expect((reopened as HTMLInputElement).value).toBe("1");
-  });
-
-  it("never asks about images, which have no rate to ask about", async () => {
-    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
-
+  it("reads the choice back with a way out that costs nothing", async () => {
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
-    await userEvent.click(screen.getByTestId("register-source"));
 
-    await screen.findByTestId("source-card");
-    expect(screen.queryByTestId("extraction-rate-dialog")).toBeNull();
-    const posted = sent.find((r) => r.method === "POST") as Request;
-    expect(new URL(posted.url).pathname).toMatch(/\/sources\/images$/);
+    const selection = screen.getByTestId("selection");
+    expect(within(selection).getByTestId("chosen").textContent).toBe("2 files");
+    expect(selection.textContent).toContain("images");
+    // Images have no rate, anywhere — not a hidden field, not a dialog.
+    expect(screen.queryByTestId("extraction-fps")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("clear-files"));
+    expect(screen.queryByTestId("selection")).toBeNull();
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
+    // And the flow is back at its start, dropzone included.
+    expect(screen.getByTestId("file-input")).not.toBeNull();
   });
 
-  it("keeps a refused rate inside the dialog, where it can be corrected", async () => {
-    on("POST", /\/sources\/video$/, {
-      status: 422,
-      body: { code: "UNSUPPORTED_MEDIA", message: "drive.mp4 is not a video." },
-    });
+  it("shows the rate for a clip, with the second-source consequence beside it", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+
+    const selection = screen.getByTestId("selection");
+    expect(within(selection).getByTestId("extraction-fps")).not.toBeNull();
+    expect(selection.textContent).toContain("second source");
+    expect((screen.getByTestId("extraction-fps") as HTMLInputElement).value).toBe("1");
+  });
+
+  it("cannot register a clip whose rate is unusable, and says so next door", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+
+    const button = (): HTMLButtonElement =>
+      screen.getByTestId("register-source") as HTMLButtonElement;
+    expect(button().disabled).toBe(false);
+
+    // `<input type="number">` reports a rejected keystroke as an empty string,
+    // so a blank is reachable by typing, not only by pasting.
+    await userEvent.clear(screen.getByTestId("extraction-fps"));
+    expect(button().disabled).toBe(true);
+
+    await userEvent.type(screen.getByTestId("extraction-fps"), "0");
+    expect(button().disabled).toBe(true);
+
+    await userEvent.clear(screen.getByTestId("extraction-fps"));
+    await userEvent.type(screen.getByTestId("extraction-fps"), "2");
+    expect(button().disabled).toBe(false);
+  });
+
+  it("estimates the frames from the browser's own read of the clip", async () => {
+    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 47.7 });
 
     render(mount(<IngestScreen projectId={PROJECT} />));
     await choose([pick("drive.mp4", "video/mp4")]);
-    await userEvent.click(screen.getByTestId("register-source"));
-    await screen.findByTestId("extraction-rate-dialog");
-    await userEvent.clear(screen.getByTestId("extraction-fps"));
-    await userEvent.type(screen.getByTestId("extraction-fps"), "4");
-    await userEvent.click(screen.getByTestId("extraction-rate-accept"));
 
-    // The dialog stays open and owns the refusal. Closing it would put the message
-    // on the card while the value that caused it lived one press away — and there
-    // would be two `register-error` nodes on the page, which `getByTestId` refuses.
-    const dialog = await screen.findByTestId("extraction-rate-dialog");
-    const error = await within(dialog).findByTestId("register-error");
-    expect(error.textContent).toContain("UNSUPPORTED_MEDIA");
-    expect(screen.getAllByTestId("register-error")).toHaveLength(1);
-    expect((screen.getByTestId("extraction-fps") as HTMLInputElement).value).toBe("4");
+    // floor(47.7 × 1) — the same arithmetic as the probe card's "Frames
+    // expected", so the estimate and the registered answer can only differ by
+    // what the two probes measured, never by rounding.
+    expect((await screen.findByTestId("frames-estimate")).textContent).toContain("47");
+    expect(screen.getByTestId("selection").textContent).toContain("47.7 s");
+
+    // It tracks the typed rate: floor(47.7 × 2) = 95, which a `round` would
+    // also answer — but floor(47.7 × 1) = 47 is 48 under `round`, so the pair
+    // pins the spelling.
+    await userEvent.clear(screen.getByTestId("extraction-fps"));
+    await userEvent.type(screen.getByTestId("extraction-fps"), "2");
+    expect(screen.getByTestId("frames-estimate").textContent).toContain("95");
+
+    // No usable rate, no estimate — a number computed from garbage is worse
+    // than none.
+    await userEvent.clear(screen.getByTestId("extraction-fps"));
+    expect(screen.queryByTestId("frames-estimate")).toBeNull();
+  });
+
+  it("degrades to no estimate when the browser cannot read the clip", async () => {
+    // The default mock never settles, which is also jsdom's real behaviour —
+    // no media pipeline, so `loadedmetadata` never fires.
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("drive.mp4", "video/mp4")]);
+
+    expect(screen.queryByTestId("frames-estimate")).toBeNull();
+    // The estimate is advisory: not having one must not block registration.
+    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+/**
+ * The choreography: three steps, exactly one active (#243).
+ *
+ * The claims here are about what is and is not *mounted*, because that is what
+ * changed: the old layout kept every card fully live at once, so a user could
+ * swap the files in step 1 while step 2 still described the old ones. `data-state`
+ * is asserted rather than any class, and the absence of controls is asserted
+ * rather than their styling — a dimmed-but-live dropzone would pass a style
+ * check and still have the bug.
+ */
+describe("one step at a time", () => {
+  beforeEach(() => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+    on("POST", /\/ingest-jobs$/, { status: 202, body: job({ state: "running", processed: 0 }) });
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job({ state: "running", batch_id: null }) });
+  });
+
+  function state(step: string): string | undefined {
+    return screen.getByTestId(step).dataset.state;
+  }
+
+  it("opens with the road ahead visible and only the first step live", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+
+    expect(state("step-1")).toBe("active");
+    expect(state("step-2")).toBe("upcoming");
+    expect(state("step-3")).toBe("upcoming");
+    // Upcoming steps say what they will ask; they do not render controls.
+    expect(screen.getByTestId("step-2").textContent).toContain("target batch");
+    expect(screen.queryByTestId("source-card")).toBeNull();
+    expect(screen.queryByTestId("run-card")).toBeNull();
+  });
+
+  it("registering collapses step 1 to a summary with no live controls", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+
+    expect(state("step-1")).toBe("complete");
+    expect(state("step-2")).toBe("active");
+    expect(screen.getByTestId("step-1-summary").textContent).toContain("a.png");
+    // The hole the collapse closes: no dropzone and no register button remain,
+    // so the selection cannot drift out from under the source card.
+    expect(screen.queryByTestId("file-input")).toBeNull();
+    expect(screen.queryByTestId("register-source")).toBeNull();
+  });
+
+  it("start over walks back to a clean first step", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+
+    await userEvent.click(screen.getByTestId("restart"));
+
+    expect(state("step-1")).toBe("active");
+    expect(state("step-2")).toBe("upcoming");
+    expect(screen.queryByTestId("source-card")).toBeNull();
+    expect(screen.queryByTestId("selection")).toBeNull();
+    expect(screen.getByTestId("file-input")).not.toBeNull();
+  });
+
+  it("launching collapses step 2 and hands the flow to the run", async () => {
+    render(mount(<IngestScreen projectId={PROJECT} />));
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    await userEvent.click(screen.getByTestId("start-ingest"));
+
+    await screen.findByTestId("run-card");
+    expect(state("step-2")).toBe("complete");
+    expect(state("step-3")).toBe("active");
+    // The summary names what was decided: this source, into this batch.
+    expect(screen.getByTestId("step-2-summary").textContent).toContain("photos");
+    expect(screen.queryByTestId("start-ingest")).toBeNull();
+    expect(screen.queryByTestId("target-batch")).toBeNull();
+    // And a run in flight is committed — the walk-back control is gone too.
+    expect(screen.queryByTestId("restart")).toBeNull();
   });
 });
 
