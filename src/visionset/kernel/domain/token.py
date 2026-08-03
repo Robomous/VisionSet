@@ -87,10 +87,10 @@ class Token(BaseModel):
     **Revocation is a timestamp, and ``revoked`` is derived from it.** The same
     doctrine that keeps a schema's "active" version a computed maximum rather
     than a stored column: a bool answers "is it dead?" and nothing else, so
-    "when did we burn it?" would need another migration to ask. ``NULL`` is not a
-    legacy value something has to tolerate here — it is the ordinary state of a
-    token nobody has revoked, exactly as ``Asset.thumbnail_hash``'s NULL is the
-    ordinary state of an asset nobody has rendered.
+    "when did we burn it?" would need a second column to ask. ``NULL`` here is
+    the ordinary state of a token nobody has revoked, exactly as
+    ``Asset.thumbnail_hash``'s NULL is the ordinary state of an asset nobody has
+    rendered.
 
     ``revoked_at`` is written once and never rewritten, the rule
     ``Source.registered_at`` follows, which is what makes a repeated revoke a

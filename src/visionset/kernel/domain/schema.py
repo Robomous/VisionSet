@@ -191,10 +191,9 @@ class AnnotationSchema(BaseModel):
     #: When the version was published, UTC. Stamped by ``SchemaService``, in
     #: ``Asset.ingested_at``'s shape rather than the ``default_factory`` the
     #: non-nullable timestamps use — a factory would make every
-    #: ``AnnotationSchema(...)`` built anywhere claim a moment, and the whole
-    #: value of this column is that a version predating #230 keeps its NULL.
-    #: Nothing backfills one: migration time records when somebody upgraded,
-    #: which is not when the version was written.
+    #: ``AnnotationSchema(...)`` built anywhere claim a moment. Nothing
+    #: backfills one either: the only honest source is the service that
+    #: publishes the version, and it stamps this at that moment.
     created_at: datetime | None = None
 
     @field_validator("description")

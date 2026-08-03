@@ -22,6 +22,17 @@ Storage decisions, and why (see ``docs/persistence.md`` for the long form):
   loses its offset is worse than no timestamp at all.
 
 ``list()`` ordering is SQLite's implicit ``rowid``, i.e. insertion order.
+
+**Column order matters, and the rule is one rule for the whole file.** This
+module is the schema baseline — ``migrations.py`` holds a single migration that
+is ``create_all`` of what is declared here — so today every column arrives the
+same way and its position is free. That stops being true for the first column a
+*second* migration adds: SQLite appends a column added by ``ALTER TABLE``, so
+one declared anywhere but last makes the two creation paths emit different
+``CREATE TABLE`` text, and a workspace's schema then depends on when it was
+created. So a column added by a migration goes **last on its row class**, in the
+order that migration adds it, and stays there. Several columns below already sit
+last for that reason and are marked; leave them where they are.
 """
 
 from __future__ import annotations
@@ -89,11 +100,10 @@ PROJECT_NAME_UNIQUE = Index(
 class AnnotationSchemaRow(Base):
     """One version of a project's labeling contract.
 
-    ``description`` and ``created_at`` arrive by ``ALTER TABLE`` in migration 14,
-    so they are declared **last** — SQLite appends an added column, and anywhere
-    else the ``create_all`` and migration paths would emit different
-    ``CREATE TABLE`` text. Both are nullable because a version published before
-    migration 14 has neither, and nothing invents one.
+    ``description`` and ``created_at`` are the newest columns here, and they stay
+    **last** — see the module docstring's ordering rule. Both are nullable
+    because a version can be published without a description and nothing invents
+    one; ``SchemaService`` is what decides when each is written.
     """
 
     __tablename__ = "annotation_schema"
@@ -110,20 +120,11 @@ class AnnotationSchemaRow(Base):
 
 
 class SourceRow(Base):
-    """Registered origins. Rebuilt by migration 7, so column order is free here.
+    """Registered origins: where a project's bytes came from.
 
-    Every other table with a migrated column declares it last, because SQLite's
-    ``ALTER TABLE ... ADD COLUMN`` appends and the two creation paths would
-    otherwise emit different DDL. Migration 7 drops and re-creates this table
-    from this class instead, so both paths run the same ``CREATE TABLE`` and the
-    rule has nothing to bite on.
-
-    **That exemption expires for any column added after migration 7.** A
-    database this build wrote is already stamped at 7 and will never re-run it,
-    so a later column reaches it by ``ALTER TABLE`` after all and has to be
-    declared last like everywhere else. ``display_name`` (migration 15) is the
-    first such column, which is why it sits at the bottom of this class rather
-    than beside ``path`` where it reads naturally.
+    ``display_name`` sits at the bottom rather than beside ``path``, where it
+    would read more naturally, because it is the newest column here — see the
+    module docstring's ordering rule.
     """
 
     __tablename__ = "source"
@@ -141,7 +142,7 @@ class SourceRow(Base):
     #: A ``VideoProvenance``, or NULL for anything that is not a clip.
     video: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     #: What a caller asked this source to be called; NULL means nobody said.
-    #: Added by migration 15, so it is declared last — see the class docstring.
+    #: The newest column here, so it is declared last — see the class docstring.
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
@@ -173,23 +174,16 @@ SOURCE_ORIGIN_UNIQUE = Index(
 
 
 class IngestJobRow(Base):
-    """Ingestion runs. Rebuilt by migration 8; migration 9 then altered it.
+    """Ingestion runs: what was read, how far it got, and what it could not read.
 
-    Migration 8 rebuilt rather than altered because ``batch_id`` carries a
-    foreign key, and an ``ALTER TABLE ... ADD COLUMN`` cannot express one the way
-    ``create_all`` does: SQLite spells an added key inline on the column, while a
-    created table spells it as a table constraint. The two texts differ, so the
-    fresh-versus-migrated test would fail — and dropping the key instead would
-    leave a run pointing at a batch somebody deleted. This table had no children
-    and was provably empty at that point (nothing wrote an ingest job before that
-    build), which is what made the rebuild affordable; migration 8 counts rather
-    than assuming it.
-
-    **That exemption expired the moment this build started writing rows.** A
-    database stamped at 8 will never re-run migration 8, so anything added after
-    it reaches that database by ``ALTER TABLE`` after all — which is why
-    migration 9's four columns are declared **last, in the order it adds them**.
-    A rebuild is no longer available here either: these rows are legitimate.
+    ``batch_id`` carries a foreign key, and that is worth knowing before adding
+    another one like it: an ``ALTER TABLE ... ADD COLUMN`` cannot express a key
+    the way ``create_all`` does — SQLite spells an added key inline on the
+    column, a created table spells it as a table constraint, and the two texts
+    differ. A migration that wants a key on a new column has to rebuild the
+    table, which this one can no longer afford: its rows are legitimate work
+    records, and under ``PRAGMA foreign_keys = ON`` a ``DROP TABLE`` takes
+    children with it silently.
     """
 
     __tablename__ = "ingest_job"
@@ -202,20 +196,18 @@ class IngestJobRow(Base):
     #: The fatal cause that stopped the run, as opposed to ``failures`` below.
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     #: The batch this run materialized into. NULL until it reaches one — a run
-    #: that dies during the decode never does, which is why this is nullable
-    #: rather than nullable for a migration's convenience. ``SET NULL`` and not
-    #: ``CASCADE``: deleting the batch does not un-happen the run.
+    #: that dies during the decode never does. ``SET NULL`` and not ``CASCADE``:
+    #: deleting the batch does not un-happen the run.
     batch_id: Mapped[UUID | None] = mapped_column(
         SaUuid, ForeignKey("batch.id", ondelete="SET NULL"), nullable=True
     )
     #: The name a batch this run creates will take, so a resumed run lands where
-    #: the first attempt meant it to. Nullable, and honestly so: a row written
-    #: before migration 9 never recorded one.
+    #: the first attempt meant it to. Nullable: a run may name no batch.
     batch_name: Mapped[str | None] = mapped_column(String, nullable=True)
-    #: Items read so far. Carries a ``server_default`` for the reason
-    #: ``AnnotationJobAssetRow.position`` does — SQLite refuses ``ADD COLUMN``
-    #: ``NOT NULL`` without a value for the rows already there — and ``0`` is
-    #: what a finished pre-#19 run in fact recorded: nothing.
+    #: Items read so far. The ``server_default`` is what lets a ``NOT NULL``
+    #: column be re-added by ``ALTER TABLE`` — SQLite refuses one without a value
+    #: for the rows already there — and is kept for that reason rather than
+    #: removed now that the baseline creates the column outright.
     processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     #: Items the source offered, or NULL when that is not knowable up front —
     #: a directory can be listed, a clip cannot. See ``IngestJob.total``.
@@ -239,31 +231,26 @@ class AssetRow(Base):
     uri: Mapped[str] = mapped_column(String, nullable=False)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # The five below arrive by ``ALTER TABLE`` and are therefore declared last,
-    # in the order the migrations add them: four in migration 8, then
-    # ``thumbnail_hash`` in migration 10.
-    #
-    # All are nullable, and that is not a shortcut. ``asset`` could not be
-    # rebuilt the way migrations 6 and 7 rebuilt their tables: four tables carry
+    # ``asset`` is the table a migration can only ever *alter*: four tables carry
     # ``ON DELETE CASCADE`` keys into it (``batch_asset``, ``annotation``,
     # ``dataset_member``, ``annotation_job_asset``), and under
     # ``PRAGMA foreign_keys = ON`` a ``DROP TABLE`` runs an implicit ``DELETE``
-    # that takes all four silently. Nor could the rows simply be refused: unlike
-    # a pre-#12 release or a pre-#18 source, an asset written before the ingest
-    # pipeline is *legitimate* — M1's example wrote them through the same public
-    # port a service uses. NULL here means "this asset predates the pipeline",
-    # which is true, where any ``server_default`` would be a fiction.
+    # that takes all four silently. So a column added here arrives by ``ALTER``,
+    # goes last, and cannot carry a foreign key — the six below are in that
+    # position already, and ``source_id`` says what the last part costs.
     #: The decoded format, never the filename's suffix.
     format: Mapped[str | None] = mapped_column(String, nullable=True)
     #: The source these bytes were *first* seen in.
     #:
     #: **Deliberately not a foreign key**, and it is the only reference in this
-    #: schema that is not. SQLite spells a key added by ``ALTER TABLE`` inline on
-    #: the column, while ``create_all`` spells one as a table constraint; the two
-    #: texts differ, so a fresh database and a migrated one would disagree — and
-    #: ``asset`` is the one table that cannot be rebuilt to escape that (four
-    #: cascading children, and rows that are legitimately already there). What
-    #: would be gained is small: there is no ``SourceService.delete``, and on the
+    #: schema that is not. It became one by force: it arrived by ``ALTER TABLE``,
+    #: which cannot express a key the way ``create_all`` does, and ``asset`` is
+    #: the one table that could not be rebuilt to escape that — see the comment
+    #: above. The baseline *could* declare the key now, and that is left undone
+    #: on purpose: it is a decision about what happens to an asset when its
+    #: source is deleted, which nobody has taken, not a leftover of the chain.
+    #: What is given up meanwhile is small: there is no ``SourceService.delete``,
+    #: and on the
     #: one deletion path that does exist — a project's cascade — the asset and
     #: the source both die by their own ``project_id`` keys. When a source
     #: delete is added it must clear these itself, and say so where it is
@@ -273,28 +260,27 @@ class AssetRow(Base):
     frame_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Seconds into the clip. The locator that survives a different rate.
     frame_timestamp: Mapped[float | None] = mapped_column(Float, nullable=True)
-    #: A cached preview in the blob store, added by migration 10.
+    #: A cached preview in the blob store.
     #:
-    #: Nullable for a reason the four above do not share: this one is a *cache*,
-    #: so NULL is the ordinary state rather than a legacy one. It means "no
-    #: preview yet" whether the row predates migration 10, holds bytes that will
-    #: not render, or simply has not been reached — and
-    #: ``IngestService.backfill_thumbnails`` reads it to find all three.
+    #: Nullable because this one is a *cache*: NULL means "no preview yet",
+    #: whether the bytes will not render or the asset simply has not been
+    #: reached, and ``IngestService.backfill_thumbnails`` reads it to find both.
     #:
     #: Unindexed, and deliberately: the one query over it walks a project's
     #: assets and filters in Python, which is the shape ``Repository.list``
     #: already has. No foreign key either — it names a blob, not a row.
     thumbnail_hash: Mapped[str | None] = mapped_column(String, nullable=True)
-    #: When these bytes first arrived in this project, added by migration 13.
+    #: When these bytes first arrived in this project.
     #:
     #: ISO-8601 text, the convention every timestamp in this schema follows —
     #: SQLite's ``DATETIME`` drops the timezone, and a stored offset is the whole
     #: point. Sorting works anyway: ISO-8601 in UTC is lexicographically ordered.
     #:
-    #: Nullable, and unlike ``thumbnail_hash`` this NULL is *permanent*. A
-    #: preview can be rendered later; an arrival that nobody recorded cannot be
-    #: recovered, so there is no backfill and no remedy — see ``Asset``'s own
-    #: note. Unindexed: the one query over it sorts a project's assets after
+    #: Nullable, and unlike ``thumbnail_hash`` this NULL has no remedy. A preview
+    #: can be rendered later; an arrival nobody recorded cannot be recovered —
+    #: see ``Asset``'s own note, and the consumers that define what unknown means
+    #: rather than inventing a value. Unindexed: the one query over it sorts a
+    #: project's assets after
     #: ``Repository.list`` has already read them.
     ingested_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -377,10 +363,10 @@ class AnnotationJobAssetRow(Base):
     #: ``JobService.next_pending`` deterministic.
     #:
     #: Carries a ``server_default`` where ``BatchAssetRow.position`` does not,
-    #: and that difference is load-bearing: this column arrives by ``ALTER
-    #: TABLE`` in migration 4, and SQLite refuses ``ADD COLUMN ... NOT NULL``
-    #: without one. Both the ``create_all`` path and the ``ALTER`` path read
-    #: this same object, so they cannot disagree.
+    #: and the asymmetry is a fossil worth keeping: this column reached existing
+    #: databases by ``ALTER TABLE``, and SQLite refuses ``ADD COLUMN ... NOT
+    #: NULL`` without a default. That is the price of every future ``NOT NULL``
+    #: column too, so it stays rather than being tidied away.
     position: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
 
@@ -403,13 +389,10 @@ class AnnotationRow(Base):
     #:
     #: Declared **last**, and carrying a ``server_default``, for the two things
     #: ``ALTER TABLE`` demands — the same pair ``BatchRow.schema_version`` and
-    #: ``AnnotationJobAssetRow.position`` carry, and for the same reason. It
-    #: arrives by ALTER in migration 5: SQLite appends the column, and refuses
-    #: ``ADD COLUMN ... NOT NULL`` without a value for the rows already there.
-    #: Anywhere but last, the ``create_all`` path and the ALTER path would emit
-    #: different ``CREATE TABLE`` text —
-    #: ``test_a_fresh_database_and_a_migrated_one_have_the_same_schema`` is what
-    #: says so out loud.
+    #: ``AnnotationJobAssetRow.position`` carry, and for the same reason: SQLite
+    #: appends an added column, and refuses ``ADD COLUMN ... NOT NULL`` without a
+    #: value for the rows already there. See the module docstring's ordering
+    #: rule for why the position is not free to change.
     attributes: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, server_default=text("'{}'")
     )
@@ -424,10 +407,13 @@ class AnnotationRow(Base):
 #: the normal case, which is why this index is *partial* rather than a rule about
 #: ``annotation`` as a whole.
 #:
-#: Partial and expression-based, so #20's two traps both apply. SQLAlchemy cannot
-#: reflect either kind, so ``checkfirst`` reports the index absent and re-issues
-#: the ``CREATE``; migration 12 uses ``CreateIndex(..., if_not_exists=True)`` and
-#: asks SQLite instead. The DDL is still compiled from this one object.
+#: Partial and expression-based, which is a trap for anything that has to create
+#: it *conditionally*: SQLAlchemy can reflect neither kind, so ``checkfirst``
+#: reports the index absent and re-issues a ``CREATE`` that then fails. The
+#: baseline runs ``create_all`` and never meets that; a future migration touching
+#: an index like this one asks SQLite instead, through
+#: ``CreateIndex(..., if_not_exists=True)``, with the DDL still compiled from
+#: this one object. ``SOURCE_ORIGIN_UNIQUE`` is the other of the two.
 #:
 #: SQL reading a JSON column, which the module docstring reserves for values
 #: "nothing ever queries" — the same exemption ``SOURCE_ORIGIN_UNIQUE`` takes, and
@@ -496,10 +482,10 @@ class ReleaseRow(Base):
     renders from. ``ReleaseService.verify`` cross-checks them against the parsed
     manifest, so the duplication is checkable rather than trusted.
 
-    No column here carries a ``server_default``, and that is the payoff of
-    migration 6 rebuilding this table rather than ``ALTER``-ing it: none of these
-    values has an honest default, and inventing three would have baked the
-    fictions into every fresh database forever.
+    No column here carries a ``server_default``, and none should acquire one:
+    not one of these values has an honest default, so a migration that needed to
+    add a ``NOT NULL`` column to this table would have to rebuild it rather than
+    invent a default and bake the fiction into every fresh database.
     """
 
     __tablename__ = "release"
@@ -524,18 +510,7 @@ class ReleaseRow(Base):
 
 
 class TokenRow(Base):
-    """API credentials, hashed. Created whole by migration 11, so order is free.
-
-    Every other table with a migrated column declares it last, because SQLite's
-    ``ALTER TABLE ... ADD COLUMN`` appends and the two creation paths would
-    otherwise emit different ``CREATE TABLE`` text. This table is exempt for the
-    reason ``SourceRow`` is: migration 11 builds it with ``Table.create``, from
-    this same class, so both paths compile identical DDL whatever the order here.
-
-    **That exemption expires for any column added after migration 11.** A
-    database already stamped at 11 has the table, so a later column reaches it by
-    ``ALTER`` and must be declared last — the rule ``AssetRow`` and
-    ``IngestJobRow`` already live under.
+    """API credentials, hashed.
 
     ``secret_hash`` holds a SHA-256 digest and never a plaintext; ``domain.token``
     argues why a digest rather than a KDF is the right call here. It carries no

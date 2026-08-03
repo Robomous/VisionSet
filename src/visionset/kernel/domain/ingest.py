@@ -110,11 +110,9 @@ class IngestJob(BaseModel):
     pydantic resolves that annotation when the class is created rather than when
     it is first used.
 
-    The last four fields arrive by ``ALTER TABLE`` and are therefore declared
-    **last, in migration order** — the rule ``AssetRow`` and ``AnnotationRow``
-    already follow, and the reason is that SQLite appends an added column, so a
-    different order here would make the ``create_all`` path and the migration
-    path emit different DDL.
+    Field order here mirrors ``IngestJobRow``'s column order, which is pinned by
+    the ordering rule in ``adapters/_tables.py``: SQLite appends a column added
+    by ``ALTER TABLE``, so the tail of that table is not free to be rearranged.
     """
 
     id: UUID = Field(default_factory=uuid4)
@@ -124,11 +122,10 @@ class IngestJob(BaseModel):
     #: below. One broken machine is not five thousand broken files.
     error: str | None = None
     #: The batch this run materialized into, NULL until it has reached one.
-    #: Declared last as of migration 8.
     batch_id: UUID | None = None
     #: The name a batch this run creates will take, decided before the decode so
     #: that resuming a run which never reached a batch still lands where the
-    #: first attempt meant it to. NULL only on a row written before migration 9.
+    #: first attempt meant it to. NULL when the caller named no batch.
     batch_name: str | None = None
     #: Items read so far — decoded, hashed and stored, or reported as unreadable.
     #: Written while the run is in flight, which is what makes it pollable.

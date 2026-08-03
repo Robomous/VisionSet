@@ -147,9 +147,13 @@ A missing `blobs/` is repaired rather than rejected: zip archives and git both d
 directories, so its absence says nothing about the workspace's health.
 
 **Older workspaces are migrated, not refused** — that is what the migration list is for.
-The honest cost is that an in-place upgrade makes the workspace unopenable by the older
-build, with no backup. A `migrate=False` flag is keyword-only and source-compatible to add
-later; backup-before-migrate belongs with the CLI.
+There are none to migrate today: the list holds a single baseline, so every workspace this
+build can open is already at `FORMAT_VERSION`. See
+[persistence.md](persistence.md#migrations-and-format_version) for why the chain that
+preceded it was collapsed, and what comes back with the second migration. The honest cost
+of an in-place upgrade — a workspace the older build can no longer open, with no backup —
+is unchanged for whenever that happens. A `migrate=False` flag is keyword-only and
+source-compatible to add later; backup-before-migrate belongs with the CLI.
 
 ### `root` is authoritative, `root_dir` is advisory
 
