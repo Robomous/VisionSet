@@ -887,3 +887,81 @@ def test_a_schema_version_written_before_migration_fourteen_reads_back_with_null
     assert row.description is None
     assert row.created_at is None
     store.close()
+
+
+def _downgrade_to_generation_fourteen(store: SqliteMetadataStore) -> None:
+    """Take ``source`` back to the shape a pre-#245 build left it in.
+
+    A ``DROP COLUMN`` rather than a hand-written ``CREATE TABLE``, for
+    ``_downgrade_to_generation_eight``'s reason: these tests compare
+    ``sqlite_master`` *text*, and SQLite rewrites the stored statement by
+    deleting the dropped column's definition and leaving every other character
+    alone — a retyped baseline would differ in whitespace and fail for a reason
+    about this file rather than the schema.
+    """
+    with store.engine.begin() as connection:
+        connection.execute(text("alter table source drop column display_name"))
+        connection.execute(text("update _visionset_meta set format_version = 14"))
+
+
+def test_migration_fifteen_alters_a_table_migration_seven_rebuilt(tmp_path: Path) -> None:
+    """The ``ALTER`` path, which the fresh-versus-migrated test cannot reach.
+
+    That test walks back to generation 1, from where migration 7 re-creates
+    ``source`` whole from ``_tables`` — *including* ``display_name`` — so
+    migration 15 finds the column present and does nothing. A database this
+    build actually wrote is stamped at 14, and migration 15 reaches it as an
+    ``ALTER TABLE ... ADD COLUMN`` instead. Migration 9's trap, on migration 7's
+    rebuild: without this test the only exercised path is the vacuous one.
+
+    This is also why ``_downgrade_to_version_one`` needs **no** line for this
+    column — its ``drop table source`` takes it away for free — and why
+    ``display_name`` must stay declared last on ``SourceRow``: SQLite appends an
+    added column, so the two spellings of ``CREATE TABLE source`` agree only
+    while it sits at the end.
+    """
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    legacy = SqliteMetadataStore(tmp_path / "legacy.db")
+    legacy.initialize()
+    _downgrade_to_generation_fourteen(legacy)
+    assert _schema(legacy) != expected  # the column really is gone
+
+    legacy.initialize()  # migration 15 alone, as an ALTER
+    assert _schema(legacy) == expected
+    assert legacy.format_version == FORMAT_VERSION
+    legacy.close()
+
+
+def test_a_source_written_before_migration_fifteen_reads_back_unnamed(tmp_path: Path) -> None:
+    """NULL for a row that predates the column, and NULL is the honest value.
+
+    Nobody stated a name for a pre-#245 source, which is exactly what ``None``
+    says; backfilling the path's basename would freeze today's derivation into a
+    column the domain deliberately re-derives on read.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    _downgrade_to_generation_fourteen(store)
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'proj')")
+        )
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at, capture_params) "
+                "values ('s', 'p', 'image_directory', '/data/photos', "
+                "'2026-08-01T00:00:00+00:00', '{}')"
+            )
+        )
+
+    store.initialize()
+
+    with store.engine.connect() as connection:
+        row = connection.execute(text("select display_name from source where id = 's'")).one()
+    assert row.display_name is None
+    store.close()

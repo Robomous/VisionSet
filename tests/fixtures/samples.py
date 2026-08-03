@@ -117,6 +117,9 @@ SOURCE = Source(
     project_id=PROJECT.id,
     kind=SourceKind.VIDEO,
     path=str(Path("/workspace/incoming/clip.mp4")),
+    # Fully populated, per this module's rule: a ``None`` here would let the
+    # display-name half of the wire projections go unchecked.
+    display_name="dashcam morning run",
     registered_at=_WHEN,
     capture_params={"lens": "wide"},
     video=VideoProvenance(

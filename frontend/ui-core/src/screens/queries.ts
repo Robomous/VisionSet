@@ -445,7 +445,11 @@ export function useRegisterSource(projectId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { files: readonly File[]; extractionFps?: number }) => {
+    mutationFn: async (input: {
+      files: readonly File[];
+      extractionFps?: number;
+      name?: string;
+    }) => {
       const extractionFps = input.extractionFps;
       const source =
         extractionFps !== undefined
@@ -460,7 +464,10 @@ export function useRegisterSource(projectId: string) {
         : unwrap(
             await client.POST("/projects/{project_id}/sources/images", {
               params: { path: { project_id: projectId } },
-              body: { files: input.files as unknown as string[] },
+              // `name` is what the source will be *called* (#245) — without it
+              // the server names the source by its staged directory, whose
+              // basename is a content digest. `formData` skips `undefined`.
+              body: { files: input.files as unknown as string[], name: input.name },
               bodySerializer: formData,
             }),
           checkRegisterImageSource,

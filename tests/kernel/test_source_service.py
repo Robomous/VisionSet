@@ -25,6 +25,7 @@ from tests.fixtures.media import (
 )
 
 from visionset.kernel import (
+    InvalidName,
     ProjectNotFound,
     SourceNotFound,
     UnsupportedMedia,
@@ -248,6 +249,74 @@ def test_a_replaced_clip_refreshes_its_provenance_and_keeps_its_identity(tmp_pat
     assert second.require_video().metadata.fps != first.require_video().metadata.fps
     assert len(fx.sources.list(fx.project.id)) == 1
     fx.close()
+
+
+# --- the display name (#245) -------------------------------------------------
+
+
+def test_a_stated_display_name_becomes_the_source_name(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(
+        fixture.project.id, fixture.stills, display_name="dashcam morning run"
+    )
+    assert source.display_name == "dashcam morning run"
+    assert source.name == "dashcam morning run"
+    fixture.close()
+
+
+def test_an_unnamed_source_is_called_by_its_path_basename(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    assert source.display_name is None
+    # ``Fixture`` names the directory ``ws-stills`` — asserting via the fixture's
+    # own path keeps this the derivation, not a copied string.
+    assert source.name == fixture.stills.name
+    fixture.close()
+
+
+def test_a_display_name_is_not_part_of_the_identity_key(tmp_path: Path) -> None:
+    """Renaming must not fork one origin into two.
+
+    Same directory, different names: one source, wearing the latest name — the
+    ``capture_params`` rule, for the same reason.
+    """
+    fixture = Fixture(tmp_path)
+    first = fixture.sources.register_images(fixture.project.id, fixture.stills, display_name="one")
+    second = fixture.sources.register_images(fixture.project.id, fixture.stills, display_name="two")
+    assert second.id == first.id
+    assert second.display_name == "two"
+    fixture.close()
+
+
+def test_a_nameless_reregistration_keeps_the_stated_name(tmp_path: Path) -> None:
+    """``None`` means nobody said — not "erase what somebody did say".
+
+    CLI and MCP registrations pass no name, so treating absence as a reset
+    would un-name a source on the next ingest of the same directory.
+    """
+    fixture = Fixture(tmp_path)
+    named = fixture.sources.register_images(fixture.project.id, fixture.stills, display_name="kept")
+    again = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    assert again.id == named.id
+    assert again.display_name == "kept"
+    assert fixture.sources.get(named.id).display_name == "kept"
+    fixture.close()
+
+
+def test_a_blank_display_name_is_refused_as_an_invalid_name(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(InvalidName):
+        fixture.sources.register_images(fixture.project.id, fixture.stills, display_name="   ")
+    fixture.close()
+
+
+def test_a_display_name_survives_the_round_trip(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(
+        fixture.project.id, fixture.stills, display_name="named"
+    )
+    assert fixture.sources.get(source.id).name == "named"
+    fixture.close()
 
 
 # --- scope and lookups -------------------------------------------------------

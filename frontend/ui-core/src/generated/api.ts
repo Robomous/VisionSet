@@ -1158,6 +1158,10 @@ export interface paths {
          *
          *     Nothing is decoded here — what the files turn out to be is read at ingest,
          *     and a file that is not an image is reported there rather than refused now.
+         *
+         *     `name` exists because the staged path's basename is a digest (#245); a blank
+         *     one is refused by the kernel's own `InvalidName` (422), the #28 rule — the
+         *     domain already refuses with a mapped error, so no wire validator restates it.
          */
         post: operations["register_image_source"];
         delete?: never;
@@ -1812,6 +1816,11 @@ export interface components {
              * @description The images, as one multipart part each.
              */
             files: string[];
+            /**
+             * Name
+             * @description What to call the source. Without one it is named by its staged directory, whose basename is a content digest — 64 hex characters nobody can read. Registering the same files again with a new name renames the existing source rather than creating a second one.
+             */
+            name?: string | null;
         };
         /** Body_register_video_source */
         Body_register_video_source: {

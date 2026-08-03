@@ -48,7 +48,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from pathlib import PurePath
 from typing import Any
 from uuid import UUID
 
@@ -202,12 +201,16 @@ def video_provenance(value: VideoProvenance) -> dict[str, Any]:
 
 
 def source(value: Source) -> dict[str, Any]:
-    """A registered origin. ``path`` is absent; ``name`` is its last component."""
+    """A registered origin. ``path`` is absent; ``name`` is the domain's resolution.
+
+    ``Source.name`` (#245): the stated display name when one exists, else the
+    path's last component — one spelling, shared with ``SourceOut``.
+    """
     return {
         "id": str(value.id),
         "project_id": str(value.project_id),
         "kind": value.kind.value,
-        "name": PurePath(value.path).name,
+        "name": value.name,
         "registered_at": _moment(value.registered_at),
         "video": None if value.video is None else video_provenance(value.video),
     }

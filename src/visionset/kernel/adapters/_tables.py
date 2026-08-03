@@ -121,8 +121,9 @@ class SourceRow(Base):
     **That exemption expires for any column added after migration 7.** A
     database this build wrote is already stamped at 7 and will never re-run it,
     so a later column reaches it by ``ALTER TABLE`` after all and has to be
-    declared last like everywhere else. Nothing has needed one yet: migration 8
-    puts a unique index over this table and adds no column to it.
+    declared last like everywhere else. ``display_name`` (migration 15) is the
+    first such column, which is why it sits at the bottom of this class rather
+    than beside ``path`` where it reads naturally.
     """
 
     __tablename__ = "source"
@@ -139,6 +140,9 @@ class SourceRow(Base):
     capture_params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     #: A ``VideoProvenance``, or NULL for anything that is not a clip.
     video: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    #: What a caller asked this source to be called; NULL means nobody said.
+    #: Added by migration 15, so it is declared last — see the class docstring.
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: One origin is one source: the backstop under ``SourceService``'s idempotency
