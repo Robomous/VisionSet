@@ -44,6 +44,8 @@ import {
   up,
   worldIn,
 } from "./_scene";
+import { annotation } from "../state/_sample";
+import { addAnnotationCommand, removeAnnotationsCommand } from "../state/commands";
 import type { EffectKind } from "./effects";
 import { TRANSITIONS } from "./machine";
 import { IDLE } from "./state";
@@ -438,5 +440,107 @@ describe("taking a polygon point back", () => {
     const before = world.store.document;
     world.dispatch({ type: "take-back-point" });
     expect(world.store.document).toBe(before);
+  });
+});
+
+/**
+ * The shape a drag was holding, gone before the drag let go.
+ *
+ * Every drag row answers pointer-up by re-reading the annotation it started on
+ * and comparing it against the geometry the gesture began with — `stillThere` —
+ * and asks for a **discard** rather than a commit when that read comes back
+ * empty. Nothing had ever reached those three arms: every other drag in this
+ * file ends on a shape that is still there, so `commitDrag` was the only branch
+ * any of the three rows had taken.
+ *
+ * It is reachable rather than theoretical. A drag stages outside the command log
+ * (#39), so the document underneath one is free to move while the gesture is
+ * open — an undo, a delete arriving from the side panel, a reload of the page's
+ * annotations with a pointer still down.
+ *
+ * ## Why these assert effects and not the store
+ *
+ * Because the store cannot tell the two apart, and finding that out is what this
+ * block is worth. `AnnotatorStore.commit` and `.discard` both early-return when
+ * nothing is staged, and `.execute` — which is how any removal arrives — sets
+ * `staged = null` on its way through. So by the time a removed annotation is
+ * observable, the preview it would have committed is already gone and the two
+ * paths leave byte-identical state. A test written against `undoLabel` passes
+ * with the guard deleted; this one was, and it did.
+ *
+ * The machine's contract is `(state, effects)`, and that is where the difference
+ * lives: a lost shape must not produce a `commit`, whose label `commitDrag`
+ * builds by reading the annotation it just failed to find — so the entry it asks
+ * for would be named "move annotation", after nothing.
+ *
+ * The geometry-type arm is covered too, and it is not paranoia: an id is reused
+ * when a draw is undone and redone, so "still in the document" and "still the
+ * shape this gesture picked up" are different questions.
+ */
+describe("the annotation a drag was holding, removed mid-gesture", () => {
+  const DRAGS = [
+    { state: "moving", grab: BOX_BODY, id: BOX_ID },
+    { state: "resizing", grab: BOX_NW, id: BOX_ID },
+    { state: "moving-vertex", grab: POLY_VERTEX, id: POLY_ID },
+  ] as const;
+
+  /** The box's geometry, swapped for a polygon and vice versa. */
+  function otherShape(id: string) {
+    return id === BOX_ID
+      ? ({
+          type: "polygon",
+          points: [
+            [10, 10],
+            [20, 10],
+            [20, 20],
+          ],
+        } as const)
+      : ({ type: "bbox", x: 10, y: 10, width: 5, height: 5 } as const);
+  }
+
+  for (const { state, grab, id } of DRAGS) {
+    it(`${state} asks to discard, not to commit, when the shape is gone`, () => {
+      const world = worldIn(state);
+      expect(world.state.type).toBe(state);
+      // Dragged first, so a preview really was in flight — the gesture under test
+      // is one that had something to commit, not one that never started.
+      world.dispatch(move([grab[0] + 12, grab[1] + 9]));
+      // Removed through the store, so the document the context reads is the one a
+      // real removal leaves, not a hand-built one the machine could never be given.
+      world.store.execute(removeAnnotationsCommand([id]));
+
+      const answer = world.dispatch(up(grab));
+
+      expect(world.state).toBe(IDLE);
+      expect(answer.effects.map((effect) => effect.kind)).toEqual(["discard"]);
+      expect(world.store.document.annotations.has(id)).toBe(false);
+    });
+
+    it(`${state} asks to discard when the id came back as a different geometry`, () => {
+      const world = worldIn(state);
+      world.dispatch(move([grab[0] + 12, grab[1] + 9]));
+      const replacement = { ...annotation("replacement"), id, geometry: otherShape(id) };
+      world.store.execute(removeAnnotationsCommand([id]));
+      world.store.execute(addAnnotationCommand(replacement));
+
+      const answer = world.dispatch(up(grab));
+
+      expect(world.state).toBe(IDLE);
+      expect(answer.effects.map((effect) => effect.kind)).toEqual(["discard"]);
+      // The substitute is untouched: a discarded drag writes nothing anywhere.
+      expect(world.store.document.annotations.get(id)?.geometry).toEqual(replacement.geometry);
+    });
+  }
+
+  it("still commits when the shape is exactly where the gesture left it", () => {
+    // The control. Without it, a `stillThere` that answered `null` for everything
+    // would satisfy every assertion above.
+    const world = worldIn("moving");
+    world.dispatch(move([BOX_BODY[0] + 12, BOX_BODY[1] + 9]));
+
+    const answer = world.dispatch(up([BOX_BODY[0] + 12, BOX_BODY[1] + 9]));
+
+    expect(answer.effects.map((effect) => effect.kind)).toEqual(["commit"]);
+    expect(world.store.getSnapshot().undoLabel).toBe("move sign");
   });
 });
