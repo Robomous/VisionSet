@@ -146,6 +146,17 @@ def _downgrade_to_version_one(store: SqliteMetadataStore) -> None:
         # nothing above rebuilds it and takes the index away for free — the same
         # position migration 11 is in, and the opposite of migration 9's.
         connection.execute(text("drop index if exists uq_annotation_asset_classification"))
+        # Migration 14's undo, and it is in migrations 11 and 12's position
+        # rather than 13's — which is the *quiet* one. ``annotation_schema`` is
+        # only ever altered, and these are the only columns ever added to it, so
+        # nothing above takes them away. Leaving these two lines out would let
+        # the fresh-versus-migrated test pass anyway: the columns would survive
+        # the downgrade, migration 14 would ``checkfirst``-skip, and a pair of
+        # ``ALTER``s nobody ran would be reported as agreeing with themselves.
+        # ``test_migration_fourteen_alters_the_schema_table_for_real`` is the
+        # second guard, for exactly that reason.
+        connection.execute(text("alter table annotation_schema drop column created_at"))
+        connection.execute(text("alter table annotation_schema drop column description"))
         connection.execute(text("update _visionset_meta set format_version = 1"))
 
 
@@ -809,4 +820,70 @@ def test_migration_twelve_collapses_duplicates_a_workspace_already_carried(
         "00000000000000000000000000000004",
         "00000000000000000000000000000005",
     ]
+    store.close()
+
+
+def test_migration_fourteen_alters_the_schema_table_for_real(tmp_path: Path) -> None:
+    """From generation 1 the two columns are gone, so this migration adds them.
+
+    ``_downgrade_to_version_one`` drops them, and those lines are the only thing
+    that makes migration 14 run at all — it is in migrations 11 and 12's
+    position, not 13's, because ``annotation_schema`` gained nothing else by
+    ``ALTER`` and so nothing above removes these for free. Without the undo, a
+    pair of ``ALTER``s nobody ran would be reported as agreeing with themselves.
+
+    The order is asserted, not just the presence: SQLite appends an added column,
+    so ``description`` before ``created_at`` here is what makes the fresh table's
+    ``CREATE TABLE`` text match the migrated one's.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    _downgrade_to_version_one(store)
+    with store.engine.connect() as connection:
+        before = [c["name"] for c in inspect(connection).get_columns("annotation_schema")]
+    assert "description" not in before and "created_at" not in before
+
+    store.initialize()
+
+    with store.engine.connect() as connection:
+        after = [c["name"] for c in inspect(connection).get_columns("annotation_schema")]
+    assert after[-2:] == ["description", "created_at"]
+    assert store.format_version == FORMAT_VERSION
+    store.close()
+
+
+def test_a_schema_version_written_before_migration_fourteen_reads_back_with_nulls(
+    tmp_path: Path,
+) -> None:
+    """No backfill: a version nobody described keeps saying so, forever.
+
+    Every candidate value would be a fabrication — migration time records when
+    somebody upgraded, not when the version was written — and a plausible-looking
+    wrong timestamp is worse than an admitted gap, because nothing downstream can
+    tell it is wrong. Migration 13 made the same call for ``asset.ingested_at``.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    _downgrade_to_version_one(store)
+    with store.engine.begin() as connection:
+        # A real parent chain, because foreign keys are on.
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'roads')")
+        )
+        connection.execute(
+            text(
+                "insert into annotation_schema (id, project_id, version, classes) "
+                "values ('s', 'p', 1, '[]')"
+            )
+        )
+
+    store.initialize()
+
+    with store.engine.connect() as connection:
+        row = connection.execute(
+            text("select description, created_at from annotation_schema where id = 's'")
+        ).one()
+    assert row.description is None
+    assert row.created_at is None
     store.close()

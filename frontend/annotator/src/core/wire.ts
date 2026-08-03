@@ -123,7 +123,11 @@ const ATTRIBUTE_REQUIRED_KEYS = ["name", "kind"] as const;
 const ATTRIBUTE_OPTIONAL_KEYS = ["required", "options", "default"] as const;
 const LABEL_CLASS_REQUIRED_KEYS = ["name", "geometry"] as const;
 const LABEL_CLASS_OPTIONAL_KEYS = ["color", "attributes"] as const;
-const SCHEMA_KEYS = ["project_id", "version", "classes"] as const;
+const SCHEMA_REQUIRED_KEYS = ["project_id", "version", "classes"] as const;
+// Optional rather than required, so a payload from a server older than #230
+// still parses. A current one always sends them — a pydantic field with a
+// default is serialized, present and null.
+const SCHEMA_OPTIONAL_KEYS = ["description", "created_at"] as const;
 // A projection, so it names the three fields it wants and ignores the eight it
 // does not — the one place here that is deliberately not exact about keys.
 const ASSET_KEYS = ["id", "width", "height"] as const;
@@ -433,7 +437,7 @@ export function parseSchema(value: unknown): AnnotationSchema {
   if (!isRecord(value)) {
     throw new WireFormatError("schema must be an object");
   }
-  requireExactKeys(value, SCHEMA_KEYS, "schema");
+  allowExactKeys(value, SCHEMA_REQUIRED_KEYS, SCHEMA_OPTIONAL_KEYS, "schema");
   const classes = value["classes"];
   if (!Array.isArray(classes)) {
     throw new WireFormatError("schema.classes must be an array");
@@ -442,6 +446,14 @@ export function parseSchema(value: unknown): AnnotationSchema {
     project_id: requireString(value["project_id"], "schema.project_id"),
     version: requireNumber(value["version"], "schema.version"),
     classes: classes.map(parseLabelClass),
+    description:
+      value["description"] === undefined
+        ? null
+        : requireNullableString(value["description"], "schema.description"),
+    created_at:
+      value["created_at"] === undefined
+        ? null
+        : requireNullableString(value["created_at"], "schema.created_at"),
   };
 }
 

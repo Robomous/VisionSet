@@ -117,11 +117,21 @@ def _flat_mapping[M: Entity](
 
 
 def _schema_to_row(entity: AnnotationSchema) -> t.Base:
+    """Already hand-written for ``classes``, which is what makes #230 free.
+
+    A timestamp is what costs an entity its ``_flat_mapping`` — that dumps in
+    python mode and would hand sqlite3's deprecated adapter a ``datetime``,
+    writing a second timestamp format. This pair existed long before
+    ``created_at`` did, because a tuple of ``LabelClass`` models is not a JSON
+    column's business either, so the column arrives as two more lines.
+    """
     return t.AnnotationSchemaRow(
         id=entity.id,
         project_id=entity.project_id,
         version=entity.version,
         classes=[c.model_dump(mode="json") for c in entity.classes],
+        description=entity.description,
+        created_at=None if entity.created_at is None else entity.created_at.isoformat(),
     )
 
 
@@ -131,6 +141,8 @@ def _schema_to_domain(_: Session, row: Any) -> AnnotationSchema:
         project_id=row.project_id,
         version=row.version,
         classes=tuple(LabelClass.model_validate(c) for c in row.classes),
+        description=row.description,
+        created_at=None if row.created_at is None else datetime.fromisoformat(row.created_at),
     )
 
 

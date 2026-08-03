@@ -21,7 +21,9 @@ invalid ``LabelClass`` cannot be built at all. Rules that span *classes*
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Mapping
+from datetime import datetime
 from enum import StrEnum
 from typing import Final, Literal
 from uuid import UUID, uuid4
@@ -168,6 +170,11 @@ class AnnotationSchema(BaseModel):
     Annotation records the ``schema_version`` it was created under, so schema
     evolution never orphans existing labels. See ``SchemaService`` for how the
     next version is assigned and which changes it refuses.
+
+    ``description`` is the **commit message** for the version: written once, at
+    publish, and never updated — which is the immutability rule this model
+    already lives under rather than a new one. Ongoing editable discussion about
+    a version is a different feature and does not belong on a frozen artifact.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -176,3 +183,49 @@ class AnnotationSchema(BaseModel):
     project_id: UUID
     version: int = Field(ge=1)
     classes: tuple[LabelClass, ...] = ()
+
+    #: Why this version exists, in the author's own words. Optional: an empty
+    #: commit message is legal, and a version published before #230 has none.
+    description: str | None = None
+
+    #: When the version was published, UTC. Stamped by ``SchemaService``, in
+    #: ``Asset.ingested_at``'s shape rather than the ``default_factory`` the
+    #: non-nullable timestamps use — a factory would make every
+    #: ``AnnotationSchema(...)`` built anywhere claim a moment, and the whole
+    #: value of this column is that a version predating #230 keeps its NULL.
+    #: Nothing backfills one: migration time records when somebody upgraded,
+    #: which is not when the version was written.
+    created_at: datetime | None = None
+
+    @field_validator("description")
+    @classmethod
+    def _tidied(cls, value: str | None) -> str | None:
+        """``normalize_name``'s temperament, with the refusal removed.
+
+        NFC and stripped for the reason every name in this domain is: two
+        spellings that render identically must not be two different strings. But
+        blank becomes ``None`` instead of raising, because "no description" is an
+        ordinary thing to publish and a whitespace-only one says the same.
+
+        In the type rather than in the service, so a description cannot arrive
+        untidied through any door — the same argument that makes this model
+        frozen.
+        """
+        if value is None:
+            return None
+        tidied = unicodedata.normalize("NFC", value).strip()
+        return tidied or None
+
+    @field_validator("created_at")
+    @classmethod
+    def _created_at_is_timezone_aware(cls, value: datetime | None) -> datetime | None:
+        """The convention every timestamp in the domain follows.
+
+        A naive datetime is rejected rather than assumed to be UTC: the store
+        keeps ISO-8601 text, so an unqualified value read back would be
+        indistinguishable from a qualified one and quietly wrong by the writer's
+        offset from UTC.
+        """
+        if value is not None and value.tzinfo is None:
+            raise ValueError("created_at must be timezone-aware (UTC)")
+        return value

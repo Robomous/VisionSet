@@ -20,7 +20,7 @@ Thirty-four tools, in the order an agent meets them: make a project, give it a s
 | `get_project` | `project` | Read a project, its dataset id, and how far its annotation work has got. |
 | `get_schema` | `project`, `version`? | Read a project's annotation schema — which classes exist and what each may carry. |
 | `preview_schema_change` | `project`, `classes` | Say what applying these classes would change, without applying anything. |
-| `create_schema_version` | `project`, `classes`, `allow_destructive`? | Create the next schema version from a complete list of classes. |
+| `create_schema_version` | `project`, `classes`, `description`?, `allow_destructive`? | Create the next schema version from a complete list of classes. |
 | `ingest` | `project`, `path`, `fps`?, `batch_name`? | Register a source and read it into one batch. Blocks until the run finishes. |
 | `list_sources` | `project` | List the origins registered in a project — the folders and clips it was built from. |
 | `backfill_thumbnails` | `project` | Render the previews that are missing for a project's assets. |
