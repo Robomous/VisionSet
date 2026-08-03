@@ -57,7 +57,7 @@ labelling:
     "env": { "VISIONSET_WORKSPACE": "/path/to/workspace" } } } }
 ```
 
-Thirty-three tools, plus one that is offered only when the server is started with
+The whole cycle as tools, plus one that is offered only when the server is started with
 `--allow-destructive` — because a `confirm` parameter is documented in the same listing an agent
 reads before choosing, and four of four measured runs sent it on the first call. See
 [docs/mcp.md](docs/mcp.md) for how a client is configured and why each tool exists,

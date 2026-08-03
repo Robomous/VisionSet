@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-Thirty-five tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+35 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
