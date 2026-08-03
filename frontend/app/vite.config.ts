@@ -8,7 +8,7 @@ export default defineConfig(({ command }) => ({
     // The dev proxy, and the reason the server has no CORS middleware.
     //
     // In production there is no cross-origin problem to solve: `visionset ui`
-    // serves the API at the root and the bundle at `/ui`, so the app asks for
+    // serves the API at the root and the bundle at `/app`, so the app asks for
     // `/projects` on its own origin. In development vite owns the origin and the
     // API is somewhere else, and the two ways to bridge that are not equal —
     // enabling CORS on the server would put a middleware in front of every
@@ -29,7 +29,7 @@ export default defineConfig(({ command }) => ({
       },
     },
   },
-  // The Python wheel serves the built bundle under `/ui/` (UI_PREFIX in
+  // The Python wheel serves the built bundle under `/app/` (UI_PREFIX in
   // src/visionset/server/main.py), because the API already owns the root: a
   // single-page app at `/` could never claim `/projects/abc` as one of its own
   // client routes, since the API route matches first. Every emitted asset URL
@@ -37,5 +37,5 @@ export default defineConfig(({ command }) => ({
   //
   // Build only. `vite dev` keeps `/` — it serves the app itself on :5173 and
   // never goes through the mount.
-  base: command === "build" ? "/ui/" : "/",
+  base: command === "build" ? "/app/" : "/",
 }));

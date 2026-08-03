@@ -8,14 +8,14 @@ Everything in this directory except this README and `.gitkeep` is git-ignored: t
 a build artifact, never a committed source. This README and `.gitkeep` are also what make the
 directory exist in every checkout, which is what lets the server mount it unconditionally.
 
-## Served at `/ui/`, not at `/`
+## Served at `/app/`, not at `/`
 
-`create_app()` mounts this directory at `/ui` (`UI_PREFIX` in `server/main.py`) and redirects
+`create_app()` mounts this directory at `/app` (`UI_PREFIX` in `server/main.py`) and redirects
 `/` to it. The API owns the root — `/projects/{project_id}` is a shipped route — so an app
 served from `/` could never claim `/projects/abc` as one of its own client routes.
 
-That is why `frontend/app/vite.config.ts` sets `base: "/ui/"` **for builds only**. If the files
-here reference `/assets/...` rather than `/ui/assets/...`, they were built before that landed:
+That is why `frontend/app/vite.config.ts` sets `base: "/app/"` **for builds only**. If the files
+here reference `/assets/...` rather than `/app/assets/...`, they were built before that landed:
 rerun `pnpm -r build && pnpm bundle:static`.
 
 Until somebody does, `GET /` answers a 404 that names the command. A missing bundle is an

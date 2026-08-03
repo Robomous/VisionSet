@@ -176,7 +176,7 @@ page nobody here wrote could otherwise push files into a workspace. `Strict` mea
 is not attached to a cross-site request at all.
 
 Cookies work in all three of the shapes this project ships because each already funnels through
-**one origin**: the wheel serves the API at `/` and the bundle at `/ui`, vite proxies `/api`, and
+**one origin**: the wheel serves the API at `/` and the bundle at `/app`, vite proxies `/api`, and
 nginx proxies both. If the app ever talked cross-origin to the API, this would need
 `SameSite=None`, which is worse — the single-origin property is load-bearing.
 

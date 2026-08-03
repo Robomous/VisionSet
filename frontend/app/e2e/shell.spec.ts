@@ -13,7 +13,7 @@
  * actually owns: what the rail contains, that navigation is real links, that the
  * gate is where the router says it is, and that a deep link resolves.
  *
- * The **server** half of the deep link — a reload on `/ui/projects/abc` reaching
+ * The **server** half of the deep link — a reload on `/app/projects/abc` reaching
  * the index instead of a 404 — is `tests/server/test_static_ui.py`'s, because it
  * is a property of the wheel's server and this suite runs against vite.
  */

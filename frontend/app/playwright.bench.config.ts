@@ -32,16 +32,16 @@
  *
  * ## Why `baseURL` carries a path, and why `--base` is passed by hand
  *
- * `vite.config.ts` sets `base: command === "build" ? "/ui/" : "/"`, because the
+ * `vite.config.ts` sets `base: command === "build" ? "/app/" : "/"`, because the
  * Python wheel serves the bundle under that prefix and the API owns the root
  * (#33). The trap, measured rather than reasoned about: **`vite preview` reports
  * `command` as `"serve"`**, so the config hands it `base: "/"` while the build it
- * is about to serve has `/ui/assets/…` baked into its `index.html`. The result is
+ * is about to serve has `/app/assets/…` baked into its `index.html`. The result is
  * not an error — the preview server's SPA fallback answers **200 with
  * `index.html`** for the missing script, so the page loads, the script silently
  * never runs, and every scenario fails hunting for a canvas on a blank page.
  *
- * `--base /ui/` on the preview command is the fix, and it belongs here rather
+ * `--base /app/` on the preview command is the fix, and it belongs here rather
  * than in `vite.config.ts`: the application's config is right for the two things
  * it is asked about, and a benchmark is not a reason to complicate a shipped
  * build. Every page URL in `e2e/_bench.ts` is relative with no leading slash for
@@ -68,7 +68,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [["list"]],
   use: {
-    baseURL: "http://localhost:5373/ui/",
+    baseURL: "http://localhost:5373/app/",
     viewport: VIEWPORT,
     trace: "off",
     screenshot: "off",
@@ -81,8 +81,8 @@ export default defineConfig({
       // its `dist/`. See the note in `playwright.config.ts` — on a clean checkout an
       // unbuilt workspace package is a blank page, not a compile error.
       "pnpm --filter @visionset/ui-core build && " +
-      "vite build && vite preview --base /ui/ --port 5373 --strictPort",
-    url: "http://localhost:5373/ui/",
+      "vite build && vite preview --base /app/ --port 5373 --strictPort",
+    url: "http://localhost:5373/app/",
     reuseExistingServer: false,
     timeout: 180_000,
     stdout: "pipe",

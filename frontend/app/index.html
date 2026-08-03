@@ -9,8 +9,8 @@
       otherwise clean load, and a console that always has a line in it is worth
       less than one that is empty when things are fine.
 
-      Written root-relative and **not** as a literal `/ui/…`: Vite rewrites asset
-      URLs in this document with the configured `base`, which is `/ui/` for a build
+      Written root-relative and **not** as a literal `/app/…`: Vite rewrites asset
+      URLs in this document with the configured `base`, which is `/app/` for a build
       and `/` for `vite dev`. Hardcoding the prefix would break the dev server, and
       hardcoding nothing would break the wheel. Both halves are asserted —
       `tests/scripts/favicon.test.mjs` reads the built `dist/index.html`, and the

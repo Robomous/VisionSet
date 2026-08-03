@@ -18,7 +18,7 @@
  *
  * ## `BrowserRouter`, and the basename the wheel needs
  *
- * `visionset ui` serves the bundle under `/ui` — the API owns the root, which
+ * `visionset ui` serves the bundle under `/app` — the API owns the root, which
  * `UI_PREFIX`'s docstring argues is a consequence of an unprefixed API rather than
  * something a later milestone can lift. So the router's basename has to match
  * vite's `base`, and both are read from the same place: `import.meta.env.BASE_URL`
@@ -39,7 +39,7 @@ if (container === null) throw new Error("missing #root element");
 /**
  * Where the API is.
  *
- * Same origin in production: the bundle is at `/ui` and the API at the root, so a
+ * Same origin in production: the bundle is at `/app` and the API at the root, so a
  * relative request already lands on it. In development vite owns the origin, and
  * `/api` is proxied — never CORS on the server, which would put a middleware in
  * front of every response in production too. `docs/ui.md` has the argument.

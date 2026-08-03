@@ -9,6 +9,24 @@ Six internal milestones (M1–M6) got here. The first five ended in a **git tag 
 `v0.0.1-alpha.1` … `v0.0.1-alpha.5`, with `VERSION` sitting at `0.0.1.dev0` throughout, because
 nothing was being distributed. This is the first version that is.
 
+## [Unreleased]
+
+### Changed
+
+- **The browser application moved from `/ui` to `/app`.** `visionset ui` now serves it at
+  `http://127.0.0.1:8000/app/`, and `/` still redirects there. One constant moved —
+  `UI_PREFIX` in `src/visionset/server/main.py` — and `frontend/app/vite.config.ts`'s build
+  `base` follows it, which is what keeps the router's basename in agreement: it is read from
+  `import.meta.env.BASE_URL`, so nothing in the application names the prefix. The argument for
+  *having* a prefix is unchanged (#33): the API owns the root, so an app at `/` could never
+  claim `/projects/abc` as one of its own client routes.
+
+  **This is a public URL change.** A bookmark or a pasted link under `/ui/…` now 404s; there is
+  no redirect from the old prefix, because `/ui` is not a path the API answers on and adding a
+  permanent redirect for a pre-1.0 beta would outlive the reason for it. The development stacks
+  are untouched — `vite dev` and the compose stack both serve the app at `/`, and only a build
+  has a base at all.
+
 ## [0.0.1b2] — 2026-07-31
 
 The beta corrected. `0.0.1b1` shipped with every CI gate green — 2,000+ Python tests, 700

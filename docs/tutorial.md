@@ -109,7 +109,7 @@ Now open the app:
 visionset ui
 ```
 
-The API is at `http://127.0.0.1:8000` and the browser app at `http://127.0.0.1:8000/ui`.
+The API is at `http://127.0.0.1:8000` and the browser app at `http://127.0.0.1:8000/app`.
 
 The first screen asks for a token. Mint one in another terminal:
 

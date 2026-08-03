@@ -14,7 +14,7 @@
  * ## Why the base URL is absolute here and empty in production
  *
  * Production passes `""` — same origin — because `visionset ui` serves the bundle
- * at `/ui` and the API at the root, so a relative request already lands on it. That
+ * at `/app` and the API at the root, so a relative request already lands on it. That
  * cannot be exercised under vitest: jsdom does **not** replace Node's `Request`, and
  * undici's requires an absolute URL, so `new Request("/projects")` throws *"Failed
  * to parse URL"* before any stub is consulted. It is an artifact of the runner, not

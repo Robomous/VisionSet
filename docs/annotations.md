@@ -699,9 +699,9 @@ Three things about that command are deliberate and easy to get wrong:
 - **it serves a production build.** `vite dev` runs React's development build and
   `StrictMode` double-invokes every render; numbers from there are two to five times
   pessimistic and describe a build nobody ships. `vite preview` fixes both.
-- **it passes `--base /ui/` by hand.** `vite.config.ts` sets the base from `command`, and
+- **it passes `--base /app/` by hand.** `vite.config.ts` sets the base from `command`, and
   `vite preview` reports `command` as `"serve"` — so without it the preview server
-  answers at `/` while the build has `/ui/assets/…` baked into its HTML, the SPA fallback
+  answers at `/` while the build has `/app/assets/…` baked into its HTML, the SPA fallback
   returns **200 with `index.html`** for the missing script, and every scenario fails
   hunting for a canvas on a blank page. Nothing errors.
 - **it never reuses an existing server**, on its own port 5373. The build is part of what
