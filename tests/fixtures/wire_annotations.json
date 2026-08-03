@@ -88,6 +88,7 @@
     "frame_timestamp": 0.8,
     "height": 120,
     "id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+    "ingested_at": "2026-08-03T12:30:45.123456Z",
     "modality": "image",
     "project_id": "7ea854f2-431a-54a0-b09c-ab53adb21f5b",
     "source_id": "2f655c84-f276-5c65-b67a-0974558a5673",

@@ -46,6 +46,7 @@ import {
   checkGetProject,
   checkGetProjectDataset,
   checkGetProjectStats,
+  checkGetSource,
   checkGetReleaseManifest,
   checkListBatchAssets,
   checkListBatchJobs,
@@ -62,6 +63,7 @@ import {
   checkRegisterVideoSource,
   checkRenameProject,
   checkResumeIngest,
+  checkSetAssetProgress,
   checkStartBatch,
   checkStartIngest,
   checkVerifyRelease,
@@ -373,6 +375,7 @@ export type BatchPage = components["schemas"]["BatchPage"];
 
 export const ingestKeys = {
   sources: (projectId: string) => ["projects", projectId, "sources"] as const,
+  source: (sourceId: string) => ["sources", sourceId] as const,
   batches: (projectId: string) => ["projects", projectId, "batches"] as const,
   ingestJob: (jobId: string) => ["ingest-jobs", jobId] as const,
 };
@@ -561,6 +564,8 @@ export type BatchAssetPage = components["schemas"]["BatchAssetPage"];
 export type Job = components["schemas"]["JobOut"];
 export type ProgressCounts = components["schemas"]["ProgressCounts"];
 export type Partition = components["schemas"]["BatchApprove"]["partition"];
+/** Re-exported from where the annotation page declares it, so this module has one name for it. */
+export type AssetProgress = components["schemas"]["AssetProgress"];
 
 export const batchKeys = {
   batch: (batchId: string) => ["batches", batchId] as const,
@@ -681,6 +686,93 @@ export function useBatchTransition(batchId: string, move: "start" | "complete") 
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+/**
+ * One source, by id — the batch header's provenance line (#284).
+ *
+ * A batch records no source of its own; what it holds is assets, and an asset
+ * records the source it first arrived from. So the header reads `source_id` off
+ * the loaded assets and asks here. The dependency is real and worth stating: the
+ * provenance line cannot render before the first page of assets has landed, which
+ * is why it degrades to absent rather than to a spinner.
+ *
+ * `undefined` disables the query rather than sending an empty path — a draft
+ * batch, an empty batch, and an asset with no recorded origin are all ordinary
+ * states, not errors.
+ */
+export function useSource(sourceId: string | undefined): UseQueryResult<Source, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ingestKeys.source(sourceId ?? "none"),
+    enabled: sourceId !== undefined,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/sources/{source_id}", {
+          params: { path: { source_id: sourceId ?? "" } },
+        }),
+        checkGetSource,
+      ),
+  });
+}
+
+/** What a bulk progress move did — and, more usefully, what it failed to do. */
+export interface BulkProgressResult {
+  readonly moved: number;
+  readonly failed: number;
+}
+
+/**
+ * Move several assets' progress at once.
+ *
+ * **There is no bulk endpoint, and this does not pretend there is one.** The wire
+ * has `PUT /jobs/{job_id}/assets/{asset_id}/progress`, one asset at a time, so
+ * this is N requests and the honest thing is to report N outcomes. Two
+ * consequences the caller has to render rather than hide:
+ *
+ * - **It is not atomic.** Forty of fifty succeeding is a real state, and the one
+ *   the bulk bar has to be able to say out loud. `Promise.allSettled`, never
+ *   `Promise.all` — the latter would reject on the first failure while the rest of
+ *   the requests were still in flight and still landing, leaving the screen
+ *   claiming nothing happened while the server disagreed.
+ * - **It needs the job id per asset**, which is null exactly while the batch is a
+ *   draft. A draft has no jobs, so there is nothing to move progress on, and the
+ *   caller does not offer the action at all rather than sending fifty 404s.
+ *
+ * The kernel's `ASSET_PROGRESS_TRANSITIONS` decides whether any individual move is
+ * legal, and refusing is its job. What this owes is to not lose the refusal.
+ */
+export function useBulkSetProgress(batchId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      readonly targets: readonly { readonly jobId: string; readonly assetId: string }[];
+      readonly progress: AssetProgress;
+    }): Promise<BulkProgressResult> => {
+      const settled = await Promise.allSettled(
+        input.targets.map(async (target) =>
+          unwrap(
+            await client.PUT("/jobs/{job_id}/assets/{asset_id}/progress", {
+              params: { path: { job_id: target.jobId, asset_id: target.assetId } },
+              body: { progress: input.progress },
+            }),
+            checkSetAssetProgress,
+          ),
+        ),
+      );
+      const moved = settled.filter((one) => one.status === "fulfilled").length;
+      return { moved, failed: settled.length - moved };
+    },
+    onSettled: () => {
+      // On settled rather than on success: a partial failure still moved some
+      // assets, and a screen showing the old value for those is the shape #187
+      // was. Both keys, because the counts live on the batch and the per-asset
+      // state lives in the listing.
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
     },
   });
 }

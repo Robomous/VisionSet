@@ -113,6 +113,7 @@ async function serveApi(page: Page): Promise<void> {
               frame_index: 0,
               frame_timestamp: null,
               thumbnail_hash: null,
+              ingested_at: null,
               job_id: JOB,
               progress: "unannotated",
             },

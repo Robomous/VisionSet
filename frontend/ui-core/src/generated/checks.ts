@@ -53,7 +53,7 @@ export const checkImageFormat: Check<Schemas["ImageFormat"]> =
   /*#__PURE__*/ oneOf(["jpeg", "png"] as const);
 
 export const checkAssetOut: Check<Schemas["AssetOut"]> =
-  /*#__PURE__*/ object({ "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "modality": [true, lit("image")], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "modality": [true, lit("image")], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
 
 export const checkAssetPage: Check<Schemas["AssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkAssetOut)], "total": [true, isInteger] } as const);
@@ -65,7 +65,7 @@ export const checkAssetProgressOut: Check<Schemas["AssetProgressOut"]> =
   /*#__PURE__*/ object({ "asset_id": [true, isString], "progress": [true, checkAssetProgress] } as const);
 
 export const checkBatchAssetOut: Check<Schemas["BatchAssetOut"]> =
-  /*#__PURE__*/ object({ "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "job_id": [true, either([isString, isNull] as const)], "modality": [true, lit("image")], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "job_id": [true, either([isString, isNull] as const)], "modality": [true, lit("image")], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
 
 export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);

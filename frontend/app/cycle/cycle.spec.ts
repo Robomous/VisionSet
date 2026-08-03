@@ -185,16 +185,19 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
   });
 
-  await test.step("a draft batch's tiles are inert, and say why", async () => {
+  await test.step("a draft batch's tiles have nowhere to go, and say why", async () => {
     // Before approval there are no jobs, so `BatchAsset.job_id` is null (#29) and
-    // an asset has nowhere to go. #160's third criterion: the tile must read as
-    // *not yet* rather than as a broken control, so the reason travels on the
-    // element a person can hover.
+    // an asset has nowhere to go. #160's third criterion still holds and its
+    // spelling changed with #284: the tile is no longer one big disabled button,
+    // because selecting a frame in a draft is legitimate — it is opening one that
+    // is not. So what is asserted is the *capability*, not the control's tag.
     await expect(page.getByTestId("gallery")).toBeVisible();
     const first = page.getByTestId(/^tile-/).first();
-    await expect(first).toBeDisabled();
     await expect(first).toHaveAttribute("data-pending", "true");
-    await expect(first).toHaveAttribute("title", /draft/i);
+    // No route into the annotator, and the reason on an element a person can
+    // hover — which is the half that stops it reading as a broken control.
+    await expect(first.getByTestId(/^open-/)).toHaveCount(0);
+    await expect(first.getByTitle(/draft/i)).toBeVisible();
   });
 
   await test.step("the grid fills the pane, and re-flows when the window narrows", async () => {
@@ -257,12 +260,20 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     // The **third** tile, so "it opened the job" and "it opened this asset" cannot
     // be confused: a page that ignored the click would show 1/3.
+    //
+    // The control changed with #284 and the criterion did not. A press on the
+    // thumbnail now *selects* — the grid grew shift-ranges and a bulk bar, and a
+    // gallery where the only click opens cannot express a multi-frame action — so
+    // opening moved to its own labelled control on the tile. It is always visible
+    // rather than hover-gated, which a touch device would never reach. What #160
+    // asked for is that the annotator is reachable **by clicking**, with no id
+    // read out of the API and no URL typed, and that is what this does.
     const tiles = page.getByTestId(/^tile-/);
     await expect(tiles).toHaveCount(3);
     const third = tiles.nth(2);
-    await expect(third).toBeEnabled();
+    await expect(third).not.toHaveAttribute("data-pending", "true");
     const openedAsset = (await third.getAttribute("data-testid"))!.replace("tile-", "");
-    await third.click();
+    await third.getByTestId(`open-${openedAsset}`).click();
 
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/jobs/[0-9a-f-]+\\?asset=${openedAsset}$`));
@@ -286,7 +297,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
   await test.step("annotate all three assets", async () => {
     // Back in through the first tile, because the drawing below walks 1 → 2 → 3.
-    await page.getByTestId(/^tile-/).first().click();
+    // Through its `Open` control, for the reason above: a press on the thumbnail
+    // selects since #284.
+    const firstTile = page.getByTestId(/^tile-/).first();
+    const firstAsset = (await firstTile.getAttribute("data-testid"))!.replace("tile-", "");
+    await firstTile.getByTestId(`open-${firstAsset}`).click();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.getByTestId("asset-position")).toContainText("1/3");
     // The batch's pin, named on the screen (#232). Not the project's active
@@ -413,12 +428,17 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 async function columnsOf(page: Page): Promise<{ rendered: number; expected: number }> {
   await expect(page.getByTestId("gallery-row-0")).toBeVisible();
   return await page.evaluate(() => {
-    const TILE = 160;
     const GAP = 12;
-    const scroll = document.querySelector('[data-testid="gallery-scroll"]')!;
+    // #284 removed the nested scroller — the document scrolls now — so the pane
+    // is the grid itself, and the tile size is the density slider's rather than a
+    // constant. `data-min-column` is the layout's *input*; `rendered` is its
+    // output. Reading the count off `data-columns` would assert the value against
+    // itself, which is #159's mistake in a new costume.
+    const grid = document.querySelector('[data-testid="gallery-grid"]')!;
+    const tile = Number(grid.getAttribute("data-min-column"));
     const rows = [...document.querySelectorAll('[data-testid^="gallery-row-"]')];
     const tiles = rows.reduce((count, row) => count + row.children.length, 0);
-    const fits = Math.max(1, Math.floor((scroll.clientWidth + GAP) / (TILE + GAP)));
+    const fits = Math.max(1, Math.floor((grid.clientWidth + GAP) / (tile + GAP)));
     return {
       rendered: rows[0]!.children.length,
       // A full row, unless the batch is shorter than one. This cycle holds three

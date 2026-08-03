@@ -25,7 +25,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -39,6 +39,8 @@ import { GalleryScreen, columnsFor } from "./GalleryScreen";
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
+const SOURCE = "66666666-6666-4666-8666-666666666666";
+const JOB = "77777777-7777-4777-8777-777777777777";
 
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
@@ -224,24 +226,39 @@ describe("the approval dialog", () => {
 });
 
 describe("the gallery", () => {
+  function asset(index: number, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: `asset-${index}`,
+      project_id: PROJECT,
+      modality: "image",
+      content_hash: `${index}`.padStart(8, "0") + "deadbeef",
+      width: 1280,
+      height: 720,
+      format: "jpeg",
+      source_id: SOURCE,
+      frame_index: index,
+      frame_timestamp: index,
+      thumbnail_hash: index === 0 ? null : "cafebabe",
+      ingested_at: "2026-08-01T09:00:00Z",
+      job_id: null,
+      progress: "unannotated",
+      ...overrides,
+    };
+  }
+
   function assets(count: number, offset = 0, total = count): Record<string, unknown> {
     return {
       total,
-      items: Array.from({ length: count }, (_, index) => ({
-        id: `asset-${offset + index}`,
-        project_id: PROJECT,
-        modality: "image",
-        content_hash: `${offset + index}`.padStart(8, "0") + "deadbeef",
-        width: 1280,
-        height: 720,
-        format: "jpeg",
-        source_id: null,
-        frame_index: offset + index,
-        frame_timestamp: null,
-        thumbnail_hash: offset + index === 0 ? null : "cafebabe",
-        job_id: null,
-        progress: "unannotated",
-      })),
+      items: Array.from({ length: count }, (_, index) => asset(offset + index)),
+    };
+  }
+
+  /** The five domain states, one asset each, so a filter has something to sort. */
+  function mixed(): Record<string, unknown> {
+    const states = ["unannotated", "annotated", "review_pending", "accepted", "skipped"];
+    return {
+      total: states.length,
+      items: states.map((progress, index) => asset(index, { progress, job_id: JOB })),
     };
   }
 
@@ -249,9 +266,9 @@ describe("the gallery", () => {
     on("GET", /\/assets$/, { status: 200, body: assets(100, 0, 250) });
 
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
-    // Found by path, not by position: since #199 the screen also reads the
-    // project and the batch to name its parent and its own header, and which of
-    // the three lands first is not something this claim is about.
+    // Found by path, not by position: the screen also reads the project, the
+    // batch and the source, and which of the four lands first is not something
+    // this claim is about.
     const window_ = await waitFor(() => {
       const request = sent.find((one) => new URL(one.url).pathname.endsWith("/assets"));
       if (request === undefined) throw new Error("no asset window requested");
@@ -263,21 +280,176 @@ describe("the gallery", () => {
     expect(query.get("offset")).toBe("0");
   });
 
-  it("reports what it has against the batch's own total, which does not move", async () => {
-    on("GET", /\/assets$/, { status: 200, body: assets(100, 0, 250) });
+  it("names the batch, its state and how far it has got", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "in_annotation",
+        asset_count: 48,
+        progress: { ...NO_PROGRESS, total: 48, unannotated: 45, annotated: 3 },
+      }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: assets(5, 0, 48) });
 
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
-    // `total` is the size of the whole batch, so a client pages until it has seen
-    // `total` items — never until the total changes.
+
+    // The three things the old header could not say. The state badge reads the
+    // kernel's vocabulary in a person's words; the readout counts everything past
+    // `unannotated`, so it cannot go backwards when a frame is accepted.
     await waitFor(() =>
-      expect(screen.getByTestId("gallery-count").textContent).toContain("100 of 250"),
+      expect(screen.getByTestId("batch-title").textContent).toContain("drive-01"),
+    );
+    expect(screen.getByTestId("batch-state").textContent).toContain("in progress");
+    expect(screen.getByTestId("progress-readout").textContent).toContain(
+      "3 of 48 annotated (6%)",
     );
   });
 
-  it("shows the empty state for a batch with nothing in it", async () => {
+  it("builds its provenance line from the assets, because a batch carries none", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
+    on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
+    on("GET", /\/sources\//, {
+      status: 200,
+      body: {
+        id: SOURCE,
+        project_id: PROJECT,
+        kind: "video",
+        name: "video-test-480.mp4",
+        registered_at: "2026-08-01T08:00:00Z",
+        video: {
+          codec: "h264",
+          duration_seconds: 10,
+          extraction_fps: 5,
+          fps: 30,
+          width: 1280,
+          height: 720,
+        },
+      },
+    });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+
+    // `BatchOut` is seven fields and not one of them is a source, a resolution or
+    // a moment — so every part of this line is derived: the name and rate from
+    // the first asset's `source_id`, the resolution from its own dimensions, and
+    // the age from the earliest `ingested_at` (#283).
+    await waitFor(() =>
+      expect(screen.getByTestId("batch-facts").textContent).toContain("5 fps"),
+    );
+    const facts = screen.getByTestId("batch-facts").textContent ?? "";
+    expect(facts).toContain("video-test-480.mp4");
+    expect(facts).toContain("120 frames · 5 fps");
+    expect(facts).toContain("1280×720");
+  });
+
+  it("says nothing about an age nothing recorded", async () => {
+    // Null means *unknown*, not "never" — every asset ingested before #216 is
+    // legitimately unstamped, and inventing a date for them would be worse than
+    // the omission.
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: { total: 1, items: [asset(0, { ingested_at: null, source_id: null })] },
+    });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+
+    const facts = await screen.findByTestId("batch-facts");
+    expect(facts.textContent).not.toContain("ago");
+    expect(facts.textContent).not.toContain("Invalid");
+    expect(facts.textContent).not.toContain("NaN");
+  });
+
+  it("offers approval from the batch view itself, which the screen never did", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
+    on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+
+    // The defect this closes: a draft batch opened here was a dead end. Every
+    // tile was disabled with a `title` explaining that jobs had not been cut, and
+    // the control that cuts them was one screen back.
+    await waitFor(() => expect(screen.queryByTestId("approve-batch")).not.toBeNull());
+    await userEvent.click(screen.getByTestId("approve-batch"));
+    expect(await screen.findByTestId("approve-dialog")).not.toBeNull();
+  });
+
+  it("shows no approve action once the batch has left draft", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "approved" }) });
+    on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await waitFor(() =>
+      expect(screen.getByTestId("batch-state").textContent).toContain("approved"),
+    );
+
+    // There is no route back to draft, so the action is not merely disabled here
+    // — it is absent, which is the same call `BatchesScreen` makes.
+    expect(screen.queryByTestId("approve-batch")).toBeNull();
+  });
+
+  it("counts the segments off the batch rather than off the loaded page", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        asset_count: 48,
+        progress: {
+          total: 48,
+          unannotated: 30,
+          annotated: 8,
+          review_pending: 5,
+          accepted: 1,
+          skipped: 4,
+        },
+      }),
+    });
+    // Five loaded out of forty-eight: the counts must describe the batch, not the
+    // window. A filter whose numbers described the page would be a filter that
+    // lies about the collection it is filtering.
+    on("GET", /\/assets$/, { status: 200, body: mixed() });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("segment-all").textContent).toContain("All (48)"),
+    );
+    expect(screen.getByTestId("segment-unannotated").textContent).toContain("(30)");
+    expect(screen.getByTestId("segment-review").textContent).toContain("In review (5)");
+    // 8 annotated + 1 accepted + 4 skipped. `review_pending` is deliberately not
+    // in here, which is the whole reason the mapping is written down.
+    expect(screen.getByTestId("segment-done").textContent).toContain("Done (13)");
+  });
+
+  it("keeps the empty state for a batch with nothing in it", async () => {
     on("GET", /\/assets$/, { status: 200, body: assets(0, 0, 0) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     await waitFor(() => expect(screen.queryByText("This batch is empty")).not.toBeNull());
+  });
+
+  it("remembers the thumbnail density across a remount", async () => {
+    on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
+    const first = render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+
+    const slider = await screen.findByTestId("density");
+    fireEvent.change(slider, { target: { value: "4" } });
+    expect((slider as HTMLInputElement).value).toBe("4");
+
+    // A preference that resets on every mount is not a preference. Storage is
+    // `localStorage` rather than the token's `sessionStorage`, argued in
+    // `data/prefs.ts`: a view setting is not a credential, and the property that
+    // made session storage right there is what makes it wrong here.
+    first.unmount();
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    expect(((await screen.findByTestId("density")) as HTMLInputElement).value).toBe("4");
+  });
+
+  it("refuses a stored density it does not recognise", async () => {
+    // Storage is whatever was there: an older build with different steps, a hand
+    // edit, `"NaN"`. An out-of-range step would index past the ladder and render
+    // a grid with `undefined` columns.
+    globalThis.localStorage.setItem("visionset.prefs.gallery.density", "97");
+    on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    expect(((await screen.findByTestId("density")) as HTMLInputElement).value).toBe("2");
   });
 
   /**
@@ -285,27 +457,34 @@ describe("the gallery", () => {
    *
    * The gallery rendered one tile per row at every width for the whole beta, and
    * these tests passed throughout — because jsdom has no `ResizeObserver` and the
-   * screen's own docstring called the resulting one-column fallback
-   * "correct-but-slow rather than wrong". So the tests asserted the broken value as
-   * if it were the intended one, which is the milestone's root pattern: a claim
-   * verified against itself.
+   * screen's docstring called the resulting one-column fallback "correct-but-slow
+   * rather than wrong". So the tests asserted the broken value as if it were the
+   * intended one: a claim verified against itself.
    *
-   * What is pinned here, therefore, is only the honest part — the arithmetic, and
-   * that the fallback is reached **when the observer is genuinely absent** rather
-   * than whenever measurement happens to fail. The count a browser renders is
-   * checked in a browser, in `frontend/app/cycle/cycle.spec.ts`.
+   * #284 made that worse rather than better, which is why the browser assertion
+   * is now mandatory. The scroller used to be the measured node, so a virtualizer
+   * that worked was evidence the node had been handed over; the scroller is now
+   * the *window*, and `useWindowVirtualizer` would virtualize perfectly against a
+   * grid that had never been measured once. The tell is gone.
+   *
+   * What is pinned here is only the honest part — the arithmetic, and that the
+   * fallback is reached when the observer is genuinely absent. The count a browser
+   * renders is checked in a browser, in `frontend/app/e2e/gallery.spec.ts`.
    */
-  it("computes the column count from the pane's width", () => {
+  it("computes the column count from the pane's width and the chosen density", () => {
     // The formula was never wrong. `Math.floor((1239 + 12) / (160 + 12))` is 7,
     // and the reported bug measured a 1239px row rendering one tile.
-    expect(columnsFor(1239)).toBe(7);
-    expect(columnsFor(895)).toBe(5);
+    expect(columnsFor(1239, 160)).toBe(7);
+    expect(columnsFor(895, 160)).toBe(5);
+    // The density slider is the second input, and it is why this took a parameter:
+    // the same pane fits fewer big tiles.
+    expect(columnsFor(1239, 320)).toBe(3);
+    expect(columnsFor(1239, 120)).toBe(9);
     // Never zero: a pane too narrow for a tile still shows one, clipped, rather
     // than dividing the item count by nothing.
-    expect(columnsFor(0)).toBe(1);
-    expect(columnsFor(159)).toBe(1);
-    expect(columnsFor(172)).toBe(1);
-    expect(columnsFor(332)).toBe(2);
+    expect(columnsFor(0, 160)).toBe(1);
+    expect(columnsFor(159, 160)).toBe(1);
+    expect(columnsFor(332, 160)).toBe(2);
   });
 
   it("falls back to one column only when there is genuinely no observer", async () => {
@@ -316,10 +495,23 @@ describe("the gallery", () => {
 
     on("GET", /\/assets$/, { status: 200, body: assets(6, 0, 6) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
-    // The scroller mounts; the virtualizer measures it as 0x0 and renders no rows,
-    // which is why nothing about the grid itself can be asserted from here.
-    const scroll = await screen.findByTestId("gallery-scroll");
-    expect(scroll.getAttribute("data-columns")).toBe("1");
+    const grid = await screen.findByTestId("gallery-grid");
+    expect(grid.getAttribute("data-columns")).toBe("1");
+  });
+
+  it("has no scrollable box of its own any more", async () => {
+    on("GET", /\/assets$/, { status: 200, body: assets(6, 0, 6) });
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+
+    // The class half of the layout change, greppable here; whether the *document*
+    // is really the scroll parent is a computed-style question and belongs in a
+    // browser. The old screen wrapped the grid in
+    // `max-h-[70vh] overflow-y-auto rounded-xl border`.
+    const grid = await screen.findByTestId("gallery-grid");
+    for (const node of [grid, grid.parentElement, grid.parentElement?.parentElement]) {
+      expect(node?.className ?? "").not.toContain("overflow-y-auto");
+      expect(node?.className ?? "").not.toContain("max-h-");
+    }
   });
 });
 

@@ -250,6 +250,10 @@ def asset(value: Asset) -> dict[str, Any]:
         "frame_index": value.frame_index,
         "frame_timestamp": value.frame_timestamp,
         "thumbnail_hash": value.thumbnail_hash,
+        # Null means *unknown* rather than "never" — a row written before #216
+        # existed is legitimately unstamped. ``_moment`` and not ``isoformat``,
+        # because the parity gate compares this against pydantic's own encoding.
+        "ingested_at": None if value.ingested_at is None else _moment(value.ingested_at),
     }
 
 

@@ -1615,6 +1615,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Ingested At */
+            ingested_at: string | null;
             /**
              * Modality
              * @constant
@@ -1716,6 +1718,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Ingested At */
+            ingested_at: string | null;
             /** Job Id */
             job_id: string | null;
             /**
