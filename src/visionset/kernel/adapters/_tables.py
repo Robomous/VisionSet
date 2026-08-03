@@ -87,6 +87,15 @@ PROJECT_NAME_UNIQUE = Index(
 
 
 class AnnotationSchemaRow(Base):
+    """One version of a project's labeling contract.
+
+    ``description`` and ``created_at`` arrive by ``ALTER TABLE`` in migration 14,
+    so they are declared **last** — SQLite appends an added column, and anywhere
+    else the ``create_all`` and migration paths would emit different
+    ``CREATE TABLE`` text. Both are nullable because a version published before
+    migration 14 has neither, and nothing invents one.
+    """
+
     __tablename__ = "annotation_schema"
     __table_args__ = (UniqueConstraint("project_id", "version", name="uq_schema_project_version"),)
 
@@ -96,6 +105,8 @@ class AnnotationSchemaRow(Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     classes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class SourceRow(Base):

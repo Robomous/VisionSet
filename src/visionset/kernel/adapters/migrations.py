@@ -53,6 +53,7 @@ from visionset.kernel.adapters._tables import (
     SOURCE_ORIGIN_UNIQUE,
     AnnotationJobAssetRow,
     AnnotationRow,
+    AnnotationSchemaRow,
     AssetRow,
     Base,
     BatchRow,
@@ -536,6 +537,44 @@ def _add_asset_ingested_at(connection: Connection) -> None:
     _add_column(connection, cast(Column[object], AssetRow.__table__.c.ingested_at))
 
 
+def _add_schema_description_and_created_at(connection: Connection) -> None:
+    """Give a schema version somewhere to say why it exists, and when.
+
+    #230: ``AnnotationSchema`` was ``(project_id, version, classes)``, so a
+    version history had nothing to show but class lists — no reason, no date.
+    Both columns land here together because they answer the same question from
+    two sides, and splitting them across migrations would mean two ``ALTER``
+    passes over one table for one feature.
+
+    Migration 13's shape: nullable columns added to a table that can only ever be
+    *altered*. ``annotation_schema`` has no children to cascade, but a rebuild
+    would still be gratuitous — the two creation paths already agree once the
+    columns are declared last on ``AnnotationSchemaRow``.
+
+    **No backfill, and that is the decision rather than the omission.** A version
+    published before this migration has no description because nobody wrote one,
+    and no creation moment because nothing recorded it; migration time would
+    record when somebody upgraded, which is a different fact wearing the right
+    type. Migration 13 made the same call for ``asset.ingested_at`` and for the
+    same reason: a plausible-looking wrong timestamp is worse than an admitted
+    gap, because nothing downstream can tell it is wrong.
+
+    Idempotent the way 3 to 5, 9, 10 and 13 are — the inspector check inside
+    ``_add_column`` *is* the ``checkfirst``, because migration 1 is
+    ``create_all`` of current metadata.
+
+    Needs its own undo in the tests' ``_downgrade_to_version_one``, for migration
+    10's reason: nothing below rebuilds ``annotation_schema``, so nothing removes
+    these columns on the way to generation 1. The flip side is the same too — the
+    walk back is what exercises this ``ALTER`` for real on the way up, and it
+    fails loudly if the undo is missing, because column order would differ.
+    """
+    for name in ("description", "created_at"):
+        # ``.c`` is typed as the generic column collection; each entry is a real
+        # ``Column``, which is what ``CreateColumn`` needs.
+        _add_column(connection, cast(Column[object], AnnotationSchemaRow.__table__.c[name]))
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="initial_schema", upgrade=_create_initial_schema),
     Migration(
@@ -597,6 +636,11 @@ MIGRATIONS: list[Migration] = [
         version=13,
         name="asset_ingested_at",
         upgrade=_add_asset_ingested_at,
+    ),
+    Migration(
+        version=14,
+        name="schema_description_and_created_at",
+        upgrade=_add_schema_description_and_created_at,
     ),
 ]
 

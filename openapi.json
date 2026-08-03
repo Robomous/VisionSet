@@ -2092,6 +2092,17 @@
             },
             "title": "Classes",
             "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           }
         },
         "title": "SchemaVersionCreate",
@@ -2106,6 +2117,29 @@
             },
             "title": "Classes",
             "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           },
           "project_id": {
             "format": "uuid",
@@ -6418,7 +6452,7 @@
         ]
       },
       "post": {
-        "description": "Append the next version of the project's schema.\n\nThe body is the whole proposed version; versions are never edited in place.\n\nRemoving a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`\nuntil `allow_destructive=true` says so deliberately. If annotations already\nexist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`\ninstead, and **no flag overrides that one** \u2014 which is why a client branches\non `code` and not on the status.",
+        "description": "Append the next version of the project's schema.\n\nThe body is the whole proposed version; versions are never edited in place.\n\n`description` is this version's commit message \u2014 written once, here, and\nnever afterwards, because a version is immutable and there is no route that\nedits one. Blank is legal and comes back as null. `created_at` is stamped by\nthe server, so it is a response field and not a request one.\n\nRemoving a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`\nuntil `allow_destructive=true` says so deliberately. If annotations already\nexist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`\ninstead, and **no flag overrides that one** \u2014 which is why a client branches\non `code` and not on the status.",
         "operationId": "create_schema_version",
         "parameters": [
           {

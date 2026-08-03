@@ -303,6 +303,12 @@ class SchemaVersionOut(BaseModel):
     project_id: UUID
     version: int
     classes: tuple[LabelClassBody, ...]
+    # Both are null for a version published before they existed, and nothing
+    # backfills either — see ``docs/schemas.md``. Declared with defaults so the
+    # field is emitted as optional, which is what a client reading an old
+    # workspace actually meets.
+    description: str | None = None
+    created_at: datetime | None = None
 
     @classmethod
     def of(cls, schema: AnnotationSchema) -> Self:
@@ -310,6 +316,8 @@ class SchemaVersionOut(BaseModel):
             project_id=schema.project_id,
             version=schema.version,
             classes=tuple(LabelClassBody.of(c) for c in schema.classes),
+            description=schema.description,
+            created_at=schema.created_at,
         )
 
 
@@ -323,6 +331,9 @@ class SchemaVersionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     classes: tuple[LabelClassBody, ...] = ()
+    # The version's commit message, written once here. There is no route that
+    # edits one afterwards, because there is no service method that does.
+    description: str | None = None
 
 
 # --- sources -----------------------------------------------------------------

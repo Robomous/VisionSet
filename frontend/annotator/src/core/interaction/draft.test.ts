@@ -51,6 +51,8 @@ const SCHEMA: AnnotationSchema = {
   project_id: "project-7",
   version: 4,
   classes: [SIGN, BARE],
+  description: null,
+  created_at: null,
 };
 
 function documentHere(): AnnotationDocument {

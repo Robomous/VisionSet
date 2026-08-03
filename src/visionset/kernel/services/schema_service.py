@@ -34,6 +34,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -164,6 +165,7 @@ class SchemaService:
         project_id: UUID,
         classes: Sequence[LabelClass],
         *,
+        description: str | None = None,
         allow_destructive: bool = False,
     ) -> AnnotationSchema:
         """Add the next version of the project's schema.
@@ -171,6 +173,15 @@ class SchemaService:
         The version number is one past the highest stored, so versions are
         1..N with no gaps and no reuse. Nothing is edited: this always inserts,
         which is what makes an old version safe to read forever.
+
+        ``description`` is the version's **commit message**: written here and
+        never afterwards, because there is no ``update`` on this service and the
+        model is frozen. Blank is legal and stored as ``None`` — an empty commit
+        message is an ordinary thing — and the tidying happens in the domain, so
+        no other door can write an untidied one. ``created_at`` is stamped here
+        for the same reason the version number is: it is a fact about the
+        publication, not an opinion of the caller, so whatever arrived in the
+        field is replaced.
 
         The gate is ``allow_destructive`` rather than ``confirm`` because the
         two guard different things. ``confirm`` stands in front of destroying
@@ -203,6 +214,8 @@ class SchemaService:
                         project_id=project_id,
                         version=1 if active is None else active.version + 1,
                         classes=proposed,
+                        description=description,
+                        created_at=datetime.now(UTC),
                     )
                 )
         except ConstraintViolated as exc:

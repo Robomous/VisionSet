@@ -25,6 +25,8 @@ export const SCHEMA: AnnotationSchema = {
     { name: "sign", geometry: "bbox", color: "#ff0000", attributes: [] },
     { name: "lane", geometry: "polygon", color: null, attributes: [] },
   ],
+  description: null,
+  created_at: null,
 };
 
 /** A bbox annotation on the sample asset. `x` is the field the edits move. */

@@ -84,6 +84,8 @@ const SCHEMA: AnnotationSchema = {
   project_id: "project-7",
   version: 4,
   classes: [WEATHER, NIGHT, SIGN, LANE, RAIL],
+  description: null,
+  created_at: null,
 };
 
 function documentHere(annotations: readonly Annotation[] = []): AnnotationDocument {

@@ -226,6 +226,34 @@ describe("parsing the schema the kernel produced", () => {
     );
   });
 
+  it("carries the version's commit message and the moment it was published", () => {
+    // Non-null on purpose: the round-trip above proves the *values* survive, and
+    // this proves the fixture is exercising the populated branch rather than
+    // agreeing with itself about two nulls.
+    const schema = parseSchema(fixture.schema);
+    expect(typeof schema.description).toBe("string");
+    expect(schema.description).toBeTruthy();
+    expect(schema.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("reads a version that carries neither, which is every version before #230", () => {
+    // Both branches by hand, because the committed fixture can only be in one
+    // state at a time and it is populated so the round-trip above means something.
+    const bare = { project_id: "p", version: 1, classes: [] };
+    expect(parseSchema(bare)).toEqual({ ...bare, description: null, created_at: null });
+    expect(parseSchema({ ...bare, description: null, created_at: null })).toEqual({
+      ...bare,
+      description: null,
+      created_at: null,
+    });
+  });
+
+  it("still refuses a key the schema contract does not declare", () => {
+    expect(() =>
+      parseSchema({ project_id: "p", version: 1, classes: [], notes: "hi" }),
+    ).toThrow(/does not declare/);
+  });
+
   it("applies the wire's own defaults when an optional key is absent", () => {
     // Rule 4: the schema is input-only, so absence is legal here where it is not
     // for an annotation. A host assembling a class by hand writes two fields.
