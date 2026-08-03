@@ -90,6 +90,33 @@ def get_schema(
     }
 
 
+def compare_schema_versions(
+    project: ProjectRef,
+    from_version: Annotated[int, Field(ge=1, description="The version to compare from, 1..N.")],
+    to_version: Annotated[int, Field(ge=1, description="The version to compare to, 1..N.")],
+) -> dict[str, Any]:
+    """Say what one schema version did to another. Writes nothing.
+
+    The sibling of `preview_schema_change`, asked about two versions that already
+    exist rather than about classes you are proposing. Both return the same
+    classification, so read that tool's description for what additive and
+    destructive mean.
+
+    The caller this exists for is `repin_batch`. A batch is judged against the
+    version it pinned at approval, so before moving that pin, compare the pinned
+    version with the active one — `get_batch` gives you the first and `get_schema`
+    the second. `is_destructive` false means the re-pin needs no flag; true means
+    it does, and `destructive_classes` names what would break.
+
+    Order matters: comparing 1 to 2 and 2 to 1 are different questions. Comparing
+    a version with itself is an empty diff.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        diff = SchemaService(workspace).compare(resolved.id, from_version, to_version)
+    return wire.schema_diff(diff)
+
+
 def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[str, Any]:
     """Say what applying these classes would change, without applying anything.
 

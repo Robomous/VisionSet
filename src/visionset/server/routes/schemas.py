@@ -17,13 +17,14 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Path, status
+from fastapi import Path, Query, status
 
 from visionset.kernel.services import SchemaService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     DestructiveQuery,
+    SchemaDiffOut,
     SchemaVersionCreate,
     SchemaVersionOut,
     SchemaVersionPage,
@@ -35,6 +36,21 @@ router = protected_router(prefix="/projects/{project_id}/schema", tags=["schemas
 #: is a 422 about the request rather than a 404 about a version that could never
 #: have existed.
 VersionPath = Annotated[int, Path(ge=1, description="A schema version, 1..N.")]
+
+#: ``from`` is a Python keyword, so the query parameter is spelled out in an
+#: alias and bound to a name that is not. The *wire* keeps the short spelling the
+#: issue asked for; only the handler's parameter differs, which is the one place
+#: an alias is free.
+#:
+#: ``ge=1`` for ``VersionPath``'s reason — mirroring the domain's own bound is the
+#: standing rule, and without it ``from=0`` reaches ``SchemaService`` and comes
+#: back as a 404 about a version that could never have existed.
+FromVersionQuery = Annotated[
+    int, Query(alias="from", ge=1, description="The version to compare *from*, 1..N.")
+]
+ToVersionQuery = Annotated[
+    int, Query(alias="to", ge=1, description="The version to compare *to*, 1..N.")
+]
 
 
 @router.post("/versions", status_code=status.HTTP_201_CREATED, responses=documented(404, 409))
@@ -84,6 +100,40 @@ def get_schema_version(
 ) -> SchemaVersionOut:
     """One version of a project's schema."""
     return SchemaVersionOut.of(SchemaService(workspace).get(project_id, version))
+
+
+@router.get("/compare", responses=documented(404))
+def compare_schema_versions(
+    workspace: WorkspaceDep,
+    project_id: UUID,
+    from_version: FromVersionQuery,
+    to_version: ToVersionQuery,
+) -> SchemaDiffOut:
+    """What one version did to another: the kernel's own classification.
+
+    A route rather than arithmetic a client could do for itself, because the rule
+    is not obvious and there is exactly one correct spelling of it. Adding an
+    *optional* attribute is additive while adding a *required* one is not;
+    widening a `select` is additive and narrowing it is not; a rename reads as one
+    removal plus one addition, because `Annotation.label_class` is matched by
+    exact string too. A second implementation of that in a client would be free to
+    drift from the one the API then enforces.
+
+    `is_destructive` and `destructive_classes` are the verdict, and they are what
+    to branch on — a client re-deriving them from `changes` is re-implementing the
+    thing this endpoint exists to avoid. Destructive here means "an annotation
+    that was valid under `from` may not be valid under `to`", which is what
+    decides whether applying or re-pinning needs `allow_destructive=true`.
+
+    Comparing a version with itself is an empty, non-destructive diff. Order
+    matters: `from=1&to=2` and `from=2&to=1` are different questions, and the
+    second is how you ask what going *back* would cost.
+
+    Either version missing is 404 `SCHEMA_NOT_FOUND`; an unknown project is 404
+    `PROJECT_NOT_FOUND`. Same status, two situations, told apart by `code`.
+    """
+    diff = SchemaService(workspace).compare(project_id, from_version, to_version)
+    return SchemaDiffOut.of(diff)
 
 
 @router.get("", responses=documented(404))

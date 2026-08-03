@@ -332,7 +332,7 @@ quietly leaving the impression that a terminal can label images.
 
 **The transport, which nothing else proved.** Every test under
 [`tests/mcp/`](../tests/mcp/) drives the protocol over a paired in-memory stream inside one
-process. That proves the thirty-four tools and says nothing about the pipe. Meanwhile
+process. That proves the thirty-five tools and says nothing about the pipe. Meanwhile
 [`tests/cli/test_mcp_command.py`](../tests/cli/test_mcp_command.py) pins `visionset mcp`
 thoroughly — and mocks `subprocess.run`, so before this example no JSON-RPC byte had ever crossed
 that command. Here the client spawns exactly what an MCP configuration spawns, and the workspace

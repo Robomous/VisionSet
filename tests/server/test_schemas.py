@@ -365,3 +365,115 @@ def test_there_is_no_route_that_edits_a_published_description(
             f"/projects/{project}/schema/versions/1", json={"description": "second thoughts"}
         )
         assert response.status_code in (404, 405), response.status_code
+
+
+# --- comparing two versions (#231) -------------------------------------------
+
+
+def compare(client: TestClient, project: str, **query: Any) -> Any:
+    return client.get(f"/projects/{project}/schema/compare", params=query)
+
+
+def test_a_comparison_is_the_kernel_classifiers_answer(client: TestClient, project: str) -> None:
+    """One additive change and one destructive one, end to end over HTTP."""
+    post_version(client, project, a_class("sign"), a_class("lane"))
+    post_version(client, project, a_class("sign"), a_class("crossing"), allow_destructive=True)
+
+    response = compare(client, project, **{"from": 1, "to": 2})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["is_destructive"] is True
+    assert body["destructive_classes"] == ["lane"]
+    kinds = {(c["label_class"], c["kind"]) for c in body["changes"]}
+    assert ("crossing", "additive") in kinds
+    assert ("lane", "destructive") in kinds
+
+
+def test_an_additive_change_reports_no_destructive_classes(
+    client: TestClient, project: str
+) -> None:
+    post_version(client, project, a_class("sign"))
+    post_version(client, project, a_class("sign"), a_class("lane"))
+
+    body = compare(client, project, **{"from": 1, "to": 2}).json()
+
+    assert body["is_destructive"] is False
+    assert body["destructive_classes"] == []
+    assert [c["kind"] for c in body["changes"]] == ["additive"]
+
+
+def test_the_order_of_the_two_versions_is_the_question(client: TestClient, project: str) -> None:
+    """`from=2&to=1` asks what going *back* would cost, and it is a different answer."""
+    post_version(client, project, a_class("sign"))
+    post_version(client, project, a_class("sign"), a_class("lane"))
+
+    forward = compare(client, project, **{"from": 1, "to": 2}).json()
+    backward = compare(client, project, **{"from": 2, "to": 1}).json()
+
+    assert forward["is_destructive"] is False
+    assert backward["is_destructive"] is True
+    assert backward["destructive_classes"] == ["lane"]
+
+
+def test_a_version_compared_with_itself_is_an_empty_diff(client: TestClient, project: str) -> None:
+    post_version(client, project, a_class("sign"))
+
+    body = compare(client, project, **{"from": 1, "to": 1}).json()
+
+    assert body == {"is_destructive": False, "destructive_classes": [], "changes": []}
+
+
+def test_an_attribute_level_change_names_the_attribute(client: TestClient, project: str) -> None:
+    """The field exists so a diff can say *which* attribute, not just which class."""
+    post_version(
+        client,
+        project,
+        a_class("sign", attributes=[{"name": "occluded", "kind": "boolean"}]),
+    )
+    post_version(client, project, a_class("sign"), allow_destructive=True)
+
+    body = compare(client, project, **{"from": 1, "to": 2}).json()
+
+    assert [(c["label_class"], c["attribute"]) for c in body["changes"]] == [("sign", "occluded")]
+
+
+def test_an_unknown_version_is_404_in_the_one_error_body(client: TestClient, project: str) -> None:
+    post_version(client, project, a_class("sign"))
+
+    response = compare(client, project, **{"from": 1, "to": 9})
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "SCHEMA_NOT_FOUND"
+
+
+def test_an_unknown_project_is_404_with_the_other_code(client: TestClient) -> None:
+    response = compare(client, str(uuid4()), **{"from": 1, "to": 2})
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROJECT_NOT_FOUND"
+
+
+@pytest.mark.parametrize("query", [{"from": 0, "to": 1}, {"from": 1, "to": 0}])
+def test_version_zero_is_422_rather_than_a_404_about_an_impossible_version(
+    client: TestClient, project: str, query: dict[str, int]
+) -> None:
+    """The standing trap: mirror the domain's own bound in the Query bound.
+
+    Without `ge=1` this reaches `SchemaService` and comes back as a 404 about a
+    version that could never have existed — which reads as "not yet" rather than
+    as "never".
+    """
+    post_version(client, project, a_class("sign"))
+
+    response = compare(client, project, **query)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_both_query_parameters_are_required(client: TestClient, project: str) -> None:
+    post_version(client, project, a_class("sign"))
+
+    assert compare(client, project, **{"from": 1}).status_code == 422
+    assert compare(client, project, **{"to": 1}).status_code == 422
