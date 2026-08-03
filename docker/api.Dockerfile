@@ -5,7 +5,11 @@
 # by scripts/build_dist.sh, and it does not involve this file. Nothing here is a
 # deployment image: the source arrives by bind mount at run time and uvicorn runs
 # with --reload.
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# Trixie rather than bookworm, and the reason is the apt line below: bookworm's
+# ffmpeg is 5.1, which is old enough to decode this project's own test clips
+# differently. Trixie's is 7.1, within one major of what CI and a developer laptop
+# run. Same Python 3.12, so nothing else about this image moves.
+FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim
 
 # ffmpeg is a binary, not a Python dependency, so `uv sync` below structurally
 # cannot bring it: pyproject.toml declares it nowhere and could not. The API
@@ -18,6 +22,13 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 # The Debian package ships `ffmpeg` and `ffprobe` together, and the flags match
 # the CI `python` job and the adapter's own install hint, so there is one spelling
 # of how ffmpeg is installed on Debian rather than three.
+#
+# The version is not incidental — see the FROM above. Measured on 5.1 (bookworm):
+# `-display_rotation`, which the rotation fixtures use, does not exist before 6.0,
+# and a truncated clip is reported as unsupported rather than corrupt, which is
+# the distinction `IngestFailureKind` exists to make. The CI `docker` job runs
+# tests/kernel/test_video_processor.py inside this image so that a base-image
+# change cannot quietly reintroduce either.
 #
 # Ahead of the dependency manifests below on purpose: those change often, this
 # does not, so a dependency edit re-runs `uv sync` and leaves apt alone.
