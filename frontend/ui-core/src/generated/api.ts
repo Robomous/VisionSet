@@ -1020,6 +1020,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/schema/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Schema Versions
+         * @description What one version did to another: the kernel's own classification.
+         *
+         *     A route rather than arithmetic a client could do for itself, because the rule
+         *     is not obvious and there is exactly one correct spelling of it. Adding an
+         *     *optional* attribute is additive while adding a *required* one is not;
+         *     widening a `select` is additive and narrowing it is not; a rename reads as one
+         *     removal plus one addition, because `Annotation.label_class` is matched by
+         *     exact string too. A second implementation of that in a client would be free to
+         *     drift from the one the API then enforces.
+         *
+         *     `is_destructive` and `destructive_classes` are the verdict, and they are what
+         *     to branch on — a client re-deriving them from `changes` is re-implementing the
+         *     thing this endpoint exists to avoid. Destructive here means "an annotation
+         *     that was valid under `from` may not be valid under `to`", which is what
+         *     decides whether applying or re-pinning needs `allow_destructive=true`.
+         *
+         *     Comparing a version with itself is an empty, non-destructive diff. Order
+         *     matters: `from=1&to=2` and `from=2&to=1` are different questions, and the
+         *     second is how you ask what going *back* would cost.
+         *
+         *     Either version missing is 404 `SCHEMA_NOT_FOUND`; an unknown project is 404
+         *     `PROJECT_NOT_FOUND`. Same status, two situations, told apart by `code`.
+         */
+        get: operations["compare_schema_versions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/schema/versions": {
         parameters: {
             query?: never;
@@ -1813,6 +1854,12 @@ export interface components {
             size: number;
         };
         /**
+         * ChangeKind
+         * @description Whether a change preserves the meaning of existing annotations.
+         * @enum {string}
+         */
+        ChangeKind: "additive" | "destructive";
+        /**
          * ClassCompatibilityOut
          * @description One class of a release, judged against one format's capabilities.
          */
@@ -2348,6 +2395,31 @@ export interface components {
              * Format: uuid
              */
             release_id: string;
+        };
+        /**
+         * SchemaChangeOut
+         * @description One difference between two schema versions, already judged.
+         */
+        SchemaChangeOut: {
+            /** Attribute */
+            attribute: string | null;
+            /** Detail */
+            detail: string;
+            kind: components["schemas"]["ChangeKind"];
+            /** Label Class */
+            label_class: string;
+        };
+        /**
+         * SchemaDiffOut
+         * @description Every difference between two schema versions, and the verdict on them.
+         */
+        SchemaDiffOut: {
+            /** Changes */
+            changes: components["schemas"]["SchemaChangeOut"][];
+            /** Destructive Classes */
+            destructive_classes: string[];
+            /** Is Destructive */
+            is_destructive: boolean;
         };
         /**
          * SchemaVersionCreate
@@ -5361,6 +5433,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchemaVersionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    compare_schema_versions: {
+        parameters: {
+            query: {
+                /** @description The version to compare *from*, 1..N. */
+                from: number;
+                /** @description The version to compare *to*, 1..N. */
+                to: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDiffOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

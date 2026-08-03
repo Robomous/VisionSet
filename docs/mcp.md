@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it — see
 
 ## The tools
 
-Thirty-four by default, listed in the order an agent meets them, plus one offered only on
+Thirty-five by default, listed in the order an agent meets them, plus one offered only on
 request — see [above](#destructive-tools-are-not-offered-unless-you-ask).
 
 ### Projects and schema
@@ -90,6 +90,7 @@ request — see [above](#destructive-tools-are-not-offered-unless-you-ask).
 | `list_projects` | Everything in this workspace. |
 | `get_project` | The project, its dataset id, and how far its work has got. |
 | `get_schema` | The classes, the active version, and every version that exists. |
+| `compare_schema_versions` | What one version did to another. Writes nothing. |
 | `preview_schema_change` | What a proposed change would do. Writes nothing. |
 | `create_schema_version` | Apply one. `allow_destructive` for a narrowing change. |
 

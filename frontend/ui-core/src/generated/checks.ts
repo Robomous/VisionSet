@@ -160,6 +160,15 @@ export const checkReleasePage: Check<Schemas["ReleasePage"]> =
 export const checkReleaseVerificationOut: Check<Schemas["ReleaseVerificationOut"]> =
   /*#__PURE__*/ object({ "cache_mismatches": [true, arrayOf(isString)], "checked": [true, isInteger], "corrupt": [true, arrayOf(isString)], "manifest_hash": [true, isString], "manifest_intact": [true, isBoolean], "missing": [true, arrayOf(isString)], "ok": [true, isBoolean], "release_id": [true, isString] } as const);
 
+export const checkChangeKind: Check<Schemas["ChangeKind"]> =
+  /*#__PURE__*/ oneOf(["additive", "destructive"] as const);
+
+export const checkSchemaChangeOut: Check<Schemas["SchemaChangeOut"]> =
+  /*#__PURE__*/ object({ "attribute": [true, either([isString, isNull] as const)], "detail": [true, isString], "kind": [true, checkChangeKind], "label_class": [true, isString] } as const);
+
+export const checkSchemaDiffOut: Check<Schemas["SchemaDiffOut"]> =
+  /*#__PURE__*/ object({ "changes": [true, arrayOf(checkSchemaChangeOut)], "destructive_classes": [true, arrayOf(isString)], "is_destructive": [true, isBoolean] } as const);
+
 export const checkAttributeBody: Check<Schemas["AttributeBody"]> =
   /*#__PURE__*/ object({ "default": [false, either([isBoolean, isNumber, isString, isNull] as const)], "kind": [true, oneOf(["string", "number", "boolean", "select"] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
 
@@ -193,6 +202,7 @@ export const checkSplitAssignmentOut: Check<Schemas["SplitAssignmentOut"]> =
 export const checkAddAnnotations = checkAnnotationPage;
 export const checkApproveBatch = checkBatchOut;
 export const checkCheckExport = checkExportCompatibilityOut;
+export const checkCompareSchemaVersions = checkSchemaDiffOut;
 export const checkCompleteBatch = checkBatchOut;
 export const checkCompleteJob = checkJobOut;
 export const checkCreateProject = checkProjectOut;

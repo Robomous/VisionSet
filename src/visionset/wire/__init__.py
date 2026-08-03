@@ -168,7 +168,11 @@ def schema_change(value: SchemaChange) -> dict[str, Any]:
 
 
 def schema_diff(value: SchemaDiff) -> dict[str, Any]:
-    """A proposed or actual schema change, classified. **Surface-defined**: no route reaches this.
+    """A proposed or actual schema change, classified.
+
+    No longer surface-defined: #231 gave ``SchemaService.compare`` a route, so
+    ``SchemaDiffOut`` is the REST spelling of this and the two are held to each
+    other by ``tests/cli/test_json_contract.py``.
 
     ``is_destructive`` and ``destructive_classes`` are domain ``@property``
     values materialized here, the way ``ReleaseVerification.ok`` is: a caller

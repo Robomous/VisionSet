@@ -64,6 +64,12 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
     ("project", wire.project(PROJECT), models.ProjectOut),
     ("dataset", wire.dataset(DATASET), models.DatasetOut),
     ("schema_version", wire.schema_version(SCHEMA_VERSION), models.SchemaVersionOut),
+    ("schema_diff", wire.schema_diff(SCHEMA_DIFF), models.SchemaDiffOut),
+    # ``changes[1]`` rather than ``[0]``: it is the one carrying a non-null
+    # ``attribute``, and a sample holding ``None`` there would leave that half of
+    # the projection unchecked. The diff pair above covers both, since it
+    # projects every change.
+    ("schema_change", wire.schema_change(SCHEMA_DIFF.changes[1]), models.SchemaChangeOut),
     ("label_class", wire.label_class(SCHEMA_VERSION.classes[0]), models.LabelClassBody),
     (
         "attribute",

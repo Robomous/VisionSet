@@ -980,6 +980,15 @@
         "title": "BySizeBody",
         "type": "object"
       },
+      "ChangeKind": {
+        "description": "Whether a change preserves the meaning of existing annotations.",
+        "enum": [
+          "additive",
+          "destructive"
+        ],
+        "title": "ChangeKind",
+        "type": "string"
+      },
       "ClassCompatibilityOut": {
         "description": "One class of a release, judged against one format's capabilities.",
         "properties": {
@@ -2079,6 +2088,71 @@
           "cache_mismatches"
         ],
         "title": "ReleaseVerificationOut",
+        "type": "object"
+      },
+      "SchemaChangeOut": {
+        "description": "One difference between two schema versions, already judged.",
+        "properties": {
+          "attribute": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribute"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ChangeKind"
+          },
+          "label_class": {
+            "title": "Label Class",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label_class",
+          "attribute",
+          "detail"
+        ],
+        "title": "SchemaChangeOut",
+        "type": "object"
+      },
+      "SchemaDiffOut": {
+        "description": "Every difference between two schema versions, and the verdict on them.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaChangeOut"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "destructive_classes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Destructive Classes",
+            "type": "array"
+          },
+          "is_destructive": {
+            "title": "Is Destructive",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_destructive",
+          "destructive_classes",
+          "changes"
+        ],
+        "title": "SchemaDiffOut",
         "type": "object"
       },
       "SchemaVersionCreate": {
@@ -6358,6 +6432,119 @@
           }
         ],
         "summary": "Get Active Schema",
+        "tags": [
+          "schemas"
+        ]
+      }
+    },
+    "/projects/{project_id}/schema/compare": {
+      "get": {
+        "description": "What one version did to another: the kernel's own classification.\n\nA route rather than arithmetic a client could do for itself, because the rule\nis not obvious and there is exactly one correct spelling of it. Adding an\n*optional* attribute is additive while adding a *required* one is not;\nwidening a `select` is additive and narrowing it is not; a rename reads as one\nremoval plus one addition, because `Annotation.label_class` is matched by\nexact string too. A second implementation of that in a client would be free to\ndrift from the one the API then enforces.\n\n`is_destructive` and `destructive_classes` are the verdict, and they are what\nto branch on \u2014 a client re-deriving them from `changes` is re-implementing the\nthing this endpoint exists to avoid. Destructive here means \"an annotation\nthat was valid under `from` may not be valid under `to`\", which is what\ndecides whether applying or re-pinning needs `allow_destructive=true`.\n\nComparing a version with itself is an empty, non-destructive diff. Order\nmatters: `from=1&to=2` and `from=2&to=1` are different questions, and the\nsecond is how you ask what going *back* would cost.\n\nEither version missing is 404 `SCHEMA_NOT_FOUND`; an unknown project is 404\n`PROJECT_NOT_FOUND`. Same status, two situations, told apart by `code`.",
+        "operationId": "compare_schema_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The version to compare *from*, 1..N.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "description": "The version to compare *from*, 1..N.",
+              "minimum": 1,
+              "title": "From",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The version to compare *to*, 1..N.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "The version to compare *to*, 1..N.",
+              "minimum": 1,
+              "title": "To",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDiffOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Compare Schema Versions",
         "tags": [
           "schemas"
         ]

@@ -25,6 +25,7 @@ SHIPPED = {
     "list_projects",
     "get_project",
     "get_schema",
+    "compare_schema_versions",
     "preview_schema_change",
     "create_schema_version",
     "ingest",
@@ -83,14 +84,15 @@ def test_every_registered_tool_reaches_the_listing() -> None:
     assert len(tool_names()) == len(TOOLS)
 
 
-def test_thirty_four_tools_ship_and_one_more_is_offered_on_request() -> None:
+def test_thirty_five_tools_ship_and_one_more_is_offered_on_request() -> None:
     # The count is a decision, not an accident — 50 candidates were evaluated one
     # by one. A change here should be argued in `docs/mcp.md` first. #65 added
     # `check_export`, the plan-before-apply half of an export; #108 moved
     # `delete_project` out of the default listing; #229 added `repin_batch`,
     # without which a class an agent just created is invisible in the batch it is
-    # working in.
-    assert len(SHIPPED) == 34
+    # working in; #231 added `compare_schema_versions`, which is what an agent
+    # reads before deciding whether that re-pin needs a flag.
+    assert len(SHIPPED) == 35
     assert len(DESTRUCTIVE) == 1
 
 

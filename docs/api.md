@@ -46,6 +46,7 @@ GET    /projects/{project_id}/schema                      the version in force
 POST   /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions/{version}
+GET    /projects/{project_id}/schema/compare             ?from=&to=
 POST   /projects/{project_id}/sources/images              multipart
 POST   /projects/{project_id}/sources/video               multipart
 GET    /projects/{project_id}/sources

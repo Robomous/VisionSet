@@ -200,3 +200,71 @@ def test_a_version_created_without_one_reports_null_rather_than_omitting_it(
     assert "description" in created
     assert created["description"] is None
     assert created["created_at"] is not None
+
+
+# --- comparing two versions (#231) -------------------------------------------
+
+
+def test_comparing_two_versions_classifies_what_changed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = project(monkeypatch, tmp_path)
+    payload(call("create_schema_version", project=named, classes=SCHEMA_CLASSES))
+    payload(
+        call(
+            "create_schema_version",
+            project=named,
+            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometry": "bbox"}],
+        )
+    )
+
+    diff = payload(call("compare_schema_versions", project=named, from_version=1, to_version=2))
+
+    assert diff["is_destructive"] is False
+    assert diff["destructive_classes"] == []
+    assert [(c["label_class"], c["kind"]) for c in diff["changes"]] == [("crossing", "additive")]
+
+
+def test_a_narrowing_comparison_names_what_would_break(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The read an agent makes before `repin_batch` — the verdict, not the list."""
+    named = project(monkeypatch, tmp_path)
+    payload(call("create_schema_version", project=named, classes=SCHEMA_CLASSES))
+    payload(
+        call(
+            "create_schema_version",
+            project=named,
+            classes=[{"name": "crossing", "geometry": "bbox"}],
+            allow_destructive=True,
+        )
+    )
+
+    diff = payload(call("compare_schema_versions", project=named, from_version=1, to_version=2))
+
+    assert diff["is_destructive"] is True
+    assert diff["destructive_classes"] == ["sign"]
+
+
+def test_comparing_against_a_version_that_does_not_exist_is_a_refusal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = project(monkeypatch, tmp_path)
+    payload(call("create_schema_version", project=named, classes=SCHEMA_CLASSES))
+
+    refused = error(call("compare_schema_versions", project=named, from_version=1, to_version=9))
+
+    assert refused["retry_with"] is None
+    assert "9" in refused["message"]
+
+
+def test_version_zero_is_a_malformed_request_rather_than_a_domain_refusal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`ge=1` on the parameter, the `jobs_of` precedent: the kernel never sees it."""
+    named = project(monkeypatch, tmp_path)
+    payload(call("create_schema_version", project=named, classes=SCHEMA_CLASSES))
+
+    result = call("compare_schema_versions", project=named, from_version=0, to_version=1)
+
+    assert result.isError
