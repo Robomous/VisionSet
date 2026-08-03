@@ -282,6 +282,65 @@ def test_resuming_an_unknown_job_is_404(client: TestClient) -> None:
     assert response.json()["code"] == "INGEST_JOB_NOT_FOUND"
 
 
+def test_a_resume_that_is_allowed_answers_202_and_says_where_to_poll(
+    tmp_path: Path, project: str
+) -> None:
+    """The accepting half of this route, which only its two refusals had reached.
+
+    `test_resuming_a_completed_run_is_409` and its 404 sibling both leave inside
+    `resumable`, so everything after it — the submission, the `Location` header
+    and the body — was never run by anything. That is the whole of what a 202
+    promises, and the header is the half a client cannot work around: without it
+    there is no documented address to poll, and the id in the body is a
+    convention rather than a contract.
+
+    A **pending** job is the resumable state that needs no damage to arrange: the
+    row is born pending and `INGEST_TRANSITIONS` lets it reach `running`, which is
+    exactly what `resume`'s own docstring calls "what a queued run would leave
+    behind". The gate is what holds it there long enough to be observed, the same
+    instrument `test_a_launch_answers_before_the_worker_has_picked_the_job_up`
+    uses — nothing here sleeps.
+    """
+    gated = GatedRunner()
+    with api_client(tmp_path / "resumable", runner=gated) as client:
+        made = client.post("/projects", json={"name": "resumable"}).json()["id"]
+        source = registered_images(client, made, png_part(tmp_path))
+
+        job = launch(client, source).json()
+        assert gated.entered.wait(timeout=JOIN_TIMEOUT)
+        assert client.get(f"/ingest-jobs/{job['id']}").json()["state"] == "pending"
+        submitted = len(gated.futures)
+
+        response = client.post(f"/ingest-jobs/{job['id']}/resume")
+
+        assert response.status_code == 202, response.text
+        # The row is the client's answer, so the id must be the one it already
+        # holds — a resume runs the same job and never forks a second row.
+        assert response.json()["id"] == job["id"]
+        assert response.headers["Location"] == f"/ingest-jobs/{job['id']}"
+        # Accepted means handed to the worker, not merely "not refused".
+        assert len(gated.futures) == submitted + 1
+
+        gated.release.set()
+        gated.wait()
+
+        # Two attempts are now in flight for one row, which is what resuming a job
+        # whose first run is still queued *means*. One worker runs them in order,
+        # the loser finds the job settled and `IngestRunner.submit` swallows and
+        # logs its `InvalidTransition` — so an ERROR line here is the design
+        # working, not a failure. What matters is that the loser left no mark:
+        # `resumable` refuses before the run touches the row, so `error` stays
+        # null and the row is not the place a second caller's refusal shows up.
+        settled = client.get(f"/ingest-jobs/{job['id']}").json()
+        assert settled["state"] == "completed"
+        assert settled["error"] is None
+
+        # Still one row, and the source's assets arrived exactly once — the
+        # redo-not-skip claim, which content addressing is what makes free.
+        assert client.get(f"/sources/{source}/ingest-jobs").json()["total"] == 1
+        assert client.get(f"/batches/{settled['batch_id']}/assets").json()["total"] == 1
+
+
 def test_polling_is_answered_while_another_writer_holds_the_workspace(
     client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
 ) -> None:

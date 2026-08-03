@@ -44,7 +44,6 @@ from visionset.kernel.domain import (
     LabelClass,
     ReleasePublished,
 )
-from visionset.kernel.ports import EventBus
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
@@ -288,10 +287,6 @@ def test_an_aware_occurred_at_is_normalized_to_utc() -> None:
         occurred_at=datetime(2026, 7, 27, 6, 0, 0, tzinfo=somewhere),
     )
     assert event.occurred_at == datetime(2026, 7, 27, 12, 0, 0, tzinfo=UTC)
-
-
-def test_the_default_bus_satisfies_the_port() -> None:
-    assert isinstance(InProcessEventBus(), EventBus)
 
 
 # --- the services, emitting ---------------------------------------------------

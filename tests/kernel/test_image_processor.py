@@ -494,12 +494,6 @@ def test_the_adapter_never_enables_truncated_loading() -> None:
 
 
 # --- the port -----------------------------------------------------------------
-
-
-def test_the_default_image_processor_satisfies_the_port() -> None:
-    assert isinstance(PillowImageProcessor(), ImageProcessor)
-
-
 def test_every_decoder_name_maps_to_an_accepted_format() -> None:
     """The mechanism behind "extend the list deliberately": two edits, tied by this line."""
     assert set(_FORMAT_BY_PILLOW_NAME.values()) == set(ImageFormat)

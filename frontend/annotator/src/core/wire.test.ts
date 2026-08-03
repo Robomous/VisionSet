@@ -22,6 +22,7 @@ import {
   ANNOTATION_UPDATE_KEYS,
   WireFormatError,
   parseAnnotation,
+  parseAnnotations,
   parseAssetDescriptor,
   parseAttribute,
   parseGeometry,
@@ -388,6 +389,78 @@ describe("parsing the asset the kernel produced", () => {
     const truncated = structuredClone(fixture.asset) as Record<string, unknown>;
     delete truncated["width"];
     expect(() => parseAssetDescriptor(truncated)).toThrow(/missing width/);
+  });
+});
+
+/**
+ * The guard at the head of every parser, which nothing reached until now.
+ *
+ * Each `parse*` opens by asking whether it was handed the *kind* of thing it
+ * parses at all, and every one of those throws was uncovered: the suite above
+ * feeds each parser a well-formed payload and then corrupts a **field**, so the
+ * shape check itself was never the thing that fired. That is the branch a real
+ * caller hits first — a 404 body, an envelope handed over instead of its
+ * `items`, `undefined` from a key that moved — and until it is exercised, "the
+ * mirror refuses what the kernel would not have produced" is a claim about the
+ * field checks only.
+ *
+ * `null` is in the table on purpose: `typeof null === "object"`, so a guard
+ * written as `typeof value === "object"` alone accepts it and fails later with a
+ * `TypeError` a caller cannot act on. An array is there for the same reason in
+ * the other direction — it *is* an object, and the record parsers must decline
+ * it while `parseAnnotations` requires exactly one.
+ */
+describe("what a parser does with something that is not its shape", () => {
+  const NOT_A_RECORD: readonly [string, unknown][] = [
+    ["null", null],
+    ["undefined", undefined],
+    ["an array", []],
+    ["a string", "sign"],
+    ["a number", 7],
+  ];
+
+  // Every exported parser that takes an object, with the noun it calls itself.
+  const RECORD_PARSERS: readonly [string, (value: unknown) => unknown, RegExp][] = [
+    ["parseGeometry", parseGeometry, /^geometry must be an object$/],
+    ["parseAnnotation", parseAnnotation, /^annotation must be an object$/],
+    ["parseAttribute", parseAttribute, /^attribute must be an object$/],
+    ["parseLabelClass", parseLabelClass, /^label class must be an object$/],
+    ["parseSchema", parseSchema, /^schema must be an object$/],
+    ["parseAssetDescriptor", parseAssetDescriptor, /^asset must be an object$/],
+  ];
+
+  for (const [name, parse, message] of RECORD_PARSERS) {
+    for (const [label, value] of NOT_A_RECORD) {
+      it(`${name} refuses ${label} as a WireFormatError naming what it wanted`, () => {
+        // The type, not merely "it threw": a TypeError escaping here would mean the
+        // guard was skipped and something downstream dereferenced the payload.
+        expect(() => parse(value)).toThrow(WireFormatError);
+        expect(() => parse(value)).toThrow(message);
+      });
+    }
+  }
+
+  it("parseAnnotations requires an array and says so", () => {
+    // The one parser whose shape is a list. A single annotation is the mistake
+    // worth naming: it is a record, so a record-shaped guard would let it past.
+    for (const [, value] of NOT_A_RECORD.filter(([label]) => label !== "an array")) {
+      expect(() => parseAnnotations(value)).toThrow(/^annotations must be an array$/);
+    }
+    expect(() => parseAnnotations(fixture.annotations[0])).toThrow(
+      /^annotations must be an array$/,
+    );
+    expect(parseAnnotations([])).toEqual([]);
+  });
+
+  it("refuses a schema whose classes are not a list", () => {
+    const wrong = { ...(fixture.schema as object), classes: {} };
+    expect(() => parseSchema(wrong)).toThrow(/^schema\.classes must be an array$/);
+  });
+
+  it("refuses a polygon whose points are not a list", () => {
+    expect(() => parseGeometry({ type: "polygon", points: "0,0" })).toThrow(
+      /^geometry\.points must be an array$/,
+    );
   });
 });
 
