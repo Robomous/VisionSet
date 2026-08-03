@@ -415,10 +415,34 @@ on the second — the failure `SchemaChangeWouldOrphan`'s kernel docstring warns
 about, and the reason it is deliberately *not* a subclass of
 `DestructiveSchemaChange`. The missing button is the feature.
 
-There is no preview: `SchemaService.preview` and `compare` exist in the kernel and
-are deliberately unrouted, so the only way to learn a change is destructive is to
-attempt it and read the refusal. That is why the refusal surface is the editor's
+There is still no preview of the change *you are drafting*: `SchemaService.preview`
+is unrouted, so the only way to learn that the edit in front of you is destructive is
+to attempt it and read the refusal. That is why the refusal surface is the editor's
 real subject.
+
+`compare` **is** routed since #231, and it answers the neighbouring question — what
+two *published* versions did to each other. The version navigator uses it, and never
+computes a diff here: `domain/schema_diff.py` is the one spelling of that rule, and a
+TypeScript copy would drift until the screen called a change safe that the API then
+refused.
+
+### The version navigator
+
+Every version is reachable, newest first, with its description (#230's commit
+message), when it was published, and what it changed against its predecessor.
+Selecting a past version renders it with **no edit affordance at all** — not a
+disabled Save, not a greyed Add class; those controls are absent, because a
+published version is immutable and a disabled control says "not now" when there is
+no now. Version 1 shows no diff, because there is nothing before it, and a project
+with one version renders no navigator at all.
+
+**Which version is being read is component state, not the URL.** `?tab=` carries the
+tab because a tab is a destination; a version somebody is glancing at is a lens on
+the tab they are already in. `DESIGN.md`'s navigation rules state the test.
+
+The description is written once, in a field beside Save, and there is nowhere to edit
+one afterwards — no route, because no service method, because a version is immutable.
+Blank omits the key rather than sending `""`.
 
 Three other decisions the editor inherits rather than invents:
 

@@ -35,6 +35,7 @@ import {
   checkApproveBatch,
   checkCreateProject,
   checkCompleteBatch,
+  checkCompareSchemaVersions,
   checkCreateSchemaVersion,
   checkDatasetStats,
   checkDeleteProject,
@@ -71,6 +72,8 @@ export type Project = components["schemas"]["ProjectOut"];
 export type ProjectPage = components["schemas"]["ProjectPage"];
 export type SchemaVersion = components["schemas"]["SchemaVersionOut"];
 export type SchemaVersionPage = components["schemas"]["SchemaVersionPage"];
+export type SchemaDiff = components["schemas"]["SchemaDiffOut"];
+export type SchemaChange = components["schemas"]["SchemaChangeOut"];
 export type LabelClassBody = components["schemas"]["LabelClassBody"];
 export type AttributeBody = components["schemas"]["AttributeBody"];
 export type GeometryType = components["schemas"]["GeometryType"];
@@ -88,6 +91,8 @@ export const queryKeys = {
   projectAssets: (projectId: string, limit?: number) =>
     ["projects", projectId, "assets", limit ?? "all"] as const,
   schemaVersions: (projectId: string) => ["projects", projectId, "schema", "versions"] as const,
+  schemaCompare: (projectId: string, from: number, to: number) =>
+    ["projects", projectId, "schema", "compare", from, to] as const,
 };
 
 export function useProjects(): UseQueryResult<ProjectPage, Error> {
@@ -262,6 +267,41 @@ export function useSchemaVersions(projectId: string): UseQueryResult<SchemaVersi
 }
 
 /**
+ * What one schema version did to another, classified by the kernel.
+ *
+ * A route rather than arithmetic here (#231): the rule is `domain/schema_diff.py`
+ * and it is not obvious — an *optional* attribute added is additive while a
+ * *required* one is not, widening a `select` is additive and narrowing it is not,
+ * and a rename reads as one removal plus one addition. A second implementation in
+ * TypeScript would be free to drift from the one the API then enforces, and the
+ * drift would show up as a screen that says "safe" about a change the API refuses.
+ *
+ * Disabled rather than called with a guessed argument when there is no
+ * predecessor: version 1 has nothing to compare against, and `from=0` is a 422.
+ */
+export function useSchemaComparison(
+  projectId: string,
+  from: number | null,
+  to: number | null,
+): UseQueryResult<SchemaDiff, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.schemaCompare(projectId, from ?? 0, to ?? 0),
+    enabled: from !== null && to !== null && from >= 1 && to >= 1,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/projects/{project_id}/schema/compare", {
+          params: {
+            path: { project_id: projectId },
+            query: { from: from ?? 1, to: to ?? 1 },
+          },
+        }),
+        checkCompareSchemaVersions,
+      ),
+  });
+}
+
+/**
  * Publish a new schema version.
  *
  * `allowDestructive` rides as `?allow_destructive=true`, and it is a **different
@@ -282,6 +322,9 @@ export function useCreateSchemaVersion(projectId: string) {
     mutationFn: async (input: {
       classes: readonly LabelClassBody[];
       allowDestructive?: boolean;
+      // The version's commit message (#230). Written once at publish and never
+      // editable afterwards, so there is no update mutation to pair with this.
+      description?: string | null;
     }) =>
       unwrap(
         await client.POST("/projects/{project_id}/schema/versions", {
@@ -291,7 +334,15 @@ export function useCreateSchemaVersion(projectId: string) {
               ? { query: { allow_destructive: true } }
               : {}),
           },
-          body: { classes: [...input.classes] },
+          // Omitted rather than sent as `""` when blank: the API tidies a blank to
+          // null anyway, and sending the key would make an empty box look like a
+          // decision in the request log.
+          body: {
+            classes: [...input.classes],
+            ...(input.description !== undefined && input.description !== null
+              ? { description: input.description }
+              : {}),
+          },
         }),
         checkCreateSchemaVersion,
       ),

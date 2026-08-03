@@ -283,6 +283,7 @@ function JobScreen({
       assetCount={assets.data.length}
       asset={asset}
       schema={schema.data}
+      schemaVersion={batch.data.schema_version ?? null}
       loaded={annotations.data}
       counts={progress.data ?? null}
       onNavigate={setChosen}
@@ -306,6 +307,8 @@ interface WorkspaceProps {
   readonly assetCount: number;
   readonly asset: { readonly id: string; readonly width: number | null; readonly height: number | null; readonly content_hash: string; readonly progress?: string | null };
   readonly schema: unknown;
+  /** The version the batch pinned at approval — what every write here is judged against. */
+  readonly schemaVersion: number | null;
   readonly loaded: readonly WireAnnotation[];
   readonly counts: {
     readonly annotated: number;
@@ -344,6 +347,7 @@ function Workspace({
   assetCount,
   asset,
   schema,
+  schemaVersion,
   loaded,
   counts,
   onNavigate,
@@ -480,6 +484,17 @@ function Workspace({
         <Button variant="ghost" size="icon" aria-label="Back to the batch" data-testid="back" onClick={onOpenGallery} disabled={onOpenGallery === undefined}>
           <ArrowLeft className="size-4" />
         </Button>
+
+        {/* The batch's pin, not the project's active version. Named here because
+            #229 made the pin movable: "why can I not use the class I just made"
+            is answerable only if the screen says which contract it is judged
+            against. Null exactly while a batch is a draft, which an annotator
+            cannot reach. */}
+        {schemaVersion !== null && (
+          <Badge variant="outline" data-testid="pinned-schema" title="The schema version this batch pinned">
+            v{schemaVersion}
+          </Badge>
+        )}
 
         <div className="flex items-center gap-1" data-testid="asset-navigator">
           <Button

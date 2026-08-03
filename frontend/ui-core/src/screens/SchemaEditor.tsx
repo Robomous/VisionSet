@@ -10,6 +10,11 @@
  * and **Save publishes version N+1**. Past versions are read-only because they are
  * read-only, not because a control is disabled.
  *
+ * The same rule reaches the description: it is a version's commit message, written
+ * once at publish, so the field sits beside Save and there is nowhere to edit one
+ * afterwards. That is not a missing screen — there is no route, because there is
+ * no service method, because a version is immutable.
+ *
  * ## The three geometries, and the five the picker does not offer
  *
  * `GeometryType` has eight members and an `Annotation` can carry three. The
@@ -19,12 +24,27 @@
  * choice the API will refuse is a worse experience than not offering it — and the
  * two are kept in step by the API's refusal, not by this list being right.
  *
- * ## There is no preview, and that is why the refusal surface is the feature
+ * ## The history is read-only, and that is honest rather than a limitation
  *
- * `SchemaService.preview` and `compare` exist in the kernel and are deliberately
- * unrouted: #27 shipped without them because nothing called them. So the only way
- * to learn that a change is destructive is to attempt it and read the 409 — and
- * the editor's job is to make that 409 legible rather than to pre-empt it.
+ * Every version is reachable through the navigator; selecting a past one shows
+ * what it contained, why it was made (#230's description) and what it changed,
+ * with **no edit affordance at all** — not a disabled one. A disabled control
+ * says "not now"; there is no now. Editing the active version is unchanged, and
+ * leaving the navigator alone is byte-for-byte the screen that shipped before.
+ *
+ * The per-version diff comes from `GET .../schema/compare` (#231) and is never
+ * computed here. `domain/schema_diff.py` is the one spelling of that rule and it
+ * is not obvious — an *optional* attribute added is additive while a *required*
+ * one is not — so a TypeScript copy would drift, and the drift would read as a
+ * screen calling a change safe that the API then refuses.
+ *
+ * ## There is still no preview of a change *you are drafting*
+ *
+ * `compare` answers what two *published* versions did to each other.
+ * `SchemaService.preview` — what an unpublished draft would do — remains unrouted,
+ * so the only way to learn that the edit in front of you is destructive is to
+ * attempt it and read the 409. The editor's job is to make that 409 legible
+ * rather than to pre-empt it.
  *
  * **Two 409s, and only one is retryable.** This is the exact case `docs/api.md`
  * exists for:
@@ -54,7 +74,7 @@ import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } fr
 
 import { asApiError } from "../data/errors";
 import { classColor, hexColor } from "../palette";
-import { Alert } from "../primitives/Badge";
+import { Alert, Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
 import {
@@ -66,7 +86,7 @@ import {
 } from "../primitives/Dialog";
 import { FieldHint, Input, Label } from "../primitives/Input";
 import { ClassListRow } from "../patterns/DataDisplay";
-import { formatCount } from "../lib/format";
+import { formatCount, formatWhen } from "../lib/format";
 import { toast } from "../primitives/Feedback";
 import {
   Select,
@@ -75,8 +95,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
-import type { AttributeBody, GeometryType, LabelClassBody, SchemaVersion } from "./queries";
-import { useCreateSchemaVersion, useProjectStats } from "./queries";
+import type {
+  AttributeBody,
+  GeometryType,
+  LabelClassBody,
+  SchemaDiff,
+  SchemaVersion,
+} from "./queries";
+import {
+  useCreateSchemaVersion,
+  useProjectStats,
+  useSchemaComparison,
+  useSchemaVersions,
+} from "./queries";
 
 /** The three an `Annotation` can carry. The other five are refused at write time. */
 const GEOMETRIES: readonly GeometryType[] = ["bbox", "polygon", "classification_tag"];
@@ -101,7 +132,18 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
   const [selected, setSelected] = useState(0);
   const [filter, setFilter] = useState("");
   const [removing, setRemoving] = useState<number | null>(null);
+  const [note, setNote] = useState("");
+  // Which version the tab is showing. `null` is the active one — the editor —
+  // and a number is a past version, read-only.
+  //
+  // Component state and not the query string, deliberately. `?tab=` carries the
+  // *tab* because a tab is a destination somebody links to; a version somebody is
+  // glancing at is not, and ui-core imports no router (#171). Nothing about this
+  // is a new navigation pattern, which is what `DESIGN.md` asks of a tab's
+  // internals.
+  const [viewing, setViewing] = useState<number | null>(null);
   const publish = useCreateSchemaVersion(projectId);
+  const history = useSchemaVersions(projectId);
   // Per-class annotation counts, for the list's secondary line and for the blast
   // radius a delete has to state. Shared query key with the Overview, so opening
   // this tab after that one costs no request.
@@ -113,6 +155,13 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
   const version = active?.version ?? null;
   useEffect(() => {
     setDraft(active?.classes ?? []);
+    // A published version's message belongs to that version, so the box empties
+    // rather than carrying the last one into the next save.
+    setNote("");
+    // And the tab returns to the editor: after a save the version somebody was
+    // reading is no longer the newest, and staying put would silently show a
+    // past version as though nothing had happened.
+    setViewing(null);
   }, [version, active?.classes]);
 
   const failure = publish.isError ? asApiError(publish.error) : null;
@@ -134,6 +183,14 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
         ),
     [draft, filter],
   );
+
+  // The version being read, or `undefined` while the tab is on the editor. The
+  // active version is deliberately not resolvable this way — it is `active`, the
+  // prop, so the editor keeps working for a project whose history has not loaded.
+  const past =
+    viewing === null
+      ? undefined
+      : history.data?.items.find((entry) => entry.version === viewing);
 
   const current = draft[selected];
   const counts = stats.data?.classes ?? [];
@@ -160,7 +217,11 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
       return;
     }
     publish.mutate(
-      { classes: draft, ...(allowDestructive ? { allowDestructive: true } : {}) },
+      {
+        classes: draft,
+        ...(allowDestructive ? { allowDestructive: true } : {}),
+        ...(note.trim() === "" ? {} : { description: note }),
+      },
       { onSuccess: () => setConfirming(false) },
     );
   }
@@ -208,13 +269,33 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
             saying what saving would do, rather than a tooltip or a disabled
             button somebody has to press to find out. */}
         <p className="text-meta text-muted-foreground" data-testid="schema-status">
-          {active === null
-            ? "This project has no schema yet. Saving creates version 1."
-            : `Version ${active.version} active`}
-          {active !== null && (dirty ? " · unsaved changes create v" : " · saving creates v")}
-          {active !== null && active.version + 1}
+          {past !== undefined
+            ? `Version ${past.version} · read-only`
+            : active === null
+              ? "This project has no schema yet. Saving creates version 1."
+              : `Version ${active.version} active`}
+          {past === undefined &&
+            active !== null &&
+            (dirty ? " · unsaved changes create v" : " · saving creates v")}
+          {past === undefined && active !== null && active.version + 1}
         </p>
+        {/* Absent, not hidden and not disabled. A disabled Save would say "not
+            now"; there is no now — a published version is immutable, and the
+            navigator is the way back to the one that can be edited. Rendering it
+            greyed would also leave it in the DOM, where a test could click it. */}
+        {past === undefined && (
         <div className="flex items-center gap-2">
+          {/* Optional, and unlabelled beyond its placeholder because it is one
+              field: a version's commit message, written once at publish. There is
+              no edit path for it afterwards, so this is the only place it exists. */}
+          <Input
+            aria-label="Why this version"
+            placeholder="Why this version? (optional)"
+            data-testid="version-note"
+            className="w-56"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+          />
           <Button variant="secondary" data-testid="add-class" onClick={addClass}>
             <Plus className="size-4" aria-hidden="true" />
             Add class
@@ -231,7 +312,16 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
             {publish.isPending ? "Saving…" : "Save version"}
           </Button>
         </div>
+        )}
       </div>
+
+      <VersionNavigator
+        projectId={projectId}
+        versions={history.data?.items ?? []}
+        activeVersion={version}
+        viewing={viewing}
+        onView={setViewing}
+      />
 
       {failure !== null && failure.code !== DESTRUCTIVE && failure.code !== WOULD_ORPHAN && (
         <Alert variant="destructive" title={failure.code} data-testid="schema-error">
@@ -239,7 +329,9 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
         </Alert>
       )}
 
-      {draft.length === 0 ? (
+      {past !== undefined ? (
+        <PastVersion declared={past} />
+      ) : draft.length === 0 ? (
         <Alert title="No classes yet">
           A class is a label plus the one geometry it is drawn with — picking a class picks a tool.
         </Alert>
@@ -350,6 +442,206 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
         onClose={() => publish.reset()}
       />
     </section>
+  );
+}
+
+/**
+ * Every version, newest first, and what the selected one changed.
+ *
+ * A bar above the two-panel grid rather than a list inside the master column: the
+ * master column *is* the class list, and a second list in it would be two masters
+ * competing for the same 240px. It also has to survive a version that declares no
+ * classes, where the grid is replaced by an empty-state alert.
+ *
+ * Absent entirely while a project has one version or none — there is no history to
+ * navigate, and a selector with one entry is furniture.
+ */
+function VersionNavigator({
+  projectId,
+  versions,
+  activeVersion,
+  viewing,
+  onView,
+}: {
+  readonly projectId: string;
+  readonly versions: readonly SchemaVersion[];
+  readonly activeVersion: number | null;
+  readonly viewing: number | null;
+  readonly onView: (version: number | null) => void;
+}): JSX.Element | null {
+  // Newest first: a history is read from the top, and the version somebody wants
+  // is nearly always the last one or the one before it.
+  const ordered = useMemo(
+    () => [...versions].sort((a, b) => b.version - a.version),
+    [versions],
+  );
+  const shown = viewing ?? activeVersion;
+  const entry = ordered.find((version) => version.version === shown);
+  // Against its predecessor, which is the question a history entry answers. The
+  // hook is called unconditionally with nulls when there is no predecessor —
+  // Rules of Hooks, and `useSchemaComparison` disables itself rather than asking
+  // for version 0, which is a 422.
+  const previous = shown === null || shown <= 1 ? null : shown - 1;
+  const diff = useSchemaComparison(projectId, previous, previous === null ? null : shown);
+
+  if (ordered.length < 2) return null;
+
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3"
+      data-testid="version-navigator"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Label htmlFor="version-picker">Version</Label>
+        <Select
+          value={String(shown ?? "")}
+          onValueChange={(value) =>
+            onView(Number(value) === activeVersion ? null : Number(value))
+          }
+        >
+          <SelectTrigger id="version-picker" className="w-44" data-testid="version-picker">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ordered.map((version) => (
+              <SelectItem key={version.version} value={String(version.version)}>
+                v{version.version}
+                {version.version === activeVersion ? " · active" : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {entry?.created_at != null && (
+          <span className="text-meta text-muted-foreground" data-testid="version-created">
+            published {formatWhen(entry.created_at)}
+          </span>
+        )}
+        {viewing !== null && (
+          <Button variant="ghost" data-testid="back-to-active" onClick={() => onView(null)}>
+            Back to the active version
+          </Button>
+        )}
+      </div>
+
+      {/* Written once at publish and never editable, so an empty one stays empty
+          — saying so is more useful than an absent line somebody reads as a bug. */}
+      <p className="text-body text-muted-foreground" data-testid="version-description">
+        {entry?.description != null && entry.description !== ""
+          ? entry.description
+          : "No description was written for this version."}
+      </p>
+
+      {previous === null ? (
+        <p className="text-meta text-muted-foreground" data-testid="version-diff-none">
+          Version 1 is the first contract, so there is nothing to compare it against.
+        </p>
+      ) : (
+        <VersionDiff
+          from={previous}
+          to={shown ?? 0}
+          diff={diff.data}
+          failed={diff.isError}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * What one version did to the one before it, in the API's own words.
+ *
+ * `detail` is rendered verbatim: it is the string the kernel's own refusals are
+ * built from, so a sentence here and the sentence in a 409 are the same sentence.
+ * Rewording it in TypeScript would give the same change two descriptions.
+ */
+function VersionDiff({
+  from,
+  to,
+  diff,
+  failed,
+}: {
+  readonly from: number;
+  readonly to: number;
+  readonly diff: SchemaDiff | undefined;
+  readonly failed: boolean;
+}): JSX.Element {
+  if (failed) {
+    return (
+      <p className="text-meta text-muted-foreground" data-testid="version-diff-error">
+        Could not load what changed between v{from} and v{to}.
+      </p>
+    );
+  }
+  if (diff === undefined) {
+    return (
+      <p className="text-meta text-muted-foreground" data-testid="version-diff-pending">
+        Comparing v{from} with v{to}…
+      </p>
+    );
+  }
+  if (diff.changes.length === 0) {
+    return (
+      <p className="text-meta text-muted-foreground" data-testid="version-diff-empty">
+        Nothing changed between v{from} and v{to}.
+      </p>
+    );
+  }
+  return (
+    <ul className="flex flex-col gap-1" data-testid="version-diff">
+      {diff.changes.map((change, index) => (
+        <li key={index} className="flex items-start gap-2 text-meta">
+          <Badge variant={change.kind === "destructive" ? "destructive" : "neutral"}>
+            {change.kind}
+          </Badge>
+          <span className="text-muted-foreground">{change.detail}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * A published version, shown as what it is.
+ *
+ * No filter, no selection, no detail panel: those exist so an edit can address a
+ * class, and there is no edit here. What is left is the contract itself — every
+ * class, its geometry, and the attributes it declares.
+ */
+function PastVersion({ declared }: { readonly declared: SchemaVersion }): JSX.Element {
+  if (declared.classes.length === 0) {
+    return (
+      <Alert title="No classes">
+        Version {declared.version} declares nothing. A project can publish an empty contract.
+      </Alert>
+    );
+  }
+  return (
+    <div
+      className="flex flex-col overflow-hidden rounded-lg border border-border"
+      data-testid="past-version"
+    >
+      {declared.classes.map((entry, index) => (
+        <div
+          key={entry.name}
+          className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 last:border-b-0"
+        >
+          <span
+            aria-hidden="true"
+            className="size-3 shrink-0 rounded-full"
+            style={{ backgroundColor: swatchOf(entry, index) }}
+          />
+          <span className="text-body font-medium">{entry.name}</span>
+          <Badge variant="outline">{entry.geometry}</Badge>
+          {entry.attributes.length > 0 && (
+            <span className="text-meta text-muted-foreground">
+              {formatCount(entry.attributes.length)}{" "}
+              {entry.attributes.length === 1 ? "attribute" : "attributes"}:{" "}
+              {entry.attributes.map((attribute) => attribute.name).join(", ")}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
