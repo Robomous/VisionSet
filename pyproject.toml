@@ -24,7 +24,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "uvicorn>=0.52.0",
     "typer>=0.12",
-    "mcp>=1.2",
+    "mcp>=2.0.0",
     "sqlalchemy>=2.0",
     # Image decoding for the media processor (#16). A third-party library, not a framework,
     # so it is allowed inside kernel/adapters/ and needs no import-linter change. The 11.0
