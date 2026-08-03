@@ -331,6 +331,21 @@ exactly like a passing one. CI installs ffmpeg and sets `VISIONSET_REQUIRE_FFMPE
 that skip into a hard error, so a broken install step goes red rather than quietly shrinking the
 suite.
 
+The same reasoning reaches the containers. `docker/api.Dockerfile` installs ffmpeg with apt,
+because `uv sync` cannot, and CI's `docker` job builds that image and runs this page's video
+tests inside it. Without that step the compose stack starts, serves and ingests stills perfectly
+well, and answers 500 `MEDIA_TOOL_UNAVAILABLE` the first time somebody uploads a clip — the lazy
+check being what moves the failure that far from the missing binary.
+
+Which ffmpeg is not incidental, and the image's base is chosen for it. Measured on 5.1, the
+version Debian bookworm ships: `-display_rotation` — how the rotation fixtures make a clip that
+declares a display matrix — does not exist before 6.0, and a truncated clip is reported as
+*unsupported* rather than *corrupt*, collapsing the one distinction `IngestFailureKind` exists to
+make. So the image is built on trixie, whose 7.1 is within one major of what CI and a developer
+laptop run, and the `docker` job is what stops a future base-image change reintroducing either
+quietly. This is the same "determinism holds within one build, not across versions" fact stated
+above, arriving as an environment problem rather than a hashing one.
+
 Neither library needs an import-linter change. The contracts forbid *frameworks* inside the
 kernel — FastAPI, Typer, MCP, uvicorn — not third-party libraries, and ffmpeg is reached through
 `subprocess` and is not an import at all.
