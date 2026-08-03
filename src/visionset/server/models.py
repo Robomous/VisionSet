@@ -58,6 +58,7 @@ from visionset.kernel.domain import (
     BboxGeometry,
     BySegments,
     BySize,
+    ChangeKind,
     ClassCompatibility,
     ClassCount,
     ClassExportStatus,
@@ -80,6 +81,8 @@ from visionset.kernel.domain import (
     ProjectStats,
     Release,
     ReleaseVerification,
+    SchemaChange,
+    SchemaDiff,
     SingleJob,
     Source,
     SourceKind,
@@ -323,6 +326,48 @@ class SchemaVersionOut(BaseModel):
 
 class SchemaVersionPage(Page[SchemaVersionOut]):
     """A page of schema versions."""
+
+
+# ``ChangeKind`` is used directly, the ``GeometryType`` precedent: it is a
+# ``StrEnum`` the kernel branches on, no writer outside this build produces one,
+# and the set grows deliberately. Restating it here would be a second spelling of
+# the same two words.
+class SchemaChangeOut(BaseModel):
+    """One difference between two schema versions, already judged."""
+
+    kind: ChangeKind
+    label_class: str
+    attribute: str | None
+    detail: str
+
+    @classmethod
+    def of(cls, change: SchemaChange) -> Self:
+        return cls(
+            kind=change.kind,
+            label_class=change.label_class,
+            attribute=change.attribute,
+            detail=change.detail,
+        )
+
+
+class SchemaDiffOut(BaseModel):
+    """Every difference between two schema versions, and the verdict on them."""
+
+    # Both are domain ``@property`` values materialized here, the way
+    # ``ReleaseVerification.ok`` is: a client deciding whether it needs
+    # ``allow_destructive`` must not re-derive the answer from ``changes`` and get
+    # it subtly wrong. That derivation is ``domain/schema_diff.py``'s one job.
+    is_destructive: bool
+    destructive_classes: tuple[str, ...]
+    changes: tuple[SchemaChangeOut, ...]
+
+    @classmethod
+    def of(cls, diff: SchemaDiff) -> Self:
+        return cls(
+            is_destructive=diff.is_destructive,
+            destructive_classes=tuple(sorted(diff.destructive_classes)),
+            changes=tuple(SchemaChangeOut.of(change) for change in diff.changes),
+        )
 
 
 class SchemaVersionCreate(BaseModel):
