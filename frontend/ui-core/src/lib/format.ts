@@ -38,6 +38,26 @@ export function formatPercent(value: number): string {
   return `${formatCount(whole)}%`;
 }
 
+/**
+ * A byte count at human scale: `648 B`, `1.5 KB`, `12.4 MB`.
+ *
+ * Binary units (1024) because that is what the file managers a user will
+ * compare against report. One decimal under 100, none from there up — `12.4 MB`
+ * is information, `123.4 MB` is a decimal pretending to matter.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"] as const;
+  let value = bytes;
+  let unit = -1;
+  do {
+    value /= 1024;
+    unit += 1;
+  } while (value >= 1024 && unit < units.length - 1);
+  return `${value >= 100 ? formatCount(Math.round(value)) : value.toFixed(1)} ${units[unit]}`;
+}
+
 //: Seven days, in milliseconds. `DESIGN.md`: relative under a week, absolute beyond.
 const RELATIVE_LIMIT_MS = 7 * 24 * 60 * 60 * 1000;
 
