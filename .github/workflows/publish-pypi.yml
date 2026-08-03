@@ -1,0 +1,66 @@
+# Upload the one artifact VisionSet ships — the wheel with the compiled UI inside
+# it — to PyPI, over trusted publishing.
+#
+# `bash scripts/build_dist.sh` is mandatory and a bare `uv build` (or
+# `python -m build`) is wrong. `uv build` copies `src/visionset/_static/` as
+# package data at the moment it runs, so a wheel built before `pnpm bundle:static`
+# ships the two placeholder files and nothing else — and it installs, and it
+# starts, and `/ui/` answers 404 naming a script the user cannot run. The script
+# is the ordering, plus a check after each step. Everything up to and including
+# that line is the `wheel` job in ci.yml, step for step and action version for
+# action version, which is what makes a green `wheel (build, install, serve)`
+# check evidence that this workflow's build half works.
+#
+# No credentials anywhere: `id-token: write` plus the `pypi` environment is what
+# PyPI's trusted publisher exchanges for a short-lived upload token. The workflow
+# **filename** and the environment name are both part of that configuration on
+# PyPI's side — renaming either breaks the exchange with an opaque error, not a
+# missing-file error.
+name: Publish to PyPI
+
+# Manual only, for now. The first run claims the `visionset` name and converts
+# PyPI's pending publisher into a real one. This moves to a release/tag trigger
+# once the versioning cadence is settled.
+#
+# Being dispatch-only, it never reports on a pull request — so it must never be
+# added to `main`'s required-checks ruleset. A required check that never reports
+# leaves every pull request BLOCKED forever with nothing red to read.
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # A `permissions:` block sets every scope it does not name to `none`, and
+      # `actions/checkout` authenticates with GITHUB_TOKEN — hence `contents`.
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the wheel and sdist
+        run: bash scripts/build_dist.sh
+
+      # No `with:` — no credentials by design, and the action's default
+      # `packages-dir` is `dist/`, which `build_dist.sh` empties before `uv build`
+      # so both files there are from this run.
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
