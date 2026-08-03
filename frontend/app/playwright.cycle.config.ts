@@ -12,12 +12,12 @@
  *
  * The default suite runs against `vite` on 5273 with the dev proxy in front of a
  * server that does not exist. This one runs against the **built** bundle at
- * `/ui/`, which is a different base URL, a different build and a different server.
+ * `/app/`, which is a different base URL, a different build and a different server.
  * A `projects[]` entry cannot carry a different `webServer`.
  *
- * It is also why the base URL ends in `/ui/`: the API owns the root, so the bundle
+ * It is also why the base URL ends in `/app/`: the API owns the root, so the bundle
  * is mounted under a prefix (#33), and the SPA deep-link fallback (#58) is what
- * makes a reload on `/ui/projects/x` work at all. Driving the real mount is the
+ * makes a reload on `/app/projects/x` work at all. Driving the real mount is the
  * only way either of those is actually exercised.
  *
  * ## Retries and traces, which the issue asks for by name
@@ -64,7 +64,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: process.env["CI"] ? [["github"], ["html", { open: "never" }]] : [["list"]],
   use: {
-    baseURL: `http://127.0.0.1:${PORT}/ui/`,
+    baseURL: `http://127.0.0.1:${PORT}/app/`,
     viewport: { width: 1440, height: 900 },
     trace: "on-first-retry",
     screenshot: "only-on-failure",

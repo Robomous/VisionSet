@@ -45,8 +45,8 @@ export { BENCH_ANNOTATIONS, BENCH_ASSET, benchBoxCentre };
  * #49's scene: 200 boxes, 20 polygons of 32 vertices, on a 4K asset.
  *
  * Relative, with no leading slash, and that is load-bearing. `vite.config.ts`
- * sets `base: "/ui/"` for a production build, so the benchmark's `vite preview`
- * server answers at `/ui/` while the end-to-end suite's dev server answers at
+ * sets `base: "/app/"` for a production build, so the benchmark's `vite preview`
+ * server answers at `/app/` while the end-to-end suite's dev server answers at
  * `/`. Playwright resolves a page URL with `new URL(url, baseURL)`, where a
  * leading slash discards the base's path — which would send every bench run to a
  * 404 that looks like an empty page.

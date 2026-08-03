@@ -9,7 +9,7 @@ cleanly, starts cleanly, and is wrong.
 The first is the one worth naming. `uv build` copies `src/visionset/_static/` as
 package data *at the moment it runs*, and a fresh checkout's `_static/` holds two
 placeholder files — so a wheel built before `pnpm bundle:static` contains no app
-at all. It installs. `visionset ui` starts. `/ui/` answers a 404 naming a script
+at all. It installs. `visionset ui` starts. `/app/` answers a 404 naming a script
 the user cannot run, because they do not have the repository. There is no error
 and no traceback anywhere in that sequence.
 
@@ -132,7 +132,7 @@ def test_the_compiled_app_travels_inside_the_wheel(names: list[str]) -> None:
     """The delivery thesis, and the failure that has no error message.
 
     A wheel built before `pnpm bundle:static` carries `_static/README.md` and
-    `_static/.gitkeep` and nothing else. It installs, it starts, and `/ui/`
+    `_static/.gitkeep` and nothing else. It installs, it starts, and `/app/`
     answers a 404 naming a script its user does not have.
     """
     assert "visionset/_static/index.html" in names
@@ -151,7 +151,7 @@ def test_the_bundle_was_built_for_the_ui_prefix(names: list[str]) -> None:
     with zipfile.ZipFile(WHEEL) as archive:
         index = archive.read("visionset/_static/index.html").decode("utf-8")
 
-    assert "/ui/assets/" in index
+    assert "/app/assets/" in index
     assert re.search(r'src=["\']/assets/', index) is None
 
 
@@ -277,7 +277,7 @@ def test_the_installed_server_serves_the_real_app(installed: Path, tmp_path: Pat
     """The acceptance criterion, end to end: pip, then a browser could use it.
 
     Asserts the *bundle* came back rather than merely a 200 — the SPA fallback
-    answers `index.html` for anything under `/ui/` that looks like a browser
+    answers `index.html` for anything under `/app/` that looks like a browser
     request, so a status code alone proves almost nothing.
     """
     workspace = tmp_path / "ws"
@@ -285,9 +285,9 @@ def test_the_installed_server_serves_the_real_app(installed: Path, tmp_path: Pat
     assert result.returncode == 0, result.stderr
 
     with _serving(installed, workspace, _free_port()) as base:
-        index = _get(f"{base}/ui/")
-        assert "/ui/assets/" in index
-        # `/` is a redirect to `/ui/`, which urllib follows, so this proves the
+        index = _get(f"{base}/app/")
+        assert "/app/assets/" in index
+        # `/` is a redirect to `/app/`, which urllib follows, so this proves the
         # front door works and not merely the mount.
         assert _get(base) == index
         # …and the API is still at the root, which is why the app is not.

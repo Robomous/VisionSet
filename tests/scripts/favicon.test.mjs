@@ -1,5 +1,5 @@
 /**
- * The app declares an icon, and it survives the `/ui/` base the wheel serves under.
+ * The app declares an icon, and it survives the `/app/` base the wheel serves under.
  *
  * #161: without a declared icon a browser asks for `/favicon.ico` on its own. That
  * request lands on the API root, which correctly answers 404 in the one error body
@@ -9,8 +9,8 @@
  * against silence.
  *
  * The half a browser cannot check for us is the **base**. `vite.config.ts` sets
- * `base: command === "build" ? "/ui/" : "/"`, so the icon's href has to be written
- * root-relative and left to Vite's rewrite: a literal `/ui/favicon.svg` would 404
+ * `base: command === "build" ? "/app/" : "/"`, so the icon's href has to be written
+ * root-relative and left to Vite's rewrite: a literal `/app/favicon.svg` would 404
  * under `vite dev`, and a bare `favicon.svg` would resolve against whatever route
  * the SPA happens to be on. Both mistakes produce a page that loads fine and an
  * icon that is silently missing, which is why this is asserted against the
@@ -54,16 +54,16 @@ test("the source declares the icon root-relative, so Vite can rebase it", () => 
   assert.match(link[0], /type="image\/svg\+xml"/);
   // A literal prefix here is the mistake this test exists to catch: it works in
   // the wheel and 404s under `vite dev`, and nothing fails either way.
-  assert.ok(!link[0].includes("/ui/"), "the base belongs to Vite, never to this document");
+  assert.ok(!link[0].includes("/app/"), "the base belongs to Vite, never to this document");
 });
 
-test("the built document points at the icon under the /ui/ base", { skip: builtSkip() }, () => {
+test("the built document points at the icon under the /app/ base", { skip: builtSkip() }, () => {
   const html = readFileSync(built, "utf8");
   const link = /<link[^>]*rel="icon"[^>]*>/.exec(html);
   assert.ok(link, "the built index.html declares no icon");
   // The assertion the whole file is for: the bundle the wheel serves is mounted at
-  // `/ui/` because the API owns the root (#33), so this is where the icon has to be.
-  assert.match(link[0], /href="\/ui\/favicon\.svg"/);
+  // `/app/` because the API owns the root (#33), so this is where the icon has to be.
+  assert.match(link[0], /href="\/app\/favicon\.svg"/);
   assert.ok(
     existsSync(path.join(repoRoot, "frontend", "app", "dist", "favicon.svg")),
     "the icon did not reach dist/ — check that it is under frontend/app/public/",

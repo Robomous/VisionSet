@@ -35,7 +35,7 @@ uv tool install "git+https://github.com/Robomous/VisionSet"   # PyPI lands with 
 
 visionset init ~/datasets/road-signs     # a workspace, here and nowhere else
 cd ~/datasets/road-signs
-visionset ui                             # API at http://127.0.0.1:8000, app at /ui
+visionset ui                             # API at http://127.0.0.1:8000, app at /app
 ```
 
 Then follow [the tutorial](docs/tutorial.md): a clip of video to a YOLO dataset in about half an

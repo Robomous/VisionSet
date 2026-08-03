@@ -269,7 +269,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("asset-position")).toContainText("3/3");
 
     // #160's fifth criterion, and the only honest way to check it here: reload the
-    // URL **the app itself produced**, which is a fresh `GET /ui/jobs/<id>?asset=`
+    // URL **the app itself produced**, which is a fresh `GET /app/jobs/<id>?asset=`
     // at the server and therefore drives #58's SPA deep-link fallback for real. A
     // typed `page.goto('./jobs/…')` would assert the same thing while reopening
     // the door this task closed.
@@ -394,7 +394,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // And the icon is genuinely served under the mount, rather than absent and
     // unnoticed: `vite preview` would answer 200 with `index.html` here, which is
     // #49's trap and the reason this is checked against the real server.
-    const icon = await page.request.get("/ui/favicon.svg");
+    const icon = await page.request.get("/app/favicon.svg");
     expect(icon.status()).toBe(200);
     expect(icon.headers()["content-type"]).toContain("image/svg+xml");
   });

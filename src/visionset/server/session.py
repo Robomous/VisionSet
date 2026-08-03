@@ -11,7 +11,7 @@ whole mechanism is a cookie handed out by ``GET /session``, and one extra place
 :func:`~visionset.server.dependencies.require_token` is willing to look.
 
 **Why a route rather than a ``Set-Cookie`` on the page itself.** Attaching it to
-``/ui/`` is what #179 described, and it works in exactly one of the three
+``/app/`` is what #179 described, and it works in exactly one of the three
 topologies this project ships. The compose stack's API never serves the bundle at
 all — vite does, and nginx puts them on one origin — so a cookie set while
 serving ``index.html`` would never be set there, and the docker half of #179's own

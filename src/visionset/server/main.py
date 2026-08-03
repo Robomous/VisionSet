@@ -29,7 +29,7 @@ DESCRIPTION = "REST surface of the VisionSet SDK. The committed openapi.json is 
 
 router = APIRouter()
 
-UI_PREFIX: Final = "/ui"
+UI_PREFIX: Final = "/app"
 """Where the compiled bundle lives in the URL space.
 
 A prefix rather than the root, and the reason is that **the API already owns the
@@ -135,7 +135,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _install_ui(app: FastAPI, root: Path) -> None:
-    """Serve the compiled UI bundle under ``/ui``, and land ``/`` on it.
+    """Serve the compiled UI bundle under ``/app``, and land ``/`` on it.
 
     **One mount, on a directory that always exists.** ``_static/`` is tracked
     (``README.md`` and ``.gitkeep``); only its *contents* are git-ignored. That is
@@ -159,7 +159,7 @@ def _install_ui(app: FastAPI, root: Path) -> None:
     keeps the CI drift gate and ``pnpm generate:client`` still.
 
     **The single-page deep-link fallback**, which #33 deferred to "the milestone
-    that owns a client-side router" and #58 is. ``/ui/projects/abc`` is a client
+    that owns a client-side router" and #58 is. ``/app/projects/abc`` is a client
     route the router resolves in the browser, but a *reload* on it is a real
     request for a path no file backs — so without a fallback, refreshing any page
     but the index is a 404, and so is every bookmark and every link somebody
@@ -233,7 +233,7 @@ def _install_ui(app: FastAPI, root: Path) -> None:
         stays a 405 like every other wrong method.
 
         The 404 is the one thing a bare redirect could not do. In a source
-        checkout nobody has run ``pnpm bundle:static`` in, ``/ui/`` answers an
+        checkout nobody has run ``pnpm bundle:static`` in, ``/app/`` answers an
         anonymous "Not Found"; here the remedy *is* the message.
         """
         if not (root / INDEX_FILENAME).is_file():

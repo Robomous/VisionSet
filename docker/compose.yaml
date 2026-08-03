@@ -115,7 +115,7 @@ services:
       # lines belong together and neither is safe alone.
       VISIONSET_UI_SESSION: always
     # Raw uvicorn rather than `visionset ui`, and deliberately so: that
-    # command also serves the compiled bundle at /ui, which in development is
+    # command also serves the compiled bundle at /app, which in development is
     # vite's job on :5173 — and building that bundle is exactly what this stack
     # exists to avoid needing.
     command: sh /workspace/docker/api-dev.sh

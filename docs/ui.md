@@ -48,7 +48,7 @@ token to look at a page that cannot use one. They are also what lets the browser
 suite run with no backend.
 
 The router's basename is `import.meta.env.BASE_URL`, which is what vite substitutes
-for its `base` option — so the router and the bundle cannot disagree about the `/ui`
+for its `base` option — so the router and the bundle cannot disagree about the `/app`
 prefix the wheel serves under. A **reload** on a client route is a real request for a
 path no file backs; [`api.md`](api.md#where-the-ui-lives) describes the server-side
 fallback that answers it.
@@ -639,7 +639,7 @@ polling a state somebody adds later.
 `import.meta.env` is a library that can only be built one way.
 
 - **Production**: `""`. `visionset ui` serves the API at the root and the bundle at
-  `/ui`, so a relative request already lands on it.
+  `/app`, so a relative request already lands on it.
 - **Development**: `"/api"`, proxied by vite to `http://127.0.0.1:8000` (override with
   `VISIONSET_API`).
 
