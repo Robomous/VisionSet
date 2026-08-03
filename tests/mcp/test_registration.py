@@ -84,16 +84,14 @@ def test_every_registered_tool_reaches_the_listing() -> None:
     assert len(tool_names()) == len(TOOLS)
 
 
-def test_thirty_five_tools_ship_and_one_more_is_offered_on_request() -> None:
-    # The count is a decision, not an accident — 50 candidates were evaluated one
-    # by one. A change here should be argued in `docs/mcp.md` first. #65 added
-    # `check_export`, the plan-before-apply half of an export; #108 moved
-    # `delete_project` out of the default listing; #229 added `repin_batch`,
-    # without which a class an agent just created is invisible in the batch it is
-    # working in; #231 added `compare_schema_versions`, which is what an agent
-    # reads before deciding whether that re-pin needs a flag.
-    assert len(SHIPPED) == 35
-    assert len(DESTRUCTIVE) == 1
+def test_the_gated_listing_is_exactly_the_shipped_set_plus_the_destructive_one() -> None:
+    # Named, never counted. A bare integer here was the whole point of #35 — 50
+    # candidates evaluated one by one — but it reported an off-by-one where the
+    # set reports *which* tool moved, and it went stale twice in one run while
+    # the set beside it was already correct. What ships is still a decision to be
+    # argued in `docs/mcp.md`; this is how the decision is written down.
+    assert set(tool_names(allow_destructive=True)) == SHIPPED | DESTRUCTIVE
+    assert {tool.__name__ for tool, _hints in DESTRUCTIVE_TOOLS} == DESTRUCTIVE
 
 
 @pytest.mark.parametrize("name", sorted(SHIPPED))
