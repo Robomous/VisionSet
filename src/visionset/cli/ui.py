@@ -95,7 +95,7 @@ def ui(
 ) -> None:
     """Serve the API and the UI from this workspace.
 
-    The app is served at /ui and the API at the root; / redirects to the app.
+    The app is served at /app and the API at the root; / redirects to the app.
     A browser on this machine needs nothing: the server signs in the page it
     served. Every other client needs a token — `visionset token create`.
 

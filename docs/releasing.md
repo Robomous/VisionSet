@@ -139,4 +139,4 @@ visionset format list        # coco, dummy, voc, yolo
 
 `format list` is the useful one: it reads installed entry-point metadata, so a non-empty answer
 proves the distribution was assembled correctly and not merely uploaded. Then confirm the other
-half of the thesis — `visionset init` somewhere, `visionset ui`, and open `/ui`.
+half of the thesis — `visionset init` somewhere, `visionset ui`, and open `/app`.

@@ -229,7 +229,7 @@ silently becomes a new empty workspace instead of an error. See
 ## `visionset ui`
 
 Starts the server against the resolved workspace, serving the REST API at the root and the compiled
-UI bundle at `/ui`; `/` redirects to the app.
+UI bundle at `/app`; `/` redirects to the app.
 
 ```
 $ visionset ui
@@ -272,7 +272,7 @@ visionset` needs no second download. In a source checkout it is a build artifact
 command — a missing bundle is an ordinary state of a checkout, not a fault — while the API and
 `/health` work normally.
 
-Why `/ui` rather than `/`: the API already owns the root, so an app served from `/` could never
+Why `/app` rather than `/`: the API already owns the root, so an app served from `/` could never
 claim `/projects/abc` as one of its own client routes. See
 [api.md](api.md#where-the-ui-lives).
 

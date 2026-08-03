@@ -43,7 +43,7 @@ def _bundle(root: Path) -> Path:
     """A minimal build in the shape Vite emits: an index and one hashed chunk."""
     (root / "assets").mkdir(parents=True)
     (root / INDEX_FILENAME).write_text(
-        f'<!doctype html><title>{MARKER}</title><script src="/ui/assets/app.js"></script>'
+        f'<!doctype html><title>{MARKER}</title><script src="/app/assets/app.js"></script>'
     )
     (root / "assets" / "app.js").write_text("export const marker = 'built';")
     return root
@@ -70,18 +70,18 @@ def bundled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
 def test_the_root_lands_on_the_bundle(bundled: TestClient) -> None:
     response = bundled.get("/", follow_redirects=False)
     assert response.status_code == 307
-    assert response.headers["location"] == "/ui/"
+    assert response.headers["location"] == "/app/"
 
 
 def test_the_index_is_served_under_the_prefix(bundled: TestClient) -> None:
-    response = bundled.get("/ui/")
+    response = bundled.get("/app/")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert MARKER in response.text
 
 
 def test_a_hashed_chunk_is_served_under_the_prefix(bundled: TestClient) -> None:
-    response = bundled.get("/ui/assets/app.js")
+    response = bundled.get("/app/assets/app.js")
     assert response.status_code == 200
     assert "javascript" in response.headers["content-type"]
     assert response.headers["etag"]
@@ -94,23 +94,23 @@ def test_the_prefix_without_its_slash_redirects_to_it(bundled: TestClient) -> No
     costs nothing — but it is behaviour this file inherits rather than writes, so
     it is worth pinning where somebody would look for it.
     """
-    response = bundled.get("/ui", follow_redirects=False)
+    response = bundled.get("/app", follow_redirects=False)
     assert response.status_code == 307
-    assert response.headers["location"].endswith("/ui/")
+    assert response.headers["location"].endswith("/app/")
 
 
 # --- refusing things ----------------------------------------------------------
 
 
 def test_an_unknown_file_under_the_prefix_speaks_the_one_error_body(bundled: TestClient) -> None:
-    response = bundled.get("/ui/nope.js")
+    response = bundled.get("/app/nope.js")
     assert response.status_code == 404
     assert response.json() == {"code": "NOT_FOUND", "message": "Not Found", "detail": None}
 
 
 def test_a_path_that_climbs_out_of_the_bundle_is_refused(bundled: TestClient) -> None:
     """Percent-encoded, because httpx normalises a literal ``..`` away before sending."""
-    response = bundled.get("/ui/%2e%2e/%2e%2e/etc/passwd")
+    response = bundled.get("/app/%2e%2e/%2e%2e/etc/passwd")
     assert response.status_code == 404
 
 
@@ -126,7 +126,7 @@ def test_a_wrong_method_on_the_root_is_a_405(bundled: TestClient) -> None:
 def test_the_root_names_the_command_that_builds_the_bundle_when_there_is_none(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The remedy is the message, because ``/ui/``'s own 404 names nothing."""
+    """The remedy is the message, because ``/app/``'s own 404 names nothing."""
     client = _served(monkeypatch, tmp_path)
     response = client.get("/")
     assert response.status_code == 404
@@ -192,7 +192,7 @@ def test_neither_the_root_nor_the_bundle_appears_in_the_contract() -> None:
     """
     paths = create_app().openapi()["paths"]
     assert "/" not in paths
-    assert not [path for path in paths if path.startswith("/ui")]
+    assert not [path for path in paths if path.startswith("/app")]
 
 
 def test_serving_the_bundle_opens_no_workspace(
@@ -202,7 +202,7 @@ def test_serving_the_bundle_opens_no_workspace(
     monkeypatch.setattr("visionset.server.main.static_root", lambda: _bundle(tmp_path))
     app = create_app()
     with TestClient(app) as client:
-        assert client.get("/ui/").status_code == 200
+        assert client.get("/app/").status_code == 200
     assert app.state.workspace_handle.is_open is False
 
 
@@ -218,11 +218,11 @@ def test_a_client_route_under_the_prefix_serves_the_index_so_a_reload_works(
 ) -> None:
     """The deferral #33 wrote into ``_install_ui``'s docstring, discharged.
 
-    ``/ui/projects/abc`` is a route the router resolves in the browser; a reload on
+    ``/app/projects/abc`` is a route the router resolves in the browser; a reload on
     it is a real request for a path no file backs. Without this, refreshing any page
     but the index is a 404 — and so is every bookmark.
     """
-    response = bundled.get("/ui/projects/abc", headers=HTML)
+    response = bundled.get("/app/projects/abc", headers=HTML)
     assert response.status_code == 200
     assert MARKER in response.text
 
@@ -233,7 +233,7 @@ def test_the_fallback_answers_200_rather_than_404_with_a_body(bundled: TestClien
     A 404 status under a working document is a lie every crawler and every error
     reporter believes.
     """
-    assert bundled.get("/ui/anything/at/all", headers=HTML).status_code == 200
+    assert bundled.get("/app/anything/at/all", headers=HTML).status_code == 200
 
 
 def test_a_client_that_does_not_claim_to_be_a_browser_still_gets_the_json_404(
@@ -244,7 +244,7 @@ def test_a_client_that_does_not_claim_to_be_a_browser_still_gets_the_json_404(
     Every other test in ``tests/server`` needed no change for this feature, and that
     is the evidence rather than a claim: an API client never asks for ``text/html``.
     """
-    response = bundled.get("/ui/projects/abc")
+    response = bundled.get("/app/projects/abc")
     assert response.status_code == 404
     assert response.json() == {"code": "NOT_FOUND", "message": "Not Found", "detail": None}
 
@@ -253,7 +253,7 @@ def test_the_api_keeps_its_own_404_even_for_a_browser(bundled: TestClient) -> No
     """The API owns the root, so the fallback claims one prefix and nothing else.
 
     Answering HTML for an unknown ``/projects/nope`` would hide a real refusal from a
-    client that mistyped a route — the same argument that put the bundle at ``/ui``.
+    client that mistyped a route — the same argument that put the bundle at ``/app``.
     """
     response = bundled.get("/no-such-route", headers=HTML)
     assert response.status_code == 404
@@ -261,7 +261,7 @@ def test_the_api_keeps_its_own_404_even_for_a_browser(bundled: TestClient) -> No
 
 
 def test_a_wrong_method_on_a_client_route_is_not_a_page_load(bundled: TestClient) -> None:
-    response = bundled.post("/ui/projects/abc", headers=HTML)
+    response = bundled.post("/app/projects/abc", headers=HTML)
     assert response.status_code != 200
 
 
@@ -283,7 +283,7 @@ def test_a_checkout_with_no_bundle_does_not_pretend_to_have_one(
     in the application to raise one.
     """
     client = _served(monkeypatch, tmp_path)
-    assert client.get("/ui/projects/abc", headers=HTML).status_code == 404
+    assert client.get("/app/projects/abc", headers=HTML).status_code == 404
 
 
 def test_the_fallback_did_not_reach_the_contract() -> None:

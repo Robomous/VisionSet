@@ -223,7 +223,7 @@ jobs:
   # serves. Everything else is one or the other, which is why neither existing job
   # could have grown this leg.
   #
-  # It drives the **built** artifact at `/ui/`, exactly as the wheel serves it, so
+  # It drives the **built** artifact at `/app/`, exactly as the wheel serves it, so
   # it is also the only check that exercises the static mount and #58's SPA
   # deep-link fallback for real.
   cycle-e2e:

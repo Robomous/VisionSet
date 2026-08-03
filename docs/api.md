@@ -252,7 +252,7 @@ because somebody added it to an entity.
 
 ## Where the UI lives
 
-The compiled application is mounted at **`/ui`** and `/` redirects to it. `visionset ui` starts
+The compiled application is mounted at **`/app`** and `/` redirects to it. `visionset ui` starts
 both halves with one command; see [cli.md](cli.md#visionset-ui).
 
 **The API owns the root, and that is why the app does not.** `/projects/{project_id}` is a shipped
@@ -271,14 +271,14 @@ matches every path, so it beats the *partial* match that produces a 405, and it 
 registered after the application is built. `POST /health` is still 405 `METHOD_NOT_ALLOWED`, and an
 unknown path under the prefix is still a 404 in the one error body below.
 
-**The deep-link fallback, since #58.** A client route like `/ui/projects/abc` is resolved by the
+**The deep-link fallback, since #58.** A client route like `/app/projects/abc` is resolved by the
 router in the browser, but a *reload* on it is a real request for a path no file backs — so without
 a fallback, refreshing any page but the index is a 404, and so is every bookmark. The index is now
 served for a 404 under three conditions, and each keeps something alive:
 
 | condition | what it protects |
 | --- | --- |
-| the path is under `/ui/` | an unknown `/projects/nope` is still the API's own 404 — the same argument that put the bundle at `/ui` |
+| the path is under `/app/` | an unknown `/projects/nope` is still the API's own 404 — the same argument that put the bundle at `/app` |
 | the method is `GET` | a `POST` to a client route is not a page load |
 | `Accept` contains `text/html` | httpx and every other API client send `*/*`, so **the JSON 404 below is untouched** |
 

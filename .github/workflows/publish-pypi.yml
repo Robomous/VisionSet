@@ -5,7 +5,7 @@
 # `python -m build`) is wrong. `uv build` copies `src/visionset/_static/` as
 # package data at the moment it runs, so a wheel built before `pnpm bundle:static`
 # ships the two placeholder files and nothing else — and it installs, and it
-# starts, and `/ui/` answers 404 naming a script the user cannot run. The script
+# starts, and `/app/` answers 404 naming a script the user cannot run. The script
 # is the ordering, plus a check after each step. Everything up to and including
 # that line is the `wheel` job in ci.yml, step for step and action version for
 # action version, which is what makes a green `wheel (build, install, serve)`
