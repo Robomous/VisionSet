@@ -112,6 +112,12 @@ Re-pinning onto the version already pinned is a no-op: the same batch comes back
 written and nothing is announced. Annotations already written keep the `schema_version` they
 were stamped with — only new writes are judged against the new pin.
 
+**The caller this exists for is the annotation page.** #233's *add a class without leaving the
+job* is save → `create_version` → `repin`, in that order, and on that path the change is
+additive by construction, so the gate never fires. It fires only when somebody else narrowed
+the schema past this batch's pin in the meantime — which is the gate doing its job rather than
+getting in the way. See [ui.md](ui.md).
+
 ## The partition is exact
 
 `approve` cuts the batch into segments, one `AnnotationJob` each. The partition is always

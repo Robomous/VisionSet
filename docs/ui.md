@@ -444,6 +444,35 @@ The description is written once, in a field beside Save, and there is nowhere to
 one afterwards — no route, because no service method, because a version is immutable.
 Blank omits the key rather than sending `""`.
 
+### Adding a class from the annotation page
+
+A class that does not exist used to cost a round trip through the Schema tab **and a
+new batch**, because the old one pins the old version. The `+` in the tool palette
+opens a dialog carrying the same fields (`patterns/ClassFields.tsx`, shared with the
+Schema tab so the two cannot drift on geometries, derived colours or how an
+attribute's options are typed), and the flow is three calls in one order:
+
+1. **save** the pending annotations,
+2. **publish** the next version — the *active* version's classes plus the new one,
+   never the batch's pin, because versions are linear and composing on a stale pin
+   would silently delete everything published since,
+3. **re-pin** the batch (#229) onto it.
+
+**Step 1 is first because the schema refetch rebuilds the annotator store.** The
+store is a `useMemo` keyed on the schema, so publishing before saving discards the
+user's last few boxes with a success toast on screen — no error, nothing to see.
+`addClass.test.ts` asserts the sequence and fails if any pair flips.
+
+Three requests are not a transaction. What each failure leaves behind is stated
+rather than hidden, and the one worth naming is the last: **if the re-pin refuses,
+the version exists and the pin has not moved.** That refusal has no flag on purpose
+— it means somebody else narrowed the schema past this batch's pin — so the dialog
+names the Schema tab rather than offering a retry that cannot work.
+
+On success the new class becomes the active one. That state lives on the page rather
+than in the store, so it survives the rebuild, and its digit hotkey arrives free
+because the palette order *is* the hotkey order (#46).
+
 Three other decisions the editor inherits rather than invents:
 
 - **A version is immutable**, so the editor drafts and *publishes N+1*. Past

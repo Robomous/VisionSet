@@ -57,7 +57,7 @@ import {
   type AnnotationSchema,
   type Tool,
 } from "@visionset/annotator";
-import { CircleHelp, MousePointer2, Spline, Square } from "lucide-react";
+import { CircleHelp, MousePointer2, Plus, Spline, Square } from "lucide-react";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
 import { Button } from "../primitives/Button";
@@ -103,6 +103,12 @@ export interface ToolPaletteProps {
   readonly tool: Tool;
   readonly onActivateClass: (labelClass: string | null) => void;
   readonly onToggleHelp: () => void;
+  /**
+   * Open the add-a-class dialog (#233), or absent where there is nowhere to add
+   * one — the demo has no project behind it. The `onOpenGallery` rule: a host
+   * that cannot honour a control renders no control rather than a dead one.
+   */
+  readonly onAddClass?: () => void;
 }
 
 export function ToolPalette({
@@ -110,6 +116,7 @@ export function ToolPalette({
   tool,
   onActivateClass,
   onToggleHelp,
+  onAddClass,
 }: ToolPaletteProps): JSX.Element {
   /**
    * The canvas keeps the focus.
@@ -144,6 +151,21 @@ export function ToolPalette({
           <ToolIcon tool={choice.tool} />
         </PaletteButton>
       ))}
+
+      {/* Beside the tools, because "the class I need is not here" is a thought
+          somebody has while looking at this strip — and a digit hotkey for the
+          new class arrives free, since the palette *is* the hotkey order (#46). */}
+      {onAddClass !== undefined && (
+        <PaletteButton
+          testId="tool-add-class"
+          label="Add a label class"
+          active={false}
+          onMouseDown={keepFocus}
+          onClick={onAddClass}
+        >
+          <Plus className="size-4" />
+        </PaletteButton>
+      )}
 
       <div className="my-1 h-px w-6 bg-border" />
 
