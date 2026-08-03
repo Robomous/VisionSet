@@ -164,6 +164,11 @@ ASSET = Asset(
     frame_index=4,
     frame_timestamp=0.8,
     thumbnail_hash="1" * 64,
+    # Populated, like every other optional field here: a null would let the
+    # timestamp's encoding go unchecked, and the two spellings of a moment
+    # (`_output.moment` is human, `wire._moment` is parity) are exactly the pair
+    # a key-set comparison cannot tell apart.
+    ingested_at=datetime(2026, 8, 3, 12, 30, 45, 123456, tzinfo=UTC),
 )
 
 COUNTS = {

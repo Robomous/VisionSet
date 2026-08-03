@@ -544,6 +544,12 @@ class AssetOut(BaseModel):
     frame_index: int | None
     frame_timestamp: float | None
     thumbnail_hash: str | None
+    # When this asset arrived (#216, published by #283). **Null means unknown,
+    # not "never"**: the column is nullable because rows written before it
+    # existed are legitimately unstamped, and `ProjectStats.last_ingest_at`
+    # already makes the same distinction one level up. A client deriving an age
+    # from it has to render that third state rather than treating null as zero.
+    ingested_at: datetime | None
 
     @classmethod
     def of(cls, asset: Asset) -> Self:
@@ -559,6 +565,7 @@ class AssetOut(BaseModel):
             frame_index=asset.frame_index,
             frame_timestamp=asset.frame_timestamp,
             thumbnail_hash=asset.thumbnail_hash,
+            ingested_at=asset.ingested_at,
         )
 
 

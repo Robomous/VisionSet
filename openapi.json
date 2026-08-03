@@ -382,6 +382,18 @@
             "title": "Id",
             "type": "string"
           },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
           "modality": {
             "const": "image",
             "title": "Modality",
@@ -438,7 +450,8 @@
           "source_id",
           "frame_index",
           "frame_timestamp",
-          "thumbnail_hash"
+          "thumbnail_hash",
+          "ingested_at"
         ],
         "title": "AssetOut",
         "type": "object"
@@ -664,6 +677,18 @@
             "title": "Id",
             "type": "string"
           },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
           "job_id": {
             "anyOf": [
               {
@@ -743,6 +768,7 @@
           "frame_index",
           "frame_timestamp",
           "thumbnail_hash",
+          "ingested_at",
           "job_id",
           "progress"
         ],

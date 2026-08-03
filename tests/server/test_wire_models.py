@@ -5,13 +5,16 @@ from the kernel it publishes — which the route tests would not, because they
 only ever send shapes both sides already agree on.
 """
 
+from datetime import UTC, datetime
 from typing import get_args
 from uuid import uuid4
 
 import pytest
 
+from visionset import wire
 from visionset.kernel.domain import (
     Annotation,
+    Asset,
     AssetProgress,
     Attribute,
     BboxGeometry,
@@ -31,7 +34,9 @@ from visionset.kernel.domain import (
 from visionset.server.models import (
     AnnotationCreate,
     AnnotationOut,
+    AssetOut,
     AttributeBody,
+    BatchAssetOut,
     ClassCountOut,
     DatasetChangeOut,
     DatasetStatsOut,
@@ -311,3 +316,60 @@ def test_a_release_with_a_recipe_publishes_it_unchanged() -> None:
 
     assert published.split is not None
     assert published.split.to_domain() == recipe
+
+
+# --- Asset.ingested_at (#283) ------------------------------------------------
+#
+# The field existed in the domain since #216 and reached no client at all: not
+# `AssetOut`, not `BatchAssetOut`, and nothing in `visionset.wire`. Only the
+# project-level aggregate on `ProjectStatsOut` ever crossed the boundary, so a
+# batch's age was derivable in principle and unreachable in practice.
+
+
+def test_an_assets_arrival_is_published() -> None:
+    arrived = datetime(2026, 8, 3, 12, 30, 45, tzinfo=UTC)
+    asset = Asset(project_id=uuid4(), content_hash="a" * 64, uri="/blobs/a", ingested_at=arrived)
+
+    assert AssetOut.of(asset).ingested_at == arrived
+
+
+def test_an_unstamped_asset_publishes_null_rather_than_a_guess() -> None:
+    """Null means *unknown*, not "never" — a row written before #216 is legitimately bare.
+
+    Substituting any other moment here would make an age a client renders look
+    like a fact, which is the one thing a nullable timestamp exists to avoid.
+    """
+    asset = Asset(project_id=uuid4(), content_hash="a" * 64, uri="/blobs/a")
+
+    assert AssetOut.of(asset).ingested_at is None
+
+
+def test_the_batch_vantage_point_carries_the_arrival_too() -> None:
+    """`BatchAssetOut` inherits `AssetOut`, which is what makes this free.
+
+    Asserted anyway: the inheritance is the design decision (they are the same
+    asset from a different vantage point), and a future hand-written `in_batch`
+    that stopped spreading `AssetOut.of` would drop the field silently.
+    """
+    arrived = datetime(2026, 8, 3, 12, 30, 45, tzinfo=UTC)
+    asset = Asset(project_id=uuid4(), content_hash="a" * 64, uri="/blobs/a", ingested_at=arrived)
+
+    published = BatchAssetOut.in_batch(asset, job_id=None, progress=None)
+
+    assert published.ingested_at == arrived
+
+
+def test_the_two_surfaces_encode_an_arrival_identically() -> None:
+    """The parity gate compares key sets; only a round trip catches a format.
+
+    `_output.moment()` is the human spelling (seconds, no microseconds) and
+    `wire._moment()` is pydantic's. Sharing the wrong one passes every key-set
+    assertion in `test_json_contract.py` and fails only here.
+    """
+    arrived = datetime(2026, 8, 3, 12, 30, 45, 123456, tzinfo=UTC)
+    asset = Asset(project_id=uuid4(), content_hash="a" * 64, uri="/blobs/a", ingested_at=arrived)
+
+    assert (
+        wire.asset(asset)["ingested_at"]
+        == AssetOut.of(asset).model_dump(mode="json")["ingested_at"]
+    )
