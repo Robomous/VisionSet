@@ -15,6 +15,7 @@ from visionset.kernel import (
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
     WorkspaceNotEmpty,
+    WorkspaceSchemaMismatch,
 )
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters.migrations import FORMAT_VERSION
@@ -361,6 +362,22 @@ def test_open_refuses_a_workspace_from_the_future(tmp_path: Path) -> None:
     _init(tmp_path).close()
     _sql(tmp_path / "ws", "update _visionset_meta set format_version = 99")
     with pytest.raises(WorkspaceFormatTooNew, match="99"):
+        WorkspaceService.open(tmp_path / "ws")
+
+
+def test_open_refuses_a_workspace_whose_schema_is_not_the_one_it_is_stamped_at(
+    tmp_path: Path,
+) -> None:
+    """#277 at the door, which is the only place a caller ever meets it.
+
+    ``open`` is what every surface goes through, and the failure this replaces
+    reached none of them: the file opened cleanly and the first statement naming
+    the absent column failed inside a request, as a 500 that named no cause on a
+    route with nothing to do with the schema.
+    """
+    _init(tmp_path).close()
+    _sql(tmp_path / "ws", "alter table source drop column display_name")
+    with pytest.raises(WorkspaceSchemaMismatch, match="display_name"):
         WorkspaceService.open(tmp_path / "ws")
 
 

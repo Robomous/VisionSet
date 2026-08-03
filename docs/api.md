@@ -389,12 +389,13 @@ sentence. The real message and traceback go to the server log under the same id 
 greps one string, and a response body never becomes a channel for filesystem paths, SQL text, or
 a stack trace.
 
-Three errors opt out and expose their real message, each because that message *is* the remedy:
+Four errors opt out and expose their real message, each because that message *is* the remedy:
 
 | Code | Why the message is published |
 | --- | --- |
 | `WORKSPACE_BUSY` | Names the contention; and the whole point is that a retry works. |
-| `WORKSPACE_FORMAT_TOO_NEW` | "Upgrade VisionSet to open it" is the entire fix. |
+| `WORKSPACE_FORMAT_TOO_NEW` | Says which of the two things happened — a later VisionSet wrote it, or one that numbered its generations differently — and only one of those has a fix. |
+| `WORKSPACE_SCHEMA_MISMATCH` | Names the table and column the workspace lacks. Opaque, this is a 500 with no cause on a route with no connection to it, and the answer is only in the server's log. |
 | `MEDIA_TOOL_UNAVAILABLE` | Carries the install hint. Without it the error says nothing an operator did not suspect. |
 
 A **mapped** 5xx keeps its own code (`WORKSPACE_CORRUPT`, `CONSTRAINT_VIOLATED`). An exception no
@@ -428,7 +429,7 @@ argument for branching on `code`.
 | **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `BATCH_NOT_EDITABLE` · `BATCH_NOT_IN_ANNOTATION` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` |
 | **422** | `VALIDATION_ERROR` · `INVALID_NAME` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` |
 | **503** | `WORKSPACE_BUSY` |
-| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `INTERNAL_ERROR` |
+| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `INTERNAL_ERROR` |
 
 `CORRUPT_MEDIA` and `UNSUPPORTED_MEDIA` carry `detail.reason`. The file's *name* is deliberately
 absent from both the detail and the message: on the ingest path it is an absolute path inside a

@@ -106,6 +106,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "WorkspaceCorrupt": (500, "WORKSPACE_CORRUPT"),
     "NotAWorkspace": (500, "NOT_A_WORKSPACE"),
     "WorkspaceFormatTooNew": (500, "WORKSPACE_FORMAT_TOO_NEW"),
+    "WorkspaceSchemaMismatch": (500, "WORKSPACE_SCHEMA_MISMATCH"),
     "EntityNotFound": (500, "ENTITY_NOT_FOUND"),
     "EntityAlreadyExists": (500, "ENTITY_ALREADY_EXISTS"),
     "ConstraintViolated": (500, "CONSTRAINT_VIOLATED"),
@@ -178,7 +179,16 @@ def test_only_transient_errors_carry_a_retry_after() -> None:
 
 def test_message_exposure_is_opt_in_and_only_for_5xx() -> None:
     exposed = {cls.__name__ for cls, rule in ERROR_RULES.items() if rule.expose_message}
-    assert exposed == {"WorkspaceBusy", "WorkspaceFormatTooNew", "MediaToolUnavailable"}
+    assert exposed == {
+        "WorkspaceBusy",
+        "WorkspaceFormatTooNew",
+        # #277: a workspace whose schema is not the one it is stamped at. Opaque,
+        # this is a 500 naming no cause on a route with no connection to the
+        # problem, and the answer is only in the server's log — which was the
+        # complaint. The message names the table and column instead.
+        "WorkspaceSchemaMismatch",
+        "MediaToolUnavailable",
+    }
     assert all(rule.status >= 500 for rule in ERROR_RULES.values() if rule.expose_message)
 
 

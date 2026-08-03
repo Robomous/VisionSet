@@ -62,6 +62,20 @@
 #
 # It is a bind mount rather than a named volume precisely so `down -v` does not
 # take the data with it.
+#
+# Which is worth saying the other way round, because it is the one piece of state
+# `down -v` does *not* reset, and a reader who has been taught that command as
+# "start over" will not expect it: a workspace created by an older build outlives
+# every rebuild and every `down -v`, and a build whose schema has moved on since
+# then refuses to open it (`WORKSPACE_SCHEMA_MISMATCH`, naming the missing
+# column — see docs/persistence.md). There is no migration path while VisionSet
+# is unreleased, so the answer is to delete it:
+#
+#   docker compose -f docker/compose.yaml down
+#   rm -rf workspace-data/            # or "$VISIONSET_DATA", if it is set
+#   docker compose -f docker/compose.yaml up
+#
+# `docker/api-dev.sh` creates a fresh workspace and mints a token on next boot.
 
 # Named, rather than inherited from the directory. Compose derives a project name
 # from the compose file's parent directory, which here is `docker` — a name any

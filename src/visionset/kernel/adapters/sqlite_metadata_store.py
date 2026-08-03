@@ -38,7 +38,7 @@ from sqlalchemy.exc import DatabaseError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from visionset.kernel.adapters import _mappers as m
-from visionset.kernel.adapters._tables import META_TABLE, MetaRow
+from visionset.kernel.adapters._tables import META_TABLE, Base, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 from visionset.kernel.errors import (
     ConstraintViolated,
@@ -48,6 +48,7 @@ from visionset.kernel.errors import (
     WorkspaceBusy,
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
+    WorkspaceSchemaMismatch,
 )
 from visionset.kernel.ports.metadata_store import UNINITIALIZED, UnitOfWork
 
@@ -147,6 +148,32 @@ def _stored_format_version(connection: Connection) -> int | None:
 def _stamp(connection: Connection, version: int) -> None:
     connection.execute(delete(MetaRow))
     connection.execute(insert(MetaRow).values(id=1, format_version=version))
+
+
+def _first_gap(connection: Connection) -> str | None:
+    """What this build declares and the file does not have, or ``None``.
+
+    Only *missing* things are looked for. A file holding more than ``_tables``
+    declares was written by a later build, and this store never selects a column
+    it does not name, so the extra one is inert — while the version stamp is
+    what is supposed to catch that direction anyway. Missing is the direction
+    that breaks, and it breaks at the first statement to name the gap.
+
+    The answer is the first gap in a stable order rather than every gap, because
+    it is read by a person deciding what to do about one file: the second line
+    of a list nobody can act on separately buys nothing, and a stable order is
+    what keeps two runs over one file saying the same thing.
+    """
+    inspector = inspect(connection)
+    present = set(inspector.get_table_names())
+    for name, table in sorted(Base.metadata.tables.items()):
+        if name not in present:
+            return f"table {name!r} is missing"
+        columns = {column["name"] for column in inspector.get_columns(name)}
+        for column_name in (c.name for c in table.columns):
+            if column_name not in columns:
+                return f"table {name!r} is missing column {column_name!r}"
+    return None
 
 
 class SqlRepository[T: m.Entity]:
@@ -283,6 +310,17 @@ class SqliteMetadataStore:
         an existing one gets only what it is missing. A file stamped ahead of
         this build raises rather than being opened on a guess.
 
+        What the stamp cannot answer is checked afterwards, every time. The
+        stamp is a claim about the schema, and it is only as good as the rule
+        that every schema change arrives with a version — a rule this file
+        states and nothing enforces. Migration 1 is ``create_all`` of *today's*
+        ``_tables``, and ``create_all`` creates missing tables while leaving an
+        existing one exactly as it found it, so a file that missed a column
+        stays stamped at the current generation forever and opens as current.
+        Comparing the schema against what is declared costs one reflection per
+        open and turns that into ``WorkspaceSchemaMismatch`` here, rather than
+        an opaque 500 out of whichever route reaches the column first.
+
         Journal mode is set here rather than on every connection, and the reason
         is an invariant one file up: ``WorkspaceService.open`` creates nothing
         when it refuses. Switching a database to WAL *writes its header* — an
@@ -301,14 +339,26 @@ class SqliteMetadataStore:
             if stored is not None and stored > FORMAT_VERSION:
                 raise WorkspaceFormatTooNew(
                     f"workspace format_version {stored} is newer than this VisionSet "
-                    f"understands (max {FORMAT_VERSION}); upgrade VisionSet to open it"
+                    f"understands (max {FORMAT_VERSION}); it was written either by a "
+                    f"later VisionSet, which opening it needs, or by one whose "
+                    f"generations were numbered differently, which no build will open"
                 )
             pending = [mig for mig in MIGRATIONS if stored is None or mig.version > stored]
-            if not pending:
-                return
             for migration in pending:
                 migration.upgrade(connection)
-            _stamp(connection, FORMAT_VERSION)
+            if pending:
+                _stamp(connection, FORMAT_VERSION)
+        # Its own connection, after the migrations have committed: a gap found
+        # here raises, and inside that block the raise would roll back the very
+        # schema a fresh file had just been given.
+        with _readable(self._db_path), self._engine.connect() as connection:
+            gap = _first_gap(connection)
+        if gap is not None:
+            raise WorkspaceSchemaMismatch(
+                f"{self._db_path} is stamped at format_version {FORMAT_VERSION}, which this "
+                f"VisionSet understands, but {gap}. It was written by a different build. "
+                f"Recreate the workspace, or use the build that wrote it"
+            )
 
     @contextmanager
     def unit_of_work(self) -> Iterator[UnitOfWork]:
