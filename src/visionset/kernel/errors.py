@@ -115,6 +115,29 @@ class WorkspaceFormatTooNew(VisionSetError):
     """
 
 
+class WorkspaceSchemaMismatch(VisionSetError):
+    """The stamped generation is one this build knows, and the schema is not.
+
+    ``format_version`` says which generation a file holds, and the whole of that
+    claim rests on every schema change arriving with a version to go with it.
+    When one does not, a file carries the old shape under the current number and
+    nothing about the stamp can tell it apart from a current file — the store
+    opens it, and the first statement naming a column the file lacks fails deep
+    inside a request, as an opaque 500 from a route with no connection to the
+    real problem.
+
+    So the store compares what it found against what it declares, and refuses
+    here instead. Deliberately not a ``WorkspaceCorrupt``: nothing is damaged.
+    This is a valid database of a different generation, and saying "corrupt"
+    would send whoever reads it looking at their disk. It is also not a
+    ``WorkspaceFormatTooNew``, which is about a *stated* difference; this is the
+    difference nobody stated.
+
+    The message names the table and the column, because the remedy depends on
+    which way the gap runs and neither answer is guessable from "it broke".
+    """
+
+
 class InvalidName(VisionSetError):
     """A name was empty, or blank once surrounding whitespace was removed."""
 

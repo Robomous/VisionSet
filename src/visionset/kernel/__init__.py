@@ -64,6 +64,7 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
     WorkspaceNotEmpty,
+    WorkspaceSchemaMismatch,
 )
 
 __all__ = [
@@ -123,5 +124,6 @@ __all__ = [
     "WorkspaceBusy",
     "WorkspaceCorrupt",
     "WorkspaceFormatTooNew",
+    "WorkspaceSchemaMismatch",
     "WorkspaceNotEmpty",
 ]

@@ -184,6 +184,35 @@ missing:
 `initialize()` also switches the file to WAL, for the reason given under
 [Connection posture](#connection-posture).
 
+### The stamp is a claim, and it is checked
+
+Every row of that table rests on one rule: **a schema change arrives with a version to go
+with it.** Nothing enforces the rule, and with a single baseline every workspace anybody
+creates carries the same number forever — so the second row above, "nothing", is also what
+a file that missed a column gets. `create_all` will not repair it: it creates missing
+*tables*, leaves an existing one exactly as it found it, and in any case only runs while
+something is pending, which on an already-stamped file is nothing. The file opens as
+current and the first statement naming the absent column fails inside a request.
+
+That happened ([#277](https://github.com/Robomous/VisionSet/issues/277)): a workspace
+missing `source.display_name` opened cleanly and answered **500 `WORKSPACE_CORRUPT`** —
+opaque, from three unrelated routes, with the cause only in the server's log.
+
+So after the migrations, `initialize()` compares the reflected schema against
+`Base.metadata` and raises **`WorkspaceSchemaMismatch`** naming the first missing table or
+column. Three things about it are deliberate:
+
+- **Only *missing* is a mismatch.** A file holding more than `_tables` declares was written
+  by a later build; nothing here selects a column it does not name, so the extra one is
+  inert, and the version stamp is what is supposed to catch that direction anyway.
+- **It is not a `WorkspaceCorrupt`.** Nothing is damaged — this is a valid database of a
+  different generation, and "corrupt" sends the reader to look at their disk.
+- **It runs on its own connection, after the migrations commit.** Inside that transaction a
+  raise would roll back the schema a fresh file had just been given.
+
+It runs on every open, fresh ones included, which is what makes a disagreement between
+reflection and `_tables` fail one named test rather than every workspace this build creates.
+
 ### Adding the second migration
 
 Append a `Migration` with the next version and an `upgrade` taking a live `Connection`.

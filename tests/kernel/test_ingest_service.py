@@ -2168,10 +2168,18 @@ def test_the_newest_ingest_comes_first(tmp_path: Path) -> None:
 
 
 def test_assets_of_one_run_keep_the_stable_order_inside_it(tmp_path: Path) -> None:
-    """Recency orders the runs; `_in_stable_order` orders what is inside one."""
+    """Recency orders the runs; `_in_stable_order` orders what is inside one.
+
+    The seeds are enumerated rather than derived from the name. ``hash()`` on a
+    ``str`` is randomized per process, so ``hash(name) % 1000`` drew three seeds
+    out of a thousand afresh on every run — and roughly three runs in a thousand
+    drew the same one twice, at which point two files hold identical bytes,
+    content addressing correctly collapses them into one asset, and this test
+    fails for a reason that has nothing to do with ordering. Caught in the wild.
+    """
     fixture = Fixture(tmp_path)
-    for name in ["c.png", "a.png", "b.png"]:
-        write_image(fixture.stills / name, seed=hash(name) % 1000)
+    for seed, name in enumerate(["c.png", "a.png", "b.png"], start=1):
+        write_image(fixture.stills / name, seed=seed)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
     fixture.ingest.ingest(source.id)
 

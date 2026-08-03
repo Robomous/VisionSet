@@ -24,6 +24,11 @@ from sqlalchemy.exc import IntegrityError
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters._tables import Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
+from visionset.kernel.errors import (
+    WorkspaceCorrupt,
+    WorkspaceFormatTooNew,
+    WorkspaceSchemaMismatch,
+)
 
 #: Every uniqueness rule the store carries as a real index, and what makes each
 #: one recognizable in ``sqlite_master``. A service-level rule with nothing
@@ -207,4 +212,147 @@ def test_the_newest_columns_are_declared_last_on_their_row_class(
     declared = [column.name for column in Base.metadata.tables[table].columns]
     assert created == declared
     assert declared[-len(tail) :] == tail
+    store.close()
+
+
+# --- the stamp is a claim, and this is what checks it -----------------------
+#
+# ``format_version`` says which generation a file holds, and that claim rests
+# entirely on every schema change arriving with a version to go with it. Nothing
+# enforces that rule, and with one baseline every workspace anybody creates is
+# stamped ``1`` forever — so a file that missed a column is stamped exactly like
+# one that did not, and ``create_all`` will not notice: it creates missing
+# *tables* and leaves an existing one as it found it. #277 is what that looks
+# like from the outside: an opaque 500 out of a route with no connection to the
+# problem, and the real cause only in the server's log.
+
+
+def _initialized(path: Path) -> SqliteMetadataStore:
+    """A store over a fresh file at the current generation."""
+    store = SqliteMetadataStore(path)
+    store.initialize()
+    store.close()
+    return SqliteMetadataStore(path)
+
+
+def test_a_file_missing_a_column_this_build_declares_is_refused_by_name(tmp_path: Path) -> None:
+    """#277, reproduced at the layer that should have caught it.
+
+    ``source.display_name`` is the column the real report was about, and the
+    shape is what matters: the file is stamped at this build's own
+    ``FORMAT_VERSION``, so nothing about the stamp can tell it apart from a
+    current one.
+    """
+    db = tmp_path / "visionset.db"
+    store = _initialized(db)
+    with store.engine.begin() as connection:
+        connection.execute(text("alter table source drop column display_name"))
+    store.close()
+
+    reopened = SqliteMetadataStore(db)
+    assert reopened.format_version == FORMAT_VERSION
+    with pytest.raises(WorkspaceSchemaMismatch) as refusal:
+        reopened.initialize()
+    reopened.close()
+
+    # Named, both halves. The remedy depends on which way the gap runs, and
+    # neither answer is reachable from "it broke".
+    assert "source" in str(refusal.value)
+    assert "display_name" in str(refusal.value)
+
+
+def test_a_file_missing_a_table_this_build_declares_is_refused_by_name(tmp_path: Path) -> None:
+    """The other half of the same gap, and the baseline does not repair it.
+
+    Worth stating, because the opposite is the natural guess: migration 1 is
+    ``create_all``, which does put back a table it finds missing — but it only
+    runs while something is *pending*, and nothing is pending on a file already
+    stamped at this generation. So the baseline never gets the chance, and the
+    check below is the whole of what stands between a missing table and the same
+    runtime failure a missing column produces.
+    """
+    db = tmp_path / "visionset.db"
+    store = _initialized(db)
+    with store.engine.begin() as connection:
+        connection.execute(text("pragma foreign_keys = off"))
+        connection.execute(text("drop table release"))
+    store.close()
+
+    reopened = SqliteMetadataStore(db)
+    with pytest.raises(WorkspaceSchemaMismatch) as refusal:
+        reopened.initialize()
+    reopened.close()
+
+    assert "release" in str(refusal.value)
+
+
+def test_a_column_this_build_does_not_declare_is_not_a_mismatch(tmp_path: Path) -> None:
+    """Only *missing* is checked, and the asymmetry is deliberate.
+
+    A file holding more than ``_tables`` declares was written by a later build.
+    Nothing here ever selects a column it does not name, so the extra one is
+    inert — and the version stamp is what is supposed to catch that direction.
+    Refusing it would turn every forward-compatible read into a hard stop.
+    """
+    db = tmp_path / "visionset.db"
+    store = _initialized(db)
+    with store.engine.begin() as connection:
+        connection.execute(text("alter table source add column invented_later varchar"))
+    store.close()
+
+    reopened = SqliteMetadataStore(db)
+    reopened.initialize()
+    reopened.close()
+
+
+def test_a_file_stamped_ahead_is_refused_for_being_ahead_and_not_for_its_schema(
+    tmp_path: Path,
+) -> None:
+    """Order matters: the stated difference is answered before the unstated one.
+
+    A file from a later build is both newer *and* likely to be missing nothing —
+    but if it were missing something, the useful answer is still that it is
+    newer, because that is the one the holder can act on.
+    """
+    db = tmp_path / "visionset.db"
+    store = _initialized(db)
+    with store.engine.begin() as connection:
+        connection.execute(
+            text("update _visionset_meta set format_version = :ahead"),
+            {"ahead": FORMAT_VERSION + 1},
+        )
+        connection.execute(text("alter table source drop column display_name"))
+    store.close()
+
+    reopened = SqliteMetadataStore(db)
+    with pytest.raises(WorkspaceFormatTooNew):
+        reopened.initialize()
+    reopened.close()
+
+
+def test_the_refusal_does_not_pretend_the_file_is_damaged() -> None:
+    """A valid database of a different generation is not a corrupt one.
+
+    Catching ``WorkspaceCorrupt`` must not catch this: its docstring sends the
+    reader to look at the file and the disk, and here there is nothing wrong
+    with either.
+    """
+    assert not issubclass(WorkspaceSchemaMismatch, WorkspaceCorrupt)
+    assert not issubclass(WorkspaceSchemaMismatch, WorkspaceFormatTooNew)
+
+
+def test_a_fresh_file_is_not_refused_by_the_check_that_guards_the_stale_one(
+    tmp_path: Path,
+) -> None:
+    """The tripwire runs on every open, including the one that just created it.
+
+    Worth its own test rather than riding on the rest of the suite: the check
+    compares reflection against ``_tables``, so a disagreement between the two
+    would fail *every* workspace this build creates, and the failure should say
+    so here rather than everywhere.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    store.initialize()
+    assert store.format_version == FORMAT_VERSION
     store.close()
