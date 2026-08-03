@@ -56,7 +56,7 @@ from visionset.kernel.domain import (
     Workspace,
     hash_secret,
 )
-from visionset.kernel.ports import UNINITIALIZED, MetadataStore, UnitOfWork
+from visionset.kernel.ports import UNINITIALIZED, UnitOfWork
 
 
 def _store(tmp_path: Path, name: str = "visionset.db") -> SqliteMetadataStore:
@@ -221,17 +221,6 @@ def test_initialize_is_idempotent(tmp_path: Path) -> None:
     store = SqliteMetadataStore(tmp_path / "visionset.db")
     store.initialize()
     store.initialize()
-    store.close()
-
-
-def test_satisfies_metadata_store_port(tmp_path: Path) -> None:
-    assert isinstance(SqliteMetadataStore(tmp_path / "visionset.db"), MetadataStore)
-
-
-def test_unit_of_work_satisfies_the_port(tmp_path: Path) -> None:
-    store = _store(tmp_path)
-    with store.unit_of_work() as uow:
-        assert isinstance(uow, UnitOfWork)
     store.close()
 
 

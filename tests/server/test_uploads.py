@@ -118,3 +118,45 @@ def test_the_directory_is_named_for_the_whole_part_set(tmp_path: Path) -> None:
 
     content = hashlib.sha256(b"one").hexdigest()
     assert staged.directory.name == hashlib.sha256(f"a.png:{content}\n".encode()).hexdigest()
+
+
+def test_an_upload_that_dies_partway_leaves_no_staging_directory(tmp_path: Path) -> None:
+    """The cleanup arm, which every passing upload steps around.
+
+    `test_nothing_is_left_behind_under_a_staging_name` makes the same claim for a
+    run that *worked*, where the rename is what removes the private directory —
+    so the `except` that removes it when the rename is never reached had nothing
+    exercising it. That is the arm that matters: a client disconnecting mid-body
+    is the ordinary way an upload ends, and a staging directory per abandoned
+    attempt accumulates under a path nothing ever cleans.
+
+    The failure is injected at the second part rather than the first, so the
+    directory provably exists and holds bytes at the moment the exception is
+    raised — a cleanup that only ever ran against an empty directory would prove
+    much less.
+    """
+
+    class Severed(BytesIO):
+        """Fails the way a dropped connection does, mid-stream.
+
+        The break is on the *stream*, not on `UploadFile.read`: `_write` takes the
+        spooled `upload.file` and reads it in chunks, deliberately — so a double
+        overriding the async `read` would never be consulted and the part would
+        stage cleanly, which is a test that passes while touching nothing.
+        """
+
+        def read(self, size: int | None = -1) -> bytes:
+            raise OSError("connection reset")
+
+    staging_root = tmp_path / UPLOADS_DIRNAME
+
+    with pytest.raises(OSError, match="connection reset"):
+        stage(
+            tmp_path,
+            [part("a.png", b"one"), UploadFile(file=Severed(b"never read"), filename="b.png")],
+        )
+
+    # The original is re-raised rather than swallowed into a half-staged upload,
+    # and nothing survives: no private directory, and no published one either,
+    # because the digest that would have named it was never computed.
+    assert not staging_root.exists() or list(staging_root.iterdir()) == []
