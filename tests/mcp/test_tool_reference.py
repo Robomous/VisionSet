@@ -6,7 +6,7 @@ is deliberate, because the mistake is made during `uv run pytest` and that is
 where it should surface.
 
 What makes this reference worth generating at all is that a tool description in
-this surface is not prose *about* the code — it **is** the interface. FastMCP
+this surface is not prose *about* the code — it **is** the interface. MCPServer
 ships it verbatim to every client, and it is the only thing a model reads before
 choosing. A hand-written copy would be a second spelling of a contract, and its
 drift would be invisible until an agent acted on the wrong information.

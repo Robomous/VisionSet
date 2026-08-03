@@ -30,10 +30,10 @@ from visionset.kernel.services import WorkspaceService
 
 def ok(result: CallToolResult) -> dict[str, Any]:
     """Every step asserts, and an error envelope is a failure here."""
-    assert not result.isError, result.content
-    assert result.structuredContent is not None
-    assert "error" not in result.structuredContent, result.structuredContent
-    return result.structuredContent
+    assert not result.is_error, result.content
+    assert result.structured_content is not None
+    assert "error" not in result.structured_content, result.structured_content
+    return result.structured_content
 
 
 def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
@@ -212,6 +212,6 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
     # 8. And the walk ends on a refusal it also asserts: the release is immutable,
     #    so the tag cannot be reused.
     reused = call("publish_release", project="road-signs", tag="v1.0")
-    assert not reused.isError
-    assert reused.structuredContent is not None
-    assert "error" in reused.structuredContent
+    assert not reused.is_error
+    assert reused.structured_content is not None
+    assert "error" in reused.structured_content

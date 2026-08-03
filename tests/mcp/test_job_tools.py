@@ -71,7 +71,7 @@ def test_asking_for_no_assets_is_a_malformed_request(
     # `next_pending` refuses a non-positive count with a bare ValueError, so `ge=1`
     # on the parameter has to stop it arriving.
     _, _, job_id = open_batch(monkeypatch, tmp_path, count=1)
-    assert call("next_pending_assets", job_id=job_id, count=0).isError
+    assert call("next_pending_assets", job_id=job_id, count=0).is_error
 
 
 def test_a_job_cannot_be_completed_while_an_asset_is_unsettled(

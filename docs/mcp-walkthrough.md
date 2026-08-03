@@ -240,7 +240,7 @@ and a schema tidy-up that walks into two refusals and a destructive delete.
 **184 tool calls. Zero malformed requests.** Not one call in twelve runs got a shape wrong — not the
 discriminated union's `type`, not `provenance: "model"` needing a `model_ref`, not a nested
 `SplitRecipe`. That is the strongest single result here, and it is the payoff of putting domain
-models straight into the tool signatures: FastMCP publishes their docstrings into `$defs`, so the
+models straight into the tool signatures: MCPServer publishes their docstrings into `$defs`, so the
 schema an agent reads is the one the domain's own validators enforce.
 
 **Thirty of the thirty-three tools were used.** The three never reached for were

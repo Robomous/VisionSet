@@ -118,18 +118,18 @@ def ok(result: CallToolResult) -> dict[str, Any]:
     was well formed and the answer is no. Checking only ``isError`` would let
     every refusal in the walk pass silently, so this checks both.
     """
-    assert not result.isError, result.content
-    assert result.structuredContent is not None, result.content
-    assert "error" not in result.structuredContent, result.structuredContent
-    return result.structuredContent
+    assert not result.is_error, result.content
+    assert result.structured_content is not None, result.content
+    assert "error" not in result.structured_content, result.structured_content
+    return result.structured_content
 
 
 def refusal(result: CallToolResult) -> dict[str, Any]:
     """The error envelope of a domain refusal — a result, not a protocol error."""
-    assert not result.isError, result.content
-    assert result.structuredContent is not None, result.content
-    envelope = result.structuredContent.get("error")
-    assert envelope is not None, result.structuredContent
+    assert not result.is_error, result.content
+    assert result.structured_content is not None, result.content
+    envelope = result.structured_content.get("error")
+    assert envelope is not None, result.structured_content
     assert isinstance(envelope, dict)
     return envelope
 
