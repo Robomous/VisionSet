@@ -82,7 +82,10 @@ def render() -> str:
         (
             "Always offered",
             TOOLS,
-            "Thirty-five tools, in the order an agent meets them: make a project, give it a "
+            # Counted from the table rather than written out. This sentence was
+            # the last hand-maintained tool count in a generated document, and
+            # it went stale twice in one run.
+            f"{len(TOOLS)} tools, in the order an agent meets them: make a project, give it a "
             "schema, put images in it, work through them, promote, publish, export.",
         ),
         (

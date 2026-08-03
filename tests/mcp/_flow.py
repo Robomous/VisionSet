@@ -77,11 +77,17 @@ def _call(target: Any, tool: str, arguments: dict[str, Any]) -> CallToolResult:
     return anyio.run(go)
 
 
-def tool_names() -> list[str]:
-    """Every tool the server advertises, in registration order."""
+def tool_names(*, allow_destructive: bool = False) -> list[str]:
+    """Every tool the server advertises, in registration order.
+
+    ``allow_destructive`` builds a second server rather than setting the
+    environment variable, for ``call_allowing_destruction``'s reason: the
+    module-level one registers at import and a test cannot get in front of that.
+    """
+    listing = build_server(allow_destructive=True) if allow_destructive else server
 
     async def go() -> list[str]:
-        async with create_connected_server_and_client_session(server) as client:
+        async with create_connected_server_and_client_session(listing) as client:
             return [t.name for t in (await client.list_tools()).tools]
 
     return anyio.run(go)

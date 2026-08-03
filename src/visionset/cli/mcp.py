@@ -1,5 +1,5 @@
 # usage: from visionset.cli.mcp import mcp
-"""``visionset mcp`` — the front door for an agent: one command, thirty-five tools.
+"""``visionset mcp`` — the front door for an agent: one command, the whole listing.
 
 ``ui.py``'s shape exactly, with a subprocess where that one has uvicorn, and the
 same three decisions behind it.

@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it — see
 
 ## The tools
 
-Thirty-five by default, listed in the order an agent meets them, plus one offered only on
+Every tool below is offered by default, in the order an agent meets them, plus one only on
 request — see [above](#destructive-tools-are-not-offered-unless-you-ask).
 
 ### Projects and schema

@@ -5,7 +5,7 @@ The rule is the kernel's (``resolve_workspace_root``) and this module is the MCP
 surface's half of it — which is nothing but the ``with`` block, because there is
 no flag to feed it.
 
-**No tool takes a ``workspace`` parameter.** Threading one through thirty-five
+**No tool takes a ``workspace`` parameter.** Threading one through every
 tools would put a path an agent has no way to know into every call, and an agent
 that guessed wrong would be writing into a workspace nobody pointed it at. The
 answer comes from the environment instead: an MCP client names the server in its
