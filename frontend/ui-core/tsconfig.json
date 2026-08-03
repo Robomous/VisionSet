@@ -13,8 +13,19 @@
     "noFallthroughCasesInSwitch": true,
     "isolatedModules": true,
     "skipLibCheck": true,
+    // TypeScript 6 stopped pulling every installed @types package into the
+    // ambient scope; a package that is needed must now be named. `node` is here
+    // for the two test files that read fixtures off disk — `src/tokens.test.ts`
+    // and `src/data/conformance.test.ts` — which is the same reason the package
+    // declares @types/node at all.
+    "types": ["node"],
     "declaration": true,
     "outDir": "dist",
+    // TypeScript 6 stopped inferring the common source directory when that
+    // inference shapes the output layout (error TS5011). `src` is what 5.x
+    // inferred; stating it changes nothing about `dist/` and is what the
+    // compiler now requires.
+    "rootDir": "src",
     "jsx": "react-jsx"
   },
   "include": [
