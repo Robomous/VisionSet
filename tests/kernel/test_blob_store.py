@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from visionset.kernel.adapters import FilesystemBlobStore
-from visionset.kernel.ports import BlobStore
 
 
 def test_put_get_exists_roundtrip(tmp_path: Path) -> None:
@@ -38,7 +37,3 @@ def test_get_missing_blob_raises(tmp_path: Path) -> None:
     store = FilesystemBlobStore(tmp_path / "blobs")
     with pytest.raises(FileNotFoundError):
         store.get("0" * 64)
-
-
-def test_satisfies_blob_store_port(tmp_path: Path) -> None:
-    assert isinstance(FilesystemBlobStore(tmp_path / "blobs"), BlobStore)

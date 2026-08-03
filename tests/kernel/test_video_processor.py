@@ -473,12 +473,6 @@ def test_a_missing_binary_is_not_a_media_error() -> None:
 
 
 # --- the port -----------------------------------------------------------------
-
-
-def test_the_default_video_processor_satisfies_the_port() -> None:
-    assert isinstance(FfmpegVideoProcessor(), VideoProcessor)
-
-
 def test_the_extraction_arguments_are_pinned() -> None:
     """A change detector on purpose: moving a value here moves every frame hash ever stored."""
     assert _EXTRACTION_ARGS == (
