@@ -405,7 +405,14 @@ function Workspace({
   const save = useSaveAnnotations(jobId, asset.id);
   // #233's chain. The *active* schema, not this batch's pin: the next version is
   // composed on what the project declares now, and the pin is what moves onto it.
-  const activeSchema = useActiveSchema(projectId);
+  //
+  // **Only while the dialog is open**, and that is a rule rather than a saving.
+  // This page is judged against the pinned version, and `e2e/annotate.spec.ts`
+  // asserts that opening a job makes no request to `/schema` at all — a page that
+  // read the active version would offer classes the API then refuses. The dialog
+  // is the one place the active version is the right question, so it is the one
+  // place that asks.
+  const activeSchema = useActiveSchema(projectId, addingClass);
   const createVersion = useCreateSchemaVersion(projectId);
   const repin = useRepinBatch(batchId);
   const setProgress = useSetAssetProgress(jobId);

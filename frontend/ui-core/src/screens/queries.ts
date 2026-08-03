@@ -223,10 +223,22 @@ export function useDeleteProject() {
  * purpose (#6), and `SchemaNotFound` is what says so. The screen has to tell that
  * apart from a genuine error, which is why this hook does not swallow it — the
  * editor reads `error.code` and shows an empty draft rather than an error surface.
+ *
+ * `enabled` exists for one caller and one rule. The annotation page is judged
+ * against the batch's **pinned** version and must never ask for the active one —
+ * `e2e/annotate.spec.ts` asserts that no request to `/schema` is made, because a
+ * page that read the active version would offer classes the API then refuses. But
+ * #233's add-a-class dialog composes the next version on the active classes, so it
+ * needs exactly this, and only while it is open. Off by default, so the rule holds
+ * unless a caller says otherwise.
  */
-export function useActiveSchema(projectId: string): UseQueryResult<SchemaVersion, Error> {
+export function useActiveSchema(
+  projectId: string,
+  enabled = true,
+): UseQueryResult<SchemaVersion, Error> {
   const client = useApiClient();
   return useQuery({
+    enabled,
     queryKey: queryKeys.activeSchema(projectId),
     queryFn: async () =>
       unwrap(
