@@ -5,7 +5,7 @@
 body. That is the opposite call from the REST surface, and the reason is that the
 two surfaces publish their input schemas to different readers. FastAPI copies a
 model's docstring verbatim into ``openapi.json`` and turns a PEP 695 alias into a
-named component, so ``server/models.py`` keeps its own spellings; FastMCP puts
+named component, so ``server/models.py`` keeps its own spellings; MCPServer puts
 the same docstrings into ``$defs`` on the tool's ``inputSchema``, where they are
 the best guidance an agent gets about what a class *is*. Re-spelling the model
 here would throw that away and add a second definition to keep in step.

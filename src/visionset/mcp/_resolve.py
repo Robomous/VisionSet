@@ -50,7 +50,7 @@ ProjectRef = Annotated[
 
 Module-level so that ``inspect.signature(fn, eval_str=True)`` resolves it in the
 importing module's globals under ``from __future__ import annotations``; an alias
-built inside a function body would not resolve, and FastMCP would refuse the tool
+built inside a function body would not resolve, and MCPServer would refuse the tool
 at registration.
 """
 

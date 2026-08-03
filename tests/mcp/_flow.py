@@ -5,14 +5,18 @@ Plain functions, the way ``tests/cli/_flow.py`` and ``tests/server/_flow.py`` ar
 plain functions — there is no ``conftest.py`` anywhere in this repository and this
 is not the module that starts one.
 
-**Every call goes through the real protocol.** ``create_connected_server_and_client_session``
-runs the actual server over a pair of in-memory streams and hands back a real
-``ClientSession``, so a test sees what a client sees: a ``CallToolResult`` with
-``isError`` and ``structuredContent``, and — for any tool that declares an output
+**Every call goes through the real protocol.** ``Client(server)`` — the SDK's own
+in-memory transport — runs the actual server over a pair of in-memory streams, so
+a test sees what a client sees: a ``CallToolResult`` with ``isError`` and
+``structuredContent`` on the wire, and — for any tool that declares an output
 schema — free validation of the result against it on every call.
-``FastMCP.call_tool`` is deliberately **not** used: it skips input validation and
+``MCPServer.call_tool`` is deliberately **not** used: it skips input validation and
 output validation, returns an undocumented two-tuple, and raises where the
 protocol returns ``isError``.
+
+The Python attributes are the snake_case field names (``is_error``,
+``structured_content``); the camelCase spellings above are the JSON aliases, which
+is what a non-Python client actually reads.
 
 **No async test infrastructure.** :func:`call` bridges with ``anyio.run``, so
 every test module here is plain synchronous pytest with no marker, no fixture and
@@ -32,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import anyio
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp.client import Client
 from mcp.types import CallToolResult
 from tests.fixtures.media import write_images
 
@@ -71,7 +75,7 @@ def call_destructive(tool: str, /, **arguments: Any) -> CallToolResult:
 
 def _call(target: Any, tool: str, arguments: dict[str, Any]) -> CallToolResult:
     async def go() -> CallToolResult:
-        async with create_connected_server_and_client_session(target) as client:
+        async with Client(target) as client:
             return await client.call_tool(tool, arguments)
 
     return anyio.run(go)
@@ -87,7 +91,7 @@ def tool_names(*, allow_destructive: bool = False) -> list[str]:
     listing = build_server(allow_destructive=True) if allow_destructive else server
 
     async def go() -> list[str]:
-        async with create_connected_server_and_client_session(listing) as client:
+        async with Client(listing) as client:
             return [t.name for t in (await client.list_tools()).tools]
 
     return anyio.run(go)
@@ -97,7 +101,7 @@ def tool_schemas() -> dict[str, Any]:
     """Every advertised tool, keyed by name, for assertions about the listing itself."""
 
     async def go() -> dict[str, Any]:
-        async with create_connected_server_and_client_session(server) as client:
+        async with Client(server) as client:
             return {t.name: t for t in (await client.list_tools()).tools}
 
     return anyio.run(go)
@@ -110,18 +114,18 @@ def payload(result: CallToolResult) -> dict[str, Any]:
     the body ran. A domain refusal is a perfectly ordinary result carrying the
     error envelope, which is what :func:`error` is for.
     """
-    assert not result.isError, result.content
-    assert result.structuredContent is not None
-    assert "error" not in result.structuredContent, result.structuredContent
-    return result.structuredContent
+    assert not result.is_error, result.content
+    assert result.structured_content is not None
+    assert "error" not in result.structured_content, result.structured_content
+    return result.structured_content
 
 
 def error(result: CallToolResult) -> dict[str, Any]:
     """The error envelope of a refused call, asserted to be one."""
-    assert not result.isError, "a domain refusal is a result, not a protocol error"
-    assert result.structuredContent is not None
-    assert "error" in result.structuredContent, result.structuredContent
-    envelope: dict[str, Any] = result.structuredContent["error"]
+    assert not result.is_error, "a domain refusal is a result, not a protocol error"
+    assert result.structured_content is not None
+    assert "error" in result.structured_content, result.structured_content
+    envelope: dict[str, Any] = result.structured_content["error"]
     return envelope
 
 

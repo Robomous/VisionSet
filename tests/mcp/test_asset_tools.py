@@ -40,11 +40,11 @@ def test_a_preview_comes_back_as_image_content_with_the_rows_own_dimensions(
     listed = payload(call("list_batch_assets", batch_id=batch_id))["items"][0]
 
     result = call("get_asset_image", project=named, asset_id=asset_id)
-    assert not result.isError
+    assert not result.is_error
     block = _image_block(result)
-    assert block.mimeType == "image/jpeg"  # type: ignore[attr-defined]
+    assert block.mime_type == "image/jpeg"  # type: ignore[attr-defined]
 
-    meta = result.structuredContent
+    meta = result.structured_content
     assert meta is not None
     # The acceptance criterion: the dimensions the tool reports match the Asset row.
     assert (meta["width"], meta["height"]) == (listed["width"], listed["height"])
@@ -62,8 +62,8 @@ def test_the_bytes_decode_to_an_image_of_the_size_the_answer_claims(
     block = _image_block(result)
     with PillowImage.open(io.BytesIO(base64.b64decode(block.data))) as opened:  # type: ignore[attr-defined]
         assert opened.size == (
-            result.structuredContent["image_width"],  # type: ignore[index]
-            result.structuredContent["image_height"],  # type: ignore[index]
+            result.structured_content["image_width"],  # type: ignore[index]
+            result.structured_content["image_height"],  # type: ignore[index]
         )
         assert opened.format == "JPEG"
 
@@ -80,7 +80,7 @@ def test_a_large_asset_is_previewed_smaller_and_the_scale_says_by_how_much(
 
     meta = call(
         "get_asset_image", project=named, asset_id=_first_asset(named, batch_id)
-    ).structuredContent
+    ).structured_content
     assert meta is not None
     assert (meta["width"], meta["height"]) == (1024, 512)
     assert max(meta["image_width"], meta["image_height"]) == DEFAULT_THUMBNAIL_MAX_EDGE
@@ -94,7 +94,7 @@ def test_an_asset_smaller_than_the_cap_is_never_enlarged_and_scales_by_one(
     named, batch_id = ingested(monkeypatch, tmp_path, count=1)
     meta = call(
         "get_asset_image", project=named, asset_id=_first_asset(named, batch_id)
-    ).structuredContent
+    ).structured_content
     assert meta is not None
     assert (meta["image_width"], meta["image_height"]) == (meta["width"], meta["height"])
     assert meta["scale"] == 1.0
@@ -110,8 +110,8 @@ def test_asking_for_full_resolution_returns_the_original_bytes(
 
     result = call("get_asset_image", project=named, asset_id=asset_id, full=True)
     block = _image_block(result)
-    assert block.mimeType == "image/png"  # type: ignore[attr-defined]
-    meta = result.structuredContent
+    assert block.mime_type == "image/png"  # type: ignore[attr-defined]
+    meta = result.structured_content
     assert meta is not None
     assert meta["resolution"] == "full"
     assert (meta["image_width"], meta["image_height"]) == (400, 300)
@@ -139,7 +139,7 @@ def test_a_missing_preview_names_the_tool_that_renders_one(
     assert "full=true" in (refusal["hint"] or "")
     # And the remedy it names actually works.
     payload(call("backfill_thumbnails", project=named))
-    assert not call("get_asset_image", project=named, asset_id=asset_id).isError
+    assert not call("get_asset_image", project=named, asset_id=asset_id).is_error
 
 
 def test_an_unknown_asset_is_refused_in_the_envelope(

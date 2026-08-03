@@ -102,7 +102,7 @@ def test_a_split_recipe_is_stored_and_its_fractions_must_sum_to_one(
         project=named,
         tag="v2.0",
         split={"train": 0.5, "val": 0.2, "test": 0.2},
-    ).isError
+    ).is_error
 
 
 def test_publishing_an_empty_dataset_is_refused(

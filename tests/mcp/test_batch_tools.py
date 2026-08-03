@@ -56,7 +56,7 @@ def test_jobs_of_zero_is_a_malformed_request_rather_than_a_domain_refusal(
     # what stops it ever being constructed.
     _, batch_id = ingested(monkeypatch, tmp_path, count=2)
     result = call("approve_batch", batch_id=batch_id, jobs_of=0)
-    assert result.isError
+    assert result.is_error
 
 
 def test_the_lifecycle_is_one_way(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
