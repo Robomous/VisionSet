@@ -120,6 +120,7 @@ examples/               Six runnable end-to-end scripts, all exercised in CI
 docs/                   User and contributor documentation (planning lives in GitHub issues)
 docker/                 Dev-only compose environment (never the release artifact)
 scripts/                Repo automation (OpenAPI export, version sync, bundling, dist build)
+.agents/skills/         Coding-agent skills, tool-agnostic (see AGENTS.md)
 ```
 
 ## Documentation
