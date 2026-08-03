@@ -123,9 +123,13 @@ import {
   useJobProgress,
   usePinnedSchema,
   useJobTransition,
+  useRepinBatch,
   useSaveAnnotations,
   useSetAssetProgress,
 } from "./jobQueries";
+import { AddClassDialog, runAddClass } from "./AddClassDialog";
+import type { LabelClassBody } from "../screens/queries";
+import { useActiveSchema, useCreateSchemaVersion } from "../screens/queries";
 
 /** One notch, matching what a wheel step feels like on the same stage. */
 const ZOOM_STEP = 1.25;
@@ -284,6 +288,7 @@ function JobScreen({
       asset={asset}
       schema={schema.data}
       schemaVersion={batch.data.schema_version ?? null}
+      batchId={batch.data.id}
       loaded={annotations.data}
       counts={progress.data ?? null}
       onNavigate={setChosen}
@@ -309,6 +314,8 @@ interface WorkspaceProps {
   readonly schema: unknown;
   /** The version the batch pinned at approval — what every write here is judged against. */
   readonly schemaVersion: number | null;
+  /** The batch this job belongs to. The re-pin in #233's chain addresses it. */
+  readonly batchId: string;
   readonly loaded: readonly WireAnnotation[];
   readonly counts: {
     readonly annotated: number;
@@ -348,6 +355,7 @@ function Workspace({
   asset,
   schema,
   schemaVersion,
+  batchId,
   loaded,
   counts,
   onNavigate,
@@ -370,6 +378,7 @@ function Workspace({
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [view, setView] = useState<Viewport | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [addingClass, setAddingClass] = useState(false);
   const viewRef = useRef<AnnotatorView | null>(null);
 
   /**
@@ -394,6 +403,11 @@ function Workspace({
   const registry = useMemo(() => defaultRegistry(store.document.schema), [store]);
 
   const save = useSaveAnnotations(jobId, asset.id);
+  // #233's chain. The *active* schema, not this batch's pin: the next version is
+  // composed on what the project declares now, and the pin is what moves onto it.
+  const activeSchema = useActiveSchema(projectId);
+  const createVersion = useCreateSchemaVersion(projectId);
+  const repin = useRepinBatch(batchId);
   const setProgress = useSetAssetProgress(jobId);
   const startJob = useJobTransition(jobId, "start");
   const finishJob = useJobTransition(jobId, "complete");
@@ -428,6 +442,44 @@ function Workspace({
       then?.();
     },
     [dirty, plan, save],
+  );
+
+  /**
+   * Adding a class, and the reason this is one callback rather than three buttons.
+   *
+   * The order is the design — see `AddClassDialog`'s docstring. Sequential
+   * `mutateAsync` rather than chained `onSuccess`, because each step must *not*
+   * run if the one before it refused, and because the failure has to reach the
+   * dialog as one error rather than three that could each be showing.
+   *
+   * `activeClass` is set last and survives what follows: it lives here, outside
+   * the store, so the rebuild the schema refetch triggers does not clear it — the
+   * user is drawing with the class they just made before the canvas has finished
+   * settling.
+   */
+  const addClass = useCallback(
+    async (declared: LabelClassBody, note: string): Promise<void> => {
+      if (activeSchema.data === undefined) return;
+      createVersion.reset();
+      repin.reset();
+      try {
+        await runAddClass({
+          save: commit,
+          publish: (classes, description) =>
+            createVersion.mutateAsync({ classes, description }),
+          repin: () => repin.mutateAsync(),
+          activeClasses: activeSchema.data.classes,
+          declared,
+          note,
+        });
+        setActiveClass(declared.name);
+        setAddingClass(false);
+      } catch {
+        // Held on the mutations themselves; the dialog reads whichever refused.
+        // Rethrowing would reach no handler and surface as an unhandled rejection.
+      }
+    },
+    [activeSchema.data, commit, createVersion, repin],
   );
 
   /**
@@ -694,6 +746,7 @@ function Workspace({
             tool={toolFor(store.document, activeClass)}
             onActivateClass={setActiveClass}
             onToggleHelp={() => setHelpOpen((open) => !open)}
+            onAddClass={() => setAddingClass(true)}
           />
 
           <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-meta text-muted-foreground" data-testid="object-total">
@@ -709,6 +762,18 @@ function Workspace({
           onActivateClass={setActiveClass}
         />
       </div>
+
+      <AddClassDialog
+        open={addingClass}
+        onOpenChange={setAddingClass}
+        active={activeSchema.data ?? null}
+        pinnedVersion={schemaVersion}
+        pending={save.isPending || createVersion.isPending || repin.isPending}
+        // Whichever step refused, in the order they run — so the message is about
+        // the call that actually stopped, not about the last mutation touched.
+        error={save.error ?? createVersion.error ?? repin.error ?? null}
+        onSubmit={(declared, note) => void addClass(declared, note)}
+      />
 
       <ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} registry={registry} />
     </div>

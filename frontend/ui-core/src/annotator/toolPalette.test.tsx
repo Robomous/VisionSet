@@ -186,3 +186,27 @@ describe("the canvas keeps the focus", () => {
     expect(seen).toEqual([true]);
   });
 });
+
+describe("adding a class from the palette (#233)", () => {
+  it("offers no button where the host cannot honour one", () => {
+    // The `onOpenGallery` rule: a host with nowhere to send anybody renders no
+    // control rather than a dead one. The annotator demo has no project behind it.
+    render(mount());
+
+    expect(screen.queryByTestId("tool-add-class")).toBeNull();
+  });
+
+  it("asks the host to open the dialog, and keeps the canvas's focus", async () => {
+    const add = vi.fn();
+    render(mount({ onAddClass: add }));
+
+    const button = screen.getByTestId("tool-add-class");
+    await userEvent.click(button);
+
+    expect(add).toHaveBeenCalledTimes(1);
+    // Focus stays on the canvas for the reason every other palette button keeps
+    // it: `AnnotatorCanvas` reads the keyboard off its own root, so a button that
+    // took focus would leave every chord dead until the user clicked the picture.
+    expect(document.activeElement).not.toBe(button);
+  });
+});

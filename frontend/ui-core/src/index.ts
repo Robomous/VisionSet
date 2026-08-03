@@ -222,6 +222,12 @@ export { parentLabel } from "./patterns/parentLabel.js";
 
 // The floating tool palette (#198). Reports the derived tool; never stores one.
 export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
+export {
+  AddClassDialog,
+  runAddClass,
+  type AddClassDialogProps,
+} from "./annotator/AddClassDialog.js";
+export { ClassFields, type ClassFieldsProps } from "./patterns/ClassFields.js";
 
 // The annotator's minimum viewport (#184). Followed live, never sniffed.
 export {

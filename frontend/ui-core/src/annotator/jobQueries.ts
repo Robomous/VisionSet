@@ -59,6 +59,7 @@ import {
   checkGetSchemaVersion,
   checkListAssetAnnotations,
   checkListBatchAssets,
+  checkRepinBatch,
   checkSetAssetProgress,
   checkStartJob,
   checkUpdateAnnotations,
@@ -379,6 +380,39 @@ export function useSetAssetProgress(jobId: string) {
  * So the annotation page owns both: opening a job to work on it **is** starting it,
  * and finishing it is a deliberate act with a button.
  */
+/**
+ * Move the batch's schema pin onto the project's current active version (#229).
+ *
+ * The second half of "add a label while annotating": a batch is judged against
+ * the version it pinned at approval, so a class published a moment ago is
+ * invisible here until this runs.
+ *
+ * **No `allow_destructive`, deliberately.** On the path this exists for the change
+ * is additive by construction — the new version is the active one's classes plus
+ * one — so the gate never fires. It fires only when somebody *else* narrowed the
+ * schema past this batch's pin in the meantime, and the honest answer there is the
+ * refusal, not a flag this page decided to set on their behalf. See #229.
+ */
+export function useRepinBatch(batchId: string | undefined) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (batchId === undefined) throw new Error("no batch to re-pin");
+      return unwrap(
+        await client.POST("/batches/{batch_id}/repin", {
+          params: { path: { batch_id: batchId } },
+        }),
+        checkRepinBatch,
+      );
+    },
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: ["batches"] });
+      void queries.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
 export function useJobTransition(jobId: string, move: "start" | "complete") {
   const client = useApiClient();
   const queries = useQueryClient();
