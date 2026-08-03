@@ -9,12 +9,14 @@
  *
  * Three rules, each a decision:
  *
- * 1. **Strict about unknown keys as well as missing ones.** Lenient parsing plus
- *    a whole-object round-trip is data loss: the editor hands back what it was
- *    given, so a key it silently dropped is a field the kernel wrote and the
- *    editor erased. This is the `extra="forbid"` posture the request bodies
- *    already take, and it is what turns a kernel field addition into a build
- *    failure here instead of a quiet truncation in production.
+ * 1. **Strict about unknown keys as well as missing ones — on the annotation
+ *    path.** Lenient parsing plus a whole-object round-trip is data loss: the
+ *    editor hands back what it was given, so a key it silently dropped is a
+ *    field the kernel wrote and the editor erased. This is the `extra="forbid"`
+ *    posture the request bodies already take, and it is what turns a kernel
+ *    field addition into a build failure here instead of a quiet truncation in
+ *    production. Rule 4 says where this applies and where it deliberately does
+ *    not; read them together.
  *
  * 2. **Shape, not bounds.** A zero-area box and a two-point polygon are refused
  *    by the kernel's own models. Re-checking them here would be a second copy of
@@ -30,13 +32,34 @@
  * #40 added the schema and the asset, and with them a fourth rule:
  *
  * 4. **Strictness follows the round-trip, not the type.** Rule 1 is exact about
- *    keys *because the editor hands annotations back*. The schema and the asset
- *    are input-only — nothing here ever returns them — so that argument does not
- *    transfer, and `color`, `attributes`, `required`, `options` and `default` all
- *    carry defaults on the wire, which #27's rule emits as *optional*. So those
- *    parsers apply the wire's own defaults for an absent optional key while still
- *    refusing an unknown one, which is a caller bug either way. `allowExactKeys`
- *    is that distinction made explicit rather than `requireExactKeys` loosened.
+ *    keys *because the editor hands annotations back*: a key silently dropped is
+ *    a field the kernel wrote and the editor erased. The schema, the label class,
+ *    the attribute and the asset are **input-only** — nothing here ever returns
+ *    them — so that argument does not transfer, and an unknown key on one of them
+ *    can lose nothing.
+ *
+ *    So an input-only mirror **ignores keys it does not declare**, and a
+ *    round-tripped one refuses them. Concretely: `requireExactKeys` for
+ *    `Annotation` and every `Geometry` variant, `allowUndeclaredKeys` for
+ *    everything else.
+ *
+ *    This is the rule `@visionset/ui-core` already follows on the other side of
+ *    the frontend — its generated `checks.ts` says "unknown keys (a server that
+ *    grows a field must not break an older client)" in its own header — and
+ *    `wire.ts` predates it and disagreed until #230 made the disagreement cost
+ *    something. Two fields added to `SchemaVersionOut` made `parseSchema` refuse
+ *    every schema the server sent.
+ *
+ *    It matters because these two packages are published. Inside the wheel the
+ *    annotator and the server always ship together, so skew is impossible; an
+ *    application that embeds `@visionset/annotator` against a newer VisionSet has
+ *    no such guarantee, and the right answer there is to render what it
+ *    understands rather than refuse to open the page.
+ *
+ *    A *missing* key is still refused, because that is the server failing to
+ *    send something the parser needs, which no amount of version skew excuses.
+ *    An absent key that is optional on the wire is legal and the parser applies
+ *    the wire's own default.
  *
  * No dependency: the package ships zero runtime dependencies and keeps them.
  */
@@ -119,17 +142,16 @@ export const ANNOTATION_UPDATE_KEYS = Object.keys(
   UPDATE_KEY_SET,
 ) as readonly (keyof AnnotationUpdate)[];
 
+// Only the *required* keys, for the four input-only mirrors. There is no
+// matching list of optional ones and there does not need to be: under rule 4 an
+// undeclared key is ignored, so "optional" and "not mentioned here" behave the
+// same way, and a second list would only be somewhere for the two to drift.
+// What each parser actually reads is `types.ts`, which is the mirror.
 const ATTRIBUTE_REQUIRED_KEYS = ["name", "kind"] as const;
-const ATTRIBUTE_OPTIONAL_KEYS = ["required", "options", "default"] as const;
 const LABEL_CLASS_REQUIRED_KEYS = ["name", "geometry"] as const;
-const LABEL_CLASS_OPTIONAL_KEYS = ["color", "attributes"] as const;
 const SCHEMA_REQUIRED_KEYS = ["project_id", "version", "classes"] as const;
-// Optional rather than required, so a payload from a server older than #230
-// still parses. A current one always sends them — a pydantic field with a
-// default is serialized, present and null.
-const SCHEMA_OPTIONAL_KEYS = ["description", "created_at"] as const;
-// A projection, so it names the three fields it wants and ignores the eight it
-// does not — the one place here that is deliberately not exact about keys.
+// A projection: it names the three fields it wants of the eleven an asset
+// carries. Rule 4 is what makes that unremarkable rather than a special case.
 const ASSET_KEYS = ["id", "width", "height"] as const;
 
 const BBOX_KEYS = ["type", "x", "y", "width", "height"] as const;
@@ -162,29 +184,24 @@ function requireExactKeys(
 }
 
 /**
- * Refuse a payload missing a required key or carrying an undeclared one.
+ * Refuse a payload missing a required key; ignore any key not declared here.
  *
- * Rule 4: an absent *optional* key is legal and the caller applies the wire's own
- * default. Deliberately a second function rather than a parameter on
- * `requireExactKeys`, so nothing can loosen the annotation path by accident.
+ * Rule 4, for the input-only mirrors. A key this build does not know about is a
+ * newer server's field, and ignoring it is safe precisely because nothing here
+ * hands these objects back — there is nothing to erase.
+ *
+ * Deliberately a second function rather than a parameter on `requireExactKeys`,
+ * so nothing can loosen the annotation path by accident. That path round-trips
+ * and must stay exact.
  */
-function allowExactKeys(
+function allowUndeclaredKeys(
   value: Record<string, unknown>,
   required: readonly string[],
-  optional: readonly string[],
   what: string,
 ): void {
-  const present = new Set(Object.keys(value));
-  const missing = required.filter((key) => !present.has(key));
-  const declared = [...required, ...optional];
-  const unknown = [...present].filter((key) => !declared.includes(key));
+  const missing = required.filter((key) => !(key in value));
   if (missing.length > 0) {
     throw new WireFormatError(`${what} is missing ${missing.join(", ")}`);
-  }
-  if (unknown.length > 0) {
-    throw new WireFormatError(
-      `${what} carries ${unknown.join(", ")}, which the wire contract does not declare`,
-    );
   }
 }
 
@@ -364,7 +381,7 @@ export function parseAttribute(value: unknown): Attribute {
   if (!isRecord(value)) {
     throw new WireFormatError("attribute must be an object");
   }
-  allowExactKeys(value, ATTRIBUTE_REQUIRED_KEYS, ATTRIBUTE_OPTIONAL_KEYS, "attribute");
+  allowUndeclaredKeys(value, ATTRIBUTE_REQUIRED_KEYS, "attribute");
 
   const name = requireString(value["name"], "attribute.name");
   const kind = requireString(value["kind"], `attribute ${name} kind`);
@@ -406,7 +423,7 @@ export function parseLabelClass(value: unknown): LabelClass {
   if (!isRecord(value)) {
     throw new WireFormatError("label class must be an object");
   }
-  allowExactKeys(value, LABEL_CLASS_REQUIRED_KEYS, LABEL_CLASS_OPTIONAL_KEYS, "label class");
+  allowUndeclaredKeys(value, LABEL_CLASS_REQUIRED_KEYS, "label class");
 
   const name = requireString(value["name"], "label class name");
   const geometry = requireString(value["geometry"], `class ${name} geometry`);
@@ -437,7 +454,7 @@ export function parseSchema(value: unknown): AnnotationSchema {
   if (!isRecord(value)) {
     throw new WireFormatError("schema must be an object");
   }
-  allowExactKeys(value, SCHEMA_REQUIRED_KEYS, SCHEMA_OPTIONAL_KEYS, "schema");
+  allowUndeclaredKeys(value, SCHEMA_REQUIRED_KEYS, "schema");
   const classes = value["classes"];
   if (!Array.isArray(classes)) {
     throw new WireFormatError("schema.classes must be an array");
@@ -474,10 +491,7 @@ export function parseAssetDescriptor(value: unknown): AssetDescriptor {
   if (!isRecord(value)) {
     throw new WireFormatError("asset must be an object");
   }
-  const missing = ASSET_KEYS.filter((key) => !(key in value));
-  if (missing.length > 0) {
-    throw new WireFormatError(`asset is missing ${missing.join(", ")}`);
-  }
+  allowUndeclaredKeys(value, ASSET_KEYS, "asset");
   const id = requireString(value["id"], "asset.id");
   if (value["width"] === null || value["height"] === null) {
     throw new WireFormatError(
