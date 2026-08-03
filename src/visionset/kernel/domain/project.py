@@ -64,9 +64,9 @@ class ProjectStats(BaseModel):
     #: When data last arrived, or NULL when no asset here records an arrival.
     #:
     #: The newest ``Asset.ingested_at`` in the project. NULL has one meaning and
-    #: it is not "never ingested" — it is **unknown**: every asset predates
-    #: migration 13, which cannot be backfilled (#216). A project with no assets
-    #: at all reads NULL too, and the two are deliberately not distinguished,
+    #: it is not "never ingested" — it is **unknown**: no asset here records an
+    #: arrival, which nothing backfills (#216). A project with no assets at all
+    #: reads NULL too, and the two are deliberately not distinguished,
     #: because the only caller is a chip that omits itself either way.
     #:
     #: Unlike ``annotated_fraction``, this is *not* derived to a zero when there

@@ -19,8 +19,8 @@ Most entities are flat — every field is a column — and share
   ``VideoProvenance`` as JSON.
 
 ``Asset`` is the newest of those and the only one that *became* one: it was flat
-until migration 13 gave it ``ingested_at``. Adding a timestamp to an entity
-costs it its flat mapping, which is worth knowing before adding the next one.
+until ``ingested_at`` arrived (#216). Adding a timestamp to an entity costs it
+its flat mapping, which is worth knowing before adding the next one.
 """
 
 from __future__ import annotations
@@ -258,7 +258,7 @@ def _source_to_domain(_: Session, row: Any) -> Source:
 
 
 def _asset_to_row(entity: Asset) -> t.Base:
-    """Spelled out since migration 13, for ``_release_to_row``'s reason.
+    """Spelled out rather than flat, for ``_release_to_row``'s reason.
 
     ``ingested_at`` made this the fifth entity that cannot use
     ``_flat_mapping``: it dumps in python mode and would hand a ``datetime`` to

@@ -105,11 +105,12 @@ thing to publish, so this is not [`normalize_name`](../src/visionset/kernel/doma
 and it does not refuse. What it *does* borrow from that rule is the tidying: NFC-normalized
 and stripped, in a validator on the domain model, so no door can write an untidied one.
 
-**Both fields are `None` for a version published before migration 14, and nothing backfills
-either.** A description nobody wrote has no honest value, and migration time records when
-somebody upgraded rather than when the version was written — a plausible-looking wrong
-timestamp is worse than an admitted gap, because nothing downstream can tell it is wrong.
-`Asset.ingested_at` made the same call for the same reason.
+**`description` is `None` when nobody wrote one, and nothing invents one.** `created_at` is
+stamped by `SchemaService` at publication, which is the only moment that can answer it
+honestly — a timestamp taken anywhere else names when somebody ran something, not when the
+version was written, and a plausible-looking wrong timestamp is worse than an admitted gap
+because nothing downstream can tell it is wrong. `Asset.ingested_at` made the same call for
+the same reason.
 
 ## The active version is derived, not stored
 

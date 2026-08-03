@@ -26,9 +26,9 @@ cycle` walks token → project → schema → ingest → approve → annotate �
 complete → promote → publish → verify → export → download against the built bundle
 and the real kernel, on every pull request.
 
-`FORMAT_VERSION` is still **11** and `openapi.json` is byte-identical to
-`v0.0.1-alpha.4`. The milestone's one deliberate Python touch — #58's SPA deep-link
-fallback — is an exception handler, and an exception handler is not an operation.
+M5 moved neither the storage format nor `openapi.json`: the milestone's one deliberate
+Python touch — #58's SPA deep-link fallback — is an exception handler, and an exception
+handler is not an operation.
 
 ## Routes
 

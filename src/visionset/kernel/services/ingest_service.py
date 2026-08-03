@@ -169,8 +169,8 @@ class IngestService:
 
         **Recency first, and it is stable within a run.** #208 shipped this in a
         deterministic but arbitrary order, because nothing recorded when an asset
-        arrived; migration 13 added ``Asset.ingested_at`` (#216) and this is its
-        first reader. A whole ingest shares one timestamp, so the sort inside a
+        arrived; ``Asset.ingested_at`` (#216) is what it reads now. A whole
+        ingest shares one timestamp, so the sort inside a
         run falls through to ``_in_stable_order``, which is the order that
         actually means something:
 
@@ -185,9 +185,10 @@ class IngestService:
            in their own file browser;
         4. ``id``, so the order is total and two calls can never disagree.
 
-        **An asset with no arrival sorts last, never first.** NULL means the row
-        predates migration 13 and cannot be backfilled, so the alternative
-        readings are both wrong: treating it as the epoch is a fabricated date,
+        **An asset with no arrival sorts last, never first.** ``_store`` stamps
+        every asset it writes, so NULL is unreachable through the one door — but
+        the field permits it, and the alternative readings would both be wrong
+        if it ever appeared: treating it as the epoch is a fabricated date,
         and treating it as *now* would pin the oldest rows in the product to the
         top of a "recent" list forever. Last is the one answer that degrades
         quietly — a project that never ingested since the upgrade looks exactly
