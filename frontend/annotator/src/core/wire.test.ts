@@ -23,6 +23,7 @@ import {
   WireFormatError,
   parseAnnotation,
   parseAssetDescriptor,
+  parseAttribute,
   parseGeometry,
   parseLabelClass,
   parseSchema,
@@ -164,6 +165,66 @@ describe("strictness, so the editor cannot silently erase a field", () => {
   });
 });
 
+describe("rule 4: an input-only mirror survives a server that grew a field", () => {
+  // #230 is why this block exists. Two fields were added to `SchemaVersionOut`
+  // and `parseSchema` refused every schema the server sent, because it was as
+  // exact about keys as the annotation path is. The annotation path *has* to be
+  // — it round-trips, so an ignored key is a field the editor erases on save —
+  // and none of these four do.
+
+  it("parses a schema carrying a field this build has never heard of", () => {
+    const schema = parseSchema({
+      project_id: "p",
+      version: 3,
+      classes: [{ name: "sign", geometry: "bbox" }],
+      description: "why",
+      created_at: "2026-08-02T12:00:00Z",
+      published_by: "someone in a later release",
+    });
+    expect(schema.version).toBe(3);
+    expect(schema.classes).toHaveLength(1);
+  });
+
+  it("parses a label class and an attribute carrying one too", () => {
+    const labelClass = parseLabelClass({
+      name: "sign",
+      geometry: "bbox",
+      shortcut_key: "s",
+    });
+    expect(labelClass.name).toBe("sign");
+    const attribute = parseAttribute({ name: "lit", kind: "boolean", helptext: "later" });
+    expect(attribute.kind).toBe("boolean");
+  });
+
+  it("parses an asset carrying one too, which it always did", () => {
+    // The asset parser has ignored undeclared keys since #40 — it names three
+    // fields of the eleven an asset carries. Rule 4 is that behaviour named and
+    // extended to its three siblings, not a new idea.
+    const asset = parseAssetDescriptor({
+      id: "a",
+      width: 640,
+      height: 480,
+      ingested_at: "2026-08-02T12:00:00Z",
+    });
+    expect(asset).toEqual({ id: "a", width: 640, height: 480 });
+  });
+
+  it("still refuses one that is missing a key it needs", () => {
+    // Tolerating additions is not tolerating absences: a missing key is the
+    // server failing to send something the parser reads, which no amount of
+    // version skew excuses.
+    expect(() => parseSchema({ version: 3, classes: [] })).toThrow(/missing project_id/);
+    expect(() => parseLabelClass({ name: "sign" })).toThrow(/missing geometry/);
+  });
+
+  it("does not extend that tolerance to the annotation path", () => {
+    // The other half of the rule, and the one that would cost data if it moved.
+    expect(() => parseAnnotation({ ...sample(), reviewed: true })).toThrow(
+      /carries reviewed/,
+    );
+  });
+});
+
 describe("bounds, which belong to the kernel and are not restated here", () => {
   it("accepts a zero-area box", () => {
     // `BboxGeometry` refuses this with a 422. Re-checking it here would be a
@@ -248,10 +309,14 @@ describe("parsing the schema the kernel produced", () => {
     });
   });
 
-  it("still refuses a key the schema contract does not declare", () => {
-    expect(() =>
-      parseSchema({ project_id: "p", version: 1, classes: [], notes: "hi" }),
-    ).toThrow(/does not declare/);
+  it("ignores a key the schema contract does not declare", () => {
+    // This asserted the opposite until #230, and the reversal is rule 4. A
+    // schema is input-only, so a key this build does not know is a newer
+    // server's field and dropping it loses nothing — where refusing it loses
+    // the whole schema, which is exactly what #230 did.
+    const parsed = parseSchema({ project_id: "p", version: 1, classes: [], notes: "hi" });
+    expect(parsed.version).toBe(1);
+    expect(parsed).not.toHaveProperty("notes");
   });
 
   it("applies the wire's own defaults when an optional key is absent", () => {
@@ -266,12 +331,15 @@ describe("parsing the schema the kernel produced", () => {
     });
   });
 
-  it("still refuses a key the contract does not declare", () => {
-    // Optional is not the same as anything-goes: an unknown key is a caller bug
-    // whether or not the payload is ever handed back.
-    expect(() =>
-      parseLabelClass({ name: "sign", geometry: "bbox", colour: "#fff" }),
-    ).toThrow(WireFormatError);
+  it("ignores a key the contract does not declare", () => {
+    // Reversed with its schema sibling above, for rule 4's reason. Note what is
+    // given up: a genuine caller typo — `colour` for `color` — now parses, and
+    // the class comes back with the default colour instead of an error. That is
+    // the price of surviving a server one version ahead, and `types.ts` is what
+    // catches the typo for anyone compiling against this package.
+    const parsed = parseLabelClass({ name: "sign", geometry: "bbox", colour: "#fff" });
+    expect(parsed.name).toBe("sign");
+    expect(parsed).not.toHaveProperty("colour");
   });
 
   it("accepts a class declaring a geometry no annotation can carry", () => {
