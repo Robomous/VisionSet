@@ -51,6 +51,18 @@ is where the next person will look:
 
 Migrations only run forward. A workspace stamped ahead of this build is
 rejected (``WorkspaceFormatTooNew``) rather than silently downgraded.
+
+**The rules above are checked rather than trusted, and it took a bug to get
+there.** Every one of them exists so that ``format_version`` means something,
+and with a single generation every workspace anybody creates carries the same
+number forever — so a file that missed a change is stamped exactly like one that
+did not, and nothing about the number can tell them apart. Migration 1 will not
+repair it either: ``create_all`` leaves an existing table as it found it, and it
+only runs while something is pending, which on a stamped file is nothing. That
+file then opens as current and fails at the first statement naming what it
+lacks, deep inside a request (#277). So ``SqliteMetadataStore.initialize``
+compares the schema it found against the one declared here and raises
+``WorkspaceSchemaMismatch`` at the door instead.
 """
 
 from __future__ import annotations

@@ -21,7 +21,7 @@ Three rules place a domain error, not fifty:
 - **422** — the payload itself is wrong.
 
 5xx is opaque by default: the body carries a generic sentence and an
-``incident_id``, and the real message and traceback go to the log. Three errors
+``incident_id``, and the real message and traceback go to the log. Four errors
 opt out, each because its message *is* the operator's remedy — see
 ``expose_message`` below.
 """
@@ -101,6 +101,7 @@ from visionset.kernel import (
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
     WorkspaceNotEmpty,
+    WorkspaceSchemaMismatch,
 )
 from visionset.kernel.domain import ExportCompatibility
 from visionset.server.models import ExportCompatibilityOut
@@ -277,6 +278,11 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # WorkspaceCorrupt … where corruption gets a hard failure".
     NotAWorkspace: ErrorRule(500, "NOT_A_WORKSPACE"),  # messages embed the server's own path
     WorkspaceFormatTooNew: ErrorRule(500, "WORKSPACE_FORMAT_TOO_NEW", expose_message=True),
+    # Exposed for the reason the two above it are: the message *is* the remedy,
+    # and it is one nobody can reconstruct. Opaque, this arrives as a 500 naming
+    # no cause on a route with no connection to the real problem, and finding it
+    # takes reading the server's log — which was the whole complaint.
+    WorkspaceSchemaMismatch: ErrorRule(500, "WORKSPACE_SCHEMA_MISMATCH", expose_message=True),
     # A row missing where the store required one, or a primary-key collision on
     # a kernel-generated UUID: a programming error, per ProjectNotFound's
     # docstring ("a delivery surface turns it into a 404, not a 500" — said of
