@@ -203,6 +203,43 @@ then refetches.
 3. **The two cases autosave exists for are covered**: "I forgot" is
    save-on-navigate, "I closed the tab" is the `beforeunload` guard.
 
+#### Review is a flow, not an API-only edge
+
+`annotated → review_pending → accepted | annotated` are three legal edges of
+`ASSET_PROGRESS_TRANSITIONS`, and until now the browser offered **none** of them.
+The gallery's "In review" segment could only be populated through the API or MCP,
+and `accepted` — the one state that records that a human checked the work — was
+unreachable by any sequence of clicks.
+
+The annotator's toolbar carries all three, each drawn from the frame's own
+`allowed_actions`:
+
+- **Submit for review** on an `annotated` frame (`submit_for_review`);
+- **Return to annotator** on one in review (`return_to_annotator`) — named for the
+  act rather than for the edge it rides, the same call `capabilities.py` makes:
+  "back to annotated" describes the table, "return to annotator" describes what is
+  being done;
+- **Accept** on one in review (`accept`), which is the only origin that edge has.
+  Offering Accept on an `annotated` frame — which the toolbar used to do — was
+  offering a refusal, and a silent one.
+
+**There is one screen, not two.** Which controls appear is the frame's state, so
+the annotator and the reviewer are the same page wearing what it is looking at.
+That is deliberate: the product has no annotator identity to assign work to, so
+"reviewer" is something somebody is *doing* rather than somebody they *are*.
+
+A frame out for review is **not writable** — `review_pending` is outside
+`WRITABLE_PROGRESS` — so the page is read-only and its banner names the control
+that undoes that, which is on the same toolbar. `accepted` has no exit at all,
+which is why correcting accepted work needs a correction batch rather than a
+progress move, and the banner says that instead.
+
+**The job counter reads "past `unannotated`", not the `annotated` count.** A
+readout that counted only `annotated` goes *backwards* when a frame is accepted,
+which is the one thing a progress readout must never do. It had that bug, and it
+never bit because nothing could produce `accepted`; the real-server cycle run
+caught it the moment the review moves landed, at 3 of 3 becoming 2 of 3.
+
 #### Read-only is a mode, not an accident
 
 The annotator opens as a **viewer** whenever the frame it is showing does not
