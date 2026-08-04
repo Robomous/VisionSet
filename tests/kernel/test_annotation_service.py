@@ -937,3 +937,71 @@ def test_an_update_cannot_collide_with_a_tag_already_there(tmp_path: Path) -> No
     with pytest.raises(DuplicateClassificationTag):
         fixture.annotations.update(job.id, [stored[1].model_copy(update={"label_class": "kiosk"})])
     fixture.close()
+
+
+# --- which round produced this label (audit G3) -------------------------------
+
+
+def test_a_stored_annotation_records_the_job_it_was_written_in(tmp_path: Path) -> None:
+    """The whole point of the column: a label knows which round produced it.
+
+    An annotation hangs off its ``asset_id`` and nothing else, so before this the
+    batch id travelled only on a transient event — and "which round of work made
+    this box" had no answer anywhere once the event was gone.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    assert stored.job_id == job.id
+
+
+def test_the_caller_cannot_claim_a_different_job(tmp_path: Path) -> None:
+    """Stamped like ``schema_version``, and for the same reason.
+
+    The service knows which round this is; the caller does not get to say
+    otherwise. A field a client could set and never observe is a lie in the API.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+
+    (stored,) = fixture.annotations.add(
+        job.id, [_box(fixture.assets[0]).model_copy(update={"job_id": uuid4()})]
+    )
+
+    assert stored.job_id == job.id
+
+
+def test_replacing_a_label_records_the_round_that_replaced_it(tmp_path: Path) -> None:
+    """``job_id`` and ``asset_id`` go opposite ways on an update, on purpose.
+
+    ``asset_id`` is preserved from the stored annotation, because moving a label
+    to another asset is a delete and an add rather than an edit. ``job_id`` is
+    stamped with the job doing the replacing, because it answers *which round
+    produced the label as it now stands* — and a replacement is a thing this
+    round produced. Preserving it would make the field mean "first written in",
+    which goes stale the moment a correction round edits.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    (replaced,) = fixture.annotations.update(
+        job.id, [stored.model_copy(update={"job_id": None, "label_class": SIGN.name})]
+    )
+
+    assert replaced.job_id == job.id
+    assert replaced.asset_id == stored.asset_id
+
+
+def test_it_survives_a_round_trip_through_the_store(tmp_path: Path) -> None:
+    # The column is not a foreign key — `annotation` could not be rebuilt to give
+    # it one — so nothing but this checks that it is written and read back.
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+
+    (read_back,) = fixture.annotations.for_asset(job.id, stored.asset_id)
+
+    assert read_back.job_id == job.id
