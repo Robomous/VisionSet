@@ -38,6 +38,7 @@ from sqlalchemy.exc import DatabaseError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from visionset.kernel.adapters import _mappers as m
+from visionset.kernel.adapters import _tables as t
 from visionset.kernel.adapters._tables import META_TABLE, Base, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 from visionset.kernel.errors import (
@@ -253,6 +254,7 @@ class SqlUnitOfWork:
     """The repositories of one transaction, all sharing a single session."""
 
     def __init__(self, session: Session) -> None:
+        self._session = session
         self.workspaces = SqlRepository(session, m.WORKSPACES)
         self.projects = SqlRepository(session, m.PROJECTS)
         self.schemas = SqlRepository(session, m.SCHEMAS)
@@ -268,6 +270,24 @@ class SqlUnitOfWork:
         self.dataset_changes = SqlRepository(session, m.DATASET_CHANGES)
         self.releases = SqlRepository(session, m.RELEASES)
         self.tokens = SqlRepository(session, m.TOKENS)
+
+    def batches_holding(self, asset_id: UUID) -> list[UUID]:
+        """The port's one non-repository read — see its docstring for why.
+
+        Ordered by ``position`` within a batch and then by nothing else, which
+        for this question means *the order the memberships were written*: an
+        asset put in one batch and later in a correction of it comes back in that
+        order. SQLite has no stable tie-break to offer beyond the rowid it is
+        already scanning, so the ordering is stated as "oldest membership first"
+        rather than promised to be anything finer.
+        """
+        return list(
+            self._session.scalars(
+                select(t.BatchAssetRow.batch_id)
+                .where(t.BatchAssetRow.asset_id == asset_id)
+                .order_by(t.BatchAssetRow.position)
+            ).all()
+        )
 
 
 class SqliteMetadataStore:
