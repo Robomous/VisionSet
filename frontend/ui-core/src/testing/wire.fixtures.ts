@@ -30,7 +30,7 @@ const BATCH_ACTIONS: Record<BatchState, readonly BatchAction[]> = {
   draft: ["approve", "edit_membership", "delete"],
   approved: ["start", "repin", "delete"],
   in_annotation: ["complete", "repin", "delete"],
-  completed: ["promote"],
+  completed: ["promote", "create_correction"],
 };
 
 /** `job_actions`, given an open batch and whether every asset has settled. */

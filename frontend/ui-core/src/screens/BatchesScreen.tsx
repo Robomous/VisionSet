@@ -43,6 +43,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
 import { SchemaForeshadow } from "./SchemaForeshadow";
+import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
 import { PromoteButton } from "./PromoteButton";
 import { useBatchTransition, useBatches, type Batch } from "./queries";
 
@@ -112,14 +113,27 @@ export function BatchesScreen({
               {page.items.map((batch) => (
                 <TableRow key={batch.id} data-testid={`batch-${batch.name}`}>
                   <TableCell>
-                    <Button
-                      variant="link"
-                      className="h-auto p-0"
-                      data-testid={`open-batch-${batch.name}`}
-                      onClick={() => onOpenBatch(batch.id)}
-                    >
-                      {batch.name}
-                    </Button>
+                    <div className="flex flex-col items-start">
+                      <Button
+                        variant="link"
+                        className="h-auto p-0"
+                        data-testid={`open-batch-${batch.name}`}
+                        onClick={() => onOpenBatch(batch.id)}
+                      >
+                        {batch.name}
+                      </Button>
+                      {/* Lineage in the listing, where a chain is actually
+                          readable: the row says what it corrects, so the order
+                          survives a sort by anything else. */}
+                      <CorrectionOf
+                        parentName={
+                          page.items.find((one) => one.id === batch.parent_batch_id)?.name
+                        }
+                        {...(batch.parent_batch_id == null
+                          ? {}
+                          : { onOpenParent: () => onOpenBatch(batch.parent_batch_id as string) })}
+                      />
+                    </div>
                   </TableCell>
                   <TableCell>
                     {/* The label the gallery header already uses (#292) — the
@@ -143,7 +157,11 @@ export function BatchesScreen({
                   <TableCell className="text-right">
                     <Lifecycle
                       batch={{ ...batch, projectId }}
+                      corrections={
+                        page.items.filter((one) => one.parent_batch_id === batch.id).length
+                      }
                       onApprove={() => setApproving(batch)}
+                      onOpenBatch={onOpenBatch}
                       {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
                     />
                   </TableCell>
@@ -181,12 +199,17 @@ export function BatchesScreen({
  */
 function Lifecycle({
   batch,
+  corrections,
   onApprove,
   onOpenDataset,
+  onOpenBatch,
 }: {
   readonly batch: Batch & { readonly projectId?: string };
+  /** How many corrections of this batch already exist, for the suggested name. */
+  readonly corrections: number;
   readonly onApprove: () => void;
   readonly onOpenDataset?: () => void;
+  readonly onOpenBatch?: (batchId: string) => void;
 }): JSX.Element | null {
   const start = useBatchTransition(batch.id, "start");
 
@@ -199,11 +222,25 @@ function Lifecycle({
     // "safe to press twice" and "you cannot tell whether it worked" were the
     // same button until #307's successor. See `PromoteButton`.
     return (
-      <PromoteButton
-        batch={batch}
-        projectId={batch.projectId ?? ""}
-        {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
-      />
+      <div className="flex flex-col items-end gap-1">
+        <PromoteButton
+          batch={batch}
+          projectId={batch.projectId ?? ""}
+          {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
+        />
+        {/*
+          Beside promote rather than in an overflow menu, and both are offered
+          because a completed batch has exactly two things left to do: put its
+          work in the trunk, and correct it. A menu would hide the second, which
+          is the one somebody is hunting for when a frame turns out wrong.
+        */}
+        <CorrectionButton
+          batch={batch}
+          projectId={batch.projectId ?? ""}
+          existingCorrections={corrections}
+          {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+        />
+      </div>
     );
   }
   if (declares(batch, BATCH_ACTION.approve)) {

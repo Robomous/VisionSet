@@ -59,6 +59,7 @@ import {
   checkListReleases,
   checkListSchemaVersions,
   checkListSources,
+  checkCreateCorrectionBatch,
   checkPromoteBatch,
   checkPublishRelease,
   checkRegisterImageSource,
@@ -998,6 +999,50 @@ export function useFormats() {
     // A plugin set changes when somebody installs a package, not while a tab is
     // open. Long enough that a dialog does not refetch it on every open.
     staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Cut a draft batch that corrects a completed one.
+ *
+ * **The forward-only model's one write.** A completed batch has no exit — the
+ * kernel gives it none and none is coming — so changing settled work means a new
+ * batch over the same assets, recording `parent_batch_id` back to the one it
+ * corrects. Nothing about the parent moves.
+ *
+ * `assetIds` omitted means the parent's **whole membership**, which is the
+ * server's default and the ordinary ask. A subset is the other one.
+ */
+export function useCreateCorrection(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      readonly batchId: string;
+      readonly name: string;
+      readonly assetIds?: readonly string[];
+    }): Promise<Batch> =>
+      unwrap(
+        await client.POST("/batches/{batch_id}/corrections", {
+          params: { path: { batch_id: input.batchId } },
+          body: {
+            name: input.name,
+            // Omitted rather than sent empty when the caller wants everything:
+            // `[]` and "all of them" are the same value on this route, and
+            // relying on that coincidence would break the moment it stops being
+            // one. `BatchCreate` already spells the opposite meaning.
+            ...(input.assetIds === undefined ? {} : { asset_ids: [...input.assetIds] }),
+          },
+        }),
+        checkCreateCorrectionBatch,
+      ),
+    onSuccess: () => {
+      // A new batch in the project's listing, and the parent's own read moves
+      // too — nothing on it changed, but a screen deriving "does this have
+      // corrections" from the listing needs the new row.
+      void queries.invalidateQueries({ queryKey: ["batches"] });
+      void queries.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
   });
 }
 

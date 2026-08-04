@@ -1032,6 +1032,35 @@ function Workspace({
           <Eye className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="font-medium">Viewing only.</span>
           {closedBecause ?? settledBecause}
+          {/*
+            The sentence names a correction batch, and now it can reach one — the
+            last link in the forward-only story (audit G6). #306 wrote that
+            sentence deliberately pointing at something that did not exist yet,
+            on the grounds that naming the route onward beats a friendlier lie.
+            This is what it was waiting for.
+
+            It goes to the **gallery** rather than opening a dialog here, and that
+            is a product call rather than a shortcut: creating a batch is a
+            curation act, curation lives on the batch view, and a second place
+            batches are made is a second place the rules can drift. The annotator
+            says which way is forward and hands the person to the screen that
+            owns it, with the batch already in view.
+
+            Only for a batch the wire says can be corrected, so it is absent on a
+            frame that is merely settled inside an open batch — there the remedy
+            is on this toolbar and the banner already names the control.
+          */}
+          {onOpenGallery !== undefined &&
+            declares({ allowed_actions: batchActions }, BATCH_ACTION.createCorrection) && (
+              <Button
+                variant="link"
+                className="h-auto p-0 text-meta"
+                data-testid="banner-create-correction"
+                onClick={onOpenGallery}
+              >
+                Correct this batch
+              </Button>
+            )}
         </p>
       )}
 

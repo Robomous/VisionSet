@@ -64,6 +64,7 @@ export const BATCH_ACTION = {
   complete: "complete",
   repin: "repin",
   promote: "promote",
+  createCorrection: "create_correction",
   editMembership: "edit_membership",
   delete: "delete",
 } as const satisfies Record<string, BatchAction>;
