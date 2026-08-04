@@ -91,15 +91,21 @@ export function BatchProgressBar({
  * that can be *wrong* — four distinct `InvalidPartition` refusals — and expressing
  * it means typing tuples of UUIDs. A program has the SDK and the API.
  */
+/** What `SchemaService.require_active` raises for a project that has none. */
+const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
+
 export function ApproveDialog({
   batch,
   onClose,
   onApproved,
+  onOpenSchema,
 }: {
   readonly batch: Batch | null;
   readonly onClose: () => void;
   /** The gallery moves its own header when this lands; the table just re-reads. */
   readonly onApproved?: () => void;
+  /** Where "define your labels" goes when the refusal is `SCHEMA_NOT_FOUND` (#291). */
+  readonly onOpenSchema?: () => void;
 }): JSX.Element {
   // `"single"`, not `"single_job"` — the tag is `SingleJob.kind`'s value and the
   // generated client refused the guess, which is the whole reason the contract is
@@ -171,11 +177,36 @@ export function ApproveDialog({
             </div>
           )}
 
-          {approve.isError && (
-            <FieldError data-testid="approve-error">
-              {asApiError(approve.error).code}: {asApiError(approve.error).message}
-            </FieldError>
-          )}
+          {/* The refusal still comes from the server — nothing pre-checks it,
+              and `useActiveSchema` is deliberately not consulted before submit
+              (see the module docstring). What changes is only the rendering:
+              `SCHEMA_NOT_FOUND` has a remedy a person can act on, so it is said
+              in their words with the way there beside it. Every other code
+              keeps the raw `{code}: {message}`, which is what a bug report
+              should quote. */}
+          {approve.isError &&
+            (asApiError(approve.error).code === SCHEMA_NOT_FOUND ? (
+              <div className="flex flex-col items-start gap-1" data-testid="approve-schema-missing">
+                <FieldError>This project has no labels yet — define them first.</FieldError>
+                {onOpenSchema !== undefined && (
+                  <Button
+                    variant="link"
+                    className="h-auto p-0"
+                    data-testid="approve-go-schema"
+                    onClick={() => {
+                      onClose();
+                      onOpenSchema();
+                    }}
+                  >
+                    Define your labels
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <FieldError data-testid="approve-error">
+                {asApiError(approve.error).code}: {asApiError(approve.error).message}
+              </FieldError>
+            ))}
         </div>
 
         <DialogFooter>

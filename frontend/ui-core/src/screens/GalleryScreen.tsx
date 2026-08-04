@@ -135,6 +135,8 @@ export interface GalleryScreenProps {
   readonly onOpenAsset?: (asset: BatchAsset) => void;
   /** Up to the project this batch belongs to (#199). */
   readonly onBack?: () => void;
+  /** The project's schema tab, for the approve dialog's `SCHEMA_NOT_FOUND` remedy (#291). */
+  readonly onOpenSchema?: () => void;
 }
 
 export function GalleryScreen({
@@ -142,6 +144,7 @@ export function GalleryScreen({
   batchId,
   onOpenAsset,
   onBack,
+  onOpenSchema,
 }: GalleryScreenProps): JSX.Element {
   const project = useProject(projectId);
   const batch = useBatch(batchId);
@@ -409,6 +412,7 @@ export function GalleryScreen({
       <ApproveDialog
         batch={approving ? (batch.data ?? null) : null}
         onClose={() => setApproving(false)}
+        {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
       />
     </div>
   );
