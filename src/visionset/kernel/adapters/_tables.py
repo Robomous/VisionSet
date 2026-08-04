@@ -311,6 +311,32 @@ class BatchRow(Base):
     state: Mapped[str] = mapped_column(String, nullable=False)
     #: The annotation schema version pinned at approval. NULL while a draft.
     schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The batch this one was cut from, when it is a correction of another.
+    #:
+    #: **Deliberately not a foreign key**, and the second in this schema after
+    #: ``asset.source_id`` — for the same forced reason. It arrives by ``ALTER
+    #: TABLE``, which cannot express a key the way ``create_all`` does, and
+    #: ``batch`` cannot be rebuilt to escape that: ``batch_asset`` carries an
+    #: ``ON DELETE CASCADE`` key into it, so a ``DROP TABLE`` under
+    #: ``PRAGMA foreign_keys = ON`` would silently take every membership row with
+    #: it. A rebuild is only available for a table that is childless *and*
+    #: provably empty, and this is neither.
+    #:
+    #: Declared **last** for the ordering rule the module docstring states.
+    #:
+    #: What is given up: nothing enforces that the parent exists, and a project
+    #: cascade that deletes both leaves no dangling row only because both die by
+    #: their own ``project_id`` key. A future `BatchService.delete` of a *parent*
+    #: has to decide what happens to its children and say so — the same debt
+    #: ``asset.source_id`` records.
+    #:
+    #: NULL is not "unknown" here. It means **this batch is not a correction of
+    #: anything**, which is true of every batch that exists today, so the
+    #: migration backfills nothing and is not being lazy about it.
+    #:
+    #: Unindexed: the one query over it walks a project's batches, which
+    #: ``Repository.list`` already reads by ``project_id``.
+    parent_batch_id: Mapped[UUID | None] = mapped_column(SaUuid, nullable=True)
 
 
 class BatchAssetRow(Base):
@@ -396,6 +422,26 @@ class AnnotationRow(Base):
     attributes: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, server_default=text("'{}'")
     )
+    #: The job this label was written in — where it came from, not where it is.
+    #:
+    #: An annotation hangs off its ``asset_id`` and nothing else, so "which round
+    #: of work produced this box" had no answer anywhere: the batch id travelled
+    #: only on a transient event. Correction batches need it, because a second
+    #: round over the same asset produces a second set of labels and telling them
+    #: apart afterwards is the whole question.
+    #:
+    #: **Not a foreign key**, and declared **last**, for the reasons
+    #: ``BatchRow.parent_batch_id`` gives: it arrives by ``ALTER TABLE`` and
+    #: ``annotation`` cannot be rebuilt — it is not empty in any workspace that
+    #: has ever been annotated.
+    #:
+    #: **NULL means genuinely unknown**, unlike ``parent_batch_id``'s. The
+    #: migration backfills every annotation whose asset belongs to exactly one
+    #: job; an asset carried by two jobs is ambiguous *because the schema never
+    #: recorded which one*, and guessing would put a confident wrong answer where
+    #: an honest absent one belongs. A reader must treat NULL as "before this
+    #: column existed, or written into an asset that two rounds both hold".
+    job_id: Mapped[UUID | None] = mapped_column(SaUuid, nullable=True)
 
 
 #: One classification tag per (asset, class), and no rule for the other two

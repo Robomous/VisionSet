@@ -1204,6 +1204,7 @@ describe("the project header", () => {
                   },
                   allowed_actions: batchActions(options.batchState as BatchState),
                   promoted_asset_count: 0,
+                  parent_batch_id: null,
                 },
               ],
               total: 1,

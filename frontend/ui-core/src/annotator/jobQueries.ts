@@ -92,6 +92,16 @@ export interface WireAnnotation {
   readonly provenance: string;
   readonly model_ref: string | null;
   readonly confidence: number | null;
+  /**
+   * Which round produced this label. Read but never sent — the service stamps it.
+   *
+   * Declared here even though nothing in this module uses it, because the
+   * annotator's own `parseAnnotation` checks the key set **exactly**: a payload
+   * carrying a field this mirror omits is refused outright rather than ignored.
+   * That is the point of the exact check, and it makes a server field additive
+   * only if both mirrors move together.
+   */
+  readonly job_id: string | null;
 }
 export type SchemaVersion = components["schemas"]["SchemaVersionOut"];
 

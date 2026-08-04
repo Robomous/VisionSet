@@ -87,6 +87,7 @@ const DRAFT: Batch = {
   asset_count: 48,
   allowed_actions: batchActions("draft"),
   promoted_asset_count: 0,
+  parent_batch_id: null,
   progress: {
     unannotated: 48,
     annotated: 0,
@@ -167,6 +168,7 @@ describe("the approve dialog's refusals", () => {
         schema_version: 3,
         allowed_actions: batchActions("approved"),
         promoted_asset_count: 0,
+        parent_batch_id: null,
       },
     });
     const closed = vi.fn();

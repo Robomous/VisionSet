@@ -93,6 +93,10 @@ export function draftAnnotation(
     geometry,
     attributes: defaultAttributes(document, labelClass),
     provenance: "human",
+    // Null until the server stamps it. The engine has no idea which job it is
+    // being driven inside — it takes a document, not a workflow — and inventing
+    // one here would be a client claiming provenance the service overwrites.
+    job_id: null,
     model_ref: null,
     confidence: null,
   };

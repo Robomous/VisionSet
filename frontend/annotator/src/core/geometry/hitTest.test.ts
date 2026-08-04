@@ -46,6 +46,7 @@ function annotationOf(id: string, geometry: Geometry): Annotation {
     provenance: "human",
     model_ref: null,
     confidence: null,
+    job_id: null,
   };
 }
 

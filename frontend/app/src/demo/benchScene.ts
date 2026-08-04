@@ -108,6 +108,7 @@ function annotationOf(id: string, labelClass: string, geometry: Annotation["geom
     geometry,
     attributes: {},
     provenance: "human",
+    job_id: null,
     model_ref: null,
     confidence: null,
   };

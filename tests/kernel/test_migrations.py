@@ -22,7 +22,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from visionset.kernel.adapters import SqliteMetadataStore
-from visionset.kernel.adapters._tables import Base
+from visionset.kernel.adapters._tables import META_TABLE, Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 from visionset.kernel.errors import (
     WorkspaceCorrupt,
@@ -76,10 +76,17 @@ def test_every_migration_is_named() -> None:
         assert migration.name
 
 
-def test_a_fresh_database_is_created_at_the_baseline(tmp_path: Path) -> None:
+def test_a_fresh_database_is_created_at_the_current_generation(tmp_path: Path) -> None:
+    """Every migration runs, and the file is stamped with the last one's version.
+
+    It asserted ``== 1`` while the baseline was the only generation. The chain
+    exists again, so the claim is the general one: a fresh file ends up at
+    ``FORMAT_VERSION``, whatever that is.
+    """
     store = SqliteMetadataStore(tmp_path / "visionset.db")
     store.initialize()
-    assert store.format_version == FORMAT_VERSION == 1
+    assert store.format_version == FORMAT_VERSION
+    assert len(MIGRATIONS) == FORMAT_VERSION
     store.close()
 
 
@@ -134,16 +141,7 @@ def test_a_uniqueness_index_actually_refuses_a_duplicate(tmp_path: Path) -> None
 
 
 def test_two_fresh_databases_have_the_same_schema(tmp_path: Path) -> None:
-    """The equivalence machinery, kept for the migration that comes after this one.
-
-    While the chain existed this compared a *fresh* file against one walked back
-    to generation 1 and migrated forward, and that comparison is what caught a
-    column declared in the wrong position. With a single baseline the two paths
-    coincide, so today it proves only that schema creation is deterministic —
-    a weak claim, deliberately kept, because the second migration turns it back
-    into the strong one and ``_schema`` is the piece that would otherwise be
-    rewritten from memory.
-    """
+    """Schema creation is deterministic — the weaker half of the pair below."""
     first = SqliteMetadataStore(tmp_path / "first.db")
     first.initialize()
     expected = _schema(first)
@@ -153,6 +151,49 @@ def test_two_fresh_databases_have_the_same_schema(tmp_path: Path) -> None:
     second.initialize()
     assert _schema(second) == expected
     second.close()
+
+
+def _at_generation_one(path: Path) -> None:
+    """Build a file the way a workspace created before migration 2 would look.
+
+    **Not by walking a current file backwards** — there are no downgrade paths
+    and inventing one here would be inventing the thing under test. It creates
+    the tables from today's metadata and then *drops the columns the later
+    migrations add*, which is what a generation-1 file genuinely lacked, and
+    re-stamps the version to match. Dropping is safe for exactly the reason the
+    two columns are the shape they are: neither carries a foreign key, and
+    SQLite refuses to drop one that does.
+    """
+    store = SqliteMetadataStore(path)
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("ALTER TABLE batch DROP COLUMN parent_batch_id"))
+        connection.execute(text("ALTER TABLE annotation DROP COLUMN job_id"))
+        connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
+    store.close()
+
+
+def test_a_fresh_database_and_a_migrated_one_have_the_same_schema(tmp_path: Path) -> None:
+    """The strong claim, and the whole reason the chain's rules exist.
+
+    A column declared anywhere but last, or one carrying a foreign key, makes
+    ``create_all`` and ``ALTER TABLE`` emit different ``CREATE TABLE`` text — and
+    nothing else in this suite would notice, because each path is internally
+    consistent. This is the comparison that catches it, and it became possible
+    again the moment there was a second generation to migrate *from*.
+    """
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    old = tmp_path / "old.db"
+    _at_generation_one(old)
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    assert migrated.format_version == FORMAT_VERSION
+    assert _schema(migrated) == expected
+    migrated.close()
 
 
 def test_running_every_migration_again_changes_nothing(tmp_path: Path) -> None:
@@ -183,6 +224,12 @@ _DECLARED_TAILS = {
     "annotation_schema": ["description", "created_at"],
     "source": ["display_name"],
     "asset": ["thumbnail_hash", "ingested_at"],
+    # Migration 2 and migration 3, in that order. Both arrive by ``ALTER`` and
+    # SQLite appends, so declaring either anywhere but last would split the
+    # ``create_all`` path from the migration path — which is exactly what the
+    # docstring below says this exists to catch.
+    "batch": ["parent_batch_id"],
+    "annotation": ["job_id"],
 }
 
 
@@ -356,3 +403,137 @@ def test_a_fresh_file_is_not_refused_by_the_check_that_guards_the_stale_one(
     store.initialize()
     assert store.format_version == FORMAT_VERSION
     store.close()
+
+
+# --- what migration 3 can and cannot know -----------------------------------
+#
+# An annotation records only its `asset_id`; a job records which assets it
+# carries. So "which round produced this label" is answerable exactly when the
+# asset belongs to one job, and unanswerable when it belongs to two — because the
+# schema never recorded it, not because the migration is lazy. The backfill sets
+# a value only in the first case, and these are the two halves of that claim.
+
+
+def _annotated_at_generation_one(path: Path, jobs_per_asset: int) -> None:
+    """A generation-1 file holding one annotation whose asset sits in N jobs."""
+    _at_generation_one(path)
+    store = SqliteMetadataStore(path)
+    with store.engine.begin() as connection:
+        # Dependency order, because `PRAGMA foreign_keys = ON` is set on every
+        # connection this store opens — a row inserted before its parent is a
+        # constraint failure rather than a row.
+        for statement in (
+            "insert into workspace (id, name) values ('w', 'ws')",
+            "insert into project (id, workspace_id, name, description) "
+            "values ('p', 'w', 'highway', null)",
+            "insert into asset (id, project_id, modality, content_hash, uri) "
+            "values ('a', 'p', 'image', 'deadbeef', '/tmp/a.png')",
+            "insert into batch (id, project_id, name, state) "
+            "values ('b', 'p', 'first', 'in_annotation')",
+            "insert into task_group (id, batch_id, name) values ('g', 'b', 'first_round')",
+            "insert into annotation "
+            "(id, asset_id, label_class, schema_version, geometry, provenance, attributes) "
+            "values ('n', 'a', 'sign', 1, '{}', 'human', '{}')",
+        ):
+            connection.execute(text(statement))
+        for index in range(jobs_per_asset):
+            connection.execute(
+                text(
+                    "insert into annotation_job (id, task_group_id, state) "
+                    f"values ('j{index}', 'g', 'in_progress')"
+                )
+            )
+            connection.execute(
+                text(
+                    "insert into annotation_job_asset (job_id, asset_id, progress, position) "
+                    f"values ('j{index}', 'a', 'annotated', 0)"
+                )
+            )
+    store.close()
+
+
+def _job_of(store: SqliteMetadataStore, annotation_id: str) -> str | None:
+    with store.engine.connect() as connection:
+        return connection.execute(
+            text("select job_id from annotation where id = :id"), {"id": annotation_id}
+        ).scalar_one()
+
+
+def test_the_backfill_attributes_a_label_whose_asset_belongs_to_one_job(tmp_path: Path) -> None:
+    path = tmp_path / "one.db"
+    _annotated_at_generation_one(path, jobs_per_asset=1)
+
+    store = SqliteMetadataStore(path)
+    store.initialize()
+
+    assert _job_of(store, "n") == "j0"
+    store.close()
+
+
+def test_the_backfill_leaves_an_ambiguous_label_alone_rather_than_guessing(tmp_path: Path) -> None:
+    """Two jobs over one asset: the schema never said which, so neither does this.
+
+    Writing "the first one we found" would put a confident wrong answer where an
+    honest absent one belongs, and no reader downstream could tell which it had.
+    """
+    path = tmp_path / "two.db"
+    _annotated_at_generation_one(path, jobs_per_asset=2)
+
+    store = SqliteMetadataStore(path)
+    store.initialize()
+
+    assert _job_of(store, "n") is None
+    store.close()
+
+
+def test_a_second_run_does_not_overwrite_an_attribution_already_there(tmp_path: Path) -> None:
+    """The ``job_id IS NULL`` guard, which is what makes re-running safe.
+
+    Migration 1 is ``create_all`` of *today's* metadata, so a fresh database
+    already carries the column and then runs this migration anyway — and a
+    service may have written a value the migration must not touch.
+    """
+    path = tmp_path / "again.db"
+    _annotated_at_generation_one(path, jobs_per_asset=1)
+    store = SqliteMetadataStore(path)
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("update annotation set job_id = 'chosen' where id = 'n'"))
+        connection.execute(text(f"update {META_TABLE} set format_version = 1"))
+    store.close()
+
+    reopened = SqliteMetadataStore(path)
+    reopened.initialize()
+
+    assert _job_of(reopened, "n") == "chosen"
+    reopened.close()
+
+
+def test_batch_lineage_starts_null_because_nothing_was_a_correction_of_anything(
+    tmp_path: Path,
+) -> None:
+    """Migration 2 backfills nothing, and that is a fact rather than a shortcut."""
+    path = tmp_path / "lineage.db"
+    _at_generation_one(path)
+    store = SqliteMetadataStore(path)
+    with store.engine.begin() as connection:
+        for statement in (
+            "insert into workspace (id, name) values ('w', 'ws')",
+            "insert into project (id, workspace_id, name, description) "
+            "values ('p', 'w', 'highway', null)",
+            "insert into batch (id, project_id, name, state) values ('b', 'p', 'first', 'draft')",
+        ):
+            connection.execute(text(statement))
+    store.close()
+
+    reopened = SqliteMetadataStore(path)
+    reopened.initialize()
+
+    with reopened.engine.connect() as connection:
+        assert (
+            connection.execute(
+                text("select parent_batch_id from batch where id = 'b'")
+            ).scalar_one()
+            is None
+        )
+    reopened.close()

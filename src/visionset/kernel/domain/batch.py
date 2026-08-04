@@ -126,3 +126,15 @@ class Batch(BaseModel):
     state: BatchState = BatchState.DRAFT
     schema_version: int | None = Field(default=None, ge=1)
     asset_ids: list[UUID] = Field(default_factory=list)
+    #: The batch this one was cut from, when it is a correction of another.
+    #:
+    #: A **lineage fact**, set once at creation and never afterwards: it records
+    #: where this batch came from, which is not a thing that changes. Nothing in
+    #: the domain reads it yet — correction batches have no creation surface —
+    #: and it is here first because the alternative is discovering at that point
+    #: that recording it needs a migration.
+    #:
+    #: ``None`` means **not a correction of anything**, which is true of every
+    #: batch that exists today. It is not "unknown": a batch either was cut from
+    #: another or was not, and both answers are complete.
+    parent_batch_id: UUID | None = None

@@ -10,6 +10,7 @@ from typing import get_args
 from uuid import uuid4
 
 import pytest
+from tests.fixtures import samples
 
 from visionset import wire
 from visionset.kernel.domain import (
@@ -38,6 +39,7 @@ from visionset.server.models import (
     AssetOut,
     AttributeBody,
     BatchAssetOut,
+    BatchOut,
     ClassCountOut,
     DatasetChangeOut,
     DatasetStatsOut,
@@ -376,3 +378,38 @@ def test_the_two_surfaces_encode_an_arrival_identically() -> None:
         wire.asset(asset)["ingested_at"]
         == AssetOut.of(asset).model_dump(mode="json")["ingested_at"]
     )
+
+
+# --- the two correction-batch prerequisites on the wire (audit G3, G4) --------
+
+
+def test_a_batch_publishes_its_lineage() -> None:
+    """`parent_batch_id` travels, and null means *not a correction of anything*."""
+    parent = uuid4()
+    child = samples.BATCH.model_copy(update={"parent_batch_id": parent})
+    orphan = samples.BATCH.model_copy(update={"parent_batch_id": None})
+
+    assert BatchOut.of(child, samples.COUNTS, promoted=frozenset()).parent_batch_id == parent
+    assert BatchOut.of(orphan, samples.COUNTS, promoted=frozenset()).parent_batch_id is None
+
+
+def test_an_annotation_publishes_the_round_that_produced_it() -> None:
+    """`job_id`, and null means genuinely unknown rather than "not applicable".
+
+    The distinction matters to a reader: a batch either was cut from another or
+    was not, so `parent_batch_id: null` is a complete answer — while a label
+    written before the column existed may simply be unattributable.
+    """
+    job = uuid4()
+
+    assert AnnotationOut.of(samples.ANNOTATION.model_copy(update={"job_id": job})).job_id == job
+    assert AnnotationOut.of(samples.ANNOTATION.model_copy(update={"job_id": None})).job_id is None
+
+
+def test_neither_field_is_something_a_client_can_set() -> None:
+    """Both are stamped by the service, so neither appears on an input model.
+
+    The `schema_version` rule, applied twice: a field a caller could set and
+    never observe is a lie in the schema.
+    """
+    assert "job_id" not in AnnotationCreate.model_fields

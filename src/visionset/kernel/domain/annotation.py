@@ -45,6 +45,25 @@ class Annotation(BaseModel):
     provenance: Provenance
     model_ref: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    #: The job this label was written in — which round of work produced it.
+    #:
+    #: Not to be confused with ``provenance``, which says *what kind of thing*
+    #: made the annotation (a person, a model). This says *when in the project's
+    #: history*, and the two are independent: a model's output and a human's
+    #: correction of it can come from the same round or from two.
+    #:
+    #: An annotation hangs off its ``asset_id`` and nothing else, so this had no
+    #: answer anywhere before — the batch id travelled only on a transient event.
+    #: A correction batch produces a second set of labels over the same asset,
+    #: and telling the rounds apart afterwards is the whole question.
+    #:
+    #: ``None`` means genuinely **unknown**, and there are two ways to get one: a
+    #: label written before this field existed whose asset belonged to more than
+    #: one job, so the migration could not attribute it; or a caller that did not
+    #: supply it. It is optional rather than required because making it required
+    #: would mean every existing row is invalid, which is a statement about this
+    #: schema rather than about the data.
+    job_id: UUID | None = None
 
     @model_validator(mode="after")
     def _model_provenance_requires_ref(self) -> Annotation:

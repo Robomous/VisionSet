@@ -1554,6 +1554,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Job Id */
+            job_id: string | null;
             /** Label Class */
             label_class: string;
             /** Model Ref */
@@ -1796,6 +1798,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Parent Batch Id */
+            parent_batch_id: string | null;
             progress: components["schemas"]["ProgressCounts"];
             /**
              * Project Id
