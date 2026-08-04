@@ -83,6 +83,16 @@ export interface AnnotatorPanelProps {
   /** The class a drawing gesture will carry. `null` is select mode. */
   readonly activeClass: string | null;
   readonly onActivateClass: (labelClass: string | null) => void;
+  /**
+   * The document is displayed and cannot be changed.
+   *
+   * The panel is the *other* road into the document — delete a row, reassign a
+   * class, toggle a tag — so a read-only canvas with a live panel is a read-only
+   * mode with a hole in it. Visibility toggles stay live either way: hiding is a
+   * **view** decision the core document has no field for, which is the same
+   * argument `visibility.ts` makes for why it must never travel to the API.
+   */
+  readonly readOnly?: boolean;
 }
 
 export function AnnotatorPanel({
@@ -91,6 +101,7 @@ export function AnnotatorPanel({
   onHiddenChange,
   activeClass,
   onActivateClass,
+  readOnly = false,
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const drawn = annotationsInDrawOrder(snapshot.document);
@@ -116,6 +127,7 @@ export function AnnotatorPanel({
       <TabsContent value="objects">
         <ObjectsTab
           store={store}
+          readOnly={readOnly}
           drawn={drawn}
           selection={snapshot.selection}
           hiddenIds={hiddenIds}
@@ -126,6 +138,7 @@ export function AnnotatorPanel({
       <TabsContent value="labels">
         <LabelsTab
           store={store}
+          readOnly={readOnly}
           activeClass={activeClass}
           onActivateClass={onActivateClass}
         />
@@ -136,12 +149,14 @@ export function AnnotatorPanel({
 
 function ObjectsTab({
   store,
+  readOnly,
   drawn,
   selection,
   hiddenIds,
   onHiddenChange,
 }: {
   readonly store: AnnotatorStore;
+  readonly readOnly: boolean;
   readonly drawn: readonly Annotation[];
   readonly selection: ReadonlySet<string>;
   readonly hiddenIds: ReadonlySet<string>;
@@ -203,13 +218,13 @@ function ObjectsTab({
               hidden={hiddenIds.has(annotation.id)}
               onSelect={() => store.select(selectOnly(annotation.id))}
               onToggleVisible={() => toggle(annotation.id)}
-              onRemove={() => remove(annotation.id)}
+              {...(readOnly ? {} : { onRemove: () => remove(annotation.id) })}
             />
           ))}
         </ul>
       )}
 
-      <EditingCard store={store} selection={selection} />
+      {!readOnly && <EditingCard store={store} selection={selection} />}
     </div>
   );
 }
@@ -231,7 +246,8 @@ function ObjectRow({
   readonly hidden: boolean;
   readonly onSelect: () => void;
   readonly onToggleVisible: () => void;
-  readonly onRemove: () => void;
+  /** Absent in read-only: there is no delete to offer, so no button is drawn. */
+  readonly onRemove?: () => void;
 }): JSX.Element {
   return (
     <li
@@ -278,6 +294,7 @@ function ObjectRow({
         aria-label={`Delete object ${index + 1}`}
         data-testid={`object-delete-${index}`}
         onClick={onRemove}
+        disabled={onRemove === undefined}
       >
         <Trash2 className="size-3.5" />
       </Button>
@@ -370,10 +387,12 @@ function EditingCard({
  */
 function LabelsTab({
   store,
+  readOnly,
   activeClass,
   onActivateClass,
 }: {
   readonly store: AnnotatorStore;
+  readonly readOnly: boolean;
   readonly activeClass: string | null;
   readonly onActivateClass: (labelClass: string | null) => void;
 }): JSX.Element {
@@ -382,6 +401,10 @@ function LabelsTab({
   const tagged = taggedClassNames(snapshot.document);
 
   function press(declared: LabelClass): void {
+    // Read-only: a tag is a document change and activating a class arms a
+    // drawing tool the canvas will not honour. Both are inert, and the rows
+    // render disabled below so nothing invites the press in the first place.
+    if (readOnly) return;
     if (isTaggableClass(declared)) {
       const command = toggleTagCommand(snapshot.document, declared.name, randomUuid);
       // `null` is a refusal — an undeclared or non-taggable class — and it is
@@ -399,6 +422,7 @@ function LabelsTab({
           type="button"
           data-testid="label-select"
           data-active={activeClass === null ? "true" : "false"}
+          disabled={readOnly}
           onClick={() => onActivateClass(null)}
           className={cn(
             "flex w-full items-center gap-2 rounded-md border px-1.5 py-1 text-left text-meta",
@@ -418,6 +442,7 @@ function LabelsTab({
               type="button"
               data-testid={`label-${declared.name}`}
               data-active={on ? "true" : "false"}
+              disabled={readOnly}
               onClick={() => press(declared)}
               className={cn(
                 "flex w-full items-center gap-2 rounded-md border px-1.5 py-1 text-left text-meta",
