@@ -577,8 +577,10 @@ function VersionDiff({
     <ul className="flex flex-col gap-1" data-testid="version-diff">
       {diff.changes.map((change, index) => (
         <li key={index} className="flex items-start gap-2 text-meta">
+          {/* The kernel's own words — they are accurate — sentence-cased for a
+              badge (#292). `detail` below stays verbatim; see the docstring. */}
           <Badge variant={change.kind === "destructive" ? "destructive" : "neutral"}>
-            {change.kind}
+            {change.kind === "destructive" ? "Destructive" : change.kind === "additive" ? "Additive" : change.kind}
           </Badge>
           <span className="text-muted-foreground">{change.detail}</span>
         </li>

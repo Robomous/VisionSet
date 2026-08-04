@@ -38,7 +38,7 @@ import { Button } from "../primitives/Button";
 import { FieldError } from "../primitives/Input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
-import { BATCH_STATE_VARIANT } from "./batchState";
+import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { useBatchTransition, useBatches, usePromoteBatch, type Batch } from "./queries";
 
@@ -110,8 +110,11 @@ export function BatchesScreen({
                     </Button>
                   </TableCell>
                   <TableCell>
+                    {/* The label the gallery header already uses (#292) — the
+                        helper sat thirty lines away while this rendered the raw
+                        kernel identifier. */}
                     <Badge variant={BATCH_STATE_VARIANT[batch.state] ?? "neutral"} data-testid={`state-${batch.name}`}>
-                      {batch.state}
+                      {batchStateLabel(batch.state)}
                     </Badge>
                   </TableCell>
                   <TableCell>{batch.asset_count}</TableCell>

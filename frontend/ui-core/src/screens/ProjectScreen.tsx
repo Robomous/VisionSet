@@ -151,7 +151,11 @@ const TAB_LABELS: Record<ProjectTab, TabLabel> = {
   overview: { label: "Overview", icon: LayoutDashboard },
   schema: { label: "Schema", icon: Shapes },
   batches: { label: "Batches", icon: Layers },
-  versions: { label: "Versions", icon: History },
+  // "Schema history", not "Versions" (#292): the tab holds *schema* versions,
+  // while dataset releases live on the Dataset screen, and the bare word sent
+  // people to the wrong one. The union value, testid and `?tab=versions` stay —
+  // they are public API — so only this label moves.
+  versions: { label: "Schema history", icon: History },
 };
 
 export interface ProjectScreenProps {
@@ -615,9 +619,9 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
           removing a tab, which is a navigation change nobody asked for. */}
       <header className="border-b border-border pb-4">
         <p className="text-meta text-muted-foreground">
-          Every version this project has declared. They are 1..N, never updated and never
-          deleted — a restore is a new version with the old classes. Open the Schema tab to
-          read one, with what it changed.
+          Every schema version this project has declared. They are 1..N, never updated and
+          never deleted — a restore is a new version with the old classes. Open the Schema
+          tab to read one, with what it changed.
         </p>
       </header>
       <div>

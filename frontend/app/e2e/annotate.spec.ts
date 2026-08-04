@@ -308,7 +308,7 @@ test("a skipped asset says so, and the page offers the kernel's one way out", as
   await openJob(page, sent, progressStore({ "asset-1": "skipped", "asset-2": "annotated" }));
 
   // 1. It says so — visibly, not by the absence of something.
-  await expect(page.getByTestId("asset-progress")).toHaveText("Skipped");
+  await expect(page.getByTestId("asset-progress")).toHaveText("skipped");
 
   // 2. …and the way back is offered where the decision was made, in place of Skip.
   await expect(page.getByTestId("skip")).toHaveCount(0);
@@ -327,7 +327,7 @@ test("a skipped asset says so, and the page offers the kernel's one way out", as
   // 4. …and the page reflects what actually changed: Skip is offered again, and
   //    `Accept` stays disabled because `unannotated` is not where that move is
   //    legal. The gate is the kernel's and is not loosened to paper over this.
-  await expect(page.getByTestId("asset-progress")).toHaveText("Unannotated");
+  await expect(page.getByTestId("asset-progress")).toHaveText("unannotated");
   await expect(page.getByTestId("skip")).toBeVisible();
   await expect(page.getByTestId("accept")).toBeDisabled();
 });
@@ -354,7 +354,7 @@ test("annotating a skipped asset saves, and the page says why the counter did no
   await expect(page.getByTestId("save-state")).toContainText("Saved");
   // What was broken is that nothing said why the asset is still skipped and the
   // counter did not move. Now the page does, and the way out is one click away.
-  await expect(page.getByTestId("asset-progress")).toHaveText("Skipped");
+  await expect(page.getByTestId("asset-progress")).toHaveText("skipped");
   await expect(page.getByTestId("skipped-notice")).toBeVisible();
   await expect(page.getByTestId("unskip")).toBeVisible();
 });
