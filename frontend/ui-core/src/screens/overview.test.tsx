@@ -8,14 +8,15 @@
  * be got wrong: assets but no annotations is *not* empty.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { QueryClient } from "@tanstack/react-query";
 import type { JSX, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { IMBALANCE_MIN_CLASSES, IMBALANCE_SHARE, imbalanceNote } from "./imbalance";
-import { OverviewPanel } from "./OverviewPanel";
+import { journeySteps, OverviewPanel } from "./OverviewPanel";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -276,5 +277,146 @@ describe("the Overview panel", () => {
     render(mount(<OverviewPanel projectId={PROJECT} />));
 
     expect((await screen.findByRole("alert")).textContent).toContain("counting failed");
+  });
+});
+
+// --- the journey checklist (#289) ---------------------------------------------
+
+describe("journeySteps", () => {
+  it("marks everything before the current step complete and everything after upcoming", () => {
+    expect(journeySteps("annotate")?.map((step) => step.state)).toEqual([
+      "complete",
+      "complete",
+      "active",
+      "upcoming",
+    ]);
+  });
+
+  it("retires the whole checklist once the journey is done", () => {
+    // `"done"` is not derivable from live data yet (`useProjectReadiness` v1
+    // leaves it to a release signal), which is exactly why the retirement rule
+    // is a pure function: this is the only place it can be exercised.
+    expect(journeySteps("done")).toBeNull();
+  });
+});
+
+describe("the journey checklist", () => {
+  /** The three readiness sources, beside the panel's own two. */
+  function readinessOf(options: {
+    schema?: boolean;
+    stats: Record<string, unknown>;
+    batches?: readonly Record<string, unknown>[];
+  }): void {
+    on(
+      "GET",
+      /^\/projects\/[^/]+\/schema$/,
+      options.schema === false
+        ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none yet" } }
+        : { status: 200, body: { project_id: PROJECT, version: 1, classes: [] } },
+    );
+    on("GET", /\/stats$/, { status: 200, body: options.stats });
+    on("GET", /\/batches$/, {
+      status: 200,
+      body: { items: options.batches ?? [], total: options.batches?.length ?? 0 },
+    });
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+  }
+
+  function batchOf(state: string): Record<string, unknown> {
+    return {
+      id: "55555555-5555-4555-8555-555555555555",
+      project_id: PROJECT,
+      name: "drive-01",
+      state,
+      schema_version: state === "draft" ? null : 1,
+      asset_count: 48,
+      progress: {
+        unannotated: 48,
+        annotated: 0,
+        skipped: 0,
+        review_pending: 0,
+        accepted: 0,
+        total: 48,
+      },
+    };
+  }
+
+  const empty = statsOf({
+    asset_count: 0,
+    annotated_asset_count: 0,
+    annotation_count: 0,
+    annotated_pct: 0,
+    classes: [],
+  });
+
+  it("opens a schema-less project on step one, above the empty state", async () => {
+    readinessOf({ schema: false, stats: empty });
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    const checklist = await screen.findByTestId("journey-checklist");
+    expect(checklist).not.toBeNull();
+    // The empty state and the checklist coexist: the invitation says what to
+    // do with data, the checklist says labels come first.
+    expect(screen.getByTestId("overview-empty")).not.toBeNull();
+    expect(screen.getByTestId("journey-labels").dataset.state).toBe("active");
+    expect(screen.getByTestId("journey-images").dataset.state).toBe("upcoming");
+  });
+
+  it("moves to step two once labels exist and nothing is ingested", async () => {
+    readinessOf({ stats: empty });
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    await screen.findByTestId("journey-checklist");
+    expect(screen.getByTestId("journey-labels").dataset.state).toBe("complete");
+    expect(screen.getByTestId("journey-images").dataset.state).toBe("active");
+  });
+
+  it("moves to annotate while ingested work is untouched", async () => {
+    readinessOf({ stats: statsOf({ asset_count: 48, annotated_pct: 0, annotation_count: 0 }) });
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    await screen.findByTestId("journey-checklist");
+    expect(screen.getByTestId("journey-annotate").dataset.state).toBe("active");
+    expect(screen.getByTestId("journey-export").dataset.state).toBe("upcoming");
+  });
+
+  it("moves to export once every batch is settled and work is annotated", async () => {
+    readinessOf({ stats: statsOf(), batches: [batchOf("completed")] });
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    await screen.findByTestId("journey-checklist");
+    expect(screen.getByTestId("journey-export").dataset.state).toBe("active");
+    expect(screen.getByTestId("journey-annotate").dataset.state).toBe("complete");
+  });
+
+  it("wires each reachable step to its host callback", async () => {
+    readinessOf({ stats: statsOf({ asset_count: 48, annotated_pct: 0, annotation_count: 0 }) });
+    const schema = vi.fn();
+    const batches = vi.fn();
+    render(
+      mount(
+        <OverviewPanel projectId={PROJECT} onOpenSchema={schema} onOpenBatches={batches} />,
+      ),
+    );
+
+    await screen.findByTestId("journey-checklist");
+    // The active step links; so does a completed one — going back is legal.
+    await userEvent.click(within(screen.getByTestId("journey-annotate")).getByRole("button"));
+    expect(batches).toHaveBeenCalledOnce();
+    await userEvent.click(within(screen.getByTestId("journey-labels")).getByRole("button"));
+    expect(schema).toHaveBeenCalledOnce();
+    // An upcoming step is plain text: pointing three steps ahead is how somebody
+    // lands on a screen that refuses everything.
+    expect(within(screen.getByTestId("journey-export")).queryByRole("button")).toBeNull();
+  });
+
+  it("renders no checklist at all while readiness has no answer", async () => {
+    // Only stats and assets are stubbed; the schema and batch queries fail for a
+    // real (non-404) reason, so the journey must not guess.
+    serve(statsOf());
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    await screen.findByTestId("overview-stats");
+    expect(screen.queryByTestId("journey-checklist")).toBeNull();
   });
 });

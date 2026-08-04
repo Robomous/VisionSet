@@ -37,11 +37,19 @@ import { classColor } from "../palette";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { Button } from "../primitives/Button";
+import { Checklist, type ChecklistItemState } from "../patterns/Checklist";
 import { Skeleton } from "../primitives/Feedback";
 import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { imbalanceNote } from "./imbalance";
-import { useProjectAssets, useProjectStats, type ClassCount, type LabelClassBody } from "./queries";
+import {
+  useProjectAssets,
+  useProjectReadiness,
+  useProjectStats,
+  type ClassCount,
+  type JourneyStep,
+  type LabelClassBody,
+} from "./queries";
 
 /** How many tiles the samples grid asks for. Six is two rows of three. */
 const SAMPLE_LIMIT = 6;
@@ -52,6 +60,10 @@ export interface OverviewPanelProps {
   readonly classes?: readonly LabelClassBody[];
   readonly onIngest?: () => void;
   readonly onBrowseDataset?: () => void;
+  /** The journey checklist's first step — the schema tab, as the host spells it. */
+  readonly onOpenSchema?: () => void;
+  /** And its third — the batches tab. */
+  readonly onOpenBatches?: () => void;
 }
 
 export function OverviewPanel({
@@ -59,9 +71,20 @@ export function OverviewPanel({
   classes,
   onIngest,
   onBrowseDataset,
+  onOpenSchema,
+  onOpenBatches,
 }: OverviewPanelProps): JSX.Element {
   const stats = useProjectStats(projectId);
   const samples = useProjectAssets(projectId, SAMPLE_LIMIT);
+  const journey = (
+    <Journey
+      projectId={projectId}
+      {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+      {...(onIngest === undefined ? {} : { onIngest })}
+      {...(onOpenBatches === undefined ? {} : { onOpenBatches })}
+      {...(onBrowseDataset === undefined ? {} : { onBrowseDataset })}
+    />
+  );
 
   if (stats.isPending) return <OverviewSkeleton />;
   if (stats.isError) {
@@ -82,30 +105,37 @@ export function OverviewPanel({
   const counted = stats.data;
   if (counted.asset_count === 0) {
     return (
-      // Wrapped rather than given a testid: `EmptyState` is shared and takes a
-      // fixed set of props, and widening a primitive's API for a test hook is
-      // the wrong direction.
-      <div data-testid="overview-empty">
-        <EmptyState
-          icon={<ImageIcon className="size-8" />}
-          title="Nothing ingested yet"
-          // An invitation, not an apology — `DESIGN.md`'s copy rule.
-          description="Ingest images or a video to see counts, class distribution and samples here."
-          action={
-            onIngest === undefined ? undefined : (
-              <Button variant="primary" data-testid="overview-ingest" onClick={onIngest}>
-                <Upload className="size-4" aria-hidden="true" />
-                Ingest
-              </Button>
-            )
-          }
-        />
+      // The checklist renders here too — a project with nothing ingested is
+      // exactly the reader the journey exists for, and its active step (labels
+      // or images) is the answer the empty state alone cannot give.
+      <div className="flex flex-col gap-6">
+        {journey}
+        {/* Wrapped rather than given a testid: `EmptyState` is shared and takes a
+            fixed set of props, and widening a primitive's API for a test hook is
+            the wrong direction. */}
+        <div data-testid="overview-empty">
+          <EmptyState
+            icon={<ImageIcon className="size-8" />}
+            title="Nothing ingested yet"
+            // An invitation, not an apology — `DESIGN.md`'s copy rule.
+            description="Ingest images or a video to see counts, class distribution and samples here."
+            action={
+              onIngest === undefined ? undefined : (
+                <Button variant="primary" data-testid="overview-ingest" onClick={onIngest}>
+                  <Upload className="size-4" aria-hidden="true" />
+                  Ingest
+                </Button>
+              )
+            }
+          />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6" data-testid="overview-panel">
+      {journey}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="overview-stats">
         <StatCard label="Images" value={formatCount(counted.asset_count)} />
         <StatCard label="Annotations" value={formatCount(counted.annotation_count)} />
@@ -128,6 +158,87 @@ export function OverviewPanel({
         />
       </div>
     </div>
+  );
+}
+
+/** The journey's four stations, in walking order. `done` is not one — it is the exit. */
+const JOURNEY: readonly { readonly key: Exclude<JourneyStep, "done">; readonly label: string }[] = [
+  { key: "labels", label: "Define your labels" },
+  { key: "images", label: "Add your images" },
+  { key: "annotate", label: "Annotate" },
+  { key: "export", label: "Export your dataset" },
+];
+
+/**
+ * Each station's state, given where the project is — or `null` when the journey
+ * is over and the checklist retires itself.
+ *
+ * Exported as a pure function on `imbalanceNote`'s precedent: the retirement
+ * rule is worth checking without a browser, and `"done"` is not yet derivable
+ * from live data (`useProjectReadiness`'s v1 leaves it to a release signal), so
+ * the component alone cannot exercise it.
+ */
+export function journeySteps(
+  current: JourneyStep,
+): readonly {
+  readonly key: Exclude<JourneyStep, "done">;
+  readonly label: string;
+  readonly state: ChecklistItemState;
+}[] | null {
+  if (current === "done") return null;
+  const at = JOURNEY.findIndex((step) => step.key === current);
+  return JOURNEY.map((step, index) => ({
+    ...step,
+    state: index < at ? "complete" : index === at ? "active" : "upcoming",
+  }));
+}
+
+/**
+ * The first-run checklist: the pipeline as a visible sequence (#289).
+ *
+ * Driven by `useProjectReadiness`, which composes queries this screen's host
+ * already runs — so the strip costs no request. While readiness has no answer
+ * (something still loading, or failed for a real reason) nothing renders: a
+ * checklist drawn from half an answer says something false with confidence.
+ *
+ * Each step's link is the host's callback, absent when the host has nowhere to
+ * send anybody — the no-dead-link rule every screen here follows.
+ */
+function Journey({
+  projectId,
+  onOpenSchema,
+  onIngest,
+  onOpenBatches,
+  onBrowseDataset,
+}: {
+  readonly projectId: string;
+  readonly onOpenSchema?: () => void;
+  readonly onIngest?: () => void;
+  readonly onOpenBatches?: () => void;
+  readonly onBrowseDataset?: () => void;
+}): JSX.Element | null {
+  const readiness = useProjectReadiness(projectId);
+  if (readiness === null) return null;
+  const steps = journeySteps(readiness.currentStep);
+  if (steps === null) return null;
+
+  const go: Record<Exclude<JourneyStep, "done">, (() => void) | undefined> = {
+    labels: onOpenSchema,
+    images: onIngest,
+    annotate: onOpenBatches,
+    export: onBrowseDataset,
+  };
+  return (
+    <Checklist
+      aria-label="Project journey"
+      data-testid="journey-checklist"
+      items={steps.map((step) => ({
+        label: step.label,
+        state: step.state,
+        testId: `journey-${step.key}`,
+        ...(go[step.key] === undefined ? {} : { onGo: go[step.key] }),
+      }))}
+    />
   );
 }
 
