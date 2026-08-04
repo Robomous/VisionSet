@@ -726,3 +726,413 @@ describe("an asset's preview", () => {
     }
   });
 });
+
+/**
+ * Finishing a batch, and the two links nobody was sending (#301).
+ *
+ * The claim under all of these is one sentence: **completion is derived at two
+ * levels and implicit at neither.** `BatchService.complete` refuses while any job
+ * is outstanding and `JobService.complete` refuses while any asset is, and the
+ * browser only ever sent the outer one — so a batch reading `0 to do` answered
+ * `BATCH_NOT_COMPLETE` for ever, with the remedy sitting on a toolbar inside the
+ * annotator that nobody had a reason to visit.
+ *
+ * These assert the **requests**, in order, because that is what the defect was.
+ * A test that only checked the button ends up green against a screen that sends
+ * the same one request it always did.
+ */
+describe("finishing a batch", () => {
+  const PROJECT_ID = PROJECT;
+
+  /** The founder's own batch: nothing outstanding, one job still open. */
+  function settled(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return batch({
+      state: "in_annotation",
+      schema_version: 1,
+      asset_count: 48,
+      progress: { ...NO_PROGRESS, annotated: 3, skipped: 45, total: 48 },
+      ...over,
+    });
+  }
+
+  function job(at: number, state: string): Record<string, unknown> {
+    return { id: `job-${at}`, batch_id: BATCH, state, asset_count: 48 };
+  }
+
+  function jobsAre(...states: string[]): void {
+    on("GET", /\/jobs$/, {
+      status: 200,
+      body: { items: states.map((state, at) => job(at, state)), total: states.length },
+    });
+  }
+
+  /** Every write the press made, as `METHOD path`, in the order they were sent. */
+  function writes(): string[] {
+    return sent
+      .filter((one) => one.method !== "GET")
+      .map((one) => `${one.method} ${new URL(one.url).pathname}`);
+  }
+
+  async function pressComplete(): Promise<void> {
+    render(mount(<BatchesScreen projectId={PROJECT_ID} onOpenBatch={vi.fn()} />));
+    await screen.findByTestId("batches-table");
+    await userEvent.click(screen.getByTestId("complete-drive-01"));
+  }
+
+  it("completes the batch's open job before completing the batch", async () => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    jobsAre("in_progress");
+    on("POST", /\/jobs\/[^/]+\/complete$/, { status: 200, body: job(0, "completed") });
+    on("POST", /\/complete$/, { status: 200, body: settled({ state: "completed" }) });
+
+    await pressComplete();
+
+    // The exact defect, as a sequence. Before #301 this was one line long and the
+    // server answered 409 to it.
+    await waitFor(() =>
+      expect(writes()).toEqual([
+        "POST /jobs/job-0/complete",
+        "POST /batches/" + BATCH + "/complete",
+      ]),
+    );
+  });
+
+  it("starts a job that was never opened, because there is no pending → completed edge", async () => {
+    // A batch whose every frame was bulk-skipped from this screen: the annotator
+    // was never opened, so `JobService.start` never ran and the job sits at
+    // `pending`. `JOB_TRANSITIONS` has no edge from there to `completed`, so
+    // without this the batch is unfinishable by any sequence of clicks at all.
+    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    jobsAre("pending");
+    on("POST", /\/jobs\/[^/]+\/start$/, { status: 200, body: job(0, "in_progress") });
+    on("POST", /\/jobs\/[^/]+\/complete$/, { status: 200, body: job(0, "completed") });
+    on("POST", /\/complete$/, { status: 200, body: settled({ state: "completed" }) });
+
+    await pressComplete();
+
+    await waitFor(() =>
+      expect(writes()).toEqual([
+        "POST /jobs/job-0/start",
+        "POST /jobs/job-0/complete",
+        "POST /batches/" + BATCH + "/complete",
+      ]),
+    );
+  });
+
+  it("leaves a job the annotator already finished alone", async () => {
+    // `JOB_TRANSITIONS` gives `completed` no exits, so re-completing one is a 409
+    // — and a batch finished half in the annotator and half here is the ordinary
+    // case, not an exotic one.
+    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    jobsAre("completed", "in_progress");
+    on("POST", /\/jobs\/[^/]+\/complete$/, { status: 200, body: job(0, "completed") });
+    on("POST", /\/complete$/, { status: 200, body: settled({ state: "completed" }) });
+
+    await pressComplete();
+
+    await waitFor(() =>
+      expect(writes()).toEqual([
+        "POST /jobs/job-1/complete",
+        "POST /batches/" + BATCH + "/complete",
+      ]),
+    );
+  });
+
+  it("stops at the first refusal rather than completing the batch anyway", async () => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    jobsAre("in_progress");
+    on("POST", /\/jobs\/[^/]+\/complete$/, {
+      status: 409,
+      body: { code: "JOB_NOT_COMPLETE", message: "job has 2 of 48 assets still unsettled" },
+    });
+    on("POST", /\/complete$/, { status: 200, body: settled({ state: "completed" }) });
+
+    await pressComplete();
+
+    // In a person's words, not the kernel's identifier — #292's rule, and the
+    // one the old `{asApiError(error).code}` broke.
+    expect((await screen.findByTestId("complete-error-drive-01")).textContent).toContain(
+      "still need annotating or skipping",
+    );
+    expect(writes()).toEqual(["POST /jobs/job-0/complete"]);
+  });
+
+  it("keeps an unmapped refusal quotable rather than paraphrasing it", async () => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    jobsAre("in_progress");
+    on("POST", /\/jobs\/[^/]+\/complete$/, {
+      status: 503,
+      body: { code: "WORKSPACE_BUSY", message: "another writer holds the workspace" },
+    });
+
+    await pressComplete();
+
+    // A code with no sentence of its own keeps `{code}: {message}`, which is what
+    // a bug report should quote.
+    const said = (await screen.findByTestId("complete-error-drive-01")).textContent ?? "";
+    expect(said).toContain("WORKSPACE_BUSY");
+    expect(said).toContain("another writer");
+  });
+
+  it("withholds the press while frames are still outstanding, and says how many", async () => {
+    on("GET", /\/batches$/, {
+      status: 200,
+      body: {
+        items: [
+          settled({ progress: { ...NO_PROGRESS, unannotated: 5, review_pending: 2, annotated: 41, total: 48 } }),
+        ],
+        total: 1,
+      },
+    });
+
+    render(mount(<BatchesScreen projectId={PROJECT_ID} onOpenBatch={vi.fn()} />));
+    await screen.findByTestId("batches-table");
+
+    // `JobService.complete` would refuse this, and the screen can already see the
+    // count — a number is more use than the 409 would have been.
+    expect((screen.getByTestId("complete-drive-01") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("complete-blocked-drive-01").textContent).toContain("7 frames");
+
+    await userEvent.click(screen.getByTestId("complete-drive-01"));
+    expect(writes()).toEqual([]);
+  });
+});
+
+/**
+ * The bulk bar, and the no-op that reported success (#301).
+ *
+ * `JobService.mark` answers a re-stated state `200` with nothing changed, so the
+ * old bar sent three requests over three already-skipped frames, counted three
+ * successes and moved nothing — the screen agreeing it had worked while the
+ * person watched it not work. Selection was never the broken part, which is why
+ * every one of these asserts the **payloads**.
+ */
+describe("the bulk bar", () => {
+  function tile(index: number, progress: string): Record<string, unknown> {
+    return {
+      id: `asset-${index}`,
+      project_id: PROJECT,
+      modality: "image",
+      content_hash: `${index}`.padStart(8, "0") + "deadbeef",
+      width: 1280,
+      height: 720,
+      format: "jpeg",
+      source_id: SOURCE,
+      frame_index: index,
+      frame_timestamp: index,
+      thumbnail_hash: "cafebabe",
+      ingested_at: "2026-08-01T09:00:00Z",
+      job_id: JOB,
+      progress,
+    };
+  }
+
+  async function withFrames(...states: string[]): Promise<void> {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "in_annotation",
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: states.length, unannotated: states.length },
+      }),
+    });
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: { total: states.length, items: states.map((one, at) => tile(at, one)) },
+    });
+    on("PUT", /\/progress$/, { status: 200, body: { asset_id: "asset-0", progress: "skipped" } });
+    on("GET", /\/annotations$/, { status: 200, body: [] });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await screen.findByTestId("tile-asset-0");
+  }
+
+  /**
+   * Select every frame the fixture has.
+   *
+   * `fireEvent` with `metaKey`, not `userEvent.click` — a plain click *replaces*
+   * the selection (every file manager does), so building one up needs the
+   * modifier on the event itself, and `userEvent`'s options do not carry it.
+   */
+  function selectAll(count: number): void {
+    fireEvent.click(screen.getByTestId("select-asset-0"));
+    for (let at = 1; at < count; at += 1) {
+      fireEvent.click(screen.getByTestId(`select-asset-${at}`), { metaKey: true });
+    }
+  }
+
+  function sentProgress(): { path: string; progress: unknown }[] {
+    return sent
+      .filter((one) => one.method === "PUT")
+      .map((one) => ({
+        path: new URL(one.url).pathname,
+        progress: JSON.parse(bodies.get(one) ?? "{}").progress,
+      }));
+  }
+
+  it("counts a skip only for the frames that can take one", async () => {
+    await withFrames("skipped", "unannotated", "annotated", "accepted");
+    selectAll(4);
+
+    // Two of the four: `skipped` is already there — the exact case the founder
+    // selected — and `accepted` has no exits at all.
+    expect(screen.getByTestId("bulk-skip").textContent).toContain("(2)");
+    expect(screen.getByTestId("bulk-restore").textContent).toContain("(1)");
+  });
+
+  it("sends nothing for a frame that is already skipped", async () => {
+    await withFrames("skipped", "unannotated");
+    selectAll(2);
+    await userEvent.click(screen.getByTestId("bulk-skip"));
+
+    // One request, not two. `moved` now means moved.
+    await waitFor(() =>
+      expect(sentProgress()).toEqual([
+        { path: `/jobs/${JOB}/assets/asset-1/progress`, progress: "skipped" },
+      ]),
+    );
+  });
+
+  it("takes a skip back, which had no spelling anywhere in the browser", async () => {
+    await withFrames("skipped", "skipped", "annotated");
+    selectAll(3);
+    await userEvent.click(screen.getByTestId("bulk-restore"));
+
+    // `skipped → unannotated` — and the annotated frame is left alone, because
+    // that edge means "the last annotation was deleted" and this one still has
+    // boxes on it.
+    await waitFor(() =>
+      expect(sentProgress()).toEqual([
+        { path: `/jobs/${JOB}/assets/asset-0/progress`, progress: "unannotated" },
+        { path: `/jobs/${JOB}/assets/asset-1/progress`, progress: "unannotated" },
+      ]),
+    );
+  });
+
+  it("sends the moves one at a time, because overlapping ones are lost", async () => {
+    // **Measured against a real server, not reasoned about**: three concurrent
+    // moves over one job answered 200, 200, 200 and moved exactly one asset. The
+    // other two vanished with a success on the wire — which is the
+    // "multi-selection does not work" that was reported, and it was true.
+    //
+    // `JobService.mark` reads its `AnnotationJob`, copies it with one entry of
+    // `progress` changed, and writes the whole thing back through
+    // `Repository.update` — `session.merge`, a whole-row replace. Three
+    // overlapping requests each read the same map before any of them wrote, so
+    // the last write won. SQLite's single writer does not help: serializing
+    // *writes* is not serializing read-modify-write, and pysqlite defers `BEGIN`
+    // to the first write, so none of the three reads is in a transaction at all.
+    //
+    // The peak concurrency is the only observable that can tell the two apart. A
+    // test that asserted the *requests* passes either way — which is how the old
+    // implementation looked correct while losing two writes in three.
+    let live = 0;
+    let peak = 0;
+    const inner = globalThis.fetch;
+    // Progress writes only. The screen also runs four concurrent *reads* on
+    // mount — batch, assets, source, per-card annotations — and counting those
+    // measures the query client rather than this mutation.
+    const isMove = (request: Request) =>
+      request.method === "PUT" && new URL(request.url).pathname.endsWith("/progress");
+    vi.stubGlobal("fetch", async (request: Request) => {
+      if (!isMove(request)) return inner(request);
+      live += 1;
+      peak = Math.max(peak, live);
+      // A real turn of the event loop, so an implementation that fired all three
+      // before awaiting any of them is visible here rather than flattened by a
+      // stub that resolves synchronously.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const answer = await inner(request);
+      live -= 1;
+      return answer;
+    });
+
+    await withFrames("unannotated", "unannotated", "unannotated");
+    selectAll(3);
+    await userEvent.click(screen.getByTestId("bulk-skip"));
+
+    await waitFor(() => expect(sentProgress()).toHaveLength(3));
+    expect(peak).toBe(1);
+  });
+
+  it("offers neither move on a selection that can make neither", async () => {
+    await withFrames("accepted");
+    await userEvent.click(screen.getByTestId("select-asset-0"));
+
+    expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
+    // Said once, where two zeroes on two buttons would just look broken.
+    expect(screen.getByTestId("bulk-unavailable").textContent).toContain("skipped or restored");
+  });
+});
+
+/**
+ * The way into the annotator, which used to close behind you (#301).
+ *
+ * `Start annotating` was drawn only while some frame was `unannotated`, so a batch
+ * whose work was finished had no action in its header at all — while the badge
+ * beside the empty space went on saying `in progress`.
+ */
+describe("the gallery header's way into the annotator", () => {
+  function frames(...states: string[]): Record<string, unknown> {
+    return {
+      total: states.length,
+      items: states.map((progress, at) => ({
+        id: `asset-${at}`,
+        project_id: PROJECT,
+        modality: "image",
+        content_hash: `${at}`.padStart(8, "0") + "deadbeef",
+        width: 1280,
+        height: 720,
+        format: "jpeg",
+        source_id: SOURCE,
+        frame_index: at,
+        frame_timestamp: at,
+        thumbnail_hash: "cafebabe",
+        ingested_at: "2026-08-01T09:00:00Z",
+        job_id: JOB,
+        progress,
+      })),
+    };
+  }
+
+  async function open(...states: string[]): Promise<ReturnType<typeof vi.fn>> {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({
+        state: "in_annotation",
+        schema_version: 1,
+        progress: { ...NO_PROGRESS, total: states.length, annotated: states.length },
+      }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: frames(...states) });
+    on("GET", /\/annotations$/, { status: 200, body: [] });
+
+    const opened = vi.fn();
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} onOpenAsset={opened} />));
+    await screen.findByTestId("tile-asset-0");
+    return opened;
+  }
+
+  it("still offers a way in when every frame is settled", async () => {
+    await open("annotated", "skipped", "skipped");
+    // The defect: this was absent, and nothing else in the header offered one.
+    expect(screen.getByTestId("start-annotating").textContent).toContain("Open annotator");
+  });
+
+  it("opens a skipped frame, which the annotator can un-skip from", async () => {
+    const opened = await open("skipped", "skipped");
+    await userEvent.click(screen.getByTestId("start-annotating"));
+    // Not filtered out. The annotator lists a job's assets with no progress
+    // filter and carries `Un-skip` on its toolbar (#187), so a skipped frame is a
+    // legitimate thing to open — and with everything skipped it is the only thing.
+    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "asset-0" }));
+  });
+
+  it("still starts on the first waiting frame when there is one", async () => {
+    const opened = await open("annotated", "unannotated", "unannotated");
+    expect(screen.getByTestId("start-annotating").textContent).toContain("Start annotating");
+    await userEvent.click(screen.getByTestId("start-annotating"));
+    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "asset-1" }));
+  });
+});

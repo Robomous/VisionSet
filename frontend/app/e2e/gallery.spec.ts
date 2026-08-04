@@ -65,10 +65,29 @@ const STATES = [
 
 const INDEXES = [0, 1, 2, 3, 4, 5, 6, 1047] as const;
 
-function assets(jobId: string | null): Record<string, unknown> {
+/**
+ * The same eight frames with every one of them settled — #301's batch.
+ *
+ * Three annotated and five skipped, which is the founder's own shape scaled down:
+ * nothing `unannotated` and nothing `review_pending`, so nothing blocks
+ * completion, and a majority skipped so `Restore` has something real to act on.
+ */
+const SETTLED_STATES = [
+  "annotated",
+  "annotated",
+  "annotated",
+  "skipped",
+  "skipped",
+  "skipped",
+  "skipped",
+  "skipped",
+] as const;
+
+function assets(jobId: string | null, settled = false): Record<string, unknown> {
+  const states: readonly string[] = settled ? SETTLED_STATES : STATES;
   return {
-    total: STATES.length,
-    items: STATES.map((progress, at) => ({
+    total: states.length,
+    items: states.map((progress, at) => ({
       id: `asset-${at}`,
       project_id: PROJECT,
       modality: "image",
@@ -96,14 +115,41 @@ const BATCH_COUNTS = {
   skipped: 4,
 };
 
+/** Nothing outstanding, which is the whole precondition for finishing (#301). */
+const SETTLED_COUNTS = {
+  total: 48,
+  unannotated: 0,
+  annotated: 3,
+  review_pending: 0,
+  accepted: 0,
+  skipped: 45,
+};
+
 interface Options {
   /** `draft` is the state with the approve CTA, and the state with no jobs. */
   readonly state?: string;
+  /**
+   * Every frame settled and nothing outstanding — the batch #301 was reported on.
+   *
+   * The default fixture is deliberately mid-flight (30 of 48 unannotated), which
+   * is the wrong shape for every claim about *finishing*: the Complete button is
+   * withheld while work is outstanding, so a test written against the default
+   * would assert against a control that is correctly disabled.
+   */
+  readonly settled?: boolean;
+  /** The state the batch's one job is in when the page loads. */
+  readonly jobState?: string;
 }
 
 async function serveApi(page: Page, sent: Request[], options: Options = {}): Promise<void> {
   const state = options.state ?? "in_annotation";
   const jobId = state === "draft" ? null : JOB;
+  const counts = options.settled === true ? SETTLED_COUNTS : BATCH_COUNTS;
+  const settledStates = options.settled === true;
+  // The job moves as the requests land, for the same reason `current` does: a
+  // static stub would let an implementation that never sent the job transitions
+  // — which is the entire defect — pass.
+  let job = options.jobState ?? "in_progress";
   // A `POST /approve` moves it, so the badge afterwards is the server's answer
   // rather than something the page decided — approval is not optimistic, and a
   // static stub would let an optimistic implementation pass.
@@ -127,8 +173,55 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           name: "drive-01",
           state: current,
           schema_version: 3,
-          asset_count: BATCH_COUNTS.total,
-          progress: BATCH_COUNTS,
+          asset_count: counts.total,
+          progress: counts,
+        },
+      });
+    }
+    if (path === `/batches/${BATCH}/jobs`) {
+      return route.fulfill({
+        json: { items: [{ id: JOB, batch_id: BATCH, state: job, asset_count: 48 }], total: 1 },
+      });
+    }
+    if (request.method() === "POST" && path === `/jobs/${JOB}/start`) {
+      job = "in_progress";
+      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48 } });
+    }
+    if (request.method() === "POST" && path === `/jobs/${JOB}/complete`) {
+      // The kernel's own gate, kept rather than stubbed away: a job may only be
+      // completed from `in_progress`, so a page that skipped `start` gets the
+      // 409 a real server would send instead of a silent pass.
+      if (job !== "in_progress") {
+        return route.fulfill({
+          status: 409,
+          json: { code: "INVALID_TRANSITION", message: `job cannot become completed from ${job}` },
+        });
+      }
+      job = "completed";
+      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48 } });
+    }
+    if (request.method() === "POST" && path === `/batches/${BATCH}/complete`) {
+      // And the outer gate. This is the 409 the founder saw, reproduced exactly:
+      // every asset settled, one job still open, and the batch refusing.
+      if (job !== "completed") {
+        return route.fulfill({
+          status: 409,
+          json: {
+            code: "BATCH_NOT_COMPLETE",
+            message: "batch 'drive-01' has 1 of 1 jobs still unfinished",
+          },
+        });
+      }
+      current = "completed";
+      return route.fulfill({
+        json: {
+          id: BATCH,
+          project_id: PROJECT,
+          name: "drive-01",
+          state: current,
+          schema_version: 3,
+          asset_count: counts.total,
+          progress: counts,
         },
       });
     }
@@ -146,12 +239,14 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           name: "drive-01",
           state: current,
           schema_version: current === "draft" ? null : 3,
-          asset_count: BATCH_COUNTS.total,
-          progress: BATCH_COUNTS,
+          asset_count: counts.total,
+          progress: counts,
         },
       });
     }
-    if (path === `/batches/${BATCH}/assets`) return route.fulfill({ json: assets(jobId) });
+    if (path === `/batches/${BATCH}/assets`) {
+      return route.fulfill({ json: assets(jobId, settledStates) });
+    }
     if (path === `/sources/${SOURCE}`) {
       return route.fulfill({
         json: {
@@ -634,4 +729,122 @@ test("a timeline cell names its frame and its exact state", async ({ page }) => 
     "aria-label",
     "Frame 1047, unannotated",
   );
+});
+
+// --- finishing a batch, and taking a skip back (#301) ------------------------
+
+/** Every write the page made, as `METHOD path`, in the order the server saw them. */
+function writes(sent: Request[]): string[] {
+  return sent
+    .filter((one) => one.method() !== "GET")
+    .map((one) => `${one.method()} ${new URL(one.url()).pathname.replace(/^\/api/, "")}`);
+}
+
+test("completing a settled batch finishes its job first", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { settled: true });
+
+  // The defect, end to end and in the browser it was reported from: 48 of 48
+  // settled, one job still `in_progress`, and the only request the page used to
+  // send was the one the server answers 409 to. The stub keeps both kernel gates,
+  // so a page that skipped either link would fail here rather than pass on a
+  // permissive fixture.
+  await page.getByTestId("complete-drive-01").click();
+
+  await expect
+    .poll(() => writes(sent))
+    .toEqual([`POST /jobs/${JOB}/complete`, `POST /batches/${BATCH}/complete`]);
+
+  // And the batch really moved — the badge is the server's answer, not the
+  // button's optimism.
+  await expect(page.getByTestId("batch-state")).toHaveText("completed");
+});
+
+test("a job the annotator never opened is started before it is completed", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { settled: true, jobState: "pending" });
+
+  // A batch whose every frame was bulk-skipped from this screen: nobody ever
+  // opened the annotator, so the job sits at `pending` and `JOB_TRANSITIONS` has
+  // no edge from there to `completed`. Without the start this is unfinishable by
+  // any sequence of clicks in the product.
+  await page.getByTestId("complete-drive-01").click();
+
+  await expect
+    .poll(() => writes(sent))
+    .toEqual([
+      `POST /jobs/${JOB}/start`,
+      `POST /jobs/${JOB}/complete`,
+      `POST /batches/${BATCH}/complete`,
+    ]);
+  await expect(page.getByTestId("batch-state")).toHaveText("completed");
+});
+
+test("the press is withheld while frames are outstanding, and says how many", async ({ page }) => {
+  const sent: Request[] = [];
+  // The default fixture: 30 of 48 unannotated and 5 in review.
+  await openGallery(page, sent);
+
+  await expect(page.getByTestId("complete-drive-01")).toBeDisabled();
+  await expect(page.getByTestId("complete-blocked-drive-01")).toHaveText(/35 frames/);
+});
+
+test("a skip can be taken back from the grid", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { settled: true });
+
+  // Frames 3 and 4 are skipped; frame 0 is annotated. Selecting all three is the
+  // mixed case, and the counts on the two buttons are what says which is which
+  // *before* anything is pressed.
+  await page.getByTestId("select-asset-0").click();
+  await page.getByTestId("select-asset-3").click({ modifiers: ["ControlOrMeta"] });
+  await page.getByTestId("select-asset-4").click({ modifiers: ["ControlOrMeta"] });
+
+  await expect(page.getByTestId("bulk-restore")).toHaveText(/Restore \(2\)/);
+  await expect(page.getByTestId("bulk-skip")).toHaveText(/Mark skipped \(1\)/);
+
+  await page.getByTestId("bulk-restore").click();
+
+  // Two requests, not three: `annotated → unannotated` is a legal edge and
+  // deliberately not this one — it means the last annotation was deleted.
+  await expect
+    .poll(() => writes(sent))
+    .toEqual([
+      `PUT /jobs/${JOB}/assets/asset-3/progress`,
+      `PUT /jobs/${JOB}/assets/asset-4/progress`,
+    ]);
+});
+
+test("marking an already-skipped selection sends nothing", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { settled: true });
+
+  // Exactly what the founder did: three skipped frames selected, `Mark skipped`
+  // pressed. `JobService.mark` answers a re-stated state 200 with nothing
+  // changed, so the old bar sent three requests and reported success over work it
+  // had not done. The button is now disabled and the count says why.
+  await page.getByTestId("select-asset-3").click();
+  await page.getByTestId("select-asset-5").click({ modifiers: ["Shift"] });
+  await expect(page.getByTestId("bulk-count")).toHaveText("3 frames selected");
+
+  await expect(page.getByTestId("bulk-skip")).toHaveText(/Mark skipped \(0\)/);
+  await expect(page.getByTestId("bulk-skip")).toBeDisabled();
+  expect(writes(sent)).toEqual([]);
+});
+
+test("a batch with no work left still offers a way into the annotator", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { settled: true });
+
+  // The third defect: `Start annotating` was drawn only while some frame was
+  // `unannotated`, so a batch whose work was finished had **no action in its
+  // header at all** — while the badge beside the empty space said `in progress`.
+  await expect(page.getByTestId("batch-state")).toHaveText("in progress");
+  await expect(page.getByTestId("start-annotating")).toHaveText(/Open annotator/);
+
+  // And it goes to a real asset. Everything here is annotated or skipped, so the
+  // frame it lands on is one the annotator can un-skip from (#187) — which is why
+  // the door must not be conditional on unannotated work in the first place.
+  await page.getByTestId("start-annotating").click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/jobs/${JOB}`);
 });
