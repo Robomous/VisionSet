@@ -272,6 +272,37 @@ export interface AnnotatorCanvasProps {
    * both reach it.
    */
   readonly viewRef?: RefObject<AnnotatorView | null>;
+  /**
+   * Look, do not touch: the document is displayed and cannot be changed.
+   *
+   * **Why the engine owns this and not the host.** A host can hide a toolbar and
+   * grey out a Save, and the canvas will still draw a box on the first drag —
+   * the whole point of the adapter is that pointer input goes straight into the
+   * machine. So "read-only" spelled anywhere but here is a suggestion, and the
+   * one thing it must be is a guarantee: an editor opened over work that cannot
+   * be written is how a person loses an afternoon's boxes to a 409.
+   *
+   * Two entry points, and exactly two, because there are exactly two ways a
+   * document changes from inside this component:
+   *
+   * - a **primary** press does nothing at all. Not "selects but does not drag":
+   *   a press on a shape body *is* the start of a move, and a rule with a
+   *   carve-out is a rule with a hole in it. Selection is still reachable from a
+   *   host's object list, which cannot start a drag.
+   * - a keystroke runs only if it resolves to a **host** action. Those are the
+   *   rows core declares and does not implement — help, zoom, next asset — and
+   *   they are by definition not document changes. Everything else, including
+   *   undo, is refused.
+   *
+   * What is deliberately still live: **panning, the wheel zoom, `mod+0`, hover
+   * and the cursor**. None of them touch the document, and a read-only mode you
+   * cannot navigate is a screenshot.
+   *
+   * The store is not frozen — a host may still drive `store.execute` for its own
+   * reasons, and a `readOnly` that silently broke that would be an engine
+   * deciding a host's policy. This governs *input*.
+   */
+  readonly readOnly?: boolean;
 }
 
 /** What a host can do to the stage. Read the position through `onViewChange`. */
@@ -296,6 +327,7 @@ export function AnnotatorCanvas({
   mint = randomUuid,
   className,
   viewRef,
+  readOnly = false,
 }: AnnotatorCanvasProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const { asset, schema } = snapshot.document;
@@ -481,6 +513,15 @@ export function AnnotatorCanvas({
     // to be asked before anything runs, or `mod+z` with an empty history would
     // fall through to the browser's own undo inside a text field.
     if (action === null) return;
+    // Read-only: only the rows core declares and does not implement — help,
+    // zoom, next asset — which are by definition not document changes. Placed
+    // after `resolve` so a claimed chord is still swallowed rather than falling
+    // through to the browser's own undo, which is what `mod+z` would otherwise
+    // reach inside a page that has just told the user it cannot be edited.
+    if (readOnly && action.kind !== "host") {
+      event.preventDefault();
+      return;
+    }
 
     // (3) The guard, with Escape surviving it. v1 ran Escape *before* its `inInput`
     // check, deliberately, so Escape blurs a field; that ordering is easy to lose
@@ -509,6 +550,12 @@ export function AnnotatorCanvas({
     // (2) Nothing is focused on load, so `mod+z` would do nothing until the canvas
     // was clicked. Pressing on it is the click.
     rootRef.current?.focus({ preventScroll: true });
+
+    // Read-only: a primary press is the start of every document change this
+    // component can make — a draw, a move, a resize, a vertex drag — so it is
+    // the one that stops. Non-primary is a pan, which changes nothing, and
+    // falls through to the branch below.
+    if (readOnly && button === "primary") return;
 
     if (button !== "primary") {
       // `state.ts`'s written contract: while panning the adapter forwards nothing,

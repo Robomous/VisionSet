@@ -203,6 +203,58 @@ then refetches.
 3. **The two cases autosave exists for are covered**: "I forgot" is
    save-on-navigate, "I closed the tab" is the `beforeunload` guard.
 
+#### Read-only is a mode, not an accident
+
+The annotator opens as a **viewer** whenever the frame it is showing does not
+declare `annotate` — which the kernel derives from both dimensions at once: the
+batch must be `in_annotation` *and* the frame's progress must be in
+`WRITABLE_PROGRESS`. One question, both causes.
+
+Before this it had no such notion. `batchState` reached the page and was consumed
+only by the two auto-start effects, so a `completed` batch opened a fully live
+editor: the canvas drew, the palette armed tools, the panel deleted objects, and
+the first Save rendered `BATCH_NOT_IN_ANNOTATION` as a raw badge — with navigation
+blocked while dirty, because moving between frames commits first. The only way out
+was to undo your own work.
+
+What a viewer looks like:
+
+- a banner at the top saying it is viewing only, and **why**. A closed batch and a
+  settled frame are different causes with different remedies, so they get different
+  sentences; the closed-batch one names the correction batch, because forward-only
+  correction is the answer to "then how do I fix this".
+- `readOnly` on `AnnotatorCanvas` itself, which is where the guarantee has to live:
+  pointer input goes straight into the interaction machine, so a greyed-out toolbar
+  would still let a drag draw a box. A **primary press does nothing at all** and a
+  keystroke runs only if it resolves to a *host* action. Panning, the wheel zoom,
+  `mod+0`, hover and the cursor all stay live — a read-only mode you cannot move
+  around in is a screenshot.
+- the tool palette hidden outright (every control on it picks a drawing tool), and
+  the side panel's writes gone: no delete, no class reassignment, no tag toggle.
+  **Visibility toggles stay**, because hiding is a view decision the document has no
+  field for.
+- Save, Skip and Accept disabled, each from its own declaration rather than from the
+  mode.
+
+The gallery says the same thing one screen earlier: its header button reads **View
+frames** and its per-tile link reads **View** when nothing in the batch declares
+`annotate`. Same door, honest word.
+
+#### Adding a class where the pin cannot move
+
+The add-class chain is save → publish → re-pin, and it used to run the third step
+unconditionally. `REPINNABLE_STATES` excludes `completed`, so on a settled batch the
+version published and the pin then refused: a new version in the project, a batch
+still judged against the old one, and an error about a step nobody asked for.
+
+Three requests are not a transaction and cannot be, so the remedy is to **ask
+first**. The page reads the batch's `repin` declaration before anything is
+published; when it is absent the dialog says the batch will keep its current
+version — and that the version is still published, and that a correction batch
+approved from now on will pin to it — and the button reads **Publish without
+re-pinning**. Two acts, two words, and the user reads which one they are about to
+perform instead of learning it from a refusal.
+
 #### Reversing a skip is an action, never a side effect of drawing
 
 `progress_after_annotating` moves an asset only `unannotated ↔ annotated`, because

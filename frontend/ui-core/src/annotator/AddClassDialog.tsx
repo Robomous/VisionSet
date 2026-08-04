@@ -97,8 +97,22 @@ export async function runAddClass(steps: {
   readonly save: () => Promise<unknown>;
   /** Publish the next version. Given the whole class list, composed by the caller. */
   readonly publish: (classes: readonly LabelClassBody[], note: string) => Promise<unknown>;
-  /** Move this batch's pin onto it. */
-  readonly repin: () => Promise<unknown>;
+  /**
+   * Move this batch's pin onto it — or `null` when the batch will not take one.
+   *
+   * **The chain used to run this unconditionally, and that was finding F23.**
+   * `REPINNABLE_STATES` excludes `completed`, so on a settled batch the version
+   * published and the pin then refused: a new schema version in the project, a
+   * batch still judged against the old one, and a dialog showing an error about
+   * a step the user never asked for. Half-applied, and unwindable only by
+   * publishing again.
+   *
+   * `null` is the caller having asked the batch first. The publish still happens
+   * — it is a project-level act and a perfectly good one — and the *user was
+   * told* that is all it would be before they pressed. What must not happen is
+   * discovering it afterwards.
+   */
+  readonly repin: (() => Promise<unknown>) | null;
   /** The **active** version's classes. Never the batch's pin — versions are linear. */
   readonly activeClasses: readonly LabelClassBody[];
   readonly declared: LabelClassBody;
@@ -106,7 +120,7 @@ export async function runAddClass(steps: {
 }): Promise<void> {
   await steps.save();
   await steps.publish([...steps.activeClasses, steps.declared], steps.note);
-  await steps.repin();
+  await steps.repin?.();
 }
 
 export interface AddClassDialogProps {
@@ -122,6 +136,14 @@ export interface AddClassDialogProps {
   readonly active: SchemaVersion | null;
   /** The batch's pin. Shown when it is behind, since that is why a re-pin happens. */
   readonly pinnedVersion: number | null;
+  /**
+   * Whether this batch will take the new version's pin, from `allowed_actions`.
+   *
+   * False is not an error and does not disable anything — it changes what the
+   * dialog *promises*. See the explanation it renders, and `runAddClass`'s note
+   * about the half-applied chain this replaces.
+   */
+  readonly canRepin: boolean;
   readonly pending: boolean;
   /** The refusal to render, or `null`. Owned by the caller: it runs the chain. */
   readonly error: unknown;
@@ -133,6 +155,7 @@ export function AddClassDialog({
   onOpenChange,
   active,
   pinnedVersion,
+  canRepin,
   pending,
   error,
   onSubmit,
@@ -206,6 +229,24 @@ export function AddClassDialog({
             />
           </div>
 
+          {/*
+            What pressing the button will and will not do, said before it is
+            pressed (F23).
+
+            Not a refusal and not a warning banner: publishing a version is a
+            legitimate, useful act on its own — the project's schema moves on and
+            the *next* batch is approved against it. The only thing that changes
+            is what this batch is judged against, and the user is entitled to know
+            that before they act rather than from an error afterwards.
+          */}
+          {!canRepin && (
+            <Alert title="This batch will stay on its current version" data-testid="no-repin-notice">
+              A completed batch keeps the schema version it was approved against, so “{name || "this class"}”
+              will not be available to draw with here. The version is still published to the
+              project, and a correction batch approved from now on will pin to it.
+            </Alert>
+          )}
+
           {taken && (
             <Alert variant="destructive" title="That name is taken">
               Version {active?.version} already declares a class called “{name}”. Class names
@@ -250,7 +291,14 @@ export function AddClassDialog({
               )
             }
           >
-            {pending ? "Publishing…" : "Add class"}
+            {/*
+              The label is the explicit choice. Two different acts deserve two
+              different words, and the second one is the whole of F23's remedy:
+              the user reads what will happen on the button they are about to
+              press, instead of learning it from a refusal on a step they did not
+              ask for.
+            */}
+            {pending ? "Publishing…" : canRepin ? "Add class" : "Publish without re-pinning"}
           </Button>
         </DialogFooter>
       </DialogContent>

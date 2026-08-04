@@ -337,6 +337,15 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
       // just-saved shape would PATCH an id the server has never seen.
       void queries.invalidateQueries({ queryKey: jobKeys.annotations(jobId, assetId ?? "none") });
       void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
+      // **A declaration goes stale exactly like a count does.** The job's
+      // `allowed_actions` is refined by whether every asset has settled — the
+      // kernel does that refinement because a job carries its own per-asset map
+      // — so the *first* save of a job changes what the job may be asked to do.
+      // Without this, `complete` stays absent from a listing fetched when
+      // everything was `unannotated`, and Finish job is disabled over a job that
+      // is finished. Caught by the full-cycle browser run, which is the only
+      // suite that annotates three assets and then presses it.
+      void queries.invalidateQueries({ queryKey: jobKeys.job(jobId) });
       void queries.invalidateQueries({ queryKey: ["batches"] });
     },
   });
@@ -363,6 +372,11 @@ export function useSetAssetProgress(jobId: string) {
       ),
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
+      // Same reason as the save's: skipping the last outstanding frame settles
+      // the job, and what a job may be asked to do moves with it.
+      void queries.invalidateQueries({ queryKey: jobKeys.job(jobId) });
+      // And the frame's own declarations: `skipped` offers `restore` and nothing
+      // else, which is the toolbar's next state.
       void queries.invalidateQueries({ queryKey: ["batches"] });
     },
   });

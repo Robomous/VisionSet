@@ -42,7 +42,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Check, PlayCircle, SkipForward, Undo2, X } from "lucide-react";
+import { Check, Eye, PlayCircle, SkipForward, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
@@ -491,6 +491,22 @@ function BatchHeader({
    */
   const openable = assets.some((one) => one.job_id !== null);
   const waiting = assets.some((one) => one.job_id !== null && one.progress === "unannotated");
+  /**
+   * Whether the annotator opens as an editor or as a viewer.
+   *
+   * The third question, and the one that was missing (F2). The two above decide
+   * *whether* to draw the button and *which frame* it lands on; neither asks
+   * whether anything can be written when it gets there — so "Open annotator" on
+   * a completed batch opened a fully live editor whose every save the kernel
+   * refuses, and a person's work was stranded in a tab.
+   *
+   * Answered from the frames' own declarations rather than from the batch's
+   * state, because the kernel derives them from both dimensions and this is the
+   * same question the annotator itself will ask on arrival. Same control either
+   * way — the door does not move — but the word on it is honest about what is
+   * behind it.
+   */
+  const editable = declaring(assets, ASSET_ACTION.annotate).length > 0;
 
   const facts: string[] = [];
   if (source.data !== undefined) facts.push(source.data.name);
@@ -542,11 +558,16 @@ function BatchHeader({
               data-testid="start-annotating"
               onClick={onStartAnnotating}
             >
-              <PlayCircle className="size-4" aria-hidden="true" />
-              {/* The label says which of the two it is doing — starting on the
-                  first frame that is waiting, or reopening a batch whose work is
-                  done. Same control either way, because it is the same door. */}
-              {waiting ? "Start annotating" : "Open annotator"}
+              {editable ? (
+                <PlayCircle className="size-4" aria-hidden="true" />
+              ) : (
+                <Eye className="size-4" aria-hidden="true" />
+              )}
+              {/* The label says which of the three it is doing — starting on the
+                  first frame that is waiting, reopening a batch whose work is
+                  done, or looking at one that can no longer be written to. Same
+                  control every time, because it is the same door. */}
+              {!editable ? "View frames" : waiting ? "Start annotating" : "Open annotator"}
             </Button>
           )}
           {/*
@@ -869,10 +890,14 @@ function Tile({
               type="button"
               data-testid={`open-${asset.id}`}
               onClick={onOpen}
-              aria-label={`Open frame ${label} in the annotator`}
+              aria-label={
+                declares(asset, ASSET_ACTION.annotate)
+                  ? `Open frame ${label} in the annotator`
+                  : `View frame ${label}`
+              }
               className="text-meta text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
-              Open
+              {declares(asset, ASSET_ACTION.annotate) ? "Open" : "View"}
             </button>
           )}
         </span>

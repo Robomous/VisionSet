@@ -147,3 +147,48 @@ describe("what the chain is given", () => {
     expect(repin).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * The chain with no re-pin in it (F23).
+ *
+ * The caller asks the batch's `allowed_actions` first and hands `null` when the
+ * pin will not move — so the step that would have refused is never attempted,
+ * and the outcome is a *deliberate* two-step rather than a three-step that
+ * half-applied.
+ */
+describe("when the batch will not take the pin", () => {
+  it("saves and publishes, and never attempts the re-pin", async () => {
+    const { order, steps } = recorders();
+
+    await runAddClass({
+      ...steps,
+      repin: null,
+      activeClasses: [SIGN],
+      declared: NEW,
+      note: "why",
+    });
+
+    expect(order).toEqual(["save", "publish"]);
+  });
+
+  it("resolves rather than refusing, because publishing alone is a real outcome", async () => {
+    // The distinction that matters to the caller: this is not the failure path.
+    // A rejection here would put the dialog into an error state over a chain
+    // that did exactly what it said it would.
+    const { steps } = recorders();
+
+    await expect(
+      runAddClass({ ...steps, repin: null, activeClasses: [SIGN], declared: NEW, note: "why" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("still refuses to publish when the save refused", async () => {
+    // Dropping the re-pin does not loosen the order in front of it.
+    const { order, steps } = recorders({ save: () => Promise.reject(new Error("nope")) });
+
+    await expect(
+      runAddClass({ ...steps, repin: null, activeClasses: [SIGN], declared: NEW, note: "why" }),
+    ).rejects.toThrow("nope");
+    expect(order).toEqual(["save"]);
+  });
+});
