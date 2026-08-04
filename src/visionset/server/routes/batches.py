@@ -29,7 +29,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from visionset.kernel.domain import AssetProgress
-from visionset.kernel.services import BatchService, DatasetService, JobService
+from visionset.kernel.services import BatchService, DatasetService, JobService, ProjectService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
@@ -51,13 +51,31 @@ project_router = protected_router(prefix="/projects/{project_id}/batches", tags=
 router = protected_router(prefix="/batches", tags=["batches"])
 
 
+def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
+    """The trunk's current membership, read once for the whole response.
+
+    Every ``BatchOut`` needs it and none of them needs a different one, so a
+    listing of twenty batches costs one query rather than twenty — the batch's
+    own ``asset_ids`` are already in memory and the rest is a set intersection.
+
+    A project's dataset is 1:1 and created in the same transaction as the
+    project, so this cannot fail for a project that exists; a project that does
+    not is already a 404 from whatever resolved it.
+    """
+    dataset = ProjectService(workspace).get_dataset(project_id)
+    return DatasetService(workspace).member_asset_ids(dataset.id)
+
+
 @project_router.get("", responses=documented(404))
 def list_batches(workspace: WorkspaceDep, project_id: UUID) -> BatchPage:
     """Every batch of that project, in the order they were created."""
     jobs = JobService(workspace)
     found = BatchService(workspace).list(project_id)
+    promoted = _promoted(workspace, project_id)
     return BatchPage(
-        items=[BatchOut.of(batch, jobs.batch_progress(batch.id)) for batch in found],
+        items=[
+            BatchOut.of(batch, jobs.batch_progress(batch.id), promoted=promoted) for batch in found
+        ],
         total=len(found),
     )
 
@@ -72,7 +90,11 @@ def get_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     pins one, and moves after that only through `repin`.
     """
     batch = BatchService(workspace).get(batch_id)
-    return BatchOut.of(batch, JobService(workspace).batch_progress(batch.id))
+    return BatchOut.of(
+        batch,
+        JobService(workspace).batch_progress(batch.id),
+        promoted=_promoted(workspace, batch.project_id),
+    )
 
 
 @router.post("/{batch_id}/approve", responses=documented(404, 409))
@@ -99,14 +121,22 @@ def approve_batch(
     """
     partition = None if body is None else body.to_domain()
     batch = BatchService(workspace).approve(batch_id, partition)
-    return BatchOut.of(batch, JobService(workspace).batch_progress(batch.id))
+    return BatchOut.of(
+        batch,
+        JobService(workspace).batch_progress(batch.id),
+        promoted=_promoted(workspace, batch.project_id),
+    )
 
 
 @router.post("/{batch_id}/start", responses=documented(404, 409))
 def start_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     """Open the batch for annotation. Nothing may be written into it before this."""
     batch = BatchService(workspace).start(batch_id)
-    return BatchOut.of(batch, JobService(workspace).batch_progress(batch.id))
+    return BatchOut.of(
+        batch,
+        JobService(workspace).batch_progress(batch.id),
+        promoted=_promoted(workspace, batch.project_id),
+    )
 
 
 @router.post("/{batch_id}/repin", responses=documented(404, 409))
@@ -135,7 +165,11 @@ def repin_batch(
     nothing. Annotations already written keep the version they were stamped with.
     """
     batch = BatchService(workspace).repin(batch_id, allow_destructive=allow_destructive)
-    return BatchOut.of(batch, JobService(workspace).batch_progress(batch.id))
+    return BatchOut.of(
+        batch,
+        JobService(workspace).batch_progress(batch.id),
+        promoted=_promoted(workspace, batch.project_id),
+    )
 
 
 @router.post("/{batch_id}/complete", responses=documented(404, 409))
@@ -147,7 +181,11 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     what lets its annotated assets be promoted into the project's dataset.
     """
     batch = BatchService(workspace).complete(batch_id)
-    return BatchOut.of(batch, JobService(workspace).batch_progress(batch.id))
+    return BatchOut.of(
+        batch,
+        JobService(workspace).batch_progress(batch.id),
+        promoted=_promoted(workspace, batch.project_id),
+    )
 
 
 @router.get("/{batch_id}/jobs", responses=documented(404))

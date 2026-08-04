@@ -863,6 +863,10 @@
             "title": "Project Id",
             "type": "string"
           },
+          "promoted_asset_count": {
+            "title": "Promoted Asset Count",
+            "type": "integer"
+          },
           "schema_version": {
             "anyOf": [
               {
@@ -886,7 +890,8 @@
           "schema_version",
           "asset_count",
           "progress",
-          "allowed_actions"
+          "allowed_actions",
+          "promoted_asset_count"
         ],
         "title": "BatchOut",
         "type": "object"

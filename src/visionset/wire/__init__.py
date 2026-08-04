@@ -47,6 +47,7 @@ way key-set comparison cannot see.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -314,8 +315,20 @@ def progress_counts(counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
     }
 
 
-def batch(value: Batch, counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
-    """A batch and where its assets have got to. ``asset_ids`` is absent."""
+def batch(
+    value: Batch,
+    counts: Mapping[AssetProgress, int],
+    *,
+    promoted: AbstractSet[UUID],
+) -> dict[str, Any]:
+    """A batch and where its assets have got to. ``asset_ids`` is absent.
+
+    ``promoted`` is the trunk's current membership, passed in rather than read
+    here: a listing tests every batch against the same set, so one read covers
+    the whole answer and ``value.asset_ids`` is already in hand. Keyword-only and
+    with no default, because a default would report zero promoted for a batch
+    nobody checked — a number that looks like an answer and is not one.
+    """
     return {
         "id": str(value.id),
         "project_id": str(value.project_id),
@@ -325,6 +338,7 @@ def batch(value: Batch, counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
         "asset_count": len(value.asset_ids),
         "progress": progress_counts(counts),
         "allowed_actions": [a.value for a in batch_actions(value.state)],
+        "promoted_asset_count": sum(1 for one in value.asset_ids if one in promoted),
     }
 
 

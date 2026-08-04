@@ -35,7 +35,13 @@ from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.domain import AssetProgress, BySize, Partition
-from visionset.kernel.services import BatchService, DatasetService, JobService
+from visionset.kernel.services import (
+    BatchService,
+    DatasetService,
+    JobService,
+    ProjectService,
+    WorkspaceService,
+)
 
 batch_app = typer.Typer(help="Move batches through the annotation lifecycle.", no_args_is_help=True)
 
@@ -63,6 +69,17 @@ def _echo(batch_id: UUID, state: str, json_out: bool, payload: dict[str, object]
     typer.echo(str(batch_id))
 
 
+def _promoted(service: WorkspaceService, project_id: UUID) -> frozenset[UUID]:
+    """The trunk's current membership, read once for the whole answer.
+
+    The same cost model REST and MCP use: one query per invocation rather than
+    one per batch, because ``asset_ids`` is already in hand and the rest is a set
+    intersection.
+    """
+    dataset = ProjectService(service).get_dataset(project_id)
+    return DatasetService(service).member_asset_ids(dataset.id)
+
+
 @batch_app.command("list")
 def batch_list(
     project: ProjectOption,
@@ -78,8 +95,13 @@ def batch_list(
         # does. The counts are the point of the listing: a batch's name and state
         # do not say whether anybody has started on it.
         counts = [jobs.batch_progress(batch.id) for batch in batches]
+        promoted = _promoted(service, resolved.id)
     if json_out:
-        document(wire.page([wire.batch(b, c) for b, c in zip(batches, counts, strict=True)]))
+        document(
+            wire.page(
+                [wire.batch(b, c, promoted=promoted) for b, c in zip(batches, counts, strict=True)]
+            )
+        )
         return
     table(
         _COLUMNS,
@@ -129,8 +151,9 @@ def batch_approve(
         approved = batches.approve(batch, partition)
         counts = JobService(service).batch_progress(approved.id)
         job_count = len(batches.jobs(approved.id))
+        promoted = _promoted(service, approved.project_id)
     if json_out:
-        document(wire.batch(approved, counts))
+        document(wire.batch(approved, counts, promoted=promoted))
         return
     note(
         f"Approved batch {approved.name!r} against schema version "
@@ -149,7 +172,8 @@ def batch_start(
     with opened_workspace(workspace) as service:
         started = BatchService(service).start(batch)
         counts = JobService(service).batch_progress(started.id)
-    _echo(started.id, started.state.value, json_out, wire.batch(started, counts))
+        promoted = _promoted(service, started.project_id)
+    _echo(started.id, started.state.value, json_out, wire.batch(started, counts, promoted=promoted))
 
 
 @batch_app.command("complete")
@@ -166,7 +190,13 @@ def batch_complete(
     with opened_workspace(workspace) as service:
         completed = BatchService(service).complete(batch)
         counts = JobService(service).batch_progress(completed.id)
-    _echo(completed.id, completed.state.value, json_out, wire.batch(completed, counts))
+        promoted = _promoted(service, completed.project_id)
+    _echo(
+        completed.id,
+        completed.state.value,
+        json_out,
+        wire.batch(completed, counts, promoted=promoted),
+    )
 
 
 @batch_app.command("promote")

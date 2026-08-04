@@ -92,7 +92,10 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         models.BatchAssetOut,
     ),
     ("progress_counts", wire.progress_counts(COUNTS), models.ProgressCounts),
-    ("batch", wire.batch(BATCH, COUNTS), models.BatchOut),
+    # A promoted set that actually intersects: a count of zero would agree with
+    # itself even if the intersection were wrong, and this pair exists to catch
+    # exactly the projection that drifted from its model.
+    ("batch", wire.batch(BATCH, COUNTS, promoted=frozenset(BATCH.asset_ids[:1])), models.BatchOut),
     ("job", wire.job(JOB, batch_id=BATCH.id, batch_state=BATCH.state), models.JobOut),
     (
         "asset_progress",
