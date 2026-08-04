@@ -340,6 +340,29 @@ class AssetNotInJob(VisionSetError):
     """
 
 
+class AssetNotWritable(VisionSetError):
+    """Labels were written onto an asset whose progress says labeling is over.
+
+    ``WRITABLE_PROGRESS`` is the two states this allows — ``unannotated`` and
+    ``annotated`` — and the other three each record a decision: skipped, awaiting
+    review, accepted by one. The write is refused rather than stored, because
+    stored is worse: a ``skipped`` asset is left out of ``PROMOTABLE_PROGRESS``,
+    so the labels would be accepted, kept, and then dropped at promotion with
+    nothing telling anybody it happened.
+
+    Not a ``BatchNotInAnnotation``, though the two fire on the same call and one
+    reads much like the other. That one is about the *batch* — nobody opened it —
+    and its remedy is to start it. This one is about *this asset* inside an open
+    batch, and its remedy is to move the progress back where the transition table
+    allows (``skipped -> unannotated``) or, where it does not, to correct the work
+    in a new batch rather than behind the record's back.
+
+    Not an ``InvalidAnnotation`` either: nothing is wrong with the annotation.
+    Catching that base is safe precisely because every member of it is a defect
+    in the payload, and this is a defect in the timing.
+    """
+
+
 class InvalidPartition(VisionSetError):
     """The proposed segments are not an exact partition of the batch.
 

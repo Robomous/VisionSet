@@ -47,6 +47,7 @@ from visionset.kernel import (
     AnnotationNotFound,
     AssetNotFound,
     AssetNotInJob,
+    AssetNotWritable,
     BatchNotComplete,
     BatchNotEditable,
     BatchNotFound,
@@ -219,6 +220,11 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     InvalidTransition: ErrorRule(409, "INVALID_TRANSITION"),
     BatchNotEditable: ErrorRule(409, "BATCH_NOT_EDITABLE"),
     BatchNotInAnnotation: ErrorRule(409, "BATCH_NOT_IN_ANNOTATION"),
+    # 409 rather than 422 for the reason at the top of this block: the annotation
+    # is well formed and would be accepted a moment earlier or after a progress
+    # move. What refuses it is the asset's state, and the remedy is to change that
+    # state and resubmit — which is exactly what 409 is for here.
+    AssetNotWritable: ErrorRule(409, "ASSET_NOT_WRITABLE"),
     BatchNotComplete: ErrorRule(409, "BATCH_NOT_COMPLETE"),
     JobNotComplete: ErrorRule(409, "JOB_NOT_COMPLETE"),
     EmptyBatch: ErrorRule(409, "EMPTY_BATCH"),

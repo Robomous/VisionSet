@@ -29,12 +29,16 @@ Four things shape this module:
   constructed, so it can never reach a service to be reported here. That is the
   division ``docs/schemas.md`` draws: per-value validity is pydantic's, validity
   that needs another object is the service's.
-- **Progress follows the annotations, but only two edges of it.** The first
-  annotation on an asset moves it ``unannotated -> annotated``; deleting the last
-  moves it back. ``skipped``, ``review_pending`` and ``accepted`` are people's
-  decisions and stay with ``JobService.mark``. The rule is
-  ``progress_after_annotating`` in ``domain/task.py``, and it is applied through
-  this service's own unit of work so that labels and progress commit together.
+- **Progress follows the annotations, but only two edges of it — and it gates
+  them.** The first annotation on an asset moves it ``unannotated -> annotated``;
+  deleting the last moves it back. ``skipped``, ``review_pending`` and
+  ``accepted`` are people's decisions and stay with ``JobService.mark``. The rule
+  is ``progress_after_annotating`` in ``domain/task.py``, and it is applied
+  through this service's own unit of work so that labels and progress commit
+  together. Those same two states are ``WRITABLE_PROGRESS``, and a write onto any
+  of the other three is refused with ``AssetNotWritable``: the progress machine
+  has no account of it, and for a ``skipped`` asset the labels would be stored
+  and then dropped at promotion with nothing saying so.
 
 The batch gate is ``JobService``'s, reused rather than restated: this service
 calls ``require_job`` and ``require_open_batch``, so "no work happens in a batch
@@ -51,6 +55,7 @@ from contextlib import contextmanager
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    WRITABLE_PROGRESS,
     Annotation,
     AnnotationJob,
     AnnotationOperation,
@@ -63,6 +68,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     AnnotationNotFound,
     AssetNotInJob,
+    AssetNotWritable,
     DisallowedGeometry,
     DuplicateClassificationTag,
     InvalidAttributeValue,
@@ -135,6 +141,7 @@ class AnnotationService:
             JobNotFound: no such job in this workspace.
             BatchNotInAnnotation: the job's batch is not open for annotation.
             AssetNotInJob: an annotation names an asset the job does not carry.
+            AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: an annotation does not satisfy the pinned version.
             WorkspaceCorrupt: the open batch has no pinned schema version.
         """
@@ -150,7 +157,7 @@ class AnnotationService:
             tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
             for index, annotation in enumerate(proposed):
                 with _blaming(index):
-                    _require_asset_in_job(job, annotation.asset_id)
+                    _require_writable(job, annotation.asset_id)
                     _validate(annotation, schema)
                     # Checked inside this transaction and against a set that grows
                     # as the loop goes, so a request carrying the same tag twice is
@@ -180,6 +187,7 @@ class AnnotationService:
             BatchNotInAnnotation: the job's batch is not open for annotation.
             AnnotationNotFound: an id is not stored in this workspace.
             AssetNotInJob: a stored annotation sits on an asset outside this job.
+            AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version.
             WorkspaceCorrupt: the open batch has no pinned schema version.
         """
@@ -192,7 +200,7 @@ class AnnotationService:
             for index, annotation in enumerate(annotations):
                 with _blaming(index):
                     current = self._require_annotation(uow, annotation.id)
-                    _require_asset_in_job(job, current.asset_id)
+                    _require_writable(job, current.asset_id)
                     replacement = annotation.model_copy(
                         update={"asset_id": current.asset_id, "schema_version": schema.version}
                     )
@@ -233,6 +241,7 @@ class AnnotationService:
             BatchNotInAnnotation: the job's batch is not open for annotation.
             AnnotationNotFound: an id is not stored in this workspace.
             AssetNotInJob: an annotation sits on an asset outside this job.
+            AssetNotWritable: an asset's progress says its labeling is over.
         """
         with self._workspace.unit_of_work() as uow:
             job = self._jobs.require_job(uow, job_id)
@@ -256,7 +265,7 @@ class AnnotationService:
                     doomed.append(self._require_annotation(uow, annotation_id))
             for annotation, index in zip(doomed, first_seen.values(), strict=True):
                 with _blaming(index):
-                    _require_asset_in_job(job, annotation.asset_id)
+                    _require_writable(job, annotation.asset_id)
 
             for annotation in doomed:
                 uow.annotations.delete(annotation.id)
@@ -375,6 +384,27 @@ def _require_asset_in_job(job: AnnotationJob, asset_id: UUID) -> None:
         raise AssetNotInJob(
             f"job {job.id} does not carry asset {asset_id}; a job's assets are fixed "
             f"when its batch is approved"
+        )
+
+
+def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
+    """Refuse an asset whose progress says its labeling is over.
+
+    The membership check first, because "this job does not carry that asset" is
+    the more basic complaint and answering it second would report an asset's
+    progress as the reason a *different* job's asset was refused.
+
+    Only the three writes call this; :meth:`AnnotationService.for_asset` reads
+    through ``_require_asset_in_job`` alone, because reading back what a reviewer
+    accepted is exactly what a reviewer does.
+    """
+    _require_asset_in_job(job, asset_id)
+    progress = job.progress[asset_id]
+    if progress not in WRITABLE_PROGRESS:
+        legal = ", ".join(sorted(state.value for state in WRITABLE_PROGRESS))
+        raise AssetNotWritable(
+            f"asset {asset_id} in job {job.id} is {progress.value!r}, so its labels are "
+            f"settled; annotations are only written while an asset is {legal}"
         )
 
 

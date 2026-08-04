@@ -425,6 +425,50 @@ def test_nothing_is_written_into_a_batch_nobody_opened(
     assert response.json()["code"] == "BATCH_NOT_IN_ANNOTATION"
 
 
+@pytest.mark.parametrize(
+    ("settled", "walk"),
+    [
+        ("skipped", ("skipped",)),
+        ("review_pending", ("annotated", "review_pending")),
+        ("accepted", ("annotated", "review_pending", "accepted")),
+    ],
+)
+def test_nothing_is_written_onto_an_asset_whose_labeling_is_over(
+    client: TestClient,
+    working: tuple[str, str],
+    assets: list[str],
+    settled: str,
+    walk: tuple[str, ...],
+) -> None:
+    """The batch is wide open; it is this asset that is done. 409 ASSET_NOT_WRITABLE."""
+    _, job_id = working
+    asset_id = assets[0]
+    for step in walk:
+        client.put(f"/jobs/{job_id}/assets/{asset_id}/progress", json={"progress": step})
+
+    response = client.post(f"/jobs/{job_id}/annotations", json=[a_box(asset_id)])
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "ASSET_NOT_WRITABLE"
+    assert settled in response.json()["message"]
+    # A sibling in the same open batch is untouched: the gate is per asset.
+    assert client.post(f"/jobs/{job_id}/annotations", json=[a_box(assets[1])]).status_code == 201
+
+
+def test_taking_a_skip_back_makes_the_asset_writable_again(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    """The refusal names a state, and the progress route is how a client leaves it."""
+    _, job_id = working
+    asset_id = assets[0]
+    client.put(f"/jobs/{job_id}/assets/{asset_id}/progress", json={"progress": "skipped"})
+    assert client.post(f"/jobs/{job_id}/annotations", json=[a_box(asset_id)]).status_code == 409
+
+    client.put(f"/jobs/{job_id}/assets/{asset_id}/progress", json={"progress": "unannotated"})
+
+    assert client.post(f"/jobs/{job_id}/annotations", json=[a_box(asset_id)]).status_code == 201
+
+
 def test_nothing_is_written_after_the_batch_closes(
     client: TestClient, working: tuple[str, str], assets: list[str]
 ) -> None:

@@ -120,6 +120,32 @@ is unsettled, so a promotable-but-unsettled state would be unreachable.
 """
 
 
+WRITABLE_PROGRESS: Final[frozenset[AssetProgress]] = frozenset(
+    {AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED}
+)
+"""The states in which an asset's labels may still be added to, edited or removed.
+
+``AnnotationService`` consults this on every write, beside the batch gate. The
+two answer different questions — is this batch open at all, and is *this asset*
+still being labeled — and both have to hold.
+
+Exactly the two states :func:`progress_after_annotating` knows how to move
+between, and that is the whole argument. The other three each record somebody's
+decision that labeling is over: ``skipped`` says a person chose not to label
+this, ``review_pending`` says a person submitted it, ``accepted`` says a reviewer
+took it. A write onto any of them lands labels the progress machine will not
+account for — and for ``skipped`` it is worse than untidy, because
+``PROMOTABLE_PROGRESS`` leaves the asset out of the trunk, so the work is
+accepted, stored, and then silently dropped at promotion with nothing anywhere
+saying so.
+
+Refusing is what makes that unreachable. The remedy is to move the progress first
+where the transition table allows it — ``skipped -> unannotated`` is the
+take-it-back edge — and where it does not, to correct the work in a new batch
+rather than behind the record's back.
+"""
+
+
 def progress_after_annotating(
     current: AssetProgress, *, has_annotations: bool
 ) -> AssetProgress | None:

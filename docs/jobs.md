@@ -60,9 +60,31 @@ remember to `mark` after labeling.
 
 The other three states are exactly the ones no annotation can justify. `skipped` means somebody
 chose not to label this; `review_pending` means somebody submitted it; `accepted` means a
-reviewer took it. A box being drawn or erased contradicts none of them, so annotations leave
-them where they are, and `mark` stays the only door to a decision. The rule is
-`progress_after_annotating` in `kernel/domain/task.py`; see [annotations.md](annotations.md).
+reviewer took it. A box being drawn or erased contradicts none of them, so `mark` stays the only
+door to a decision. The rule is `progress_after_annotating` in `kernel/domain/task.py`; see
+[annotations.md](annotations.md).
+
+### …and the other three refuse the write outright
+
+```python
+WRITABLE_PROGRESS  # {unannotated, annotated}
+```
+
+`AnnotationService.add`, `update` and `delete` all consult this, beside the batch gate. An asset
+in any of the other three answers `AssetNotWritable` (409 `ASSET_NOT_WRITABLE`), naming the state
+it is in.
+
+Storing the label and leaving the progress alone was the older answer, and it was worse than it
+looked. Nothing told the writer their work had gone nowhere — and for `skipped` it went further
+than nowhere: `PROMOTABLE_PROGRESS` leaves that state out, so the labels were accepted, kept, and
+then **silently dropped at promotion**. The refusal is what makes that unreachable.
+
+The remedy is the transition table. `skipped → unannotated` is the take-it-back edge, so a skip
+reversed while the job is open makes the asset writable again. `accepted` has no exit at all, by
+design, which is why correcting accepted work means a new batch rather than a progress move.
+
+Two gates, two questions: `BatchNotInAnnotation` says nobody opened this batch, and its remedy is
+to start it. `AssetNotWritable` says this asset inside an open batch is done being labeled.
 
 ### Marking a state it is already in is a no-op
 
