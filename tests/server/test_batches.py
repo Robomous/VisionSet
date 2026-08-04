@@ -18,9 +18,11 @@ from tests.server._api import api_client
 from tests.server._flow import (
     LANE,
     SIGN,
+    a_box,
     annotated_batch,
     asset_ids,
     batch_from_ingest,
+    dataset_of,
     project_with_schema,
 )
 from tests.server._runner import RecordingRunner
@@ -546,3 +548,104 @@ def test_a_completed_batchs_pin_is_history(
 
     assert response.status_code == 409
     assert response.json()["code"] == "INVALID_TRANSITION"
+
+
+# --- promotion, made observable (audit F5/F17) --------------------------------
+#
+# Promotion is not a transition: the batch stays `completed` and nothing else on
+# its read model moved when its assets entered the trunk. So a client could not
+# tell "promoted 3 of 48" from "promoted nothing because it was already done"
+# from "the press did nothing", and a working call read as a broken button.
+
+
+def test_a_batch_nobody_promoted_reports_nothing_in_the_dataset(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    _, batch_id = annotated_batch(client, runner, tmp_path)
+
+    body = client.get(f"/batches/{batch_id}").json()
+
+    assert body["promoted_asset_count"] == 0
+    assert body["asset_count"] == 3
+
+
+def test_promoting_moves_the_count_on_the_batch_itself(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    # The half that survives a reload. The response says what *this press* did and
+    # cannot be recovered afterwards; this says what is in the trunk *now*, and is
+    # still right in a session that did not do the promoting.
+    _, batch_id = annotated_batch(client, runner, tmp_path)
+    client.post(f"/batches/{batch_id}/promote")
+
+    body = client.get(f"/batches/{batch_id}").json()
+
+    assert body["promoted_asset_count"] == 3
+    # And the batch has not moved, which is exactly why it needed a number.
+    assert body["state"] == "completed"
+
+
+def test_the_count_leaves_out_a_frame_that_was_skipped(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    # `PROMOTABLE_PROGRESS` excludes `skipped`, so a count below `asset_count` is
+    # the ordinary shape rather than a shortfall — and it is the shape the founder
+    # actually had, at 3 of 48.
+    project_id = project_with_schema(client)
+    batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=3)
+    client.post(f"/batches/{batch_id}/approve")
+    client.post(f"/batches/{batch_id}/start")
+    job_id = client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
+    client.post(f"/jobs/{job_id}/start")
+    assets = asset_ids(client, batch_id)
+    client.post(f"/jobs/{job_id}/annotations", json=[a_box(assets[0]), a_box(assets[1])])
+    client.put(f"/jobs/{job_id}/assets/{assets[2]}/progress", json={"progress": "skipped"})
+    client.post(f"/jobs/{job_id}/complete")
+    client.post(f"/batches/{batch_id}/complete")
+    client.post(f"/batches/{batch_id}/promote")
+
+    body = client.get(f"/batches/{batch_id}").json()
+
+    assert body["asset_count"] == 3
+    assert body["promoted_asset_count"] == 2
+
+
+def test_promoting_twice_leaves_the_count_where_it_was(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    # The idempotent no-op, which is the outcome that looked most like a failure.
+    # The second press answers an empty page — and the count says the work is
+    # there anyway, which is what turns "nothing happened" into "already done".
+    _, batch_id = annotated_batch(client, runner, tmp_path)
+    client.post(f"/batches/{batch_id}/promote")
+
+    again = client.post(f"/batches/{batch_id}/promote").json()
+
+    assert again["total"] == 0
+    assert client.get(f"/batches/{batch_id}").json()["promoted_asset_count"] == 3
+
+
+def test_the_listing_reports_it_too(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    # One read of the trunk covers every batch in the page — the reason `promoted`
+    # is passed into `BatchOut.of` rather than read inside it.
+    project_id, batch_id = annotated_batch(client, runner, tmp_path)
+    client.post(f"/batches/{batch_id}/promote")
+
+    items = client.get(f"/projects/{project_id}/batches").json()["items"]
+
+    assert [one["promoted_asset_count"] for one in items] == [3]
+
+
+def test_removing_an_asset_from_the_trunk_takes_it_off_the_count(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    # Current membership, never a promotion log.
+    project_id, batch_id = annotated_batch(client, runner, tmp_path)
+    client.post(f"/batches/{batch_id}/promote")
+    dataset_id = dataset_of(client, project_id)
+    removed = asset_ids(client, batch_id)[0]
+    client.delete(f"/datasets/{dataset_id}/assets/{removed}")
+
+    assert client.get(f"/batches/{batch_id}").json()["promoted_asset_count"] == 2

@@ -83,7 +83,7 @@ export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
   /*#__PURE__*/ object({ "accepted": [true, isInteger], "annotated": [true, isInteger], "review_pending": [true, isInteger], "skipped": [true, isInteger], "total": [true, isInteger], "unannotated": [true, isInteger] } as const);
 
 export const checkBatchOut: Check<Schemas["BatchOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "progress": [true, checkProgressCounts], "project_id": [true, isString], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "progress": [true, checkProgressCounts], "project_id": [true, isString], "promoted_asset_count": [true, isInteger], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
 
 export const checkBatchPage: Check<Schemas["BatchPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchOut)], "total": [true, isInteger] } as const);

@@ -32,7 +32,13 @@ from pydantic import Field
 
 from visionset import wire
 from visionset.kernel.domain import BySize, Partition
-from visionset.kernel.services import BatchService, DatasetService, JobService, WorkspaceService
+from visionset.kernel.services import (
+    BatchService,
+    DatasetService,
+    JobService,
+    ProjectService,
+    WorkspaceService,
+)
 from visionset.mcp._resolve import ProjectRef, identifier, resolve_project
 from visionset.mcp._workspace import opened_workspace
 
@@ -43,6 +49,17 @@ _ACTOR: Final = "mcp"
 """Who the dataset change log records for a promotion made by an agent."""
 
 
+def _promoted(workspace: WorkspaceService, project_id: UUID) -> frozenset[UUID]:
+    """The trunk's current membership, read once for the whole answer.
+
+    The same cost model the REST routes use: one query per call rather than one
+    per batch, because ``asset_ids`` is already in memory and the rest is a set
+    intersection.
+    """
+    dataset = ProjectService(workspace).get_dataset(project_id)
+    return DatasetService(workspace).member_asset_ids(dataset.id)
+
+
 def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any]:
     """The batch, its progress and its jobs — the shape three tools return."""
     batches = BatchService(workspace)
@@ -50,7 +67,7 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any
     counts = JobService(workspace).batch_progress(batch.id)
     jobs = batches.jobs(batch.id)
     return {
-        **wire.batch(batch, counts),
+        **wire.batch(batch, counts, promoted=_promoted(workspace, batch.project_id)),
         "jobs": [wire.job(j, batch_id=batch.id, batch_state=batch.state) for j in jobs],
     }
 
@@ -67,8 +84,9 @@ def list_batches(project: ProjectRef) -> dict[str, Any]:
         found = BatchService(workspace).list(resolved.id)
         jobs = JobService(workspace)
         counts = [jobs.batch_progress(b.id) for b in found]
+        promoted = _promoted(workspace, resolved.id)
     return wire.page(
-        [wire.batch(b, c) for b, c in zip(found, counts, strict=True)],
+        [wire.batch(b, c, promoted=promoted) for b, c in zip(found, counts, strict=True)],
     )
 
 

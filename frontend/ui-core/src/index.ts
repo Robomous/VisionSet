@@ -191,6 +191,7 @@ export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js"
 export { BatchesScreen, type BatchesScreenProps } from "./screens/BatchesScreen.js";
 export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.js";
 export { ApproveDialog, BatchProgressBar } from "./screens/BatchLifecycle.js";
+export { PromoteButton, promotionSummary, type PromoteButtonProps } from "./screens/PromoteButton.js";
 export {
   batchStateLabel,
   segmentCounts,

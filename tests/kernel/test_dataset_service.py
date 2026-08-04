@@ -731,3 +731,77 @@ def test_stats_of_an_unknown_dataset_are_refused(tmp_path: Path) -> None:
     with pytest.raises(DatasetNotFound):
         fixture.datasets.stats(uuid4())
     fixture.close()
+
+
+# --- who is in the trunk, asked cheaply ---------------------------------------
+#
+# `member_asset_ids` exists because promotion was unobservable: the batch stays
+# `completed`, so nothing on a batch read moved when its assets entered the
+# dataset, and three different outcomes looked identical to a client. The wire's
+# `promoted_asset_count` is an intersection against this set.
+
+
+def test_an_unpromoted_dataset_has_no_members(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    assert fixture.datasets.member_asset_ids(fixture.dataset.id) == frozenset()
+
+
+def test_the_ids_are_exactly_what_promotion_put_there(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.completed(AssetProgress.ANNOTATED, AssetProgress.SKIPPED, AssetProgress.ANNOTATED)
+    promoted = fixture.datasets.promote(fixture.batch.id)
+
+    ids = fixture.datasets.member_asset_ids(fixture.dataset.id)
+
+    assert ids == {asset.id for asset in promoted}
+    # And the skipped one is genuinely out — `PROMOTABLE_PROGRESS` excludes it,
+    # which is the whole reason a count of 2 over a batch of 3 is not a failure.
+    assert fixture.assets[1] not in ids
+
+
+def test_it_answers_the_same_set_assets_does_without_resolving_them(tmp_path: Path) -> None:
+    # The cheap half of `assets`, and it has to stay the same answer: two walks of
+    # `dataset_member` that disagree is exactly what putting both beside each
+    # other is meant to prevent.
+    fixture = Fixture(tmp_path)
+    fixture.completed(AssetProgress.ANNOTATED, AssetProgress.ANNOTATED, AssetProgress.ACCEPTED)
+    fixture.datasets.promote(fixture.batch.id)
+
+    assert fixture.datasets.member_asset_ids(fixture.dataset.id) == {
+        asset.id for asset in fixture.datasets.assets(fixture.dataset.id)
+    }
+
+
+def test_a_removed_asset_leaves_the_set(tmp_path: Path) -> None:
+    # Current membership, never a promotion log. "Is my work in the dataset" is a
+    # question about now, and a curator taking something out has answered it.
+    fixture = Fixture(tmp_path)
+    fixture.completed(AssetProgress.ANNOTATED, AssetProgress.ANNOTATED, AssetProgress.ANNOTATED)
+    fixture.datasets.promote(fixture.batch.id)
+    fixture.datasets.remove_asset(fixture.dataset.id, fixture.assets[0])
+
+    ids = fixture.datasets.member_asset_ids(fixture.dataset.id)
+
+    assert fixture.assets[0] not in ids
+    assert len(ids) == 2
+
+
+def test_promoting_twice_does_not_double_the_membership(tmp_path: Path) -> None:
+    # Promotion is a union, so the second press moves nothing — which is the
+    # outcome a client could not tell from a failure, and the one this set makes
+    # reportable.
+    fixture = Fixture(tmp_path)
+    fixture.completed(AssetProgress.ANNOTATED, AssetProgress.ANNOTATED, AssetProgress.ANNOTATED)
+    fixture.datasets.promote(fixture.batch.id)
+    first = fixture.datasets.member_asset_ids(fixture.dataset.id)
+
+    again = fixture.datasets.promote(fixture.batch.id)
+
+    assert again == []
+    assert fixture.datasets.member_asset_ids(fixture.dataset.id) == first
+
+
+def test_an_unknown_dataset_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(DatasetNotFound):
+        fixture.datasets.member_asset_ids(uuid4())

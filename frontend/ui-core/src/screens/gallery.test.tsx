@@ -122,6 +122,7 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
     asset_count: 120,
     progress: { ...NO_PROGRESS, unannotated: 120, total: 120 },
     allowed_actions: batchActions(state),
+    promoted_asset_count: 0,
     ...overrides,
   };
 }
@@ -1374,5 +1375,24 @@ describe("the gallery header's way into the annotator", () => {
   it("says Open on a batch that can be written to", async () => {
     await open("annotated", "skipped");
     expect(screen.getByTestId("open-asset-0").textContent).toBe("Open");
+  });
+
+  /**
+   * Promotion, on the screen the work is finished from — audit finding F18.
+   *
+   * It lived only on the batch table one tab away, so a person could settle
+   * forty-eight frames here and have nowhere to put them; and the gallery had no
+   * link to the dataset either, which is where a promotion's evidence lives.
+   */
+  it("offers Promote once the batch is completed", async () => {
+    await openIn("completed", "annotated", "skipped");
+    expect(screen.queryByTestId("promote-drive-01")).not.toBeNull();
+  });
+
+  it("offers no Promote before the batch is completed", async () => {
+    // Capability-gated, not state-guessed: `PROMOTABLE_STATES` is the kernel's
+    // and the wire declares it.
+    await open("annotated", "unannotated");
+    expect(screen.queryByTestId("promote-drive-01")).toBeNull();
   });
 });

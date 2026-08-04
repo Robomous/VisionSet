@@ -1802,6 +1802,8 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Promoted Asset Count */
+            promoted_asset_count: number;
             /** Schema Version */
             schema_version: number | null;
             state: components["schemas"]["BatchState"];

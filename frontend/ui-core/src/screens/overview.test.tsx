@@ -343,6 +343,7 @@ describe("the journey checklist", () => {
         total: 48,
       },
       allowed_actions: batchActions(state as BatchState),
+      promoted_asset_count: 0,
     };
   }
 

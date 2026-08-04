@@ -97,6 +97,30 @@ class DatasetService:
         with self._workspace.unit_of_work() as uow:
             return assets_of(uow, self.require_dataset(uow, dataset_id))
 
+    def member_asset_ids(self, dataset_id: UUID) -> frozenset[UUID]:
+        """Which assets are in the trunk right now, as a set to test against.
+
+        The cheap half of :meth:`assets`. That one resolves every member to an
+        ``Asset`` because its callers render them; this one answers *is this in
+        the trunk*, which needs the id alone — so it skips one lookup per member,
+        and over a dataset of fifty thousand that is the whole cost of the call.
+
+        A **set**, and returned rather than answered per id, because the caller
+        that wanted this asks about a batch's worth of assets at once: how much of
+        a completed batch has reached the trunk is a question about an
+        intersection, and asking it one id at a time is the shape that turns one
+        read into N.
+
+        Current membership, not a history. A curator removing an asset takes it
+        out of this answer, which is right for every question anybody asks it —
+        "is my work in the dataset" is about now.
+
+        Raises:
+            DatasetNotFound: no such dataset in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            return member_asset_ids_of(uow, self.require_dataset(uow, dataset_id))
+
     def changes(self, dataset_id: UUID) -> list[DatasetChange]:
         """The mutation log, oldest entry first.
 
@@ -330,6 +354,19 @@ def assets_of(uow: UnitOfWork, dataset: Dataset) -> list[Asset]:
         _require_asset(uow, dataset, member.asset_id)
         for member in uow.dataset_members.list(dataset.id)
     ]
+
+
+def member_asset_ids_of(uow: UnitOfWork, dataset: Dataset) -> frozenset[UUID]:
+    """The trunk's membership as a set of ids, inside a caller's own transaction.
+
+    Module-level and public beside :func:`assets_of` for the reason that one is:
+    a second walk of ``dataset_member`` written somewhere else is a second chance
+    to disagree with this one. Unlike ``assets_of`` it does **not** resolve the
+    assets, so it cannot raise ``WorkspaceCorrupt`` — a member naming an asset
+    that is gone is still a member, and answering "which ids are in" honestly does
+    not require the rows behind them.
+    """
+    return frozenset(member.asset_id for member in uow.dataset_members.list(dataset.id))
 
 
 def _promotable(batch: Batch, jobs: Iterable[AnnotationJob]) -> list[UUID]:

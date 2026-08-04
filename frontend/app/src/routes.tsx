@@ -221,6 +221,10 @@ function Gallery(): JSX.Element {
       // The approve dialog's SCHEMA_NOT_FOUND remedy (#291): the schema section
       // is a `?tab=` on the project page, and spelling that URL is this file's job.
       onOpenSchema={() => void navigate(`/projects/${projectId}?tab=schema`)}
+      // Where a promotion from this screen lands (F18). The gallery is where a
+      // batch is finished, and it had no way to reach the one screen that shows
+      // what finishing it produced.
+      onOpenDataset={() => void navigate(`/projects/${projectId}/dataset`)}
     />
   );
 }
