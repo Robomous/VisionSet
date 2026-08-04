@@ -154,6 +154,57 @@ describe("the batch table", () => {
   });
 });
 
+describe("the labels foreshadowing banner (#290)", () => {
+  /** The readiness sources beside the screen's own batches query. */
+  function withSchema(exists: boolean): void {
+    on(
+      "GET",
+      /^\/projects\/[^/]+\/schema$/,
+      exists
+        ? { status: 200, body: { project_id: PROJECT, version: 1, classes: [] } }
+        : { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none yet" } },
+    );
+    on("GET", /\/stats$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        asset_count: 120,
+        annotated_asset_count: 0,
+        annotation_count: 0,
+        class_count: 0,
+        annotated_pct: 0,
+        classes: [],
+        last_ingest_at: null,
+      },
+    });
+    on("GET", /\/batches$/, { status: 200, body: { items: [batch()], total: 1 } });
+  }
+
+  it("warns while the project has no labels, and the link goes to the schema", async () => {
+    withSchema(false);
+    const opened = vi.fn();
+    render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={opened} />));
+
+    const banner = await screen.findByTestId("schema-foreshadow");
+    expect(banner.textContent).toContain("labels before annotating");
+    await userEvent.click(screen.getByTestId("foreshadow-schema"));
+    expect(opened).toHaveBeenCalledOnce();
+  });
+
+  it("says nothing once a schema exists", async () => {
+    withSchema(true);
+    render(mount(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={vi.fn()} />));
+
+    await screen.findByTestId("batches-table");
+    // Wait for the readiness sources to have answered, so this asserts a
+    // decision rather than a pending query.
+    await waitFor(() =>
+      expect(sent.some((request) => request.url.endsWith("/schema"))).toBe(true),
+    );
+    expect(screen.queryByTestId("schema-foreshadow")).toBeNull();
+  });
+});
+
 describe("the approval dialog", () => {
   beforeEach(() => {
     on("GET", /\/batches$/, { status: 200, body: { items: [batch()], total: 1 } });

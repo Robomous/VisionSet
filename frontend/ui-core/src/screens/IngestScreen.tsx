@@ -149,6 +149,7 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { SchemaForeshadow } from "./SchemaForeshadow";
 import { probeClip, type ClipProbe } from "./clipProbe";
 import {
   useBatches,
@@ -182,9 +183,16 @@ export interface IngestScreenProps {
   readonly onOpenBatch?: (batchId: string) => void;
   /** Up to the project this is ingesting into (#199). */
   readonly onBack?: () => void;
+  /** The schema tab, for the labels foreshadowing banner (#290). */
+  readonly onOpenSchema?: () => void;
 }
 
-export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenProps): JSX.Element {
+export function IngestScreen({
+  projectId,
+  onOpenBatch,
+  onBack,
+  onOpenSchema,
+}: IngestScreenProps): JSX.Element {
   const project = useProject(projectId);
   const [files, setFiles] = useState<readonly File[]>([]);
   const [fps, setFps] = useState(String(DEFAULT_EXTRACTION_FPS));
@@ -370,6 +378,13 @@ export function IngestScreen({ projectId, onOpenBatch, onBack }: IngestScreenPro
           A source is registered once; ingesting it again creates nothing new.
         </p>
       </header>
+
+      {/* Ingesting without labels is fine — annotating without them is not, and
+          the refusal would otherwise arrive only at batch approval (#290). */}
+      <SchemaForeshadow
+        projectId={projectId}
+        {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+      />
 
       <ol className="flex flex-col">
         <Step
