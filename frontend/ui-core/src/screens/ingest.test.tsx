@@ -25,7 +25,7 @@ import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { probeClip } from "./clipProbe";
 import { IngestScreen } from "./IngestScreen";
-import { batchActions } from "../testing/wire.fixtures.js";
+import { batchActions, datasetOf } from "../testing/wire.fixtures.js";
 
 // The browser-side clip read is substituted whole. The default — a promise that
 // never settles — is exactly what the real module does under jsdom, which has no
@@ -879,6 +879,15 @@ describe("what a settled run offers next", () => {
 describe("the labels foreshadowing banner (#290)", () => {
   /** The readiness sources beside the screen's own project and batches reads. */
   function withSchema(exists: boolean): void {
+    // `SchemaForeshadow` reads `useProjectReadiness`, which reaches the dataset
+    // and its releases for the journey's last step — so both have to be answered
+    // or readiness stays `null` and the banner never renders, which looks
+    // exactly like the banner being wrong.
+    on("GET", /^\/projects\/[^/]+\/dataset$/, {
+      status: 200,
+      body: datasetOf(PROJECT, "22222222-2222-4222-8222-222222222222"),
+    });
+    on("GET", /\/releases$/, { status: 200, body: { items: [], total: 0 } });
     on(
       "GET",
       /^\/projects\/[^/]+\/schema$/,

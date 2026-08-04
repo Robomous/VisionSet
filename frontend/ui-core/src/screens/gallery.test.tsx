@@ -35,7 +35,7 @@ import { writeToken } from "../data/session";
 import { BatchesScreen } from "./BatchesScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { GalleryScreen, columnsFor } from "./GalleryScreen";
-import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { assetActions, batchActions, jobActions, datasetOf } from "../testing/wire.fixtures.js";
 import type { components } from "../generated/api.js";
 
 type BatchState = components["schemas"]["BatchState"];
@@ -169,6 +169,15 @@ describe("the batch table", () => {
 describe("the labels foreshadowing banner (#290)", () => {
   /** The readiness sources beside the screen's own batches query. */
   function withSchema(exists: boolean): void {
+    // `SchemaForeshadow` reads `useProjectReadiness`, which reaches the dataset
+    // and its releases for the journey's last step — so both have to be answered
+    // or readiness stays `null` and the banner never renders, which looks
+    // exactly like the banner being wrong.
+    on("GET", /^\/projects\/[^/]+\/dataset$/, {
+      status: 200,
+      body: datasetOf(PROJECT, "22222222-2222-4222-8222-222222222222"),
+    });
+    on("GET", /\/releases$/, { status: 200, body: { items: [], total: 0 } });
     on(
       "GET",
       /^\/projects\/[^/]+\/schema$/,

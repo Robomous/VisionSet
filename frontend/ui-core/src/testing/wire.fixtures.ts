@@ -76,3 +76,41 @@ export function assetActions(
   if (batchState !== "in_annotation" || progress === null) return [];
   return [...ASSET_ACTIONS[progress]];
 }
+
+// --- payloads, not just declarations -----------------------------------------
+//
+// The two the journey's last step needs. They live here for the reason the
+// action tables above do: a mock that lies about what the server would send is
+// worse than no mock, and the surest way to make one lie is to write it out by
+// hand in four files. `checks.ts` is what would catch a missing field, and it
+// catches it as a *runtime* failure inside a hook — which surfaces as a query
+// that never resolves rather than as a test that says what is wrong.
+
+/** A `DatasetOut`. A project's dataset is 1:1, so one per project is all there is. */
+export function datasetOf(
+  projectId: string,
+  datasetId: string,
+): Record<string, unknown> {
+  return { id: datasetId, project_id: projectId, name: "trunk", description: null };
+}
+
+/** A `ReleaseOut`. `visionset_version` is the field a hand-written one forgets. */
+export function releaseOf(
+  datasetId: string,
+  tag: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    dataset_id: datasetId,
+    tag,
+    schema_version: 1,
+    asset_count: 48,
+    annotation_count: 96,
+    manifest_hash: "a".repeat(64),
+    split: null,
+    created_at: "2026-08-01T09:00:00Z",
+    visionset_version: "0.0.1-beta.2",
+    ...overrides,
+  };
+}
