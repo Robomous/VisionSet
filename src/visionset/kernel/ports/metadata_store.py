@@ -133,6 +133,31 @@ class UnitOfWork(Protocol):
     @property
     def releases(self) -> Repository[Release]: ...
 
+    def batches_holding(self, asset_id: UUID) -> list[UUID]:
+        """Which batches carry this asset, oldest membership first.
+
+        **The one read here that is not a repository**, and it is the shape
+        ``Repository`` deliberately cannot express: membership is a join table
+        with a composite key, and every scoped read the repositories serve is one
+        ``parent_id`` filter in the other direction — a batch's assets. This is
+        the same edge walked backwards, which is a different question and has no
+        parent to filter on.
+
+        A method rather than a widened ``Repository[Batch]``: that protocol is
+        generic over every entity, so a batch-specific lookup on it would appear
+        on projects and releases and tokens as well.
+
+        Ids, not entities, for the reason ``member_asset_ids`` returns ids: the
+        join table already holds exactly this and hydrating a batch to answer
+        "which ones" is work the caller may not need. ``BatchService.holding``
+        does the hydration for the callers that do.
+
+        An asset in no batch answers ``[]`` — the ordinary state of anything
+        freshly ingested into a project whose ingest targeted nothing, not an
+        error.
+        """
+        ...
+
     @property
     def tokens(self) -> Repository[Token]:
         """API credentials, parented on the workspace rather than on a project.

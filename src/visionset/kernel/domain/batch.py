@@ -90,6 +90,27 @@ of their assets go. The refusal here is ``BatchNotComplete``.
 """
 
 
+CORRECTABLE_STATES: Final[frozenset[BatchState]] = frozenset({BatchState.COMPLETED})
+"""The states from which a correction batch may be cut.
+
+**The forward-only model's answer to "this needs fixing".** ``completed`` has no
+exit in ``BATCH_TRANSITIONS`` and none is coming, so the way to change settled
+work is a new batch over the same assets carrying lineage back to this one.
+
+``completed`` alone, and the same membership as ``PROMOTABLE_STATES`` for a
+different reason — which is why it is a second set rather than a shared one.
+Promotion asks *is this work finished enough to enter the trunk*; this asks *is
+this batch closed to further work*. Both happen to be answered by the same state
+today; a fifth state would not necessarily answer them the same way, and merging
+them now would hide that.
+
+Correcting an *open* batch is not a correction: it is the work, and it happens in
+the batch that is already there. The refusal is ``InvalidTransition``, through
+``require_state`` — the same funnel ``repin`` uses, because a caller cannot
+usefully tell "wrong state for this move" from "wrong state for this act".
+"""
+
+
 DELETABLE_STATES: Final[frozenset[BatchState]] = frozenset(
     {BatchState.DRAFT, BatchState.APPROVED, BatchState.IN_ANNOTATION}
 )

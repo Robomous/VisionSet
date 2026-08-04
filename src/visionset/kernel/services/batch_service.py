@@ -38,6 +38,7 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     BATCH_TRANSITIONS,
+    CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
     REPINNABLE_STATES,
@@ -64,6 +65,7 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.errors import (
     AssetNotFound,
+    AssetNotInBatch,
     BatchImmutable,
     BatchNotComplete,
     BatchNotEditable,
@@ -132,6 +134,32 @@ class BatchService:
     # ``list`` shadows the builtin for every annotation after it in this class
     # body, so it comes last here and the helpers that need ``list[...]`` live
     # at module level.
+    def holding(self, asset_id: UUID) -> list[Batch]:
+        """Every batch that carries this asset, oldest membership first.
+
+        Declared **above** ``list``, and that is a language constraint rather
+        than taste: a method named ``list`` shadows the builtin for every
+        annotation after it in the class body, so ``-> list[Batch]`` below this
+        point is read as a reference to that method and fails to typecheck. The
+        module docstring's ordering note owns the rule.
+
+        The edge ``Repository`` cannot walk: membership is a join table and every
+        scoped read it serves runs the other way, from a batch to its assets.
+
+        Answers ``[]`` for an asset in no batch, which is the ordinary state of
+        anything ingested without a target — not an error, and deliberately not a
+        refusal about the asset's existence either: this is a question about
+        membership, and an id nothing holds is honestly held by nothing.
+        """
+        with self._workspace.unit_of_work() as uow:
+            found = [uow.batches.get(one) for one in uow.batches_holding(asset_id)]
+            # A membership row whose batch is gone would be a cascade guarantee
+            # failing, which is `WorkspaceCorrupt` territory rather than a hole to
+            # paper over — but `batch_asset` carries `ON DELETE CASCADE`, so the
+            # row cannot outlive the batch and this filter is unreachable. Kept
+            # because `get` is typed optional and asserting would be worse.
+            return [batch for batch in found if batch is not None]
+
     def list(self, project_id: UUID) -> list[Batch]:
         """Every batch of that project, in the order they were created.
 
@@ -160,6 +188,63 @@ class BatchService:
                     project_id=project_id,
                     name=normalize_name(name, what="batch"),
                     asset_ids=_deduplicated(members),
+                )
+            )
+
+    def create_correction(self, batch_id: UUID, name: str, asset_ids: Sequence[UUID] = ()) -> Batch:
+        """Start a draft batch that corrects a completed one.
+
+        **The forward-only answer to "this needs fixing".** A ``completed`` batch
+        is immutable as a workflow unit — ``BATCH_TRANSITIONS`` gives it no exit
+        and none is coming — so the legitimate intent behind wanting to reopen
+        one is served by a new batch over the same assets, carrying lineage back
+        to it.
+
+        Only from ``completed``, which is what ``CORRECTABLE_STATES`` says and
+        what the wire declares as ``create_correction``. Correcting a batch that
+        is still open is not a correction; it is the work, and it happens in the
+        batch that is already there.
+
+        ``asset_ids`` defaults to **the parent's whole membership**, because
+        "correct this batch" is the ordinary ask and re-listing forty-eight ids
+        to say so is a worse API than a default. A subset is the other ordinary
+        ask — the three frames somebody found wrong — and any id given must be
+        one the parent actually carried: a correction of a batch is a correction
+        *of what was in it*, and admitting an unrelated asset would make lineage
+        a claim about nothing.
+
+        The child is an ordinary draft in every other respect. It pins the
+        **active** schema at its own approval, not the parent's pin, which is the
+        point of correcting under a contract that has since moved on.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            InvalidTransition: the parent is not ``completed``.
+            InvalidName: the name is blank once stripped.
+            AssetNotInBatch: an asset id is not one the parent carried.
+        """
+        with self._workspace.unit_of_work() as uow:
+            parent = self.require_batch(uow, batch_id)
+            require_state(
+                CORRECTABLE_STATES,
+                parent.state,
+                _subject(parent),
+                refusal="it cannot be corrected — correcting an open batch is the work itself",
+            )
+            members = list(asset_ids) if asset_ids else list(parent.asset_ids)
+            carried = set(parent.asset_ids)
+            for asset_id in members:
+                if asset_id not in carried:
+                    raise AssetNotInBatch(
+                        f"asset {asset_id} is not in batch {parent.id}, so a correction "
+                        "of that batch cannot include it"
+                    )
+            return uow.batches.add(
+                Batch(
+                    project_id=parent.project_id,
+                    name=normalize_name(name, what="batch"),
+                    asset_ids=_deduplicated(members),
+                    parent_batch_id=parent.id,
                 )
             )
 

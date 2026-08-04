@@ -58,6 +58,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "AnnotationNotFound": (404, "ANNOTATION_NOT_FOUND"),
     "ReleaseNotFound": (404, "RELEASE_NOT_FOUND"),
     "TokenNotFound": (404, "TOKEN_NOT_FOUND"),
+    "AssetNotInBatch": (422, "ASSET_NOT_IN_BATCH"),
     "AssetNotInJob": (404, "ASSET_NOT_IN_JOB"),
     "NoSplitRecipe": (404, "NO_SPLIT_RECIPE"),
     "ExportFormatNotFound": (404, "EXPORT_FORMAT_NOT_FOUND"),

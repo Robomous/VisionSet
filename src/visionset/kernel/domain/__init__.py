@@ -11,6 +11,7 @@ from visionset.kernel.domain.annotation import Annotation, Provenance
 from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
+    CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
     PROMOTABLE_STATES,
@@ -154,6 +155,7 @@ __all__ = [
     "ASSET_MOVES",
     "ASSET_PROGRESS_TRANSITIONS",
     "BATCH_TRANSITIONS",
+    "CORRECTABLE_STATES",
     "DELETABLE_STATES",
     "EDITABLE_STATES",
     "IMPLEMENTED_GEOMETRIES",

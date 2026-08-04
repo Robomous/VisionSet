@@ -32,10 +32,24 @@ from fastapi.responses import StreamingResponse
 
 from visionset.kernel.domain import Asset, ImageFormat
 from visionset.kernel.ports import THUMBNAIL_FORMAT
-from visionset.kernel.services import IngestService
+from visionset.kernel.services import (
+    BatchService,
+    DatasetService,
+    IngestService,
+    JobService,
+    ProjectService,
+)
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
-from visionset.server.models import AssetOut, AssetPage, LimitQuery, OffsetQuery, window
+from visionset.server.models import (
+    AssetOut,
+    AssetPage,
+    BatchOut,
+    BatchPage,
+    LimitQuery,
+    OffsetQuery,
+    window,
+)
 
 router = protected_router(prefix="/projects/{project_id}/assets", tags=["assets"])
 
@@ -43,6 +57,20 @@ router = protected_router(prefix="/projects/{project_id}/assets", tags=["assets"
 #: a gamble. One year is the maximum ``max-age`` anything honours, and
 #: ``immutable`` tells a browser not to revalidate even on a reload.
 _IMMUTABLE: Final = "public, max-age=31536000, immutable"
+
+
+def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
+    """The trunk's current membership, read once for the whole response.
+
+    The same helper `routes/batches.py` has, and deliberately a second spelling
+    rather than an import: a route module reaches for `dependencies`, `errors`
+    and `models`, never for another route module, and three lines is a smaller
+    price than the first edge between two of them. `DatasetService` is the one
+    place the rule actually lives.
+    """
+    dataset = ProjectService(workspace).get_dataset(project_id)
+    return DatasetService(workspace).member_asset_ids(dataset.id)
+
 
 #: What each ``ImageFormat`` is called on the wire. A mapping rather than
 #: ``f"image/{format}"`` because the two coincide today and would stop coinciding
@@ -138,6 +166,39 @@ def get_asset(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID) -> Asse
     id.
     """
     return AssetOut.of(IngestService(workspace).asset(project_id, asset_id))
+
+
+@router.get("/{asset_id}/batches", responses=documented(404))
+def list_asset_batches(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID) -> BatchPage:
+    """Every batch that carries this asset, oldest membership first.
+
+    **The membership edge walked backwards.** Every other read goes from a batch
+    to its assets; this asks which rounds of work an asset has been through, and
+    it is what a correction batch's lineage looks like from the asset's side —
+    the original and its corrections, in the order they were cut.
+
+    A dedicated route rather than a field on `AssetOut`, and the reason is cost:
+    a listing of fifty thousand assets would pay one join per row for a fact
+    almost no reader of that listing wants. This is asked about one asset, by
+    somebody looking at that asset.
+
+    An asset in no batch answers `{"items": [], "total": 0}` — the ordinary state
+    of anything ingested without a target, and not a 404. The 404 here is for the
+    asset or the project, which is resolved first.
+    """
+    # Resolved before the membership read so an unknown asset is a 404 rather
+    # than an empty page, which would be a different and wronger answer.
+    asset = IngestService(workspace).asset(project_id, asset_id)
+    batches = BatchService(workspace)
+    jobs = JobService(workspace)
+    promoted = _promoted(workspace, project_id)
+    found = batches.holding(asset.id)
+    return BatchPage(
+        items=[
+            BatchOut.of(batch, jobs.batch_progress(batch.id), promoted=promoted) for batch in found
+        ],
+        total=len(found),
+    )
 
 
 @router.get(

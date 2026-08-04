@@ -15,6 +15,7 @@ import pytest
 
 from visionset.kernel import (
     AssetNotFound,
+    AssetNotInBatch,
     BatchImmutable,
     BatchNotComplete,
     BatchNotEditable,
@@ -49,6 +50,7 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.services import (
     BatchService,
+    JobService,
     ProjectService,
     SchemaService,
     WorkspaceService,
@@ -765,3 +767,155 @@ def test_lineage_is_not_moved_by_the_lifecycle(tmp_path: Path) -> None:
     fixture.batches.start(child.id)
 
     assert fixture.batches.get(child.id).parent_batch_id == parent.id
+
+
+def test_an_asset_in_no_batch_is_held_by_nothing(tmp_path: Path) -> None:
+    """`[]`, not a refusal — this is a question about membership, not existence.
+
+    Only buildable here: over HTTP every asset arrives through an ingest, and an
+    ingest puts what it gathered into a batch whether or not the caller named
+    one, so the API can never produce an orphan.
+    """
+    fixture = Fixture(tmp_path)
+
+    assert fixture.batches.holding(fixture.assets[0]) == []
+
+
+def test_an_asset_lists_every_batch_that_carries_it_oldest_first(tmp_path: Path) -> None:
+    """The membership edge walked backwards — what lineage looks like from an asset."""
+    fixture = Fixture(tmp_path)
+    first = fixture.batches.create(fixture.project.id, "first", fixture.assets[:2])
+    second = fixture.batches.create(fixture.project.id, "second", fixture.assets[:1])
+
+    assert [one.id for one in fixture.batches.holding(fixture.assets[0])] == [
+        first.id,
+        second.id,
+    ]
+    # And the asset only in the first is held only by it.
+    assert [one.id for one in fixture.batches.holding(fixture.assets[1])] == [first.id]
+
+
+def test_removing_an_asset_from_a_draft_takes_it_off_the_reverse_lookup(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    batch = fixture.batches.create(fixture.project.id, "first", fixture.assets[:2])
+
+    fixture.batches.remove_assets(batch.id, [fixture.assets[0]])
+
+    assert fixture.batches.holding(fixture.assets[0]) == []
+    assert [one.id for one in fixture.batches.holding(fixture.assets[1])] == [batch.id]
+
+
+# --- corrections (audit G1, G7) -----------------------------------------------
+
+
+def _completed(fixture: Fixture, name: str = "first") -> Batch:
+    """A batch walked all the way to `completed` — the only state a correction cuts from."""
+    batch = fixture.batches.create(fixture.project.id, name, fixture.assets)
+    fixture.batches.approve(batch.id)
+    (job,) = fixture.batches.jobs(batch.id)
+    fixture.batches.start(batch.id)
+    jobs = JobService(fixture.workspace)
+    jobs.start(job.id)
+    for asset_id in fixture.assets:
+        jobs.mark(job.id, asset_id, AssetProgress.SKIPPED)
+    jobs.complete(job.id)
+    return fixture.batches.complete(batch.id)
+
+
+def test_a_correction_carries_the_parents_whole_membership_by_default(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    parent = _completed(fixture)
+
+    child = fixture.batches.create_correction(parent.id, "round two")
+
+    assert child.asset_ids == parent.asset_ids
+    assert child.parent_batch_id == parent.id
+    assert child.state is BatchState.DRAFT
+    # And the parent has not moved — the whole point of forward-only correction.
+    assert fixture.batches.get(parent.id).state is BatchState.COMPLETED
+
+
+def test_a_correction_may_name_a_subset(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    parent = _completed(fixture)
+
+    child = fixture.batches.create_correction(parent.id, "one frame", fixture.assets[:1])
+
+    assert child.asset_ids == fixture.assets[:1]
+
+
+def test_a_correction_refuses_an_asset_the_parent_never_carried(tmp_path: Path) -> None:
+    """Otherwise the lineage would be a claim about nothing."""
+    fixture = Fixture(tmp_path)
+    parent = fixture.batches.create(fixture.project.id, "half", fixture.assets[:2])
+    fixture.batches.approve(parent.id)
+    (job,) = fixture.batches.jobs(parent.id)
+    fixture.batches.start(parent.id)
+    jobs = JobService(fixture.workspace)
+    jobs.start(job.id)
+    for asset_id in fixture.assets[:2]:
+        jobs.mark(job.id, asset_id, AssetProgress.SKIPPED)
+    jobs.complete(job.id)
+    fixture.batches.complete(parent.id)
+
+    with pytest.raises(AssetNotInBatch):
+        fixture.batches.create_correction(parent.id, "wrong", [fixture.assets[3]])
+
+
+@pytest.mark.parametrize("state", [BatchState.DRAFT, BatchState.APPROVED, BatchState.IN_ANNOTATION])
+def test_an_open_batch_cannot_be_corrected(tmp_path: Path, state: BatchState) -> None:
+    """Correcting an open batch is not a correction — it is the work.
+
+    Through `require_state`, so the refusal is the same `InvalidTransition` every
+    other named-set gate raises: a caller cannot usefully tell "wrong state for
+    this move" from "wrong state for this act".
+    """
+    fixture = Fixture(tmp_path)
+    batch = fixture.batches.create(fixture.project.id, "open", fixture.assets)
+    if state is not BatchState.DRAFT:
+        fixture.batches.approve(batch.id)
+    if state is BatchState.IN_ANNOTATION:
+        fixture.batches.start(batch.id)
+
+    with pytest.raises(InvalidTransition):
+        fixture.batches.create_correction(batch.id, "too soon")
+
+
+def test_a_correction_pins_the_active_schema_rather_than_the_parents(tmp_path: Path) -> None:
+    """The point of correcting under a contract that has moved on.
+
+    Nothing special happens here: the child is an ordinary draft, and approving
+    one pins whatever is active. Asserted because it is the behaviour somebody
+    would otherwise be tempted to "fix" by copying the parent's pin.
+    """
+    fixture = Fixture(tmp_path)
+    parent = _completed(fixture)
+    assert parent.schema_version == 1
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+
+    child = fixture.batches.create_correction(parent.id, "round two")
+    approved = fixture.batches.approve(child.id)
+
+    assert approved.schema_version == 2
+    assert fixture.batches.get(parent.id).schema_version == 1
+
+
+def test_a_correction_of_a_correction_records_its_own_parent(tmp_path: Path) -> None:
+    # Lineage is one hop, not a root pointer: each batch names the one it was cut
+    # from, and a reader walks the chain if it wants the origin.
+    fixture = Fixture(tmp_path)
+    parent = _completed(fixture)
+    child = fixture.batches.create_correction(parent.id, "round two")
+    fixture.batches.approve(child.id)
+    (job,) = fixture.batches.jobs(child.id)
+    fixture.batches.start(child.id)
+    jobs = JobService(fixture.workspace)
+    jobs.start(job.id)
+    for asset_id in child.asset_ids:
+        jobs.mark(job.id, asset_id, AssetProgress.SKIPPED)
+    jobs.complete(job.id)
+    fixture.batches.complete(child.id)
+
+    grandchild = fixture.batches.create_correction(child.id, "round three")
+
+    assert grandchild.parent_batch_id == child.id

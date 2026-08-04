@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-35 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+37 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -31,6 +31,7 @@ error envelope, and the three gate words.
 | `start_batch` | `batch_id` | Open an approved batch for annotation. |
 | `repin_batch` | `batch_id`, `allow_destructive`? | Move a batch's schema pin onto the project's *current* active version. |
 | `list_batch_assets` | `batch_id`, `limit`?, `offset`? | List a batch's assets, with the job each belongs to and its progress. |
+| `create_batch` | `project`, `name`, `asset_ids`? | Start a draft batch over a chosen set of a project's assets. |
 | `get_job` | `job_id` | Read a job: its state, its counts, and the batch and schema it answers to. |
 | `start_job` | `job_id` | Mark a job as being worked on. Call this before you write anything. |
 | `next_pending_assets` | `job_id`, `count`? | Get the next assets in a job that nobody has annotated yet. |
@@ -43,6 +44,7 @@ error envelope, and the three gate words.
 | `complete_job` | `job_id` | Close a job, once every one of its assets has been settled. |
 | `complete_batch` | `batch_id` | Close a batch, once every one of its jobs is complete. |
 | `promote_batch` | `batch_id` | Move a completed batch's finished assets into the project's dataset. |
+| `create_correction_batch` | `batch_id`, `name`, `asset_ids`? | Start a draft batch that corrects a completed one. |
 | `dataset_stats` | `project` | Count what is in a project's dataset, class by class. |
 | `publish_release` | `project`, `tag`, `split`? | Freeze the project's dataset as an immutable, tagged release. |
 | `list_releases` | `project` | List a project's releases, newest last, with everything each one publishes. |
