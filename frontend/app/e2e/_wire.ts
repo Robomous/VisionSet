@@ -24,7 +24,7 @@ const BATCH_ACTIONS: Record<BatchState, readonly string[]> = {
   draft: ["approve", "edit_membership", "delete"],
   approved: ["start", "repin", "delete"],
   in_annotation: ["complete", "repin", "delete"],
-  completed: ["promote"],
+  completed: ["promote", "create_correction"],
 };
 
 const JOB_ACTIONS: Record<JobState, readonly string[]> = {

@@ -408,6 +408,42 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     );
   });
 
+  await test.step("correct the completed batch, forward-only", async () => {
+    /*
+     * **The end of the forward-only story** (audit G6), against the real kernel.
+     *
+     * A completed batch has no exit and none is coming, so the product's answer
+     * to "this frame is wrong" is a new batch over the same frames recording
+     * where it came from. Three surfaces had been saying so while nothing could
+     * create one; this is the control they were pointing at.
+     *
+     * Run here rather than against stubs because the two claims worth making are
+     * about the kernel: that the parent is genuinely untouched, and that the
+     * child pins the project's *active* schema at its own approval rather than
+     * inheriting the parent's.
+     */
+    await page.getByTestId("correct-cycle-batch").click();
+    await expect(page.getByTestId("correction-dialog")).toBeVisible();
+    // The suggested name is the parent's, so the ordinary case costs no typing.
+    await expect(page.getByTestId("correction-name")).toHaveValue(/cycle-batch/);
+    await page.getByTestId("correction-submit").click();
+
+    // It navigates to the correction it just made, and that batch says what it
+    // corrects. One hop: the child names its parent, and a reader walks the
+    // chain for the origin.
+    await expect(page.getByTestId("gallery")).toBeVisible();
+    await expect(page.getByTestId("correction-of")).toContainText("Correction of cycle-batch");
+    await expect(page.getByTestId("batch-state")).toHaveText("pending approval");
+
+    // And the parent has not moved — which is the whole point of correcting
+    // forward instead of reopening.
+    await openProject(page, "batches");
+    await expect(page.getByTestId("state-cycle-batch")).toHaveText("completed");
+    await expect(page.getByTestId("promoted-count-cycle-batch")).toHaveText(
+      /3 of 3 in the dataset/,
+    );
+  });
+
   await test.step("publish a release", async () => {
     // **A tab, reached in one press.** It was behind the header's overflow menu,
     // which is where a destination goes when the navigation has no room for it —

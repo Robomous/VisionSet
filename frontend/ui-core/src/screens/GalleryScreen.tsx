@@ -53,6 +53,7 @@ import { AssetThumbnail } from "./AssetThumbnail";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
+import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
 import { PromoteButton } from "./PromoteButton";
 import {
   ASSET_ACTION,
@@ -83,6 +84,7 @@ import {
   GALLERY_PAGE_SIZE,
   useBatch,
   useBatchAssets,
+  useBatches,
   useBulkSetProgress,
   useProject,
   useSource,
@@ -146,6 +148,11 @@ export interface GalleryScreenProps {
   /** The project's schema tab, for the approve dialog's `SCHEMA_NOT_FOUND` remedy (#291). */
   readonly onOpenSchema?: () => void;
   /**
+   * Another batch of the same project — a correction just cut, or this one's
+   * parent. The app turns it into a route change; absent leaves both inert.
+   */
+  readonly onOpenBatch?: (batchId: string) => void;
+  /**
    * The dataset — where a promotion from this screen lands (audit F18).
    *
    * The `information-architecture` skill's rule that the dataset is reachable in
@@ -162,6 +169,7 @@ export function GalleryScreen({
   onBack,
   onOpenSchema,
   onOpenDataset,
+  onOpenBatch,
 }: GalleryScreenProps): JSX.Element {
   const project = useProject(projectId);
   const batch = useBatch(batchId);
@@ -174,6 +182,10 @@ export function GalleryScreen({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
+  // Held here rather than inside `CorrectionButton`, because the gallery has two
+  // ways in — the header control and the bulk bar's "Create one" — and two
+  // independent dialogs would be two states that can both be true.
+  const [correcting, setCorrecting] = useState(false);
   const anchor = useRef<number | null>(null);
 
   const minColumn = DENSITY_STEPS[density] ?? DENSITY_STEPS[DEFAULT_DENSITY];
@@ -300,6 +312,23 @@ export function GalleryScreen({
   // batch out of them, and the bar states why its moves are unavailable rather
   // than the screen refusing to let anything be picked.
   const showsProgress = hasJobs(batch.data?.state);
+
+  /**
+   * This batch's place in a correction chain, both ways.
+   *
+   * Derived from the project's batch listing rather than fetched: it is one
+   * request the screen's siblings already make, and the two facts — how many
+   * corrections point at this one, and what this one points at — are a filter
+   * and a lookup over the same array. A dedicated read would be a second source
+   * for something already on screen.
+   */
+  const siblings = useBatches(projectId);
+  const corrections = (siblings.data?.items ?? []).filter(
+    (one) => one.parent_batch_id === batchId,
+  ).length;
+  const parentName = (siblings.data?.items ?? []).find(
+    (one) => one.id === batch.data?.parent_batch_id,
+  )?.name;
   const counts = batch.data === undefined
     ? { all: total, unannotated: total, review: 0, done: 0 }
     : segmentCounts(batch.data.progress);
@@ -311,6 +340,12 @@ export function GalleryScreen({
       <BatchHeader
         batch={batch.data}
         projectId={projectId}
+        corrections={corrections}
+        selected={selected}
+        correcting={correcting}
+        onCorrectingChange={setCorrecting}
+        parentName={parentName}
+        {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
         assets={loaded}
         showsProgress={showsProgress}
         {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
@@ -442,6 +477,7 @@ export function GalleryScreen({
           selected={selected}
           assets={loaded}
           onClear={() => setSelected(new Set())}
+          onCorrect={() => setCorrecting(true)}
         />
       )}
 
@@ -471,14 +507,28 @@ export function GalleryScreen({
 function BatchHeader({
   batch,
   projectId,
+  corrections,
+  selected,
+  correcting,
+  onCorrectingChange,
+  parentName,
   assets,
   showsProgress,
   onApprove,
   onStartAnnotating,
   onOpenDataset,
+  onOpenBatch,
 }: {
   readonly batch: Batch | undefined;
   readonly projectId: string;
+  /** How many corrections of this batch exist, for the dialog's suggested name. */
+  readonly corrections: number;
+  readonly selected: ReadonlySet<string>;
+  readonly correcting: boolean;
+  readonly onCorrectingChange: (open: boolean) => void;
+  /** The parent's name, when this batch is itself a correction. */
+  readonly parentName: string | undefined;
+  readonly onOpenBatch?: (batchId: string) => void;
   readonly assets: readonly BatchAsset[];
   readonly onOpenDataset?: () => void;
   /** False for a draft, whose counts are documented zeros rather than data. */
@@ -554,6 +604,15 @@ function BatchHeader({
               {facts.join(" · ")}
             </p>
           )}
+          {/* Lineage, on the child. One hop: this says *of what*, and a reader
+              walks the chain for the origin. Absent for the ordinary batch,
+              because "not a correction of anything" is most of them. */}
+          <CorrectionOf
+            parentName={parentName}
+            {...(onOpenBatch === undefined || batch?.parent_batch_id == null
+              ? {}
+              : { onOpenParent: () => onOpenBatch(batch.parent_batch_id as string) })}
+          />
         </div>
 
         <div className="flex items-center gap-2">
@@ -602,6 +661,26 @@ function BatchHeader({
             evidence lives. Capability-gated and shared with that table rather than
             spelled twice: `PromoteButton` owns the sentence and the reason.
           */}
+          {/*
+            The way out of a finished batch (audit G6). The gallery is the screen
+            somebody is on when they find the frame that is wrong, and until now
+            everything here that mentioned a correction batch was a sentence
+            pointing at nothing.
+
+            It takes the current selection, so "the three frames I have picked"
+            is one press rather than a second pass in the new batch.
+          */}
+          {batch !== undefined && (
+            <CorrectionButton
+              batch={batch}
+              projectId={projectId}
+              existingCorrections={corrections}
+              selection={[...selected]}
+              open={correcting}
+              onOpenChange={onCorrectingChange}
+              {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+            />
+          )}
           {batch !== undefined && (
             <PromoteButton
               batch={batch}
@@ -1048,8 +1127,11 @@ function BulkBar({
   selected,
   assets,
   onClear,
+  onCorrect,
 }: {
   readonly batchId: string;
+  /** Open the correction dialog the header owns, with this selection as its scope. */
+  readonly onCorrect?: () => void;
   /** The batch's own state — the reason a move is unavailable, when it is. */
   readonly batchState: string | undefined;
   readonly selected: ReadonlySet<string>;
@@ -1147,6 +1229,23 @@ function BulkBar({
       {skippable.length === 0 && restorable.length === 0 && (
         <span className="text-meta text-muted-foreground" data-testid="bulk-unavailable">
           {withheld ?? "Nothing here can be skipped or restored."}
+          {/*
+            The sentence has said "corrections happen in a correction batch"
+            since #305, pointing at something that did not exist. It points at
+            the header's control now (audit G6), and the selection this bar is
+            already holding is what that control offers as a scope — so "these
+            three frames are wrong" is two presses rather than a second pass.
+          */}
+          {withheld !== null && onCorrect !== undefined && (
+            <Button
+              variant="link"
+              className="ml-1 h-auto p-0 text-meta"
+              data-testid="bulk-create-correction"
+              onClick={onCorrect}
+            >
+              Create one
+            </Button>
+          )}
         </span>
       )}
 
