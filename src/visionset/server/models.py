@@ -37,6 +37,7 @@ columns one at a time — applied to the wire.
 
 from __future__ import annotations
 
+from collections.abc import Set as AbstractSet
 from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID, uuid4
@@ -614,6 +615,26 @@ class ProgressCounts(BaseModel):
 # on every read of its name. ``schema_version`` is null exactly while the batch
 # is a draft — approval is what pins one, and after that it moves only
 # through an explicit re-pin.
+#
+# ``promoted_asset_count`` is how many of this batch's assets are in the trunk
+# **right now**, and it exists because promotion was otherwise unobservable.
+# Promoting is not a transition — the batch stays ``completed`` — and no read
+# model recorded that it had happened, so a client could not tell "promoted 3 of
+# 48" from "promoted nothing because it was already done" from "the press did
+# nothing at all". Every one of those looked identical, which is what made a
+# working call read as a broken button.
+#
+# Current membership rather than a promotion log: a curator removing an asset
+# takes it back out, and "how much of this batch is in the dataset" is the
+# question anybody looking at a batch is actually asking. It is derived per call
+# and never stored — ``Release.asset_count`` is the frozen counterpart, and it
+# belongs to the release.
+#
+# ``promoted`` is passed in rather than read here, and that is the cost model:
+# the caller reads the trunk's membership **once per request** and every batch in
+# a listing tests against the same set, so a page of twenty batches is one extra
+# query rather than twenty. ``batch.asset_ids`` is already in memory — it is what
+# ``asset_count`` counts.
 class BatchOut(BaseModel):
     """A curated slice of a project's assets that moves through annotation together."""
 
@@ -625,9 +646,16 @@ class BatchOut(BaseModel):
     asset_count: int
     progress: ProgressCounts
     allowed_actions: list[BatchAction]
+    promoted_asset_count: int
 
     @classmethod
-    def of(cls, batch: Batch, counts: dict[AssetProgress, int]) -> Self:
+    def of(
+        cls,
+        batch: Batch,
+        counts: dict[AssetProgress, int],
+        *,
+        promoted: AbstractSet[UUID],
+    ) -> Self:
         return cls(
             id=batch.id,
             project_id=batch.project_id,
@@ -637,6 +665,7 @@ class BatchOut(BaseModel):
             asset_count=len(batch.asset_ids),
             progress=ProgressCounts.of(counts),
             allowed_actions=batch_actions(batch.state),
+            promoted_asset_count=sum(1 for one in batch.asset_ids if one in promoted),
         )
 
 

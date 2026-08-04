@@ -30,7 +30,7 @@
  * UUIDs. A program has the SDK and the API.
  */
 
-import { ArrowUpFromLine, Layers, Play } from "lucide-react";
+import { Layers, Play } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -43,19 +43,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
 import { SchemaForeshadow } from "./SchemaForeshadow";
-import { useBatchTransition, useBatches, usePromoteBatch, type Batch } from "./queries";
+import { PromoteButton } from "./PromoteButton";
+import { useBatchTransition, useBatches, type Batch } from "./queries";
 
 export interface BatchesScreenProps {
   readonly projectId: string;
   readonly onOpenBatch: (batchId: string) => void;
   /** Where "define your labels" goes — the schema tab, as the host spells it. */
   readonly onOpenSchema?: () => void;
+  /**
+   * The dataset, so a promotion can be followed to where it landed.
+   *
+   * Promotion's entire evidence lives on that screen and nothing linked there
+   * from here, so a person was told something had happened and left to find it.
+   */
+  readonly onOpenDataset?: () => void;
 }
 
 export function BatchesScreen({
   projectId,
   onOpenBatch,
   onOpenSchema,
+  onOpenDataset,
 }: BatchesScreenProps): JSX.Element {
   const batches = useBatches(projectId);
   const [approving, setApproving] = useState<Batch | null>(null);
@@ -135,6 +144,7 @@ export function BatchesScreen({
                     <Lifecycle
                       batch={{ ...batch, projectId }}
                       onApprove={() => setApproving(batch)}
+                      {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
                     />
                   </TableCell>
                 </TableRow>
@@ -172,37 +182,28 @@ export function BatchesScreen({
 function Lifecycle({
   batch,
   onApprove,
+  onOpenDataset,
 }: {
   readonly batch: Batch & { readonly projectId?: string };
   readonly onApprove: () => void;
+  readonly onOpenDataset?: () => void;
 }): JSX.Element | null {
   const start = useBatchTransition(batch.id, "start");
-  const promote = usePromoteBatch(batch.projectId ?? "");
 
   if (declares(batch, BATCH_ACTION.promote)) {
     // The last move, and the only one that is not a state transition: promotion
     // adds the batch's assets to the trunk. Idempotent — a **union** against
     // current membership, with no log entry when nothing changed — so pressing it
     // twice is safe and a curator's earlier removal is restored rather than
-    // remembered.
+    // remembered. Which is exactly why the control has to *say* what it did:
+    // "safe to press twice" and "you cannot tell whether it worked" were the
+    // same button until #307's successor. See `PromoteButton`.
     return (
-      <div className="flex flex-col items-end gap-1">
-        <Button
-          variant="secondary"
-          size="sm"
-          data-testid={`promote-${batch.name}`}
-          disabled={promote.isPending}
-          onClick={() => promote.mutate(batch.id)}
-        >
-          <ArrowUpFromLine className="size-4" aria-hidden="true" />
-          {promote.isSuccess ? "Promoted" : "Promote"}
-        </Button>
-        {promote.isError && (
-          <FieldError data-testid={`promote-error-${batch.name}`}>
-            {refusalProse(promote.error)}
-          </FieldError>
-        )}
-      </div>
+      <PromoteButton
+        batch={batch}
+        projectId={batch.projectId ?? ""}
+        {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
+      />
     );
   }
   if (declares(batch, BATCH_ACTION.approve)) {

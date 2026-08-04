@@ -101,6 +101,7 @@ async function serveApi(page: Page): Promise<void> {
           name: "drive-01",
           state: "in_annotation",
           allowed_actions: batchActions("in_annotation"),
+          promoted_asset_count: 0,
           schema_version: 1,
           asset_count: 1,
           progress: { ...NO_PROGRESS, unannotated: 1, total: 1 },

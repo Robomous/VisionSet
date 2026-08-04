@@ -114,6 +114,7 @@ async function serveApi(
     schema_version: 3,
     asset_count: 2,
     allowed_actions: batchActions(lifecycle.batch),
+    promoted_asset_count: 0,
     progress: {
       unannotated: 2,
       annotated: 0,

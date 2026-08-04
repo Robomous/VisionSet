@@ -185,6 +185,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           asset_count: counts.total,
           progress: counts,
           allowed_actions: batchActions(current),
+          promoted_asset_count: 0,
         },
       });
     }
@@ -233,6 +234,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           asset_count: counts.total,
           progress: counts,
           allowed_actions: batchActions(current),
+          promoted_asset_count: 0,
         },
       });
     }
@@ -253,6 +255,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           asset_count: counts.total,
           progress: counts,
           allowed_actions: batchActions(current),
+          promoted_asset_count: 0,
         },
       });
     }

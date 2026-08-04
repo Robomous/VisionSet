@@ -1001,7 +1001,25 @@ export function useFormats() {
   });
 }
 
-/** Promote a completed batch into the trunk. Idempotent — a union, not an append. */
+/**
+ * Promote a completed batch into the trunk. Idempotent — a union, not an append.
+ *
+ * **The response is the whole point and was being thrown away** (audit F5). The
+ * route answers an `AssetPage` of *the assets this press actually promoted*, and
+ * the screen kept nothing but a button label. What a person could then observe
+ * was: the word "Promoted", and nothing else — no count, no navigation, and
+ * structurally nothing else on the row that could move, because promotion is not
+ * a transition and the batch stays `completed`.
+ *
+ * That made three different outcomes identical: "promoted 3 of 48", "promoted
+ * nothing because it was already done", and "the press did nothing at all". The
+ * third is what a user concludes, and it is the only one that was never true.
+ *
+ * `promoted_asset_count` on `BatchOut` is the other half — the response says what
+ * *this press* did, the field says what is in the trunk *now*, and only the
+ * second survives a reload. Both are needed: the first cannot be recovered after
+ * the fact, and the second cannot distinguish a fresh promotion from an old one.
+ */
 export function usePromoteBatch(projectId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
@@ -1016,6 +1034,11 @@ export function usePromoteBatch(projectId: string) {
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: ["projects", projectId] });
       void queries.invalidateQueries({ queryKey: ["datasets"] });
+      // The batch's own read, because `promoted_asset_count` moved and nothing
+      // else on it did. Without this the number a person just changed keeps its
+      // old value until something unrelated refetches — the declaration-goes-
+      // stale shape, one field over.
+      void queries.invalidateQueries({ queryKey: ["batches"] });
     },
   });
 }

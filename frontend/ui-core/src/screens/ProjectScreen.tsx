@@ -294,6 +294,7 @@ export function ProjectScreen({
               {...(onTabChange === undefined
                 ? {}
                 : { onOpenSchema: () => onTabChange("schema") })}
+              {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
             />
           </TabsContent>
         )}
