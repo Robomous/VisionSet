@@ -730,6 +730,31 @@ class BySegmentsBody(BaseModel):
 PartitionBody = Annotated[SingleJobBody | BySizeBody | BySegmentsBody, Field(discriminator="kind")]
 
 
+class BatchCreate(BaseModel):
+    """A new draft batch: a name, and the assets to start it with."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    # Empty is legitimate — a batch nobody has filled yet is an intermediate
+    # state, and `EmptyBatch` is what refuses *approving* one. The kernel refuses
+    # an id outside the project with `AssetNotFound`, so nothing is restated here.
+    asset_ids: list[UUID] = Field(default_factory=list)
+
+
+class BatchCorrection(BaseModel):
+    """A correction of a completed batch: a name, and optionally a subset."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    # Empty means **the parent's whole membership**, which is why this cannot be
+    # folded into `BatchCreate`: there the same value means "no assets", and one
+    # field meaning two opposite things across two routes is worse than two
+    # models. The kernel refuses an id the parent never carried.
+    asset_ids: list[UUID] = Field(default_factory=list)
+
+
 class BatchApprove(BaseModel):
     """How to cut the batch into jobs. One job for the whole batch by default."""
 

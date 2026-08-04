@@ -74,7 +74,7 @@ export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);
 
 export const checkBatchAction: Check<Schemas["BatchAction"]> =
-  /*#__PURE__*/ oneOf(["approve", "start", "complete", "repin", "promote", "edit_membership", "delete"] as const);
+  /*#__PURE__*/ oneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "edit_membership", "delete"] as const);
 
 export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);
@@ -214,6 +214,8 @@ export const checkCheckExport = checkExportCompatibilityOut;
 export const checkCompareSchemaVersions = checkSchemaDiffOut;
 export const checkCompleteBatch = checkBatchOut;
 export const checkCompleteJob = checkJobOut;
+export const checkCreateBatch = checkBatchOut;
+export const checkCreateCorrectionBatch = checkBatchOut;
 export const checkCreateProject = checkProjectOut;
 export const checkCreateSchemaVersion = checkSchemaVersionOut;
 export const checkDatasetStats = checkDatasetStatsOut;
@@ -240,6 +242,7 @@ export const checkGetSource = checkSourceOut;
 export const checkHealth: Check<operations["health"]["responses"][200]["content"]["application/json"]> =
   /*#__PURE__*/ mapOf(isString);
 export const checkListAssetAnnotations = checkAnnotationPage;
+export const checkListAssetBatches = checkBatchPage;
 export const checkListBatchAssets = checkBatchAssetPage;
 export const checkListBatchJobs = checkJobPage;
 export const checkListBatches = checkBatchPage;

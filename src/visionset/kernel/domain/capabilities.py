@@ -39,6 +39,7 @@ from typing import Final
 
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
+    CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
     PROMOTABLE_STATES,
@@ -64,6 +65,7 @@ class BatchAction(StrEnum):
     COMPLETE = "complete"
     REPIN = "repin"
     PROMOTE = "promote"
+    CREATE_CORRECTION = "create_correction"
     EDIT_MEMBERSHIP = "edit_membership"
     DELETE = "delete"
 
@@ -127,10 +129,19 @@ BATCH_MOVES: Final[Mapping[BatchAction, Move[BatchState]]] = {
 BATCH_GATES: Final[Mapping[BatchAction, frozenset[BatchState]]] = {
     BatchAction.REPIN: REPINNABLE_STATES,
     BatchAction.PROMOTE: PROMOTABLE_STATES,
+    BatchAction.CREATE_CORRECTION: CORRECTABLE_STATES,
     BatchAction.EDIT_MEMBERSHIP: EDITABLE_STATES,
     BatchAction.DELETE: DELETABLE_STATES,
 }
-"""The four batch actions that change no state, and so appear in no table row.
+"""The five batch actions that change no state, and so appear in no table row.
+
+``create_correction`` is the odd one even here, and worth naming: every other
+action in this file is something done **to** the resource declaring it, while
+this one creates a *different* batch and leaves its subject untouched. It is
+declared on the parent anyway, because "can this be corrected" is a question
+about the parent's state and about nothing else — the same reason ``promote`` is
+declared on the batch whose assets move rather than on the dataset they move
+into.
 
 Each is the named set its own service gate consults, referenced rather than
 restated — which is the whole point of those sets being named. Promotion is the

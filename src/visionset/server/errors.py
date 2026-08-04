@@ -46,6 +46,7 @@ from starlette.responses import JSONResponse, Response
 from visionset.kernel import (
     AnnotationNotFound,
     AssetNotFound,
+    AssetNotInBatch,
     AssetNotInJob,
     AssetNotWritable,
     BatchImmutable,
@@ -192,6 +193,12 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # a sub-resource that does not exist — the "reads as missing, not as
     # forbidden" rule one scope down. A route that takes the asset id in a
     # *body* rather than a path should override to 422 via ``error_response``.
+    # 422 rather than 404: the asset exists and the batch exists, and what is
+    # wrong is the *pairing the body asked for* — a correction of a batch may only
+    # name assets that batch carried. Its sibling `AssetNotInJob` is a 404 because
+    # it is usually reached through a path segment; this one only ever arrives in
+    # a list, which is a payload problem. The `docs/api.md` rule, applied.
+    AssetNotInBatch: ErrorRule(422, "ASSET_NOT_IN_BATCH"),
     AssetNotInJob: ErrorRule(404, "ASSET_NOT_IN_JOB"),
     # Not a 409: a release is immutable, so its state will never change and
     # "resolve the conflict and resubmit" is a promise that cannot be kept. The

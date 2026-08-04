@@ -359,6 +359,21 @@ class AssetNotInJob(VisionSetError):
     """
 
 
+class AssetNotInBatch(VisionSetError):
+    """An asset was named for a correction of a batch that never carried it.
+
+    A correction batch is a correction *of what was in* its parent, so admitting
+    an asset the parent never held would make the lineage a claim about nothing —
+    the child would say "I correct that batch" while working on frames that batch
+    never saw.
+
+    The sibling of :class:`AssetNotInJob`, one level up: that one is about a
+    partition, this one about membership. Two errors rather than one because the
+    remedies differ — an asset outside a job is in another job of the same batch,
+    while an asset outside a batch wants an ordinary new batch instead.
+    """
+
+
 class AssetNotWritable(VisionSetError):
     """Labels were written onto an asset whose progress says labeling is over.
 

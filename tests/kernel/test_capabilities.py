@@ -316,6 +316,16 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
         grown = fixture.batches.add_assets(batch_id, [fixture.spare])
         assert fixture.spare in grown.asset_ids
 
+    def create_correction() -> None:
+        # The one action here whose effect is on a *different* batch, so the
+        # assertion is about the child rather than about the subject: a new draft
+        # over the parent's assets, pointing back at it.
+        child = fixture.batches.create_correction(batch_id, "correction")
+        assert child.id != batch_id
+        assert child.parent_batch_id == batch_id
+        assert child.state is BatchState.DRAFT
+        assert child.asset_ids == fixture.batches.get(batch_id).asset_ids
+
     def delete() -> None:
         fixture.batches.delete(batch_id, confirm=True)
         assert fixture.batches.list(fixture.project.id) == []
@@ -326,6 +336,7 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
         BatchAction.COMPLETE: complete,
         BatchAction.REPIN: repin,
         BatchAction.PROMOTE: promote,
+        BatchAction.CREATE_CORRECTION: create_correction,
         BatchAction.EDIT_MEMBERSHIP: edit_membership,
         BatchAction.DELETE: delete,
     }[action]

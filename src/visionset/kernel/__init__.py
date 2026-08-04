@@ -9,6 +9,7 @@ and by the architecture tests in ``tests/architecture/``.
 from visionset.kernel.errors import (
     AnnotationNotFound,
     AssetNotFound,
+    AssetNotInBatch,
     AssetNotInJob,
     AssetNotWritable,
     BatchImmutable,
@@ -72,6 +73,7 @@ from visionset.kernel.errors import (
 __all__ = [
     "AnnotationNotFound",
     "AssetNotFound",
+    "AssetNotInBatch",
     "AssetNotInJob",
     "AssetNotWritable",
     "BatchImmutable",
