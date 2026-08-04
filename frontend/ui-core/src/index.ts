@@ -198,6 +198,13 @@ export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.
 export { ApproveDialog, BatchProgressBar } from "./screens/BatchLifecycle.js";
 export { PromoteButton, promotionSummary, type PromoteButtonProps } from "./screens/PromoteButton.js";
 export {
+  CorrectionButton,
+  CorrectionOf,
+  defaultCorrectionName,
+  type CorrectionButtonProps,
+  type CorrectionScope,
+} from "./screens/CorrectionBatch.js";
+export {
   batchStateLabel,
   segmentCounts,
   segmentOf,
