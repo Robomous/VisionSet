@@ -11,6 +11,41 @@ nothing was being distributed. This is the first version that is.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A batch whose every frame was finished could not be completed** (#301). `Complete` answered
+  `BATCH_NOT_COMPLETE` beside a progress bar reading `0 to do`, and both were true: completion is
+  derived at *two* levels — `BatchService.complete` refuses while any **job** is outstanding,
+  `JobService.complete` while any **asset** is — and the browser only ever sent the outer one.
+  `POST /jobs/{id}/complete` had a single caller in the whole app, the `Finish job` button inside
+  the annotator, which somebody settling frames from the gallery never passes. `Complete` now
+  finishes the batch's jobs first (starting any the annotator never opened, since
+  `JOB_TRANSITIONS` has no `pending → completed` edge), and it is withheld with a count while
+  frames are still outstanding rather than offered and refused. It is also on the gallery header
+  now, which is the screen the work is done from.
+
+- **A skip could not be taken back from the grid, and marking an already-skipped selection
+  claimed to work** (#301). `skipped → unannotated` is a first-class edge in
+  `ASSET_PROGRESS_TRANSITIONS` and had no spelling anywhere in the browser, so a mis-aimed
+  shift-click over forty frames was unrecoverable without opening each one. Meanwhile
+  `JobService.mark` treats a re-stated state as a documented no-op, answered `200` with nothing
+  changed — so `Mark skipped` over already-skipped frames reported success over work it had not
+  done. The bulk bar now offers `Mark skipped` **and** `Restore`, each counting only the selected
+  frames its move is legal for and sending only those.
+
+- **The way into the annotator disappeared once a batch had no unlabeled work left** (#301).
+  `Start annotating` was drawn only while some frame was `unannotated`, so an `in_annotation`
+  batch that was fully annotated or skipped rendered no action in its header at all. Opening a
+  frame is legal whatever its state — the annotator lists a job's assets with no progress filter
+  and carries `Un-skip` — so the door is now open whenever the batch has jobs, aimed at the first
+  waiting frame when there is one and labelled for which of the two it is doing.
+
+- **Bulk progress moves are sent one at a time.** Three concurrent moves over one job were
+  measured answering `200`, `200`, `200` and moving exactly one asset: `JobService.mark` is a
+  read-modify-write over one row through `session.merge`, and SQLite's single writer serializes
+  *writes* rather than read-modify-write. That is a kernel-level hazard filed as **#302**; this
+  release stops `ui-core` from causing it.
+
 ### Changed
 
 - **The browser application moved from `/ui` to `/app`.** `visionset ui` now serves it at

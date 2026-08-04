@@ -42,7 +42,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Check, PlayCircle, SkipForward, X } from "lucide-react";
+import { Check, PlayCircle, SkipForward, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
@@ -53,10 +53,12 @@ import { Button } from "../primitives/Button";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
-import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
+import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import {
   BATCH_STATE_VARIANT,
   batchStateLabel,
+  canRestore,
+  canSkip,
   earliestArrival,
   inSegment,
   hasJobs,
@@ -288,10 +290,15 @@ export function GalleryScreen({
         {...(onOpenAsset === undefined
           ? {}
           : {
+              // Where the annotator opens: the first frame still waiting, and
+              // failing that the first frame at all. Falling back rather than
+              // giving up is #301's third half — a batch whose every frame is
+              // settled is the one somebody most wants to go back into, to check
+              // a box, add one, or take back a skip.
               onStartAnnotating: () => {
-                const next = loaded.find(
-                  (asset) => asset.job_id !== null && asset.progress === "unannotated",
-                );
+                const withJob = loaded.filter((asset) => asset.job_id !== null);
+                const next =
+                  withJob.find((asset) => asset.progress === "unannotated") ?? withJob[0];
                 if (next !== undefined) onOpenAsset(next);
               },
             })}
@@ -450,7 +457,23 @@ function BatchHeader({
   const source = useSource(first?.source_id ?? undefined);
   const arrived = relativeAge(earliestArrival(assets), Date.now());
   const fps = source.data?.video?.extraction_fps ?? null;
-  const hasWork = assets.some((one) => one.job_id !== null && one.progress === "unannotated");
+  /**
+   * Whether there is a frame to open, and whether any of them is still waiting.
+   *
+   * **Two questions, and #301 found them conflated into one.** The button used to
+   * be drawn only while some frame was `unannotated`, so a batch whose work was
+   * finished — annotated, skipped, or both — had its way into the annotator
+   * disappear, while its badge went on saying `in progress`. Nothing else in the
+   * header offered one, so an `in_annotation` batch rendered no action at all.
+   *
+   * A job exists from approval onwards, and every frame in one can be opened
+   * whatever its state: the annotator lists a job's assets with no progress filter
+   * and carries `Un-skip` on its toolbar (#187). So *can I open one* is
+   * `job_id !== null`, and *is any waiting* only decides which frame and what the
+   * button is called.
+   */
+  const openable = assets.some((one) => one.job_id !== null);
+  const waiting = assets.some((one) => one.job_id !== null && one.progress === "unannotated");
 
   const facts: string[] = [];
   if (source.data !== undefined) facts.push(source.data.name);
@@ -495,7 +518,7 @@ function BatchHeader({
               Approve batch
             </Button>
           )}
-          {onStartAnnotating !== undefined && hasWork && (
+          {onStartAnnotating !== undefined && openable && (
             <Button
               variant="secondary"
               size="sm"
@@ -503,8 +526,21 @@ function BatchHeader({
               onClick={onStartAnnotating}
             >
               <PlayCircle className="size-4" aria-hidden="true" />
-              Start annotating
+              {/* The label says which of the two it is doing — starting on the
+                  first frame that is waiting, or reopening a batch whose work is
+                  done. Same control either way, because it is the same door. */}
+              {waiting ? "Start annotating" : "Open annotator"}
             </Button>
+          )}
+          {/*
+            The closing move, on the screen the work is done from (#301). It used
+            to live only on the batch table one tab away, which is how a person
+            could settle forty-eight frames here and have nowhere to say so. The
+            control is shared with that table rather than spelled twice, and it
+            withholds the press — with the count — while anything is outstanding.
+          */}
+          {batch !== undefined && batch.state === "in_annotation" && (
+            <CompleteBatchButton batch={batch} className="flex flex-col items-end gap-1" />
           )}
         </div>
       </div>
@@ -882,18 +918,39 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
 // --- bulk actions ------------------------------------------------------------
 
 /**
- * What to do with a selection.
+ * What to do with a selection — and, since #301, only what it can actually do.
  *
- * **`Mark skipped` is the only action here, and that is a scope fact rather than
- * an oversight.** `Delete frames` was asked for and there is no endpoint behind
- * it: batch membership editing is not on the wire (#281), and after approval the
- * kernel refuses it outright — excluding an asset from an approved batch is a
- * per-asset `skipped` decision by design, which is exactly what this button does.
- * `Assign` was cut with #282: jobs are cut once at approval by an exact partition,
- * and there is no annotator identity to assign to.
+ * ## Two actions, because a skip is a decision and decisions get reversed
  *
- * The bar reports a **partial** outcome, because the mutation is N requests and
- * forty of fifty succeeding is a real state — see `useBulkSetProgress`.
+ * `Mark skipped` shipped alone, and `skipped → unannotated` — which the kernel
+ * calls "the decision was reversed while the job is open" — had **no spelling
+ * anywhere in the browser**. A mis-aimed shift-click over forty frames was
+ * unrecoverable without opening each one in the annotator. `Restore` is that edge,
+ * and `canRestore` owns why it is `skipped` alone.
+ *
+ * `Delete frames` is still absent and still a scope fact: batch membership editing
+ * is not on the wire (#281), and after approval the kernel refuses it outright —
+ * excluding an asset from an approved batch **is** the skip. `Assign` was cut with
+ * #282: jobs are cut once at approval by an exact partition, and there is no
+ * annotator identity to assign to.
+ *
+ * ## Each button counts the frames its move is legal for, and sends only those
+ *
+ * The defect that made the bar read as broken: `JobService.mark` treats re-stating
+ * a state as a **documented no-op**, answered `200` with nothing changed. So
+ * selecting three already-skipped frames and pressing `Mark skipped` sent three
+ * requests, got three successes, reported "moved", and changed nothing — the
+ * screen agreeing it had worked while the person watched it not work. Selection
+ * was never the broken part.
+ *
+ * Filtering by `canSkip`/`canRestore` fixes both halves at once: no request is
+ * sent that cannot change anything, so `moved` means moved; and the counts on the
+ * buttons say what the selection *is* before anything is pressed. A press that
+ * lands flips which button is enabled, which is the confirmation the bar used to
+ * be unable to give.
+ *
+ * The bar still reports a **partial** outcome, because the mutation is N requests
+ * and forty of fifty succeeding is a real state — see `useBulkSetProgress`.
  */
 function BulkBar({
   batchId,
@@ -907,9 +964,16 @@ function BulkBar({
   readonly onClear: () => void;
 }): JSX.Element | null {
   const bulk = useBulkSetProgress(batchId);
-  const targets = assets
-    .filter((one) => selected.has(one.id) && one.job_id !== null)
-    .map((one) => ({ jobId: one.job_id ?? "", assetId: one.id }));
+  // A job id is null exactly while the batch is a draft, and a draft renders no
+  // selection at all — so this filter is about the *frames*, not about the state.
+  const chosen = assets.filter((one) => selected.has(one.id) && one.job_id !== null);
+  const targets = (move: (progress: BatchAsset["progress"]) => boolean) =>
+    chosen
+      .filter((one) => move(one.progress))
+      .map((one) => ({ jobId: one.job_id ?? "", assetId: one.id }));
+
+  const skippable = targets(canSkip);
+  const restorable = targets(canRestore);
 
   if (selected.size === 0) return null;
 
@@ -928,11 +992,22 @@ function BulkBar({
         variant="secondary"
         size="sm"
         data-testid="bulk-skip"
-        disabled={targets.length === 0 || bulk.isPending}
-        onClick={() => bulk.mutate({ targets, progress: "skipped" })}
+        disabled={skippable.length === 0 || bulk.isPending}
+        onClick={() => bulk.mutate({ targets: skippable, progress: "skipped" })}
       >
         <SkipForward className="size-4" aria-hidden="true" />
-        {bulk.isPending ? "Skipping…" : "Mark skipped"}
+        {bulk.isPending ? "Working…" : `Mark skipped (${skippable.length})`}
+      </Button>
+
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid="bulk-restore"
+        disabled={restorable.length === 0 || bulk.isPending}
+        onClick={() => bulk.mutate({ targets: restorable, progress: "unannotated" })}
+      >
+        <Undo2 className="size-4" aria-hidden="true" />
+        {bulk.isPending ? "Working…" : `Restore (${restorable.length})`}
       </Button>
 
       {bulk.isSuccess && bulk.data.failed > 0 && (
@@ -945,9 +1020,15 @@ function BulkBar({
           {asApiError(bulk.error).code}
         </span>
       )}
-      {targets.length === 0 && (
+      {/*
+        Said once, and only when it is the whole story. `accepted` has no exit at
+        all and `review_pending` leaves only towards a reviewer, so a selection of
+        those is a selection this bar genuinely cannot act on — which is worth a
+        sentence, where two zeroes on two buttons would just look broken.
+      */}
+      {skippable.length === 0 && restorable.length === 0 && (
         <span className="text-meta text-muted-foreground" data-testid="bulk-unavailable">
-          Approve the batch to cut jobs first.
+          Nothing here can be skipped or restored.
         </span>
       )}
 

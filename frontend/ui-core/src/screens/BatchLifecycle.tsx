@@ -23,6 +23,7 @@
  */
 
 import { useState, type JSX } from "react";
+import { SquareCheckBig } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { Button } from "../primitives/Button";
@@ -42,8 +43,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
-import { annotatedShare } from "./batchState";
-import { useApproveBatch, type Batch, type ProgressCounts } from "./queries";
+import { annotatedShare, outstandingWork } from "./batchState";
+import { useApproveBatch, useFinishBatch, type Batch, type ProgressCounts } from "./queries";
 
 /**
  * The counts, as one bar and a readout.
@@ -78,6 +79,85 @@ export function BatchProgressBar({
         <span className="text-meta text-muted-foreground" data-testid="progress-readout">
           {share.done} of {share.total} annotated ({share.percent}%)
         </span>
+      )}
+    </div>
+  );
+}
+
+// --- closing the batch (#301) ------------------------------------------------
+
+/**
+ * How the refusals that can still reach this button read to a person.
+ *
+ * Every one of them is pre-empted by the disabled rule below, so reaching one
+ * means the batch moved under the press — somebody else annotating, a second tab.
+ * That makes these rare rather than impossible, and #292's rule stands either way:
+ * a raw kernel identifier in front of a user is not an error message.
+ *
+ * A code that is not here keeps its raw `{code}: {message}`, which is what a bug
+ * report should quote.
+ */
+const FINISH_REFUSALS: Record<string, string> = {
+  JOB_NOT_COMPLETE: "Some frames still need annotating or skipping.",
+  BATCH_NOT_COMPLETE: "Some of this batch's jobs are still unfinished.",
+  BATCH_NOT_IN_ANNOTATION: "This batch is not open for annotation any more.",
+  INVALID_TRANSITION: "This batch has already moved on.",
+};
+
+/**
+ * Close the batch — and its jobs, which is the half nobody was sending (#301).
+ *
+ * Shared by the batch table and the gallery header, **promoted rather than
+ * copied**, for the reason the module docstring gives about `ApproveDialog`: two
+ * spellings of an irreversible move eventually disagree in front of a user. It is
+ * also why the gallery has this at all — that is the screen a person is on when
+ * they finish the work, and until #301 the closing move existed only on a table
+ * one tab away.
+ *
+ * **The press is withheld while work is outstanding rather than offered and
+ * refused.** `JobService.complete` will refuse an unsettled asset, and this screen
+ * can already see the count: `docs/api.md`'s own rule is that a control whose
+ * every action is unavailable is worse than an absent one, and the number is more
+ * use than the 409 would have been. The remaining refusals are real answers to a
+ * race, and are said in words.
+ */
+export function CompleteBatchButton({
+  batch,
+  className,
+}: {
+  readonly batch: Batch;
+  readonly className?: string;
+}): JSX.Element {
+  const finish = useFinishBatch(batch.id);
+  const outstanding = outstandingWork(batch.progress);
+  const refusal = finish.isError ? asApiError(finish.error) : null;
+
+  return (
+    <div className={className ?? "flex flex-col items-end gap-1"}>
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid={`complete-${batch.name}`}
+        disabled={outstanding > 0 || finish.isPending}
+        onClick={() => finish.mutate()}
+      >
+        <SquareCheckBig className="size-4" aria-hidden="true" />
+        {finish.isPending ? "Completing…" : "Complete"}
+      </Button>
+
+      {outstanding > 0 && (
+        <span
+          className="text-meta text-muted-foreground"
+          data-testid={`complete-blocked-${batch.name}`}
+        >
+          {outstanding} frame{outstanding === 1 ? "" : "s"} still to annotate or skip
+        </span>
+      )}
+
+      {refusal !== null && (
+        <FieldError data-testid={`complete-error-${batch.name}`}>
+          {FINISH_REFUSALS[refusal.code] ?? `${refusal.code}: ${refusal.message}`}
+        </FieldError>
       )}
     </div>
   );

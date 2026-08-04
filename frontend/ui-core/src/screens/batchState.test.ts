@@ -15,7 +15,10 @@ import { describe, expect, it } from "vitest";
 import {
   annotatedShare,
   batchStateLabel,
+  canRestore,
+  canSkip,
   earliestArrival,
+  outstandingWork,
   inSegment,
   hasJobs,
   isApprovable,
@@ -251,5 +254,70 @@ describe("an asset's arrival (#283)", () => {
     ).toBe("2026-08-01T09:00:00Z");
     expect(earliestArrival([{ ingested_at: null }, {}])).toBeNull();
     expect(earliestArrival([])).toBeNull();
+  });
+});
+
+/**
+ * Which bulk moves a frame can make (#301).
+ *
+ * These mirror two rows of the kernel's `ASSET_PROGRESS_TRANSITIONS`, and the
+ * sweep is over `STATES` rather than over a hand-written list so a sixth domain
+ * state has to be classified here rather than falling silently into "no".
+ */
+describe("the bulk moves a frame can make", () => {
+  it("offers a skip only where the kernel has an edge to skipped", () => {
+    const offered = STATES.filter(canSkip);
+    // `unannotated -> skipped` and `annotated -> skipped` are the table's two.
+    // `review_pending` leaves only towards a reviewer and `accepted` not at all.
+    expect(offered).toEqual(["unannotated", "annotated"]);
+  });
+
+  it("does not offer a skip to a frame that is already skipped", () => {
+    // The defect itself, at its smallest. `JobService.mark` answers a re-stated
+    // state `200` with nothing changed, so a bar that offered this reported
+    // "moved" over work it had not done — and read as broken multi-selection.
+    expect(canSkip("skipped")).toBe(false);
+  });
+
+  it("offers a restore for a skip and for nothing else", () => {
+    expect(STATES.filter(canRestore)).toEqual(["skipped"]);
+  });
+
+  it("does not offer to un-annotate a frame that has boxes on it", () => {
+    // `annotated -> unannotated` is a legal edge, and deliberately not this one:
+    // the kernel writes it when the last annotation is *deleted*, so asserting it
+    // over a frame that still has boxes puts progress and annotations out of step
+    // with the kernel agreeing, because each half is separately valid.
+    expect(canRestore("annotated")).toBe(false);
+  });
+
+  it("treats an unknown or absent state as neither, rather than as a default", () => {
+    expect(canSkip(null)).toBe(false);
+    expect(canRestore(undefined)).toBe(false);
+  });
+});
+
+describe("what blocks a batch from completing", () => {
+  const counts = (over: Partial<Record<string, number>> = {}) => ({
+    unannotated: 0,
+    annotated: 0,
+    skipped: 0,
+    review_pending: 0,
+    accepted: 0,
+    total: 0,
+    ...over,
+  });
+
+  it("counts the two unsettled states and nothing else", () => {
+    // `SETTLED_PROGRESS` is generous on purpose — review is optional, so an asset
+    // may be done at `annotated` — which is why skipped and accepted do not block.
+    expect(outstandingWork(counts({ unannotated: 4, review_pending: 3 }))).toBe(7);
+    expect(outstandingWork(counts({ annotated: 3, skipped: 45, accepted: 9 }))).toBe(0);
+  });
+
+  it("is zero for the batch that could not be completed", () => {
+    // The founder's own batch, to the number: 3 annotated, 45 skipped, 48 total.
+    // Nothing is outstanding, which is why the refusal was never about the assets.
+    expect(outstandingWork(counts({ annotated: 3, skipped: 45, total: 48 }))).toBe(0);
   });
 });
