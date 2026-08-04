@@ -110,7 +110,16 @@ describe("the action names the client imports", () => {
     // action arriving on the wire with no constant here is a rename nobody can
     // perform, because the screens would have to spell it as a free string.
     expect(Object.values(BATCH_ACTION).sort()).toEqual(
-      ["approve", "complete", "delete", "edit_membership", "promote", "repin", "start"].sort(),
+      [
+        "approve",
+        "complete",
+        "create_correction",
+        "delete",
+        "edit_membership",
+        "promote",
+        "repin",
+        "start",
+      ].sort(),
     );
     expect(Object.values(JOB_ACTION).sort()).toEqual(["complete", "start"].sort());
     expect(Object.values(ASSET_ACTION).sort()).toEqual(

@@ -243,6 +243,10 @@ function Gallery(): JSX.Element {
       // batch is finished, and it had no way to reach the one screen that shows
       // what finishing it produced — a tab of the project now, not a route.
       onOpenDataset={() => void navigate(PARENT.dataset(projectId))}
+      // A correction just cut, or this batch's own parent (audit G6). Same
+      // route the batch table's rows use — a batch is a batch, whichever screen
+      // named it.
+      onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
     />
   );
 }
