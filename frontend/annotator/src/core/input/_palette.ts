@@ -139,6 +139,7 @@ export function annotationOf(
     provenance: "human",
     model_ref: null,
     confidence: null,
+    job_id: null,
   };
 }
 

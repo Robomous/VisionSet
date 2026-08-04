@@ -150,8 +150,13 @@ class AnnotationService:
             batch = self._jobs.require_open_batch(uow, job)
             schema = self._pinned_schema(batch)
 
+            # `job_id` is stamped exactly like `schema_version`, and for the same
+            # reason: the service knows which round this is and the caller does
+            # not get to claim otherwise. Without it the column would only ever
+            # hold what the migration could reconstruct, and every label written
+            # from now on would be as unattributable as the ambiguous ones.
             proposed = [
-                annotation.model_copy(update={"schema_version": schema.version})
+                annotation.model_copy(update={"schema_version": schema.version, "job_id": job.id})
                 for annotation in annotations
             ]
             tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
@@ -201,8 +206,21 @@ class AnnotationService:
                 with _blaming(index):
                     current = self._require_annotation(uow, annotation.id)
                     _require_writable(job, current.asset_id)
+                    # `job_id` is stamped with the job doing the replacing, not
+                    # carried over from `current` the way `asset_id` is — and the
+                    # two go opposite ways on purpose. `asset_id` answers *what
+                    # this label is on*, which an edit must not silently move.
+                    # `job_id` answers *which round produced the label as it now
+                    # stands*, and a replacement is a thing this round produced.
+                    # Preserving the original would make the field mean "first
+                    # written in", which is a different fact and the less useful
+                    # one: it goes stale the moment a correction round edits.
                     replacement = annotation.model_copy(
-                        update={"asset_id": current.asset_id, "schema_version": schema.version}
+                        update={
+                            "asset_id": current.asset_id,
+                            "schema_version": schema.version,
+                            "job_id": job.id,
+                        }
                     )
                     _validate(replacement, schema)
                 replacements.append(replacement)

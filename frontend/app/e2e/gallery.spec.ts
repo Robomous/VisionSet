@@ -186,6 +186,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           progress: counts,
           allowed_actions: batchActions(current),
           promoted_asset_count: 0,
+          parent_batch_id: null,
         },
       });
     }
@@ -235,6 +236,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           progress: counts,
           allowed_actions: batchActions(current),
           promoted_asset_count: 0,
+          parent_batch_id: null,
         },
       });
     }
@@ -256,6 +258,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           progress: counts,
           allowed_actions: batchActions(current),
           promoted_asset_count: 0,
+          parent_batch_id: null,
         },
       });
     }
@@ -298,6 +301,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             geometry: { type: "bbox", x: 1, y: 1, width: 10, height: 10 },
             attributes: {},
             confidence: null,
+            job_id: null,
             model_ref: null,
             provenance: "human",
             schema_version: 3,

@@ -124,6 +124,19 @@ export interface Annotation {
   readonly provenance: Provenance;
   readonly model_ref: string | null;
   readonly confidence: number | null;
+  /**
+   * Which round of work produced this label, or `null` when nothing recorded it.
+   *
+   * Read-only here, and absent from both projections below for the reason
+   * `schema_version` is: the service stamps it with the job doing the writing,
+   * so a field a client could set would be one it never observes.
+   *
+   * `null` is a real answer rather than a gap in this build: a label written
+   * before the column existed, whose asset belonged to more than one job, could
+   * not be attributed by the migration — and guessing would have put a
+   * confident wrong answer where an honest absent one belongs.
+   */
+  readonly job_id: string | null;
 }
 
 /**

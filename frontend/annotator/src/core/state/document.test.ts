@@ -49,6 +49,7 @@ function annotation(id: string, overrides: Partial<Annotation> = {}): Annotation
     provenance: "human",
     model_ref: null,
     confidence: null,
+    job_id: null,
     ...overrides,
   };
 }

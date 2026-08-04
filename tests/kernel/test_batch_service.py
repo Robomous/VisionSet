@@ -37,6 +37,7 @@ from visionset.kernel.domain import (
     AnnotationJobState,
     Asset,
     AssetProgress,
+    Batch,
     BatchState,
     BboxGeometry,
     BySegments,
@@ -701,3 +702,66 @@ def test_a_batch_pinned_to_a_version_that_is_not_stored_is_corruption(tmp_path: 
     with pytest.raises(WorkspaceCorrupt, match="not stored"):
         fixture.batches.repin(batch_id)
     fixture.close()
+
+
+# --- lineage (audit G4) -------------------------------------------------------
+
+
+def test_a_batch_records_no_parent_by_default(tmp_path: Path) -> None:
+    """``None`` means *not a correction of anything*, which every batch is today.
+
+    It is not "unknown": a batch either was cut from another or was not, and both
+    answers are complete. Nothing creates a correction batch yet — the field is
+    here first because the alternative is discovering at that point that
+    recording it needs a migration.
+    """
+    fixture = Fixture(tmp_path)
+    batch = fixture.batches.create(fixture.project.id, "first", fixture.assets)
+
+    assert batch.parent_batch_id is None
+
+
+def test_lineage_survives_a_round_trip_through_the_store(tmp_path: Path) -> None:
+    # Not a foreign key — `batch` carries `batch_asset` children, so it could not
+    # be rebuilt to give the column one — which means nothing but this checks it
+    # is written and read back.
+    fixture = Fixture(tmp_path)
+    parent = fixture.batches.create(fixture.project.id, "first", fixture.assets)
+    with fixture.workspace.unit_of_work() as uow:
+        child = uow.batches.add(
+            Batch(
+                project_id=fixture.project.id,
+                name="correction of first",
+                asset_ids=list(fixture.assets),
+                parent_batch_id=parent.id,
+            )
+        )
+
+    read_back = fixture.batches.get(child.id)
+
+    assert read_back.parent_batch_id == parent.id
+
+
+def test_lineage_is_not_moved_by_the_lifecycle(tmp_path: Path) -> None:
+    """A lineage fact is set at creation and never afterwards.
+
+    Approving cuts jobs and pins a schema; starting and completing move the
+    state. None of them is a statement about where the batch came from, so none
+    of them may touch it.
+    """
+    fixture = Fixture(tmp_path)
+    parent = fixture.batches.create(fixture.project.id, "first", fixture.assets)
+    with fixture.workspace.unit_of_work() as uow:
+        child = uow.batches.add(
+            Batch(
+                project_id=fixture.project.id,
+                name="correction",
+                asset_ids=list(fixture.assets),
+                parent_batch_id=parent.id,
+            )
+        )
+
+    fixture.batches.approve(child.id)
+    fixture.batches.start(child.id)
+
+    assert fixture.batches.get(child.id).parent_batch_id == parent.id

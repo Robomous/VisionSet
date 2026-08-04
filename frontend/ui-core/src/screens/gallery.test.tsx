@@ -123,6 +123,7 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
     progress: { ...NO_PROGRESS, unannotated: 120, total: 120 },
     allowed_actions: batchActions(state),
     promoted_asset_count: 0,
+    parent_batch_id: null,
     ...overrides,
   };
 }

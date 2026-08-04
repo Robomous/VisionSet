@@ -14,6 +14,7 @@
         "y": 2.5
       },
       "id": "917b5101-2e62-5aee-8af6-359bfc1e7a8b",
+      "job_id": null,
       "label_class": "sign",
       "model_ref": "yolo-v8n@1",
       "provenance": "model",
@@ -43,6 +44,7 @@
         "type": "polygon"
       },
       "id": "b3ee6159-46a8-5f4f-9091-375c5b25d60a",
+      "job_id": null,
       "label_class": "sign",
       "model_ref": "yolo-v8n@1",
       "provenance": "model",
@@ -58,6 +60,7 @@
         "type": "classification_tag"
       },
       "id": "0c4afc30-255b-5ea9-88d6-42020efb3c28",
+      "job_id": null,
       "label_class": "sign",
       "model_ref": "yolo-v8n@1",
       "provenance": "model",
@@ -75,6 +78,7 @@
         "y": 2.5
       },
       "id": "6a81b8c7-69b7-5cfb-abb6-a5f8fc10c5f2",
+      "job_id": null,
       "label_class": "sign",
       "model_ref": null,
       "provenance": "human",

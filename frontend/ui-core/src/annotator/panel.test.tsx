@@ -44,6 +44,7 @@ function annotation(id: string, labelClass: string, type: "bbox" | "polygon"): u
     provenance: "human",
     model_ref: null,
     confidence: null,
+    job_id: null,
   };
 }
 

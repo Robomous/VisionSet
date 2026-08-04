@@ -140,6 +140,10 @@ BATCH = Batch(
     state=BatchState.IN_ANNOTATION,
     schema_version=3,
     asset_ids=[uuid4(), uuid4()],
+    # Populated, like every other optional field here: a sample carrying `None`
+    # where a value belongs lets the projection of that field go unchecked, which
+    # is the whole reason this module holds *fully* populated instances.
+    parent_batch_id=uuid4(),
 )
 
 INGEST_JOB = IngestJob(
@@ -206,6 +210,7 @@ ANNOTATION = Annotation(
     provenance="model",
     model_ref="yolo-v8n@1",
     confidence=0.87,
+    job_id=JOB.id,
 )
 
 DATASET_STATS = DatasetStats(

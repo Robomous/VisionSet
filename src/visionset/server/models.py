@@ -647,6 +647,10 @@ class BatchOut(BaseModel):
     progress: ProgressCounts
     allowed_actions: list[BatchAction]
     promoted_asset_count: int
+    # The batch this one was cut from, when it is a correction of another. Null
+    # means *not a correction of anything*, which is complete rather than
+    # unknown — every batch that exists today answers null.
+    parent_batch_id: UUID | None
 
     @classmethod
     def of(
@@ -666,6 +670,7 @@ class BatchOut(BaseModel):
             progress=ProgressCounts.of(counts),
             allowed_actions=batch_actions(batch.state),
             promoted_asset_count=sum(1 for one in batch.asset_ids if one in promoted),
+            parent_batch_id=batch.parent_batch_id,
         )
 
 
@@ -1016,6 +1021,11 @@ class AnnotationOut(BaseModel):
     provenance: Literal["human", "model", "import"]
     model_ref: str | None
     confidence: float | None
+    # Which round of work produced this label. Null means genuinely unknown: a
+    # label written before the column existed whose asset belonged to more than
+    # one job, so nothing could attribute it. Not to be confused with
+    # ``provenance``, which says what *kind of thing* made it.
+    job_id: UUID | None
 
     @classmethod
     def of(cls, annotation: Annotation) -> Self:
@@ -1029,6 +1039,7 @@ class AnnotationOut(BaseModel):
             provenance=annotation.provenance,
             model_ref=annotation.model_ref,
             confidence=annotation.confidence,
+            job_id=annotation.job_id,
         )
 
 

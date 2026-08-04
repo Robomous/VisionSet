@@ -69,6 +69,7 @@ beforeEach(() => {
               asset_count: 1,
               allowed_actions: batchActions("in_annotation"),
               promoted_asset_count: 0,
+              parent_batch_id: null,
               progress: {
                 unannotated: 1,
                 annotated: 0,

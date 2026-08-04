@@ -41,6 +41,7 @@ export function annotation(id: string, x = 0): Annotation {
     provenance: "human",
     model_ref: null,
     confidence: null,
+    job_id: null,
   };
 }
 

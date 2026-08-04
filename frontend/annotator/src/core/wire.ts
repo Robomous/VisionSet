@@ -103,6 +103,7 @@ const ANNOTATION_KEY_SET: Record<keyof Annotation, true> = {
   provenance: true,
   model_ref: true,
   confidence: true,
+  job_id: true,
 };
 
 /** Exactly the keys of `Annotation`, in declaration order. */
@@ -358,6 +359,7 @@ export function parseAnnotation(value: unknown): Annotation {
     model_ref: requireNullableString(value["model_ref"], "annotation.model_ref"),
     confidence:
       confidence === null ? null : requireNumber(confidence, "annotation.confidence"),
+    job_id: requireNullableString(value["job_id"], "annotation.job_id"),
   };
 }
 

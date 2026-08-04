@@ -85,6 +85,7 @@ function answer(path: string): unknown {
       progress: NO_PROGRESS,
       allowed_actions: batchActions("in_annotation"),
       promoted_asset_count: 0,
+      parent_batch_id: null,
     };
   }
   if (path === `/batches/${BATCH}/assets`) return { items: [], total: 0 };

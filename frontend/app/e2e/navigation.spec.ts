@@ -102,6 +102,7 @@ async function serveApi(page: Page): Promise<void> {
           state: "in_annotation",
           allowed_actions: batchActions("in_annotation"),
           promoted_asset_count: 0,
+          parent_batch_id: null,
           schema_version: 1,
           asset_count: 1,
           progress: { ...NO_PROGRESS, unannotated: 1, total: 1 },

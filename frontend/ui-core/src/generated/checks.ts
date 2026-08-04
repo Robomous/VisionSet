@@ -44,7 +44,7 @@ export const checkPolygonBody: Check<Schemas["PolygonBody"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
 
 export const checkAnnotationOut: Check<Schemas["AnnotationOut"]> =
-  /*#__PURE__*/ object({ "asset_id": [true, isString], "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "polygon": checkPolygonBody })], "id": [true, isString], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "asset_id": [true, isString], "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "polygon": checkPolygonBody })], "id": [true, isString], "job_id": [true, either([isString, isNull] as const)], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
 
 export const checkAnnotationPage: Check<Schemas["AnnotationPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkAnnotationOut)], "total": [true, isInteger] } as const);
@@ -83,7 +83,7 @@ export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
   /*#__PURE__*/ object({ "accepted": [true, isInteger], "annotated": [true, isInteger], "review_pending": [true, isInteger], "skipped": [true, isInteger], "total": [true, isInteger], "unannotated": [true, isInteger] } as const);
 
 export const checkBatchOut: Check<Schemas["BatchOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "progress": [true, checkProgressCounts], "project_id": [true, isString], "promoted_asset_count": [true, isInteger], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "parent_batch_id": [true, either([isString, isNull] as const)], "progress": [true, checkProgressCounts], "project_id": [true, isString], "promoted_asset_count": [true, isInteger], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
 
 export const checkBatchPage: Check<Schemas["BatchPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchOut)], "total": [true, isInteger] } as const);

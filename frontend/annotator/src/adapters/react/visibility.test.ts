@@ -25,6 +25,7 @@ const WIRE = {
       provenance: "human",
       model_ref: null,
       confidence: null,
+      job_id: null,
     },
     {
       id: "b",
@@ -36,6 +37,7 @@ const WIRE = {
       provenance: "human",
       model_ref: null,
       confidence: null,
+      job_id: null,
     },
   ],
 };
