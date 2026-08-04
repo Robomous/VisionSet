@@ -31,6 +31,7 @@ import {
 import { useApiClient } from "../data/ApiProvider";
 import { usePollingQuery } from "../data/polling";
 import { asApiError, unwrap } from "../data/errors";
+import type { Refusal } from "../data/refusals";
 import {
   checkApproveBatch,
   checkCreateProject,
@@ -816,10 +817,20 @@ export function useSource(sourceId: string | undefined): UseQueryResult<Source, 
   });
 }
 
-/** What a bulk progress move did — and, more usefully, what it failed to do. */
+/**
+ * What a bulk progress move did — and, more usefully, *why* it failed to do the
+ * rest.
+ *
+ * `refusals` used to be a number. The `catch` that produced it was empty, so
+ * every per-frame `ApiError` — code, message, status — was destroyed on the way
+ * up and the bar rendered "0 moved, N refused": a count with no reason, no
+ * remedy, and no way for the user to tell a closed batch from a bad frame. The
+ * refusals are carried now, and grouped by code where they are shown, because a
+ * bulk move over forty frames that hits one rule hits it forty times.
+ */
 export interface BulkProgressResult {
   readonly moved: number;
-  readonly failed: number;
+  readonly refusals: readonly Refusal[];
 }
 
 /**
@@ -876,6 +887,7 @@ export function useBulkSetProgress(batchId: string) {
       readonly progress: AssetProgress;
     }): Promise<BulkProgressResult> => {
       let moved = 0;
+      const refusals: Refusal[] = [];
       for (const target of input.targets) {
         try {
           unwrap(
@@ -886,12 +898,16 @@ export function useBulkSetProgress(batchId: string) {
             checkSetAssetProgress,
           );
           moved += 1;
-        } catch {
-          // Counted, not rethrown. The bar renders `moved`/`failed`, and one
-          // frame the kernel refuses says nothing about the next.
+        } catch (cause) {
+          // Kept, not counted. One frame the kernel refuses still says nothing
+          // about the next — so the loop carries on — but the reason it gave is
+          // the only thing that can tell the user what to do instead, and an
+          // empty `catch` here is what turned every refusal into a bare number.
+          const error = asApiError(cause);
+          refusals.push({ code: error.code, message: error.message });
         }
       }
-      return { moved, failed: input.targets.length - moved };
+      return { moved, refusals };
     },
     onSettled: () => {
       // On settled rather than on success: a partial failure still moved some

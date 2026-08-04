@@ -928,7 +928,7 @@ describe("finishing a batch", () => {
  * every one of these asserts the **payloads**.
  */
 describe("the bulk bar", () => {
-  function tile(index: number, progress: string): Record<string, unknown> {
+  function tile(index: number, progress: string, batchState: BatchState): Record<string, unknown> {
     return {
       id: `asset-${index}`,
       project_id: PROJECT,
@@ -944,22 +944,30 @@ describe("the bulk bar", () => {
       ingested_at: "2026-08-01T09:00:00Z",
       job_id: JOB,
       progress,
-      allowed_actions: assetActions(progress as Progress),
+      // The server's own answer, transcribed: `asset_actions` returns `[]` for
+      // *every* frame of a batch that is not `in_annotation`, whatever its
+      // progress. That is the dimension the client's old mirror dropped, and
+      // threading the batch state through here is what lets a test see it.
+      allowed_actions: assetActions(progress as Progress, { batchState }),
     };
   }
 
   async function withFrames(...states: string[]): Promise<void> {
+    await withBatch("in_annotation", ...states);
+  }
+
+  async function withBatch(batchState: BatchState, ...states: string[]): Promise<void> {
     on("GET", /\/batches\/[^/]+$/, {
       status: 200,
       body: batch({
-        state: "in_annotation",
+        state: batchState,
         schema_version: 1,
         progress: { ...NO_PROGRESS, total: states.length, unannotated: states.length },
       }),
     });
     on("GET", /\/assets$/, {
       status: 200,
-      body: { total: states.length, items: states.map((one, at) => tile(at, one)) },
+      body: { total: states.length, items: states.map((one, at) => tile(at, one, batchState)) },
     });
     on("PUT", /\/progress$/, { status: 200, body: { asset_id: "asset-0", progress: "skipped" } });
     on("GET", /\/annotations$/, { status: 200, body: [] });
@@ -1084,6 +1092,157 @@ describe("the bulk bar", () => {
     expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
     // Said once, where two zeroes on two buttons would just look broken.
     expect(screen.getByTestId("bulk-unavailable").textContent).toContain("skipped or restored");
+  });
+
+  /**
+   * The batch-state dimension, across every state that renders a bulk bar.
+   *
+   * **This is finding F1, and it is the matrix the old code could not have
+   * passed.** `canSkip`/`canRestore` mirrored two rows of
+   * `ASSET_PROGRESS_TRANSITIONS` and knew nothing about the batch, so an
+   * `approved` or `completed` batch drew both buttons enabled over frames the
+   * kernel refuses without even reaching the progress check
+   * (`JobService.mark` runs `require_open_batch` first, deliberately).
+   *
+   * A `draft` is absent because it renders no selection at all — its frames have
+   * no jobs, so there is nothing a bar could act on. That is `hasJobs`, and it
+   * is a question about data rather than about permission.
+   */
+  describe("the batch-state dimension the old mirror dropped (F1)", () => {
+    const OPEN_TO_WRITES: readonly BatchState[] = ["in_annotation"];
+    const CLOSED_TO_WRITES: readonly BatchState[] = ["approved", "completed"];
+
+    for (const state of CLOSED_TO_WRITES) {
+      it(`sends nothing and offers nothing on a ${state} batch`, async () => {
+        // The frames are `unannotated` and `skipped` — the two the progress
+        // machine says are exactly skippable and restorable. Only the batch
+        // makes them unavailable, which is the whole point of the fixture.
+        await withBatch(state, "unannotated", "skipped");
+        selectAll(2);
+
+        expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(true);
+        expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
+        expect(screen.getByTestId("bulk-skip").textContent).toContain("(0)");
+        expect(screen.getByTestId("bulk-restore").textContent).toContain("(0)");
+        // Nothing left, which is the half the user could never see: the old bar
+        // sent two requests, took two 409s and reported "0 moved, 2 refused".
+        expect(sentProgress()).toEqual([]);
+      });
+    }
+
+    it("says the batch is the reason, not the frames, and names the way forward", async () => {
+      // Two silences used to look identical — a closed batch and a selection of
+      // `accepted` frames — and only one of them has a remedy. The forward-only
+      // correction model is what the sentence names.
+      await withBatch("completed", "unannotated", "skipped");
+      selectAll(2);
+
+      const said = screen.getByTestId("bulk-unavailable").textContent ?? "";
+      expect(said).toMatch(/completed/i);
+      expect(said).toMatch(/correction batch/i);
+      expect(said).not.toContain("skipped or restored");
+    });
+
+    it("keeps the selection on a closed batch, because choosing frames is the first half of correcting them", async () => {
+      await withBatch("completed", "unannotated", "skipped");
+      selectAll(2);
+
+      expect(screen.getByTestId("bulk-count").textContent).toContain("2 frames selected");
+    });
+
+    for (const state of OPEN_TO_WRITES) {
+      it(`offers both moves on a ${state} batch, which is the state that permits them`, async () => {
+        await withBatch(state, "unannotated", "skipped");
+        selectAll(2);
+
+        expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(false);
+        expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(false);
+        expect(screen.queryByTestId("bulk-unavailable")).toBeNull();
+      });
+    }
+  });
+
+  /**
+   * What a refusal that still gets through says.
+   *
+   * The declarations pre-empt the batch-level refusals above, so reaching one
+   * means the batch moved under the press — another tab, another person. That
+   * makes these rare rather than impossible, and the old rendering was the worst
+   * possible answer to a rare event: a number with no reason.
+   */
+  describe("rendering a refusal the declaration could not pre-empt", () => {
+    /**
+     * Answer every progress write with one refusal.
+     *
+     * `unshift`, not `on`: handlers are consulted in registration order and
+     * `withFrames` has already installed a 200 for this path, so appending would
+     * never be reached.
+     */
+    function refuse(body: { code: string; message: string }): void {
+      handlers.unshift((request) =>
+        request.method === "PUT" ? { status: 409, body } : undefined,
+      );
+    }
+
+    it("says why the frames were refused, not just how many", async () => {
+      await withFrames("unannotated", "unannotated");
+      // The batch closes between the render and the press. Registered ahead of
+      // `withFrames`'s own 200, because handlers are consulted in order.
+      refuse({ code: "BATCH_NOT_IN_ANNOTATION", message: "batch 5555 is not in annotation" });
+      selectAll(2);
+      await userEvent.click(screen.getByTestId("bulk-skip"));
+
+      const said = await screen.findByTestId("bulk-partial");
+      expect(said.textContent).toContain("0 moved");
+      // The claim: prose, and the kernel's identifier nowhere near a user.
+      expect(said.textContent).toContain("This batch is not open for annotation any more.");
+      expect(said.textContent).not.toContain("BATCH_NOT_IN_ANNOTATION");
+    });
+
+    it("says one sentence for a rule that refused every frame, with the count", async () => {
+      await withFrames("unannotated", "unannotated", "unannotated");
+      refuse({ code: "BATCH_NOT_IN_ANNOTATION", message: "closed" });
+      selectAll(3);
+      await userEvent.click(screen.getByTestId("bulk-skip"));
+
+      const said = await screen.findByTestId("bulk-partial");
+      expect(said.textContent).toContain("3 refused");
+      // Three identical sentences is not more information than one.
+      expect(said.textContent?.match(/not open for annotation/g)).toHaveLength(1);
+    });
+
+    it("keeps a refusal the vocabulary has never heard of quotable", async () => {
+      // The fall-through is deliberate: the kernel wrote that sentence for a
+      // person, and replacing it with "something went wrong" discards the only
+      // description there is.
+      await withFrames("unannotated");
+      refuse({ code: "SOME_NEW_REFUSAL", message: "The widget is out of cheese." });
+      selectAll(1);
+      await userEvent.click(screen.getByTestId("bulk-skip"));
+
+      const said = await screen.findByTestId("bulk-partial");
+      expect(said.textContent).toContain("The widget is out of cheese.");
+    });
+
+    it("still reports the frames that did move", async () => {
+      // Forty of fifty succeeding is a real state, and the one a bar over N
+      // requests has to be able to say out loud.
+      await withFrames("unannotated", "unannotated");
+      let call = 0;
+      handlers.unshift((request) => {
+        if (request.method !== "PUT") return undefined;
+        call += 1;
+        return call === 1
+          ? { status: 200, body: { asset_id: "asset-0", progress: "skipped" } }
+          : { status: 409, body: { code: "BATCH_NOT_IN_ANNOTATION", message: "closed" } };
+      });
+      selectAll(2);
+      await userEvent.click(screen.getByTestId("bulk-skip"));
+
+      const said = await screen.findByTestId("bulk-partial");
+      expect(said.textContent).toContain("1 moved");
+      expect(said.textContent).toContain("1 refused");
+    });
   });
 });
 
