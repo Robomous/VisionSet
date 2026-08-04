@@ -390,6 +390,7 @@ describe("the gallery", () => {
     on("GET", /\/batches\/[^/]+$/, {
       status: 200,
       body: batch({
+        state: "in_annotation",
         asset_count: 48,
         progress: {
           total: 48,
@@ -418,19 +419,128 @@ describe("the gallery", () => {
     expect(screen.getByTestId("segment-done").textContent).toContain("Done (13)");
   });
 
+  /**
+   * A draft shows less, and every omission is a documented zero rather than a
+   * missing feature.
+   *
+   * `GET /batches/{id}` says it in as many words: `progress` counts every asset
+   * of every job, so a draft — which has no jobs — reports zeros across the board
+   * while `asset_count` is already whatever the ingest gathered. The first
+   * version of this screen read those zeros as data and drew `0 of 0 annotated
+   * (0%)` and `All (0)` above forty-eight visible frames.
+   */
+  describe("before approval", () => {
+    beforeEach(() => {
+      // The shape the API really sends for a draft: real `asset_count`, zeroed
+      // counts, null `job_id` and null `progress` on every asset.
+      on("GET", /\/batches\/[^/]+$/, {
+        status: 200,
+        body: batch({ state: "draft", asset_count: 48, progress: { ...NO_PROGRESS } }),
+      });
+      on("GET", /\/assets$/, {
+        status: 200,
+        body: {
+          total: 48,
+          items: [0, 1, 2].map((index) => asset(index, { job_id: null, progress: null })),
+        },
+      });
+    });
+
+    it("says nothing about progress it has not created yet", async () => {
+      render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+      await waitFor(() =>
+        expect(screen.getByTestId("batch-state").textContent).toContain("pending approval"),
+      );
+      // Not a bar at zero — a bar for work that does not exist. The frame count
+      // is in the facts line, which is the honest number here.
+      expect(screen.queryByTestId("progress-readout")).toBeNull();
+      expect(screen.getByTestId("batch-facts").textContent).toContain("48 frames");
+    });
+
+    it("offers no filter, because every frame is in the same state", async () => {
+      render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+      await waitFor(() =>
+        expect(screen.getByTestId("batch-state").textContent).toContain("pending approval"),
+      );
+      expect(screen.queryByTestId("segments")).toBeNull();
+      expect(screen.queryByTestId("timeline")).toBeNull();
+      // The one toolbar control that still means something: how big the pictures
+      // are is a question about looking at pictures.
+      expect(screen.queryByTestId("density")).not.toBeNull();
+    });
+
+    it("does not offer a selection nothing could act on", async () => {
+      render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+      const tile = await screen.findByTestId("tile-asset-0");
+
+      // `remove_assets` is not on the wire (#281) and `Mark skipped` needs a job
+      // that does not exist, so every action a checkbox could offer is
+      // unavailable. A control whose every action is unavailable is worse than
+      // no control.
+      expect(screen.queryByTestId("select-asset-0")).toBeNull();
+      expect(screen.queryByTestId("bulk-bar")).toBeNull();
+      // #160's third criterion survives the change: not-yet rather than broken,
+      // on the element the pointer is actually over.
+      expect(tile.getAttribute("data-pending")).toBe("true");
+      expect(tile.getAttribute("title")).toMatch(/draft/i);
+    });
+
+    it("does not label every frame with the same empty status", async () => {
+      render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+      await screen.findByTestId("tile-asset-0");
+      // `progress` is null on all forty-eight, so "unannotated" is true of every
+      // one and distinguishes none — and a per-tile "draft" repeats the header's
+      // badge once per frame.
+      expect(screen.queryByTestId("state-asset-0")).toBeNull();
+      expect(screen.queryByTestId("open-asset-0")).toBeNull();
+    });
+  });
+
+  it("restores the filter and the selection once jobs exist", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "approved", progress: { ...NO_PROGRESS, total: 5, unannotated: 5 } }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: mixed() });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await waitFor(() => expect(screen.queryByTestId("segments")).not.toBeNull());
+
+    // The other half of the claim above: hidden *before* approval, not removed.
+    expect(screen.queryByTestId("timeline")).not.toBeNull();
+    expect(screen.queryByTestId("select-asset-0")).not.toBeNull();
+    expect(screen.queryByTestId("state-asset-0")).not.toBeNull();
+  });
+
   it("keeps the empty state for a batch with nothing in it", async () => {
     on("GET", /\/assets$/, { status: 200, body: assets(0, 0, 0) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
     await waitFor(() => expect(screen.queryByText("This batch is empty")).not.toBeNull());
   });
 
+  it("offers four thumbnail sizes and no more", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "in_annotation" }) });
+    on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    const slider = (await screen.findByTestId("density")) as HTMLInputElement;
+
+    // There was a fifth rung at 320 and it went: four tiles across a wide pane
+    // is a contact sheet with very little contact. Pinned because the ladder's
+    // length is otherwise only visible by dragging it, and a rung that reappears
+    // takes a stale stored `4` with it.
+    expect(slider.min).toBe("0");
+    expect(slider.max).toBe("3");
+  });
+
   it("remembers the thumbnail density across a remount", async () => {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "in_annotation" }) });
     on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
     const first = render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
 
     const slider = await screen.findByTestId("density");
-    fireEvent.change(slider, { target: { value: "4" } });
-    expect((slider as HTMLInputElement).value).toBe("4");
+    fireEvent.change(slider, { target: { value: "3" } });
+    expect((slider as HTMLInputElement).value).toBe("3");
 
     // A preference that resets on every mount is not a preference. Storage is
     // `localStorage` rather than the token's `sessionStorage`, argued in
@@ -438,14 +548,17 @@ describe("the gallery", () => {
     // made session storage right there is what makes it wrong here.
     first.unmount();
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
-    expect(((await screen.findByTestId("density")) as HTMLInputElement).value).toBe("4");
+    expect(((await screen.findByTestId("density")) as HTMLInputElement).value).toBe("3");
   });
 
   it("refuses a stored density it does not recognise", async () => {
     // Storage is whatever was there: an older build with different steps, a hand
     // edit, `"NaN"`. An out-of-range step would index past the ladder and render
-    // a grid with `undefined` columns.
+    // a grid with `undefined` columns — and this stopped being hypothetical the
+    // moment the ladder lost its fifth rung, because a `4` written by yesterday's
+    // build is still sitting in somebody's browser.
     globalThis.localStorage.setItem("visionset.prefs.gallery.density", "97");
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch({ state: "in_annotation" }) });
     on("GET", /\/assets$/, { status: 200, body: assets(3, 0, 3) });
 
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));

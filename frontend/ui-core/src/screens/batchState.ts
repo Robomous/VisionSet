@@ -58,6 +58,29 @@ export function isApprovable(state: string | undefined): boolean {
   return state === "draft";
 }
 
+/**
+ * Whether this batch has been cut into jobs yet — and therefore whether anything
+ * on the screen that describes *work* has an answer.
+ *
+ * **A draft's `ProgressCounts` is zeros across the board, and that is documented
+ * rather than accidental**: `GET /batches/{id}` says so in as many words, because
+ * the counts come from `JobService.batch_progress` and a draft has no jobs. Its
+ * `asset_count` is meanwhile whatever the ingest gathered.
+ *
+ * So a screen that renders progress-derived chrome for a draft is reading a
+ * documented "no answer" as if it were data — which is exactly what "All (0) /
+ * Unannotated (0)" over forty-eight visible frames was. The counts were not
+ * wrong; asking the question was.
+ *
+ * Everything downstream of this predicate is hidden before approval rather than
+ * shown as zero: the progress bar, the segmented filter, the timeline strip, and
+ * selection with it. A draft is a *preview of what was ingested*, and its one
+ * action is Approve.
+ */
+export function hasJobs(state: string | undefined): boolean {
+  return state !== undefined && state !== "draft";
+}
+
 // --- the four segments -------------------------------------------------------
 
 /**

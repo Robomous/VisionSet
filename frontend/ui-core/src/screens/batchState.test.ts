@@ -17,6 +17,7 @@ import {
   batchStateLabel,
   earliestArrival,
   inSegment,
+  hasJobs,
   isApprovable,
   mayHaveAnnotations,
   progressDot,
@@ -60,6 +61,32 @@ describe("the batch's own state", () => {
     expect(isApprovable("in_annotation")).toBe(false);
     expect(isApprovable("completed")).toBe(false);
     expect(isApprovable(undefined)).toBe(false);
+  });
+});
+
+describe("whether the batch has work in it yet", () => {
+  it("says a draft has none, so nothing derived from progress is asked", () => {
+    // `GET /batches/{id}` documents it: `progress` counts every asset of every
+    // job, and a draft has no jobs, so it reports zeros across the board while
+    // `asset_count` is real. Rendering those zeros is reading a documented "no
+    // answer" as data — which is what `All (0)` over forty-eight frames was.
+    expect(hasJobs("draft")).toBe(false);
+    expect(hasJobs("approved")).toBe(true);
+    expect(hasJobs("in_annotation")).toBe(true);
+    expect(hasJobs("completed")).toBe(true);
+  });
+
+  it("says nothing has work until the batch has loaded", () => {
+    // The header renders before the batch does. Guessing `true` would flash a
+    // progress bar reading zero for exactly the state this predicate exists to
+    // keep it out of.
+    expect(hasJobs(undefined)).toBe(false);
+  });
+
+  it("treats a state it has never heard of as having work", () => {
+    // A newer server's state is past draft by construction — draft is the only
+    // one before jobs are cut, and it is the one this build knows by name.
+    expect(hasJobs("archived")).toBe(true);
   });
 });
 
