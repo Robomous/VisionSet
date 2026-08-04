@@ -271,6 +271,25 @@ class BatchNotEditable(VisionSetError):
     """
 
 
+class BatchImmutable(VisionSetError):
+    """A completed batch was told to delete itself.
+
+    ``DELETABLE_STATES`` is everything except ``completed``, and this holds
+    **regardless of ``confirm``** — confirmation is for destroying something the
+    caller is allowed to destroy, and answering ``ConfirmationRequired`` here
+    would name a flag that does not work.
+
+    ``BATCH_TRANSITIONS`` already says a completed batch has no exit. A delete
+    that emptied one anyway would be an exit through the back door, and it would
+    take the record with it: which assets were labeled, against which pinned
+    schema version, and which were deliberately skipped. Releases, promotion and
+    any later correction are all read against that.
+
+    Separate from ``BatchNotEditable``, which is about *membership* in a batch
+    that is very much still alive. This one says the batch itself stays.
+    """
+
+
 class EmptyBatch(VisionSetError):
     """Approval was asked for on a batch with no assets.
 

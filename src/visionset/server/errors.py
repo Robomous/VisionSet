@@ -48,6 +48,7 @@ from visionset.kernel import (
     AssetNotFound,
     AssetNotInJob,
     AssetNotWritable,
+    BatchImmutable,
     BatchNotComplete,
     BatchNotEditable,
     BatchNotFound,
@@ -219,6 +220,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     SchemaVersionConflict: ErrorRule(409, "SCHEMA_VERSION_CONFLICT"),
     InvalidTransition: ErrorRule(409, "INVALID_TRANSITION"),
     BatchNotEditable: ErrorRule(409, "BATCH_NOT_EDITABLE"),
+    # No route reaches this yet — batch delete is SDK-only. Mapped anyway,
+    # because the exact-correspondence test is what keeps the table honest, and
+    # an unmapped kernel error would answer 500 the day a route appears.
+    BatchImmutable: ErrorRule(409, "BATCH_IMMUTABLE"),
     BatchNotInAnnotation: ErrorRule(409, "BATCH_NOT_IN_ANNOTATION"),
     # 409 rather than 422 for the reason at the top of this block: the annotation
     # is well formed and would be accepted a moment earlier or after a progress

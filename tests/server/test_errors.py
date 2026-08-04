@@ -76,6 +76,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "InvalidTransition": (409, "INVALID_TRANSITION"),
     "BatchNotEditable": (409, "BATCH_NOT_EDITABLE"),
     "BatchNotInAnnotation": (409, "BATCH_NOT_IN_ANNOTATION"),
+    "BatchImmutable": (409, "BATCH_IMMUTABLE"),
     "AssetNotWritable": (409, "ASSET_NOT_WRITABLE"),
     "BatchNotComplete": (409, "BATCH_NOT_COMPLETE"),
     "JobNotComplete": (409, "JOB_NOT_COMPLETE"),

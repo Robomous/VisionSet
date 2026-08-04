@@ -38,6 +38,7 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     BATCH_TRANSITIONS,
+    DELETABLE_STATES,
     EDITABLE_STATES,
     REPINNABLE_STATES,
     AnnotationJob,
@@ -63,6 +64,7 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.errors import (
     AssetNotFound,
+    BatchImmutable,
     BatchNotComplete,
     BatchNotEditable,
     BatchNotFound,
@@ -375,12 +377,24 @@ class BatchService:
         assets, not off batches, so deleting the unit of work never deletes the
         work. Neither are the assets themselves, nor any blob.
 
+        A ``completed`` batch cannot be deleted at all, and no flag lifts it. The
+        state check comes **before** the confirmation one, because a refusal
+        naming ``confirm=True`` as the remedy would be naming a flag that does
+        not work — the ``NotAWorkspace`` mistake, one service over.
+
         Raises:
             BatchNotFound: no such batch in this workspace.
+            BatchImmutable: the batch is ``completed``.
             ConfirmationRequired: ``confirm`` was not ``True``.
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
+            if batch.state not in DELETABLE_STATES:
+                raise BatchImmutable(
+                    f"batch {batch.name!r} is {batch.state.value!r} and cannot be deleted; a "
+                    f"completed batch is the record of what was labeled, against which schema "
+                    f"version, and what was deliberately skipped"
+                )
             if not confirm:
                 raise ConfirmationRequired(
                     f"deleting batch {batch.name!r} destroys its task groups and jobs, including "

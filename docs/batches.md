@@ -201,6 +201,25 @@ progress and the membership rows.
 of work never deletes the work. Neither the assets nor any blob are touched either — see
 [projects.md](projects.md) for why blobs are never deleted.
 
+**A `completed` batch cannot be deleted, and no flag lifts it.**
+
+```python
+batches.delete(finished_batch_id, confirm=True)  # BatchImmutable
+```
+
+`DELETABLE_STATES` is everything else. `BATCH_TRANSITIONS` already says a completed batch has no
+exit; a delete that emptied one anyway would be an exit through the back door, and it would take
+the record with it — which assets were labeled, against which pinned schema version, and which
+were deliberately skipped. Promotion, releases and any later correction are all read against
+that.
+
+The state check runs **before** the confirmation one, so the refusal never names `confirm=True`
+as a remedy that would not work.
+
+`ConfirmationRequired` and `BatchImmutable` are two errors on purpose, and the second is not a
+subclass of the first: a caller catching "you need a flag" and retrying with the flag would
+otherwise loop, which is the shape `SchemaChangeWouldOrphan` already argues for.
+
 ## At a terminal
 
 ```bash
