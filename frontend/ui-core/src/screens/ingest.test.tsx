@@ -25,6 +25,7 @@ import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { probeClip } from "./clipProbe";
 import { IngestScreen } from "./IngestScreen";
+import { batchActions } from "../testing/wire.fixtures.js";
 
 // The browser-side clip read is substituted whole. The default — a promise that
 // never settles — is exactly what the real module does under jsdom, which has no
@@ -539,8 +540,8 @@ describe("launching a run", () => {
       status: 200,
       body: {
         items: [
-          { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: NO_PROGRESS },
-          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS },
+          { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: NO_PROGRESS, allowed_actions: batchActions("draft") },
+          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS, allowed_actions: batchActions("in_annotation") },
         ],
         total: 2,
       },

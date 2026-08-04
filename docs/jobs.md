@@ -100,6 +100,37 @@ deliberately unlike `BatchService.approve`, where a second call would re-partiti
 is legal, and a second spelling of it would only drift. Friendlier wrappers belong on the
 surfaces — a CLI `visionset job skip` maps onto this.
 
+## What a job and an asset say they allow
+
+`JobOut` and `BatchAssetOut` carry `allowed_actions`, derived in
+`kernel/domain/capabilities.py` from the tables on this page.
+
+**Both job actions need the batch open.** `JobService` runs `require_open_batch` before it
+consults `JOB_TRANSITIONS`, so a `pending` job inside an `approved` batch declares *nothing* even
+though the table alone would call it startable. That dimension is exactly what a client
+re-deriving the rules from `JOB_TRANSITIONS` would drop. `complete` is refined by
+`SETTLED_PROGRESS` as well, which costs nothing: a job carries its own per-asset map.
+
+**Per asset, inside an `in_annotation` batch:**
+
+| Progress | Declares |
+| --- | --- |
+| `unannotated` | `annotate`, `skip` |
+| `annotated` | `annotate`, `skip`, `submit_for_review` |
+| `skipped` | `restore` |
+| `review_pending` | `accept`, `return_to_annotator` |
+| `accepted` | *nothing* |
+
+Anywhere else — a draft, an approved batch, a completed one — every asset declares nothing,
+because nothing may be written into a batch nobody opened or one that has closed.
+
+`annotate` is not a progress move: it is the right to add, change or remove labels, which is
+`WRITABLE_PROGRESS` and the batch gate together. The five others each name one edge of
+`ASSET_PROGRESS_TRANSITIONS`. Two legal edges deliberately have **no** name — `unannotated ↔
+annotated`, the pair an annotation appearing or disappearing makes on its own. They are the
+consequence of `annotate`, which is declared; offering either as its own control would mean
+changing the marker while the labels stay put.
+
 ## Settled, not terminal
 
 ```python

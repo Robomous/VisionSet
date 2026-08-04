@@ -52,6 +52,7 @@ from visionset.kernel.domain.task import (
     WRITABLE_PROGRESS,
     AnnotationJobState,
     AssetProgress,
+    progress_after_annotating,
 )
 
 
@@ -170,19 +171,27 @@ to annotated" describes the table, "return to annotator" describes the act.
 
 
 UNNAMED_EDGES: Final[frozenset[tuple[AssetProgress, AssetProgress]]] = frozenset(
-    {(AssetProgress.ANNOTATED, AssetProgress.UNANNOTATED)}
+    (current, landed)
+    for current in AssetProgress
+    for has_annotations in (True, False)
+    if (landed := progress_after_annotating(current, has_annotations=has_annotations)) is not None
 )
 """Legal progress edges that deliberately have no action name.
 
-Exactly one, and it is the one nobody performs: an ``annotated`` asset falls back
-to ``unannotated`` when its last label is deleted, which ``AnnotationService`` does
-inside the same transaction as the delete. Offering it as a control would be
-offering to forget that an asset is labeled while its labels stay put.
+Exactly the two moves an annotation appearing or disappearing makes on its own —
+``unannotated -> annotated`` when the first label lands, and back again when the
+last one goes — so this is *computed from* ``progress_after_annotating`` rather
+than listed beside it. Nobody performs these: ``AnnotationService`` makes them in
+the same transaction as the write, and they are the consequence of ``annotate``,
+which is an action and is declared.
 
-Written down rather than left implicit, so a new edge cannot quietly arrive with
-no capability: ``test_every_progress_edge_is_named_or_deliberately_not`` requires
-every edge of ``ASSET_PROGRESS_TRANSITIONS`` to be claimed by an action or listed
-here.
+Offering either as its own control would be offering to change a marker while its
+labels stay put, which is the one thing the progress machine exists to prevent.
+
+Named at all so that a *new* edge cannot quietly arrive with no capability:
+``test_every_edge_is_named_by_an_action_or_deliberately_not`` requires every edge
+of ``ASSET_PROGRESS_TRANSITIONS`` to be claimed by an action or to fall in here,
+and this set can only grow if the domain's own derivation rule does.
 """
 
 

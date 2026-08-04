@@ -17,6 +17,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiProvider } from "../data/ApiProvider";
 import { IMBALANCE_MIN_CLASSES, IMBALANCE_SHARE, imbalanceNote } from "./imbalance";
 import { journeySteps, OverviewPanel } from "./OverviewPanel";
+import { batchActions } from "../testing/wire.fixtures.js";
+import type { components as capComponents } from "../generated/api.js";
+
+type BatchState = capComponents["schemas"]["BatchState"];
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -338,6 +342,7 @@ describe("the journey checklist", () => {
         accepted: 0,
         total: 48,
       },
+      allowed_actions: batchActions(state as BatchState),
     };
   }
 

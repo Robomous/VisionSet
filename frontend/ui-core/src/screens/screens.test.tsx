@@ -24,6 +24,10 @@ import { classColor, hexColor } from "../palette";
 import { writeToken } from "../data/session";
 import { ProjectScreen } from "./ProjectScreen";
 import { ProjectsScreen } from "./ProjectsScreen";
+import { batchActions } from "../testing/wire.fixtures.js";
+import type { components as capComponents } from "../generated/api.js";
+
+type BatchState = capComponents["schemas"]["BatchState"];
 
 /** See `dataShell.test.tsx`: undici's `Request` needs an absolute URL. */
 const API = "http://visionset.test";
@@ -1172,6 +1176,7 @@ describe("the project header", () => {
                     accepted: 0,
                     total: 4,
                   },
+                  allowed_actions: batchActions(options.batchState as BatchState),
                 },
               ],
               total: 1,

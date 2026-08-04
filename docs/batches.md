@@ -176,6 +176,27 @@ batches.complete(batch.id)  # BatchNotComplete: 2 of 5 jobs still unfinished
 batch is what lets its annotated assets be promoted into the Dataset. Moving a job to
 `completed` is the job service's business — see [jobs.md](jobs.md); this service only reads it.
 
+## What a batch says it allows
+
+Every `BatchOut` carries `allowed_actions`, derived in `kernel/domain/capabilities.py` from the
+same table and named sets this service enforces with — never a second copy of them:
+
+| State | Declares | From |
+| --- | --- | --- |
+| `draft` | `approve`, `edit_membership`, `delete` | `BATCH_TRANSITIONS`, `EDITABLE_STATES`, `DELETABLE_STATES` |
+| `approved` | `start`, `repin`, `delete` | `BATCH_TRANSITIONS`, `REPINNABLE_STATES`, `DELETABLE_STATES` |
+| `in_annotation` | `complete`, `repin`, `delete` | as above |
+| `completed` | `promote` | `PROMOTABLE_STATES` |
+
+Four of the seven change no state at all and so appear in no row of `BATCH_TRANSITIONS` — which
+is why those sets are named rather than written inline. Promotion is the clearest: it moves
+assets into the trunk and leaves the batch exactly where it was.
+
+`complete` is the one declaration that can still be refused. Completion is *derived* from the
+jobs, and a projection cannot read them, so it is declared wherever the transition table allows
+it and answers `BatchNotComplete` if the work is not done. The alternative — the same batch
+declaring differently depending on which endpoint answered — is worse than one honest caveat.
+
 ## What approval and completion announce
 
 `approve` and `complete` each publish a [domain event](events.md) — `BatchApproved`, carrying
