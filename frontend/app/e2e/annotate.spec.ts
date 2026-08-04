@@ -208,14 +208,22 @@ async function serveApi(
       return route.fulfill({ status: 201, json: { items: stored, total: stored.length } });
     }
     if (path.endsWith("/progress") && request.method() === "GET") {
+      // **Derived from the same map the PUTs move**, not a frozen literal. It
+      // was a literal — `unannotated: 2, annotated: 0` — which meant the counts
+      // described a job nobody had touched however far the test had walked it,
+      // and any claim about the readout was a claim about the stub. That is the
+      // habit #225 exists to make impossible: a mock that answers something the
+      // endpoint would never have sent is worse than no mock.
+      const states = [...progress.values()];
+      const count = (of: string): number => states.filter((one) => one === of).length;
       return route.fulfill({
         json: {
-          unannotated: 2,
-          annotated: 0,
-          skipped: 0,
-          review_pending: 0,
-          accepted: 0,
-          total: 2,
+          unannotated: count("unannotated"),
+          annotated: count("annotated"),
+          skipped: count("skipped"),
+          review_pending: count("review_pending"),
+          accepted: count("accepted"),
+          total: states.length,
         },
       });
     }
@@ -263,7 +271,11 @@ test("the page loads the job's assets, its pinned schema and its progress", asyn
   await openJob(page, sent);
 
   await expect(page.getByTestId("asset-position")).toContainText("1/2");
-  await expect(page.getByTestId("job-progress")).toHaveText("0 / 2 annotated");
+  // One of the two frames is past `unannotated` — the fixture's second one is
+  // `annotated`. This asserted `0 / 2` against a **frozen** progress stub that
+  // described a job nobody had touched; the stub is derived from the same map the
+  // PUTs move now, so the number is the one a server would have sent.
+  await expect(page.getByTestId("job-progress")).toHaveText("1 / 2 annotated");
 
   // The **pinned** version, not the project's active schema. A batch pins at
   // approval and never moves, so asking for the active one is asking a different
@@ -1155,4 +1167,128 @@ test("the save's own refusal is a sentence now, not a kernel identifier", async 
   await expect(state).toContainText(/not open for annotation/i);
   await expect(state).not.toContainText("BATCH_NOT_IN_ANNOTATION");
   await expect(state).toHaveAttribute("title", "BATCH_NOT_IN_ANNOTATION");
+});
+
+/**
+ * The review round-trip — audit finding F24, and the half of the progress
+ * machine that had no door.
+ *
+ * `annotated -> review_pending -> accepted | annotated` are three legal kernel
+ * edges and the browser offered **none** of them. The gallery's "In review"
+ * segment could only be populated through the API or MCP, and `accepted` — the
+ * one state that says a human checked the work — was unreachable by any sequence
+ * of clicks. #306 made that visible rather than silent by gating Accept on the
+ * declaration it actually needs; this is what makes it reachable again.
+ *
+ * Driven end to end on one frame, because the round-trip is the claim: a reviewer
+ * sending work back has to leave it in a state the annotator can pick up, and
+ * "can pick up" means the canvas is live again.
+ */
+test("a frame goes out for review, comes back, and is accepted the second time", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
+
+  /** Back to the first frame — settling advances, so every step returns here. */
+  const first = async (): Promise<void> => {
+    await page.getByTestId("prev-asset").click();
+    await expect(page.getByTestId("asset-position")).toContainText("1/2");
+  };
+
+  // 1. An annotated frame offers the way in, and nothing else in the review half.
+  await expect(page.getByTestId("submit-for-review")).toBeVisible();
+  await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
+  await expect(page.getByTestId("accept")).toBeDisabled();
+
+  await page.getByTestId("submit-for-review").click();
+  // Settling advances, because the person is finished with this frame.
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+
+  // 2. Seen as a reviewer: the two decisions, and no way to draw. Same screen
+  //    wearing the state it is looking at — this product has no annotator
+  //    identity to assign work to, so "reviewer" is a thing somebody is doing.
+  await first();
+  await expect(page.getByTestId("asset-progress")).toHaveText("in review");
+  await expect(page.getByTestId("return-to-annotator")).toBeEnabled();
+  await expect(page.getByTestId("accept")).toBeEnabled();
+  await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
+  // `review_pending` is not in `WRITABLE_PROGRESS`, so the frame is read-only —
+  // and the banner names the control that undoes that, which is on this toolbar.
+  await expect(page.getByTestId("readonly-banner")).toContainText(/return it to the annotator/i);
+
+  // 3. Sent back. The claim that matters: the annotator can pick it up again.
+  await page.getByTestId("return-to-annotator").click();
+  await first();
+  await expect(page.getByTestId("asset-progress")).toHaveText("annotated");
+  await expect(page.getByTestId("readonly-banner")).toHaveCount(0);
+  await expect(page.getByTestId("tool-palette")).toBeVisible();
+  await expect(page.getByTestId("submit-for-review")).toBeVisible();
+
+  // 4. Round two, and this time the reviewer says yes.
+  await page.getByTestId("submit-for-review").click();
+  await first();
+  await page.getByTestId("accept").click();
+  await first();
+
+  // 5. `accepted` has no exit at all, which is why correcting accepted work needs
+  //    a new batch rather than a progress move — and the banner says so.
+  await expect(page.getByTestId("asset-progress")).toHaveText("accepted");
+  await expect(page.getByTestId("accept")).toBeDisabled();
+  await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
+  await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
+  await expect(page.getByTestId("readonly-banner")).toContainText(/correction batch/i);
+});
+
+test("an unannotated frame is not offered to a reviewer at all", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "unannotated", "asset-2": "annotated" }));
+
+  // `annotated` is the only origin of `review_pending`: there is nothing to
+  // review until somebody has labelled it, and offering the press would be
+  // offering a refusal.
+  await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
+  await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
+  await expect(page.getByTestId("accept")).toBeDisabled();
+});
+
+test("a refused review move says why, like every other one", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }), {
+    batch: "in_annotation",
+    job: "in_progress",
+    refuseProgress: "INVALID_TRANSITION",
+  });
+
+  await page.getByTestId("submit-for-review").click();
+
+  await expect(page.getByTestId("action-refusal")).toContainText(/already moved on/i);
+  await expect(page.getByTestId("asset-progress")).toHaveText("annotated");
+});
+
+test("the job counter never goes backwards when a frame is reviewed", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
+
+  // **The readout counted `annotated` literally**, so accepting a frame moved it
+  // out of that bucket and the number dropped. It never bit before because
+  // nothing in the product could produce `accepted` (F24) — adding the review
+  // moves is what made it reachable, and the real-server cycle run is what
+  // caught it: 3 of 3 became 2 of 3 on an accept.
+  //
+  // "Annotated" means *past `unannotated`*, which is the same rule the gallery's
+  // bar already stated and the only reading that cannot go backwards.
+  await expect(page.getByTestId("job-progress")).toHaveText("2 / 2 annotated");
+
+  // Every settling move advances, so each step comes back to the first frame.
+  await page.getByTestId("submit-for-review").click();
+  await expect(page.getByTestId("job-progress")).toHaveText("2 / 2 annotated");
+
+  await page.getByTestId("prev-asset").click();
+  await expect(page.getByTestId("asset-progress")).toHaveText("in review");
+  await page.getByTestId("accept").click();
+
+  await page.getByTestId("prev-asset").click();
+  await expect(page.getByTestId("asset-progress")).toHaveText("accepted");
+  await expect(page.getByTestId("job-progress")).toHaveText("2 / 2 annotated");
 });
