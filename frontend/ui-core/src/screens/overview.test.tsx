@@ -181,6 +181,7 @@ function batchOf(state: string): Record<string, unknown> {
     },
     allowed_actions: batchActions(state as BatchState),
     promoted_asset_count: 0,
+    parent_batch_id: null,
   };
 }
 

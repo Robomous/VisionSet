@@ -33,6 +33,7 @@ function loaded(id: string, labelClass = "vehicle"): WireAnnotation {
     provenance: "human",
     model_ref: null,
     confidence: null,
+    job_id: null,
   };
 }
 
@@ -70,6 +71,7 @@ describe("planSave", () => {
         provenance: "human",
         model_ref: null,
         confidence: null,
+        job_id: null,
       }),
     );
 

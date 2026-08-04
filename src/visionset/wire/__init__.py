@@ -339,6 +339,7 @@ def batch(
         "progress": progress_counts(counts),
         "allowed_actions": [a.value for a in batch_actions(value.state)],
         "promoted_asset_count": sum(1 for one in value.asset_ids if one in promoted),
+        "parent_batch_id": None if value.parent_batch_id is None else str(value.parent_batch_id),
     }
 
 
@@ -412,6 +413,7 @@ def annotation(value: Annotation) -> dict[str, Any]:
         "provenance": value.provenance,
         "model_ref": value.model_ref,
         "confidence": value.confidence,
+        "job_id": None if value.job_id is None else str(value.job_id),
     }
 
 

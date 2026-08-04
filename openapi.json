@@ -168,6 +168,18 @@
             "title": "Id",
             "type": "string"
           },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
           "label_class": {
             "title": "Label Class",
             "type": "string"
@@ -206,7 +218,8 @@
           "attributes",
           "provenance",
           "model_ref",
-          "confidence"
+          "confidence",
+          "job_id"
         ],
         "title": "AnnotationOut",
         "type": "object"
@@ -855,6 +868,18 @@
             "title": "Name",
             "type": "string"
           },
+          "parent_batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Batch Id"
+          },
           "progress": {
             "$ref": "#/components/schemas/ProgressCounts"
           },
@@ -891,7 +916,8 @@
           "asset_count",
           "progress",
           "allowed_actions",
-          "promoted_asset_count"
+          "promoted_asset_count",
+          "parent_batch_id"
         ],
         "title": "BatchOut",
         "type": "object"

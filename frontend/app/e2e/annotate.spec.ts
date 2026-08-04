@@ -115,6 +115,7 @@ async function serveApi(
     asset_count: 2,
     allowed_actions: batchActions(lifecycle.batch),
     promoted_asset_count: 0,
+    parent_batch_id: null,
     progress: {
       unannotated: 2,
       annotated: 0,
@@ -203,6 +204,7 @@ async function serveApi(
           provenance: "human",
           model_ref: null,
           confidence: null,
+          job_id: null,
         }),
       );
       return route.fulfill({ status: 201, json: { items: stored, total: stored.length } });
