@@ -22,6 +22,7 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
+import { batchActions, jobActions } from "../testing/wire.fixtures.js";
 import {
   ANNOTATOR_MIN_VIEWPORT_PX,
   atLeastQuery,
@@ -51,7 +52,13 @@ beforeEach(() => {
     const path = new URL(request.url).pathname;
     const body =
       path === `/jobs/${JOB}`
-        ? { id: JOB, batch_id: BATCH, state: "in_progress", asset_count: 1 }
+        ? {
+            id: JOB,
+            batch_id: BATCH,
+            state: "in_progress",
+            asset_count: 1,
+            allowed_actions: jobActions("in_progress", { settled: false }),
+          }
         : path === `/batches/${BATCH}`
           ? {
               id: BATCH,
@@ -60,6 +67,7 @@ beforeEach(() => {
               state: "in_annotation",
               schema_version: 1,
               asset_count: 1,
+              allowed_actions: batchActions("in_annotation"),
               progress: {
                 unannotated: 1,
                 annotated: 0,

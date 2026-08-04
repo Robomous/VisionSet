@@ -91,6 +91,14 @@ def add_annotations(
     The batch must be `in_annotation`, or this is 409
     `BATCH_NOT_IN_ANNOTATION`. An asset the job does not carry is 422
     `ASSET_NOT_IN_JOB`.
+
+    The asset must also still be open for labeling — `unannotated` or
+    `annotated`. One that was skipped, submitted for review or accepted is 409
+    `ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is
+    a progress move where the table allows one (`skipped` back to `unannotated`);
+    `accepted` has no exit, so correcting it means a new batch. Read
+    `allowed_actions` on the batch's asset listing rather than guessing: it
+    declares `annotate` exactly when this will be accepted.
     """
     try:
         stored = AnnotationService(workspace).add(job_id, [a.to_domain() for a in body])
@@ -115,6 +123,7 @@ def update_annotations(
     without anything saying so.
 
     All-or-nothing, and `detail.index` names the culprit, exactly as on the POST.
+    An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST.
     """
     try:
         stored = AnnotationService(workspace).update(job_id, [a.to_domain() for a in body])
@@ -136,7 +145,9 @@ def delete_annotations(
 
     Repeating an id is not two deletions. An id that is not stored refuses the
     whole call with 404 `ANNOTATION_NOT_FOUND` and removes nothing — there is no
-    partial delete, for the reason there is no partial write.
+    partial delete, for the reason there is no partial write. Removing a label is
+    still a write, so an asset that was skipped, submitted or accepted is 409
+    `ASSET_NOT_WRITABLE` here too.
 
     No confirmation gate: taking a box off is the ordinary annotator edit loop,
     not the destruction of a lifecycle entity. The batch gate is the guard, so

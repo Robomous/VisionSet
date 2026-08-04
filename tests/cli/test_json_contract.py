@@ -83,12 +83,17 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
     ("asset", wire.asset(ASSET), models.AssetOut),
     (
         "batch_asset",
-        wire.batch_asset(ASSET, job_id=JOB.id, progress=AssetProgress.ANNOTATED),
+        wire.batch_asset(
+            ASSET,
+            job_id=JOB.id,
+            progress=AssetProgress.ANNOTATED,
+            batch_state=BATCH.state,
+        ),
         models.BatchAssetOut,
     ),
     ("progress_counts", wire.progress_counts(COUNTS), models.ProgressCounts),
     ("batch", wire.batch(BATCH, COUNTS), models.BatchOut),
-    ("job", wire.job(JOB, batch_id=BATCH.id), models.JobOut),
+    ("job", wire.job(JOB, batch_id=BATCH.id, batch_state=BATCH.state), models.JobOut),
     (
         "asset_progress",
         wire.asset_progress(ASSET.id, AssetProgress.SKIPPED),

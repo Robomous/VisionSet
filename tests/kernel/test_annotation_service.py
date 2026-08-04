@@ -18,6 +18,7 @@ from sqlalchemy import text
 from visionset.kernel import (
     AnnotationNotFound,
     AssetNotInJob,
+    AssetNotWritable,
     BatchNotInAnnotation,
     DisallowedGeometry,
     DuplicateClassificationTag,
@@ -89,6 +90,15 @@ _ROUTES: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     ACCEPTED: (ANNOTATED, REVIEW_PENDING, ACCEPTED),
 }
 
+#: The same walks starting from ``annotated``, which is where an asset that
+#: already carries labels sits. Only the settled states, because those are the
+#: ones ``WRITABLE_PROGRESS`` refuses.
+_ONWARD_FROM_ANNOTATED: dict[AssetProgress, tuple[AssetProgress, ...]] = {
+    SKIPPED: (SKIPPED,),
+    REVIEW_PENDING: (REVIEW_PENDING,),
+    ACCEPTED: (REVIEW_PENDING, ACCEPTED),
+}
+
 
 def _box(asset_id: UUID, **overrides: Any) -> Annotation:
     """A valid ``sign``: a bbox carrying the one attribute that class requires."""
@@ -153,6 +163,11 @@ class Fixture:
         for step in _ROUTES[progress]:
             self.jobs.mark(job.id, asset_id, step)
         return asset_id
+
+    def settle(self, job: AnnotationJob, asset_id: UUID, progress: AssetProgress) -> None:
+        """Walk an asset that already carries labels onward to a settled state."""
+        for step in _ONWARD_FROM_ANNOTATED[progress]:
+            self.jobs.mark(job.id, asset_id, step)
 
     def progress_of(self, job: AnnotationJob, asset_id: UUID) -> AssetProgress:
         return self.jobs.get(job.id).progress[asset_id]
@@ -530,16 +545,69 @@ def test_updating_an_annotation_does_not_disturb_progress(tmp_path: Path) -> Non
 def test_a_decision_somebody_made_is_not_overwritten_by_a_label(
     tmp_path: Path, decided: AssetProgress
 ) -> None:
-    """Skipping, submitting and accepting are people's calls, not consequences."""
+    """Skipping, submitting and accepting are people's calls, not consequences.
+
+    The refusal is how that is held. Storing the label and leaving the progress
+    alone was the older answer, and it was worse than it looked: nothing said the
+    write had gone nowhere, and for ``skipped`` the labels were dropped again at
+    promotion because ``PROMOTABLE_PROGRESS`` leaves that state out.
+    """
     fixture = Fixture(tmp_path)
     job = fixture.working()
     asset_id = fixture.asset_in(job, decided)
 
-    (stored,) = fixture.annotations.add(job.id, [_box(asset_id)])
-    assert fixture.progress_of(job, asset_id) is decided
+    with pytest.raises(AssetNotWritable) as refused:
+        fixture.annotations.add(job.id, [_box(asset_id)])
+    assert decided.value in str(refused.value)
 
-    fixture.annotations.delete(job.id, [stored.id])
     assert fixture.progress_of(job, asset_id) is decided
+    assert fixture.annotations.for_asset(job.id, asset_id) == []
+    fixture.close()
+
+
+@pytest.mark.parametrize("decided", [SKIPPED, REVIEW_PENDING, ACCEPTED], ids=lambda s: str(s.value))
+def test_labels_already_on_a_settled_asset_cannot_be_edited_or_removed(
+    tmp_path: Path, decided: AssetProgress
+) -> None:
+    """The gate stands in front of all three writes, not only the one that adds.
+
+    An asset reaches a settled state carrying labels — that is the ordinary way
+    into ``review_pending`` and ``accepted`` — so update and delete are the two
+    that a caller actually has something to aim at.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.assets[0]
+    (stored,) = fixture.annotations.add(job.id, [_box(asset_id)])
+    fixture.settle(job, asset_id, decided)
+
+    with pytest.raises(AssetNotWritable):
+        fixture.annotations.update(
+            job.id, [_box(asset_id, id=stored.id, attributes={"occluded": True})]
+        )
+    with pytest.raises(AssetNotWritable):
+        fixture.annotations.delete(job.id, [stored.id])
+
+    assert [a.id for a in fixture.annotations.for_asset(job.id, asset_id)] == [stored.id]
+    fixture.close()
+
+
+def test_taking_a_skip_back_makes_the_asset_writable_again(tmp_path: Path) -> None:
+    """The refusal names a state, and the transition table is how a caller leaves it.
+
+    ``skipped -> unannotated`` is the take-it-back edge, and it is the whole
+    remedy for the one settled state that has one. ``accepted`` has no exit, which
+    is why correcting that needs a new batch rather than a progress move.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    asset_id = fixture.asset_in(job, SKIPPED)
+
+    fixture.jobs.mark(job.id, asset_id, UNANNOTATED)
+    (stored,) = fixture.annotations.add(job.id, [_box(asset_id)])
+
+    assert fixture.progress_of(job, asset_id) is ANNOTATED
+    assert [a.id for a in fixture.annotations.for_asset(job.id, asset_id)] == [stored.id]
     fixture.close()
 
 

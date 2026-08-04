@@ -327,6 +327,19 @@
         "title": "AnnotationUpdate",
         "type": "object"
       },
+      "AssetAction": {
+        "description": "What can be asked of one asset inside a batch.\n\n``ANNOTATE`` is the odd one and the important one: it is not a progress move\nbut the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the\nbatch gate together. The other five each name one edge of\n``ASSET_PROGRESS_TRANSITIONS`` \u2014 see :data:`ASSET_MOVES`.",
+        "enum": [
+          "annotate",
+          "skip",
+          "restore",
+          "submit_for_review",
+          "accept",
+          "return_to_annotator"
+        ],
+        "title": "AssetAction",
+        "type": "string"
+      },
       "AssetOut": {
         "description": "One ingested item.",
         "properties": {
@@ -585,6 +598,20 @@
         "title": "AttributeBody",
         "type": "object"
       },
+      "BatchAction": {
+        "description": "What can be asked of a batch. Declaration order is display order.",
+        "enum": [
+          "approve",
+          "start",
+          "complete",
+          "repin",
+          "promote",
+          "edit_membership",
+          "delete"
+        ],
+        "title": "BatchAction",
+        "type": "string"
+      },
       "BatchApprove": {
         "additionalProperties": false,
         "description": "How to cut the batch into jobs. One job for the whole batch by default.",
@@ -625,6 +652,13 @@
       "BatchAssetOut": {
         "description": "One item of a batch, with the job that carries it and where it has got to.",
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "$ref": "#/components/schemas/AssetAction"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "content_hash": {
             "title": "Content Hash",
             "type": "string"
@@ -770,7 +804,8 @@
           "thumbnail_hash",
           "ingested_at",
           "job_id",
-          "progress"
+          "progress",
+          "allowed_actions"
         ],
         "title": "BatchAssetOut",
         "type": "object"
@@ -800,6 +835,13 @@
       "BatchOut": {
         "description": "A curated slice of a project's assets that moves through annotation together.",
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "$ref": "#/components/schemas/BatchAction"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "asset_count": {
             "title": "Asset Count",
             "type": "integer"
@@ -843,7 +885,8 @@
           "state",
           "schema_version",
           "asset_count",
-          "progress"
+          "progress",
+          "allowed_actions"
         ],
         "title": "BatchOut",
         "type": "object"
@@ -1635,9 +1678,25 @@
         "title": "IngestState",
         "type": "string"
       },
+      "JobAction": {
+        "description": "What can be asked of an annotation job.",
+        "enum": [
+          "start",
+          "complete"
+        ],
+        "title": "JobAction",
+        "type": "string"
+      },
       "JobOut": {
         "description": "One annotator's unit of work over a segment of a batch.",
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "$ref": "#/components/schemas/JobAction"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "asset_count": {
             "title": "Asset Count",
             "type": "integer"
@@ -1660,7 +1719,8 @@
           "id",
           "batch_id",
           "state",
-          "asset_count"
+          "asset_count",
+          "allowed_actions"
         ],
         "title": "JobOut",
         "type": "object"
@@ -4404,7 +4464,7 @@
     },
     "/jobs/{job_id}/annotations": {
       "delete": {
-        "description": "Remove annotations. One transaction, however many ids you pass.\n\nRepeating an id is not two deletions. An id that is not stored refuses the\nwhole call with 404 `ANNOTATION_NOT_FOUND` and removes nothing \u2014 there is no\npartial delete, for the reason there is no partial write.\n\nNo confirmation gate: taking a box off is the ordinary annotator edit loop,\nnot the destruction of a lifecycle entity. The batch gate is the guard, so\nonce the work closes nothing here can touch it at all.",
+        "description": "Remove annotations. One transaction, however many ids you pass.\n\nRepeating an id is not two deletions. An id that is not stored refuses the\nwhole call with 404 `ANNOTATION_NOT_FOUND` and removes nothing \u2014 there is no\npartial delete, for the reason there is no partial write. Removing a label is\nstill a write, so an asset that was skipped, submitted or accepted is 409\n`ASSET_NOT_WRITABLE` here too.\n\nNo confirmation gate: taking a box off is the ordinary annotator edit loop,\nnot the destruction of a lifecycle entity. The batch gate is the guard, so\nonce the work closes nothing here can touch it at all.",
         "operationId": "delete_annotations",
         "parameters": [
           {
@@ -4509,7 +4569,7 @@
         ]
       },
       "patch": {
-        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.",
+        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST.",
         "operationId": "update_annotations",
         "parameters": [
           {
@@ -4620,7 +4680,7 @@
         ]
       },
       "post": {
-        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nThe batch must be `in_annotation`, or this is 409\n`BATCH_NOT_IN_ANNOTATION`. An asset the job does not carry is 422\n`ASSET_NOT_IN_JOB`.",
+        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nThe batch must be `in_annotation`, or this is 409\n`BATCH_NOT_IN_ANNOTATION`. An asset the job does not carry is 422\n`ASSET_NOT_IN_JOB`.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.",
         "operationId": "add_annotations",
         "parameters": [
           {

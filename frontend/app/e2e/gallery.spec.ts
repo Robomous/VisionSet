@@ -24,6 +24,7 @@
  */
 
 import { expect, test, type Page, type Request } from "@playwright/test";
+import { assetActions, batchActions, jobActions } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -102,6 +103,7 @@ function assets(jobId: string | null, settled = false): Record<string, unknown> 
       ingested_at: "2026-08-01T09:00:00Z",
       job_id: jobId,
       progress: jobId === null ? null : progress,
+      allowed_actions: assetActions(jobId === null ? null : progress),
     })),
   };
 }
@@ -175,17 +177,18 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           schema_version: 3,
           asset_count: counts.total,
           progress: counts,
+          allowed_actions: batchActions(current),
         },
       });
     }
     if (path === `/batches/${BATCH}/jobs`) {
       return route.fulfill({
-        json: { items: [{ id: JOB, batch_id: BATCH, state: job, asset_count: 48 }], total: 1 },
+        json: { items: [{ id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job) }], total: 1 },
       });
     }
     if (request.method() === "POST" && path === `/jobs/${JOB}/start`) {
       job = "in_progress";
-      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48 } });
+      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job) } });
     }
     if (request.method() === "POST" && path === `/jobs/${JOB}/complete`) {
       // The kernel's own gate, kept rather than stubbed away: a job may only be
@@ -198,7 +201,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
         });
       }
       job = "completed";
-      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48 } });
+      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: job, asset_count: 48, allowed_actions: jobActions(job) } });
     }
     if (request.method() === "POST" && path === `/batches/${BATCH}/complete`) {
       // And the outer gate. This is the 409 the founder saw, reproduced exactly:
@@ -222,6 +225,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           schema_version: 3,
           asset_count: counts.total,
           progress: counts,
+          allowed_actions: batchActions(current),
         },
       });
     }
@@ -241,6 +245,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           schema_version: current === "draft" ? null : 3,
           asset_count: counts.total,
           progress: counts,
+          allowed_actions: batchActions(current),
         },
       });
     }

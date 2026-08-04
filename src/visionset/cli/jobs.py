@@ -59,9 +59,13 @@ def job_list(
 ) -> None:
     """List a batch's jobs, in segment order. A draft batch has none."""
     with opened_workspace(workspace) as service:
-        jobs = BatchService(service).jobs(batch)
+        batches = BatchService(service)
+        # The batch itself, not only the id the flag carried: both job actions
+        # need the batch open, so ``allowed_actions`` cannot be answered without it.
+        found = batches.get(batch)
+        jobs = batches.jobs(batch)
     if json_out:
-        document(wire.page([wire.job(j, batch_id=batch) for j in jobs]))
+        document(wire.page([wire.job(j, batch_id=found.id, batch_state=found.state) for j in jobs]))
         return
     table(_COLUMNS, [(str(j.id), j.state.value, str(len(j.progress))) for j in jobs])
     if not jobs:
@@ -136,7 +140,7 @@ def job_start(
         started = service_jobs.start(job)
         batch = service_jobs.batch(started.id)
     if json_out:
-        document(wire.job(started, batch_id=batch.id))
+        document(wire.job(started, batch_id=batch.id, batch_state=batch.state))
         return
     note(f"Job {started.id} is now {started.state.value}.")
     typer.echo(str(started.id))
@@ -184,7 +188,7 @@ def job_complete(
         completed = service_jobs.complete(job)
         batch = service_jobs.batch(completed.id)
     if json_out:
-        document(wire.job(completed, batch_id=batch.id))
+        document(wire.job(completed, batch_id=batch.id, batch_state=batch.state))
         return
     note(f"Job {completed.id} is now {completed.state.value}.")
     typer.echo(str(completed.id))

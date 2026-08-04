@@ -13,6 +13,7 @@
  */
 
 import { expect, test, type Page, type Request } from "@playwright/test";
+import { assetActions, batchActions, jobActions } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -43,6 +44,7 @@ function asset(index: number, progress: string): Record<string, unknown> {
     ingested_at: null,
     job_id: JOB,
     progress,
+    allowed_actions: assetActions(progress),
   };
 }
 
@@ -98,6 +100,7 @@ async function serveApi(
     state: lifecycle.batch,
     schema_version: 3,
     asset_count: 2,
+    allowed_actions: batchActions(lifecycle.batch),
     progress: {
       unannotated: 2,
       annotated: 0,
@@ -112,6 +115,7 @@ async function serveApi(
     batch_id: BATCH,
     state: lifecycle.job,
     asset_count: 2,
+    allowed_actions: jobActions(lifecycle.job, { batchState: lifecycle.batch }),
   });
   await page.route("**/api/**", async (route) => {
     const request = route.request();

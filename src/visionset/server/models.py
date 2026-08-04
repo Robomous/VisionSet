@@ -50,9 +50,11 @@ from visionset.kernel.domain import (
     AnnotationJobState,
     AnnotationSchema,
     Asset,
+    AssetAction,
     AssetProgress,
     Attribute,
     Batch,
+    BatchAction,
     BatchState,
     BboxGeometry,
     BySegments,
@@ -73,6 +75,7 @@ from visionset.kernel.domain import (
     IngestFailureKind,
     IngestJob,
     IngestState,
+    JobAction,
     LabelClass,
     Partition,
     PolygonGeometry,
@@ -88,6 +91,9 @@ from visionset.kernel.domain import (
     SplitAssignment,
     SplitRecipe,
     VideoProvenance,
+    asset_actions,
+    batch_actions,
+    job_actions,
 )
 from visionset.kernel.ports import Exporter
 
@@ -618,6 +624,7 @@ class BatchOut(BaseModel):
     schema_version: int | None
     asset_count: int
     progress: ProgressCounts
+    allowed_actions: list[BatchAction]
 
     @classmethod
     def of(cls, batch: Batch, counts: dict[AssetProgress, int]) -> Self:
@@ -629,6 +636,7 @@ class BatchOut(BaseModel):
             schema_version=batch.schema_version,
             asset_count=len(batch.asset_ids),
             progress=ProgressCounts.of(counts),
+            allowed_actions=batch_actions(batch.state),
         )
 
 
@@ -724,14 +732,22 @@ class JobOut(BaseModel):
     batch_id: UUID
     state: AnnotationJobState
     asset_count: int
+    allowed_actions: list[JobAction]
 
+    # ``batch`` whole rather than an id: both actions need the batch open, which
+    # is the dimension a client re-deriving these rules dropped. The per-asset map
+    # stays unpublished and is still read here, because ``complete`` is refined by
+    # whether every asset has settled — a refinement that costs no extra read.
     @classmethod
-    def of(cls, job: AnnotationJob, *, batch_id: UUID) -> Self:
+    def of(cls, job: AnnotationJob, *, batch: Batch) -> Self:
         return cls(
             id=job.id,
-            batch_id=batch_id,
+            batch_id=batch.id,
             state=job.state,
             asset_count=len(job.progress),
+            allowed_actions=job_actions(
+                job.state, batch_state=batch.state, progress=job.progress.values()
+            ),
         )
 
 
@@ -747,12 +763,28 @@ class BatchAssetOut(AssetOut):
 
     job_id: UUID | None
     progress: AssetProgress | None
+    allowed_actions: list[AssetAction]
 
     @classmethod
-    def in_batch(cls, asset: Asset, *, job_id: UUID | None, progress: AssetProgress | None) -> Self:
-        # Both are null exactly while the batch is a draft, which is honest
-        # rather than lossy: a draft has no jobs, so no asset in it has progress.
-        return cls(**AssetOut.of(asset).model_dump(), job_id=job_id, progress=progress)
+    def in_batch(
+        cls,
+        asset: Asset,
+        *,
+        job_id: UUID | None,
+        progress: AssetProgress | None,
+        batch_state: BatchState,
+    ) -> Self:
+        # ``job_id`` and ``progress`` are null exactly while the batch is a draft,
+        # which is honest rather than lossy: a draft has no jobs, so no asset in
+        # it has progress. ``batch_state`` is an argument and not a field — it
+        # belongs to the batch and is published there — but nothing can be said
+        # about what this asset allows without it.
+        return cls(
+            **AssetOut.of(asset).model_dump(),
+            job_id=job_id,
+            progress=progress,
+            allowed_actions=asset_actions(progress, batch_state=batch_state),
+        )
 
 
 class BatchAssetPage(Page[BatchAssetOut]):

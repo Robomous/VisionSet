@@ -17,6 +17,7 @@ from visionset.kernel.domain import (
     Asset,
     AssetProgress,
     Attribute,
+    BatchState,
     BboxGeometry,
     ClassCount,
     ClassificationGeometry,
@@ -354,7 +355,9 @@ def test_the_batch_vantage_point_carries_the_arrival_too() -> None:
     arrived = datetime(2026, 8, 3, 12, 30, 45, tzinfo=UTC)
     asset = Asset(project_id=uuid4(), content_hash="a" * 64, uri="/blobs/a", ingested_at=arrived)
 
-    published = BatchAssetOut.in_batch(asset, job_id=None, progress=None)
+    published = BatchAssetOut.in_batch(
+        asset, job_id=None, progress=None, batch_state=BatchState.DRAFT
+    )
 
     assert published.ingested_at == arrived
 

@@ -4,5 +4,5 @@
   // reason, and a consumer resolving `@visionset/ui-core` should never be one
   // `import` away from a testing-library dependency.
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/testing"]
 }

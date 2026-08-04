@@ -212,6 +212,14 @@ That rule is right, and until #187 the browser simply never offered the one exit
 the save succeed, and lose the work at promotion, since `PROMOTABLE_PROGRESS`
 excludes `skipped`.
 
+**The kernel now refuses that write outright**, so the silent loss is unreachable
+rather than merely un-offered: `WRITABLE_PROGRESS` gates all three annotation
+writes and a skipped asset answers `AssetNotWritable` (409 `ASSET_NOT_WRITABLE`)
+— see [jobs.md](jobs.md). Everything below still stands and is now the *good*
+path rather than the only guard: Un-skip first, then label. The batch asset's
+`allowed_actions` declares `annotate` exactly when the write will be accepted, so
+the page reads that rather than deriving it.
+
 The page closes that with the **explicit** move rather than an implicit one. The
 asset's own progress is always on the bar, and on a skipped asset `Skip` is replaced
 by **Un-skip**, which sends `unannotated` and stays on the asset — settling advances

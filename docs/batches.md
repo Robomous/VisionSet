@@ -106,7 +106,11 @@ refusal differs from `SchemaService`'s project-wide one.
 Legal only while the batch is `approved` or `in_annotation` — `REPINNABLE_STATES` in
 `kernel/domain/batch.py`. A draft has no pin yet; a completed batch's pin is **history**, and
 rewriting it would rewrite the record rather than the rules. Both refuse with
-`InvalidTransition`.
+`InvalidTransition`, asked through `require_state` in `kernel/domain/transitions.py` — the
+sibling of `require_move` for the operations that need the batch to *be* somewhere rather than
+to *go* somewhere. Re-pinning is one: it moves the pin, not the batch, so it appears in no row
+of `BATCH_TRANSITIONS` and would otherwise be the one legality question asked outside the
+funnel.
 
 Re-pinning onto the version already pinned is a no-op: the same batch comes back, nothing is
 written and nothing is announced. Annotations already written keep the `schema_version` they
@@ -172,6 +176,27 @@ batches.complete(batch.id)  # BatchNotComplete: 2 of 5 jobs still unfinished
 batch is what lets its annotated assets be promoted into the Dataset. Moving a job to
 `completed` is the job service's business — see [jobs.md](jobs.md); this service only reads it.
 
+## What a batch says it allows
+
+Every `BatchOut` carries `allowed_actions`, derived in `kernel/domain/capabilities.py` from the
+same table and named sets this service enforces with — never a second copy of them:
+
+| State | Declares | From |
+| --- | --- | --- |
+| `draft` | `approve`, `edit_membership`, `delete` | `BATCH_TRANSITIONS`, `EDITABLE_STATES`, `DELETABLE_STATES` |
+| `approved` | `start`, `repin`, `delete` | `BATCH_TRANSITIONS`, `REPINNABLE_STATES`, `DELETABLE_STATES` |
+| `in_annotation` | `complete`, `repin`, `delete` | as above |
+| `completed` | `promote` | `PROMOTABLE_STATES` |
+
+Four of the seven change no state at all and so appear in no row of `BATCH_TRANSITIONS` — which
+is why those sets are named rather than written inline. Promotion is the clearest: it moves
+assets into the trunk and leaves the batch exactly where it was.
+
+`complete` is the one declaration that can still be refused. Completion is *derived* from the
+jobs, and a projection cannot read them, so it is declared wherever the transition table allows
+it and answers `BatchNotComplete` if the work is not done. The alternative — the same batch
+declaring differently depending on which endpoint answered — is worse than one honest caveat.
+
 ## What approval and completion announce
 
 `approve` and `complete` each publish a [domain event](events.md) — `BatchApproved`, carrying
@@ -196,6 +221,25 @@ progress and the membership rows.
 **Annotations are not touched.** They hang off assets, not off batches, so deleting the unit
 of work never deletes the work. Neither the assets nor any blob are touched either — see
 [projects.md](projects.md) for why blobs are never deleted.
+
+**A `completed` batch cannot be deleted, and no flag lifts it.**
+
+```python
+batches.delete(finished_batch_id, confirm=True)  # BatchImmutable
+```
+
+`DELETABLE_STATES` is everything else. `BATCH_TRANSITIONS` already says a completed batch has no
+exit; a delete that emptied one anyway would be an exit through the back door, and it would take
+the record with it — which assets were labeled, against which pinned schema version, and which
+were deliberately skipped. Promotion, releases and any later correction are all read against
+that.
+
+The state check runs **before** the confirmation one, so the refusal never names `confirm=True`
+as a remedy that would not work.
+
+`ConfirmationRequired` and `BatchImmutable` are two errors on purpose, and the second is not a
+subclass of the first: a caller catching "you need a flag" and retrying with the flag would
+otherwise loop, which is the shape `SchemaChangeWouldOrphan` already argues for.
 
 ## At a terminal
 
@@ -236,7 +280,9 @@ GET  /projects/{id}/batches                          → 200 BatchPage
 GET  /batches/{id}                                   → 200 BatchOut, with per-state counts
 POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
 POST /batches/{id}/start                             → 200 BatchOut
+POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut
 POST /batches/{id}/complete                          → 200 BatchOut
+POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
 GET  /batches/{id}/jobs                              → 200 JobPage
 GET  /batches/{id}/assets?limit=&offset=             → 200 BatchAssetPage
 ```

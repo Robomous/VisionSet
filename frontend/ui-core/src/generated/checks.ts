@@ -64,11 +64,17 @@ export const checkAssetProgress: Check<Schemas["AssetProgress"]> =
 export const checkAssetProgressOut: Check<Schemas["AssetProgressOut"]> =
   /*#__PURE__*/ object({ "asset_id": [true, isString], "progress": [true, checkAssetProgress] } as const);
 
+export const checkAssetAction: Check<Schemas["AssetAction"]> =
+  /*#__PURE__*/ oneOf(["annotate", "skip", "restore", "submit_for_review", "accept", "return_to_annotator"] as const);
+
 export const checkBatchAssetOut: Check<Schemas["BatchAssetOut"]> =
-  /*#__PURE__*/ object({ "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "job_id": [true, either([isString, isNull] as const)], "modality": [true, lit("image")], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkAssetAction)], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "job_id": [true, either([isString, isNull] as const)], "modality": [true, lit("image")], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
 
 export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);
+
+export const checkBatchAction: Check<Schemas["BatchAction"]> =
+  /*#__PURE__*/ oneOf(["approve", "start", "complete", "repin", "promote", "edit_membership", "delete"] as const);
 
 export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);
@@ -77,7 +83,7 @@ export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
   /*#__PURE__*/ object({ "accepted": [true, isInteger], "annotated": [true, isInteger], "review_pending": [true, isInteger], "skipped": [true, isInteger], "total": [true, isInteger], "unannotated": [true, isInteger] } as const);
 
 export const checkBatchOut: Check<Schemas["BatchOut"]> =
-  /*#__PURE__*/ object({ "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "progress": [true, checkProgressCounts], "project_id": [true, isString], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "progress": [true, checkProgressCounts], "project_id": [true, isString], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
 
 export const checkBatchPage: Check<Schemas["BatchPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchOut)], "total": [true, isInteger] } as const);
@@ -133,8 +139,11 @@ export const checkIngestJobPage: Check<Schemas["IngestJobPage"]> =
 export const checkAnnotationJobState: Check<Schemas["AnnotationJobState"]> =
   /*#__PURE__*/ oneOf(["pending", "in_progress", "completed"] as const);
 
+export const checkJobAction: Check<Schemas["JobAction"]> =
+  /*#__PURE__*/ oneOf(["start", "complete"] as const);
+
 export const checkJobOut: Check<Schemas["JobOut"]> =
-  /*#__PURE__*/ object({ "asset_count": [true, isInteger], "batch_id": [true, isString], "id": [true, isString], "state": [true, checkAnnotationJobState] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkJobAction)], "asset_count": [true, isInteger], "batch_id": [true, isString], "id": [true, isString], "state": [true, checkAnnotationJobState] } as const);
 
 export const checkJobPage: Check<Schemas["JobPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkJobOut)], "total": [true, isInteger] } as const);

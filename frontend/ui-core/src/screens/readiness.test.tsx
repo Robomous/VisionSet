@@ -16,6 +16,10 @@ import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { useActiveSchema, useBatches, useProjectReadiness, useProjectStats } from "./queries";
+import { batchActions } from "../testing/wire.fixtures.js";
+import type { components as capComponents } from "../generated/api.js";
+
+type BatchState = capComponents["schemas"]["BatchState"];
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -125,6 +129,7 @@ function batchOf(state: string): Record<string, unknown> {
       accepted: 0,
       total: 48,
     },
+    allowed_actions: batchActions(state as BatchState),
   };
 }
 
