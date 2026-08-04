@@ -130,7 +130,7 @@ import {
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { PROGRESS_LABEL } from "../screens/batchState";
 import type { LabelClassBody } from "../screens/queries";
-import { useActiveSchema, useCreateSchemaVersion } from "../screens/queries";
+import { useActiveSchema, useBatchTransition, useCreateSchemaVersion } from "../screens/queries";
 
 /** One notch, matching what a wheel step feels like on the same stage. */
 const ZOOM_STEP = 1.25;
@@ -283,6 +283,7 @@ function JobScreen({
       key={asset.id}
       jobId={jobId}
       jobState={job.data?.state ?? "pending"}
+      batchState={batch.data.state}
       projectId={batch.data.project_id}
       assetIndex={index}
       assetCount={assets.data.length}
@@ -308,6 +309,8 @@ function JobScreen({
 interface WorkspaceProps {
   readonly jobId: string;
   readonly jobState: string;
+  /** The batch's own state — `approved` means nobody has opened it for annotation yet. */
+  readonly batchState: string;
   readonly projectId: string;
   readonly assetIndex: number;
   readonly assetCount: number;
@@ -350,6 +353,7 @@ interface WorkspaceProps {
 function Workspace({
   jobId,
   jobState,
+  batchState,
   projectId,
   assetIndex,
   assetCount,
@@ -417,25 +421,60 @@ function Workspace({
   const createVersion = useCreateSchemaVersion(projectId);
   const repin = useRepinBatch(batchId);
   const setProgress = useSetAssetProgress(jobId);
+  const startBatch = useBatchTransition(batchId, "start");
   const startJob = useJobTransition(jobId, "start");
   const finishJob = useJobTransition(jobId, "complete");
 
   /**
-   * Opening a job to work on it **is** starting it.
+   * Opening a job to work on it **is** starting it — the batch first, when the
+   * batch itself has not been opened.
    *
-   * `pending → in_progress` is a move somebody has to make, and there is nobody
-   * else: the batch's own `start` moves the *batch*, not its jobs. Before #59
-   * walked the whole cycle, nothing in the browser made this move, so
-   * `JobService.complete` would have refused forever and the batch could never
-   * leave `in_annotation`.
+   * Both are moves somebody has to make, and on this path there is nobody else.
+   * The job's half is #59's finding: `pending → in_progress` was a move nothing
+   * in the browser made, so `JobService.complete` would have refused forever.
+   * The batch's half is #299's, from the other end of the lifecycle: approval
+   * cuts the jobs, so the workspace offers `Start annotating` and every tile
+   * opens here — but only the batch table's own `Start` button ever sent
+   * `POST /batches/{id}/start`, and the workspace flow bypasses the table. An
+   * `approved` batch refuses the job start *and* every save with
+   * `BATCH_NOT_IN_ANNOTATION`, which is what a person saw: a page that draws
+   * and a Save that answers a code.
    *
-   * Fired once and never retried — a second `start` is an `InvalidTransition`, and
-   * the guard is the state rather than a flag.
+   * So the two moves run in their only legal order — batch, then job once the
+   * refetched batch answers `in_annotation`. Each is sent **at most once per
+   * mounted workspace, guarded by a ref rather than by the mutation's own
+   * flags**: the flags are false again after a refusal (so the refused POST
+   * would re-fire on every re-render — a silent 409 loop), and under
+   * StrictMode's double-invoked effects they have not even updated yet between
+   * the two runs, so `isPending` cannot dedupe the send either.
+   *
+   * A refusal lands in `openingRefusal` — component state, via `mutateAsync`'s
+   * own promise — **not** in the mutation's `isError`, and that too is
+   * StrictMode's doing: the send fires from the first, throwaway effect
+   * invocation, whose observer is not the one the committed render reads, so
+   * the hook can answer idle over a mutation that really refused. The promise
+   * and the setter survive either way. It surfaces in the save-state slot
+   * below, rather than being discovered at Save.
    */
+  const [openingRefusal, setOpeningRefusal] = useState<string | null>(null);
+  const sentBatchStart = useRef(false);
+  const sentJobStart = useRef(false);
+
   useEffect(() => {
-    if (jobState !== "pending" || startJob.isPending || startJob.isSuccess) return;
-    startJob.mutate();
-  }, [jobState, startJob]);
+    if (batchState !== "approved" || sentBatchStart.current) return;
+    sentBatchStart.current = true;
+    startBatch.mutateAsync().catch((error: unknown) => {
+      setOpeningRefusal(asApiError(error).code);
+    });
+  }, [batchState, startBatch]);
+
+  useEffect(() => {
+    if (batchState !== "in_annotation" || jobState !== "pending" || sentJobStart.current) return;
+    sentJobStart.current = true;
+    startJob.mutateAsync().catch((error: unknown) => {
+      setOpeningRefusal(asApiError(error).code);
+    });
+  }, [batchState, jobState, startJob]);
 
   const plan = useMemo(() => planSave(snapshot.document, loaded), [snapshot.document, loaded]);
   const dirty = !isEmptyPlan(plan);
@@ -613,7 +652,17 @@ function Workspace({
           */}
           <AssetProgressState progress={asset.progress ?? "unannotated"} />
 
-          <SaveState dirty={dirty} pending={save.isPending} error={save.isError ? asApiError(save.error).code : null} />
+          {/*
+            The save's own refusal first; failing that, a refused opening move
+            (#299) — the batch or job start this page fires on open. Without the
+            fallback, a batch that could not be opened looks fully functional
+            until the first Save answers a code.
+          */}
+          <SaveState
+            dirty={dirty}
+            pending={save.isPending}
+            error={save.isError ? asApiError(save.error).code : openingRefusal}
+          />
 
           <Button variant="primary" size="sm" data-testid="save" disabled={!dirty || save.isPending} onClick={() => void commit()}>
             <Save className="size-4" />
