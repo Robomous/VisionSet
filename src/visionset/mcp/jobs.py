@@ -35,7 +35,7 @@ def _job_payload(service: JobService, job_id: Any) -> dict[str, Any]:
     job = service.get(job_id)
     batch = service.batch(job.id)
     return {
-        **wire.job(job, batch_id=batch.id),
+        **wire.job(job, batch_id=batch.id, batch_state=batch.state),
         "batch_state": batch.state.value,
         "schema_version": batch.schema_version,
         "progress": wire.progress_counts(service.job_progress(job.id)),

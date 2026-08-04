@@ -23,6 +23,7 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { ApproveDialog } from "./BatchLifecycle";
 import type { Batch } from "./queries";
+import { batchActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -84,6 +85,7 @@ const DRAFT: Batch = {
   state: "draft",
   schema_version: null,
   asset_count: 48,
+  allowed_actions: batchActions("draft"),
   progress: {
     unannotated: 48,
     annotated: 0,
@@ -151,7 +153,12 @@ describe("the approve dialog's refusals", () => {
   it("clears the refusal on success, closing through the ordinary path", async () => {
     on("POST", /\/approve$/, {
       status: 200,
-      body: { ...DRAFT, state: "approved", schema_version: 3 },
+      body: {
+        ...DRAFT,
+        state: "approved",
+        schema_version: 3,
+        allowed_actions: batchActions("approved"),
+      },
     });
     const closed = vi.fn();
     render(mount(<ApproveDialog batch={DRAFT} onClose={closed} onOpenSchema={vi.fn()} />));

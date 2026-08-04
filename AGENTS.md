@@ -32,6 +32,10 @@ re-run.
 | `annotator-core` | Headless annotator boundary: pure TS core, React only in adapters | `.agents/skills/frontend/annotator-core/SKILL.md` |
 | `nodejs-setup` | Node 24, pnpm workspace, filters, workspace deps | `.agents/skills/frontend/nodejs-setup/SKILL.md` |
 | `docker-dev` | Dev-only compose environment, profiles, logs | `.agents/skills/infra/docker-dev/SKILL.md` |
+| `batch-lifecycle` | Settled batch/job/asset-progress model — consult in **any** layer before touching state | `.agents/skills/domain/batch-lifecycle/SKILL.md` |
+| `ui-capabilities` | How the frontend decides what to offer, and how refusals surface | `.agents/skills/frontend/ui-capabilities/SKILL.md` |
+| `information-architecture` | The canonical sitemap: routes, tabs, entry points, back-links | `.agents/skills/frontend/information-architecture/SKILL.md` |
+| `refactor-protocol` | Execution rules for any implementation task: worktree, scope, tests, PR/CI | `.agents/skills/process/refactor-protocol/SKILL.md` |
 
 ### Auto-invoke
 
@@ -48,6 +52,10 @@ Read the skill **before** writing code in that area.
 | Annotation/canvas interaction, geometry, undo/redo, render adapters | `annotator-core` |
 | Installing packages or running frontend scripts | `nodejs-setup` |
 | Starting or debugging Docker | `docker-dev` |
+| Starting **any** implementation task, before the first edit | `refactor-protocol` |
+| Reading or writing batch state, job state, asset progress, promotion, schema pinning — in any layer | `batch-lifecycle` |
+| Rendering a state-gated action, a mutation hook, or error/success feedback | `ui-capabilities` |
+| Adding, moving, or removing a route, tab, screen, nav entry, or cross-screen link | `information-architecture` |
 
 ## Project overview
 

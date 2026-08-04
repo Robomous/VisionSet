@@ -157,8 +157,12 @@ def list_batch_jobs(workspace: WorkspaceDep, batch_id: UUID) -> JobPage:
     Empty until the batch is approved — a draft has no jobs — and a 200 either
     way.
     """
-    found = BatchService(workspace).jobs(batch_id)
-    return JobPage(items=[JobOut.of(job, batch_id=batch_id) for job in found], total=len(found))
+    batches = BatchService(workspace)
+    # The batch itself, not only the id its path already carries: both job actions
+    # need the batch open, so ``allowed_actions`` cannot be answered without it.
+    batch = batches.get(batch_id)
+    found = batches.jobs(batch_id)
+    return JobPage(items=[JobOut.of(job, batch=batch) for job in found], total=len(found))
 
 
 @router.get("/{batch_id}/assets", responses=documented(404))
@@ -180,6 +184,7 @@ def list_batch_assets(
     `GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.
     """
     batches = BatchService(workspace)
+    batch = batches.get(batch_id)
     found = batches.assets(batch_id)
     # Two reads and a projection, not a join. ``jobs`` already carries the
     # per-asset progress map that approval wrote, so where an asset has got to is
@@ -193,7 +198,9 @@ def list_batch_assets(
     items = []
     for asset in window(found, limit=limit, offset=offset):
         job_id, progress = placement.get(asset.id, (None, None))
-        items.append(BatchAssetOut.in_batch(asset, job_id=job_id, progress=progress))
+        items.append(
+            BatchAssetOut.in_batch(asset, job_id=job_id, progress=progress, batch_state=batch.state)
+        )
     return BatchAssetPage(items=items, total=len(found))
 
 

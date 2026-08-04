@@ -189,6 +189,40 @@ the 409 is resending the *identical* request with one extra parameter. The route
 pre-check either one: the flag goes to the SDK and the SDK's refusal is what carries
 `CONFIRMATION_REQUIRED` or `DESTRUCTIVE_SCHEMA_CHANGE`.
 
+**A stateful resource declares what it allows.** `BatchOut`, `JobOut` and `BatchAssetOut` each
+carry `allowed_actions` — a list of names, closed and published in the spec as `BatchAction`,
+`JobAction` and `AssetAction`.
+
+```
+GET /batches/{id}   →  { "state": "in_annotation",
+                         "allowed_actions": ["complete", "repin", "delete"], … }
+```
+
+**A client renders these; it never computes them.** Re-deriving the rules from `state` and
+`progress` is what the browser used to do, and its copy drifted by dropping the batch-state
+dimension — which is why skipping a frame was offered on a batch the kernel refused every write
+into. If an action you need is missing, the fix is in the projection, never a second copy of the
+rule.
+
+The declarations come from `kernel/domain/capabilities.py`, which reads the same transition
+tables and named sets the services enforce with;
+`tests/kernel/test_capabilities.py` drives both halves over a real workspace for every reachable
+state, so the two cannot move apart.
+
+Two of them are worth reading precisely:
+
+- **`complete` on a batch is declared from the transition table alone**, so it can still answer
+  409 `BATCH_NOT_COMPLETE`: completion is derived from the jobs, which is a read the projection
+  does not make. Read it as *this batch is at the point where completing is the next move*. A
+  job's `complete` carries no such caveat — a job ships its own per-asset tally, so the
+  `SETTLED_PROGRESS` condition is applied.
+- **`annotate` on a batch asset is the right to write labels**, not a progress move: it is
+  declared exactly when `POST /jobs/{id}/annotations` will be accepted. An annotator deciding
+  whether to open in edit mode should read this rather than infer it.
+
+An empty list is normal and means what it says. Every asset of a `completed` batch declares
+nothing, because nothing may be written into a batch that has closed.
+
 **Statuses.** 201 with the created resource in the body; 200 for a read or an update; 204 with an
 empty body for a delete. And **202 when the work has not happened yet** — see below.
 

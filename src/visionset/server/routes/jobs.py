@@ -54,7 +54,7 @@ def get_job(workspace: WorkspaceDep, job_id: UUID) -> JobOut:
     job's work is judged against, which a job id alone does not.
     """
     jobs = JobService(workspace)
-    return JobOut.of(jobs.get(job_id), batch_id=jobs.batch(job_id).id)
+    return JobOut.of(jobs.get(job_id), batch=jobs.batch(job_id))
 
 
 @router.get("/{job_id}/progress", responses=documented(404))
@@ -75,7 +75,7 @@ def start_job(workspace: WorkspaceDep, job_id: UUID) -> JobOut:
     `BATCH_NOT_IN_ANNOTATION`.
     """
     jobs = JobService(workspace)
-    return JobOut.of(jobs.start(job_id), batch_id=jobs.batch(job_id).id)
+    return JobOut.of(jobs.start(job_id), batch=jobs.batch(job_id))
 
 
 @router.post("/{job_id}/complete", responses=documented(404, 409))
@@ -91,7 +91,7 @@ def complete_job(workspace: WorkspaceDep, job_id: UUID) -> JobOut:
     derives that from all of them.
     """
     jobs = JobService(workspace)
-    return JobOut.of(jobs.complete(job_id), batch_id=jobs.batch(job_id).id)
+    return JobOut.of(jobs.complete(job_id), batch=jobs.batch(job_id))
 
 
 @router.get("/{job_id}/next", responses=documented(404))

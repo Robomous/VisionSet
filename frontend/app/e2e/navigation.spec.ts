@@ -19,6 +19,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
+import { assetActions, batchActions, jobActions } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -81,7 +82,15 @@ async function serveApi(page: Page): Promise<void> {
       });
     }
     if (path === `/jobs/${JOB}`) {
-      return route.fulfill({ json: { id: JOB, batch_id: BATCH, state: "in_progress", asset_count: 1 } });
+      return route.fulfill({
+        json: {
+          id: JOB,
+          batch_id: BATCH,
+          state: "in_progress",
+          asset_count: 1,
+          allowed_actions: jobActions("in_progress"),
+        },
+      });
     }
     if (path === `/jobs/${JOB}/progress`) return route.fulfill({ json: { ...NO_PROGRESS, unannotated: 1, total: 1 } });
     if (path === `/batches/${BATCH}`) {
@@ -91,6 +100,7 @@ async function serveApi(page: Page): Promise<void> {
           project_id: PROJECT,
           name: "drive-01",
           state: "in_annotation",
+          allowed_actions: batchActions("in_annotation"),
           schema_version: 1,
           asset_count: 1,
           progress: { ...NO_PROGRESS, unannotated: 1, total: 1 },
@@ -116,6 +126,7 @@ async function serveApi(page: Page): Promise<void> {
               ingested_at: null,
               job_id: JOB,
               progress: "unannotated",
+              allowed_actions: assetActions("unannotated"),
             },
           ],
           total: 1,

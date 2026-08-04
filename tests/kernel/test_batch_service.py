@@ -15,6 +15,7 @@ import pytest
 
 from visionset.kernel import (
     AssetNotFound,
+    BatchImmutable,
     BatchNotComplete,
     BatchNotEditable,
     BatchNotFound,
@@ -470,6 +471,32 @@ def test_deleting_an_unknown_batch_is_refused_with_or_without_confirmation(
     for confirm in (False, True):
         with pytest.raises(BatchNotFound):
             fixture.batches.delete(uuid4(), confirm=confirm)
+    fixture.close()
+
+
+def test_a_completed_batch_cannot_be_deleted_and_no_flag_lifts_it(tmp_path: Path) -> None:
+    """`BATCH_TRANSITIONS` says completed has no exit; delete is not a back door."""
+    fixture = Fixture(tmp_path)
+    batch_id = fixture.in_state(BatchState.COMPLETED)
+
+    for confirm in (False, True):
+        with pytest.raises(BatchImmutable, match="completed"):
+            fixture.batches.delete(batch_id, confirm=confirm)
+
+    assert fixture.batches.get(batch_id).state is BatchState.COMPLETED
+    fixture.close()
+
+
+@pytest.mark.parametrize("state", [BatchState.DRAFT, BatchState.APPROVED, BatchState.IN_ANNOTATION])
+def test_every_other_state_still_deletes(tmp_path: Path, state: BatchState) -> None:
+    """The guard is `DELETABLE_STATES`, not a blanket new obstacle."""
+    fixture = Fixture(tmp_path)
+    batch_id = fixture.in_state(state)
+
+    fixture.batches.delete(batch_id, confirm=True)
+
+    with pytest.raises(BatchNotFound):
+        fixture.batches.get(batch_id)
     fixture.close()
 
 

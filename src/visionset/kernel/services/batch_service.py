@@ -38,6 +38,8 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     BATCH_TRANSITIONS,
+    DELETABLE_STATES,
+    EDITABLE_STATES,
     REPINNABLE_STATES,
     AnnotationJob,
     AnnotationJobState,
@@ -58,16 +60,17 @@ from visionset.kernel.domain import (
     normalize_name,
     partition_assets,
     require_move,
+    require_state,
 )
 from visionset.kernel.errors import (
     AssetNotFound,
+    BatchImmutable,
     BatchNotComplete,
     BatchNotEditable,
     BatchNotFound,
     ConfirmationRequired,
     DestructiveSchemaChange,
     EmptyBatch,
-    InvalidTransition,
     ProjectNotFound,
     SchemaChangeWouldOrphan,
     WorkspaceCorrupt,
@@ -310,12 +313,12 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
-            if batch.state not in REPINNABLE_STATES:
-                legal = ", ".join(sorted(state.value for state in REPINNABLE_STATES))
-                raise InvalidTransition(
-                    f"{_subject(batch)} is {batch.state.value!r}, so its schema pin cannot "
-                    f"move; re-pinning is only legal while a batch is {legal}"
-                )
+            require_state(
+                REPINNABLE_STATES,
+                batch.state,
+                _subject(batch),
+                refusal="its schema pin cannot move",
+            )
 
             active = self._schemas.require_active(uow, batch.project_id)
             # A draft cannot reach here, so the pin is set — but the read is a
@@ -374,12 +377,24 @@ class BatchService:
         assets, not off batches, so deleting the unit of work never deletes the
         work. Neither are the assets themselves, nor any blob.
 
+        A ``completed`` batch cannot be deleted at all, and no flag lifts it. The
+        state check comes **before** the confirmation one, because a refusal
+        naming ``confirm=True`` as the remedy would be naming a flag that does
+        not work — the ``NotAWorkspace`` mistake, one service over.
+
         Raises:
             BatchNotFound: no such batch in this workspace.
+            BatchImmutable: the batch is ``completed``.
             ConfirmationRequired: ``confirm`` was not ``True``.
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
+            if batch.state not in DELETABLE_STATES:
+                raise BatchImmutable(
+                    f"batch {batch.name!r} is {batch.state.value!r} and cannot be deleted; a "
+                    f"completed batch is the record of what was labeled, against which schema "
+                    f"version, and what was deliberately skipped"
+                )
             if not confirm:
                 raise ConfirmationRequired(
                     f"deleting batch {batch.name!r} destroys its task groups and jobs, including "
@@ -490,7 +505,7 @@ class BatchService:
             BatchNotEditable: the batch is past ``draft``.
         """
         batch = self.require_batch(uow, batch_id)
-        if batch.state is not BatchState.DRAFT:
+        if batch.state not in EDITABLE_STATES:
             raise BatchNotEditable(
                 f"batch {batch.name!r} is {batch.state.value!r}, so its membership is frozen; "
                 f"after approval an asset is excluded by marking it skipped, never by removing it"

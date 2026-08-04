@@ -11,9 +11,26 @@ from visionset.kernel.domain.annotation import Annotation, Provenance
 from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
+    DELETABLE_STATES,
+    EDITABLE_STATES,
+    PROMOTABLE_STATES,
     REPINNABLE_STATES,
     Batch,
     BatchState,
+)
+from visionset.kernel.domain.capabilities import (
+    ASSET_MOVES,
+    BATCH_GATES,
+    BATCH_MOVES,
+    JOB_MOVES,
+    UNNAMED_EDGES,
+    AssetAction,
+    BatchAction,
+    JobAction,
+    Move,
+    asset_actions,
+    batch_actions,
+    job_actions,
 )
 from visionset.kernel.domain.dataset import (
     ClassCount,
@@ -104,6 +121,7 @@ from visionset.kernel.domain.task import (
     JOB_TRANSITIONS,
     PROMOTABLE_PROGRESS,
     SETTLED_PROGRESS,
+    WRITABLE_PROGRESS,
     AnnotationJob,
     AnnotationJobState,
     AssetProgress,
@@ -118,21 +136,37 @@ from visionset.kernel.domain.token import (
     generate_secret,
     hash_secret,
 )
-from visionset.kernel.domain.transitions import require_move
+from visionset.kernel.domain.transitions import require_move, require_state
 from visionset.kernel.domain.workspace import Workspace
 
 __all__ = [
+    "job_actions",
+    "batch_actions",
+    "asset_actions",
+    "Move",
+    "JobAction",
+    "BatchAction",
+    "AssetAction",
+    "UNNAMED_EDGES",
+    "JOB_MOVES",
+    "BATCH_MOVES",
+    "BATCH_GATES",
+    "ASSET_MOVES",
     "ASSET_PROGRESS_TRANSITIONS",
     "BATCH_TRANSITIONS",
+    "DELETABLE_STATES",
+    "EDITABLE_STATES",
     "IMPLEMENTED_GEOMETRIES",
     "INGEST_TRANSITIONS",
     "JOB_TRANSITIONS",
     "MANIFEST_VERSION",
     "PROMOTABLE_PROGRESS",
+    "PROMOTABLE_STATES",
     "REPINNABLE_STATES",
     "SECRET_BYTES",
     "SECRET_PREFIX",
     "SETTLED_PROGRESS",
+    "WRITABLE_PROGRESS",
     "Annotation",
     "AnnotationJob",
     "AnnotationJobState",
@@ -210,5 +244,6 @@ __all__ = [
     "partition_assets",
     "progress_after_annotating",
     "require_move",
+    "require_state",
     "sha256_hex",
 ]

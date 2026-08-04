@@ -27,6 +27,7 @@ import { DatasetScreen } from "./DatasetScreen";
 import { GalleryScreen } from "./GalleryScreen";
 import { IngestScreen } from "./IngestScreen";
 import { ProjectScreen } from "./ProjectScreen";
+import { batchActions } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -82,6 +83,7 @@ function answer(path: string): unknown {
       schema_version: 1,
       asset_count: 0,
       progress: NO_PROGRESS,
+      allowed_actions: batchActions("in_annotation"),
     };
   }
   if (path === `/batches/${BATCH}/assets`) return { items: [], total: 0 };

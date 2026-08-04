@@ -35,6 +35,12 @@ import { writeToken } from "../data/session";
 import { BatchesScreen } from "./BatchesScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { GalleryScreen, columnsFor } from "./GalleryScreen";
+import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import type { components } from "../generated/api.js";
+
+type BatchState = components["schemas"]["BatchState"];
+type JobState = components["schemas"]["AnnotationJobState"];
+type Progress = components["schemas"]["AssetProgress"];
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -103,6 +109,10 @@ const NO_PROGRESS = {
 };
 
 function batch(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  // The server derives `allowed_actions` from the state; the mock transcribes
+  // it, so a payload here is one the API could really have sent. An override
+  // still wins — it comes after the spread.
+  const state = (overrides.state as BatchState | undefined) ?? "draft";
   return {
     id: BATCH,
     project_id: PROJECT,
@@ -111,6 +121,7 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
     schema_version: null,
     asset_count: 120,
     progress: { ...NO_PROGRESS, unannotated: 120, total: 120 },
+    allowed_actions: batchActions(state),
     ...overrides,
   };
 }
@@ -295,6 +306,9 @@ describe("the gallery", () => {
       ingested_at: "2026-08-01T09:00:00Z",
       job_id: null,
       progress: "unannotated",
+      allowed_actions: assetActions(
+        (overrides.progress as Progress | null | undefined) ?? "unannotated",
+      ),
       ...overrides,
     };
   }
@@ -756,7 +770,13 @@ describe("finishing a batch", () => {
   }
 
   function job(at: number, state: string): Record<string, unknown> {
-    return { id: `job-${at}`, batch_id: BATCH, state, asset_count: 48 };
+    return {
+      id: `job-${at}`,
+      batch_id: BATCH,
+      state,
+      asset_count: 48,
+      allowed_actions: jobActions(state as JobState),
+    };
   }
 
   function jobsAre(...states: string[]): void {
@@ -924,6 +944,7 @@ describe("the bulk bar", () => {
       ingested_at: "2026-08-01T09:00:00Z",
       job_id: JOB,
       progress,
+      allowed_actions: assetActions(progress as Progress),
     };
   }
 
@@ -1092,6 +1113,7 @@ describe("the gallery header's way into the annotator", () => {
         ingested_at: "2026-08-01T09:00:00Z",
         job_id: JOB,
         progress,
+        allowed_actions: assetActions(progress as Progress),
       })),
     };
   }

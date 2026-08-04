@@ -271,6 +271,25 @@ class BatchNotEditable(VisionSetError):
     """
 
 
+class BatchImmutable(VisionSetError):
+    """A completed batch was told to delete itself.
+
+    ``DELETABLE_STATES`` is everything except ``completed``, and this holds
+    **regardless of ``confirm``** — confirmation is for destroying something the
+    caller is allowed to destroy, and answering ``ConfirmationRequired`` here
+    would name a flag that does not work.
+
+    ``BATCH_TRANSITIONS`` already says a completed batch has no exit. A delete
+    that emptied one anyway would be an exit through the back door, and it would
+    take the record with it: which assets were labeled, against which pinned
+    schema version, and which were deliberately skipped. Releases, promotion and
+    any later correction are all read against that.
+
+    Separate from ``BatchNotEditable``, which is about *membership* in a batch
+    that is very much still alive. This one says the batch itself stays.
+    """
+
+
 class EmptyBatch(VisionSetError):
     """Approval was asked for on a batch with no assets.
 
@@ -337,6 +356,29 @@ class AssetNotInJob(VisionSetError):
 
     A job's assets are fixed at approval, when the batch was partitioned. An
     asset outside that segment belongs to a different job, or to no job at all.
+    """
+
+
+class AssetNotWritable(VisionSetError):
+    """Labels were written onto an asset whose progress says labeling is over.
+
+    ``WRITABLE_PROGRESS`` is the two states this allows — ``unannotated`` and
+    ``annotated`` — and the other three each record a decision: skipped, awaiting
+    review, accepted by one. The write is refused rather than stored, because
+    stored is worse: a ``skipped`` asset is left out of ``PROMOTABLE_PROGRESS``,
+    so the labels would be accepted, kept, and then dropped at promotion with
+    nothing telling anybody it happened.
+
+    Not a ``BatchNotInAnnotation``, though the two fire on the same call and one
+    reads much like the other. That one is about the *batch* — nobody opened it —
+    and its remedy is to start it. This one is about *this asset* inside an open
+    batch, and its remedy is to move the progress back where the transition table
+    allows (``skipped -> unannotated``) or, where it does not, to correct the work
+    in a new batch rather than behind the record's back.
+
+    Not an ``InvalidAnnotation`` either: nothing is wrong with the annotation.
+    Catching that base is safe precisely because every member of it is a defect
+    in the payload, and this is a defect in the timing.
     """
 
 

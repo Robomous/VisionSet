@@ -60,6 +60,54 @@ deliberately instead of falling into a set by arithmetic.
 """
 
 
+EDITABLE_STATES: Final[frozenset[BatchState]] = frozenset({BatchState.DRAFT})
+"""The states in which a batch's membership may still be changed.
+
+What ``BatchService.require_draft`` consults, and therefore what gates
+``add_assets``, ``remove_assets`` and an ingest that targets an existing batch.
+One member today, and named rather than written inline anyway: membership
+editability is a fact about a batch that something other than the service asks
+about — a client deciding whether to offer the control — and two spellings of it
+is exactly how the browser's copy of these rules drifted from the kernel's.
+
+The refusal is ``BatchNotEditable`` rather than ``InvalidTransition``, which is
+why this set is consulted beside :func:`require_move` rather than through it:
+nothing is transitioning, and that error's docstring owns the reason.
+"""
+
+
+PROMOTABLE_STATES: Final[frozenset[BatchState]] = frozenset({BatchState.COMPLETED})
+"""The states from which a batch's assets may enter the project's Dataset.
+
+What ``DatasetService.promote`` consults. Promotion is deliberately **not** a
+transition — it moves assets into the trunk and leaves the batch exactly where it
+was, so it appears in no row of ``BATCH_TRANSITIONS`` and needs a set of its own
+to be answerable at all.
+
+The asset-level counterpart is ``PROMOTABLE_PROGRESS`` in ``domain/task.py``, and
+the two are read together: this says which batches may promote, that says which
+of their assets go. The refusal here is ``BatchNotComplete``.
+"""
+
+
+DELETABLE_STATES: Final[frozenset[BatchState]] = frozenset(
+    {BatchState.DRAFT, BatchState.APPROVED, BatchState.IN_ANNOTATION}
+)
+"""The states in which a batch may be deleted.
+
+Everything except ``completed``, and written out rather than as a subtraction for
+``PROMOTABLE_PROGRESS``' reason. A completed batch is the record of finished
+work — which assets were labeled, against which pinned schema version, and which
+were deliberately skipped — and that record is what promotion, releases and any
+later correction are read against. ``BATCH_TRANSITIONS`` already says a completed
+batch has no exit; a delete that emptied it anyway would be an exit through the
+back door, so the guard is here rather than in a caller's discipline.
+
+The refusal is ``BatchImmutable``, and it holds regardless of ``confirm``:
+confirmation is for destroying something the caller is allowed to destroy.
+"""
+
+
 class Batch(BaseModel):
     """A curated slice of a Project's assets that moves through annotation together.
 
