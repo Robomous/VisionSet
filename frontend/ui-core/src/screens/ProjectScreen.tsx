@@ -283,7 +283,13 @@ export function ProjectScreen({
 
         {onOpenBatch !== undefined && (
           <TabsContent value="batches">
-            <BatchesScreen projectId={projectId} onOpenBatch={onOpenBatch} />
+            <BatchesScreen
+              projectId={projectId}
+              onOpenBatch={onOpenBatch}
+              {...(onTabChange === undefined
+                ? {}
+                : { onOpenSchema: () => onTabChange("schema") })}
+            />
           </TabsContent>
         )}
 

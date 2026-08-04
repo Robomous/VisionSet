@@ -39,14 +39,21 @@ import { FieldError } from "../primitives/Input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
 import { BATCH_STATE_VARIANT } from "./batchState";
+import { SchemaForeshadow } from "./SchemaForeshadow";
 import { useBatchTransition, useBatches, usePromoteBatch, type Batch } from "./queries";
 
 export interface BatchesScreenProps {
   readonly projectId: string;
   readonly onOpenBatch: (batchId: string) => void;
+  /** Where "define your labels" goes — the schema tab, as the host spells it. */
+  readonly onOpenSchema?: () => void;
 }
 
-export function BatchesScreen({ projectId, onOpenBatch }: BatchesScreenProps): JSX.Element {
+export function BatchesScreen({
+  projectId,
+  onOpenBatch,
+  onOpenSchema,
+}: BatchesScreenProps): JSX.Element {
   const batches = useBatches(projectId);
   const [approving, setApproving] = useState<Batch | null>(null);
 
@@ -61,6 +68,13 @@ export function BatchesScreen({ projectId, onOpenBatch }: BatchesScreenProps): J
           </p>
         </div>
       </header>
+
+      {/* Approval is where the schema gate refuses (#290) — this is the same
+          fact, said while there is still time to act on it cheaply. */}
+      <SchemaForeshadow
+        projectId={projectId}
+        {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+      />
 
       <Async
         query={batches}

@@ -837,3 +837,56 @@ describe("what a settled run offers next", () => {
     );
   });
 });
+
+describe("the labels foreshadowing banner (#290)", () => {
+  /** The readiness sources beside the screen's own project and batches reads. */
+  function withSchema(exists: boolean): void {
+    on(
+      "GET",
+      /^\/projects\/[^/]+\/schema$/,
+      exists
+        ? { status: 200, body: { project_id: PROJECT, version: 1, classes: [] } }
+        : { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none yet" } },
+    );
+    on("GET", /\/stats$/, {
+      status: 200,
+      body: {
+        project_id: PROJECT,
+        asset_count: 0,
+        annotated_asset_count: 0,
+        annotation_count: 0,
+        class_count: 0,
+        annotated_pct: 0,
+        classes: [],
+        last_ingest_at: null,
+      },
+    });
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+  }
+
+  it("warns while the project has no labels, and the link goes to the schema", async () => {
+    withSchema(false);
+    const opened = vi.fn();
+    render(mount(<IngestScreen projectId={PROJECT} onOpenSchema={opened} />));
+
+    const banner = await screen.findByTestId("schema-foreshadow");
+    // Foreshadowing, not a gate: ingest itself stays fully usable.
+    expect(banner.textContent).toContain("You can ingest now");
+    expect(screen.getByTestId("dropzone")).not.toBeNull();
+    await userEvent.click(screen.getByTestId("foreshadow-schema"));
+    expect(opened).toHaveBeenCalledOnce();
+  });
+
+  it("says nothing once a schema exists", async () => {
+    withSchema(true);
+    render(mount(<IngestScreen projectId={PROJECT} onOpenSchema={vi.fn()} />));
+
+    await waitFor(() =>
+      expect(sent.some((request) => request.url.endsWith("/schema"))).toBe(true),
+    );
+    await waitFor(() =>
+      expect(sent.some((request) => request.url.endsWith("/stats"))).toBe(true),
+    );
+    expect(screen.queryByTestId("schema-foreshadow")).toBeNull();
+  });
+});
