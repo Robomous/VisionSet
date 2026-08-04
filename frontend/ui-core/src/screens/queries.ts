@@ -1160,6 +1160,16 @@ export interface ProjectReadiness {
   readonly annotatedPct: number;
   /** The header's filter (`ProjectScreen`): the one state an annotation may be written into. */
   readonly hasBatchInAnnotation: boolean;
+  /**
+   * Whether this project has ever published a release — the journey's exit.
+   *
+   * The two-hop read (project → dataset → releases) that v1 left out. It is free
+   * now rather than merely affordable: the Overview dashboard shows the latest
+   * release and the trunk's size, so both requests are already in flight, and
+   * asking the server for a *third* spelling of the same fact would be the drift
+   * shape this whole audit was about.
+   */
+  readonly hasReleases: boolean;
   readonly currentStep: JourneyStep;
 }
 
@@ -1199,19 +1209,26 @@ export interface ProjectReadiness {
  * work is still open even when the percentage says otherwise); `export` after
  * that. `export` leans on `annotated_pct` as a proxy for the journey's end.
  *
- * TODO(#288): `"done"` is declared but not yet derivable — it needs
- * `hasReleases`, which is a two-hop read (project → dataset → releases), and an
- * ingest-in-flight signal, for which no project-scoped ingest-jobs hook exists
- * on the wire client. Both are deliberately out of v1.
+ * `"done"` is derivable now: `hasReleases` closes it. The two-hop read the TODO
+ * warned about (project → dataset → releases) costs nothing here, because the
+ * Overview dashboard already makes both requests to show the trunk's size and the
+ * latest release — so this reads what is on screen rather than asking a fourth
+ * time. An ingest-in-flight signal is still absent and still out of scope.
  */
 export function useProjectReadiness(projectId: string): ProjectReadiness | null {
   const schema = useActiveSchema(projectId);
   const stats = useProjectStats(projectId);
   const batches = useBatches(projectId);
+  const dataset = useProjectDataset(projectId);
+  const releases = useReleases(dataset.data?.id);
 
   const schemaless = schema.isError && asApiError(schema.error).code === "SCHEMA_NOT_FOUND";
   if (stats.data === undefined || batches.data === undefined) return null;
   if (schema.data === undefined && !schemaless) return null;
+  // The releases hook is `enabled` on the dataset id, so it stays pending until
+  // that lands — waiting on it explicitly is what keeps `currentStep` from
+  // reporting `export` for one render on a project that has already finished.
+  if (releases.data === undefined) return null;
 
   const hasSchema = !schemaless;
   const hasAssets = stats.data.asset_count > 0;
@@ -1220,13 +1237,25 @@ export function useProjectReadiness(projectId: string): ProjectReadiness | null 
   const hasBatchInAnnotation = batches.data.items.some((one) => one.state === "in_annotation");
   const unfinishedBatch = batches.data.items.some((one) => one.state !== "completed");
 
+  const hasReleases = releases.data.items.length > 0;
+
   const currentStep: JourneyStep = !hasSchema
     ? "labels"
     : !hasAssets
       ? "images"
       : annotatedPct === 0 || unfinishedBatch
         ? "annotate"
-        : "export";
+        : hasReleases
+          ? "done"
+          : "export";
 
-  return { hasSchema, hasAssets, hasAnnotations, annotatedPct, hasBatchInAnnotation, currentStep };
+  return {
+    hasSchema,
+    hasAssets,
+    hasAnnotations,
+    annotatedPct,
+    hasBatchInAnnotation,
+    hasReleases,
+    currentStep,
+  };
 }

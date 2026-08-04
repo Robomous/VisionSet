@@ -75,6 +75,28 @@ export function writePref(key: string, value: string): void {
  * the density ladder and render a grid with `undefined` columns — so anything not
  * in `allowed` falls back to `fallback` rather than being coerced.
  */
+/**
+ * Forget every preference, for a test that must not inherit the last one's.
+ *
+ * The in-memory mirror is why this exists: `writePref` keeps one beside storage
+ * so a browser refusing `sessionStorage` still remembers within a session, and
+ * clearing the store alone leaves that mirror holding the old answer. A test
+ * that cleared only the store would pass alone and fail in a suite.
+ */
+export function clearPrefs(): void {
+  inMemory.clear();
+  const store = storage();
+  if (store === null) return;
+  try {
+    for (const key of Object.keys({ ...store })) {
+      if (key.startsWith(PREFIX)) store.removeItem(key);
+    }
+  } catch {
+    // A store that refuses to enumerate has nothing to clear that the mirror
+    // above does not already cover.
+  }
+}
+
 export function readStep(key: string, allowed: readonly number[], fallback: number): number {
   const stored = readPref(key);
   if (stored === null) return fallback;
