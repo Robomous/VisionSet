@@ -59,6 +59,7 @@ import {
   batchStateLabel,
   earliestArrival,
   inSegment,
+  hasJobs,
   isApprovable,
   mayHaveAnnotations,
   progressDot,
@@ -82,21 +83,42 @@ import {
 } from "./queries";
 
 /**
- * The density ladder: five steps, as minimum column widths in CSS pixels.
+ * The density ladder: four steps, as minimum column widths in CSS pixels.
  *
  * Minimums rather than fixed sizes, because the grid is `auto-fill` +
  * `minmax(step, 1fr)` — the tiles stretch to fill whatever is left over, so the
  * last column is never a ragged gap. The old screen's fixed 160 is step 1, which
  * is one notch below the default: the point of the change is that the grid gets
  * the width it never had.
+ *
+ * There was a fifth step at 320 and it is gone. Four tiles across a wide pane is
+ * a contact sheet with very little contact — past about 260 the grid stops being
+ * a way to scan a batch and becomes a slideshow, and a ladder rung nobody has a
+ * use for is a rung somebody has to try before finding that out. `readStep`
+ * refuses a stored `4` from a build that had one, so the setting degrades to the
+ * default rather than indexing off the end.
  */
-const DENSITY_STEPS = [120, 160, 200, 260, 320] as const;
-const DENSITY_INDEXES = [0, 1, 2, 3, 4] as const;
+const DENSITY_STEPS = [120, 160, 200, 260] as const;
+const DENSITY_INDEXES = [0, 1, 2, 3] as const;
 const DEFAULT_DENSITY = 2;
 const DENSITY_PREF = "gallery.density";
 const GAP = 12;
-/** A tile is 4:3 plus a caption line, which is what the virtualizer estimates with. */
+/**
+ * Roughly how tall a tile's caption is, used only to seed the first estimate.
+ *
+ * The virtualizer measures the real rows once they exist (`measureElement`), so
+ * this being a little wrong costs a reflow rather than a wrong layout — which is
+ * the whole reason it is allowed to be approximate.
+ */
 const CAPTION = 28;
+/** Tiles are 4:3. The one place that ratio is written as a number. */
+const TILE_ASPECT = 3 / 4;
+
+/** Which of the three selection gestures a press was. */
+interface Modifiers {
+  readonly shift: boolean;
+  readonly meta: boolean;
+}
 
 export interface GalleryScreenProps {
   readonly projectId: string;
@@ -135,7 +157,6 @@ export function GalleryScreen({
   const anchor = useRef<number | null>(null);
 
   const minColumn = DENSITY_STEPS[density] ?? DENSITY_STEPS[DEFAULT_DENSITY];
-  const rowHeight = Math.round((minColumn * 3) / 4) + CAPTION + GAP;
 
   const loaded = useMemo(
     () => (assets.data?.pages ?? []).flatMap((page) => page.items),
@@ -147,8 +168,16 @@ export function GalleryScreen({
     [loaded, segment],
   );
 
-  const { columns, grid, attach } = useColumns(minColumn);
+  const { columns, columnWidth, grid, attach } = useColumns(minColumn);
   const rows = Math.ceil(shown.length / columns);
+  // **From the measured column, never from the minimum.** The grid is
+  // `auto-fill` + `1fr`, so a tile is as wide as the leftover space makes it —
+  // which at few columns is far wider than `minColumn`. Estimating a 4:3 tile's
+  // height from the minimum therefore under-counts by up to ~190px at the widest
+  // step, and since the virtualizer positions rows `estimateSize` apart, the
+  // rows overlapped. Measured overlap before this fix: 37px at the narrowest
+  // step and 191px at the widest.
+  const rowHeight = Math.round(columnWidth * TILE_ASPECT) + CAPTION + GAP;
 
   const virtualizer = useWindowVirtualizer({
     count: rows,
@@ -204,7 +233,7 @@ export function GalleryScreen({
    * range resolved through ids would sweep across whatever the filter is hiding.
    */
   const toggle = useCallback(
-    (index: number, modifiers: { readonly shift: boolean; readonly meta: boolean }) => {
+    (index: number, modifiers: Modifiers) => {
       setSelected((current) => {
         const at = shown[index];
         if (at === undefined) return current;
@@ -236,10 +265,13 @@ export function GalleryScreen({
     [shown],
   );
 
-  const counts =
-    batch.data === undefined
-      ? { all: total, unannotated: total, review: 0, done: 0 }
-      : segmentCounts(batch.data.progress);
+  // Before approval there are no jobs, so there is no progress to describe, no
+  // states to filter between and nothing a selection could act on. Everything
+  // downstream of this is hidden rather than rendered as zero — see `hasJobs`.
+  const working = hasJobs(batch.data?.state);
+  const counts = batch.data === undefined
+    ? { all: total, unannotated: total, review: 0, done: 0 }
+    : segmentCounts(batch.data.progress);
 
   return (
     <div className="flex flex-col gap-4" data-testid="gallery">
@@ -248,6 +280,7 @@ export function GalleryScreen({
       <BatchHeader
         batch={batch.data}
         assets={loaded}
+        working={working}
         onApprove={() => setApproving(true)}
         {...(onOpenAsset === undefined
           ? {}
@@ -267,18 +300,21 @@ export function GalleryScreen({
         onSegment={setSegment}
         density={density}
         onDensity={chooseDensity}
+        showSegments={working}
       />
 
-      <Timeline
-        assets={loaded}
-        highlighted={highlighted}
-        onPick={(assetId) => {
-          const at = shown.findIndex((one) => one.id === assetId);
-          if (at < 0) return;
-          virtualizer.scrollToIndex(Math.floor(at / columns), { align: "center" });
-          setHighlighted(assetId);
-        }}
-      />
+      {working && (
+        <Timeline
+          assets={loaded}
+          highlighted={highlighted}
+          onPick={(assetId) => {
+            const at = shown.findIndex((one) => one.id === assetId);
+            if (at < 0) return;
+            virtualizer.scrollToIndex(Math.floor(at / columns), { align: "center" });
+            setHighlighted(assetId);
+          }}
+        />
+      )}
 
       <Async
         query={assets}
@@ -314,11 +350,22 @@ export function GalleryScreen({
                 {virtualRows.map((row) => (
                   <div
                     key={row.key}
+                    // Measured rather than trusted. The estimate above is exact
+                    // for the picture and approximate for the caption, and this
+                    // is what makes the difference a reflow instead of an
+                    // overlap: the virtualizer replaces the estimate with the
+                    // row's real height as soon as one is rendered.
+                    ref={virtualizer.measureElement}
+                    data-index={row.index}
                     data-testid={`gallery-row-${row.index}`}
                     className="absolute left-0 grid w-full gap-3"
                     style={{
                       top: row.start - virtualizer.options.scrollMargin,
-                      height: rowHeight,
+                      // No fixed height: an element pinned to the estimate cannot
+                      // report a different one, so measuring it would only ever
+                      // confirm the number that was already wrong. The gap rides
+                      // as padding instead.
+                      paddingBottom: GAP,
                       gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                     }}
                   >
@@ -331,7 +378,12 @@ export function GalleryScreen({
                           asset={asset}
                           selected={selected.has(asset.id)}
                           highlighted={asset.id === highlighted}
-                          onSelect={(modifiers) => toggle(row.index * columns + offset, modifiers)}
+                          {...(working
+                            ? {
+                                onSelect: (modifiers: Modifiers) =>
+                                  toggle(row.index * columns + offset, modifiers),
+                              }
+                            : {})}
                           {...(onOpenAsset === undefined
                             ? {}
                             : { onOpen: () => onOpenAsset(asset) })}
@@ -345,12 +397,14 @@ export function GalleryScreen({
         )}
       </Async>
 
-      <BulkBar
-        batchId={batchId}
-        selected={selected}
-        assets={loaded}
-        onClear={() => setSelected(new Set())}
-      />
+      {working && (
+        <BulkBar
+          batchId={batchId}
+          selected={selected}
+          assets={loaded}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
 
       <ApproveDialog
         batch={approving ? (batch.data ?? null) : null}
@@ -377,11 +431,14 @@ export function GalleryScreen({
 function BatchHeader({
   batch,
   assets,
+  working,
   onApprove,
   onStartAnnotating,
 }: {
   readonly batch: Batch | undefined;
   readonly assets: readonly BatchAsset[];
+  /** False for a draft, whose counts are documented zeros rather than data. */
+  readonly working: boolean;
   readonly onApprove: () => void;
   readonly onStartAnnotating?: () => void;
 }): JSX.Element {
@@ -455,7 +512,15 @@ function BatchHeader({
         published routes. The issue's own rule applies: a menu item that always
         refuses is worse than an absent one.
       */}
-      {batch !== undefined && <BatchProgressBar counts={batch.progress} detailed={false} />}
+      {/*
+        Not for a draft. `0 of 0 annotated (0%)` under forty-eight visible frames
+        is not a progress bar at zero — it is a progress bar for work that has not
+        been created yet, and it made the screen look broken. The frame count is
+        already in the facts line above, which is the honest number here.
+      */}
+      {batch !== undefined && working && (
+        <BatchProgressBar counts={batch.progress} detailed={false} />
+      )}
     </header>
   );
 }
@@ -476,15 +541,33 @@ function Toolbar({
   onSegment,
   density,
   onDensity,
+  showSegments,
 }: {
   readonly segment: Segment;
   readonly counts: Record<Segment, number>;
   readonly onSegment: (next: Segment) => void;
   readonly density: number;
   readonly onDensity: (step: number) => void;
+  /**
+   * False for a draft. Every frame in one is in the same state — there is nothing
+   * to filter *between* — and the counts behind the segments are the documented
+   * zeros a batch with no jobs reports, so four segments reading `(0)` over a full
+   * grid is the screen contradicting itself.
+   *
+   * The density slider stays either way: how big the thumbnails are is a question
+   * about looking at pictures, which is the whole of what a draft offers.
+   */
+  readonly showSegments: boolean;
 }): JSX.Element {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div
+      className={
+        showSegments
+          ? "flex flex-wrap items-center justify-between gap-3"
+          : "flex flex-wrap items-center justify-end gap-3"
+      }
+    >
+      {showSegments && (
       <div
         className="inline-flex rounded-md border border-border p-0.5"
         role="group"
@@ -508,6 +591,7 @@ function Toolbar({
           </button>
         ))}
       </div>
+      )}
 
       {/*
         A native range input, not a Radix slider: `@radix-ui/react-slider` is not a
@@ -605,6 +689,21 @@ function cellClass(dot: DotStyle, isHighlighted: boolean): string {
 
 // --- one card ----------------------------------------------------------------
 
+/**
+ * One frame, and it is two different cards either side of approval.
+ *
+ * **Before approval it is a picture with a number on it, and nothing else.** No
+ * selection, because `BatchService.remove_assets` is not on the wire (#281) and
+ * `Mark skipped` needs a job that does not exist — a checkbox whose every action
+ * is unavailable is worse than no checkbox. No status line either: `progress` is
+ * null for every asset in a draft, so "unannotated" is true of all forty-eight
+ * and tells you nothing, and repeating "draft" under each tile says what the
+ * header's badge already said once.
+ *
+ * What survives is #160's third criterion — the tile must read as *not yet*
+ * rather than as a broken control — carried by `data-pending` and by a `title`
+ * on the card itself, which is the element a person's pointer is over.
+ */
 function Tile({
   projectId,
   asset,
@@ -618,7 +717,8 @@ function Tile({
   readonly selected: boolean;
   readonly highlighted: boolean;
   readonly onOpen?: () => void;
-  readonly onSelect: (modifiers: { readonly shift: boolean; readonly meta: boolean }) => void;
+  /** Absent before approval: there is no action a selection could take. */
+  readonly onSelect?: (modifiers: Modifiers) => void;
 }): JSX.Element {
   // Two different inertias, and #160 is what conflating them cost. `onOpen`
   // absent means *this host does not navigate* — the gallery embedded somewhere
@@ -635,76 +735,91 @@ function Tile({
       ? asset.content_hash.slice(0, 8)
       : String(asset.frame_index);
 
+  const picture = (
+    <>
+      <AssetThumbnail
+        projectId={projectId}
+        assetId={asset.id}
+        thumbnailHash={asset.thumbnail_hash}
+        alt={`Frame ${label}`}
+        className="size-full object-cover"
+      />
+      {/*
+        The index pill: mono, top-left, over the picture, and **never truncated**
+        — it is the one label that has to survive a five-digit frame number, which
+        the old caption did not (`frame 1047` rendered as `frame …` inside a 160px
+        tile).
+      */}
+      <span
+        data-testid={`index-${asset.id}`}
+        className="absolute left-1 top-1 rounded-sm bg-card/90 px-1 font-mono text-meta text-foreground"
+      >
+        {label}
+      </span>
+    </>
+  );
+
+  const frame =
+    "relative aspect-[4/3] w-full overflow-hidden rounded-md border border-border bg-card p-0";
+
   return (
     <div
       data-testid={`tile-${asset.id}`}
       data-selected={selected ? "true" : undefined}
       data-pending={pending ? "true" : undefined}
+      // On the card rather than on a child, so the explanation is under the
+      // pointer wherever it lands. `aria-description` carries it for a reader
+      // that never hovers.
+      {...(reason === undefined ? {} : { title: reason, "aria-description": reason })}
       className={
         "group relative flex flex-col gap-1 rounded-md" +
         (selected ? " ring-2 ring-primary" : "") +
         (highlighted ? " ring-2 ring-ring" : "")
       }
     >
-      <button
-        type="button"
-        data-testid={`select-${asset.id}`}
-        aria-label={`Select frame ${label}`}
-        aria-pressed={selected}
-        onClick={(event) =>
-          onSelect({ shift: event.shiftKey, meta: event.metaKey || event.ctrlKey })
-        }
-        className="relative aspect-[4/3] w-full overflow-hidden rounded-md border border-border bg-card p-0"
-      >
-        <AssetThumbnail
-          projectId={projectId}
-          assetId={asset.id}
-          thumbnailHash={asset.thumbnail_hash}
-          alt={`Frame ${label}`}
-          className="size-full object-cover"
-        />
-        {/*
-          The index pill: mono, top-left, over the picture, and **never
-          truncated** — it is the one label that has to survive a five-digit frame
-          number, which the old caption did not (`frame 1047` rendered as
-          `frame …` inside a 160px tile).
-        */}
-        <span
-          data-testid={`index-${asset.id}`}
-          className="absolute left-1 top-1 rounded-sm bg-card/90 px-1 font-mono text-meta text-foreground"
+      {onSelect === undefined ? (
+        <div className={frame}>{picture}</div>
+      ) : (
+        <button
+          type="button"
+          data-testid={`select-${asset.id}`}
+          aria-label={`Select frame ${label}`}
+          aria-pressed={selected}
+          onClick={(event) =>
+            onSelect({ shift: event.shiftKey, meta: event.metaKey || event.ctrlKey })
+          }
+          className={frame}
         >
-          {label}
-        </span>
-        {selected && (
-          <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
-            <Check className="size-3" aria-hidden="true" />
-          </span>
-        )}
-      </button>
+          {picture}
+          {selected && (
+            <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
+              <Check className="size-3" aria-hidden="true" />
+            </span>
+          )}
+        </button>
+      )}
 
-      <span className="flex items-center justify-between gap-1 px-0.5">
-        <ProgressDot asset={asset} />
-        {onOpen !== undefined && !pending && (
-          <button
-            type="button"
-            data-testid={`open-${asset.id}`}
-            onClick={onOpen}
-            aria-label={`Open frame ${label} in the annotator`}
-            className="text-meta text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-          >
-            Open
-          </button>
-        )}
-        {pending && (
-          <span
-            className="text-meta text-muted-foreground"
-            title={reason}
-            aria-description={reason}
-          >
-            draft
-          </span>
-        )}
-      </span>
+      {/*
+        No caption at all before approval. Every asset in a draft has a null
+        `progress`, so the status word is the same on all of them and says
+        nothing, and a per-tile "draft" repeats the header badge once per frame.
+      */}
+      {!pending && (
+        <span className="flex items-center justify-between gap-1 px-0.5">
+          <ProgressDot asset={asset} />
+          {onOpen !== undefined && (
+            <button
+              type="button"
+              data-testid={`open-${asset.id}`}
+              onClick={onOpen}
+              aria-label={`Open frame ${label} in the annotator`}
+              className="text-meta text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Open
+            </button>
+          )}
+        </span>
+      )}
     </div>
   );
 }
@@ -898,26 +1013,47 @@ export function columnsFor(width: number, minColumn: number): number {
  */
 function useColumns(minColumn: number): {
   readonly columns: number;
+  /** How wide one column actually is — **not** `minColumn`. See `widthOf`. */
+  readonly columnWidth: number;
   readonly grid: HTMLDivElement | null;
   readonly attach: (node: HTMLDivElement | null) => void;
 } {
   const [element, setElement] = useState<HTMLDivElement | null>(null);
-  const [columns, setColumns] = useState(1);
+  const [pane, setPane] = useState(0);
 
   useEffect(() => {
     if (element === null) return;
-    const measure = (): void => setColumns(columnsFor(element.clientWidth, minColumn));
+    const measure = (): void => setPane(element.clientWidth);
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-    // `minColumn` is a dependency and not a closure capture: the density slider
-    // changes it while the element stays the same, and an effect keyed only on
-    // the element would keep measuring against the old ladder step forever.
-  }, [element, minColumn]);
+    // The observer is keyed on the element alone now: it reports the pane's
+    // width, and turning that into a column count is arithmetic done at render.
+    // The density slider therefore needs no re-measure at all, which removes the
+    // dependency that had to be remembered.
+  }, [element]);
 
-  return { columns, grid: element, attach: setElement };
+  const columns = columnsFor(pane, minColumn);
+  return { columns, columnWidth: widthOf(pane, columns, minColumn), grid: element, attach: setElement };
+}
+
+/**
+ * How wide one column really is, once `auto-fill` has shared out the slack.
+ *
+ * `columnsFor` answers how many fit at the *minimum*; the grid then stretches
+ * them to fill the pane, so the actual width is almost always larger — by up to
+ * a whole extra minimum when only one column fits. Both numbers are needed and
+ * they are not interchangeable: the count decides how many tiles go in a row, and
+ * the width decides how tall that row is.
+ *
+ * Falls back to `minColumn` for an unmeasured pane, which is jsdom and the first
+ * paint. That keeps the initial estimate sane rather than zero.
+ */
+export function widthOf(pane: number, columns: number, minColumn: number): number {
+  if (pane <= 0) return minColumn;
+  return (pane - (columns - 1) * GAP) / columns;
 }
 
 export { GALLERY_PAGE_SIZE };
