@@ -188,6 +188,7 @@ def _annotation_to_row(entity: Annotation) -> t.Base:
         provenance=entity.provenance,
         model_ref=entity.model_ref,
         confidence=entity.confidence,
+        job_id=entity.job_id,
     )
 
 
@@ -202,6 +203,7 @@ def _annotation_to_domain(_: Session, row: Any) -> Annotation:
         provenance=row.provenance,
         model_ref=row.model_ref,
         confidence=row.confidence,
+        job_id=row.job_id,
     )
 
 
@@ -368,6 +370,7 @@ def _batch_to_row(entity: Batch) -> t.Base:
         name=entity.name,
         state=entity.state,
         schema_version=entity.schema_version,
+        parent_batch_id=entity.parent_batch_id,
     )
 
 
@@ -383,6 +386,7 @@ def _batch_to_domain(session: Session, row: Any) -> Batch:
         name=row.name,
         state=row.state,
         schema_version=row.schema_version,
+        parent_batch_id=row.parent_batch_id,
         asset_ids=list(members),
     )
 

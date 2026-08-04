@@ -70,7 +70,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from sqlalchemy import Connection
+from sqlalchemy import Connection, inspect, text
+from sqlalchemy.schema import CreateColumn
 
 from visionset.kernel.adapters._tables import Base
 
@@ -93,8 +94,84 @@ def _create_baseline_schema(connection: Connection) -> None:
     Base.metadata.create_all(connection)
 
 
+def _add_column(connection: Connection, table: str, column: str) -> None:
+    """Append a column a file does not have yet, compiled from its own definition.
+
+    Idempotent by asking the file rather than by ``IF NOT EXISTS``, which SQLite
+    has no spelling for on ``ADD COLUMN`` — that check *is* the idempotency the
+    module docstring requires, and it matters because migration 1 is
+    ``create_all`` of *today's* metadata: a fresh database already carries every
+    column below, and then runs this anyway.
+
+    The DDL comes from the shared ``Column`` object through ``CreateColumn``,
+    never hand-written, so the two creation paths cannot drift in type or
+    nullability. What ``CreateColumn`` silently omits is a ``REFERENCES`` clause,
+    which is why neither column here declares a foreign key — see their
+    docstrings in ``_tables``.
+    """
+    if column in {found["name"] for found in inspect(connection).get_columns(table)}:
+        return
+    definition = CreateColumn(Base.metadata.tables[table].columns[column]).compile(
+        bind=connection.engine
+    )
+    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {definition}"))
+
+
+def _add_batch_lineage(connection: Connection) -> None:
+    """``batch.parent_batch_id``: which batch this one was cut from.
+
+    **Nothing to backfill, and that is a fact rather than a shortcut.** NULL here
+    means "not a correction of anything", which is true of every batch that has
+    ever existed — correction batches do not exist yet. A backfill would have
+    nothing to read and nothing to say.
+    """
+    _add_column(connection, "batch", "parent_batch_id")
+
+
+def _add_annotation_provenance(connection: Connection) -> None:
+    """``annotation.job_id``: which round of work produced this label.
+
+    **The backfill is honest about what it cannot know.** An annotation records
+    only its ``asset_id``, and a job records which assets it carries — so an
+    annotation whose asset belongs to exactly one job can be attributed with
+    certainty, and one whose asset is carried by two cannot be attributed at all.
+    The second case is not rare in principle: nothing stops an asset sitting in
+    several batches, and reconciling that is an open question (audit F14).
+
+    So the ``UPDATE`` sets a value only where the count is exactly one, and
+    leaves the ambiguous rows NULL. Writing "the first job we found" instead
+    would put a confident wrong answer where an honest absent one belongs, and
+    every reader downstream would have no way to tell which it had.
+
+    Idempotent twice over: ``_add_column`` returns early on a file that has the
+    column, and the ``UPDATE`` is guarded on ``job_id IS NULL`` so a re-run
+    cannot overwrite an attribution a *service* has since written.
+    """
+    _add_column(connection, "annotation", "job_id")
+    connection.execute(
+        text(
+            """
+            UPDATE annotation
+               SET job_id = (
+                     SELECT aja.job_id
+                       FROM annotation_job_asset AS aja
+                      WHERE aja.asset_id = annotation.asset_id
+                   )
+             WHERE job_id IS NULL
+               AND (
+                     SELECT COUNT(*)
+                       FROM annotation_job_asset AS aja
+                      WHERE aja.asset_id = annotation.asset_id
+                   ) = 1
+            """
+        )
+    )
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
+    Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
+    Migration(version=3, name="annotation_provenance", upgrade=_add_annotation_provenance),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version
