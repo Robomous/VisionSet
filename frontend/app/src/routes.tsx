@@ -218,6 +218,9 @@ function Gallery(): JSX.Element {
         if (asset.job_id === null || asset.job_id === undefined) return;
         void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
       }}
+      // The approve dialog's SCHEMA_NOT_FOUND remedy (#291): the schema section
+      // is a `?tab=` on the project page, and spelling that URL is this file's job.
+      onOpenSchema={() => void navigate(`/projects/${projectId}?tab=schema`)}
     />
   );
 }
