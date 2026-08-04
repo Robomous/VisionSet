@@ -31,7 +31,6 @@ import {
   withheldBecause,
   type AssetAction,
   type BatchAction,
-  type JobAction,
 } from "./capabilities";
 import { groupRefusals, refusalProse, type Refusal } from "./refusals";
 import { ApiError } from "./errors";

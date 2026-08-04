@@ -84,7 +84,11 @@ const SETTLED_STATES = [
   "skipped",
 ] as const;
 
-function assets(jobId: string | null, settled = false): Record<string, unknown> {
+function assets(
+  jobId: string | null,
+  settled = false,
+  batchState = "in_annotation",
+): Record<string, unknown> {
   const states: readonly string[] = settled ? SETTLED_STATES : STATES;
   return {
     total: states.length,
@@ -103,7 +107,10 @@ function assets(jobId: string | null, settled = false): Record<string, unknown> 
       ingested_at: "2026-08-01T09:00:00Z",
       job_id: jobId,
       progress: jobId === null ? null : progress,
-      allowed_actions: assetActions(jobId === null ? null : progress),
+      // The server's own answer, and the dimension the client's old mirror
+      // dropped: `asset_actions` returns `[]` for every frame of a batch that is
+      // not `in_annotation`, whatever the frame's own progress is.
+      allowed_actions: assetActions(jobId === null ? null : progress, { batchState }),
     })),
   };
 }
@@ -250,7 +257,9 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
       });
     }
     if (path === `/batches/${BATCH}/assets`) {
-      return route.fulfill({ json: assets(jobId, settledStates) });
+      // `current`, not `state`: an approve during the test moves it, and the
+      // frames' declarations move with the batch exactly as the server's would.
+      return route.fulfill({ json: assets(jobId, settledStates, current) });
     }
     if (path === `/sources/${SOURCE}`) {
       return route.fulfill({
@@ -818,6 +827,63 @@ test("a skip can be taken back from the grid", async ({ page }) => {
       `PUT /jobs/${JOB}/assets/asset-3/progress`,
       `PUT /jobs/${JOB}/assets/asset-4/progress`,
     ]);
+});
+
+/**
+ * The batch-state dimension, in the browser — finding F1.
+ *
+ * The two states worth a scenario each are the two the old client-side mirror
+ * got wrong: `approved` and `completed` both have jobs, and `JobService.mark`
+ * refuses a write into either before it looks at the frame's progress at all.
+ * The bar drew both buttons enabled over frames that are individually skippable,
+ * sent one request per frame, took N 409s, and said "0 moved, N refused".
+ *
+ * Asserted here rather than only in vitest because the claim is about what a
+ * person can press: a `disabled` attribute jsdom reports and a control a browser
+ * will not activate are not quite the same statement, and the sentence beside it
+ * has to be visible.
+ */
+for (const state of ["approved", "completed"] as const) {
+  test(`a ${state} batch offers no bulk move, and says why`, async ({ page }) => {
+    const sent: Request[] = [];
+    // `settled: true` puts skipped frames in the fixture, so the *progress*
+    // dimension permits a restore and only the batch does not — which is what
+    // makes this a test of the dimension rather than of the frames.
+    await openGallery(page, sent, { state, settled: true });
+
+    await page.getByTestId("select-asset-3").click();
+    await page.getByTestId("select-asset-4").click({ modifiers: ["ControlOrMeta"] });
+    await expect(page.getByTestId("bulk-count")).toHaveText("2 frames selected");
+
+    await expect(page.getByTestId("bulk-skip")).toBeDisabled();
+    await expect(page.getByTestId("bulk-restore")).toBeDisabled();
+    await expect(page.getByTestId("bulk-restore")).toHaveText(/Restore \(0\)/);
+
+    // Prose, and a route onward where there is one. The old bar's answer was a
+    // number with no reason at all.
+    const said = page.getByTestId("bulk-unavailable");
+    await expect(said).toBeVisible();
+    await expect(said).toHaveText(
+      state === "completed" ? /correction batch/i : /has not been started/i,
+    );
+
+    // And nothing was sent, which is the half the user could not see.
+    expect(writes(sent)).toEqual([]);
+  });
+}
+
+test("a completed batch keeps its selection, because choosing frames is how a correction starts", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { state: "completed", settled: true });
+
+  // Deliberately not "hide the checkboxes on a closed batch": a set of frames is
+  // the input to a correction batch, and the bar states why its own moves are
+  // unavailable rather than the screen refusing to let anything be picked.
+  await page.getByTestId("select-asset-0").click();
+  await expect(page.getByTestId("bulk-count")).toHaveText("1 frame selected");
+  await expect(page.getByTestId("bulk-bar")).toBeVisible();
 });
 
 test("marking an already-skipped selection sends nothing", async ({ page }) => {

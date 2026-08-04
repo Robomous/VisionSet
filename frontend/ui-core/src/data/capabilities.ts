@@ -87,6 +87,18 @@ export interface Capable<A extends string> {
   readonly allowed_actions: readonly A[];
 }
 
+/*
+ * A note on the `NoInfer<A>` below, because it looks like decoration and is not.
+ *
+ * Without it, `A` is inferred from *both* parameters, and the action argument is
+ * a string literal — so `declaring(frames, ASSET_ACTION.skip)` binds `A` to
+ * `"skip"`, which then requires the frames to be `Capable<"skip">` and rejects a
+ * perfectly good `BatchAsset[]`. Pinning inference to the resources is what makes
+ * the resource the subject of the question, which is what it is: the action is
+ * the thing being asked *about*, and it is already constrained to the wire's
+ * union by the constants above.
+ */
+
 /**
  * Does this resource declare that action right now?
  *
@@ -98,7 +110,7 @@ export interface Capable<A extends string> {
  */
 export function declares<A extends string>(
   resource: Capable<A> | undefined | null,
-  action: A,
+  action: NoInfer<A>,
 ): boolean {
   return resource != null && resource.allowed_actions.includes(action);
 }
@@ -113,7 +125,7 @@ export function declares<A extends string>(
  */
 export function declaring<A extends string, T extends Capable<A>>(
   resources: readonly T[],
-  action: A,
+  action: NoInfer<A>,
 ): readonly T[] {
   return resources.filter((one) => one.allowed_actions.includes(action));
 }
