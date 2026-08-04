@@ -218,6 +218,87 @@ describe("verification", () => {
       "does not match its hash",
     );
   });
+
+  /**
+   * A verify that could not be *asked* is not a verification (audit F10).
+   *
+   * Only the report had a rendering. A failed request left the button
+   * un-pressed-looking and — the part that makes this worse than silent — any
+   * previous report still on screen underneath, so a stale "everything checks
+   * out" survived the press meant to stop trusting it.
+   */
+  it("says a failed verify request failed, rather than saying nothing", async () => {
+    baseline();
+    on("GET", /\/verify$/, {
+      status: 503,
+      body: { code: "WORKSPACE_BUSY", message: "database is locked" },
+    });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("verify-v1"));
+
+    const said = (await screen.findByTestId("verify-error-v1")).textContent ?? "";
+    expect(said).toContain("busy");
+    expect(said).not.toContain("WORKSPACE_BUSY");
+  });
+
+  it("takes a stale report off the screen when the next verify could not be asked", async () => {
+    baseline();
+    on("GET", /\/verify$/, {
+      status: 200,
+      body: {
+        release_id: RELEASE,
+        manifest_hash: RELEASE_ROW.manifest_hash,
+        manifest_intact: true,
+        ok: true,
+        checked: 12,
+        missing: [],
+        corrupt: [],
+        cache_mismatches: [],
+      },
+    });
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("verify-v1"));
+    await screen.findByTestId("verified-v1");
+
+    // The second press cannot be answered. A green report left underneath the
+    // silence would be the product asserting something it has just failed to
+    // check.
+    handlers.length = 0;
+    baseline();
+    on("GET", /\/verify$/, {
+      status: 503,
+      body: { code: "WORKSPACE_BUSY", message: "database is locked" },
+    });
+    await userEvent.click(screen.getByTestId("verify-v1"));
+
+    await screen.findByTestId("verify-error-v1");
+    expect(screen.queryByTestId("verified-v1")).toBeNull();
+  });
+});
+
+/**
+ * The download that said nothing at all (audit F8).
+ *
+ * `manifest.isError` was read nowhere, so a refusal produced no file and no
+ * message — indistinguishable from a browser that had swallowed the save dialog,
+ * which is the explanation a user would reach for and the wrong one.
+ */
+describe("downloading a manifest", () => {
+  it("says why nothing was downloaded", async () => {
+    baseline();
+    on("GET", /\/manifest$/, {
+      status: 404,
+      body: { code: "RELEASE_NOT_FOUND", message: "no such release" },
+    });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("manifest-v1"));
+
+    const said = (await screen.findByTestId("manifest-error-v1")).textContent ?? "";
+    expect(said).toContain("no longer on record");
+    expect(said).not.toContain("RELEASE_NOT_FOUND");
+  });
 });
 
 describe("export, and the third gate word", () => {

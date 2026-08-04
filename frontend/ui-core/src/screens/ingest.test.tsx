@@ -269,7 +269,12 @@ describe("registering a source", () => {
     await userEvent.click(screen.getByTestId("register-source"));
 
     const error = await screen.findByTestId("register-error");
-    expect(error.textContent).toContain("UNSUPPORTED_MEDIA");
+    // The server's own sentence, which is already written for a person — the
+    // vocabulary has no entry for this code precisely because it could not
+    // improve on one naming the file. What is gone is the identifier in front
+    // of it (F16).
+    expect(error.textContent).toContain("notes.txt is not an image.");
+    expect(error.textContent).not.toContain("UNSUPPORTED_MEDIA");
   });
 });
 
@@ -595,7 +600,9 @@ describe("launching a run", () => {
     await screen.findByTestId("source-card");
     await userEvent.click(screen.getByTestId("start-ingest"));
 
-    expect((await screen.findByTestId("start-error")).textContent).toContain("BATCH_NOT_EDITABLE");
+    expect((await screen.findByTestId("start-error")).textContent).toContain(
+      "can no longer be edited",
+    );
     expect(screen.queryByTestId("run-card")).toBeNull();
   });
 });
@@ -683,6 +690,36 @@ describe("watching a run", () => {
     await launch();
     await waitFor(() => expect(screen.getByTestId("run-state").textContent).toBe("Done"));
     expect(screen.queryByTestId("resume-ingest")).toBeNull();
+  });
+
+  /**
+   * A refused resume, which is a different fact from the run's own error (F9).
+   *
+   * `resume.isError` was read nowhere, and the `run-error` alert a few lines up
+   * shows the *job row's* stored cause — so a rejected resume left the old
+   * failure on screen unchanged and the button re-enabled. Nothing distinguished
+   * "the resume was refused" from "the press did nothing", which is why the two
+   * assertions below are about them being told apart.
+   */
+  it("says a refused resume was refused, and does not disguise it as the run's own error", async () => {
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({ state: "failed", error: "ffmpeg is not installed", processed: 0 }),
+    });
+    on("POST", /\/resume$/, {
+      status: 409,
+      body: { code: "INVALID_TRANSITION", message: "job cannot become running from completed" },
+    });
+    await launch();
+
+    await userEvent.click(await screen.findByTestId("resume-ingest"));
+
+    const said = (await screen.findByTestId("resume-error")).textContent ?? "";
+    expect(said).toContain("already moved on");
+    expect(said).not.toContain("INVALID_TRANSITION");
+    // Two different things went wrong and the screen says both. The run's own
+    // cause is still there, unchanged and still about the run.
+    expect(screen.getByTestId("run-error").textContent).toContain("ffmpeg is not installed");
   });
 });
 
