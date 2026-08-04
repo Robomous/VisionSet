@@ -65,12 +65,54 @@ function progressStore(seed: Readonly<Record<string, string>>): Map<string, stri
   return new Map(Object.entries(seed));
 }
 
+/**
+ * The lifecycle half of the stub (#299): batch and job state that the two `start`
+ * POSTs actually move, on `progressStore`'s reasoning. The default is everything
+ * already open, which is what every scenario before #299 entered with; the
+ * approved-batch scenarios are claims about the moves the page itself makes on
+ * open, and a stub whose state never moved would reproduce the bug rather than
+ * the fix.
+ */
+interface Lifecycle {
+  batch: string;
+  job: string;
+  /** When set, `POST /batches/{id}/start` refuses 409 with this code instead. */
+  refuseBatchStart?: string;
+}
+
+function openedWorld(): Lifecycle {
+  return { batch: "in_annotation", job: "in_progress" };
+}
+
 async function serveApi(
   page: Page,
   sent: Request[],
   progress: Map<string, string> = progressStore({ "asset-1": "unannotated", "asset-2": "annotated" }),
+  lifecycle: Lifecycle = openedWorld(),
 ): Promise<void> {
   const stored: Record<string, unknown>[] = [];
+  const batchBody = (): Record<string, unknown> => ({
+    id: BATCH,
+    project_id: PROJECT,
+    name: "drive-01",
+    state: lifecycle.batch,
+    schema_version: 3,
+    asset_count: 2,
+    progress: {
+      unannotated: 2,
+      annotated: 0,
+      skipped: 0,
+      review_pending: 0,
+      accepted: 0,
+      total: 2,
+    },
+  });
+  const jobBody = (): Record<string, unknown> => ({
+    id: JOB,
+    batch_id: BATCH,
+    state: lifecycle.job,
+    asset_count: 2,
+  });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^\/api/, "");
@@ -82,30 +124,25 @@ async function serveApi(
 
     sent.push(request);
 
+    if (path === `/jobs/${JOB}/start` && request.method() === "POST") {
+      lifecycle.job = "in_progress";
+      return route.fulfill({ json: jobBody() });
+    }
     if (path === `/jobs/${JOB}`) {
-      return route.fulfill({
-        json: { id: JOB, batch_id: BATCH, state: "in_progress", asset_count: 2 },
-      });
+      return route.fulfill({ json: jobBody() });
+    }
+    if (path === `/batches/${BATCH}/start` && request.method() === "POST") {
+      if (lifecycle.refuseBatchStart !== undefined) {
+        return route.fulfill({
+          status: 409,
+          json: { code: lifecycle.refuseBatchStart, message: "the stub refuses" },
+        });
+      }
+      lifecycle.batch = "in_annotation";
+      return route.fulfill({ json: batchBody() });
     }
     if (path === `/batches/${BATCH}`) {
-      return route.fulfill({
-        json: {
-          id: BATCH,
-          project_id: PROJECT,
-          name: "drive-01",
-          state: "in_annotation",
-          schema_version: 3,
-          asset_count: 2,
-          progress: {
-            unannotated: 2,
-            annotated: 0,
-            skipped: 0,
-            review_pending: 0,
-            accepted: 0,
-            total: 2,
-          },
-        },
-      });
+      return route.fulfill({ json: batchBody() });
     }
     if (path.endsWith("/schema/versions/3")) return route.fulfill({ json: SCHEMA });
     if (path.endsWith("/assets") && path.startsWith("/batches")) {
@@ -174,8 +211,13 @@ async function serveApi(
   });
 }
 
-async function openJob(page: Page, sent: Request[], progress?: Map<string, string>): Promise<void> {
-  await serveApi(page, sent, progress);
+async function openJob(
+  page: Page,
+  sent: Request[],
+  progress?: Map<string, string>,
+  lifecycle?: Lifecycle,
+): Promise<void> {
+  await serveApi(page, sent, progress, lifecycle);
   await page.goto(`/jobs/${JOB}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
@@ -239,6 +281,84 @@ test("Save is inert until something changes, then sends exactly the new annotati
   // Only creates — nothing was updated or deleted, so nothing else was sent.
   expect(sent.filter((r) => r.method() === "PATCH")).toHaveLength(0);
   expect(sent.filter((r) => r.method() === "DELETE")).toHaveLength(0);
+});
+
+/** The two opening moves this page sends, in the order they were sent. */
+function startsSent(sent: Request[]): string[] {
+  return sent
+    .filter((request) => request.method() === "POST" && request.url().endsWith("/start"))
+    .map((request) => new URL(request.url()).pathname.replace(/^\/api/, ""));
+}
+
+/**
+ * #299. The workspace routes into the annotator from an *approved* batch — the
+ * gallery's `Start annotating`, every tile, a pasted URL — and nothing on that
+ * path pressed the batch table's own `Start`. So the page makes both opening
+ * moves itself, in their one legal order. Before this, the job start was refused
+ * `BATCH_NOT_IN_ANNOTATION` silently and the first Save answered the raw code.
+ */
+test("opening a job in an approved batch starts the batch, then the job, and a save lands", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, { batch: "approved", job: "pending" });
+
+  await expect.poll(() => startsSent(sent)).toEqual([
+    `/batches/${BATCH}/start`,
+    `/jobs/${JOB}/start`,
+  ]);
+
+  // …and the page is actually usable afterwards: draw one box, save, and the
+  // bar answers Saved rather than a code — the exact gesture the defect refused.
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  await page.getByTestId("save").click();
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+});
+
+test("a refused opening move is sent once, never looped, and its code is on the bar", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, {
+    batch: "approved",
+    job: "pending",
+    refuseBatchStart: "BATCH_NOT_IN_ANNOTATION",
+  });
+
+  // The move was attempted and refused…
+  await expect.poll(() => startsSent(sent)).toEqual([`/batches/${BATCH}/start`]);
+
+  // …and the refusal surfaces where the save-state lives, before anybody has
+  // saved — the page must never look inert about a batch it could not open.
+  await expect(page.getByTestId("save-state")).toContainText("BATCH_NOT_IN_ANNOTATION");
+
+  // Force a run of re-renders — drawing moves the store on every pointer step —
+  // then look at the wire. The old effect's bail flags were all false again
+  // after a refusal, so every one of these renders re-sent the refused POST.
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  // The drawing landed (so the renders really happened) while the bar keeps the
+  // refusal — a code on the bar outranks `unsaved`, because the person needs the
+  // reason their save will refuse more than they need the word for dirty.
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+  await expect(page.getByTestId("save-state")).toContainText("BATCH_NOT_IN_ANNOTATION");
+
+  // Once — and the job's own start never fired at all, because the batch never
+  // reached `in_annotation` for it to be legal in.
+  expect(startsSent(sent)).toEqual([`/batches/${BATCH}/start`]);
 });
 
 test("Accept is offered only where the kernel's machine allows the move", async ({ page }) => {
