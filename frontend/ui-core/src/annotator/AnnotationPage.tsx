@@ -101,10 +101,21 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 
+import {
+  ASSET_ACTION,
+  BATCH_ACTION,
+  JOB_ACTION,
+  declares,
+  withheldBecause,
+  type AssetAction,
+  type BatchAction,
+  type JobAction,
+} from "../data/capabilities";
 import { asApiError } from "../data/errors";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
+import { Eye } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { ShortcutSheet } from "./ShortcutSheet";
@@ -283,7 +294,9 @@ function JobScreen({
       key={asset.id}
       jobId={jobId}
       jobState={job.data?.state ?? "pending"}
+      jobActions={job.data?.allowed_actions ?? []}
       batchState={batch.data.state}
+      batchActions={batch.data.allowed_actions}
       projectId={batch.data.project_id}
       assetIndex={index}
       assetCount={assets.data.length}
@@ -309,12 +322,31 @@ function JobScreen({
 interface WorkspaceProps {
   readonly jobId: string;
   readonly jobState: string;
+  /** What the wire says this job can be asked to do. Never re-derived here. */
+  readonly jobActions: readonly JobAction[];
   /** The batch's own state — `approved` means nobody has opened it for annotation yet. */
   readonly batchState: string;
+  /** What the wire says the batch can be asked to do — `repin` is the one this page needs. */
+  readonly batchActions: readonly BatchAction[];
   readonly projectId: string;
   readonly assetIndex: number;
   readonly assetCount: number;
-  readonly asset: { readonly id: string; readonly width: number | null; readonly height: number | null; readonly content_hash: string; readonly progress?: string | null };
+  readonly asset: {
+    readonly id: string;
+    readonly width: number | null;
+    readonly height: number | null;
+    readonly content_hash: string;
+    readonly progress?: string | null;
+    /**
+     * What this frame can be asked to do, from the wire.
+     *
+     * The whole of read-only mode hangs off `annotate` being absent from this
+     * list, and the kernel derives it from **both** dimensions the browser used
+     * to get wrong: the batch must be `in_annotation` *and* the frame's progress
+     * must be one the labels can still move with.
+     */
+    readonly allowed_actions: readonly AssetAction[];
+  };
   readonly schema: unknown;
   /** The version the batch pinned at approval — what every write here is judged against. */
   readonly schemaVersion: number | null;
@@ -353,7 +385,9 @@ interface WorkspaceProps {
 function Workspace({
   jobId,
   jobState,
+  jobActions,
   batchState,
+  batchActions,
   projectId,
   assetIndex,
   assetCount,
@@ -504,6 +538,15 @@ function Workspace({
    * user is drawing with the class they just made before the canvas has finished
    * settling.
    */
+  /**
+   * Whether this batch will take a new schema version's pin.
+   *
+   * `REPINNABLE_STATES` is `{approved, in_annotation}` — a completed batch's pin
+   * is frozen history — and the wire declares it, so this page asks rather than
+   * restating the set. Read *before* the publish, not discovered after it.
+   */
+  const canRepin = declares({ allowed_actions: batchActions }, BATCH_ACTION.repin);
+
   const addClass = useCallback(
     async (declared: LabelClassBody, note: string): Promise<void> => {
       if (activeSchema.data === undefined) return;
@@ -514,7 +557,9 @@ function Workspace({
           save: commit,
           publish: (classes, description) =>
             createVersion.mutateAsync({ classes, description }),
-          repin: () => repin.mutateAsync(),
+          // Asked before anything is published, which is the whole of F23: the
+          // chain used to publish and *then* discover the pin would not move.
+          repin: canRepin ? () => repin.mutateAsync() : null,
           activeClasses: activeSchema.data.classes,
           declared,
           note,
@@ -526,7 +571,7 @@ function Workspace({
         // Rethrowing would reach no handler and surface as an unhandled rejection.
       }
     },
-    [activeSchema.data, commit, createVersion, repin],
+    [activeSchema.data, canRepin, commit, createVersion, repin],
   );
 
   /**
@@ -576,6 +621,46 @@ function Workspace({
   }
 
   const drawn = annotationsInDrawOrder(snapshot.document).length;
+
+  /**
+   * Whether this is an editor or a viewer — the one derivation the whole page
+   * turns on (audit finding F2).
+   *
+   * `annotate` is the wire's name for *the right to write labels here at all*,
+   * and the kernel derives it from both dimensions: the batch must be
+   * `in_annotation` **and** the frame's progress must be one the labels can still
+   * move with (`WRITABLE_PROGRESS`, which #304 made a real gate rather than a
+   * convention). So one question answers both "is this batch closed" and "is this
+   * frame settled", and neither is re-derived here.
+   *
+   * What it replaces: nothing. There was no read-only mode. `batchState` reached
+   * this component and was consumed **only** by the two auto-start effects, so on
+   * a completed batch the canvas, the palette and the panel were fully live, every
+   * save answered 409 rendered as a raw kernel code, and — because navigation
+   * commits first — the user could not even move to the next frame without
+   * undoing their own work. An afternoon's boxes, stranded in a tab.
+   */
+  const canAnnotate = declares(asset, ASSET_ACTION.annotate);
+  const readOnly = !canAnnotate;
+
+  /**
+   * Why it is read-only, in the words a person can act on.
+   *
+   * Two different causes, and running them together is what would make this
+   * banner useless: a **closed batch** is about the workflow and its remedy is a
+   * correction batch, while a **settled frame** in an open batch is about this
+   * one picture and its remedy is on this very toolbar. `withheldBecause`
+   * answering null is how the first is told from the second — it speaks only for
+   * the states that close a batch.
+   */
+  const closedBecause = withheldBecause(batchState);
+  /** The tooltip a withheld control carries. Null when the batch is not the cause. */
+  const withheld = closedBecause;
+  const progressWord = PROGRESS_LABEL[asset.progress ?? "unannotated"] ?? asset.progress ?? "";
+  const settledBecause =
+    asset.progress === "skipped"
+      ? null // The skipped notice below says it better, and offers the way back.
+      : `This frame is ${progressWord} — its labels are settled and cannot be changed here.`;
 
   return (
     <div className="flex h-screen flex-col" data-testid="annotation-page">
@@ -664,7 +749,20 @@ function Workspace({
             error={save.isError ? asApiError(save.error).code : openingRefusal}
           />
 
-          <Button variant="primary" size="sm" data-testid="save" disabled={!dirty || save.isPending} onClick={() => void commit()}>
+          {/*
+            Read-only cannot become dirty — no primary press reaches the machine
+            and no keystroke but a host action runs — so `!dirty` already hides
+            the press. The capability is stated anyway, because "cannot be dirty"
+            is an argument and `disabled` should be a fact.
+          */}
+          <Button
+            variant="primary"
+            size="sm"
+            data-testid="save"
+            disabled={readOnly || !dirty || save.isPending}
+            {...(readOnly && withheld !== null ? { title: withheld } : {})}
+            onClick={() => void commit()}
+          >
             <Save className="size-4" />
             Save
           </Button>
@@ -679,14 +777,22 @@ function Workspace({
               variant="secondary"
               size="sm"
               data-testid="unskip"
-              disabled={setProgress.isPending}
+              disabled={!declares(asset, ASSET_ACTION.restore) || setProgress.isPending}
+              {...(withheld === null ? {} : { title: withheld })}
               onClick={unskip}
             >
               <Undo2 className="size-4" />
               Un-skip
             </Button>
           ) : (
-            <Button variant="secondary" size="sm" data-testid="skip" onClick={() => settle("skipped")}>
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="skip"
+              disabled={!declares(asset, ASSET_ACTION.skip) || setProgress.isPending}
+              {...(withheld === null ? {} : { title: withheld })}
+              onClick={() => settle("skipped")}
+            >
               <SkipForward className="size-4" />
               Skip
             </Button>
@@ -700,7 +806,8 @@ function Workspace({
             variant="secondary"
             size="sm"
             data-testid="accept"
-            disabled={asset.progress !== "annotated" && asset.progress !== "review_pending"}
+            disabled={!declares(asset, ASSET_ACTION.accept)}
+            {...(withheld === null ? {} : { title: withheld })}
             onClick={() => settle("accepted")}
           >
             <CheckCheck className="size-4" />
@@ -720,12 +827,7 @@ function Workspace({
             variant="secondary"
             size="sm"
             data-testid="finish-job"
-            disabled={
-              counts === null ||
-              counts.unannotated > 0 ||
-              jobState === "completed" ||
-              finishJob.isPending
-            }
+            disabled={!declares({ allowed_actions: jobActions }, JOB_ACTION.complete) || finishJob.isPending}
             onClick={() => finishJob.mutate()}
           >
             <CheckCheck className="size-4" />
@@ -756,6 +858,27 @@ function Workspace({
         Rendered whenever the asset is skipped rather than only after a save: the
         user who is about to draw deserves it more than the one who already has.
       */}
+      {/*
+        Read-only, said out loud and at the top (F2). The `ui-capabilities` rule is
+        that read-only is a *mode*, not an accident: "open it and let the saves
+        fail" is what shipped, and what it looked like from the other side was a
+        working editor that lost your work.
+
+        Not rendered for a skipped frame — the notice below is the same fact with
+        the remedy attached, and two banners saying one thing is how a person
+        learns to ignore both.
+      */}
+      {readOnly && !skipped && (
+        <p
+          className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-meta text-muted-foreground"
+          data-testid="readonly-banner"
+        >
+          <Eye className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="font-medium">Viewing only.</span>
+          {closedBecause ?? settledBecause}
+        </p>
+      )}
+
       {skipped && (
         <p
           className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-meta text-destructive"
@@ -777,7 +900,10 @@ function Workspace({
               <AnnotatorCanvas
                 store={store}
                 imageSrc={src}
-                activeClass={activeClass}
+                // The engine's own guarantee, not a suggestion from up here: a
+                // greyed-out toolbar does not stop a drag from drawing a box.
+                readOnly={readOnly}
+                activeClass={readOnly ? null : activeClass}
                 onActivateClass={setActiveClass}
                 onViewChange={setView}
                 hiddenIds={hiddenIds}
@@ -798,13 +924,22 @@ function Workspace({
             copy on this page would be the pair v1 spent two mechanisms keeping in
             step.
           */}
-          <ToolPalette
-            schema={store.document.schema}
-            tool={toolFor(store.document, activeClass)}
-            onActivateClass={setActiveClass}
-            onToggleHelp={() => setHelpOpen((open) => !open)}
-            onAddClass={() => setAddingClass(true)}
-          />
+          {/*
+            Fully hidden rather than disabled, which is the one place this page
+            departs from disabled-with-reason — every control on the palette picks
+            a *drawing* tool, and a tool palette over a canvas that cannot be drawn
+            on is not an explanation of anything. The banner above carries the
+            reason, once.
+          */}
+          {!readOnly && (
+            <ToolPalette
+              schema={store.document.schema}
+              tool={toolFor(store.document, activeClass)}
+              onActivateClass={setActiveClass}
+              onToggleHelp={() => setHelpOpen((open) => !open)}
+              onAddClass={() => setAddingClass(true)}
+            />
+          )}
 
           <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-meta text-muted-foreground" data-testid="object-total">
             {drawn} object{drawn === 1 ? "" : "s"}
@@ -813,6 +948,7 @@ function Workspace({
 
         <AnnotatorPanel
           store={store}
+          readOnly={readOnly}
           hiddenIds={hiddenIds}
           onHiddenChange={setHiddenIds}
           activeClass={activeClass}
@@ -825,6 +961,7 @@ function Workspace({
         onOpenChange={setAddingClass}
         active={activeSchema.data ?? null}
         pinnedVersion={schemaVersion}
+        canRepin={canRepin}
         pending={save.isPending || createVersion.isPending || repin.isPending}
         // Whichever step refused, in the order they run — so the message is about
         // the call that actually stopped, not about the last mutation touched.

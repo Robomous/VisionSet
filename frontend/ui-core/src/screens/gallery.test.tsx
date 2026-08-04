@@ -1254,7 +1254,7 @@ describe("the bulk bar", () => {
  * beside the empty space went on saying `in progress`.
  */
 describe("the gallery header's way into the annotator", () => {
-  function frames(...states: string[]): Record<string, unknown> {
+  function frames(batchState: BatchState, ...states: string[]): Record<string, unknown> {
     return {
       total: states.length,
       items: states.map((progress, at) => ({
@@ -1272,21 +1272,28 @@ describe("the gallery header's way into the annotator", () => {
         ingested_at: "2026-08-01T09:00:00Z",
         job_id: JOB,
         progress,
-        allowed_actions: assetActions(progress as Progress),
+        allowed_actions: assetActions(progress as Progress, { batchState }),
       })),
     };
   }
 
   async function open(...states: string[]): Promise<ReturnType<typeof vi.fn>> {
+    return openIn("in_annotation", ...states);
+  }
+
+  async function openIn(
+    batchState: BatchState,
+    ...states: string[]
+  ): Promise<ReturnType<typeof vi.fn>> {
     on("GET", /\/batches\/[^/]+$/, {
       status: 200,
       body: batch({
-        state: "in_annotation",
+        state: batchState,
         schema_version: 1,
         progress: { ...NO_PROGRESS, total: states.length, annotated: states.length },
       }),
     });
-    on("GET", /\/assets$/, { status: 200, body: frames(...states) });
+    on("GET", /\/assets$/, { status: 200, body: frames(batchState, ...states) });
     on("GET", /\/annotations$/, { status: 200, body: [] });
 
     const opened = vi.fn();
@@ -1315,5 +1322,36 @@ describe("the gallery header's way into the annotator", () => {
     expect(screen.getByTestId("start-annotating").textContent).toContain("Start annotating");
     await userEvent.click(screen.getByTestId("start-annotating"));
     expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "asset-1" }));
+  });
+
+  /**
+   * The third question the label had to start asking (F2).
+   *
+   * "Whether there is a frame to open" and "whether any is still waiting" were
+   * the only two, so a completed batch read `Open annotator` and opened a fully
+   * live editor whose every save the kernel refuses. The door is the same; the
+   * word on it is now honest about what is behind it.
+   */
+  it("says View when the frames cannot be written to", async () => {
+    await openIn("completed", "annotated", "skipped");
+    expect(screen.getByTestId("start-annotating").textContent).toContain("View frames");
+    expect(screen.getByTestId("start-annotating").textContent).not.toContain("annotator");
+  });
+
+  it("says View on the tiles too, since a tile is the other door", async () => {
+    await openIn("completed", "annotated", "skipped");
+    expect(screen.getByTestId("open-asset-0").textContent).toBe("View");
+    expect(screen.getByTestId("open-asset-0").getAttribute("aria-label")).toMatch(/^View frame/);
+  });
+
+  it("still opens, because looking at finished work is the point of the door", async () => {
+    const opened = await openIn("completed", "annotated", "skipped");
+    await userEvent.click(screen.getByTestId("start-annotating"));
+    expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "asset-0" }));
+  });
+
+  it("says Open on a batch that can be written to", async () => {
+    await open("annotated", "skipped");
+    expect(screen.getByTestId("open-asset-0").textContent).toBe("Open");
   });
 });

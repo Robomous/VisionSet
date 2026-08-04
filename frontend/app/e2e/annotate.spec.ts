@@ -28,7 +28,11 @@ const SCHEMA = {
   ],
 };
 
-function asset(index: number, progress: string): Record<string, unknown> {
+function asset(
+  index: number,
+  progress: string,
+  batchState = "in_annotation",
+): Record<string, unknown> {
   return {
     id: `asset-${index}`,
     project_id: PROJECT,
@@ -44,7 +48,12 @@ function asset(index: number, progress: string): Record<string, unknown> {
     ingested_at: null,
     job_id: JOB,
     progress,
-    allowed_actions: assetActions(progress),
+    // Threaded from the batch, because that is what the server does:
+    // `asset_actions` returns `[]` for every frame of a batch that is not
+    // `in_annotation`, whatever the frame's own progress is. Without it a mock
+    // would declare `annotate` on a completed batch and the read-only mode this
+    // suite is about would never be exercised.
+    allowed_actions: assetActions(progress, { batchState }),
   };
 }
 
@@ -153,8 +162,8 @@ async function serveApi(
       return route.fulfill({
         json: {
           items: [
-            asset(1, progress.get("asset-1") ?? "unannotated"),
-            asset(2, progress.get("asset-2") ?? "annotated"),
+            asset(1, progress.get("asset-1") ?? "unannotated", lifecycle.batch),
+            asset(2, progress.get("asset-2") ?? "annotated", lifecycle.batch),
           ],
           total: 2,
         },
@@ -343,21 +352,20 @@ test("a refused opening move is sent once, never looped, and its code is on the 
   // saved — the page must never look inert about a batch it could not open.
   await expect(page.getByTestId("save-state")).toContainText("BATCH_NOT_IN_ANNOTATION");
 
-  // Force a run of re-renders — drawing moves the store on every pointer step —
-  // then look at the wire. The old effect's bail flags were all false again
-  // after a refusal, so every one of these renders re-sent the refused POST.
-  const canvas = page.getByTestId("annotator-canvas");
-  const box = (await canvas.boundingBox())!;
-  await page.getByTestId("annotator-root").focus();
-  await page.keyboard.press("1");
-  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
-  await page.mouse.up();
-  // The drawing landed (so the renders really happened) while the bar keeps the
-  // refusal — a code on the bar outranks `unsaved`, because the person needs the
-  // reason their save will refuse more than they need the word for dirty.
-  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+  // Force a run of re-renders, then look at the wire. The old effect's bail flags
+  // were all false again after a refusal, so every one of these renders re-sent
+  // the refused POST.
+  //
+  // **This used to force them by drawing a box, and cannot any more**: a batch
+  // whose start was refused is still `approved`, so its frames declare no
+  // `annotate` and the canvas is read-only — which is the point of F2 and is a
+  // strictly better answer than a page that draws work it can never save. The
+  // zoom is the re-render that survives read-only, because it moves the
+  // viewport and not the document, and `onViewChange` fires on every notch.
+  const zoomIn = page.getByTestId("zoom-in");
+  for (let notch = 0; notch < 8; notch += 1) await zoomIn.click();
+  // The renders really happened, and the bar keeps the refusal.
+  await expect(page.getByTestId("zoom-readout")).not.toHaveText("100%");
   await expect(page.getByTestId("save-state")).toContainText("BATCH_NOT_IN_ANNOTATION");
 
   // Once — and the job's own start never fired at all, because the batch never
@@ -367,15 +375,22 @@ test("a refused opening move is sent once, never looped, and its code is on the 
 
 test("Accept is offered only where the kernel's machine allows the move", async ({ page }) => {
   const sent: Request[] = [];
-  await openJob(page, sent);
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "review_pending" }));
 
-  // Asset 1 is `unannotated`: `accepted` is not reachable from there, so offering
-  // it would be offering a refusal.
+  // **Asset 1 is `annotated`, and this used to assert Accept was enabled here.**
+  // It is not a legal move: `ASSET_PROGRESS_TRANSITIONS` gives `annotated` three
+  // exits — `unannotated`, `skipped`, `review_pending` — and `accepted` is not
+  // among them. The button was offering a refusal, and the refusal was one of the
+  // silent ones (F3), so pressing it did nothing at all and said nothing about it.
+  //
+  // The gate is the wire's `allowed_actions` now, which the kernel derives from
+  // that same table, so this cannot be got wrong again by reading the table twice.
   await expect(page.getByTestId("accept")).toBeDisabled();
 
   await page.getByTestId("next-asset").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
-  // Asset 2 is `annotated`, which is where the move is legal.
+  // Asset 2 is `review_pending`, which is the one state `accepted` is reachable
+  // from — the reviewer's half of the machine.
   await expect(page.getByTestId("accept")).toBeEnabled();
 });
 
@@ -456,12 +471,18 @@ test("a skipped asset says so, and the page offers the kernel's one way out", as
   await expect(page.getByTestId("accept")).toBeDisabled();
 });
 
-test("annotating a skipped asset saves, and the page says why the counter did not move", async ({
+test("a skipped asset cannot be drawn on at all, and the page says how to get it back", async ({
   page,
 }) => {
   const sent: Request[] = [];
   await openJob(page, sent, progressStore({ "asset-1": "skipped", "asset-2": "annotated" }));
 
+  // **This scenario used to assert the opposite — that drawing on a skipped frame
+  // saved.** It did, and that was the hole: `PROMOTABLE_PROGRESS` excludes
+  // `skipped`, so the labels were stored and then dropped at promotion, with
+  // every layer agreeing because each half was separately valid. #304 closed it
+  // in the kernel (`WRITABLE_PROGRESS`, 409 `ASSET_NOT_WRITABLE`); this closes it
+  // in the browser, so the work is never drawn rather than drawn and refused.
   const canvas = page.getByTestId("annotator-canvas");
   const box = (await canvas.boundingBox())!;
   await page.getByTestId("annotator-root").focus();
@@ -471,16 +492,83 @@ test("annotating a skipped asset saves, and the page says why the counter did no
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
   await page.mouse.up();
 
-  await page.getByTestId("save").click();
-  await expect.poll(() => sent.filter((r) => r.method() === "POST").length).toBeGreaterThan(0);
+  // Nothing was drawn, so there is nothing to save and no request to send. That
+  // is the guarantee `readOnly` on the canvas exists for: a host that only greyed
+  // out the Save would still have a box on the screen and no way to keep it.
+  await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+  await expect(page.getByTestId("save")).toBeDisabled();
+  expect(sent.filter((r) => r.method() === "POST" && r.url().includes("/annotations"))).toEqual([]);
 
-  // The save really happened — this was never the broken half.
-  await expect(page.getByTestId("save-state")).toContainText("Saved");
-  // What was broken is that nothing said why the asset is still skipped and the
-  // counter did not move. Now the page does, and the way out is one click away.
+  // And the way back is one click, on the same bar.
   await expect(page.getByTestId("asset-progress")).toHaveText("skipped");
   await expect(page.getByTestId("skipped-notice")).toBeVisible();
-  await expect(page.getByTestId("unskip")).toBeVisible();
+  await expect(page.getByTestId("unskip")).toBeEnabled();
+});
+
+/**
+ * Read-only mode, which did not exist — audit finding F2.
+ *
+ * The batch is `completed`, so the kernel declares nothing on any of its frames
+ * and every write it could send would answer 409. What shipped instead was a
+ * fully live editor: the canvas drew, the palette armed tools, the panel deleted
+ * objects, and the first Save rendered `BATCH_NOT_IN_ANNOTATION` as a raw badge —
+ * with navigation blocked while dirty, because `go()` commits first. The only way
+ * out was to undo your own work.
+ */
+test("a completed batch opens as a viewer, and says so", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, { batch: "completed", job: "completed" });
+
+  const banner = page.getByTestId("readonly-banner");
+  await expect(banner).toBeVisible();
+  // Prose with a route onward, not a code. The forward-only correction model is
+  // the answer to "then how do I fix this frame".
+  await expect(banner).toContainText(/viewing only/i);
+  await expect(banner).toContainText(/correction batch/i);
+
+  // Every control that writes is out, and the palette is gone entirely — a tool
+  // palette over a canvas that cannot be drawn on explains nothing.
+  await expect(page.getByTestId("save")).toBeDisabled();
+  await expect(page.getByTestId("skip")).toBeDisabled();
+  await expect(page.getByTestId("accept")).toBeDisabled();
+  await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+});
+
+test("a completed batch's canvas cannot be drawn on, however hard it is asked", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, { batch: "completed", job: "completed" });
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  // A class hotkey, then a full drag — the exact gesture that draws a box.
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+
+  // The claim, and the reason `readOnly` is a prop on the engine rather than a
+  // convention in the host: pointer input goes straight into the machine, so a
+  // greyed-out toolbar would not have stopped this.
+  await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+  await expect(page.getByTestId("save")).toBeDisabled();
+  expect(sent.filter((r) => r.method() === "POST" && r.url().includes("/annotations"))).toEqual([]);
+});
+
+test("a viewer can still navigate between frames, because a read-only mode you cannot move in is a screenshot", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, { batch: "completed", job: "completed" });
+
+  await expect(page.getByTestId("asset-position")).toContainText("1/2");
+  await page.getByTestId("next-asset").click();
+  // Never blocked: nothing can be dirty, so `go()`'s commit-first is a no-op
+  // rather than a save that rejects and swallows the navigation with it.
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  await page.getByTestId("prev-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("1/2");
 });
 
 /** The reserved slots, drawn so the bar is the shape the design shows. */

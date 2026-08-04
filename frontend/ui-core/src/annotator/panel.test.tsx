@@ -248,3 +248,82 @@ describe("the Labels tab", () => {
     expect(screen.getByTestId("label-select").dataset["active"]).toBe("true");
   });
 });
+
+/**
+ * The panel is the *other* road into the document — audit finding F2's second half.
+ *
+ * The canvas being read-only is the visible part; a live panel beside it would
+ * leave delete, class reassignment and tag toggling all still reachable, which is
+ * a read-only mode with a hole in it. Every one of those is a `store.execute`
+ * against a document the kernel will refuse to be handed.
+ *
+ * Visibility stays live on purpose and is the one thing that must **not** be
+ * gated: hiding is a *view* decision the core document has no field for, which is
+ * the same reason `visibility.ts` gives for why it must never travel to the API.
+ */
+describe("what the panel offers when the document cannot be written", () => {
+  it("draws no delete on an object row", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store, { readOnly: true }));
+
+    expect(screen.getByTestId("object-delete-0")).toHaveProperty("disabled", true);
+    await userEvent.click(screen.getByTestId("object-delete-0"));
+    // Not merely disabled-looking: nothing reached the store, so there is nothing
+    // in the history either.
+    expect(store.getSnapshot().document.annotations.size).toBe(1);
+    expect(store.getSnapshot().undoLabel).toBeNull();
+  });
+
+  it("offers no class reassignment, because reassigning is a write", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    store.select(selectOnly("a"));
+    render(mount(store, { readOnly: true }));
+
+    // The card is gone rather than disabled: every control on it exists to change
+    // the class, so a disabled one is an empty promise with a dropdown.
+    expect(screen.queryByTestId("editing-card")).toBeNull();
+  });
+
+  it("will not toggle a tag, which is the panel's quietest document change", async () => {
+    const store = storeWith([]);
+    render(mount(store, { readOnly: true }));
+
+    await userEvent.click(screen.getByTestId("tab-labels"));
+    const tag = screen.getByTestId("label-daytime");
+    expect(tag).toHaveProperty("disabled", true);
+    await userEvent.click(tag);
+    expect(store.getSnapshot().document.annotations.size).toBe(0);
+  });
+
+  it("will not arm a drawing tool either, since the canvas would not honour it", async () => {
+    const store = storeWith([]);
+    const onActivateClass = vi.fn();
+    render(mount(store, { readOnly: true, onActivateClass }));
+
+    await userEvent.click(screen.getByTestId("tab-labels"));
+    await userEvent.click(screen.getByTestId("label-vehicle"));
+    expect(onActivateClass).not.toHaveBeenCalled();
+  });
+
+  it("still hides and shows, because that is a view decision and never a document one", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    const onHiddenChange = vi.fn();
+    render(mount(store, { readOnly: true, onHiddenChange }));
+
+    await userEvent.click(screen.getByTestId("object-visibility-0"));
+    expect(onHiddenChange).toHaveBeenCalledOnce();
+  });
+
+  it("offers all of it when the document can be written", async () => {
+    // The control: every assertion above is about `readOnly` and not about the
+    // fixture happening to render nothing.
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    store.select(selectOnly("a"));
+    render(mount(store));
+
+    expect(screen.getByTestId("object-delete-0")).toHaveProperty("disabled", false);
+    expect(screen.queryByTestId("editing-card")).not.toBeNull();
+    await userEvent.click(screen.getByTestId("tab-labels"));
+    expect(screen.getByTestId("label-daytime")).toHaveProperty("disabled", false);
+  });
+});
