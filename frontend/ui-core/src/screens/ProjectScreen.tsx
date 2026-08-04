@@ -262,11 +262,18 @@ export function ProjectScreen({
           {/* The declared classes travel down so a distribution bar shows the
               colour the schema authored rather than only the derived hue. The
               query is shared with the Schema tab, so this costs no request. */}
+          {/* The checklist's tab links exist only when the host controls the
+              tabs: an uncontrolled Radix root cannot be moved from here, and a
+              link that silently does nothing is worse than plain text. */}
           <OverviewPanel
             projectId={projectId}
             {...(schema.data === undefined ? {} : { classes: schema.data.classes })}
             {...(onIngest === undefined ? {} : { onIngest })}
             {...(onOpenDataset === undefined ? {} : { onBrowseDataset: onOpenDataset })}
+            {...(onTabChange === undefined ? {} : { onOpenSchema: () => onTabChange("schema") })}
+            {...(onTabChange === undefined || onOpenBatch === undefined
+              ? {}
+              : { onOpenBatches: () => onTabChange("batches") })}
           />
         </TabsContent>
 

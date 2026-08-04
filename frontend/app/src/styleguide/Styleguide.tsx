@@ -26,6 +26,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Checklist,
   ClassListRow,
   COLOR,
   DistributionBar,
@@ -308,6 +309,24 @@ export function Styleguide(): JSX.Element {
               </TabsContent>
             </Tabs>
           </div>
+        </Section>
+
+        {/* Below the tabs section on purpose: `styleguide.spec.ts` reaches the
+            tab bar with a single Tab press from the Description field, and this
+            specimen's links are focusable. */}
+        <Section
+          title="Checklist"
+          description="Every step visible, one active, finished ones checked. The journey strip on a project's Overview."
+        >
+          <Checklist
+            aria-label="Checklist specimen"
+            items={[
+              { label: "Define your labels", state: "complete", onGo: () => undefined },
+              { label: "Add your images", state: "complete", onGo: () => undefined },
+              { label: "Annotate", state: "active", onGo: () => undefined },
+              { label: "Export your dataset", state: "upcoming" },
+            ]}
+          />
         </Section>
 
         <Section
