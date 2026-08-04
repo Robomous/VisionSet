@@ -225,6 +225,15 @@ export {
   writeRailCollapsed,
 } from "./data/railState.js";
 
+// The journey checklist (#289): every step visible, one active. Not the ingest
+// stepper — that one mounts only its active step, and its tests pin it.
+export {
+  Checklist,
+  type ChecklistItem,
+  type ChecklistItemState,
+  type ChecklistProps,
+} from "./patterns/Checklist.js";
+
 // The way out of a sub-view (#199). Structural, never `navigate(-1)`.
 export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";
 export { parentLabel } from "./patterns/parentLabel.js";
