@@ -925,6 +925,8 @@ describe("the project view's tabs", () => {
     await screen.findByTestId("overview-panel");
     expect(screen.queryByTestId("schema-editor")).toBeNull();
     expect(screen.queryByTestId("batches-screen")).toBeNull();
+    // The history is inside Schema now, so it is absent for the same reason the
+    // editor is rather than for one of its own.
     expect(screen.queryByTestId("version-history")).toBeNull();
 
     await userEvent.click(screen.getByTestId("tab-batches"));
@@ -945,7 +947,7 @@ describe("the project view's tabs", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(4);
     expect(screen.getByTestId("tab-overview").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByTestId("tab-overview").dataset.state).toBe("active");
-    for (const other of ["tab-schema", "tab-batches", "tab-versions"]) {
+    for (const other of ["tab-schema", "tab-batches", "tab-dataset"]) {
       expect(screen.getByTestId(other).getAttribute("aria-selected")).toBe("false");
       expect(screen.getByTestId(other).dataset.state).toBe("inactive");
     }
@@ -958,9 +960,9 @@ describe("the project view's tabs", () => {
 
   it("opens on the section the URL named, and on the default when it names nothing valid", async () => {
     project();
-    const { unmount } = render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));
-    await screen.findByTestId("version-history");
-    expect(screen.queryByTestId("schema-editor")).toBeNull();
+    const { unmount } = render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    expect(screen.queryByTestId("overview-panel")).toBeNull();
     unmount();
 
     // A stale link, a typo, or `batches` on a host with no batch route: none of
@@ -981,10 +983,12 @@ describe("the project view's tabs", () => {
       "Overview",
       "Schema",
       "Batches",
-      // "Schema history" since #292: the tab holds schema versions, and the
-      // bare "Versions" read as dataset versions. Label only — the union
-      // value, testid and `?tab=versions` are public API and stay.
-      "Schema history",
+      // **Dataset, where "Schema history" used to be.** The trunk is the
+      // product's central object and was reachable only through an overflow
+      // menu, an Overview link and the last step of a checklist; the history is
+      // a *view of* Schema and now sits inside it. `?tab=versions` still works
+      // and lands on Schema — a bookmarked URL is a promise.
+      "Dataset",
     ]);
   });
 
@@ -996,7 +1000,7 @@ describe("the project view's tabs", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Overview",
       "Schema",
-      "Schema history",
+      "Dataset",
     ]);
   });
 
@@ -1008,8 +1012,8 @@ describe("the project view's tabs", () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="overview" onTabChange={changed} />));
 
     await screen.findByTestId("overview-panel");
-    await userEvent.click(screen.getByTestId("tab-versions"));
-    expect(changed).toHaveBeenCalledWith("versions");
+    await userEvent.click(screen.getByTestId("tab-dataset"));
+    expect(changed).toHaveBeenCalledWith("dataset");
   });
 
   it("reports the tab to the host rather than reaching for a router", async () => {
@@ -1018,14 +1022,17 @@ describe("the project view's tabs", () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" onTabChange={changed} />));
 
     await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("tab-versions"));
-    expect(changed).toHaveBeenCalledWith("versions");
+    await userEvent.click(screen.getByTestId("tab-overview"));
+    expect(changed).toHaveBeenCalledWith("overview");
     // Controlled: the host owns the value, so the section does not move until the
     // URL does. Anything else would make the back button lie.
-    expect(screen.queryByTestId("version-history")).toBeNull();
+    expect(screen.queryByTestId("overview-panel")).toBeNull();
   });
 
-  it("does not read the version list until somebody opens the Versions tab", async () => {
+  it("does not read the version list until somebody opens the Schema tab", async () => {
+    // The history moved *inside* Schema, so the query moved with it — Radix
+    // unmounts an inactive tab's content, which is what makes "requests follow
+    // the open tab" true by construction rather than by every panel remembering.
     project();
     render(mount(<ProjectScreen projectId={PROJECT} />));
 
@@ -1034,8 +1041,20 @@ describe("the project view's tabs", () => {
       sent.filter((request) => new URL(request.url).pathname.endsWith("/schema/versions")).length;
     expect(versionRequests()).toBe(0);
 
-    await userEvent.click(screen.getByTestId("tab-versions"));
+    await userEvent.click(screen.getByTestId("tab-schema"));
     await waitFor(() => expect(versionRequests()).toBe(1));
+  });
+
+  it("carries a bookmarked ?tab=versions to Schema, where the history now lives", async () => {
+    // A URL somebody saved is a promise. `resolveProjectTab` is what the *host*
+    // asks to rewrite the address bar; this is the screen holding up its end
+    // when handed the stale value directly.
+    project();
+    render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));
+
+    await screen.findByTestId("schema-editor");
+    expect(screen.queryByTestId("version-history")).not.toBeNull();
+    expect(screen.queryByTestId("overview-panel")).toBeNull();
   });
 });
 
@@ -1060,8 +1079,9 @@ describe("version history", () => {
       },
     });
 
-    // Reached through the tab, which is the only way to reach it now (#171).
-    render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));
+    // Reached through the Schema tab, which is where the history lives now: it
+    // is a view *of* the schema rather than a peer of it.
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
 
     const history = await screen.findByTestId("version-history");
     // `findBy` on the row, not on the card: the card renders immediately and holds
@@ -1104,7 +1124,13 @@ describe("version history", () => {
       },
     });
 
-    render(mount(<ProjectScreen projectId={PROJECT} tab="versions" />));
+    // The editor is above the history in the same tab now, so its own query has
+    // to be answered or the section never gets past loading.
+    on("GET", /^\/projects\/[^/]+\/schema$/, {
+      status: 200,
+      body: { project_id: PROJECT, version: 2, classes: CLASSES },
+    });
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
 
     const history = await screen.findByTestId("version-history");
     await within(history).findByTestId("version-1");
@@ -1320,19 +1346,22 @@ describe("the project header", () => {
     expect(screen.queryByTestId("go-annotate")).toBeNull();
   });
 
-  it("moves Rename and Dataset into the overflow, so only two buttons show", async () => {
+  it("moves Rename into the overflow, so only two buttons show", async () => {
     headerFor({ batchState: "in_annotation" });
-    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} onOpenDataset={vi.fn()} />));
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />));
 
     await screen.findByTestId("go-annotate");
-    // Rename and Dataset are behind the menu, so they are not in the document yet.
+    // Rename is behind the menu, so it is not in the document yet.
     expect(screen.queryByTestId("rename-project")).toBeNull();
-    expect(screen.queryByTestId("go-dataset")).toBeNull();
 
     await userEvent.click(screen.getByTestId("project-menu"));
 
     expect(await screen.findByTestId("rename-project")).not.toBeNull();
-    expect(screen.queryByTestId("go-dataset")).not.toBeNull();
+    // **No Dataset item.** It was in this menu because the dataset had no tab of
+    // its own; it has one now, and the same destination in a tab bar *and* a
+    // hidden menu is two answers to one question — the second of which nobody
+    // finds.
+    expect(screen.queryByTestId("go-dataset")).toBeNull();
     expect(screen.queryByTestId("delete-project")).not.toBeNull();
   });
 

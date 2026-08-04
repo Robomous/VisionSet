@@ -149,9 +149,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     }
 
     await page.getByTestId("save-schema").click();
-    // The history is its own tab since #171, so the published version is checked
-    // where it now lives rather than further down the same page.
-    await page.getByTestId("tab-versions").click();
+    // The history nests inside the Schema tab now: it is a view *of* the schema
+    // rather than a peer of it, so the published version is checked further down
+    // the page it belongs to rather than in a fourth tab.
+    await expect(page.getByTestId("version-history")).toBeVisible();
     await expect(page.getByTestId("version-1")).toBeVisible();
     await expect(page.getByTestId("version-1")).toContainText("active");
   });
@@ -408,10 +409,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("publish a release", async () => {
-    // Dataset moved into the header's overflow menu with #211: a project page
-    // shows one primary action and one secondary, and curation is neither.
-    await page.getByTestId("project-menu").click();
-    await page.getByTestId("go-dataset").click();
+    // **A tab, reached in one press.** It was behind the header's overflow menu,
+    // which is where a destination goes when the navigation has no room for it —
+    // and the trunk is the product's central object, so that was the wrong shape
+    // rather than a tidy one.
+    await page.getByTestId("tab-dataset").click();
     await expect(page.getByTestId("dataset-stats")).toContainText("3");
     await expect(page.getByTestId("dataset-screen")).toBeVisible();
 
@@ -509,7 +511,10 @@ async function columnsOf(page: Page): Promise<{ rendered: number; expected: numb
  * than reached by `?tab=`, for the same reason nothing here types a URL: a step
  * that navigates by address cannot notice that the control is missing.
  */
-async function openProject(page: Page, tab: "schema" | "batches" | "versions"): Promise<void> {
+async function openProject(
+  page: Page,
+  tab: "schema" | "batches" | "dataset",
+): Promise<void> {
   await page.getByTestId("rail-projects").click();
   await expect(page.getByTestId(`open-${PROJECT}`)).toBeVisible();
   await page.getByTestId(`open-${PROJECT}`).click();

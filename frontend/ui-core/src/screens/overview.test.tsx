@@ -15,9 +15,10 @@ import type { JSX, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiProvider } from "../data/ApiProvider";
+import { clearPrefs } from "../data/prefs";
 import { IMBALANCE_MIN_CLASSES, IMBALANCE_SHARE, imbalanceNote } from "./imbalance";
 import { journeySteps, OverviewPanel } from "./OverviewPanel";
-import { batchActions } from "../testing/wire.fixtures.js";
+import { batchActions, datasetOf, releaseOf } from "../testing/wire.fixtures.js";
 import type { components as capComponents } from "../generated/api.js";
 
 type BatchState = capComponents["schemas"]["BatchState"];
@@ -62,6 +63,26 @@ beforeEach(() => {
         );
       }
     }
+    /*
+     * The three reads `useProjectReadiness` needs, answered emptily when no test
+     * said otherwise.
+     *
+     * A fallback rather than a handler, so an explicit `on(...)` always wins
+     * whatever order it was registered in — handlers are consulted first, and
+     * this is what is left. Registering these as handlers instead made the order
+     * of `serve()` against a test's own `on()` load-bearing, which is a rule
+     * nobody can see at the call site.
+     *
+     * The 500 stays for everything else: a request nobody stubbed is a fixture
+     * that forgot something, and answering it politely is how a test comes to
+     * assert against a screen the server could never produce.
+     */
+    const path = new URL(request.url).pathname;
+    if (path.endsWith("/batches")) return json({ items: [], total: 0 });
+    if (path.endsWith("/releases")) return json({ items: [], total: 0 });
+    if (path.endsWith("/dataset")) {
+      return json(datasetOf(PROJECT, "22222222-2222-4222-8222-222222222222"));
+    }
     return Promise.resolve(
       new Response(JSON.stringify({ code: "NO_STUB", message: request.url }), {
         status: 500,
@@ -71,7 +92,23 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => vi.unstubAllGlobals());
+/** A 200 with a JSON body — the fallback's only shape. */
+function json(body: unknown): Promise<Response> {
+  return Promise.resolve(
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  // `writePref` keeps an in-memory mirror beside storage, so clearing the store
+  // alone leaves a dismissal leaking into the next test.
+  globalThis.sessionStorage.clear();
+  clearPrefs();
+});
 
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
@@ -109,7 +146,46 @@ function statsOf(over: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
+const DATASET = "22222222-2222-4222-8222-222222222222";
+
+/**
+ * The two-hop the journey's last step reads: project -> dataset -> releases.
+ *
+ * Installed for every fixture rather than per test, because `useProjectReadiness`
+ * waits on it — a missing stub makes readiness `null`, which renders as nothing
+ * at all and is indistinguishable from a hook that stopped working.
+ */
+function serveTrunk(releases: readonly string[] = []): void {
+  on("GET", /\/projects\/[^/]+\/dataset$/, { status: 200, body: datasetOf(PROJECT, DATASET) });
+  on("GET", /\/releases$/, {
+    status: 200,
+    body: { items: releases.map((tag) => releaseOf(DATASET, tag)), total: releases.length },
+  });
+}
+
+function batchOf(state: string): Record<string, unknown> {
+  return {
+    id: "55555555-5555-4555-8555-555555555555",
+    project_id: PROJECT,
+    name: "drive-01",
+    state,
+    schema_version: state === "draft" ? null : 1,
+    asset_count: 48,
+    progress: {
+      unannotated: 48,
+      annotated: 0,
+      skipped: 0,
+      review_pending: 0,
+      accepted: 0,
+      total: 48,
+    },
+    allowed_actions: batchActions(state as BatchState),
+    promoted_asset_count: 0,
+  };
+}
+
 function serve(stats: Record<string, unknown>, assets: unknown = { items: [], total: 0 }): void {
+  serveTrunk();
   on("GET", /\/stats$/, { status: 200, body: stats });
   on("GET", /\/assets$/, { status: 200, body: assets });
 }
@@ -168,8 +244,9 @@ describe("the Overview panel", () => {
     const { container } = render(mount(<OverviewPanel projectId={PROJECT} />));
 
     const loading = screen.getByTestId("overview-loading");
-    // Four stat placeholders and six tiles: the shape the data arrives into.
-    expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(14);
+    // Two rows of four — the pipeline pointers and the counts — plus four
+    // distribution rows and six tiles: the shape the data arrives into.
+    expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(18);
     const gridsWhileLoading = container.querySelectorAll(".grid").length;
 
     await screen.findByTestId("overview-stats");
@@ -276,6 +353,7 @@ describe("the Overview panel", () => {
   });
 
   it("surfaces a failure to count with a way to retry", async () => {
+    serveTrunk();
     on("GET", /\/stats$/, { status: 500, body: { code: "BOOM", message: "counting failed" } });
     on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
     render(mount(<OverviewPanel projectId={PROJECT} />));
@@ -304,48 +382,30 @@ describe("journeySteps", () => {
   });
 });
 
-describe("the journey checklist", () => {
-  /** The three readiness sources, beside the panel's own two. */
-  function readinessOf(options: {
-    schema?: boolean;
-    stats: Record<string, unknown>;
-    batches?: readonly Record<string, unknown>[];
-  }): void {
-    on(
-      "GET",
-      /^\/projects\/[^/]+\/schema$/,
-      options.schema === false
-        ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none yet" } }
-        : { status: 200, body: { project_id: PROJECT, version: 1, classes: [] } },
-    );
-    on("GET", /\/stats$/, { status: 200, body: options.stats });
-    on("GET", /\/batches$/, {
-      status: 200,
-      body: { items: options.batches ?? [], total: options.batches?.length ?? 0 },
-    });
-    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
-  }
+/** Every source the panel and its readiness hook read, in one call. */
+function readinessOf(options: {
+  schema?: boolean;
+  stats: Record<string, unknown>;
+  batches?: readonly Record<string, unknown>[];
+  releases?: readonly string[];
+}): void {
+  on(
+    "GET",
+    /^\/projects\/[^/]+\/schema$/,
+    options.schema === false
+      ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none yet" } }
+      : { status: 200, body: { project_id: PROJECT, version: 1, classes: [] } },
+  );
+  serveTrunk(options.releases ?? []);
+  on("GET", /\/stats$/, { status: 200, body: options.stats });
+  on("GET", /\/batches$/, {
+    status: 200,
+    body: { items: options.batches ?? [], total: options.batches?.length ?? 0 },
+  });
+  on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+}
 
-  function batchOf(state: string): Record<string, unknown> {
-    return {
-      id: "55555555-5555-4555-8555-555555555555",
-      project_id: PROJECT,
-      name: "drive-01",
-      state,
-      schema_version: state === "draft" ? null : 1,
-      asset_count: 48,
-      progress: {
-        unannotated: 48,
-        annotated: 0,
-        skipped: 0,
-        review_pending: 0,
-        accepted: 0,
-        total: 48,
-      },
-      allowed_actions: batchActions(state as BatchState),
-      promoted_asset_count: 0,
-    };
-  }
+describe("the journey checklist", () => {
 
   const empty = statsOf({
     asset_count: 0,
@@ -424,5 +484,120 @@ describe("the journey checklist", () => {
 
     await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("journey-checklist")).toBeNull();
+  });
+});
+
+/**
+ * The checklist retiring itself — the `information-architecture` rule that
+ * onboarding is not navigation.
+ *
+ * Two exits, and they are different facts. One is that the journey is *finished*:
+ * `hasReleases` makes `done` derivable, and `journeySteps` answers `null` for it.
+ * The other is that somebody has *read it*: a strip you cannot dismiss is a strip
+ * you learn to look past.
+ */
+describe("when the journey stops being worth showing", () => {
+  it("retires itself once the project has published a release", async () => {
+    readinessOf({
+      stats: statsOf({ asset_count: 48, annotated_pct: 100, annotation_count: 96 }),
+      batches: [batchOf("completed")],
+      releases: ["v1"],
+    });
+
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    // The dashboard is there, so this is not "nothing rendered".
+    await screen.findByTestId("overview-pipeline");
+    expect(screen.queryByTestId("journey-checklist")).toBeNull();
+  });
+
+  it("still shows it while there is no release yet", async () => {
+    readinessOf({
+      stats: statsOf({ asset_count: 48, annotated_pct: 100, annotation_count: 96 }),
+      batches: [batchOf("completed")],
+    });
+
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    await screen.findByTestId("journey-checklist");
+    expect(screen.getByTestId("journey-export").dataset.state).toBe("active");
+  });
+
+  it("stays dismissed, and only for the project it was dismissed on", async () => {
+    readinessOf({ stats: statsOf({ asset_count: 48 }) });
+    const { unmount } = render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    await userEvent.click(await screen.findByTestId("journey-dismiss"));
+    expect(screen.queryByTestId("journey-checklist")).toBeNull();
+    unmount();
+
+    // Persisted: a remount is a reload, and onboarding that came back would be
+    // onboarding nobody can get rid of.
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+    await screen.findByTestId("overview-pipeline");
+    expect(screen.queryByTestId("journey-checklist")).toBeNull();
+  });
+});
+
+/**
+ * The dashboard row — Overview as pointers rather than as a second copy of every
+ * tab.
+ */
+describe("the pipeline row", () => {
+  it("points each card at the section that owns it", async () => {
+    readinessOf({ stats: statsOf({ asset_count: 48 }) });
+    const go = { schema: vi.fn(), batches: vi.fn(), dataset: vi.fn() };
+    render(
+      mount(
+        <OverviewPanel
+          projectId={PROJECT}
+          onOpenSchema={go.schema}
+          onOpenBatches={go.batches}
+          onBrowseDataset={go.dataset}
+        />,
+      ),
+    );
+
+    await screen.findByTestId("overview-pipeline");
+    await userEvent.click(screen.getByTestId("pipeline-batches"));
+    await userEvent.click(screen.getByTestId("pipeline-schema"));
+    await userEvent.click(screen.getByTestId("pipeline-dataset"));
+    await userEvent.click(screen.getByTestId("pipeline-release"));
+
+    expect(go.batches).toHaveBeenCalledOnce();
+    expect(go.schema).toHaveBeenCalledOnce();
+    // Both the trunk and the release live on the Dataset tab.
+    expect(go.dataset).toHaveBeenCalledTimes(2);
+  });
+
+  it("is a row of buttons, so a keyboard can reach it", async () => {
+    // A card with somewhere to go is an action, and an action a mouse alone can
+    // take is half a control.
+    readinessOf({ stats: statsOf({ asset_count: 48 }) });
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenBatches={vi.fn()} />));
+
+    const card = await screen.findByTestId("pipeline-batches");
+    expect(card.tagName).toBe("BUTTON");
+    // And one with nowhere to go stays a plain statistic rather than a disabled
+    // button — it is not a refused action, it is not an action.
+    expect(screen.getByTestId("pipeline-release").tagName).toBe("DIV");
+  });
+
+  it("says a section is empty in words rather than showing a zero", async () => {
+    // #287's lesson one screen over: a documented "no answer" rendered as data
+    // reads as a broken screen. "None yet" is an invitation; `0` is a
+    // measurement of nothing.
+    readinessOf({ stats: statsOf({ asset_count: 48 }), batches: [] });
+
+    render(mount(<OverviewPanel projectId={PROJECT} />));
+
+    // `findByText`, not `findByTestId` then read: the card renders immediately
+    // with an em dash while its query is in flight, so reading `textContent` off
+    // the element the moment it appears asserts against the loading state.
+    await screen.findByText("An ingest creates one");
+    const batches = screen.getByTestId("pipeline-batches");
+    expect(batches.textContent).toContain("None yet");
+    await screen.findByText("Publish one from the Dataset tab");
+    expect(screen.getByTestId("pipeline-release").textContent).toContain("None yet");
   });
 });

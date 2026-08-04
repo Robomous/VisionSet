@@ -32,12 +32,21 @@
  * it with coloured squares; neither needed the other to exist.
  */
 
-import type { JSX, ReactNode } from "react";
+import type { HTMLAttributes, JSX, ReactNode } from "react";
 
 import { cn } from "../lib/cn";
 import { formatCount } from "../lib/format";
 
-export interface StatCardProps {
+export interface StatCardProps extends Omit<HTMLAttributes<HTMLElement>, "onClick"> {
+  /**
+   * Where this card goes, when it goes anywhere.
+   *
+   * The `information-architecture` skill's dashboard rule: Overview never
+   * duplicates a tab's full function, so every number on it is a *pointer* at
+   * the section that owns it. A card with no destination is a plain statistic and
+   * stays one.
+   */
+  readonly onGo?: () => void;
   readonly label: ReactNode;
   /** Pre-formatted. A caller with a raw count runs it through `formatCount`. */
   readonly value: ReactNode;
@@ -54,13 +63,44 @@ export interface StatCardProps {
  * nothing. `tabular-nums` on the value is the load-bearing class — without it a
  * number that updates shifts the ones beside it.
  */
-export function StatCard({ label, value, context, className }: StatCardProps): JSX.Element {
-  return (
-    <div className={cn("flex flex-col gap-1 rounded-lg bg-muted p-4", className)}>
+export function StatCard({
+  label,
+  value,
+  context,
+  className,
+  onGo,
+  ...rest
+}: StatCardProps): JSX.Element {
+  const body = (
+    <>
       <span className="text-meta text-muted-foreground">{label}</span>
       <span className="text-page font-semibold tabular-nums text-foreground">{value}</span>
       {context !== undefined && <span className="text-meta text-muted-foreground">{context}</span>}
-    </div>
+    </>
+  );
+  const shell = "flex flex-col gap-1 rounded-lg bg-muted p-4";
+
+  // A card that goes somewhere is a **button**, not a div with a handler: it has
+  // to be reachable by keyboard and announced as an action, and the difference
+  // between those two is the difference between a dashboard and a picture of one.
+  // A card with nowhere to go stays a div rather than a disabled button, because
+  // it is not a refused action — it is not an action.
+  if (onGo === undefined) {
+    return (
+      <div className={cn(shell, className)} {...rest}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onGo}
+      className={cn(shell, "text-left transition-colors hover:bg-stage", className)}
+      {...rest}
+    >
+      {body}
+    </button>
   );
 }
 

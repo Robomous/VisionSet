@@ -195,12 +195,10 @@ const SUBVIEWS = [
     // landing on Schema after leaving a batch is landing somewhere you were not.
     parent: new RegExp(`/projects/${PROJECT}\\?tab=batches$`),
   },
-  {
-    name: "the dataset",
-    url: `/projects/${PROJECT}/dataset`,
-    ready: "dataset-screen",
-    parent: new RegExp(`/projects/${PROJECT}$`),
-  },
+  // **The dataset is not here any more, and its absence is the change.** It was a
+  // route with a back-link; it is a project *tab* now, so its way out is the tab
+  // bar and the back-link on that page belongs to the project. Its old URL still
+  // works — see the redirect scenario below.
 ] as const;
 
 for (const view of SUBVIEWS) {
@@ -261,4 +259,55 @@ test("the project's own way out names the list, not a project", async ({ page })
   // parent has a fixed name rather than one that has to load.
   await openCold(page, `/projects/${PROJECT}`);
   await expect(page.getByTestId("back-link")).toContainText("Projects");
+});
+
+
+/**
+ * The dataset's old address, kept as a promise.
+ *
+ * It was `/projects/:id/dataset` — a route reachable only through an overflow
+ * menu, an Overview link, and the last step of an onboarding checklist. That is
+ * three indirect doors onto the product's central object, which is what made it
+ * a first-class thing nobody could find. It is a tab now, and the old URL
+ * redirects rather than 404s, because a URL somebody bookmarked is a promise.
+ */
+test("the dataset's old URL lands on its tab", async ({ page }) => {
+  await openCold(page, `/projects/${PROJECT}/dataset`);
+
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}\\?tab=dataset$`));
+  await expect(page.getByTestId("dataset-screen")).toBeVisible();
+  // And the tab bar knows where it is, which a redirect that only changed the
+  // URL would not have achieved.
+  await expect(page.getByTestId("tab-dataset")).toHaveAttribute("aria-selected", "true");
+});
+
+test("a bookmarked ?tab=versions lands on Schema, with the history under the editor", async ({
+  page,
+}) => {
+  // The history was a fourth tab — a read-only view *of* the second, offered as
+  // a peer of it, which is how "Schema history" and "Releases" became confusable
+  // enough that #292 had to rename one. It nests inside Schema now.
+  await openCold(page, `/projects/${PROJECT}?tab=versions`);
+
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}\\?tab=schema$`));
+  await expect(page.getByTestId("schema-editor")).toBeVisible();
+  await expect(page.getByTestId("version-history")).toBeVisible();
+  // The tab is gone from the bar, which is the half that matters: a redirect
+  // that left the tab in place would have moved nothing.
+  await expect(page.getByTestId("tab-versions")).toHaveCount(0);
+});
+
+test("the dataset is one press from every other tab", async ({ page }) => {
+  // The `information-architecture` rule this task exists for: the trunk is the
+  // product's central object and must be reachable in one click from any project
+  // tab. It used to take an overflow menu.
+  await openCold(page, `/projects/${PROJECT}`);
+  await expect(page.getByTestId("project-screen")).toBeVisible();
+
+  for (const from of ["tab-overview", "tab-schema", "tab-batches"]) {
+    await page.getByTestId(from).click();
+    await expect(page.getByTestId("tab-dataset")).toBeVisible();
+  }
+  await page.getByTestId("tab-dataset").click();
+  await expect(page.getByTestId("dataset-screen")).toBeVisible();
 });
