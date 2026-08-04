@@ -53,6 +53,7 @@ import { AssetThumbnail } from "./AssetThumbnail";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
+import { PromoteButton } from "./PromoteButton";
 import {
   ASSET_ACTION,
   BATCH_ACTION,
@@ -144,6 +145,14 @@ export interface GalleryScreenProps {
   readonly onBack?: () => void;
   /** The project's schema tab, for the approve dialog's `SCHEMA_NOT_FOUND` remedy (#291). */
   readonly onOpenSchema?: () => void;
+  /**
+   * The dataset — where a promotion from this screen lands (audit F18).
+   *
+   * The `information-architecture` skill's rule that the dataset is reachable in
+   * one click from anywhere it is relevant, applied to the one screen that can
+   * put something into it.
+   */
+  readonly onOpenDataset?: () => void;
 }
 
 export function GalleryScreen({
@@ -152,6 +161,7 @@ export function GalleryScreen({
   onOpenAsset,
   onBack,
   onOpenSchema,
+  onOpenDataset,
 }: GalleryScreenProps): JSX.Element {
   const project = useProject(projectId);
   const batch = useBatch(batchId);
@@ -300,8 +310,10 @@ export function GalleryScreen({
 
       <BatchHeader
         batch={batch.data}
+        projectId={projectId}
         assets={loaded}
         showsProgress={showsProgress}
+        {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
         onApprove={() => setApproving(true)}
         {...(onOpenAsset === undefined
           ? {}
@@ -458,13 +470,17 @@ export function GalleryScreen({
  */
 function BatchHeader({
   batch,
+  projectId,
   assets,
   showsProgress,
   onApprove,
   onStartAnnotating,
+  onOpenDataset,
 }: {
   readonly batch: Batch | undefined;
+  readonly projectId: string;
   readonly assets: readonly BatchAsset[];
+  readonly onOpenDataset?: () => void;
   /** False for a draft, whose counts are documented zeros rather than data. */
   readonly showsProgress: boolean;
   readonly onApprove: () => void;
@@ -577,6 +593,23 @@ function BatchHeader({
             control is shared with that table rather than spelled twice, and it
             withholds the press — with the count — while anything is outstanding.
           */}
+          {/*
+            Promotion, on the screen the work is finished from (audit F18).
+
+            It existed only on the batch table one tab away, so a person could
+            settle forty-eight frames here and have nowhere to put them — and the
+            gallery had no link to the dataset either, which is where a promotion's
+            evidence lives. Capability-gated and shared with that table rather than
+            spelled twice: `PromoteButton` owns the sentence and the reason.
+          */}
+          {batch !== undefined && (
+            <PromoteButton
+              batch={batch}
+              projectId={projectId}
+              className="flex flex-col items-end gap-1"
+              {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
+            />
+          )}
           {batch !== undefined && batch.state === "in_annotation" && (
             <CompleteBatchButton batch={batch} className="flex flex-col items-end gap-1" />
           )}

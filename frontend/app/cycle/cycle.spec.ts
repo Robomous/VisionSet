@@ -356,8 +356,33 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   await test.step("promote the completed batch into the trunk", async () => {
     // The trunk carries assets only, and promotion is a **union** against current
     // membership — idempotent, with no log entry when nothing changed.
+    //
+    // **This used to assert the button's label flipped to "Promoted", and that
+    // was the whole of the feedback.** A label flip is not a report: it could not
+    // say how many assets moved, it could not tell a first press from a repeat,
+    // and it made a second press look forbidden when it is merely a no-op.
+    // Promotion is not a transition either, so nothing else on the row could
+    // move — which is how a working call came to read as a broken button.
     await page.getByTestId("promote-cycle-batch").click();
-    await expect(page.getByTestId("promote-cycle-batch")).toHaveText("Promoted");
+
+    const said = page.getByTestId("promoted-cycle-batch");
+    await expect(said).toBeVisible({ timeout: 30_000 });
+    // Three assets annotated in the step above, and every one of them promotable.
+    await expect(said).toHaveText(/Promoted 3 assets/);
+    // The button stays a button, so the batch can be promoted again after a
+    // curator removes something.
+    await expect(page.getByTestId("promote-cycle-batch")).toHaveText(/Promote/);
+  });
+
+  await test.step("the trunk count survives a reload, which the response cannot", async () => {
+    // The other half of making promotion observable: the response says what *this
+    // press* did and is gone on the next render, while `promoted_asset_count` is
+    // derived per read and is still right in a session that did no promoting.
+    await page.reload();
+    await expect(page.getByTestId("batches-table")).toBeVisible();
+    await expect(page.getByTestId("promoted-count-cycle-batch")).toHaveText(
+      /3 of 3 in the dataset/,
+    );
   });
 
   await test.step("publish a release", async () => {
