@@ -88,6 +88,7 @@ import {
   CheckCheck,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   GitBranch,
   GitMerge,
   Grid3x3,
@@ -623,7 +624,9 @@ function Workspace({
     attempt(() => onNavigate(next));
   }
 
-  function settle(progress: "annotated" | "skipped" | "accepted"): void {
+  function settle(
+    progress: "annotated" | "skipped" | "accepted" | "review_pending",
+  ): void {
     attempt(() => {
       setProgress.mutate(
         { assetId: asset.id, progress },
@@ -695,10 +698,29 @@ function Workspace({
     (finishJob.isError ? finishJob.error : null);
 
   const progressWord = PROGRESS_LABEL[asset.progress ?? "unannotated"] ?? asset.progress ?? "";
+  /**
+   * Why a frame in an open batch cannot be drawn on, when the batch is not the
+   * reason.
+   *
+   * Three states are not in `WRITABLE_PROGRESS`, and each is a different
+   * sentence because each has a different way out — the whole difference between
+   * a refusal and a next step:
+   *
+   * - `skipped` returns null, because the notice below says it better and carries
+   *   the Un-skip that reverses it;
+   * - `review_pending` names the control sitting on this very toolbar, so a
+   *   reviewer who wants to fix a box knows the frame has to go back first;
+   * - `accepted` has no exit at all, which is why correcting accepted work needs
+   *   a new batch rather than a progress move.
+   */
   const settledBecause =
     asset.progress === "skipped"
-      ? null // The skipped notice below says it better, and offers the way back.
-      : `This frame is ${progressWord} — its labels are settled and cannot be changed here.`;
+      ? null
+      : asset.progress === "review_pending"
+        ? "This frame is waiting on a review — return it to the annotator to change its labels."
+        : asset.progress === "accepted"
+          ? "This frame has been accepted, and accepted work is not edited in place — a correction batch is how it changes."
+          : `This frame is ${progressWord} — its labels are settled and cannot be changed here.`;
 
   return (
     <div className="flex h-screen flex-col" data-testid="annotation-page">
@@ -836,15 +858,65 @@ function Workspace({
             </Button>
           )}
           {/*
-            Enabled only where the kernel's own machine allows the move. `accepted`
-            is reachable from `annotated` and `review_pending`; offering it on an
-            untouched asset would be offering a refusal.
+            The review half of the progress machine, which had **no spelling
+            anywhere in the product** until now (audit F24).
+
+            `annotated -> review_pending -> accepted | annotated` are three legal
+            kernel edges, and the browser offered none of them: the "In review"
+            segment in the gallery could only ever be populated through the API or
+            MCP, and `accepted` — the one state that says a human checked the work
+            — was unreachable by any sequence of clicks. Not a missing feature so
+            much as a machine with a whole side nobody had built a door onto.
+
+            Which of the three appears is the frame's own declaration, so the
+            annotator and the reviewer are the same screen wearing the state it is
+            looking at. That is deliberate: this product has no annotator identity
+            to assign work to (#282), so "reviewer" is a thing somebody is doing
+            rather than somebody they are.
+          */}
+          {declares(asset, ASSET_ACTION.submitForReview) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="submit-for-review"
+              disabled={setProgress.isPending}
+              onClick={() => settle("review_pending")}
+            >
+              <ClipboardCheck className="size-4" />
+              Submit for review
+            </Button>
+          )}
+
+          {/*
+            Sending it back, which is the reviewer's "no". Named for the act
+            rather than for the edge it rides — `capabilities.py` makes the same
+            call: "back to annotated" describes the table, "return to annotator"
+            describes what is being done.
+          */}
+          {declares(asset, ASSET_ACTION.returnToAnnotator) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="return-to-annotator"
+              disabled={setProgress.isPending}
+              onClick={() => settle("annotated")}
+            >
+              <Undo2 className="size-4" />
+              Return to annotator
+            </Button>
+          )}
+
+          {/*
+            The reviewer's "yes", and the one state with no exit at all. Enabled
+            only where the kernel's machine allows the move — `accepted` is
+            reachable from `review_pending` alone, which is why this used to be
+            offered on an `annotated` frame and silently refused.
           */}
           <Button
             variant="secondary"
             size="sm"
             data-testid="accept"
-            disabled={!declares(asset, ASSET_ACTION.accept)}
+            disabled={!declares(asset, ASSET_ACTION.accept) || setProgress.isPending}
             {...(withheld === null ? {} : { title: withheld })}
             onClick={() => settle("accepted")}
           >
@@ -852,8 +924,27 @@ function Workspace({
             Accept
           </Button>
 
+          {/*
+            **Past `unannotated`**, not the `annotated` count — the same rule the
+            gallery's own bar states, and for the reason it states: a readout that
+            counted only `annotated` goes *backwards* when a frame is accepted,
+            which is the one thing a progress readout must never do.
+
+            It never bit before because nothing in the product could produce
+            `accepted` or `review_pending` (F24) — every settled frame was either
+            `annotated` or `skipped`, and `skipped` made it go backwards too,
+            silently, in a batch where somebody skipped after labelling. Adding
+            the review moves is what made it visible: the real-server cycle run
+            walked one frame to `accepted` and the counter dropped from 3 to 2.
+
+            `annotatedShare` is not reused here because it lives in `screens/` and
+            wants a `ProgressCounts`; the arithmetic is one subtraction and the
+            rule is written down in both places.
+          */}
           <span className="text-meta text-muted-foreground" data-testid="job-progress">
-            {counts === null ? "—" : `${counts.annotated} / ${counts.total} annotated`}
+            {counts === null
+              ? "—"
+              : `${Math.max(0, counts.total - counts.unannotated)} / ${counts.total} annotated`}
           </span>
 
           {/*

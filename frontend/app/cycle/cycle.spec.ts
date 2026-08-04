@@ -336,9 +336,31 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("save").click();
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
+    // 3b — the review round-trip, on the frame we are already standing on.
+    //
+    // **This is the half of the progress machine that had no door** (audit F24):
+    // `annotated -> review_pending -> accepted` are legal kernel edges the
+    // browser offered no way to make, so the gallery's "In review" segment could
+    // only be filled through the API and `accepted` was unreachable by clicking.
+    // Run here, against the real kernel, because the two things worth proving are
+    // that the moves are accepted and that an `accepted` asset still settles the
+    // job and still promotes — `SETTLED_PROGRESS` and `PROMOTABLE_PROGRESS` both
+    // include it, and a suite of stubs cannot check that.
+    await page.getByTestId("submit-for-review").click();
+    await expect(page.getByTestId("asset-progress")).toHaveText("in review");
+    // A frame out for review is not writable, and the banner names the way back.
+    await expect(page.getByTestId("readonly-banner")).toContainText(/return it to the annotator/i);
+
+    await page.getByTestId("accept").click();
+    await expect(page.getByTestId("asset-progress")).toHaveText("accepted");
+
     // The chain nothing in the browser closed before #59 found it: a batch cannot
     // complete while a job is outstanding, and a job cannot while an asset is
     // unsettled. Saving annotations settles the assets; this closes the job.
+    //
+    // `accepted` is settled, so the count below still reads 3 of 3 — "annotated"
+    // here means *past unannotated*, which is the only reading that does not go
+    // backwards when a frame is accepted.
     await expect(page.getByTestId("job-progress")).toHaveText("3 / 3 annotated");
     await page.getByTestId("finish-job").click();
     await expect(page.getByTestId("finish-job")).toHaveText("Finished");
