@@ -278,6 +278,8 @@ def test_a_job_completes_once_every_asset_is_settled(
         "batch_id": batch_id,
         "state": "completed",
         "asset_count": 3,
+        # `JOB_TRANSITIONS[completed]` is empty, so a finished job declares nothing.
+        "allowed_actions": [],
     }
 
 

@@ -51,7 +51,7 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any
     jobs = batches.jobs(batch.id)
     return {
         **wire.batch(batch, counts),
-        "jobs": [wire.job(j, batch_id=batch.id) for j in jobs],
+        "jobs": [wire.job(j, batch_id=batch.id, batch_state=batch.state) for j in jobs],
     }
 
 
@@ -198,6 +198,7 @@ def list_batch_assets(
     with opened_workspace() as workspace:
         resolved = identifier(batch_id, what="batch_id")
         service = BatchService(workspace)
+        batch = service.get(resolved)
         assets = service.assets(resolved)
         # The partition is exact, so each asset appears in at most one job and
         # this projection is a lookup rather than a join. Two public reads and no
@@ -212,7 +213,7 @@ def list_batch_assets(
         # batch — page until you have seen `total` items, not until it moves.
         window = assets[offset:] if limit is None else assets[offset : offset + limit]
         items = [
-            wire.batch_asset(a, job_id=job_id, progress=progress)
+            wire.batch_asset(a, job_id=job_id, progress=progress, batch_state=batch.state)
             for a in window
             for job_id, progress in [placement.get(a.id, (None, None))]
         ]

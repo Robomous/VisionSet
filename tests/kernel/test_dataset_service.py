@@ -16,6 +16,7 @@ import pytest
 from sqlalchemy import text
 
 from visionset.kernel import (
+    BatchImmutable,
     BatchNotComplete,
     BatchNotFound,
     DatasetNotFound,
@@ -484,13 +485,35 @@ def test_a_stored_timestamp_comes_back_timezone_aware(tmp_path: Path) -> None:
 # --- what the trunk does not depend on ----------------------------------------
 
 
-def test_deleting_the_batch_leaves_the_trunk_and_its_log_alone(tmp_path: Path) -> None:
-    """Members hang off the dataset and the asset, never off the unit of work."""
+def test_a_batch_that_has_promoted_can_no_longer_be_deleted_at_all(tmp_path: Path) -> None:
+    """The trunk's provenance is structurally safe, not merely well behaved.
+
+    Promotion needs a ``completed`` batch and a completed batch is not deletable,
+    so the batch a change-log entry names is always still there to be read.
+    """
     fixture = Fixture(tmp_path)
     fixture.completed(ANNOTATED, ANNOTATED, ANNOTATED)
     fixture.datasets.promote(fixture.batch.id)
 
-    fixture.batches.delete(fixture.batch.id, confirm=True)
+    with pytest.raises(BatchImmutable):
+        fixture.batches.delete(fixture.batch.id, confirm=True)
+
+    assert fixture.member_ids() == fixture.assets
+    fixture.close()
+
+
+def test_deleting_some_other_batch_leaves_the_trunk_and_its_log_alone(tmp_path: Path) -> None:
+    """Members hang off the dataset and the asset, never off a unit of work.
+
+    A second batch over the same assets, because the batch that *promoted* them
+    can no longer be deleted — which is the test above.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.completed(ANNOTATED, ANNOTATED, ANNOTATED)
+    fixture.datasets.promote(fixture.batch.id)
+    second = fixture.batches.create(fixture.project.id, "second", fixture.assets)
+
+    fixture.batches.delete(second.id, confirm=True)
 
     assert fixture.member_ids() == fixture.assets
     assert len(fixture.datasets.changes(fixture.dataset.id)) == 1

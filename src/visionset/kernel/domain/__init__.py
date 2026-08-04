@@ -18,6 +18,20 @@ from visionset.kernel.domain.batch import (
     Batch,
     BatchState,
 )
+from visionset.kernel.domain.capabilities import (
+    ASSET_MOVES,
+    BATCH_GATES,
+    BATCH_MOVES,
+    JOB_MOVES,
+    UNNAMED_EDGES,
+    AssetAction,
+    BatchAction,
+    JobAction,
+    Move,
+    asset_actions,
+    batch_actions,
+    job_actions,
+)
 from visionset.kernel.domain.dataset import (
     ClassCount,
     Dataset,
@@ -126,6 +140,18 @@ from visionset.kernel.domain.transitions import require_move, require_state
 from visionset.kernel.domain.workspace import Workspace
 
 __all__ = [
+    "job_actions",
+    "batch_actions",
+    "asset_actions",
+    "Move",
+    "JobAction",
+    "BatchAction",
+    "AssetAction",
+    "UNNAMED_EDGES",
+    "JOB_MOVES",
+    "BATCH_MOVES",
+    "BATCH_GATES",
+    "ASSET_MOVES",
     "ASSET_PROGRESS_TRANSITIONS",
     "BATCH_TRANSITIONS",
     "DELETABLE_STATES",

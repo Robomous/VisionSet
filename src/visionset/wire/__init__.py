@@ -59,6 +59,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     Attribute,
     Batch,
+    BatchState,
     BboxGeometry,
     ClassCompatibility,
     ClassCount,
@@ -81,6 +82,9 @@ from visionset.kernel.domain import (
     SplitRecipe,
     ThumbnailBackfill,
     VideoProvenance,
+    asset_actions,
+    batch_actions,
+    job_actions,
 )
 from visionset.kernel.ports import Exporter
 
@@ -258,19 +262,29 @@ def asset(value: Asset) -> dict[str, Any]:
 
 
 def batch_asset(
-    value: Asset, *, job_id: UUID | None, progress: AssetProgress | None
+    value: Asset,
+    *,
+    job_id: UUID | None,
+    progress: AssetProgress | None,
+    batch_state: BatchState,
 ) -> dict[str, Any]:
     """One asset seen from inside a batch: the asset, plus where the work stands.
 
     Widens :func:`asset` rather than replacing it, which is what the wire model
     does by inheriting ``AssetOut`` — they are the same asset from a different
-    vantage point, and a field added to one belongs to both. Both extra fields
-    are null exactly while the batch is a draft, because a draft has no jobs.
+    vantage point, and a field added to one belongs to both. ``job_id`` and
+    ``progress`` are null exactly while the batch is a draft, because a draft has
+    no jobs.
+
+    ``batch_state`` is an argument and not a field: it belongs to the batch and is
+    published there, but ``allowed_actions`` cannot be answered without it — the
+    dimension a client's own copy of these rules dropped.
     """
     return {
         **asset(value),
         "job_id": None if job_id is None else str(job_id),
         "progress": None if progress is None else progress.value,
+        "allowed_actions": [a.value for a in asset_actions(progress, batch_state=batch_state)],
     }
 
 
@@ -310,16 +324,29 @@ def batch(value: Batch, counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
         "schema_version": value.schema_version,
         "asset_count": len(value.asset_ids),
         "progress": progress_counts(counts),
+        "allowed_actions": [a.value for a in batch_actions(value.state)],
     }
 
 
-def job(value: AnnotationJob, *, batch_id: UUID) -> dict[str, Any]:
-    """One segment of a batch. ``task_group_id`` and the per-asset map are absent."""
+def job(value: AnnotationJob, *, batch_id: UUID, batch_state: BatchState) -> dict[str, Any]:
+    """One segment of a batch. ``task_group_id`` and the per-asset map are absent.
+
+    ``batch_state`` is not published here — ``BatchOut`` owns it — but nothing can
+    be said about what this job may do without it: both of its actions need the
+    batch open. The per-asset map stays unpublished and is still *read*, because
+    ``complete`` is refined by whether every asset has settled.
+    """
     return {
         "id": str(value.id),
         "batch_id": str(batch_id),
         "state": value.state.value,
         "asset_count": len(value.progress),
+        "allowed_actions": [
+            a.value
+            for a in job_actions(
+                value.state, batch_state=batch_state, progress=value.progress.values()
+            )
+        ],
     }
 
 

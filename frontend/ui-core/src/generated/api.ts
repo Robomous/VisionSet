@@ -577,6 +577,14 @@ export interface paths {
          *     The batch must be `in_annotation`, or this is 409
          *     `BATCH_NOT_IN_ANNOTATION`. An asset the job does not carry is 422
          *     `ASSET_NOT_IN_JOB`.
+         *
+         *     The asset must also still be open for labeling — `unannotated` or
+         *     `annotated`. One that was skipped, submitted for review or accepted is 409
+         *     `ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is
+         *     a progress move where the table allows one (`skipped` back to `unannotated`);
+         *     `accepted` has no exit, so correcting it means a new batch. Read
+         *     `allowed_actions` on the batch's asset listing rather than guessing: it
+         *     declares `annotate` exactly when this will be accepted.
          */
         post: operations["add_annotations"];
         /**
@@ -585,7 +593,9 @@ export interface paths {
          *
          *     Repeating an id is not two deletions. An id that is not stored refuses the
          *     whole call with 404 `ANNOTATION_NOT_FOUND` and removes nothing — there is no
-         *     partial delete, for the reason there is no partial write.
+         *     partial delete, for the reason there is no partial write. Removing a label is
+         *     still a write, so an asset that was skipped, submitted or accepted is 409
+         *     `ASSET_NOT_WRITABLE` here too.
          *
          *     No confirmation gate: taking a box off is the ordinary annotator edit loop,
          *     not the destruction of a lifecycle entity. The batch gate is the guard, so
@@ -605,6 +615,7 @@ export interface paths {
          *     without anything saying so.
          *
          *     All-or-nothing, and `detail.index` names the culprit, exactly as on the POST.
+         *     An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST.
          */
         patch: operations["update_annotations"];
         trace?: never;
@@ -1597,6 +1608,17 @@ export interface components {
             provenance: "human" | "model" | "import";
         };
         /**
+         * AssetAction
+         * @description What can be asked of one asset inside a batch.
+         *
+         *     ``ANNOTATE`` is the odd one and the important one: it is not a progress move
+         *     but the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the
+         *     batch gate together. The other five each name one edge of
+         *     ``ASSET_PROGRESS_TRANSITIONS`` — see :data:`ASSET_MOVES`.
+         * @enum {string}
+         */
+        AssetAction: "annotate" | "skip" | "restore" | "submit_for_review" | "accept" | "return_to_annotator";
+        /**
          * AssetOut
          * @description One ingested item.
          */
@@ -1692,6 +1714,12 @@ export interface components {
             required: boolean;
         };
         /**
+         * BatchAction
+         * @description What can be asked of a batch. Declaration order is display order.
+         * @enum {string}
+         */
+        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "edit_membership" | "delete";
+        /**
          * BatchApprove
          * @description How to cut the batch into jobs. One job for the whole batch by default.
          */
@@ -1704,6 +1732,8 @@ export interface components {
          * @description One item of a batch, with the job that carries it and where it has got to.
          */
         BatchAssetOut: {
+            /** Allowed Actions */
+            allowed_actions: components["schemas"]["AssetAction"][];
             /** Content Hash */
             content_hash: string;
             format: components["schemas"]["ImageFormat"] | null;
@@ -1755,6 +1785,8 @@ export interface components {
          * @description A curated slice of a project's assets that moves through annotation together.
          */
         BatchOut: {
+            /** Allowed Actions */
+            allowed_actions: components["schemas"]["BatchAction"][];
             /** Asset Count */
             asset_count: number;
             /**
@@ -2182,10 +2214,18 @@ export interface components {
          */
         IngestState: "pending" | "running" | "completed" | "failed";
         /**
+         * JobAction
+         * @description What can be asked of an annotation job.
+         * @enum {string}
+         */
+        JobAction: "start" | "complete";
+        /**
          * JobOut
          * @description One annotator's unit of work over a segment of a batch.
          */
         JobOut: {
+            /** Allowed Actions */
+            allowed_actions: components["schemas"]["JobAction"][];
             /** Asset Count */
             asset_count: number;
             /**

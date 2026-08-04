@@ -179,10 +179,13 @@ COUNTS = {
     AssetProgress.ACCEPTED: 5,
 }
 
+# Settled progress, so ``allowed_actions`` comes out non-empty: an in-progress job
+# whose assets are all unannotated declares nothing, and a projection checked only
+# against an empty list is a projection nobody checked.
 JOB = AnnotationJob(
     task_group_id=uuid4(),
     state=AnnotationJobState.IN_PROGRESS,
-    progress=dict.fromkeys(BATCH.asset_ids, AssetProgress.UNANNOTATED),
+    progress=dict.fromkeys(BATCH.asset_ids, AssetProgress.ANNOTATED),
 )
 
 BBOX = BboxGeometry(x=1.5, y=2.5, width=30.0, height=40.0)
