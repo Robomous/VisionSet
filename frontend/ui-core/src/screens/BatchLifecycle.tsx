@@ -26,6 +26,7 @@ import { useState, type JSX } from "react";
 import { SquareCheckBig } from "lucide-react";
 
 import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { Button } from "../primitives/Button";
 import {
   Dialog,
@@ -97,12 +98,16 @@ export function BatchProgressBar({
  * A code that is not here keeps its raw `{code}: {message}`, which is what a bug
  * report should quote.
  */
-const FINISH_REFUSALS: Record<string, string> = {
-  JOB_NOT_COMPLETE: "Some frames still need annotating or skipping.",
-  BATCH_NOT_COMPLETE: "Some of this batch's jobs are still unfinished.",
-  BATCH_NOT_IN_ANNOTATION: "This batch is not open for annotation any more.",
-  INVALID_TRANSITION: "This batch has already moved on.",
-};
+/*
+ * The four sentences that used to live here have moved into
+ * `data/refusals.ts` — every one of them was already a code this product
+ * refuses somewhere else, and a per-screen map is how one refusal came to read
+ * three different ways depending on where you hit it (audit F16).
+ *
+ * What was true of this map and is still true of the shared one: a code with no
+ * entry keeps the server's own `message`, which is what a bug report should
+ * quote.
+ */
 
 /**
  * Close the batch — and its jobs, which is the half nobody was sending (#301).
@@ -156,7 +161,7 @@ export function CompleteBatchButton({
 
       {refusal !== null && (
         <FieldError data-testid={`complete-error-${batch.name}`}>
-          {FINISH_REFUSALS[refusal.code] ?? `${refusal.code}: ${refusal.message}`}
+          {refusalProse(refusal)}
         </FieldError>
       )}
     </div>
@@ -267,7 +272,12 @@ export function ApproveDialog({
           {approve.isError &&
             (asApiError(approve.error).code === SCHEMA_NOT_FOUND ? (
               <div className="flex flex-col items-start gap-1" data-testid="approve-schema-missing">
-                <FieldError>This project has no labels yet — define them first.</FieldError>
+                {/* The sentence is the shared one; what stays here is the
+                    *remedy*, which is a link only this screen can build. That
+                    is the division `refusals.ts` documents: one vocabulary, and
+                    a screen adds the way onward beside it rather than instead
+                    of it. */}
+                <FieldError>{refusalProse(approve.error)}</FieldError>
                 {onOpenSchema !== undefined && (
                   <Button
                     variant="link"
@@ -283,9 +293,7 @@ export function ApproveDialog({
                 )}
               </div>
             ) : (
-              <FieldError data-testid="approve-error">
-                {asApiError(approve.error).code}: {asApiError(approve.error).message}
-              </FieldError>
+              <FieldError data-testid="approve-error">{refusalProse(approve.error)}</FieldError>
             ))}
         </div>
 

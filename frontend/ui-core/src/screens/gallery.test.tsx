@@ -877,21 +877,42 @@ describe("finishing a batch", () => {
     expect(writes()).toEqual(["POST /jobs/job-0/complete"]);
   });
 
-  it("keeps an unmapped refusal quotable rather than paraphrasing it", async () => {
+  it("keeps the server's own words for a refusal the vocabulary has never heard of", async () => {
     on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
     jobsAre("in_progress");
     on("POST", /\/jobs\/[^/]+\/complete$/, {
       status: 503,
-      body: { code: "WORKSPACE_BUSY", message: "another writer holds the workspace" },
+      body: { code: "SOME_NEW_REFUSAL", message: "another writer holds the workspace" },
     });
 
     await pressComplete();
 
-    // A code with no sentence of its own keeps `{code}: {message}`, which is what
-    // a bug report should quote.
+    // The fall-through, and it is deliberate: the kernel wrote that sentence for
+    // a person, and replacing it with "something went wrong" would discard the
+    // only description there is. An entry in the vocabulary exists to *improve*
+    // on a message, never to be the only one.
+    //
+    // (This used to use `WORKSPACE_BUSY`, which now has an entry — so proving
+    // the fall-through needs a code that genuinely has none.)
     const said = (await screen.findByTestId("complete-error-drive-01")).textContent ?? "";
-    expect(said).toContain("WORKSPACE_BUSY");
     expect(said).toContain("another writer");
+  });
+
+  it("says a mapped refusal in the product's own words", async () => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    jobsAre("in_progress");
+    on("POST", /\/jobs\/[^/]+\/complete$/, {
+      status: 503,
+      body: { code: "WORKSPACE_BUSY", message: "database is locked" },
+    });
+
+    await pressComplete();
+
+    // The other half. `database is locked` is true and useless; the entry exists
+    // because the remedy — wait a moment — is something a person can act on.
+    const said = (await screen.findByTestId("complete-error-drive-01")).textContent ?? "";
+    expect(said).toContain("busy");
+    expect(said).not.toContain("WORKSPACE_BUSY");
   });
 
   it("withholds the press while frames are still outstanding, and says how many", async () => {

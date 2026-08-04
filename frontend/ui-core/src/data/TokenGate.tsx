@@ -53,6 +53,7 @@ import { Button } from "../primitives/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../primitives/Card";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
 import { useApiSession } from "./ApiProvider";
+import { refusalProse } from "./refusals";
 import { asApiError, NETWORK_ERROR, unwrap } from "./errors";
 import { checkListProjects } from "../generated/checks";
 
@@ -180,5 +181,11 @@ function refusalOf(cause: unknown): string {
   if (failure.code === NETWORK_ERROR) {
     return "No answer from the server. Is `visionset ui` running?";
   }
-  return `${failure.code}: ${failure.message}`;
+  // Everything else through the shared vocabulary. The two branches above stay
+  // local because they are about *this* screen — a token being refused and a
+  // server not answering are the sign-in screen's own two failures, and the
+  // generic sentences would be worse. That is the same division the approve
+  // dialog makes: one vocabulary, and a screen may say something more specific
+  // where it genuinely knows more.
+  return refusalProse(cause);
 }

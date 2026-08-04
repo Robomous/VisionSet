@@ -97,6 +97,7 @@ import {
   Plus,
   Save,
   SkipForward,
+  TriangleAlert,
   Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
@@ -112,6 +113,7 @@ import {
   type JobAction,
 } from "../data/capabilities";
 import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
@@ -490,7 +492,7 @@ function Workspace({
    * and the setter survive either way. It surfaces in the save-state slot
    * below, rather than being discovered at Save.
    */
-  const [openingRefusal, setOpeningRefusal] = useState<string | null>(null);
+  const [openingRefusal, setOpeningRefusal] = useState<unknown>(null);
   const sentBatchStart = useRef(false);
   const sentJobStart = useRef(false);
 
@@ -498,7 +500,7 @@ function Workspace({
     if (batchState !== "approved" || sentBatchStart.current) return;
     sentBatchStart.current = true;
     startBatch.mutateAsync().catch((error: unknown) => {
-      setOpeningRefusal(asApiError(error).code);
+      setOpeningRefusal(error);
     });
   }, [batchState, startBatch]);
 
@@ -506,7 +508,7 @@ function Workspace({
     if (batchState !== "in_annotation" || jobState !== "pending" || sentJobStart.current) return;
     sentJobStart.current = true;
     startJob.mutateAsync().catch((error: unknown) => {
-      setOpeningRefusal(asApiError(error).code);
+      setOpeningRefusal(error);
     });
   }, [batchState, jobState, startJob]);
 
@@ -591,14 +593,38 @@ function Workspace({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
+  /**
+   * Run a commit and swallow its rejection **here**, not into the void.
+   *
+   * `commit` goes through `mutateAsync`, which rejects on a refusal. Four call
+   * sites used to spell that `void commit(...)`, which is not a handler: with no
+   * error boundary and no `unhandledrejection` listener anywhere in the product,
+   * each rejection was invisible in production and a console warning nowhere
+   * anybody was looking (audit F7).
+   *
+   * Swallowing is correct *because* the refusal is rendered off `save.error` a
+   * few lines below — this is not "ignore the failure", it is "the failure has a
+   * home and it is not this promise". The `then` callback is the part that must
+   * not run, and awaiting is what guarantees it does not: a save that refused
+   * must not navigate away from the work it failed to store.
+   */
+  const attempt = useCallback(
+    (then?: () => void): void => {
+      void commit(then).catch(() => {
+        // Rendered by `SaveState` off `save.error`. Nothing to do here but stop.
+      });
+    },
+    [commit],
+  );
+
   function go(delta: number): void {
     const next = Math.min(Math.max(assetIndex + delta, 0), assetCount - 1);
     if (next === assetIndex) return;
-    void commit(() => onNavigate(next));
+    attempt(() => onNavigate(next));
   }
 
   function settle(progress: "annotated" | "skipped" | "accepted"): void {
-    void commit(() => {
+    attempt(() => {
       setProgress.mutate(
         { assetId: asset.id, progress },
         { onSuccess: () => onNavigate(Math.min(assetIndex + 1, assetCount - 1)) },
@@ -617,7 +643,7 @@ function Workspace({
   const skipped = asset.progress === "skipped";
 
   function unskip(): void {
-    void commit(() => setProgress.mutate({ assetId: asset.id, progress: "unannotated" }));
+    attempt(() => setProgress.mutate({ assetId: asset.id, progress: "unannotated" }));
   }
 
   const drawn = annotationsInDrawOrder(snapshot.document).length;
@@ -656,6 +682,18 @@ function Workspace({
   const closedBecause = withheldBecause(batchState);
   /** The tooltip a withheld control carries. Null when the batch is not the cause. */
   const withheld = closedBecause;
+  /**
+   * Whichever of the toolbar's own moves refused, if one did.
+   *
+   * The order is the order a person would have pressed them in, and it only
+   * matters when two are somehow in error at once — which react-query makes
+   * nearly impossible, since a fresh `mutate` clears the previous error before
+   * the next answer arrives.
+   */
+  const actionRefusal: unknown =
+    (setProgress.isError ? setProgress.error : null) ??
+    (finishJob.isError ? finishJob.error : null);
+
   const progressWord = PROGRESS_LABEL[asset.progress ?? "unannotated"] ?? asset.progress ?? "";
   const settledBecause =
     asset.progress === "skipped"
@@ -746,7 +784,7 @@ function Workspace({
           <SaveState
             dirty={dirty}
             pending={save.isPending}
-            error={save.isError ? asApiError(save.error).code : openingRefusal}
+            error={save.isError ? save.error : openingRefusal}
           />
 
           {/*
@@ -761,7 +799,7 @@ function Workspace({
             data-testid="save"
             disabled={readOnly || !dirty || save.isPending}
             {...(readOnly && withheld !== null ? { title: withheld } : {})}
-            onClick={() => void commit()}
+            onClick={() => attempt()}
           >
             <Save className="size-4" />
             Save
@@ -858,6 +896,33 @@ function Workspace({
         Rendered whenever the asset is skipped rather than only after a save: the
         user who is about to draw deserves it more than the one who already has.
       */}
+      {/*
+        The refusals that had nowhere to go (audit F3 and F4).
+
+        `setProgress.isError` and `finishJob.isError` were read **nowhere in this
+        file**: pressing Skip, Un-skip, Accept or Finish job against a refusal did
+        nothing at all and said nothing about it — the button came back enabled,
+        the badge did not move, and the page looked like it had ignored the click.
+        Three of those four are one-press actions with no other feedback surface,
+        which is what made this the quietest failure in the product.
+
+        One line rather than four, because they are mutually exclusive in
+        practice — each is a single press and react-query clears the error on the
+        next attempt — and because a toolbar with four empty error slots in it is
+        a toolbar nobody can read. It sits with the banners rather than in the bar
+        for the same reason: the bar is full, and a refusal is a sentence.
+      */}
+      {actionRefusal !== null && (
+        <p
+          className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-meta text-destructive"
+          data-testid="action-refusal"
+          title={asApiError(actionRefusal).code}
+        >
+          <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+          {refusalProse(actionRefusal)}
+        </p>
+      )}
+
       {/*
         Read-only, said out loud and at the top (F2). The `ui-capabilities` rule is
         that read-only is a *mode*, not an accident: "open it and let the saves
@@ -966,7 +1031,13 @@ function Workspace({
         // Whichever step refused, in the order they run — so the message is about
         // the call that actually stopped, not about the last mutation touched.
         error={save.error ?? createVersion.error ?? repin.error ?? null}
-        onSubmit={(declared, note) => void addClass(declared, note)}
+        // `addClass` already catches everything and holds the refusal on the
+        // mutations the dialog reads, so there is nothing left to reject — but
+        // `void` on a promise is the pattern F7 is about, and a `catch` that can
+        // never fire is cheaper than a reader having to prove that.
+        onSubmit={(declared, note) => {
+          void addClass(declared, note).catch(() => {});
+        }}
       />
 
       <ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} registry={registry} />
@@ -995,7 +1066,15 @@ function AssetProgressState({ progress }: { readonly progress: string }): JSX.El
   );
 }
 
-/** `DESIGN.md`'s save-state indicator: saving, saved, or the refusal's code. */
+/**
+ * `DESIGN.md`'s save-state indicator: saving, saved, or why it did not.
+ *
+ * It rendered the raw kernel `code` — `BATCH_NOT_IN_ANNOTATION` as a destructive
+ * badge, which is the exact class of rendering #292 removed elsewhere and which
+ * audit finding F16 caught here. A kernel identifier is what a bug report should
+ * quote, not what a person should read, so the badge carries the sentence and the
+ * code goes in the `title` where somebody filing that report can still find it.
+ */
 function SaveState({
   dirty,
   pending,
@@ -1003,7 +1082,8 @@ function SaveState({
 }: {
   readonly dirty: boolean;
   readonly pending: boolean;
-  readonly error: string | null;
+  /** The refusal itself, or `null`. Prose is derived; the code is not the message. */
+  readonly error: unknown;
 }): JSX.Element {
   if (pending) {
     return (
@@ -1012,10 +1092,10 @@ function SaveState({
       </span>
     );
   }
-  if (error !== null) {
+  if (error !== null && error !== undefined) {
     return (
-      <Badge variant="destructive" data-testid="save-state">
-        {error}
+      <Badge variant="destructive" data-testid="save-state" title={asApiError(error).code}>
+        {refusalProse(error)}
       </Badge>
     );
   }

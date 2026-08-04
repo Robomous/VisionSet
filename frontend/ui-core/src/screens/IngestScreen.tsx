@@ -131,7 +131,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { cn } from "../lib/cn";
 import { formatBytes, formatCount } from "../lib/format";
 import { BackLink } from "../patterns/BackLink";
@@ -446,7 +446,7 @@ export function IngestScreen({
 
                 {register.isError && (
                   <FieldError data-testid="register-error">
-                    {asApiError(register.error).code}: {asApiError(register.error).message}
+                    {refusalProse(register.error)}
                   </FieldError>
                 )}
 
@@ -551,7 +551,7 @@ export function IngestScreen({
 
                   {start.isError && (
                     <FieldError data-testid="start-error">
-                      {asApiError(start.error).code}: {asApiError(start.error).message}
+                      {refusalProse(start.error)}
                     </FieldError>
                   )}
 
@@ -934,6 +934,24 @@ function RunCard({
                   A resume is a redo, not a skip — nothing records which files already
                   succeeded, and content addressing makes re-reading them free.
                 </FieldHint>
+                {/*
+                  The refusal of the *resume*, which is a different fact from the
+                  run's own error above it (audit F9). `resume.isError` was read
+                  nowhere, and the `run-error` alert a few lines up shows the job
+                  row's stored cause — so a rejected resume left the old failure
+                  on screen unchanged and the button re-enabled, which reads as a
+                  press the page ignored. Titled separately for exactly that
+                  reason: same screen, two different things that went wrong.
+                */}
+                {resume.isError && (
+                  <Alert
+                    variant="destructive"
+                    title="That resume was refused"
+                    data-testid="resume-error"
+                  >
+                    {refusalProse(resume.error)}
+                  </Alert>
+                )}
               </div>
             )}
 
