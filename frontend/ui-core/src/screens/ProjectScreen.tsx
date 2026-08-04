@@ -69,8 +69,7 @@
  */
 
 import {
-  Boxes,
-  History,
+  Database,
   Layers,
   LayoutDashboard,
   MoreHorizontal,
@@ -108,6 +107,7 @@ import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import { BatchesScreen } from "./BatchesScreen";
+import { DatasetScreen } from "./DatasetScreen";
 import { OverviewPanel } from "./OverviewPanel";
 import { SchemaEditor } from "./SchemaEditor";
 import {
@@ -125,8 +125,44 @@ import {
 /** What `SchemaService.require_active` raises for a project that has none. */
 const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 
-/** The four sections, and the tab a `?tab=` value has to name to reach one. */
-export type ProjectTab = "overview" | "schema" | "batches" | "versions";
+/**
+ * The four sections, and the tab a `?tab=` value has to name to reach one.
+ *
+ * **`versions` is gone and `dataset` has taken its place**, which is two moves in
+ * one union and each has its own reason.
+ *
+ * `dataset` is the product's central object — the trunk everything upstream
+ * exists to fill — and it was a *route* reachable only through an overflow menu,
+ * an Overview link, or the last step of an onboarding checklist. A first-class
+ * object behind three indirect doors is an information-architecture bug, not a
+ * navigation preference.
+ *
+ * `versions` was never a sibling of Schema; it is a *view of* Schema. A tab bar
+ * whose fourth entry is a read-only history of its second is offering a
+ * subsection as a peer, which is how "Schema history" and "Releases" came to be
+ * confusable enough that #292 had to rename one of them. The history now nests
+ * inside the Schema tab, where the `VersionNavigator` seam already lived.
+ *
+ * `?tab=versions` is still honoured and lands on Schema — see `resolveProjectTab`.
+ * A URL somebody bookmarked is a promise.
+ */
+export type ProjectTab = "overview" | "schema" | "batches" | "dataset";
+
+/**
+ * What a raw `?tab=` value resolves to, including the ones that have moved.
+ *
+ * Pure and exported because the *host* has to know: `ui-core` never imports a
+ * router, so rewriting a stale URL is the app's job, and it can only do that if
+ * it can ask what the value became without rendering anything.
+ *
+ * Returns `null` for a value that is already canonical, so a caller can tell "no
+ * rewrite needed" from "rewrite to overview" without comparing strings itself.
+ */
+export function resolveProjectTab(raw: string | undefined): ProjectTab | null {
+  if (raw === undefined) return null;
+  if (raw === "versions") return "schema";
+  return TABS.includes(raw as ProjectTab) ? null : DEFAULT_TAB;
+}
 
 /**
  * The one a project opens on, and where an unrecognised `?tab=` lands.
@@ -152,12 +188,11 @@ const TAB_LABELS: Record<ProjectTab, TabLabel> = {
   overview: { label: "Overview", icon: LayoutDashboard },
   schema: { label: "Schema", icon: Shapes },
   batches: { label: "Batches", icon: Layers },
-  // "Schema history", not "Versions" (#292): the tab holds *schema* versions,
-  // while dataset releases live on the Dataset screen, and the bare word sent
-  // people to the wrong one. The union value, testid and `?tab=versions` stay —
-  // they are public API — so only this label moves.
-  versions: { label: "Schema history", icon: History },
+  dataset: { label: "Dataset", icon: Database },
 };
+
+/** Declaration order is display order, and it is the order work happens in. */
+const TABS: readonly ProjectTab[] = ["overview", "schema", "batches", "dataset"];
 
 export interface ProjectScreenProps {
   readonly projectId: string;
@@ -173,7 +208,12 @@ export interface ProjectScreenProps {
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
-  readonly onOpenDataset?: () => void;
+  /*
+   * There is no `onOpenDataset` any more. The dataset is a tab, so every link to
+   * it inside this project is a tab change — including the ones that used to be
+   * route changes. The gallery still takes one, because it is a different screen
+   * and a route is how it gets back here.
+   */
   /**
    * Where to go once the project is gone. Absent means the overflow menu still
    * deletes, and the caller is left on a screen whose subject no longer exists —
@@ -194,7 +234,6 @@ export function ProjectScreen({
   onBack,
   onIngest,
   onOpenBatch,
-  onOpenDataset,
   onDeleted,
   tab,
   onTabChange,
@@ -211,12 +250,13 @@ export function ProjectScreen({
   // navigate to a batch is better off not being told there is a section it cannot
   // use — which is exactly what this screen did with the section before the split.
   const available: readonly ProjectTab[] =
-    onOpenBatch === undefined
-      ? ["overview", "schema", "versions"]
-      : ["overview", "schema", "batches", "versions"];
+    onOpenBatch === undefined ? TABS.filter((one) => one !== "batches") : TABS;
   // `find`, not a cast: an unknown value, a stale link, or `batches` on a host that
   // has no batch route all resolve to the default rather than to an empty page.
-  const current = available.find((one) => one === tab) ?? DEFAULT_TAB;
+  // `?tab=versions` is the one stale value with a *destination* rather than a
+  // fallback — the history moved inside Schema, so that is where it lands.
+  const asked = tab === "versions" ? "schema" : tab;
+  const current = available.find((one) => one === asked) ?? DEFAULT_TAB;
 
   return (
     <div className="flex flex-col gap-6" data-testid="project-screen">
@@ -228,7 +268,7 @@ export function ProjectScreen({
             project={loaded}
             onIngest={onIngest}
             onOpenBatch={onOpenBatch}
-            onOpenDataset={onOpenDataset}
+            {...(onTabChange === undefined ? {} : { onOpenDataset: () => onTabChange("dataset") })}
             onRename={() => setRenaming(true)}
             onDelete={() => setDeleting(true)}
           />
@@ -274,7 +314,9 @@ export function ProjectScreen({
             projectId={projectId}
             {...(schema.data === undefined ? {} : { classes: schema.data.classes })}
             {...(onIngest === undefined ? {} : { onIngest })}
-            {...(onOpenDataset === undefined ? {} : { onBrowseDataset: onOpenDataset })}
+            {...(onTabChange === undefined
+              ? {}
+              : { onBrowseDataset: () => onTabChange("dataset") })}
             {...(onTabChange === undefined ? {} : { onOpenSchema: () => onTabChange("schema") })}
             {...(onTabChange === undefined || onOpenBatch === undefined
               ? {}
@@ -294,13 +336,21 @@ export function ProjectScreen({
               {...(onTabChange === undefined
                 ? {}
                 : { onOpenSchema: () => onTabChange("schema") })}
-              {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
+              {...(onTabChange === undefined
+                ? {}
+                : { onOpenDataset: () => onTabChange("dataset") })}
             />
           </TabsContent>
         )}
 
-        <TabsContent value="versions">
-          <VersionHistory projectId={projectId} />
+        <TabsContent value="dataset">
+          {/*
+            The trunk, as a peer of the work that fills it rather than a route
+            behind an overflow menu. No `BackLink` here — a tab's way out is the
+            tab bar, and one inside a panel would be a second, contradictory
+            answer to "where am I".
+          */}
+          <DatasetScreen projectId={projectId} />
         </TabsContent>
       </Tabs>
 
@@ -471,14 +521,12 @@ function ProjectHeader({
   project,
   onIngest,
   onOpenBatch,
-  onOpenDataset,
   onRename,
   onDelete,
 }: {
   readonly project: Project;
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
-  readonly onOpenDataset?: () => void;
   readonly onRename: () => void;
   readonly onDelete: () => void;
 }): JSX.Element {
@@ -563,12 +611,13 @@ function ProjectHeader({
               <Pencil className="size-4" aria-hidden="true" />
               Rename
             </DropdownMenuItem>
-            {onOpenDataset !== undefined && (
-              <DropdownMenuItem data-testid="go-dataset" onSelect={onOpenDataset}>
-                <Boxes className="size-4" aria-hidden="true" />
-                Dataset
-              </DropdownMenuItem>
-            )}
+            {/*
+              **No Dataset item.** It was here because the dataset had no tab, and
+              an overflow menu is where a destination goes when the navigation has
+              no room for it. It has room now, and the same destination in a tab
+              bar *and* a hidden menu is two answers to one question — the second
+              of which nobody finds.
+            */}
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive data-testid="delete-project" onSelect={onDelete}>
               <Trash2 className="size-4" aria-hidden="true" />
@@ -603,27 +652,43 @@ function SchemaSection({ projectId }: { readonly projectId: string }): JSX.Eleme
       />
     );
   }
-  return <SchemaEditor projectId={projectId} active={schemaless ? null : (schema.data ?? null)} />;
+  return (
+    <div className="flex flex-col gap-8">
+      <SchemaEditor projectId={projectId} active={schemaless ? null : (schema.data ?? null)} />
+      {/*
+        The ledger, below the editor rather than beside it in the tab bar.
+        Version history is a *view of* the schema, not a peer of it — a fourth
+        tab holding a read-only history of the second was offering a subsection
+        as a sibling, which is how "Schema history" and "Releases" came to be
+        confusable enough that #292 had to rename one of them.
+
+        It still overlaps with the editor's own `VersionNavigator` and still
+        answers a different question: this is every version at once, scannable;
+        that is one version at a time, with what it changed. Both, on one screen,
+        is what the seam was always for.
+      */}
+      <VersionHistory projectId={projectId} />
+    </div>
+  );
 }
 
 function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Element {
   const query = useSchemaVersions(projectId);
   return (
     <div className="flex flex-col gap-4" data-testid="version-history">
-      {/* Titled by its tab, like the other two panels (#171). The line that stays
-          is the one the tab cannot carry: these are read-only *because* versions
-          are, not because the screen chose not to offer controls.
+      {/* It has a heading of its own now that it is a section rather than a tab:
+          a tab is titled by its trigger, and a panel below an editor is not.
 
-          This table and the Schema tab's navigator (#232) overlap on purpose and
-          answer different questions. This is the *ledger* — every version at once,
-          scannable. That one is the *reader* — one version at a time, with what it
-          changed against its predecessor. Folding either into the other would mean
-          removing a tab, which is a navigation change nobody asked for. */}
+          This table and the editor's navigator (#232) overlap on purpose and
+          answer different questions. This is the *ledger* — every version at
+          once, scannable. That one is the *reader* — one version at a time, with
+          what it changed against its predecessor. */}
       <header className="border-b border-border pb-4">
+        <h2 className="text-section font-semibold tracking-tight">Version history</h2>
         <p className="text-meta text-muted-foreground">
           Every schema version this project has declared. They are 1..N, never updated and
-          never deleted — a restore is a new version with the old classes. Open the Schema
-          tab to read one, with what it changed.
+          never deleted — a restore is a new version with the old classes. Use the version
+          picker above to read one, with what it changed.
         </p>
       </header>
       <div>
