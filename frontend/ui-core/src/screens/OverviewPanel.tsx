@@ -30,10 +30,11 @@
  * a cursor already on its way somewhere.
  */
 
-import { ImageIcon, TriangleAlert, Upload } from "lucide-react";
-import type { JSX } from "react";
+import { ImageIcon, TriangleAlert, Upload, X } from "lucide-react";
+import { useState, type JSX } from "react";
 
 import { classColor } from "../palette";
+import { readPref, writePref } from "../data/prefs";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { Button } from "../primitives/Button";
@@ -43,9 +44,14 @@ import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDispla
 import { AssetThumbnail } from "./AssetThumbnail";
 import { imbalanceNote } from "./imbalance";
 import {
+  useActiveSchema,
+  useBatches,
+  useDatasetStats,
   useProjectAssets,
+  useProjectDataset,
   useProjectReadiness,
   useProjectStats,
+  useReleases,
   type ClassCount,
   type JourneyStep,
   type LabelClassBody,
@@ -136,6 +142,21 @@ export function OverviewPanel({
   return (
     <div className="flex flex-col gap-6" data-testid="overview-panel">
       {journey}
+
+      {/*
+        The dashboard row: where the project is, as four pointers at the four
+        sections that own it. The `information-architecture` skill's rule is that
+        **Overview never duplicates a tab's full function** — so none of these is
+        a batch table or a release list, each is the one number that says whether
+        the section needs attention, and pressing it goes there.
+      */}
+      <Pipeline
+        projectId={projectId}
+        {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+        {...(onOpenBatches === undefined ? {} : { onOpenBatches })}
+        {...(onBrowseDataset === undefined ? {} : { onBrowseDataset })}
+      />
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="overview-stats">
         <StatCard label="Images" value={formatCount(counted.asset_count)} />
         <StatCard label="Annotations" value={formatCount(counted.annotation_count)} />
@@ -157,6 +178,92 @@ export function OverviewPanel({
           {...(onBrowseDataset === undefined ? {} : { onBrowseDataset })}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Where the project is, in four cards that each point at the tab that owns it.
+ *
+ * Every source here is a query the screen or its host already runs, so the row
+ * costs no request: batches for the pipeline, the active schema for its version,
+ * the dataset's stats for the trunk, and its releases for the latest tag.
+ *
+ * A card whose section has nothing yet says so in words rather than showing a
+ * zero — "no batches yet" is an invitation and `0` is a measurement of nothing.
+ * That is `DESIGN.md`'s copy rule and it is also the mistake #287 fixed one
+ * screen over, where a draft's documented zero counts were rendered as data.
+ */
+function Pipeline({
+  projectId,
+  onOpenSchema,
+  onOpenBatches,
+  onBrowseDataset,
+}: {
+  readonly projectId: string;
+  readonly onOpenSchema?: () => void;
+  readonly onOpenBatches?: () => void;
+  readonly onBrowseDataset?: () => void;
+}): JSX.Element {
+  const batches = useBatches(projectId);
+  const schema = useActiveSchema(projectId);
+  const dataset = useProjectDataset(projectId);
+  const stats = useDatasetStats(dataset.data?.id);
+  const releases = useReleases(dataset.data?.id);
+
+  const items = batches.data?.items ?? [];
+  const open = items.filter((one) => one.state !== "completed").length;
+  const latest = releases.data?.items[0];
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="overview-pipeline">
+      <StatCard
+        label="Batches"
+        data-testid="pipeline-batches"
+        value={batches.data === undefined ? "—" : items.length === 0 ? "None yet" : String(open)}
+        context={
+          batches.data === undefined
+            ? undefined
+            : items.length === 0
+              ? "An ingest creates one"
+              : `${open === 1 ? "batch" : "batches"} still open of ${items.length}`
+        }
+        {...(onOpenBatches === undefined ? {} : { onGo: onOpenBatches })}
+      />
+      <StatCard
+        label="Schema"
+        data-testid="pipeline-schema"
+        // `SCHEMA_NOT_FOUND` is an *answer*, not a failure — the rule
+        // `useProjectReadiness` states — so a project without one reads as not
+        // yet rather than as an error.
+        value={schema.data === undefined ? "None yet" : `v${schema.data.version}`}
+        context={
+          schema.data === undefined
+            ? "Define your labels to start"
+            : `${schema.data.classes.length} ${schema.data.classes.length === 1 ? "class" : "classes"}`
+        }
+        {...(onOpenSchema === undefined ? {} : { onGo: onOpenSchema })}
+      />
+      <StatCard
+        label="Dataset"
+        data-testid="pipeline-dataset"
+        value={stats.data === undefined ? "—" : formatCount(stats.data.asset_count)}
+        context={stats.data === undefined ? undefined : "assets promoted to the trunk"}
+        {...(onBrowseDataset === undefined ? {} : { onGo: onBrowseDataset })}
+      />
+      <StatCard
+        label="Latest release"
+        data-testid="pipeline-release"
+        value={releases.data === undefined ? "—" : (latest?.tag ?? "None yet")}
+        context={
+          releases.data === undefined
+            ? undefined
+            : latest === undefined
+              ? "Publish one from the Dataset tab"
+              : `${formatCount(latest.asset_count)} assets frozen`
+        }
+        {...(onBrowseDataset === undefined ? {} : { onGo: onBrowseDataset })}
+      />
     </div>
   );
 }
@@ -218,7 +325,18 @@ function Journey({
   readonly onBrowseDataset?: () => void;
 }): JSX.Element | null {
   const readiness = useProjectReadiness(projectId);
+  // Read once per mount rather than on every render: `readPref` touches storage,
+  // and the answer cannot change while this component is alive except through
+  // the setter below.
+  const [dismissed, setDismissed] = useState(() => readPref(dismissKey(projectId)) === "1");
+
   if (readiness === null) return null;
+  // **It retires itself, twice over.** Once because the journey is finished —
+  // `done` is derivable now that `hasReleases` exists, and a checklist that
+  // stayed after the last box was ticked would be furniture. Once because
+  // somebody said so: onboarding a person has read is noise, and a strip they
+  // cannot dismiss is a strip they learn to look past.
+  if (dismissed) return null;
   const steps = journeySteps(readiness.currentStep);
   if (steps === null) return null;
 
@@ -229,17 +347,49 @@ function Journey({
     export: onBrowseDataset,
   };
   return (
-    <Checklist
-      aria-label="Project journey"
-      data-testid="journey-checklist"
-      items={steps.map((step) => ({
-        label: step.label,
-        state: step.state,
-        testId: `journey-${step.key}`,
-        ...(go[step.key] === undefined ? {} : { onGo: go[step.key] }),
-      }))}
-    />
+    <div className="relative" data-testid="journey">
+      <Checklist
+        aria-label="Project journey"
+        data-testid="journey-checklist"
+        items={steps.map((step) => ({
+          label: step.label,
+          state: step.state,
+          testId: `journey-${step.key}`,
+          ...(go[step.key] === undefined ? {} : { onGo: go[step.key] }),
+        }))}
+      />
+      {/*
+        Dismissal is per project and persisted, because "I have read this" is a
+        fact about a person and a project rather than about a tab. It gates
+        nothing — the checklist never did — so losing it costs a reminder and no
+        capability, which is why there is no confirmation and no way back in the
+        UI. Clearing the stored preference brings it back.
+      */}
+      <button
+        type="button"
+        aria-label="Dismiss the project journey"
+        data-testid="journey-dismiss"
+        onClick={() => {
+          writePref(dismissKey(projectId), "1");
+          setDismissed(true);
+        }}
+        className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+      >
+        <X className="size-4" aria-hidden="true" />
+      </button>
+    </div>
   );
+}
+
+/**
+ * Where a project's dismissal is remembered.
+ *
+ * Keyed by project, not globally: somebody who has finished one project has not
+ * therefore learned the pipeline for the next, and a global flag would hide the
+ * onboarding from the one reader it exists for.
+ */
+function dismissKey(projectId: string): string {
+  return `journey.dismissed.${projectId}`;
 }
 
 /**
@@ -388,11 +538,20 @@ function OverviewSkeleton(): JSX.Element {
   return (
     <div className="flex flex-col gap-6" data-testid="overview-loading" aria-busy="true">
       <span className="sr-only">Loading</span>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className="h-20 w-full" />
-        ))}
-      </div>
+      {/*
+        Two four-card rows, because the loaded panel has two: the pipeline
+        pointers and the counts. The skeleton's whole job is that nothing moves
+        when the data lands, so a row added above has to be reserved here in the
+        same breath — `overview.test.tsx` counts the grids on both sides of the
+        transition and is what catches forgetting.
+      */}
+      {Array.from({ length: 2 }, (_, row) => (
+        <div key={row} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-20 w-full" />
+          ))}
+        </div>
+      ))}
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           {Array.from({ length: 4 }, (_, index) => (

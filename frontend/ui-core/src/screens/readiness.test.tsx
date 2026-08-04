@@ -16,7 +16,7 @@ import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { useActiveSchema, useBatches, useProjectReadiness, useProjectStats } from "./queries";
-import { batchActions } from "../testing/wire.fixtures.js";
+import { batchActions, datasetOf, releaseOf } from "../testing/wire.fixtures.js";
 import type { components as capComponents } from "../generated/api.js";
 
 type BatchState = capComponents["schemas"]["BatchState"];
@@ -138,7 +138,25 @@ function serve(options: {
   schema?: Answer;
   stats?: Record<string, unknown>;
   batches?: readonly Record<string, unknown>[];
+  /** Release tags this project has published. The journey's exit. */
+  releases?: readonly string[];
 }): void {
+  // The two-hop read the journey's last step needs: project -> dataset ->
+  // releases. Stubbed here rather than left to fall through to the 500, because
+  // the hook waits on it and a missing stub would make every readiness answer
+  // `null` — which reads as "still loading" and is indistinguishable from a
+  // hook that stopped working.
+  on("GET", /\/projects\/[^/]+\/dataset$/, {
+    status: 200,
+    body: datasetOf(PROJECT, DATASET),
+  });
+  on("GET", /\/releases$/, {
+    status: 200,
+    body: {
+      items: (options.releases ?? []).map((tag) => releaseOf(DATASET, tag)),
+      total: options.releases?.length ?? 0,
+    },
+  });
   on(
     "GET",
     /^\/projects\/[^/]+\/schema$/,
@@ -150,6 +168,8 @@ function serve(options: {
     body: { items: options.batches ?? [], total: options.batches?.length ?? 0 },
   });
 }
+
+const DATASET = "22222222-2222-4222-8222-222222222222";
 
 const SCHEMALESS: Answer = {
   status: 404,
@@ -229,25 +249,38 @@ describe("useProjectReadiness", () => {
     expect(screen.queryByTestId("readiness")).toBeNull();
   });
 
-  it("adds not one request beyond the three the header already runs", async () => {
+  it("asks for each thing exactly once, however many readers want it", async () => {
+    // **The claim changed and is stated rather than quietly relaxed.** This used
+    // to assert *three* requests and "not one beyond what the header runs",
+    // because the hook composed only the header's own queries. It reads the
+    // dataset and its releases now — the two-hop the journey's last step needs —
+    // so the honest number is five.
+    //
+    // What has not changed is the property that mattered: composition, not
+    // duplication. Two components asking the same question share one request,
+    // which is why the Overview's dashboard — which reads the dataset and the
+    // releases for its own cards — makes this hook free on the one screen that
+    // renders the checklist.
     serve({ stats: statsOf({ asset_count: 48 }) });
     render(
       mount(
         <>
           <Header projectId={PROJECT} />
           <Readiness projectId={PROJECT} />
+          {/* A second reader, to make the deduplication the subject. */}
+          <Readiness projectId={PROJECT} />
         </>,
       ),
     );
 
-    await screen.findByTestId("current-step");
+    await screen.findAllByTestId("current-step");
     const paths = sent.map((request) => new URL(request.url).pathname);
-    expect(paths.filter((path) => path.endsWith("/schema"))).toHaveLength(1);
-    expect(paths.filter((path) => path.endsWith("/stats"))).toHaveLength(1);
-    expect(paths.filter((path) => path.endsWith("/batches"))).toHaveLength(1);
-    expect(paths).toHaveLength(3);
-    // And never the version list: that query belongs to the history tab, which
-    // fetches it when it opens and not before (`screens.test.tsx` pins that).
+    for (const one of ["/schema", "/stats", "/batches", "/dataset", "/releases"]) {
+      expect(paths.filter((path) => path.endsWith(one)), one).toHaveLength(1);
+    }
+    expect(paths).toHaveLength(5);
+    // And never the version list: that query belongs to the history section,
+    // which fetches it when the Schema tab opens and not before.
     expect(paths.some((path) => path.endsWith("/schema/versions"))).toBe(false);
   });
 });

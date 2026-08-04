@@ -43,8 +43,8 @@
 
 import {
   AnnotationPage,
-  DatasetScreen,
   GalleryScreen,
+  resolveProjectTab,
   IngestScreen,
   ProjectScreen,
   ProjectsScreen,
@@ -76,7 +76,12 @@ export function AppRoutes(): JSX.Element {
             <Route path="projects/:projectId" element={<Project />} />
             <Route path="projects/:projectId/ingest" element={<Ingest />} />
             <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
-            <Route path="projects/:projectId/dataset" element={<DatasetView />} />
+            {/* The dataset is a project *tab* now, not a route of its own — it
+                is the product's central object and it was reachable only through
+                an overflow menu, an Overview link, and the last step of an
+                onboarding checklist. The old URL stays as a redirect, because a
+                URL somebody bookmarked is a promise. */}
+            <Route path="projects/:projectId/dataset" element={<DatasetRedirect />} />
             <Route path="*" element={<NotFound />} />
           </Route>
 
@@ -151,6 +156,7 @@ const PARENT = {
   projects: "/projects",
   project: (projectId: string) => `/projects/${projectId}`,
   batches: (projectId: string) => `/projects/${projectId}?tab=batches`,
+  dataset: (projectId: string) => `/projects/${projectId}?tab=dataset`,
 } as const;
 
 /**
@@ -172,6 +178,19 @@ function Project(): JSX.Element {
   // The router guarantees the segment exists for this path; the type does not.
   if (projectId === undefined) return <NotFound />;
   const tab = query.get("tab");
+  /**
+   * A `?tab=` value that has moved is rewritten in the URL, not only resolved.
+   *
+   * `?tab=versions` still lands on Schema — the history nested inside it — and a
+   * screen that quietly rendered the right panel under the wrong query string
+   * would leave the address bar lying, and would hand the next person who copies
+   * that link the same stale value again. `ui-core` cannot do this itself: it
+   * imports no router, so it can only *say* what a value resolves to.
+   */
+  const settled = resolveProjectTab(tab ?? undefined);
+  if (settled !== null && tab !== null) {
+    return <Navigate to={`/projects/${projectId}?tab=${settled}`} replace />;
+  }
   return (
     <ProjectScreen
       projectId={projectId}
@@ -180,7 +199,6 @@ function Project(): JSX.Element {
       onTabChange={(next) => setQuery({ tab: next }, { replace: true })}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
-      onOpenDataset={() => void navigate(`/projects/${projectId}/dataset`)}
       // A deleted project's own URL is a 404 waiting to happen, so the parent is
       // where to land — and `replace`, because Back should not walk into it.
       onDeleted={() => void navigate(PARENT.projects, { replace: true })}
@@ -223,19 +241,22 @@ function Gallery(): JSX.Element {
       onOpenSchema={() => void navigate(`/projects/${projectId}?tab=schema`)}
       // Where a promotion from this screen lands (F18). The gallery is where a
       // batch is finished, and it had no way to reach the one screen that shows
-      // what finishing it produced.
-      onOpenDataset={() => void navigate(`/projects/${projectId}/dataset`)}
+      // what finishing it produced — a tab of the project now, not a route.
+      onOpenDataset={() => void navigate(PARENT.dataset(projectId))}
     />
   );
 }
 
-function DatasetView(): JSX.Element {
+/**
+ * The dataset's old address, kept as a promise rather than as a screen.
+ *
+ * `replace`, so Back does not walk into a URL that only ever bounces — a
+ * redirect in the history is a trap the second time somebody presses it.
+ */
+function DatasetRedirect(): JSX.Element {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   if (projectId === undefined) return <NotFound />;
-  return (
-    <DatasetScreen projectId={projectId} onBack={() => void navigate(PARENT.project(projectId))} />
-  );
+  return <Navigate to={PARENT.dataset(projectId)} replace />;
 }
 
 /**
