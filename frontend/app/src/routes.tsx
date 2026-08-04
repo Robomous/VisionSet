@@ -290,6 +290,9 @@ function Ingest(): JSX.Element {
       projectId={projectId}
       onBack={() => void navigate(PARENT.project(projectId))}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
+      // The foreshadowing banner's link (#290): the schema section is a `?tab=`
+      // on the project page, and spelling that URL is this file's job.
+      onOpenSchema={() => void navigate(`/projects/${projectId}?tab=schema`)}
     />
   );
 }
