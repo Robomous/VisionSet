@@ -166,6 +166,32 @@ import {
 /** The kernel's own default. One frame per second. */
 const DEFAULT_EXTRACTION_FPS = 1;
 
+/**
+ * `IngestState`, in the words a person uses for it — `batchState.ts`'s
+ * convention (#292), unknown members falling through to themselves so a newer
+ * server's state reads as that state rather than as a shrug.
+ */
+const RUN_STATE_LABEL: Record<string, string> = {
+  pending: "Waiting",
+  running: "Processing",
+  completed: "Done",
+  failed: "Failed",
+};
+
+function runStateLabel(state: string): string {
+  return RUN_STATE_LABEL[state] ?? state;
+}
+
+/** `IngestFailureKind`, likewise: what is wrong with the file, said plainly. */
+const FAILURE_KIND_LABEL: Record<string, string> = {
+  unsupported: "Unsupported format",
+  corrupt: "Corrupt file",
+};
+
+function failureKindLabel(kind: string): string {
+  return FAILURE_KIND_LABEL[kind] ?? kind;
+}
+
 /** The value the batch picker uses for "make a new one". Never a batch id. */
 const NEW_BATCH = "__new__";
 
@@ -575,7 +601,7 @@ export function IngestScreen({
                 }
                 data-testid="run-state"
               >
-                {job.data.state}
+                {runStateLabel(job.data.state)}
               </Badge>
             ) : undefined
           }
@@ -1046,7 +1072,7 @@ function Failures({ failures }: { readonly failures: readonly IngestFailure[] })
               </TableCell>
               <TableCell>
                 <Badge variant={failure.kind === "corrupt" ? "destructive" : "neutral"}>
-                  {failure.kind}
+                  {failureKindLabel(failure.kind)}
                 </Badge>
               </TableCell>
               <TableCell className="text-muted-foreground">{failure.reason}</TableCell>

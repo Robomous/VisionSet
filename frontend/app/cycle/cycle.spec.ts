@@ -169,7 +169,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     // The run is launched with a 202 and polled to its end — the only place in the
     // product where the answer arrives on a job row rather than in the response.
-    await expect(page.getByTestId("run-state")).toHaveText("completed", { timeout: 60_000 });
+    await expect(page.getByTestId("run-state")).toHaveText("Done", { timeout: 60_000 });
     await expect(page.getByTestId("run-progress")).toContainText("3 of 3");
     await expect(page.getByTestId("failures")).toHaveCount(0);
   });
@@ -239,7 +239,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // on it.
     await openProject(page, "batches");
     await expect(page.getByTestId("batches-table")).toBeVisible();
-    await expect(page.getByTestId("batch-cycle-batch")).toContainText("draft");
+    await expect(page.getByTestId("batch-cycle-batch")).toContainText("pending approval");
 
     await page.getByTestId("approve-cycle-batch").click();
     await page.getByTestId("approve-submit").click();
@@ -249,7 +249,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("batch-cycle-batch")).toContainText("v1");
 
     await page.getByTestId("start-cycle-batch").click();
-    await expect(page.getByTestId("state-cycle-batch")).toHaveText("in_annotation");
+    await expect(page.getByTestId("state-cycle-batch")).toHaveText("in progress");
   });
 
   await test.step("reach the annotator by clicking, on the asset that was clicked", async () => {
