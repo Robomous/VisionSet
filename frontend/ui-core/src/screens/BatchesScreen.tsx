@@ -14,9 +14,11 @@
  * Two of those refusals are worth knowing even though the button is hidden.
  * Approving a schema-less project raises `SchemaNotFound`, because approval is
  * when the project's active version **pins to the batch and stops moving** — a
- * later `create_version` does not touch it. And `complete` is *derived*, not
- * automatic: `BatchService.complete` reads the jobs and refuses while any is
- * outstanding, so the button is offered and the refusal is real.
+ * later `create_version` does not touch it. And `complete` is *derived* at two
+ * levels rather than automatic at either: `BatchService.complete` refuses while
+ * any **job** is outstanding, and `JobService.complete` refuses while any asset
+ * is. Until #301 this screen sent only the outer one, so a batch whose every frame
+ * was settled answered `BATCH_NOT_COMPLETE` for ever — see `CompleteBatchButton`.
  *
  * ## The partition is exact, and the third strategy is not offered
  *
@@ -28,7 +30,7 @@
  * UUIDs. A program has the SDK and the API.
  */
 
-import { ArrowUpFromLine, Layers, Play, SquareCheckBig } from "lucide-react";
+import { ArrowUpFromLine, Layers, Play } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -37,7 +39,7 @@ import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { FieldError } from "../primitives/Input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
-import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
+import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { useBatchTransition, useBatches, usePromoteBatch, type Batch } from "./queries";
@@ -159,7 +161,6 @@ function Lifecycle({
   readonly onApprove: () => void;
 }): JSX.Element | null {
   const start = useBatchTransition(batch.id, "start");
-  const complete = useBatchTransition(batch.id, "complete");
   const promote = usePromoteBatch(batch.projectId ?? "");
 
   if (batch.state === "completed") {
@@ -214,28 +215,11 @@ function Lifecycle({
     );
   }
   if (batch.state === "in_annotation") {
-    return (
-      <div className="flex flex-col items-end gap-1">
-        <Button
-          variant="secondary"
-          size="sm"
-          data-testid={`complete-${batch.name}`}
-          disabled={complete.isPending}
-          onClick={() => complete.mutate()}
-        >
-          <SquareCheckBig className="size-4" aria-hidden="true" />
-          Complete
-        </Button>
-        {/* Derived, not automatic: the service reads the jobs and refuses while
-            any is outstanding, so this refusal is a real answer rather than a
-            guard the screen should have pre-empted. */}
-        {complete.isError && (
-          <FieldError data-testid={`complete-error-${batch.name}`}>
-            {asApiError(complete.error).code}
-          </FieldError>
-        )}
-      </div>
-    );
+    // Completion is derived at two levels and neither is implicit, so closing a
+    // batch means closing its jobs first — which nothing in the browser did
+    // outside the annotator. `CompleteBatchButton` owns the chain and the reason
+    // (#301); the gallery header renders the same control.
+    return <CompleteBatchButton batch={batch} />;
   }
   // Every state is answered above; `approved` and `in_annotation` are the two
   // middle rows and `draft`/`completed` the ends.

@@ -218,6 +218,64 @@ export function mayHaveAnnotations(progress: AssetProgress | null | undefined): 
   return progress === "annotated" || progress === "review_pending" || progress === "accepted";
 }
 
+// --- which bulk moves a frame can actually make (#301) ------------------------
+
+/**
+ * Whether this frame can be skipped from here.
+ *
+ * A mirror of two rows of the kernel's `ASSET_PROGRESS_TRANSITIONS`, and it is a
+ * mirror on purpose rather than by omission — the annotator already does the same
+ * thing for its `Accept` button, on the same principle: *the kernel decides, and
+ * the screen does not offer a move it can see is impossible.*
+ *
+ * The row that matters is the one that is **not** a refusal. Re-stating a state an
+ * asset is already in is a documented **no-op** in `JobService.mark`, answered
+ * `200` with nothing changed — so a bulk bar that sent it reported "moved" over
+ * work it had not done, and the screen read as broken multi-selection when the
+ * selection was working perfectly. That is #301's second half, and filtering here
+ * is what makes the count on the button honest.
+ *
+ * `review_pending` is left out because its only exits are `annotated` and
+ * `accepted`; `accepted` because it has none at all.
+ */
+export function canSkip(progress: AssetProgress | null | undefined): boolean {
+  return progress === "unannotated" || progress === "annotated";
+}
+
+/**
+ * Whether this frame's skip can be taken back — `skipped → unannotated`.
+ *
+ * The kernel calls that edge "the decision was reversed while the job is open",
+ * and until #301 there was no way to make it anywhere in the browser: a mis-aimed
+ * shift-click over forty frames was unrecoverable without opening each one.
+ *
+ * **`skipped` only, though `annotated → unannotated` is equally legal.** That edge
+ * means *the last annotation on it was deleted* — it is what `AnnotationService`
+ * records when the boxes go — so asserting it over a frame that still has boxes
+ * would put progress and annotations out of step, with the kernel agreeing to it
+ * because each half is individually valid. Restore undoes a decision, not work.
+ */
+export function canRestore(progress: AssetProgress | null | undefined): boolean {
+  return progress === "skipped";
+}
+
+/**
+ * How many frames are still blocking the batch from completing.
+ *
+ * `SETTLED_PROGRESS` is `{annotated, skipped, accepted}` — generous, because review
+ * is optional and an asset may be done at `annotated` — so the two that block are
+ * `unannotated` (the labeling has not happened) and `review_pending` (the review
+ * has not). Stated as a sum of the two named states rather than as
+ * `total - settled`, so a sixth state fails the build here instead of quietly
+ * counting as done.
+ */
+export function outstandingWork(counts: {
+  readonly unannotated: number;
+  readonly review_pending: number;
+}): number {
+  return counts.unannotated + counts.review_pending;
+}
+
 // --- the header's numbers ----------------------------------------------------
 
 /**

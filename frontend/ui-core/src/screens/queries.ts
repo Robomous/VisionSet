@@ -35,6 +35,7 @@ import {
   checkApproveBatch,
   checkCreateProject,
   checkCompleteBatch,
+  checkCompleteJob,
   checkCompareSchemaVersions,
   checkCreateSchemaVersion,
   checkDatasetStats,
@@ -66,6 +67,7 @@ import {
   checkSetAssetProgress,
   checkStartBatch,
   checkStartIngest,
+  checkStartJob,
   checkVerifyRelease,
 } from "../generated/checks";
 import type { components } from "../generated/api";
@@ -690,6 +692,102 @@ export function useBatchTransition(batchId: string, move: "start" | "complete") 
   });
 }
 
+/** What finishing a batch actually had to do, so the screen can say it. */
+export interface FinishBatchResult {
+  /** Jobs this press moved to `completed`. Zero when the annotator had done them. */
+  readonly jobsFinished: number;
+  readonly batch: Batch;
+}
+
+/**
+ * Finish a batch: its outstanding jobs first, then the batch itself (#301).
+ *
+ * ## The chain has three links and the browser only ever sent the last one
+ *
+ * Completion is derived at **two** levels, and "derived" in this kernel means
+ * *recomputed*, never *implicit*: `JobService.complete` refuses while any asset is
+ * unsettled, and `BatchService.complete` refuses while any **job** is outstanding.
+ * A batch's `ProgressCounts` describes its assets, so a batch reading `0 to do`
+ * beside a 409 saying `1 of 1 jobs still unfinished` is two true answers to two
+ * different questions — which is exactly what a person saw.
+ *
+ * `POST /jobs/{id}/complete` had one caller in the whole app: the `Finish job`
+ * button *inside the annotator*. Settling frames from the gallery — which is the
+ * entire point of bulk skip — never passes it, so the job stayed `in_progress`
+ * forever and `Complete` refused forever, naming no remedy. So this sends the two
+ * links nobody was sending, in the only order the machines allow.
+ *
+ * ## Three rules, each of them load-bearing
+ *
+ * **`pending` is started first.** `JOB_TRANSITIONS` has no `pending → completed`
+ * edge, so a job the annotator was never opened on cannot be closed without
+ * `start`. A batch whose frames were *all* bulk-skipped is that case, and without
+ * this line it would be unfinishable by any sequence of clicks that exists.
+ *
+ * **Sequential, not `Promise.all`.** SQLite has one writer and these are writes;
+ * firing N job completions at a workspace under a busy timeout is how a green path
+ * starts answering `WORKSPACE_BUSY`. A batch has a handful of jobs, not a
+ * thousand, so the ordering costs nothing worth having.
+ *
+ * **The first refusal stops the chain**, and reaches the caller as itself. There is
+ * nothing to roll back — a completed job is a true statement about its own assets
+ * whether or not the batch went on to close — and inventing a partial-outcome
+ * report here would only hide *which* link refused. `useBulkSetProgress` reports
+ * partial because it is N independent moves; this is one move in stages.
+ *
+ * This is the same call `AnnotationPage` makes at the other end of the lifecycle
+ * (#59, #299): opening a job to work on it **is** starting it, and the batch with
+ * it. A surface composing the moves somebody plainly means is not the kernel
+ * deriving them behind their back.
+ */
+export function useFinishBatch(batchId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<FinishBatchResult> => {
+      const jobs = unwrap(
+        await client.GET("/batches/{batch_id}/jobs", {
+          params: { path: { batch_id: batchId } },
+        }),
+        checkListBatchJobs,
+      );
+
+      let jobsFinished = 0;
+      for (const job of jobs.items) {
+        if (job.state === "completed") continue;
+        if (job.state === "pending") {
+          unwrap(
+            await client.POST("/jobs/{job_id}/start", { params: { path: { job_id: job.id } } }),
+            checkStartJob,
+          );
+        }
+        unwrap(
+          await client.POST("/jobs/{job_id}/complete", { params: { path: { job_id: job.id } } }),
+          checkCompleteJob,
+        );
+        jobsFinished += 1;
+      }
+
+      const batch = unwrap(
+        await client.POST("/batches/{batch_id}/complete", {
+          params: { path: { batch_id: batchId } },
+        }),
+        checkCompleteBatch,
+      );
+      return { jobsFinished, batch };
+    },
+    // On settled rather than on success: a refusal at the batch leaves the jobs it
+    // did finish genuinely finished, and a screen still showing them outstanding
+    // would be the one state this whole hook exists to stop happening.
+    onSettled: () => {
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: batchKeys.jobs(batchId) });
+      void queries.invalidateQueries({ queryKey: ["batches"] });
+      void queries.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
 /**
  * One source, by id — the batch header's provenance line (#284).
  *
@@ -733,16 +831,41 @@ export interface BulkProgressResult {
  * consequences the caller has to render rather than hide:
  *
  * - **It is not atomic.** Forty of fifty succeeding is a real state, and the one
- *   the bulk bar has to be able to say out loud. `Promise.allSettled`, never
- *   `Promise.all` — the latter would reject on the first failure while the rest of
- *   the requests were still in flight and still landing, leaving the screen
- *   claiming nothing happened while the server disagreed.
+ *   the bulk bar has to be able to say out loud.
  * - **It needs the job id per asset**, which is null exactly while the batch is a
  *   draft. A draft has no jobs, so there is nothing to move progress on, and the
  *   caller does not offer the action at all rather than sending fifty 404s.
  *
  * The kernel's `ASSET_PROGRESS_TRANSITIONS` decides whether any individual move is
  * legal, and refusing is its job. What this owes is to not lose the refusal.
+ *
+ * ## The requests are sent one at a time, and that is a correctness fix (#301)
+ *
+ * This used to be `Promise.allSettled` over N concurrent requests. **Measured
+ * against a real server: three concurrent moves over one job answered `200`,
+ * `200`, `200` and moved exactly one asset.** The other two were lost, silently,
+ * with a success on the wire — which is precisely the "multi-selection does not
+ * work" a person reported, and it was literally true.
+ *
+ * The cause is one row. `JobService.mark` reads its `AnnotationJob`, copies it with
+ * one entry of `progress` changed, and writes it back through
+ * `Repository.update` — which is `session.merge(to_row(entity))`, a **whole-row
+ * replace**. Three overlapping requests each read the same `progress` map before
+ * any of them wrote, so each write put back its own copy and the last one won. And
+ * SQLite's single writer does not save it: serializing the *writes* is not the
+ * same as serializing read-modify-write, and pysqlite defers `BEGIN` to the first
+ * write, so none of the three reads is inside a transaction at all. The same three
+ * moves sent **sequentially** land all three, which is what pins the diagnosis.
+ *
+ * That is a kernel-level hazard rather than this hook's to fix — any concurrent
+ * client hits it, and closing it properly means either a row-level update on the
+ * persistence port or the `BEGIN IMMEDIATE` #80 deliberately declined. It is filed
+ * separately. What this hook owes in the meantime is not to *cause* it, and a
+ * bulk bar over a handful of frames loses nothing by taking its turn.
+ *
+ * A refusal still does not stop the rest, unlike `useFinishBatch`: these are N
+ * independent moves rather than one move in stages, so a frame the kernel refuses
+ * says nothing about the next one.
  */
 export function useBulkSetProgress(batchId: string) {
   const client = useApiClient();
@@ -752,19 +875,23 @@ export function useBulkSetProgress(batchId: string) {
       readonly targets: readonly { readonly jobId: string; readonly assetId: string }[];
       readonly progress: AssetProgress;
     }): Promise<BulkProgressResult> => {
-      const settled = await Promise.allSettled(
-        input.targets.map(async (target) =>
+      let moved = 0;
+      for (const target of input.targets) {
+        try {
           unwrap(
             await client.PUT("/jobs/{job_id}/assets/{asset_id}/progress", {
               params: { path: { job_id: target.jobId, asset_id: target.assetId } },
               body: { progress: input.progress },
             }),
             checkSetAssetProgress,
-          ),
-        ),
-      );
-      const moved = settled.filter((one) => one.status === "fulfilled").length;
-      return { moved, failed: settled.length - moved };
+          );
+          moved += 1;
+        } catch {
+          // Counted, not rethrown. The bar renders `moved`/`failed`, and one
+          // frame the kernel refuses says nothing about the next.
+        }
+      }
+      return { moved, failed: input.targets.length - moved };
     },
     onSettled: () => {
       // On settled rather than on success: a partial failure still moved some
