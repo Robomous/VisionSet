@@ -30,7 +30,7 @@ import {
 
 import { useApiClient } from "../data/ApiProvider";
 import { usePollingQuery } from "../data/polling";
-import { unwrap } from "../data/errors";
+import { asApiError, unwrap } from "../data/errors";
 import {
   checkApproveBatch,
   checkCreateProject,
@@ -979,4 +979,88 @@ export function useDownloadManifest(releaseId: string) {
       return unwrap(result, checkGetReleaseManifest);
     },
   });
+}
+
+// --- the journey (#288) ------------------------------------------------------
+
+/** Where a project is on the road Labels → Images → Annotate → Export. */
+export type JourneyStep = "labels" | "images" | "annotate" | "export" | "done";
+
+export interface ProjectReadiness {
+  readonly hasSchema: boolean;
+  readonly hasAssets: boolean;
+  readonly hasAnnotations: boolean;
+  /** `ProjectStatsOut.annotated_pct`, verbatim — assets past `unannotated`, in percent. */
+  readonly annotatedPct: number;
+  /** The header's filter (`ProjectScreen`): the one state an annotation may be written into. */
+  readonly hasBatchInAnnotation: boolean;
+  readonly currentStep: JourneyStep;
+}
+
+/**
+ * The one answer to "where is this project in its journey?".
+ *
+ * ## One spelling for "has a schema"
+ *
+ * The question used to be asked three different ways — `schema.data ===
+ * undefined`, `code === "SCHEMA_NOT_FOUND"`, `active === null` — and three
+ * spellings of one fact are free to drift. This hook is the single source of
+ * truth from here on: new code asks this, and the older sites migrate as they
+ * are touched. The rule itself is `ProjectScreen`'s: **`SCHEMA_NOT_FOUND` is an
+ * answer, not a failure** — a project starts schema-less on purpose (#6), so
+ * that 404 means `hasSchema: false` while any other failure means this hook has
+ * no answer at all.
+ *
+ * ## Zero new requests on the project screen
+ *
+ * Composed from `useActiveSchema`, `useProjectStats` and `useBatches`, all three
+ * of which the project header already runs — TanStack Query keys them
+ * identically, so mounting this beside the header costs nothing. It deliberately
+ * does **not** read `useSchemaVersions`: the version list is fetched when the
+ * history tab opens and never before, and a readiness probe that changed that
+ * would be a probe with a price.
+ *
+ * ## `null` until every source has answered
+ *
+ * A checklist drawn from half an answer says something false with confidence.
+ * While any source is pending — or failed for a reason that is not the
+ * schema-less 404 — there is no readiness, and the caller renders nothing.
+ *
+ * ## What `currentStep` can and cannot see (v1)
+ *
+ * `labels` without a schema; `images` without assets; `annotate` while nothing
+ * is annotated **or any batch is unfinished** (a state other than `completed` —
+ * work is still open even when the percentage says otherwise); `export` after
+ * that. `export` leans on `annotated_pct` as a proxy for the journey's end.
+ *
+ * TODO(#288): `"done"` is declared but not yet derivable — it needs
+ * `hasReleases`, which is a two-hop read (project → dataset → releases), and an
+ * ingest-in-flight signal, for which no project-scoped ingest-jobs hook exists
+ * on the wire client. Both are deliberately out of v1.
+ */
+export function useProjectReadiness(projectId: string): ProjectReadiness | null {
+  const schema = useActiveSchema(projectId);
+  const stats = useProjectStats(projectId);
+  const batches = useBatches(projectId);
+
+  const schemaless = schema.isError && asApiError(schema.error).code === "SCHEMA_NOT_FOUND";
+  if (stats.data === undefined || batches.data === undefined) return null;
+  if (schema.data === undefined && !schemaless) return null;
+
+  const hasSchema = !schemaless;
+  const hasAssets = stats.data.asset_count > 0;
+  const hasAnnotations = stats.data.annotation_count > 0;
+  const annotatedPct = stats.data.annotated_pct;
+  const hasBatchInAnnotation = batches.data.items.some((one) => one.state === "in_annotation");
+  const unfinishedBatch = batches.data.items.some((one) => one.state !== "completed");
+
+  const currentStep: JourneyStep = !hasSchema
+    ? "labels"
+    : !hasAssets
+      ? "images"
+      : annotatedPct === 0 || unfinishedBatch
+        ? "annotate"
+        : "export";
+
+  return { hasSchema, hasAssets, hasAnnotations, annotatedPct, hasBatchInAnnotation, currentStep };
 }
