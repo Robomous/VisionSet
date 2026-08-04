@@ -106,7 +106,11 @@ refusal differs from `SchemaService`'s project-wide one.
 Legal only while the batch is `approved` or `in_annotation` — `REPINNABLE_STATES` in
 `kernel/domain/batch.py`. A draft has no pin yet; a completed batch's pin is **history**, and
 rewriting it would rewrite the record rather than the rules. Both refuse with
-`InvalidTransition`.
+`InvalidTransition`, asked through `require_state` in `kernel/domain/transitions.py` — the
+sibling of `require_move` for the operations that need the batch to *be* somewhere rather than
+to *go* somewhere. Re-pinning is one: it moves the pin, not the batch, so it appears in no row
+of `BATCH_TRANSITIONS` and would otherwise be the one legality question asked outside the
+funnel.
 
 Re-pinning onto the version already pinned is a no-op: the same batch comes back, nothing is
 written and nothing is announced. Annotations already written keep the `schema_version` they
@@ -236,7 +240,9 @@ GET  /projects/{id}/batches                          → 200 BatchPage
 GET  /batches/{id}                                   → 200 BatchOut, with per-state counts
 POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
 POST /batches/{id}/start                             → 200 BatchOut
+POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut
 POST /batches/{id}/complete                          → 200 BatchOut
+POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
 GET  /batches/{id}/jobs                              → 200 JobPage
 GET  /batches/{id}/assets?limit=&offset=             → 200 BatchAssetPage
 ```

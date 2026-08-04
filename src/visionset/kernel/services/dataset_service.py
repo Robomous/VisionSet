@@ -41,6 +41,7 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     PROMOTABLE_PROGRESS,
+    PROMOTABLE_STATES,
     AnnotationJob,
     Asset,
     Batch,
@@ -206,7 +207,7 @@ class DatasetService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self._batches.require_batch(uow, batch_id)
-            if batch.state is not BatchState.COMPLETED:
+            if batch.state not in PROMOTABLE_STATES:
                 raise BatchNotComplete(
                     f"batch {batch.name!r} is {batch.state.value!r}, not "
                     f"{BatchState.COMPLETED.value!r}; only finished work is promoted, and "

@@ -38,6 +38,7 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     BATCH_TRANSITIONS,
+    EDITABLE_STATES,
     REPINNABLE_STATES,
     AnnotationJob,
     AnnotationJobState,
@@ -58,6 +59,7 @@ from visionset.kernel.domain import (
     normalize_name,
     partition_assets,
     require_move,
+    require_state,
 )
 from visionset.kernel.errors import (
     AssetNotFound,
@@ -67,7 +69,6 @@ from visionset.kernel.errors import (
     ConfirmationRequired,
     DestructiveSchemaChange,
     EmptyBatch,
-    InvalidTransition,
     ProjectNotFound,
     SchemaChangeWouldOrphan,
     WorkspaceCorrupt,
@@ -310,12 +311,12 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
-            if batch.state not in REPINNABLE_STATES:
-                legal = ", ".join(sorted(state.value for state in REPINNABLE_STATES))
-                raise InvalidTransition(
-                    f"{_subject(batch)} is {batch.state.value!r}, so its schema pin cannot "
-                    f"move; re-pinning is only legal while a batch is {legal}"
-                )
+            require_state(
+                REPINNABLE_STATES,
+                batch.state,
+                _subject(batch),
+                refusal="its schema pin cannot move",
+            )
 
             active = self._schemas.require_active(uow, batch.project_id)
             # A draft cannot reach here, so the pin is set — but the read is a
@@ -490,7 +491,7 @@ class BatchService:
             BatchNotEditable: the batch is past ``draft``.
         """
         batch = self.require_batch(uow, batch_id)
-        if batch.state is not BatchState.DRAFT:
+        if batch.state not in EDITABLE_STATES:
             raise BatchNotEditable(
                 f"batch {batch.name!r} is {batch.state.value!r}, so its membership is frozen; "
                 f"after approval an asset is excluded by marking it skipped, never by removing it"
