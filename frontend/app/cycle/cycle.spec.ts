@@ -194,10 +194,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("gallery")).toBeVisible();
     const first = page.getByTestId(/^tile-/).first();
     await expect(first).toHaveAttribute("data-pending", "true");
-    // No route into the annotator, and the reason on an element a person can
-    // hover — which is the half that stops it reading as a broken control.
+    // No route into the annotator, no selection either — every action one could
+    // offer is unavailable before jobs exist — and the reason on the card itself,
+    // which is the element a pointer is over wherever it lands. That last
+    // assertion is the pre-#284 spelling, restored: the explanation went back
+    // onto the tile when the caption row that had been carrying it went away.
     await expect(first.getByTestId(/^open-/)).toHaveCount(0);
-    await expect(first.getByTitle(/draft/i)).toBeVisible();
+    await expect(first.getByTestId(/^select-/)).toHaveCount(0);
+    await expect(first).toHaveAttribute("title", /draft/i);
   });
 
   await test.step("the grid fills the pane, and re-flows when the window narrows", async () => {

@@ -229,6 +229,76 @@ test("the grid renders more than one column, measured in a real browser", async 
   expect(second?.x ?? 0).toBeGreaterThan(first?.x ?? 0);
 });
 
+test("tiles never overlap, at any density", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent);
+
+  // The defect: the row height was estimated from `minColumn`, while the grid is
+  // `auto-fill` + `1fr` and stretches tiles to whatever the leftover space makes
+  // them. At few columns the real tile is far wider than the minimum, so a 4:3
+  // tile was taller than the row the virtualizer had positioned for it and the
+  // rows grew into each other. Measured before the fix: 37px of overlap at the
+  // narrowest step, 191px at the widest — worse the bigger the thumbnails, which
+  // is exactly how it was reported.
+  //
+  // Only a browser can see this. jsdom reports every box as 0×0, so every pair of
+  // rectangles is trivially non-overlapping there.
+  for (const step of ["0", "1", "2", "3"]) {
+    await page.getByTestId("density").fill(step);
+    await expect
+      .poll(async () => (await page.getByTestId("tile-asset-0").boundingBox())?.width ?? 0)
+      .toBeGreaterThan(0);
+
+    const overlaps = await page.evaluate(() => {
+      const boxes = [...document.querySelectorAll('[data-testid^="tile-"]')].map((node) => {
+        const box = node.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, left: box.left, right: box.right };
+      });
+      const hits: string[] = [];
+      for (let a = 0; a < boxes.length; a += 1) {
+        for (let b = a + 1; b < boxes.length; b += 1) {
+          const one = boxes[a]!;
+          const two = boxes[b]!;
+          // A half-pixel of tolerance: subpixel layout can put two rectangles
+          // a rounding error apart, and that is not a collision.
+          const vertical = one.bottom - two.top > 0.5 && two.bottom - one.top > 0.5;
+          const horizontal = one.right - two.left > 0.5 && two.right - one.left > 0.5;
+          if (vertical && horizontal) hits.push(`${a}×${b}`);
+        }
+      }
+      return hits;
+    });
+    expect(overlaps, `tiles overlap at density step ${step}`).toEqual([]);
+  }
+});
+
+test("a row is as tall as the tiles in it, not as tall as the minimum column", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent);
+  await page.getByTestId("density").fill("3");
+
+  // The cause, stated directly so a regression names itself rather than showing
+  // up as "the second row looks wrong". A row that is shorter than its own
+  // content is the overlap, one step earlier.
+  const gap = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('[data-testid^="gallery-row-"]')];
+    if (rows.length < 2) return null;
+    const first = rows[0]!.getBoundingClientRect();
+    const second = rows[1]!.getBoundingClientRect();
+    return second.top - first.bottom;
+  });
+  expect(gap).not.toBeNull();
+  // The same half-pixel tolerance the collision test uses, and for the same
+  // reason: `getBoundingClientRect` reports fractional CSS pixels while the
+  // virtualizer positions rows on the heights it measured, so two boxes can sit
+  // a rounding error apart. Measured here at about -0.44px, against the 191px
+  // this test exists to catch. A tolerance that admitted the defect would be
+  // useless; one that refuses subpixel arithmetic would be flaky.
+  expect(gap ?? -99).toBeGreaterThan(-0.5);
+});
+
 test("the grid has no scroll parent between it and the document", async ({ page }) => {
   const sent: Request[] = [];
   await openGallery(page, sent);
@@ -262,12 +332,15 @@ test("the grid re-flows when the density slider moves", async ({ page }) => {
   await expect.poll(async () => Number(await grid.getAttribute("data-columns"))).toBeGreaterThan(1);
   const before = Number(await grid.getAttribute("data-columns"));
 
-  // Step 4 is the 320px minimum: strictly fewer columns in the same pane. This
+  // Step 3 is the 260px minimum, the widest rung: strictly fewer columns in the
+  // same pane. This
   // also covers the dependency that is easy to omit — `minColumn` has to be in
   // the measuring effect's deps, or the observer keeps answering for the old
   // ladder step forever.
-  await page.getByTestId("density").fill("4");
+  await page.getByTestId("density").fill("3");
   await expect.poll(async () => Number(await grid.getAttribute("data-columns"))).toBeLessThan(before);
+  // The ladder is four rungs. A fifth would be reachable here and is not.
+  await expect(page.getByTestId("density")).toHaveAttribute("max", "3");
 });
 
 test("the chosen density survives a reload", async ({ page }) => {
@@ -477,16 +550,59 @@ test("marking a selection skipped sends one request per frame", async ({ page })
     .toBe(2);
 });
 
-test("a draft batch cannot mark anything skipped, and says why", async ({ page }) => {
+test("a draft offers no selection, because nothing could act on one", async ({ page }) => {
   const sent: Request[] = [];
   await openGallery(page, sent, { state: "draft" });
 
-  await page.getByTestId("select-asset-0").click();
-  // `job_id` is null exactly while the batch is a draft, because a draft has no
-  // jobs — so there is nothing to move progress on, and sending anything would
-  // be fifty 404s.
-  await expect(page.getByTestId("bulk-skip")).toBeDisabled();
-  await expect(page.getByTestId("bulk-unavailable")).toBeVisible();
+  // `remove_assets` is not on the wire (#281) and `Mark skipped` needs a job that
+  // a draft does not have, so every action a checkbox could offer is
+  // unavailable. A control whose every action is unavailable is worse than no
+  // control — which is the whole of the pre/post-approval difference.
+  await expect(page.getByTestId("tile-asset-0")).toBeVisible();
+  await expect(page.getByTestId("select-asset-0")).toHaveCount(0);
+  await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
+  // #160's third criterion, on the element the pointer is over: not-yet rather
+  // than broken.
+  await expect(page.getByTestId("tile-asset-0")).toHaveAttribute("data-pending", "true");
+  await expect(page.getByTestId("tile-asset-0")).toHaveAttribute("title", /draft/i);
+});
+
+test("a draft says nothing about work it has not created", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { state: "draft" });
+
+  // The defect, seen in a browser: `0 of 0 annotated (0%)` and `All (0)` over
+  // forty-eight visible frames. Those counts are not wrong — `GET /batches/{id}`
+  // documents that a draft reports zeros across the board because the numbers
+  // come from its jobs and it has none. Asking the question was wrong.
+  await expect(page.getByTestId("batch-state")).toHaveText("pending approval");
+  await expect(page.getByTestId("progress-readout")).toHaveCount(0);
+  await expect(page.getByTestId("segments")).toHaveCount(0);
+  await expect(page.getByTestId("timeline")).toHaveCount(0);
+  await expect(page.getByTestId("state-asset-0")).toHaveCount(0);
+
+  // What is left is a preview of what was ingested: the pictures, their numbers,
+  // how big to draw them, and one action.
+  await expect(page.getByTestId("batch-facts")).toContainText("48 frames");
+  await expect(page.getByTestId("index-asset-0")).toBeVisible();
+  await expect(page.getByTestId("density")).toBeVisible();
+  await expect(page.getByTestId("approve-batch")).toBeVisible();
+});
+
+test("approving brings back everything the draft was hiding", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { state: "draft" });
+
+  await expect(page.getByTestId("segments")).toHaveCount(0);
+  await page.getByTestId("approve-batch").click();
+  await page.getByTestId("approve-submit").click();
+
+  // Hidden before approval, not removed. The stub's assets keep their null
+  // `job_id` — a real server cuts jobs here — so what this pins is the header's
+  // half of the switch, which is the half the batch's own state drives.
+  await expect(page.getByTestId("batch-state")).toHaveText("approved");
+  await expect(page.getByTestId("segments")).toBeVisible();
+  await expect(page.getByTestId("progress-readout")).toBeVisible();
 });
 
 // --- the timeline ------------------------------------------------------------
@@ -498,7 +614,7 @@ test("clicking a timeline cell brings that frame into view", async ({ page }) =>
   // Narrow enough that the grid is one column and eight frames do not fit on
   // screen at once, so "scrolled into view" is a claim with content.
   await page.setViewportSize({ width: 520, height: 600 });
-  await page.getByTestId("density").fill("4");
+  await page.getByTestId("density").fill("3");
 
   await page.getByTestId("timeline-asset-7").click();
   await expect(page.getByTestId("tile-asset-7")).toBeInViewport();
