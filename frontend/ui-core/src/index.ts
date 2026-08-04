@@ -193,12 +193,33 @@ export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.
 export { ApproveDialog, BatchProgressBar } from "./screens/BatchLifecycle.js";
 export {
   batchStateLabel,
-  isApprovable,
   segmentCounts,
   segmentOf,
   relativeAge,
   type Segment,
 } from "./screens/batchState.js";
+
+// What the wire declares a resource can be asked to do — the client's only
+// source of legality, and the replacement for the `canX(state)` helpers that
+// hand-mirrored the kernel's tables and drifted. See `data/capabilities.ts`.
+export {
+  ASSET_ACTION,
+  BATCH_ACTION,
+  JOB_ACTION,
+  declares,
+  declaring,
+  withheldBecause,
+  type AssetAction,
+  type BatchAction,
+  type Capable,
+  type JobAction,
+} from "./data/capabilities.js";
+export {
+  groupRefusals,
+  refusalProse,
+  REFUSAL_PROSE,
+  type Refusal,
+} from "./data/refusals.js";
 export { DatasetScreen, type DatasetScreenProps } from "./screens/DatasetScreen.js";
 export { saveBlob } from "./screens/download.js";
 export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
