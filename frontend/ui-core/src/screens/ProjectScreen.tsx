@@ -84,6 +84,7 @@ import { useState, type ComponentType, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { BackLink } from "../patterns/BackLink";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
@@ -379,7 +380,7 @@ function DeleteDialog({
         </DialogDescription>
         {remove.isError && (
           <FieldError data-testid="delete-error">
-            {asApiError(remove.error).code}: {asApiError(remove.error).message}
+            {refusalProse(remove.error)}
           </FieldError>
         )}
         <DialogFooter>
@@ -730,7 +731,7 @@ function RenameDialog({
           </div>
           {rename.isError && (
             <FieldError data-testid="rename-error">
-              {asApiError(rename.error).code}: {asApiError(rename.error).message}
+              {refusalProse(rename.error)}
             </FieldError>
           )}
           <DialogFooter>
