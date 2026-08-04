@@ -220,6 +220,15 @@ export {
   REFUSAL_PROSE,
   type Refusal,
 } from "./data/refusals.js";
+
+// The net under everything, and the one class component in the product. React
+// routes only render-time throws to a boundary, so the rejection handler beside
+// it is not optional — see the module.
+export {
+  ErrorBoundary,
+  installRejectionHandler,
+  type ErrorBoundaryProps,
+} from "./patterns/ErrorBoundary.js";
 export { DatasetScreen, type DatasetScreenProps } from "./screens/DatasetScreen.js";
 export { saveBlob } from "./screens/download.js";
 export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
