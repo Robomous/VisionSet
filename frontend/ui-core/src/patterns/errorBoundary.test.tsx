@@ -15,7 +15,7 @@
 
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
 import { ErrorBoundary, installRejectionHandler } from "./ErrorBoundary";
@@ -170,32 +170,77 @@ describe("what a thrown render becomes", () => {
   });
 });
 
+/**
+ * The handler for what the boundary cannot see.
+ *
+ * **No event is constructed or dispatched here**, and that is the repo's rule
+ * rather than a preference: `tests/scripts/annotator_boundary.test.mjs` scans
+ * every tracked file under `frontend/` for `dispatchEvent(` and fails the build,
+ * because a synthetic DOM event is not an API — it is a guess about what a
+ * browser would have sent, and a test built on a guess passes for reasons that
+ * have nothing to do with the code.
+ *
+ * So the listener is taken from the registration instead. `addEventListener` is
+ * the seam this function's whole behaviour goes through: what it registers, on
+ * what name, and whether it takes it back. Calling the captured listener with a
+ * `{reason}` shape is *passing data*, which is exactly what the gate's message
+ * asks for — and it also tests something a dispatch could not, namely that the
+ * listener is registered on the right event name at all.
+ */
 describe("the handler for what the boundary cannot see", () => {
-  it("reports a rejection nobody handled", () => {
-    const seen: unknown[] = [];
-    const stop = installRejectionHandler((reason) => seen.push(reason));
+  /** Capture what `installRejectionHandler` registers, without firing anything. */
+  function captureListener(): {
+    readonly fire: (reason: unknown) => void;
+    readonly name: string;
+  } {
+    let name = "";
+    let listener: ((event: { reason: unknown }) => void) | null = null;
+    const add = vi
+      .spyOn(window, "addEventListener")
+      .mockImplementation((event: string, handler: unknown) => {
+        name = event;
+        listener = handler as (event: { reason: unknown }) => void;
+      });
 
-    const reason = new Error("nobody caught this");
-    // Constructed rather than produced: jsdom does not fire the real event for a
-    // genuinely unhandled promise, and the claim here is about the listener, not
-    // about jsdom's microtask bookkeeping.
-    window.dispatchEvent(
-      Object.assign(new Event("unhandledrejection"), { reason }) as PromiseRejectionEvent,
-    );
-    stop();
+    installRejectionHandler((reason) => reported.push(reason));
+    add.mockRestore();
 
-    expect(seen).toEqual([reason]);
+    return { name, fire: (reason) => listener?.({ reason }) };
+  }
+
+  let reported: unknown[] = [];
+  beforeEach(() => {
+    reported = [];
   });
 
-  it("stops listening when told to, so two installs are not two reports", () => {
-    const seen: unknown[] = [];
-    const stop = installRejectionHandler((reason) => seen.push(reason));
-    stop();
+  it("listens for the one event a rejection arrives on", () => {
+    // The half a dispatch could never check: registering on the wrong name is a
+    // handler that never fires, and a test that dispatched the name it had just
+    // read back would agree with itself.
+    const { name } = captureListener();
+    expect(name).toBe("unhandledrejection");
+  });
 
-    window.dispatchEvent(
-      Object.assign(new Event("unhandledrejection"), { reason: "after" }) as PromiseRejectionEvent,
-    );
+  it("reports a rejection nobody handled", () => {
+    const { fire } = captureListener();
+    const reason = new Error("nobody caught this");
 
-    expect(seen).toEqual([]);
+    fire(reason);
+
+    expect(reported).toEqual([reason]);
+  });
+
+  it("takes its listener back when told to, so two installs are not two reports", () => {
+    const seen: string[] = [];
+    const remove = vi
+      .spyOn(window, "removeEventListener")
+      .mockImplementation((event: string) => {
+        seen.push(event);
+      });
+
+    installRejectionHandler(() => undefined)();
+    remove.mockRestore();
+
+    expect(seen).toEqual(["unhandledrejection"]);
   });
 });
