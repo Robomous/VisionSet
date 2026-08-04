@@ -680,7 +680,7 @@ describe("watching a run", () => {
   it("has no resume for a completed run", async () => {
     on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
     await launch();
-    await waitFor(() => expect(screen.getByTestId("run-state").textContent).toBe("completed"));
+    await waitFor(() => expect(screen.getByTestId("run-state").textContent).toBe("Done"));
     expect(screen.queryByTestId("resume-ingest")).toBeNull();
   });
 });

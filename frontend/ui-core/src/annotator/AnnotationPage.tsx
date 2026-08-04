@@ -128,6 +128,7 @@ import {
   useSetAssetProgress,
 } from "./jobQueries";
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
+import { PROGRESS_LABEL } from "../screens/batchState";
 import type { LabelClassBody } from "../screens/queries";
 import { useActiveSchema, useCreateSchemaVersion } from "../screens/queries";
 
@@ -792,25 +793,18 @@ function Workspace({
  *
  * `skipped` is the one value that changes what the rest of the bar means, so it is
  * the one that gets a colour: everything else is a neutral statement of fact.
- * `AssetProgress`'s five members are covered by the map, which is what keeps a new
- * kernel state from rendering as a blank badge — the `ProgressCounts` bargain, one
- * layer up.
+ * The words come from `batchState.ts`'s `PROGRESS_LABEL` — this page kept a
+ * second copy of that map until #292, and two spellings of the same five states
+ * were free to drift. The gallery's casing wins, because it was the majority
+ * spelling and the house style for state badges.
  */
-const PROGRESS_LABELS: Readonly<Record<string, string>> = {
-  unannotated: "Unannotated",
-  annotated: "Annotated",
-  skipped: "Skipped",
-  review_pending: "In review",
-  accepted: "Accepted",
-};
-
 function AssetProgressState({ progress }: { readonly progress: string }): JSX.Element {
   return (
     <Badge
       variant={progress === "skipped" ? "destructive" : "neutral"}
       data-testid="asset-progress"
     >
-      {PROGRESS_LABELS[progress] ?? progress}
+      {PROGRESS_LABEL[progress] ?? progress}
     </Badge>
   );
 }

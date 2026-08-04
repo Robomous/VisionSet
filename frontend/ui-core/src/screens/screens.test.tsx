@@ -588,8 +588,8 @@ describe("the schema version history", () => {
     // a sentence here and a sentence in a refusal are the same sentence.
     expect(diff.textContent).toContain("class 'crossing' added");
     expect(diff.textContent).toContain("class 'lane' removed");
-    expect(within(diff).getAllByText("destructive")).toHaveLength(1);
-    expect(within(diff).getAllByText("additive")).toHaveLength(1);
+    expect(within(diff).getAllByText("Destructive")).toHaveLength(1);
+    expect(within(diff).getAllByText("Additive")).toHaveLength(1);
   });
 
   it("asks about the selected version against its predecessor", async () => {
@@ -977,7 +977,10 @@ describe("the project view's tabs", () => {
       "Overview",
       "Schema",
       "Batches",
-      "Versions",
+      // "Schema history" since #292: the tab holds schema versions, and the
+      // bare "Versions" read as dataset versions. Label only — the union
+      // value, testid and `?tab=versions` are public API and stay.
+      "Schema history",
     ]);
   });
 
@@ -989,7 +992,7 @@ describe("the project view's tabs", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Overview",
       "Schema",
-      "Versions",
+      "Schema history",
     ]);
   });
 
