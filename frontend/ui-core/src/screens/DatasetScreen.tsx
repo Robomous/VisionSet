@@ -48,6 +48,7 @@ import {
   DialogTitle,
 } from "../primitives/Dialog";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import { refusalProse } from "../data/refusals";
 import {
   Select,
   SelectContent,
@@ -260,7 +261,35 @@ function ReleaseCard({ release }: { readonly release: Release }): JSX.Element {
           </Button>
         </div>
 
-        {verify.data !== undefined && <Verification report={verify.data} tag={release.tag} />}
+        {/*
+          The download that said nothing at all when it failed (audit F8).
+          `manifest.isError` was read nowhere, so a refusal produced no file and
+          no message — indistinguishable from a browser that had swallowed the
+          save dialog, which is the one explanation a user would reach for.
+        */}
+        {manifest.isError && (
+          <FieldError data-testid={`manifest-error-${release.tag}`}>
+            {refusalProse(manifest.error)}
+          </FieldError>
+        )}
+
+        {/*
+          A verify that could not be *asked* is not a verification that found
+          something (audit F10). Only the report had a rendering, so a failed
+          request left the button un-pressed-looking and the last report, if any,
+          still on screen underneath — the worst possible answer, since a stale
+          "everything checks out" is exactly what somebody presses Verify to stop
+          trusting.
+        */}
+        {verify.isError && (
+          <FieldError data-testid={`verify-error-${release.tag}`}>
+            {refusalProse(verify.error)}
+          </FieldError>
+        )}
+
+        {verify.data !== undefined && !verify.isError && (
+          <Verification report={verify.data} tag={release.tag} />
+        )}
       </CardContent>
 
       <ExportDialog releaseId={release.id} tag={release.tag} open={exporting} onClose={() => setExporting(false)} />
@@ -440,7 +469,7 @@ function PublishDialog({
 
           {publish.isError && (
             <FieldError data-testid="publish-error">
-              {asApiError(publish.error).code}: {asApiError(publish.error).message}
+              {refusalProse(publish.error)}
             </FieldError>
           )}
 
@@ -543,7 +572,7 @@ function ExportDialog({
 
           {failure !== null && !needsConsent && (
             <FieldError data-testid="export-error">
-              {failure.code}: {failure.message}
+              {refusalProse(failure)}
             </FieldError>
           )}
         </div>
