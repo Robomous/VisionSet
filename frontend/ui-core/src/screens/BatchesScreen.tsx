@@ -138,7 +138,11 @@ export function BatchesScreen({
         )}
       </Async>
 
-      <ApproveDialog batch={approving} onClose={() => setApproving(null)} />
+      <ApproveDialog
+        batch={approving}
+        onClose={() => setApproving(null)}
+        {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+      />
     </div>
   );
 }

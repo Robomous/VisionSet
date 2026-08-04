@@ -255,7 +255,7 @@ describe("the approval dialog", () => {
     expect(screen.queryByRole("option", { name: /segment/i })).toBeNull();
   });
 
-  it("surfaces a refusal with its code rather than closing", async () => {
+  it("surfaces a schema-less refusal in a person's words rather than closing", async () => {
     handlers = [];
     on("GET", /\/batches$/, { status: 200, body: { items: [batch()], total: 1 } });
     on("POST", /\/approve$/, {
@@ -268,9 +268,11 @@ describe("the approval dialog", () => {
 
     // Approval is when the active version pins to the batch, so a schema-less
     // project cannot be approved at all — and creating v1 here would be the second
-    // door `SchemaService` closed.
-    expect((await screen.findByTestId("approve-error")).textContent).toContain(
-      "SCHEMA_NOT_FOUND",
+    // door `SchemaService` closed. Since #291 this one refusal is translated —
+    // it has a remedy a person can act on — while every other code keeps its
+    // raw `{code}: {message}` (`batchLifecycle.test.tsx` pins both branches).
+    expect((await screen.findByTestId("approve-schema-missing")).textContent).toContain(
+      "no labels yet",
     );
     expect(screen.queryByTestId("approve-dialog")).not.toBeNull();
   });
