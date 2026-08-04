@@ -134,7 +134,12 @@ describe("the approve dialog's refusals", () => {
     expect(screen.queryByTestId("approve-go-schema")).toBeNull();
   });
 
-  it("keeps every other code verbatim, because that is what a client quotes", async () => {
+  it("says every other refusal in prose too, without the remedy that is specific to one", async () => {
+    // **This asserted the raw `{code}: {message}` and now asserts the opposite.**
+    // A kernel identifier in front of a user is not an error message (F16); what
+    // it is good for is a bug report, so it moved to the `title` and the badge
+    // carries the sentence. The vocabulary is shared, so this code reads the same
+    // here as it does on the ingest form and in the gallery.
     on("POST", /\/approve$/, {
       status: 409,
       body: { code: "BATCH_NOT_EDITABLE", message: "drive-01 is already approved." },
@@ -144,8 +149,10 @@ describe("the approve dialog's refusals", () => {
     await userEvent.click(screen.getByTestId("approve-submit"));
 
     const error = await screen.findByTestId("approve-error");
-    expect(error.textContent).toContain("BATCH_NOT_EDITABLE");
-    expect(error.textContent).toContain("already approved");
+    expect(error.textContent).toContain("can no longer be edited");
+    expect(error.textContent).not.toContain("BATCH_NOT_EDITABLE");
+    // The remedy link belongs to `SCHEMA_NOT_FOUND` alone — one vocabulary, and
+    // a screen adds a way onward only where it genuinely has one.
     expect(screen.queryByTestId("approve-schema-missing")).toBeNull();
     expect(screen.queryByTestId("approve-go-schema")).toBeNull();
   });

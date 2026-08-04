@@ -89,6 +89,10 @@ interface Lifecycle {
   job: string;
   /** When set, `POST /batches/{id}/start` refuses 409 with this code instead. */
   refuseBatchStart?: string;
+  /** When set, every `PUT .../progress` refuses 409 with this code instead. */
+  refuseProgress?: string;
+  /** When set, `POST /jobs/{id}/complete` refuses 409 with this code instead. */
+  refuseJobComplete?: string;
 }
 
 function openedWorld(): Lifecycle {
@@ -139,6 +143,16 @@ async function serveApi(
 
     if (path === `/jobs/${JOB}/start` && request.method() === "POST") {
       lifecycle.job = "in_progress";
+      return route.fulfill({ json: jobBody() });
+    }
+    if (path === `/jobs/${JOB}/complete` && request.method() === "POST") {
+      if (lifecycle.refuseJobComplete !== undefined) {
+        return route.fulfill({
+          status: 409,
+          json: { code: lifecycle.refuseJobComplete, message: "the kernel's own wording" },
+        });
+      }
+      lifecycle.job = "completed";
       return route.fulfill({ json: jobBody() });
     }
     if (path === `/jobs/${JOB}`) {
@@ -205,6 +219,12 @@ async function serveApi(
       });
     }
     if (path.endsWith("/progress") && request.method() === "PUT") {
+      if (lifecycle.refuseProgress !== undefined) {
+        return route.fulfill({
+          status: 409,
+          json: { code: lifecycle.refuseProgress, message: "the kernel's own wording" },
+        });
+      }
       const assetId = path.split("/").at(-2) ?? "";
       const body = JSON.parse(request.postData() ?? "{}") as { progress?: string };
       if (body.progress !== undefined) progress.set(assetId, body.progress);
@@ -350,7 +370,7 @@ test("a refused opening move is sent once, never looped, and its code is on the 
 
   // …and the refusal surfaces where the save-state lives, before anybody has
   // saved — the page must never look inert about a batch it could not open.
-  await expect(page.getByTestId("save-state")).toContainText("BATCH_NOT_IN_ANNOTATION");
+  await expect(page.getByTestId("save-state")).toContainText(/not open for annotation/i);
 
   // Force a run of re-renders, then look at the wire. The old effect's bail flags
   // were all false again after a refusal, so every one of these renders re-sent
@@ -366,7 +386,7 @@ test("a refused opening move is sent once, never looped, and its code is on the 
   for (let notch = 0; notch < 8; notch += 1) await zoomIn.click();
   // The renders really happened, and the bar keeps the refusal.
   await expect(page.getByTestId("zoom-readout")).not.toHaveText("100%");
-  await expect(page.getByTestId("save-state")).toContainText("BATCH_NOT_IN_ANNOTATION");
+  await expect(page.getByTestId("save-state")).toContainText(/not open for annotation/i);
 
   // Once — and the job's own start never fired at all, because the batch never
   // reached `in_annotation` for it to be legal in.
@@ -1041,4 +1061,97 @@ test("the palette's help entry opens the shortcut sheet", async ({ page }) => {
   await expect(page.getByTestId("shortcut-sheet")).toHaveCount(0);
   await page.getByTestId("tool-help").click();
   await expect(page.getByTestId("shortcut-sheet")).toBeVisible();
+});
+
+/**
+ * The four refusals with nowhere to go — audit findings F3 and F4.
+ *
+ * `setProgress.isError` and `finishJob.isError` were read **nowhere in
+ * `AnnotationPage`**. Pressing Skip, Un-skip, Accept or Finish job against a
+ * refusal did nothing at all and said nothing about it: the button came back
+ * enabled, the badge did not move, and the page read as having ignored the
+ * click. Three of the four are one-press actions with no other feedback surface,
+ * which is what made these the quietest failures in the product.
+ */
+test("a refused Skip says why, instead of looking like an ignored click", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, {
+    batch: "in_annotation",
+    job: "in_progress",
+    refuseProgress: "ASSET_NOT_WRITABLE",
+  });
+
+  await page.getByTestId("skip").click();
+
+  const said = page.getByTestId("action-refusal");
+  await expect(said).toBeVisible();
+  // Prose, and the kernel's identifier kept where a bug report can find it
+  // rather than where a person has to read it (F16).
+  await expect(said).toContainText(/labeling is settled/i);
+  await expect(said).not.toContainText("ASSET_NOT_WRITABLE");
+  await expect(said).toHaveAttribute("title", "ASSET_NOT_WRITABLE");
+  // And the page did not pretend the move landed.
+  await expect(page.getByTestId("asset-progress")).toHaveText("unannotated");
+});
+
+test("a refused Un-skip says why too, since it is the same silence backwards", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "skipped", "asset-2": "annotated" }), {
+    batch: "in_annotation",
+    job: "in_progress",
+    refuseProgress: "BATCH_NOT_IN_ANNOTATION",
+  });
+
+  await page.getByTestId("unskip").click();
+
+  await expect(page.getByTestId("action-refusal")).toContainText(/not open for annotation/i);
+  await expect(page.getByTestId("asset-progress")).toHaveText("skipped");
+});
+
+test("a refused Accept says why", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(
+    page,
+    sent,
+    progressStore({ "asset-1": "review_pending", "asset-2": "annotated" }),
+    { batch: "in_annotation", job: "in_progress", refuseProgress: "INVALID_TRANSITION" },
+  );
+
+  await page.getByTestId("accept").click();
+
+  await expect(page.getByTestId("action-refusal")).toContainText(/already moved on/i);
+});
+
+test("a refused Finish job says why, rather than re-enabling in silence", async ({ page }) => {
+  const sent: Request[] = [];
+  // Every frame settled, so `complete` is declared and the button is live — the
+  // only state this refusal is reachable from.
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }), {
+    batch: "in_annotation",
+    job: "in_progress",
+    refuseJobComplete: "JOB_NOT_COMPLETE",
+  });
+
+  await page.getByTestId("finish-job").click();
+
+  await expect(page.getByTestId("action-refusal")).toContainText(/still need annotating/i);
+  // Not "Finished": the job did not move, and a label that said it had would be
+  // the page asserting something the server refused.
+  await expect(page.getByTestId("finish-job")).toHaveText(/Finish job/);
+});
+
+test("the save's own refusal is a sentence now, not a kernel identifier", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, {
+    batch: "approved",
+    job: "pending",
+    refuseBatchStart: "BATCH_NOT_IN_ANNOTATION",
+  });
+
+  // `SaveState` rendered the raw code as a destructive badge — the exact class of
+  // rendering #292 removed elsewhere, caught here by F16.
+  const state = page.getByTestId("save-state");
+  await expect(state).toContainText(/not open for annotation/i);
+  await expect(state).not.toContainText("BATCH_NOT_IN_ANNOTATION");
+  await expect(state).toHaveAttribute("title", "BATCH_NOT_IN_ANNOTATION");
 });

@@ -54,13 +54,32 @@ export const REFUSAL_PROSE: Record<string, string> = {
 
   // The schema family. `SCHEMA_NOT_FOUND` is the one with a remedy the screen
   // supplies (a link to the schema tab), so the sentence sets that up.
-  SCHEMA_NOT_FOUND: "This project has no label schema yet — one is needed before approving.",
+  SCHEMA_NOT_FOUND: "This project has no labels yet — define them first.",
   DESTRUCTIVE_SCHEMA_CHANGE: "This change removes part of the contract already in use.",
   SCHEMA_CHANGE_WOULD_ORPHAN: "Annotations already exist under a class this change removes.",
+
+  // Ingest.
+  INGEST_JOB_NOT_FOUND: "That run is no longer on record.",
+  SOURCE_NOT_FOUND: "That source is no longer on record.",
+
+  // Releases and export.
+  RELEASE_NOT_FOUND: "That release is no longer on record.",
+  RELEASE_TAG_TAKEN: "A release with that tag already exists — tags are never reused.",
+  NO_SPLIT_RECIPE: "This release was published without a split, so there are no folds to show.",
+  LOSSY_EXPORT_NOT_CONSENTED: "This format cannot express every shape in the dataset.",
+  EXPORT_FORMAT_NOT_FOUND: "No exporter for that format is installed on this server.",
+  UNSERIALIZABLE_MANIFEST: "This release's manifest cannot be read back — the workspace may be damaged.",
 
   // Infrastructure the user can act on.
   WORKSPACE_BUSY: "The workspace is busy — try again in a moment.",
   NOT_A_WORKSPACE: "This server is not pointed at a workspace.",
+  MEDIA_TOOL_UNAVAILABLE: "This server is missing a tool it needs to read that media.",
+
+  // The client's own two, from `data/errors.ts`. A person hitting either of
+  // these is not looking at a domain refusal, and saying "the server refused
+  // this" would be wrong about where the problem is.
+  NETWORK_ERROR: "The server could not be reached — check the connection and try again.",
+  MALFORMED_RESPONSE: "The server answered with something this app does not recognise.",
 };
 
 /**
