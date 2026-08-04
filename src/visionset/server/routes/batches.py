@@ -38,6 +38,8 @@ from visionset.server.models import (
     BatchApprove,
     BatchAssetOut,
     BatchAssetPage,
+    BatchCorrection,
+    BatchCreate,
     BatchOut,
     BatchPage,
     JobOut,
@@ -64,6 +66,30 @@ def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
     """
     dataset = ProjectService(workspace).get_dataset(project_id)
     return DatasetService(workspace).member_asset_ids(dataset.id)
+
+
+@project_router.post("", status_code=201, responses=documented(404, 422))
+def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -> BatchOut:
+    """Start a draft batch over a chosen set of the project's assets.
+
+    **A batch is still born from an ingest in the ordinary case**, and this does
+    not change that: an ingest run puts what it gathered into one, which is where
+    almost every batch comes from. What had no surface at all was curating one
+    out of an arbitrary subset — the shape a correction batch is, and the shape
+    anybody re-cutting work by hand needs (cf. #281).
+
+    The batch is a `draft`, so its membership stays editable and approval is what
+    freezes it and pins the schema. `asset_ids` may be empty: a batch nobody has
+    filled yet is a legitimate intermediate state, and approving one is what
+    `EmptyBatch` refuses.
+    """
+    batches = BatchService(workspace)
+    created = batches.create(project_id, body.name, body.asset_ids)
+    return BatchOut.of(
+        created,
+        JobService(workspace).batch_progress(created.id),
+        promoted=_promoted(workspace, project_id),
+    )
 
 
 @project_router.get("", responses=documented(404))
@@ -185,6 +211,38 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=_promoted(workspace, batch.project_id),
+    )
+
+
+@router.post("/{batch_id}/corrections", status_code=201, responses=documented(404, 409, 422))
+def create_correction_batch(
+    workspace: WorkspaceDep, batch_id: UUID, body: BatchCorrection
+) -> BatchOut:
+    """Cut a new draft batch that corrects this completed one.
+
+    **The forward-only answer to "this needs fixing".** A `completed` batch is
+    immutable as a workflow unit — it has no exit in the lifecycle and none is
+    coming — so changing settled work means a new batch over the same assets,
+    carrying lineage back to this one in `parent_batch_id`.
+
+    Addressed as a sub-resource of the parent because the parent is what decides:
+    `create_correction` is declared on `BatchOut` exactly while the batch is
+    `completed`, and a 409 is what a client gets for asking otherwise.
+
+    `asset_ids` defaults to **the parent's whole membership**, since "correct
+    this batch" is the ordinary ask. A subset is the other one — the three frames
+    somebody found wrong — and every id given must be one the parent carried: a
+    correction of a batch is a correction *of what was in it*.
+
+    The child pins the project's **active** schema at its own approval, not the
+    parent's pin. That is the point of correcting under a contract that has moved
+    on, and it is the ordinary approval mechanism rather than anything new.
+    """
+    created = BatchService(workspace).create_correction(batch_id, body.name, body.asset_ids)
+    return BatchOut.of(
+        created,
+        JobService(workspace).batch_progress(created.id),
+        promoted=_promoted(workspace, created.project_id),
     )
 
 

@@ -649,3 +649,139 @@ def test_removing_an_asset_from_the_trunk_takes_it_off_the_count(
     client.delete(f"/datasets/{dataset_id}/assets/{removed}")
 
     assert client.get(f"/batches/{batch_id}").json()["promoted_asset_count"] == 2
+
+
+# --- creating a batch from a chosen asset set (audit G1) ----------------------
+
+
+def test_a_batch_can_be_created_from_a_chosen_asset_set(
+    client: TestClient, ingested: str, project: str
+) -> None:
+    """The surface #281 needed and nothing had: a batch curated by hand.
+
+    A batch is still born from an ingest in the ordinary case. What had no route
+    at all was cutting one out of an arbitrary subset — which is the shape a
+    correction batch is.
+    """
+    chosen = asset_ids(client, ingested)[:2]
+
+    answer = client.post(
+        f"/projects/{project}/batches", json={"name": "hand-cut", "asset_ids": chosen}
+    )
+
+    assert answer.status_code == 201
+    body = answer.json()
+    assert body["name"] == "hand-cut"
+    assert body["state"] == "draft"
+    assert body["asset_count"] == 2
+    assert body["parent_batch_id"] is None
+    # A draft, so its membership is still editable — which is what `draft` means.
+    assert "edit_membership" in body["allowed_actions"]
+
+
+def test_a_batch_may_start_empty(client: TestClient, project: str) -> None:
+    # An intermediate state rather than an error: `EmptyBatch` is what refuses
+    # *approving* one, which is a different moment.
+    answer = client.post(f"/projects/{project}/batches", json={"name": "empty"})
+
+    assert answer.status_code == 201
+    assert answer.json()["asset_count"] == 0
+
+
+def test_an_asset_outside_the_project_is_refused(client: TestClient, project: str) -> None:
+    answer = client.post(
+        f"/projects/{project}/batches", json={"name": "wrong", "asset_ids": [str(uuid4())]}
+    )
+
+    assert answer.status_code == 404
+    assert answer.json()["code"] == "ASSET_NOT_FOUND"
+
+
+def test_a_blank_name_is_refused_in_the_kernels_own_words(client: TestClient, project: str) -> None:
+    answer = client.post(f"/projects/{project}/batches", json={"name": "   "})
+
+    assert answer.status_code == 422
+    assert answer.json()["code"] == "INVALID_NAME"
+
+
+# --- corrections (audit G7) ---------------------------------------------------
+
+
+def test_a_completed_batch_declares_it_can_be_corrected(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    _, batch_id = annotated_batch(client, runner, tmp_path)
+
+    assert "create_correction" in client.get(f"/batches/{batch_id}").json()["allowed_actions"]
+
+
+def test_correcting_a_completed_batch_cuts_a_draft_that_points_back_at_it(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    """The forward-only answer: a new batch, not a reopened one."""
+    _, batch_id = annotated_batch(client, runner, tmp_path)
+
+    answer = client.post(f"/batches/{batch_id}/corrections", json={"name": "round two"})
+
+    assert answer.status_code == 201
+    child = answer.json()
+    assert child["id"] != batch_id
+    assert child["parent_batch_id"] == batch_id
+    assert child["state"] == "draft"
+    # The parent's whole membership by default: "correct this batch" is the
+    # ordinary ask, and re-listing every id to say so is a worse API.
+    assert child["asset_count"] == 3
+    # And the parent has not moved. That is the whole point.
+    assert client.get(f"/batches/{batch_id}").json()["state"] == "completed"
+
+
+def test_a_correction_may_name_a_subset(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    # The other ordinary ask: the three frames somebody found wrong.
+    _, batch_id = annotated_batch(client, runner, tmp_path)
+    one = asset_ids(client, batch_id)[:1]
+
+    answer = client.post(
+        f"/batches/{batch_id}/corrections", json={"name": "one frame", "asset_ids": one}
+    )
+
+    assert answer.status_code == 201
+    assert answer.json()["asset_count"] == 1
+
+
+def test_a_correction_cannot_admit_an_asset_the_parent_never_carried(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path
+) -> None:
+    """Lineage would otherwise be a claim about nothing."""
+    _, batch_id = annotated_batch(client, runner, tmp_path)
+
+    answer = client.post(
+        f"/batches/{batch_id}/corrections", json={"name": "wrong", "asset_ids": [str(uuid4())]}
+    )
+
+    assert answer.status_code == 422
+    assert answer.json()["code"] == "ASSET_NOT_IN_BATCH"
+
+
+@pytest.mark.parametrize("stop_at", ["draft", "approved", "in_annotation"])
+def test_an_open_batch_refuses_to_be_corrected(
+    client: TestClient, runner: RecordingRunner, tmp_path: Path, stop_at: str
+) -> None:
+    """Correcting an open batch is not a correction — it is the work.
+
+    The declaration and the refusal agree, which is what the capability contract
+    is for: `create_correction` is absent from every one of these states.
+    """
+    project_id = project_with_schema(client)
+    batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=2)
+    if stop_at != "draft":
+        client.post(f"/batches/{batch_id}/approve")
+    if stop_at == "in_annotation":
+        client.post(f"/batches/{batch_id}/start")
+
+    answer = client.post(f"/batches/{batch_id}/corrections", json={"name": "too soon"})
+
+    assert answer.status_code == 409
+    assert answer.json()["code"] == "INVALID_TRANSITION"
+    assert "create_correction" not in client.get(f"/batches/{batch_id}").json()["allowed_actions"]

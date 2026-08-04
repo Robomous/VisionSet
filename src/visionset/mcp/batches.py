@@ -72,6 +72,34 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any
     }
 
 
+def create_batch(
+    project: ProjectRef,
+    name: Annotated[str, Field(description="What to call the batch.")],
+    asset_ids: Annotated[
+        list[str] | None,
+        Field(description="Which of the project's assets to put in it. Omit to start empty."),
+    ] = None,
+) -> dict[str, Any]:
+    """Start a draft batch over a chosen set of a project's assets.
+
+    Most batches are born from an ingest run, which puts what it gathered into
+    one — this is for the other case: curating a batch out of assets that are
+    already in the project.
+
+    A draft, so membership stays editable until `approve_batch` freezes it and
+    pins the schema. To correct a batch that is already finished, use
+    `create_correction_batch` instead: that one records the lineage.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        created = BatchService(workspace).create(
+            resolved.id,
+            name,
+            [identifier(one, what="asset_id") for one in asset_ids or []],
+        )
+        return _batch_payload(workspace, created.id)
+
+
 def list_batches(project: ProjectRef) -> dict[str, Any]:
     """List a project's batches with where each one's assets have got to.
 
@@ -193,6 +221,42 @@ def complete_batch(batch_id: BatchRef) -> dict[str, Any]:
     with opened_workspace() as workspace:
         completed = BatchService(workspace).complete(identifier(batch_id, what="batch_id"))
         return _batch_payload(workspace, completed.id)
+
+
+def create_correction_batch(
+    batch_id: BatchRef,
+    name: Annotated[str, Field(description="What to call the correction batch.")],
+    asset_ids: Annotated[
+        list[str] | None,
+        Field(
+            description=(
+                "Which of the parent's assets to correct. Omit for all of them. "
+                "Every id must be one the parent batch carried."
+            )
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Start a draft batch that corrects a completed one.
+
+    A completed batch cannot be reopened — there is no transition back — so this
+    is how settled work gets changed: a new batch over the same assets, recording
+    `parent_batch_id` back to the one it corrects.
+
+    Only from a completed batch. The `allowed_actions` on `get_batch` says
+    `create_correction` exactly when this will be accepted.
+
+    The correction is an ordinary draft: fill or trim its membership, then
+    `approve_batch` it, which pins the project's **active** schema — not the
+    parent's — which is the point of correcting under a contract that has moved
+    on.
+    """
+    with opened_workspace() as workspace:
+        created = BatchService(workspace).create_correction(
+            identifier(batch_id, what="batch_id"),
+            name,
+            [identifier(one, what="asset_id") for one in asset_ids or []],
+        )
+        return _batch_payload(workspace, created.id)
 
 
 def list_batch_assets(

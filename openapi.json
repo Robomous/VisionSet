@@ -619,6 +619,7 @@
           "complete",
           "repin",
           "promote",
+          "create_correction",
           "edit_membership",
           "delete"
         ],
@@ -843,6 +844,52 @@
           "total"
         ],
         "title": "BatchAssetPage",
+        "type": "object"
+      },
+      "BatchCorrection": {
+        "additionalProperties": false,
+        "description": "A correction of a completed batch: a name, and optionally a subset.",
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Asset Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BatchCorrection",
+        "type": "object"
+      },
+      "BatchCreate": {
+        "additionalProperties": false,
+        "description": "A new draft batch: a name, and the assets to start it with.",
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Asset Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BatchCreate",
         "type": "object"
       },
       "BatchOut": {
@@ -3019,6 +3066,115 @@
           }
         ],
         "summary": "Complete Batch",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
+    "/batches/{batch_id}/corrections": {
+      "post": {
+        "description": "Cut a new draft batch that corrects this completed one.\n\n**The forward-only answer to \"this needs fixing\".** A `completed` batch is\nimmutable as a workflow unit \u2014 it has no exit in the lifecycle and none is\ncoming \u2014 so changing settled work means a new batch over the same assets,\ncarrying lineage back to this one in `parent_batch_id`.\n\nAddressed as a sub-resource of the parent because the parent is what decides:\n`create_correction` is declared on `BatchOut` exactly while the batch is\n`completed`, and a 409 is what a client gets for asking otherwise.\n\n`asset_ids` defaults to **the parent's whole membership**, since \"correct\nthis batch\" is the ordinary ask. A subset is the other one \u2014 the three frames\nsomebody found wrong \u2014 and every id given must be one the parent carried: a\ncorrection of a batch is a correction *of what was in it*.\n\nThe child pins the project's **active** schema at its own approval, not the\nparent's pin. That is the point of correcting under a contract that has moved\non, and it is the ordinary approval mechanism rather than anything new.",
+        "operationId": "create_correction_batch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCorrection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Correction Batch",
         "tags": [
           "batches"
         ]
@@ -6099,6 +6255,105 @@
         ]
       }
     },
+    "/projects/{project_id}/assets/{asset_id}/batches": {
+      "get": {
+        "description": "Every batch that carries this asset, oldest membership first.\n\n**The membership edge walked backwards.** Every other read goes from a batch\nto its assets; this asks which rounds of work an asset has been through, and\nit is what a correction batch's lineage looks like from the asset's side \u2014\nthe original and its corrections, in the order they were cut.\n\nA dedicated route rather than a field on `AssetOut`, and the reason is cost:\na listing of fifty thousand assets would pay one join per row for a fact\nalmost no reader of that listing wants. This is asked about one asset, by\nsomebody looking at that asset.\n\nAn asset in no batch answers `{\"items\": [], \"total\": 0}` \u2014 the ordinary state\nof anything ingested without a target, and not a 404. The 404 here is for the\nasset or the project, which is resolved first.",
+        "operationId": "list_asset_batches",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Asset Batches",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/projects/{project_id}/assets/{asset_id}/content": {
       "get": {
         "description": "The asset's own bytes, streamed.\n\nThe original that was ingested, not a re-encode \u2014 for a video frame that is\nthe PNG extraction wrote, which is the picture an annotator drew on and the\npicture an exporter ships.\n\n`Content-Type` comes from what the ingest actually probed. An asset written\nbefore the pipeline recorded a format is served as\n`application/octet-stream`, because inventing one would be worse than\nadmitting it.\n\nCached forever and never revalidated: identity is content, so these bytes\ncannot change. The `ETag` is the content hash.\n\n404 `WORKSPACE_CORRUPT` is not among the answers \u2014 a recorded hash with no\nblob behind it is a guarantee failing, and is 500.",
@@ -6383,6 +6638,103 @@
           }
         ],
         "summary": "List Batches",
+        "tags": [
+          "batches"
+        ]
+      },
+      "post": {
+        "description": "Start a draft batch over a chosen set of the project's assets.\n\n**A batch is still born from an ingest in the ordinary case**, and this does\nnot change that: an ingest run puts what it gathered into one, which is where\nalmost every batch comes from. What had no surface at all was curating one\nout of an arbitrary subset \u2014 the shape a correction batch is, and the shape\nanybody re-cutting work by hand needs (cf. #281).\n\nThe batch is a `draft`, so its membership stays editable and approval is what\nfreezes it and pins the schema. `asset_ids` may be empty: a batch nobody has\nfilled yet is a legitimate intermediate state, and approving one is what\n`EmptyBatch` refuses.",
+        "operationId": "create_batch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Batch",
         "tags": [
           "batches"
         ]

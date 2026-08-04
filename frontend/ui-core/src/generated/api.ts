@@ -122,6 +122,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/batches/{batch_id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Correction Batch
+         * @description Cut a new draft batch that corrects this completed one.
+         *
+         *     **The forward-only answer to "this needs fixing".** A `completed` batch is
+         *     immutable as a workflow unit — it has no exit in the lifecycle and none is
+         *     coming — so changing settled work means a new batch over the same assets,
+         *     carrying lineage back to this one in `parent_batch_id`.
+         *
+         *     Addressed as a sub-resource of the parent because the parent is what decides:
+         *     `create_correction` is declared on `BatchOut` exactly while the batch is
+         *     `completed`, and a 409 is what a client gets for asking otherwise.
+         *
+         *     `asset_ids` defaults to **the parent's whole membership**, since "correct
+         *     this batch" is the ordinary ask. A subset is the other one — the three frames
+         *     somebody found wrong — and every id given must be one the parent carried: a
+         *     correction of a batch is a correction *of what was in it*.
+         *
+         *     The child pins the project's **active** schema at its own approval, not the
+         *     parent's pin. That is the point of correcting under a contract that has moved
+         *     on, and it is the ordinary approval mechanism rather than anything new.
+         */
+        post: operations["create_correction_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/batches/{batch_id}/jobs": {
         parameters: {
             query?: never;
@@ -898,6 +936,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/assets/{asset_id}/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Asset Batches
+         * @description Every batch that carries this asset, oldest membership first.
+         *
+         *     **The membership edge walked backwards.** Every other read goes from a batch
+         *     to its assets; this asks which rounds of work an asset has been through, and
+         *     it is what a correction batch's lineage looks like from the asset's side —
+         *     the original and its corrections, in the order they were cut.
+         *
+         *     A dedicated route rather than a field on `AssetOut`, and the reason is cost:
+         *     a listing of fifty thousand assets would pay one join per row for a fact
+         *     almost no reader of that listing wants. This is asked about one asset, by
+         *     somebody looking at that asset.
+         *
+         *     An asset in no batch answers `{"items": [], "total": 0}` — the ordinary state
+         *     of anything ingested without a target, and not a 404. The 404 here is for the
+         *     asset or the project, which is resolved first.
+         */
+        get: operations["list_asset_batches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/assets/{asset_id}/content": {
         parameters: {
             query?: never;
@@ -976,7 +1048,22 @@ export interface paths {
          */
         get: operations["list_batches"];
         put?: never;
-        post?: never;
+        /**
+         * Create Batch
+         * @description Start a draft batch over a chosen set of the project's assets.
+         *
+         *     **A batch is still born from an ingest in the ordinary case**, and this does
+         *     not change that: an ingest run puts what it gathered into one, which is where
+         *     almost every batch comes from. What had no surface at all was curating one
+         *     out of an arbitrary subset — the shape a correction batch is, and the shape
+         *     anybody re-cutting work by hand needs (cf. #281).
+         *
+         *     The batch is a `draft`, so its membership stays editable and approval is what
+         *     freezes it and pins the schema. `asset_ids` may be empty: a batch nobody has
+         *     filled yet is a legitimate intermediate state, and approving one is what
+         *     `EmptyBatch` refuses.
+         */
+        post: operations["create_batch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1720,7 +1807,7 @@ export interface components {
          * @description What can be asked of a batch. Declaration order is display order.
          * @enum {string}
          */
-        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "edit_membership" | "delete";
+        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete";
         /**
          * BatchApprove
          * @description How to cut the batch into jobs. One job for the whole batch by default.
@@ -1781,6 +1868,26 @@ export interface components {
             items: components["schemas"]["BatchAssetOut"][];
             /** Total */
             total: number;
+        };
+        /**
+         * BatchCorrection
+         * @description A correction of a completed batch: a name, and optionally a subset.
+         */
+        BatchCorrection: {
+            /** Asset Ids */
+            asset_ids?: string[];
+            /** Name */
+            name: string;
+        };
+        /**
+         * BatchCreate
+         * @description A new draft batch: a name, and the assets to start it with.
+         */
+        BatchCreate: {
+            /** Asset Ids */
+            asset_ids?: string[];
+            /** Name */
+            name: string;
         };
         /**
          * BatchOut
@@ -2877,6 +2984,86 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_correction_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchCorrection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5202,6 +5389,74 @@ export interface operations {
             };
         };
     };
+    list_asset_batches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_asset_content: {
         parameters: {
             query?: never;
@@ -5358,6 +5613,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOut"];
                 };
             };
             /** @description Missing or invalid bearer token */
