@@ -45,7 +45,6 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Check, PlayCircle, SkipForward, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
-import { asApiError } from "../data/errors";
 import { readStep, writePref } from "../data/prefs";
 import { useAssetAnnotations } from "../annotator/jobQueries";
 import { Badge } from "../primitives/Badge";
@@ -55,14 +54,20 @@ import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import {
+  ASSET_ACTION,
+  BATCH_ACTION,
+  declares,
+  declaring,
+  withheldBecause,
+  type AssetAction,
+} from "../data/capabilities";
+import { groupRefusals, refusalProse } from "../data/refusals";
+import {
   BATCH_STATE_VARIANT,
   batchStateLabel,
-  canRestore,
-  canSkip,
   earliestArrival,
   inSegment,
   hasJobs,
-  isApprovable,
   mayHaveAnnotations,
   progressDot,
   progressLabel,
@@ -270,10 +275,21 @@ export function GalleryScreen({
     [shown],
   );
 
-  // Before approval there are no jobs, so there is no progress to describe, no
-  // states to filter between and nothing a selection could act on. Everything
-  // downstream of this is hidden rather than rendered as zero — see `hasJobs`.
-  const working = hasJobs(batch.data?.state);
+  // Before approval there are no jobs, so there is no progress to describe and
+  // no states to filter between. Everything downstream of this is hidden rather
+  // than rendered as zero — see `hasJobs`.
+  //
+  // **This is a display question and nothing else.** It used to double as the
+  // permission gate — `working` was true for `approved`, `in_annotation` and
+  // `completed` alike, so the bulk bar was live in two states where the kernel
+  // refuses every write. What the bar may *do* now comes from each frame's own
+  // `allowed_actions`; what the screen may *show* is still this.
+  //
+  // Selection stays on wherever there is progress to see, including a completed
+  // batch: choosing a set of frames is the first half of making a correction
+  // batch out of them, and the bar states why its moves are unavailable rather
+  // than the screen refusing to let anything be picked.
+  const showsProgress = hasJobs(batch.data?.state);
   const counts = batch.data === undefined
     ? { all: total, unannotated: total, review: 0, done: 0 }
     : segmentCounts(batch.data.progress);
@@ -285,7 +301,7 @@ export function GalleryScreen({
       <BatchHeader
         batch={batch.data}
         assets={loaded}
-        working={working}
+        showsProgress={showsProgress}
         onApprove={() => setApproving(true)}
         {...(onOpenAsset === undefined
           ? {}
@@ -310,10 +326,10 @@ export function GalleryScreen({
         onSegment={setSegment}
         density={density}
         onDensity={chooseDensity}
-        showSegments={working}
+        showSegments={showsProgress}
       />
 
-      {working && (
+      {showsProgress && (
         <Timeline
           assets={loaded}
           highlighted={highlighted}
@@ -388,7 +404,7 @@ export function GalleryScreen({
                           asset={asset}
                           selected={selected.has(asset.id)}
                           highlighted={asset.id === highlighted}
-                          {...(working
+                          {...(showsProgress
                             ? {
                                 onSelect: (modifiers: Modifiers) =>
                                   toggle(row.index * columns + offset, modifiers),
@@ -407,9 +423,10 @@ export function GalleryScreen({
         )}
       </Async>
 
-      {working && (
+      {showsProgress && (
         <BulkBar
           batchId={batchId}
+          batchState={batch.data?.state}
           selected={selected}
           assets={loaded}
           onClear={() => setSelected(new Set())}
@@ -442,14 +459,14 @@ export function GalleryScreen({
 function BatchHeader({
   batch,
   assets,
-  working,
+  showsProgress,
   onApprove,
   onStartAnnotating,
 }: {
   readonly batch: Batch | undefined;
   readonly assets: readonly BatchAsset[];
   /** False for a draft, whose counts are documented zeros rather than data. */
-  readonly working: boolean;
+  readonly showsProgress: boolean;
   readonly onApprove: () => void;
   readonly onStartAnnotating?: () => void;
 }): JSX.Element {
@@ -513,7 +530,7 @@ function BatchHeader({
             approval carries a partition, pins the schema and cuts the jobs, and
             has no route back. See `BatchLifecycle`.
           */}
-          {isApprovable(batch?.state) && (
+          {declares(batch, BATCH_ACTION.approve) && (
             <Button variant="primary" size="sm" data-testid="approve-batch" onClick={onApprove}>
               Approve batch
             </Button>
@@ -558,7 +575,7 @@ function BatchHeader({
         been created yet, and it made the screen look broken. The frame count is
         already in the facts line above, which is the honest number here.
       */}
-      {batch !== undefined && working && (
+      {batch !== undefined && showsProgress && (
         <BatchProgressBar counts={batch.progress} detailed={false} />
       )}
     </header>
@@ -925,8 +942,7 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
  * `Mark skipped` shipped alone, and `skipped → unannotated` — which the kernel
  * calls "the decision was reversed while the job is open" — had **no spelling
  * anywhere in the browser**. A mis-aimed shift-click over forty frames was
- * unrecoverable without opening each one in the annotator. `Restore` is that edge,
- * and `canRestore` owns why it is `skipped` alone.
+ * unrecoverable without opening each one in the annotator. `Restore` is that edge.
  *
  * `Delete frames` is still absent and still a scope fact: batch membership editing
  * is not on the wire (#281), and after approval the kernel refuses it outright —
@@ -943,22 +959,41 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
  * screen agreeing it had worked while the person watched it not work. Selection
  * was never the broken part.
  *
- * Filtering by `canSkip`/`canRestore` fixes both halves at once: no request is
- * sent that cannot change anything, so `moved` means moved; and the counts on the
- * buttons say what the selection *is* before anything is pressed. A press that
- * lands flips which button is enabled, which is the confirmation the bar used to
- * be unable to give.
+ * Counting each button's targets from `allowed_actions` fixes both halves at
+ * once: no request is sent that cannot change anything, so `moved` means moved;
+ * and the counts on the buttons say what the selection *is* before anything is
+ * pressed. A press that lands flips which button is enabled, which is the
+ * confirmation the bar used to be unable to give.
+ *
+ * ## Where the counts come from, and why that changed
+ *
+ * They came from `canSkip`/`canRestore` — client-side mirrors of two rows of
+ * `ASSET_PROGRESS_TRANSITIONS` that reproduced the *progress* dimension and
+ * dropped the *batch-state* one. `JobService.mark` checks the batch first, so on
+ * an `approved` or `completed` batch every button here was enabled, every request
+ * was refused, and the bar reported "0 moved, N refused" with the reason gone.
+ *
+ * Now each target is a frame whose own `allowed_actions` names the move, which
+ * the kernel derived from both dimensions. On a batch that is not open the lists
+ * are empty by construction — so instead of two zeroed buttons the bar states the
+ * batch-level reason once, and the buttons are **disabled with it**. The
+ * selection survives, because choosing a set of frames is the first half of
+ * making a correction batch out of them.
  *
  * The bar still reports a **partial** outcome, because the mutation is N requests
- * and forty of fifty succeeding is a real state — see `useBulkSetProgress`.
+ * and forty of fifty succeeding is a real state — and it now reports *why* the
+ * rest were refused, grouped by code. See `useBulkSetProgress`.
  */
 function BulkBar({
   batchId,
+  batchState,
   selected,
   assets,
   onClear,
 }: {
   readonly batchId: string;
+  /** The batch's own state — the reason a move is unavailable, when it is. */
+  readonly batchState: string | undefined;
   readonly selected: ReadonlySet<string>;
   readonly assets: readonly BatchAsset[];
   readonly onClear: () => void;
@@ -967,13 +1002,24 @@ function BulkBar({
   // A job id is null exactly while the batch is a draft, and a draft renders no
   // selection at all — so this filter is about the *frames*, not about the state.
   const chosen = assets.filter((one) => selected.has(one.id) && one.job_id !== null);
-  const targets = (move: (progress: BatchAsset["progress"]) => boolean) =>
-    chosen
-      .filter((one) => move(one.progress))
-      .map((one) => ({ jobId: one.job_id ?? "", assetId: one.id }));
+  const targets = (action: AssetAction) =>
+    declaring(chosen, action).map((one) => ({ jobId: one.job_id ?? "", assetId: one.id }));
 
-  const skippable = targets(canSkip);
-  const restorable = targets(canRestore);
+  const skippable = targets(ASSET_ACTION.skip);
+  const restorable = targets(ASSET_ACTION.restore);
+
+  /**
+   * Why nothing here can be pressed, when nothing can.
+   *
+   * Two different silences used to look identical: a batch that is closed to
+   * writing (every frame declares nothing) and a selection of `accepted` frames
+   * in an open batch (those frames declare nothing). The first is about the
+   * batch and has a remedy; the second is about the frames and does not. Asking
+   * whether *any* frame in the whole listing declares a move is what tells them
+   * apart — if none does, it is the batch.
+   */
+  const batchIsOpen = assets.some((one) => one.allowed_actions.length > 0);
+  const withheld = batchIsOpen ? null : withheldBecause(batchState);
 
   if (selected.size === 0) return null;
 
@@ -993,6 +1039,7 @@ function BulkBar({
         size="sm"
         data-testid="bulk-skip"
         disabled={skippable.length === 0 || bulk.isPending}
+        {...(withheld === null ? {} : { title: withheld })}
         onClick={() => bulk.mutate({ targets: skippable, progress: "skipped" })}
       >
         <SkipForward className="size-4" aria-hidden="true" />
@@ -1004,31 +1051,44 @@ function BulkBar({
         size="sm"
         data-testid="bulk-restore"
         disabled={restorable.length === 0 || bulk.isPending}
+        {...(withheld === null ? {} : { title: withheld })}
         onClick={() => bulk.mutate({ targets: restorable, progress: "unannotated" })}
       >
         <Undo2 className="size-4" aria-hidden="true" />
         {bulk.isPending ? "Working…" : `Restore (${restorable.length})`}
       </Button>
 
-      {bulk.isSuccess && bulk.data.failed > 0 && (
+      {/*
+        The partial outcome, with the reason it was partial. A count alone —
+        which is all this could say while the refusals were being thrown away —
+        tells somebody that something went wrong and nothing about what. Grouped
+        by code, because forty frames refused by one rule is one sentence.
+      */}
+      {bulk.isSuccess && bulk.data.refusals.length > 0 && (
         <span className="text-meta text-destructive" data-testid="bulk-partial">
-          {bulk.data.moved} moved, {bulk.data.failed} refused
+          {bulk.data.moved} moved,{" "}
+          {groupRefusals(bulk.data.refusals)
+            .map((group) => `${group.count} refused: ${group.prose}`)
+            .join(" ")}
         </span>
       )}
       {bulk.isError && (
         <span className="text-meta text-destructive" data-testid="bulk-error">
-          {asApiError(bulk.error).code}
+          {refusalProse(bulk.error)}
         </span>
       )}
       {/*
-        Said once, and only when it is the whole story. `accepted` has no exit at
-        all and `review_pending` leaves only towards a reviewer, so a selection of
-        those is a selection this bar genuinely cannot act on — which is worth a
-        sentence, where two zeroes on two buttons would just look broken.
+        Said once, and only when it is the whole story — but which story it is
+        depends on whether the *batch* is closed or the *frames* are settled.
+        `accepted` has no exit at all and `review_pending` leaves only towards a
+        reviewer, so a selection of those in an open batch is a selection this bar
+        genuinely cannot act on. A completed batch is a different sentence with a
+        different remedy, and running them together is what made a closed batch
+        read as a broken bar.
       */}
       {skippable.length === 0 && restorable.length === 0 && (
         <span className="text-meta text-muted-foreground" data-testid="bulk-unavailable">
-          Nothing here can be skipped or restored.
+          {withheld ?? "Nothing here can be skipped or restored."}
         </span>
       )}
 

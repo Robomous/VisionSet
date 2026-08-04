@@ -34,7 +34,8 @@ import { ArrowUpFromLine, Layers, Play } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { Async } from "../data/Async";
-import { asApiError } from "../data/errors";
+import { BATCH_ACTION, declares } from "../data/capabilities";
+import { refusalProse } from "../data/refusals";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { FieldError } from "../primitives/Input";
@@ -152,7 +153,22 @@ export function BatchesScreen({
   );
 }
 
-/** One action per state, and nothing that would be refused. */
+/**
+ * One action per state, and nothing that would be refused.
+ *
+ * **Which action, from the batch's own `allowed_actions`.** The chain used to
+ * read `batch.state` and decide for itself — a fourth hand-mirror of
+ * `BATCH_TRANSITIONS`, correct today only because those four rows happen to be
+ * one-in one-out. The kernel derives the declaration from the same table, plus
+ * the named sets a table row cannot express (`PROMOTABLE_STATES` for promote,
+ * which is not a transition at all), so asking it is both shorter and the only
+ * version that cannot drift.
+ *
+ * `promote` is checked before the transitions because it is the one action here
+ * that leaves the batch where it is — a completed batch declares `promote` and
+ * nothing else, and the ordering says so rather than relying on the states being
+ * mutually exclusive.
+ */
 function Lifecycle({
   batch,
   onApprove,
@@ -163,7 +179,7 @@ function Lifecycle({
   const start = useBatchTransition(batch.id, "start");
   const promote = usePromoteBatch(batch.projectId ?? "");
 
-  if (batch.state === "completed") {
+  if (declares(batch, BATCH_ACTION.promote)) {
     // The last move, and the only one that is not a state transition: promotion
     // adds the batch's assets to the trunk. Idempotent — a **union** against
     // current membership, with no log entry when nothing changed — so pressing it
@@ -183,13 +199,13 @@ function Lifecycle({
         </Button>
         {promote.isError && (
           <FieldError data-testid={`promote-error-${batch.name}`}>
-            {asApiError(promote.error).code}
+            {refusalProse(promote.error)}
           </FieldError>
         )}
       </div>
     );
   }
-  if (batch.state === "draft") {
+  if (declares(batch, BATCH_ACTION.approve)) {
     return (
       <Button variant="primary" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
         <Layers className="size-4" aria-hidden="true" />
@@ -197,7 +213,7 @@ function Lifecycle({
       </Button>
     );
   }
-  if (batch.state === "approved") {
+  if (declares(batch, BATCH_ACTION.start)) {
     return (
       <div className="flex flex-col items-end gap-1">
         <Button
@@ -210,18 +226,23 @@ function Lifecycle({
           <Play className="size-4" aria-hidden="true" />
           Start
         </Button>
-        {start.isError && <FieldError>{asApiError(start.error).code}</FieldError>}
+        {start.isError && (
+          <FieldError data-testid={`start-error-${batch.name}`}>
+            {refusalProse(start.error)}
+          </FieldError>
+        )}
       </div>
     );
   }
-  if (batch.state === "in_annotation") {
+  if (declares(batch, BATCH_ACTION.complete)) {
     // Completion is derived at two levels and neither is implicit, so closing a
     // batch means closing its jobs first — which nothing in the browser did
     // outside the annotator. `CompleteBatchButton` owns the chain and the reason
     // (#301); the gallery header renders the same control.
     return <CompleteBatchButton batch={batch} />;
   }
-  // Every state is answered above; `approved` and `in_annotation` are the two
-  // middle rows and `draft`/`completed` the ends.
+  // Nothing declared, so nothing offered. Reached while the batch is loading (no
+  // declaration yet) and, in principle, for a state a newer server has that this
+  // build does not — which is the right answer to both.
   return null;
 }
