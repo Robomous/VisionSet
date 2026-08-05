@@ -34,7 +34,7 @@
  * and the browser saves it — which is exactly the part real exporters will inherit.
  */
 
-import { expect, test, type Download, type Page } from "@playwright/test";
+import { expect, test, type Download, type Page, type TestInfo } from "@playwright/test";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
@@ -53,12 +53,40 @@ function images(): string[] {
     .map((name) => path.join(dir, name));
 }
 
-/** A name nothing else in the workspace will collide with. */
-const PROJECT = "browser-cycle";
 const TAG = "v1";
 
-test("the whole cycle, from opening the app to a downloaded export", async ({ page }) => {
+/**
+ * A project name nothing else in the workspace will collide with — **including
+ * this same spec on another repetition**.
+ *
+ * A project name is unique per workspace, case-insensitively, and the workspace
+ * outlives a repetition: `scripts/cycle_server.sh` rebuilds it once per *server
+ * start*, and `--repeat-each` reuses that one server. So the fixed literal that
+ * used to live here made the flag useless — repeat 2 died on
+ * `POST /projects → 409`, a wall standing in front of everything the suite is
+ * about, and the only way to run the cycle twice was two whole invocations at
+ * about ninety seconds of rebuild each.
+ *
+ * `repeatEachIndex` is the whole of the uniqueness needed. The workspace really
+ * is fresh per invocation (the script `rm -rf`s it before `init`), and
+ * `workers: 1` means two repetitions never overlap. The suffix is unconditional
+ * rather than omitted on the first, so every run's names have one shape and a
+ * failure message reads the same way whether or not somebody passed the flag.
+ *
+ * The project is the only name that has to move, and that is worth stating so
+ * the next collision is looked for rather than assumed: a release tag is unique
+ * per dataset, a batch name is not unique at all, and a source's idempotency key
+ * `(project, kind, path, fps)` leads with the project. All three are already
+ * scoped by a project that is new.
+ */
+function projectFor(info: TestInfo): string {
+  return `browser-cycle-${info.repeatEachIndex}`;
+}
+
+test("the whole cycle, from opening the app to a downloaded export", async ({ page }, info) => {
   test.slow();
+
+  const PROJECT = projectFor(info);
 
   // #161's first acceptance criterion, collected across the whole walk rather than
   // asserted at one moment: a clean load should produce **zero** console errors and
@@ -238,7 +266,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Navigated rather than `goBack()`: history depth is an implementation detail
     // of how the previous steps got here, and a cycle this long should not depend
     // on it.
-    await openProject(page, "batches");
+    await openProject(page, PROJECT, "batches");
     await expect(page.getByTestId("batches-table")).toBeVisible();
     await expect(page.getByTestId("batch-cycle-batch")).toContainText("pending approval");
 
@@ -259,7 +287,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // read out of the API — which is exactly what this spec used to do, and what
     // made a defect that blocked the whole product invisible to a green suite.
     // Nothing here types a URL.
-    await openProject(page, "batches");
+    await openProject(page, PROJECT, "batches");
     await page.getByTestId("open-batch-cycle-batch").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
 
@@ -368,7 +396,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("complete the batch", async () => {
-    await openProject(page, "batches");
+    await openProject(page, PROJECT, "batches");
     await expect(page.getByTestId("batches-table")).toBeVisible();
     await page.getByTestId("complete-cycle-batch").click();
     await expect(page.getByTestId("state-cycle-batch")).toHaveText("completed", {
@@ -437,7 +465,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     // And the parent has not moved — which is the whole point of correcting
     // forward instead of reopening.
-    await openProject(page, "batches");
+    await openProject(page, PROJECT, "batches");
     await expect(page.getByTestId("state-cycle-batch")).toHaveText("completed");
     await expect(page.getByTestId("promoted-count-cycle-batch")).toHaveText(
       /3 of 3 in the dataset/,
@@ -549,11 +577,12 @@ async function columnsOf(page: Page): Promise<{ rendered: number; expected: numb
  */
 async function openProject(
   page: Page,
+  project: string,
   tab: "schema" | "batches" | "dataset",
 ): Promise<void> {
   await page.getByTestId("rail-projects").click();
-  await expect(page.getByTestId(`open-${PROJECT}`)).toBeVisible();
-  await page.getByTestId(`open-${PROJECT}`).click();
+  await expect(page.getByTestId(`open-${project}`)).toBeVisible();
+  await page.getByTestId(`open-${project}`).click();
   await expect(page.getByTestId("project-screen")).toBeVisible();
   if (tab !== "schema") await page.getByTestId(`tab-${tab}`).click();
 }

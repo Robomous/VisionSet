@@ -31,9 +31,26 @@ told about them.
 ## Checks that must stay green
 
 **Run them with `bash scripts/check.sh`** (or `pnpm check` — the same script). It is the
-canonical invocation for humans and agents alike: it runs the inner loop below, collects
-*every* failure rather than stopping at the first, and carries `set -euo pipefail`. Take a
-subset with `bash scripts/check.sh python`, `frontend` or `generated`.
+canonical invocation for humans and agents alike: it collects *every* failure rather than
+stopping at the first, carries `set -euo pipefail`, and prints a per-step timing table.
+Take a subset with `bash scripts/check.sh python`, `frontend`, `generated` or `browser`.
+
+**It runs the browser suites, and that is the default.** Until #314 it ran no browser at
+all while calling itself canonical — and during the 2026-08 remediation run the
+real-server cycle suite was three separate times the *only* one to catch a regression
+(#306, #308, #309), one of which shipped on a green run of this script and went red in CI.
+`bash scripts/check.sh --fast` skips them for the inner loop; it says so in a banner rather
+than quietly, because "All checks passed" has always meant "all the checks this invocation
+ran".
+
+The script sets **`CI=1`** for the Playwright steps itself. It is load-bearing:
+`playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so without it a stale
+vite server left on port 5273 answers instead of the build under test, and the failures
+that follow read as genuine code bugs in unrelated scenarios.
+
+One caveat no exit code will tell you: several gates read `git ls-files`, which is the
+**index** rather than the working tree. A new file you have not `git add`ed is invisible to
+them, so it passes locally and fails in CI. Stage first, then run.
 
 **Never pipe a test runner through `tail` or `head` when the exit code matters.** A
 pipeline's status is the *last* command's, so `uv run pytest -q | tail -20` exits 0 while
@@ -42,9 +59,9 @@ through two task cycles during the #229–#233 run. If you need less output, red
 file and read it (`uv run pytest -q > /tmp/out.log 2>&1; echo $?`), or use the script
 above.
 
-The table below is the full list, and it is wider than the script: the wheel build, the
-30-minute flow, the format smoke tests and everything Playwright are left to CI because
-each costs minutes or needs its own install.
+The table below is the full list, and it is still wider than the script: the wheel build,
+the 30-minute flow, the format smoke tests and the annotator benchmark are left to CI or to
+a deliberate manual run, because each costs minutes or needs its own install.
 
 | Check | Command | In `check.sh` |
 | --- | --- | --- |
@@ -55,8 +72,8 @@ each costs minutes or needs its own install.
 | Frontend build + tests | `pnpm -r build && pnpm test` | `frontend` |
 | Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built | `frontend` |
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
-| Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) | — CI |
-| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset ui`; needs `uv sync` and `playwright install chromium` | — CI |
+| Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) | `browser` |
+| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset ui`; needs `uv sync` and `playwright install chromium`. Repeatable in one workspace: `--repeat-each=N` costs one build rather than N | `browser` |
 | Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated | — manual |
 | Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server | part of `frontend` |
 | Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror | part of `frontend` |
