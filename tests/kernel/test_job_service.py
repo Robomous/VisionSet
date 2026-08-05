@@ -289,6 +289,61 @@ def test_no_work_happens_after_the_batch_is_closed(tmp_path: Path) -> None:
     fixture.close()
 
 
+# --- a job's own writes leave its assets' progress alone (#302) ---------------
+
+
+def test_writing_a_job_does_not_put_back_progress_that_moved_since_it_was_read(
+    tmp_path: Path,
+) -> None:
+    """The other half of the lost update, and the one with no race in it.
+
+    `JobService.complete` reads a whole job, changes `state`, and writes it back.
+    Before this, that write rebuilt every one of the job's per-asset rows from
+    the map the read had returned — so any progress that landed while the
+    completion was being decided was silently reverted, with nothing refused
+    anywhere.
+
+    Written at the repository rather than through `complete`, because the point
+    is that *no* job write touches progress: the entity here still carries the
+    stale map, and it is put back verbatim.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    fixture.jobs.start(job.id)
+    stale = fixture.jobs.get(job.id)
+    assert stale.progress[fixture.assets[0]] is UNANNOTATED
+
+    fixture.jobs.mark(job.id, fixture.assets[0], SKIPPED)
+    with fixture.workspace.unit_of_work() as uow:
+        uow.annotation_jobs.update(stale)
+
+    assert fixture.jobs.get(job.id).progress[fixture.assets[0]] is SKIPPED
+    fixture.close()
+
+
+def test_a_stale_write_names_where_the_asset_actually_is(tmp_path: Path) -> None:
+    """The refusal has to be actionable in one round trip, so it says both states.
+
+    Reached through the port rather than by racing two threads — the deterministic
+    reproduction of the race lives in `tests/kernel/test_concurrency.py`, and what
+    is asserted here is the sentence, which no scheduler decides.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.open_batch()
+    fixture.jobs.start(job.id)
+    asset = fixture.assets[0]
+
+    with fixture.workspace.unit_of_work() as uow:
+        # What another writer's commit leaves behind, from this caller's side:
+        # the row moved and nothing told it.
+        assert uow.set_asset_progress(job.id, asset, expected=UNANNOTATED, progress=SKIPPED) is None
+        assert (
+            uow.set_asset_progress(job.id, asset, expected=UNANNOTATED, progress=ANNOTATED)
+            is SKIPPED
+        )
+    fixture.close()
+
+
 # --- next_pending -------------------------------------------------------------
 
 

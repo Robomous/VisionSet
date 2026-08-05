@@ -1243,6 +1243,22 @@ describe("the bulk bar", () => {
       expect(said.textContent?.match(/not open for annotation/g)).toHaveLength(1);
     });
 
+    it("says somebody else moved the frame, for the refusal that means that (#302)", async () => {
+      // The kernel now refuses a progress write decided against a state that has
+      // since moved, rather than applying it on top and answering 200 to both
+      // writers. It is a different sentence from INVALID_TRANSITION on purpose:
+      // that one means the move was never allowed, this one means it was allowed
+      // a moment ago and somebody got there first.
+      await withFrames("unannotated");
+      refuse({ code: "STALE_WRITE", message: "asset ... was 'unannotated' ... and is 'skipped'" });
+      selectAll(1);
+      await userEvent.click(screen.getByTestId("bulk-skip"));
+
+      const said = await screen.findByTestId("bulk-partial");
+      expect(said.textContent).toContain("Someone else changed this while you were working on it");
+      expect(said.textContent).not.toContain("STALE_WRITE");
+    });
+
     it("keeps a refusal the vocabulary has never heard of quotable", async () => {
       // The fall-through is deliberate: the kernel wrote that sentence for a
       // person, and replacing it with "something went wrong" discards the only

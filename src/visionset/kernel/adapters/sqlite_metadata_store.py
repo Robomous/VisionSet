@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 from uuid import UUID
 
 from sqlalchemy import (
@@ -32,8 +32,9 @@ from sqlalchemy import (
     inspect,
     select,
     text,
+    update,
 )
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import URL, CursorResult
 from sqlalchemy.exc import DatabaseError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -41,6 +42,7 @@ from visionset.kernel.adapters import _mappers as m
 from visionset.kernel.adapters import _tables as t
 from visionset.kernel.adapters._tables import META_TABLE, Base, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
+from visionset.kernel.domain import AssetProgress
 from visionset.kernel.errors import (
     ConstraintViolated,
     EntityAlreadyExists,
@@ -270,6 +272,54 @@ class SqlUnitOfWork:
         self.dataset_changes = SqlRepository(session, m.DATASET_CHANGES)
         self.releases = SqlRepository(session, m.RELEASES)
         self.tokens = SqlRepository(session, m.TOKENS)
+
+    def set_asset_progress(
+        self,
+        job_id: UUID,
+        asset_id: UUID,
+        *,
+        expected: AssetProgress,
+        progress: AssetProgress,
+    ) -> AssetProgress | None:
+        """One guarded ``UPDATE`` — see the port's docstring for why it exists.
+
+        The guard is the third ``WHERE`` term, and it is what makes a successful
+        return mean the write is durable: SQLite evaluates it while holding the
+        write lock, so between testing ``progress = :expected`` and storing the
+        new value there is no window at all for another connection to fit into.
+        Reading first and writing second — which is what every other write here
+        does through ``Repository.update`` — has exactly that window, and it is
+        wide enough to fit two whole requests.
+
+        ``rowcount`` is the answer, not a follow-up read: zero means the guard
+        failed, and the ``SELECT`` after it is only to say *where the asset is*
+        rather than to decide whether the write happened. That second read runs
+        inside this transaction, so a third writer cannot change what it reports
+        before this one commits.
+        """
+        # `Session.execute` is typed as returning `Result`, which has no
+        # `rowcount`; a DML statement always yields the `CursorResult` that does.
+        result = cast(
+            "CursorResult[Any]",
+            self._session.execute(
+                update(t.AnnotationJobAssetRow)
+                .where(t.AnnotationJobAssetRow.job_id == job_id)
+                .where(t.AnnotationJobAssetRow.asset_id == asset_id)
+                .where(t.AnnotationJobAssetRow.progress == expected)
+                .values(progress=progress)
+            ),
+        )
+        if result.rowcount == 1:
+            return None
+
+        stored = self._session.scalar(
+            select(t.AnnotationJobAssetRow.progress)
+            .where(t.AnnotationJobAssetRow.job_id == job_id)
+            .where(t.AnnotationJobAssetRow.asset_id == asset_id)
+        )
+        if stored is None:
+            raise EntityNotFound(f"job {job_id} does not carry asset {asset_id}")
+        return AssetProgress(stored)
 
     def batches_holding(self, asset_id: UUID) -> list[UUID]:
         """The port's one non-repository read — see its docstring for why.

@@ -452,11 +452,12 @@ and no amount of retrying installs ffmpeg.
 | --- | --- | --- |
 | `WORKSPACE_BUSY` | 503 | Wait. The response carries `Retry-After`, currently **5 seconds** — matched to the store's own busy timeout, because a client that gets this has *already* waited that long losing to another writer, and a shorter hint would aim a retry storm at the contention being reported. |
 | `SCHEMA_VERSION_CONFLICT` | 409 | Immediately. Two writers computed the same next version and this one lost; a retry re-reads the maximum and lands on the one after. No `Retry-After`, because there is nothing to wait for. |
+| `STALE_WRITE` | 409 | Immediately, **after re-reading**. Somebody moved the thing between your read and your write, so the retry is not the identical request — it is the request you would have sent had you seen the state the message names. There is deliberately no flag that writes anyway: that is the lost update this refusal exists to prevent. |
 | `DESTRUCTIVE_SCHEMA_CHANGE` | 409 | With `allow_destructive=true`, if narrowing the contract is what you meant. |
 | `CONFIRMATION_REQUIRED` | 409 | With `confirm=true`, after asking whoever is destroying the data. |
 | `LOSSY_EXPORT_NOT_CONSENTED` | 409 | With `allow_lossy=true`, if an incomplete copy is what you want. A third gate word beside the two above, because it guards a third thing: not destroying data and not narrowing a contract, but emitting a copy that leaves the original intact. |
 
-Nothing else is retryable as-is. Note that three of these four are 409s and one of the 409s in
+Nothing else is retryable as-is. Note that four of these five are 409s and one of the 409s in
 the table above — `SCHEMA_CHANGE_WOULD_ORPHAN` — is not retryable at all, which is the whole
 argument for branching on `code`.
 
@@ -467,7 +468,7 @@ argument for branching on `code`.
 | **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `NOT_FOUND` (no such route) |
 | **405** | `METHOD_NOT_ALLOWED` |
 | **401** | `UNAUTHORIZED` — with a `WWW-Authenticate: Bearer` challenge |
-| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `BATCH_NOT_EDITABLE` · `BATCH_NOT_IN_ANNOTATION` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` |
+| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `BATCH_NOT_EDITABLE` · `BATCH_NOT_IN_ANNOTATION` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` |
 | **422** | `VALIDATION_ERROR` · `INVALID_NAME` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` |
 | **503** | `WORKSPACE_BUSY` |
 | **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `INTERNAL_ERROR` |

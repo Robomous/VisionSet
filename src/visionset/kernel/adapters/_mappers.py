@@ -33,6 +33,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, TypeAdapter
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from visionset.kernel.adapters import _tables as t
@@ -421,14 +422,42 @@ def _job_to_domain(session: Session, row: Any) -> AnnotationJob:
 
 
 def _job_sync_children(session: Session, entity: AnnotationJob) -> None:
+    """Write the job's per-asset rows — but never overwrite a stored ``progress``.
+
+    Unlike ``_batch_sync_children`` this is **not** delete-everything-and-insert:
+    it upserts by key and deletes only what the entity no longer carries. The
+    difference is #302. ``progress`` is the one child column two callers contend
+    over, so it has its own narrow write (``UnitOfWork.set_asset_progress``); a
+    wholesale rewrite here would silently undo one of those every time an
+    unrelated field of the job moved — ``JobService.complete`` reads a job, sets
+    ``state``, and would put back the progress map as it was *before* whatever
+    landed while it was deciding.
+
+    So the row's progress is written exactly once, when the row is inserted, and
+    from then on only by the guarded update. ``position`` is still reconciled,
+    because it is derived from the entity's own ordering and nothing else writes
+    it. A job's membership is fixed at approval, so in practice the delete and
+    the insert both match nothing after the job is created — which is the point:
+    an update of a job stops touching its assets' progress at all.
+    """
     session.execute(
-        delete(t.AnnotationJobAssetRow).where(t.AnnotationJobAssetRow.job_id == entity.id)
+        delete(t.AnnotationJobAssetRow)
+        .where(t.AnnotationJobAssetRow.job_id == entity.id)
+        .where(t.AnnotationJobAssetRow.asset_id.not_in(entity.progress))
     )
-    session.add_all(
-        t.AnnotationJobAssetRow(
-            job_id=entity.id, asset_id=asset_id, progress=progress, position=position
+    if not entity.progress:
+        return
+    statement = sqlite_insert(t.AnnotationJobAssetRow).values(
+        [
+            {"job_id": entity.id, "asset_id": asset_id, "progress": progress, "position": position}
+            for position, (asset_id, progress) in enumerate(entity.progress.items())
+        ]
+    )
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=["job_id", "asset_id"],
+            set_={"position": statement.excluded.position},
         )
-        for position, (asset_id, progress) in enumerate(entity.progress.items())
     )
 
 

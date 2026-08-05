@@ -861,29 +861,27 @@ export interface BulkProgressResult {
  * The kernel's `ASSET_PROGRESS_TRANSITIONS` decides whether any individual move is
  * legal, and refusing is its job. What this owes is to not lose the refusal.
  *
- * ## The requests are sent one at a time, and that is a correctness fix (#301)
+ * ## The requests are sent one at a time, and it is no longer a workaround (#302)
  *
- * This used to be `Promise.allSettled` over N concurrent requests. **Measured
+ * This used to be `Promise.allSettled` over N concurrent requests, and **measured
  * against a real server: three concurrent moves over one job answered `200`,
- * `200`, `200` and moved exactly one asset.** The other two were lost, silently,
- * with a success on the wire — which is precisely the "multi-selection does not
- * work" a person reported, and it was literally true.
+ * `200`, `200` and moved exactly one asset** — which is precisely the
+ * "multi-selection does not work" a person reported, and it was literally true.
+ * Sending them one at a time was #301's stop-gap, put here because the cause was
+ * a kernel-level lost update that any concurrent client hit.
  *
- * The cause is one row. `JobService.mark` reads its `AnnotationJob`, copies it with
- * one entry of `progress` changed, and writes it back through
- * `Repository.update` — which is `session.merge(to_row(entity))`, a **whole-row
- * replace**. Three overlapping requests each read the same `progress` map before
- * any of them wrote, so each write put back its own copy and the last one won. And
- * SQLite's single writer does not save it: serializing the *writes* is not the
- * same as serializing read-modify-write, and pysqlite defers `BEGIN` to the first
- * write, so none of the three reads is inside a transaction at all. The same three
- * moves sent **sequentially** land all three, which is what pins the diagnosis.
+ * **That cause is closed.** Progress is now written one asset at a time, guarded
+ * on the value the move was decided against, so two moves over different assets
+ * of one job cannot conflict at all and two over the *same* asset are refused
+ * with `STALE_WRITE` rather than silently overwritten. A `200` means the write is
+ * stored — which is the assumption the counting below has always made.
  *
- * That is a kernel-level hazard rather than this hook's to fix — any concurrent
- * client hits it, and closing it properly means either a row-level update on the
- * persistence port or the `BEGIN IMMEDIATE` #80 deliberately declined. It is filed
- * separately. What this hook owes in the meantime is not to *cause* it, and a
- * bulk bar over a handful of frames loses nothing by taking its turn.
+ * The loop stays sequential anyway, for a different and much smaller reason: a
+ * workspace is one SQLite file with one writer, so N concurrent moves queue on
+ * the write lock regardless and only add N connections and N busy-waits to get
+ * there. A bulk bar over a handful of frames loses nothing by taking its turn.
+ * If that ever stops being true, this can go back to `allSettled` without the
+ * kernel needing anything.
  *
  * A refusal still does not stop the rest, unlike `useFinishBatch`: these are N
  * independent moves rather than one move in stages, so a frame the kernel refuses

@@ -251,6 +251,28 @@ class InvalidTransition(VisionSetError):
     """
 
 
+class StaleWrite(VisionSetError):
+    """Something moved between the caller's read and the caller's write.
+
+    The concurrency sibling of ``InvalidTransition``: there the move was never in
+    the table, here it was legal from the state the caller read and that state is
+    no longer the stored one. Two annotators on one frame, or an agent and a
+    person on one job — the second write was decided against an answer that had
+    already expired.
+
+    Refused rather than applied, because applying it is the defect this exists to
+    close (#302): a write judged against a state nobody is in any more lands on
+    top of somebody else's and reports success for both. The message names where
+    the asset actually is, so the remedy is exactly one round trip — read again,
+    decide again, resubmit — and the caller never has to guess whether its own
+    write survived.
+
+    Deliberately **not** raised when the stored value is already the one asked
+    for. Concurrency does not change what ``JobService.mark`` means: re-stating a
+    state an asset is already in is a no-op, whoever else put it there.
+    """
+
+
 class BatchNotFound(VisionSetError):
     """No batch with that id lives in this workspace.
 
