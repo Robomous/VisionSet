@@ -14,7 +14,7 @@
  *
  * What is *not* derived is the English. An action's `kind` is a discriminant, not
  * a sentence, so `PHRASES` turns one into the other — declared as a
- * `Record<ActionKind, …>` so that adding a ninth action kind to the engine fails
+ * `Record<ActionKind, …>` so that adding an eleventh action kind to the engine fails
  * to compile here rather than rendering a blank row. That is the `ProgressCounts`
  * bargain, one layer up.
  *
@@ -26,12 +26,15 @@
  * lookup table here, so an unknown name renders as itself. The two names the
  * default table writes get real sentences.
  *
- * ## The chords VisionSet leaves to the browser are stated, not omitted
+ * ## Where the browser still gets a chord is stated, not omitted
  *
- * `mod+c` / `mod+v` are deliberately unclaimed so copy and paste keep working
- * (#123). A user who cannot find them in this list has no way to tell "not
- * implemented" from "not listed", and the second reading is the one that makes
- * somebody file a bug. They are named, with the reason.
+ * `mod+c` / `mod+v` used to be *unclaimed*, and this sheet said so — a user who
+ * cannot find a familiar chord in a list has no way to tell "not implemented"
+ * from "not listed", and the second reading is the one that makes somebody file a
+ * bug. #123 claimed them, so they are ordinary rows above. What replaces the note
+ * is the fact that is now the surprising one: inside a text field the chords are
+ * still the browser's, because `AnnotatorCanvas` checks `isTextEntry` before it
+ * runs anything. Same reasoning, different sentence.
  */
 
 import {
@@ -49,7 +52,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../primit
 /**
  * What each action kind means, in words.
  *
- * A function per kind rather than a string, because three of the eight carry a
+ * A function per kind rather than a string, because three of the ten carry a
  * payload a user needs to see — which class, which host capability.
  */
 const PHRASES: Readonly<Record<ActionKind, (action: Action) => string>> = {
@@ -65,6 +68,10 @@ const PHRASES: Readonly<Record<ActionKind, (action: Action) => string>> = {
   redo: () => "Redo",
   "delete-selection": () => "Delete the selected annotations",
   "select-all": () => "Select every annotation",
+  "copy-selection": () => "Copy the selected annotations",
+  // Named for what it does rather than for where it lands, because "here" is the
+  // part that is not obvious: the clipboard survives moving to another frame.
+  paste: () => "Paste them onto this frame, slightly offset",
   "activate-class": (action) =>
     action.kind === "activate-class" && action.labelClass !== null
       ? `Draw with “${action.labelClass}”`
@@ -151,12 +158,13 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
           </>
         )}
 
-        <h3 className="mt-2 text-section font-semibold">Left to the browser</h3>
-        <p className="text-meta text-muted-foreground" data-testid="shortcut-unbound">
+        <h3 className="mt-2 text-section font-semibold">Inside a text field</h3>
+        <p className="text-meta text-muted-foreground" data-testid="shortcut-text-fields">
           <kbd className="rounded-sm border border-border bg-muted px-1">{mod} + C</kbd> and{" "}
-          <kbd className="rounded-sm border border-border bg-muted px-1">{mod} + V</kbd> are
-          deliberately unbound, so copy and paste keep working. Duplicating a selection is
-          tracked separately.
+          <kbd className="rounded-sm border border-border bg-muted px-1">{mod} + V</kbd> copy and
+          paste annotations on the canvas — and the clipboard survives moving to another frame, so
+          a shape can be carried forward. While you are typing in a field they are the
+          browser&rsquo;s, and copy text as usual.
         </p>
       </DialogContent>
     </Dialog>

@@ -271,6 +271,8 @@ thing that turns one into a store call.
 | `mod+z` | undo | **new** — v1 has no undo at all |
 | `mod+shift+z` | redo | **new** |
 | `mod+a` | select all | **new** |
+| `mod+c` | copy the selection to the annotator's clipboard | v1 |
+| `mod+v` | paste it onto this frame, offset and selected | v1 |
 | `mod+0` | ask the host to zoom to 100% | v1 |
 | `?` | ask the host for the shortcut sheet | v1 |
 | `v` | select mode — no active class | v1 |
@@ -289,10 +291,55 @@ does nothing, which is the same posture `tagCommand` takes: a binding outlives t
 and losing a keystroke is better than losing the session.
 
 Not bound, each for a reason: `b`/`p`/`k`/`l`, because the tool is derived from the class here, so
-a tool key *is* a class key; the lane-attribute hotkeys, because attributes belong to a panel; and
-`mod+c`/`mod+v`, which stay unclaimed so the browser keeps them — a clipboard is session state the
-store cannot own, a paste must re-mint ids, v1's 20 px offset is screen pixels where every
-coordinate here is asset pixels, and pasting a tag would break the at-most-one invariant above.
+a tool key *is* a class key; and the lane-attribute hotkeys, because attributes belong to a panel.
+
+### Copy and paste, and where a clipboard lives
+
+`mod+c`/`mod+v` were the fourth entry on that list until #123 settled the four questions that
+had to be answered before they could be claimed. All four live in
+`core/interaction/clipboard.ts`.
+
+**A clipboard is not the store's.** There is one `AnnotatorStore` per open asset — the annotation
+page makes that structural, remounting its workspace per frame so `mod+z` cannot walk into the
+previous picture's edits — so a clipboard inside one would die on every navigation. It is a
+session object instead: an interface and a five-line holder in `core/`, held by whoever outlives
+the asset. The annotation page holds one per **job**, which is what makes *copy the car on frame
+12, paste it on frame 13* work. `AnnotatorCanvas` makes its own when a host supplies none, so
+in-frame duplication needs no wiring at all.
+
+**It is never the system clipboard.** `navigator.clipboard` is a DOM global `core/` may not name,
+is asynchronous where a keystroke is not, and is permission-gated — but the deciding reason is
+smaller: what is copied is a geometry in *this asset's* pixel frame, meaningless to any other
+application and silently wrong if pasted into one.
+
+**A paste re-mints.** Fresh id per annotation, `asset_id` and `schema_version` read off the
+document being pasted *into*, `provenance: "human"` whatever the source was, and `job_id` /
+`model_ref` / `confidence` left null — the fields a service stamps. It is deliberately not
+`draftAnnotation`: that seeds the class's declared *defaults*, which is right for a shape somebody
+just drew and wrong for a copy, whose point is that it carries what the original carried.
+
+**The offset is 20 screen pixels**, v1's number, divided by the zoom in `tolerance.ts` — the one
+module in `core/` allowed to name one. A fixed asset-pixel offset would be invisible at a fitted
+zoom on a large frame and throw the copy half a pane away at 8×; "visibly distinct and grabbable"
+is a fact about a screen. Pasting onto a **smaller** frame clamps the way a drag into the edge
+does: the shape shifts as far as it can, keeps its size, and one wider than the frame pins at 0
+rather than deforming.
+
+**A second paste steps further out.** The rule is stated in terms of the document rather than a
+counter — offset by one delta; if that lands on an annotation this document already carries with
+the same class and the same geometry, offset again — so an undo frees the slot it took and a
+paste onto a fresh frame starts at one delta. Against the asset's edge the search runs out of
+room and copies do stack there.
+
+**Pasting a tag the asset already carries does nothing**, the way `tagCommand` makes a second tag
+unrepresentable rather than refusing one. The kernel refuses a duplicate outright now
+(`DUPLICATE_CLASSIFICATION_TAG`), which makes the local rule matter more: without it a paste would
+look like it worked and the whole save would refuse later, blaming an index.
+
+Copy is a **read** and runs in read-only mode — carrying a box out of a batch that can no longer
+be edited is how a correction starts. Paste is a write and is refused there by the engine itself.
+Inside a text field both chords are the browser's, because the adapter checks `isTextEntry` before
+it runs anything.
 
 **Remapping is a fold.** `registryOf([...DEFAULT_BINDINGS, ...classHotkeys(schema), ...overrides])`
 — last wins, and an override with a `null` action unbinds a chord. Nothing throws on a duplicate,

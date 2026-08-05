@@ -111,6 +111,46 @@ test("only the taggable class has a tag control", async ({ page }) => {
   }
 });
 
+/**
+ * Pasting a tag the asset already carries (#123), which is the deferral's fourth
+ * reason and the one that changed while it waited.
+ *
+ * It used to read *"the kernel does not enforce this"*; **#121 closed**, so the
+ * kernel now refuses a duplicate outright with `DuplicateClassificationTag`. That
+ * makes the local rule matter more rather than less: without it a paste would
+ * look like it worked and the whole save would refuse minutes later, blaming an
+ * index. So a duplicating entry is dropped here, the way `tagCommand` makes a
+ * second tag unrepresentable rather than refusing one — and a paste whose every
+ * entry was such a tag records no history entry at all.
+ */
+test("pasting a tag the asset already carries adds nothing and records nothing", async ({
+  page,
+}) => {
+  const frame = await frameOf(page);
+  await page.getByTestId("tag-daytime").click();
+  await drawBbox(page, frame, { x: 400, y: 240 }, { x: 700, y: 440 });
+  await expectCounts(page, 2, 1);
+
+  // The tag is selectable from the object list even though it is never under the
+  // pointer — which is the only way a copy can pick one up. If this click missed,
+  // the box would still be selected and the paste below would duplicate *it*.
+  await page.getByTestId("object-select-0").click();
+  await focusCanvas(page);
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+
+  await expectCounts(page, 2, 1);
+  const payload = await wire(page);
+  expect(payload.filter((row) => row.label_class === "daytime")).toHaveLength(1);
+
+  // No entry to unwind: one undo takes back the box, not a paste. The tag is
+  // still selected afterwards, because `selection.ts` filters on read and the
+  // tag is the thing the copy picked up.
+  await page.keyboard.press("ControlOrMeta+z");
+  await expectCounts(page, 1, 1);
+  await expect(page.getByTestId("tag-daytime")).toBeChecked();
+});
+
 test("a tag and a drawn shape coexist, and undo unwinds them in order", async ({ page }) => {
   const frame = await frameOf(page);
   await page.getByTestId("tag-daytime").click();

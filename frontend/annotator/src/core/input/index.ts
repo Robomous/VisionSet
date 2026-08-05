@@ -78,6 +78,7 @@ export {
   type ModifierState,
 } from "./keys";
 export {
+  READ_ONLY_KINDS,
   RESET_ZOOM,
   TOGGLE_HELP,
   type Action,

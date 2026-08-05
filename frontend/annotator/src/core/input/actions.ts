@@ -1,5 +1,5 @@
 /**
- * What a chord means: eight kinds, as data — the `Effect`-shaped sibling.
+ * What a chord means: ten kinds, as data — the `Effect`-shaped sibling.
  *
  * `effects.ts` made the argument and it transfers intact: *"With a closure, the
  * only assertion a table row can make … is worth nothing … With data the row
@@ -84,7 +84,7 @@ export type KeyIntent = Extract<
  */
 export type SentEvent = KeyIntent | Extract<InteractionEvent, { type: "tool-changed" }>;
 
-/** What a chord means. Eight kinds, discriminated on `kind`. */
+/** What a chord means. Ten kinds, discriminated on `kind`. */
 export type Action =
   /** Raise a machine intent. Escape is a cancel; Enter is a commit. */
   | { readonly kind: "send"; readonly event: KeyIntent }
@@ -96,6 +96,10 @@ export type Action =
   | { readonly kind: "delete-selection" }
   /** Pick everything the document holds. Never in the history. */
   | { readonly kind: "select-all" }
+  /** Put the selection on the annotator's clipboard. A read — see `READ_ONLY_KINDS`. */
+  | { readonly kind: "copy-selection" }
+  /** Re-mint the clipboard onto this asset, offset and selected. One history entry. */
+  | { readonly kind: "paste" }
   /** Make this the active class. `null` is select mode — v1's `v`. */
   | { readonly kind: "activate-class"; readonly labelClass: string | null }
   /** Toggle this asset's tag for a `classification_tag` class. */
@@ -105,6 +109,28 @@ export type Action =
 
 /** Every action's discriminant, read off the union. */
 export type ActionKind = Action["kind"];
+
+/**
+ * The kinds that change no document, and may therefore run over one that cannot
+ * be edited.
+ *
+ * A set rather than a chain of `!==` in the adapter, because the question is
+ * *about the action* and the answer belongs beside the union it is read off.
+ * `host` was always here in spirit — those are the rows core declares and does
+ * not implement, help and zoom and next-asset — and #123 adds `copy-selection`,
+ * which is the first action that touches the store and still writes nothing:
+ * copying a box out of a completed batch is how somebody carries it into a
+ * correction, and refusing it would be refusing a read.
+ *
+ * `select-all` is deliberately **not** here. It changes no document either, and
+ * whether the other non-mutating rows should run in a read-only view is a
+ * question about what read-only means rather than about copy and paste — so it
+ * keeps today's behaviour and is not decided in passing.
+ */
+export const READ_ONLY_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>([
+  "host",
+  "copy-selection",
+]);
 
 /** Zoom the view back to 100%. v1's `Ctrl/⌘+0`. */
 export const RESET_ZOOM = "reset-zoom";

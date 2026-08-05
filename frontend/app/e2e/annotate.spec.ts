@@ -202,7 +202,15 @@ async function serveApi(
       });
     }
     if (path.endsWith("/annotations") && request.method() === "GET") {
-      return route.fulfill({ json: { items: stored, total: stored.length } });
+      // **Per asset**, because the route is `/jobs/{id}/assets/{asset_id}/annotations`
+      // and that is what it answers. It used to hand back everything stored, which
+      // was harmless only while nothing was saved before navigating — the moment
+      // something was, the next frame's document was built from an annotation
+      // belonging to the previous one and `createDocument` refused it outright.
+      // #123's cross-frame paste is what walks that path.
+      const assetId = path.split("/").at(-2) ?? "";
+      const mine = stored.filter((one) => one.asset_id === assetId);
+      return route.fulfill({ json: { items: mine, total: mine.length } });
     }
     if (path.endsWith("/annotations") && request.method() === "POST") {
       // Kept, and stamped with a server id — the kernel mints its own and the page
@@ -214,7 +222,8 @@ async function serveApi(
         stored.push({
           ...one,
           id: `server-${stored.length + at}`,
-          asset_id: "asset-1",
+          // `asset_id` is the client's own, not a literal: `AnnotationCreate`
+          // carries it and the kernel writes the label against it.
           schema_version: 3,
           attributes: {},
           provenance: "human",
@@ -223,7 +232,8 @@ async function serveApi(
           job_id: null,
         }),
       );
-      return route.fulfill({ status: 201, json: { items: stored, total: stored.length } });
+      const written = stored.filter((one) => one.asset_id === body[0]?.asset_id);
+      return route.fulfill({ status: 201, json: { items: written, total: written.length } });
     }
     if (path.endsWith("/progress") && request.method() === "GET") {
       // **Derived from the same map the PUTs move**, not a frozen literal. It
@@ -807,6 +817,81 @@ test("a completed batch's canvas cannot be drawn on, however hard it is asked", 
   expect(sent.filter((r) => r.method() === "POST" && r.url().includes("/annotations"))).toEqual([]);
 });
 
+/**
+ * The founder's decision in #123, and the half no unit test can reach: **the
+ * clipboard survives moving to the next frame.**
+ *
+ * A store is per asset — `Workspace` is remounted with `key={asset.id}` so an
+ * undo history cannot walk into the previous picture — so this is a claim about
+ * where the clipboard is *held*: `JobScreen`, which outlives the remount. Copy on
+ * frame 1, walk forward, paste on frame 2.
+ */
+test("a copied annotation can be pasted onto the next frame", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+
+  await page.keyboard.press("ControlOrMeta+c");
+
+  // Navigating commits first, so frame 1 is saved on the way out — which is also
+  // why the stub answers annotations per asset.
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+  await expect(page.getByTestId("save-state")).toContainText("unsaved");
+
+  // And it is written against **this** frame, not the one it was copied from.
+  await page.getByTestId("save").click();
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+  const posted = sent.filter((r) => r.method() === "POST" && r.url().endsWith("/annotations"));
+  const body = JSON.parse(posted.at(-1)?.postData() ?? "[]") as Record<string, unknown>[];
+  expect(body).toHaveLength(1);
+  expect(body[0].asset_id).toBe("asset-2");
+  expect(body[0].label_class).toBe("vehicle");
+});
+
+/**
+ * Read-only splits the pair, which is the whole reason they are two action kinds.
+ *
+ * Copy is a read and stays live — carrying a box out of a closed batch is how
+ * somebody starts a correction. Paste is a write and is refused by the engine
+ * itself, before any request is made, with the banner already on screen saying
+ * why. No control is offered for it, so there is nothing to disable-with-reason:
+ * the standing explanation is the reason.
+ */
+test("a viewer may copy but not paste, and the page already says why", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }), {
+    batch: "completed",
+    job: "completed",
+  });
+
+  await expect(page.getByTestId("readonly-banner")).toBeVisible();
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+
+  await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+  await expect(page.getByTestId("save")).toBeDisabled();
+  expect(sent.filter((r) => r.method() === "POST" && r.url().includes("/annotations"))).toEqual([]);
+  // The explanation was there before the keystroke and is still the only one.
+  await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
+});
+
 test("a viewer can still navigate between frames, because a read-only mode you cannot move in is a screenshot", async ({
   page,
 }) => {
@@ -1028,7 +1113,7 @@ test("the sheet lists the engine's own bindings, and the schema's class hotkeys"
 
   // Engine rows, addressed by the chord they were registered under — which is
   // what makes this a claim about the registry rather than about this markup.
-  for (const chord of ["escape", "enter", "delete", "backspace", "mod+z", "mod+shift+z", "mod+a", "mod+0", "?", "v"]) {
+  for (const chord of ["escape", "enter", "delete", "backspace", "mod+z", "mod+shift+z", "mod+a", "mod+c", "mod+v", "mod+0", "?", "v"]) {
     await expect(sheet.locator(`[data-chord="${chord}"]`)).toHaveCount(1);
   }
 
@@ -1039,9 +1124,14 @@ test("the sheet lists the engine's own bindings, and the schema's class hotkeys"
   await expect(classes.locator('[data-chord="1"]')).toContainText("vehicle");
   await expect(classes.locator('[data-chord="2"]')).toContainText("lane");
 
-  // The chords deliberately left to the browser are stated rather than omitted.
-  await expect(sheet.getByTestId("shortcut-unbound")).toContainText("C");
-  await expect(sheet.getByTestId("shortcut-unbound")).toContainText("V");
+  // #123 claimed `mod+c` and `mod+v`, so they are ordinary rows now — they used
+  // to be listed under "left to the browser", and what the sheet states in that
+  // slot instead is the fact that became the surprising one.
+  await expect(sheet.locator('[data-chord="mod+c"]')).toContainText("Copy");
+  await expect(sheet.locator('[data-chord="mod+v"]')).toContainText("Paste");
+  await expect(sheet.getByTestId("shortcut-text-fields")).toContainText(
+    /typing in a field they are the browser/i,
+  );
 });
 
 /**

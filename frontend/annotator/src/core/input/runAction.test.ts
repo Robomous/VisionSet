@@ -17,12 +17,15 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import { createClipboard } from "../interaction/clipboard";
+import type { Clipboard } from "../interaction/clipboard";
 import { tagsFor } from "../interaction/tags";
 import { addAnnotationCommand } from "../state/commands";
 import { annotationsInDrawOrder } from "../state/document";
 import { EMPTY_SELECTION, selectOnly, selectionOf } from "../state/selection";
 import {
   A_BOX,
+  A_TAG,
   EMPTY_SCHEMA,
   annotationOf,
   counter,
@@ -39,13 +42,23 @@ import type { RecordingHost } from "./_palette";
 const BOX = annotationOf("a1", "sign", A_BOX);
 const OTHER = annotationOf("a2", "sign", A_BOX);
 
-/** A context over a store and a host, with a counting mint. */
+/**
+ * A context over a store and a host, with a counting mint and a fresh clipboard.
+ *
+ * The offset is **10 asset pixels** and stated rather than derived: this file is
+ * about what an action does, and `assetTolerances` would put a zoom into every
+ * assertion for no gain. `tolerance.test.ts` owns the conversion.
+ */
 function contextOver(
   store: AnnotatorStore,
   host: RecordingHost = recordingHost(),
-): ActionContext & { host: RecordingHost } {
-  return { store, host, mint: counter() };
+  clipboard: Clipboard = createClipboard(),
+): ActionContext & { host: RecordingHost; clipboard: Clipboard } {
+  return { store, host, mint: counter(), clipboard, pasteOffset: OFFSET };
 }
+
+/** The paste displacement every assertion below is written against. */
+const OFFSET = 10;
 
 const NOTHING_SENT = { changed: false, events: [] };
 
@@ -153,6 +166,126 @@ describe("select-all", () => {
     expect(runAction({ kind: "select-all" }, contextOver(store))).toEqual(NOTHING_SENT);
     expect(listener).not.toHaveBeenCalled();
     expect(store.selection).toBe(EMPTY_SELECTION);
+  });
+});
+
+describe("copy-selection", () => {
+  it("puts the resolved selection on the clipboard and changes no document", () => {
+    const store = paletteStore([BOX, OTHER]);
+    store.select(selectOnly(BOX.id));
+    const context = contextOver(store);
+    expect(runAction({ kind: "copy-selection" }, context)).toEqual({
+      changed: true,
+      events: [],
+    });
+    expect(context.clipboard.read()).toEqual([
+      { label_class: "sign", geometry: A_BOX, attributes: {} },
+    ]);
+    expect(store.canUndo).toBe(false);
+    expect(annotationsInDrawOrder(store.document)).toHaveLength(2);
+  });
+
+  it("resolves through the document, so a stale id copies nothing at all", () => {
+    // The `delete-selection` guard, from the other side: `selection.ts` keeps ids
+    // the document no longer holds, on purpose, and reading the raw set here
+    // would put an annotation that does not exist onto the clipboard.
+    const store = paletteStore();
+    store.select(selectOnly("never-existed"));
+    const context = contextOver(store);
+    expect(runAction({ kind: "copy-selection" }, context)).toEqual(NOTHING_SENT);
+    expect(context.clipboard.read()).toEqual([]);
+  });
+
+  it("leaves an existing clipboard alone when nothing is selected", () => {
+    // Not "copies nothing", which would be the same program: overwriting with an
+    // empty list would make a stray `mod+c` on empty canvas silently discard what
+    // was copied on the previous frame, and a clipboard is the one piece of state
+    // a user cannot see.
+    const held = [{ label_class: "sign", geometry: A_BOX, attributes: {} }];
+    const clipboard = createClipboard(held);
+    const store = paletteStore([BOX]);
+    expect(
+      runAction({ kind: "copy-selection" }, contextOver(store, recordingHost(), clipboard)),
+    ).toEqual(NOTHING_SENT);
+    expect(clipboard.read()).toEqual(held);
+  });
+});
+
+describe("paste", () => {
+  /** A clipboard holding one `sign` box at `A_BOX`. */
+  function loaded(): Clipboard {
+    return createClipboard([{ label_class: "sign", geometry: A_BOX, attributes: {} }]);
+  }
+
+  it("adds the copy offset, selects it, and records exactly one history entry", () => {
+    const store = paletteStore([BOX]);
+    const context = contextOver(store, recordingHost(), loaded());
+    expect(runAction({ kind: "paste" }, context)).toEqual({ changed: true, events: [] });
+
+    const drawn = annotationsInDrawOrder(store.document);
+    expect(drawn).toHaveLength(2);
+    const copy = drawn[1];
+    expect(copy.geometry).toEqual({ type: "bbox", x: 20, y: 30, width: 30, height: 40 });
+    expect(copy.id).not.toBe(BOX.id);
+    expect(copy.label_class).toBe("sign");
+    // Selected, so the very next thing a user does is drag it somewhere.
+    expect([...store.selection]).toEqual([copy.id]);
+    // One entry for the whole paste, and one undo takes all of it back.
+    expect(store.canUndo).toBe(true);
+    store.undo();
+    expect(annotationsInDrawOrder(store.document)).toHaveLength(1);
+    expect(store.canUndo).toBe(false);
+  });
+
+  it("is one entry however many annotations it pastes", () => {
+    const store = paletteStore();
+    const clipboard = createClipboard([
+      { label_class: "sign", geometry: A_BOX, attributes: {} },
+      {
+        label_class: "sign",
+        geometry: { type: "bbox", x: 200, y: 200, width: 10, height: 10 },
+        attributes: {},
+      },
+    ]);
+    runAction({ kind: "paste" }, contextOver(store, recordingHost(), clipboard));
+    expect(annotationsInDrawOrder(store.document)).toHaveLength(2);
+    store.undo();
+    expect(annotationsInDrawOrder(store.document)).toHaveLength(0);
+  });
+
+  it("cascades a repeated paste rather than stacking copies on one spot", () => {
+    const store = paletteStore([BOX]);
+    const context = contextOver(store, recordingHost(), loaded());
+    runAction({ kind: "paste" }, context);
+    runAction({ kind: "paste" }, context);
+    const drawn = annotationsInDrawOrder(store.document);
+    expect(drawn.map((one) => (one.geometry.type === "bbox" ? one.geometry.x : -1))).toEqual([
+      10, 20, 30,
+    ]);
+  });
+
+  it("does nothing at all with an empty clipboard", () => {
+    const store = paletteStore([BOX]);
+    const listener = vi.fn();
+    store.subscribe(listener);
+    expect(runAction({ kind: "paste" }, contextOver(store))).toEqual(NOTHING_SENT);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("executes nothing when every entry is a tag the asset already carries", () => {
+    // `tags.ts`'s invariant, and the reason it matters here: the kernel now
+    // refuses a duplicate outright (#121), so a paste that looked like it worked
+    // would refuse the whole save minutes later, blaming an index.
+    const tag = annotationOf("t1", "weather", A_TAG);
+    const store = paletteStore([tag]);
+    const clipboard = createClipboard([
+      { label_class: "weather", geometry: A_TAG, attributes: {} },
+    ]);
+    expect(
+      runAction({ kind: "paste" }, contextOver(store, recordingHost(), clipboard)),
+    ).toEqual(NOTHING_SENT);
+    expect(tagsFor(store.document, "weather")).toHaveLength(1);
+    expect(store.canUndo).toBe(false);
   });
 });
 

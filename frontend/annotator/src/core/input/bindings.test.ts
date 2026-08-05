@@ -72,6 +72,8 @@ const DISPATCH: readonly DispatchRow[] = [
     action: { kind: "redo" },
   },
   { chord: "mod+a", key: "a", held: MOD, action: { kind: "select-all" } },
+  { chord: "mod+c", key: "c", held: MOD, action: { kind: "copy-selection" } },
+  { chord: "mod+v", key: "v", held: MOD, action: { kind: "paste" } },
   { chord: "mod+0", key: "0", held: MOD, action: { kind: "host", name: RESET_ZOOM } },
   {
     chord: "?",
@@ -123,9 +125,17 @@ describe("the default shortcut table", () => {
     }
   });
 
-  it("leaves copy and paste to the browser", () => {
-    expect(resolve(DEFAULTS, keystroke("c", MOD))).toBeNull();
-    expect(resolve(DEFAULTS, keystroke("v", MOD))).toBeNull();
+  it("claims copy and paste, and the bare `v` still means select mode", () => {
+    // #123 took these two back from the browser. `v` and `mod+v` are different
+    // chords — `chordOf` puts the modifier in the string — so claiming the second
+    // did not shadow the first, and that is worth an assertion rather than a
+    // reading of `keys.ts`.
+    expect(resolve(DEFAULTS, keystroke("c", MOD))).toEqual({ kind: "copy-selection" });
+    expect(resolve(DEFAULTS, keystroke("v", MOD))).toEqual({ kind: "paste" });
+    expect(resolve(DEFAULTS, keystroke("v"))).toEqual({
+      kind: "activate-class",
+      labelClass: null,
+    });
   });
 
   it("leaves v1's tool keys unclaimed, because a tool key is a class key here", () => {

@@ -1,6 +1,6 @@
 /**
- * The map: v1's keyboard half ported, the three bindings v1 never had, and the
- * class hotkeys derived from the schema.
+ * The map: v1's keyboard half ported, the bindings v1 never had, and the class
+ * hotkeys derived from the schema.
  *
  * v1's whole delivery mechanism was one line —
  * `document.addEventListener("keydown", onKey)` — over a 210-line `if`/`else`
@@ -19,6 +19,8 @@
  * | `mod+z` | `undo` | **NEW.** v1 has no undo at all. |
  * | `mod+shift+z` | `redo` | **NEW.** The only redo chord; see `keys.ts` on the `mod` fold. |
  * | `mod+a` | `select-all` | **NEW.** The other half of `delete-selection`. |
+ * | `mod+c` | `copy-selection` | **v1** `Ctrl/⌘+C`, and see below. |
+ * | `mod+v` | `paste` | **v1** `Ctrl/⌘+V`. |
  * | `mod+0` | `host reset-zoom` | **v1** `Ctrl/⌘+0` → 100%. |
  * | `?` | `host toggle-help` | **v1** `?` → the help modal. |
  * | `v` | `activate-class null` | **v1** `v` → the select tool. |
@@ -44,17 +46,21 @@
  * Worth naming rather than omitting, because `1`–`6` is exactly the range the
  * class hotkeys now claim.
  *
- * **`mod+c` / `mod+v`** — copy and paste. Deferred, and the chords stay
- * *unclaimed* so the browser keeps them rather than being shadowed by a no-op.
- * A clipboard is session state the store cannot own — there is one store per open
- * asset, so a clipboard inside it dies on asset change, which is worse than none.
- * A paste must also re-mint through `IdFactory`; v1's 20 px offset is *screen*
- * pixels while every coordinate here is asset pixels, and converting one needs a
- * zoom core may not name; and pasting a `classification_tag` duplicates a tag,
- * breaking the at-most-one invariant `tags.ts` holds structurally and
- * `addAnnotationCommand` does not police. Four decisions belonging to the tools
- * and to the adapter, not to delivery. Filed as **#123**, which also records that
- * a `duplicate-selection` action would need no clipboard at all.
+ * **`mod+c` / `mod+v`** — copy and paste. These *were* the entry in this list:
+ * deferred as **#123**, with the chords left unclaimed so the browser kept them
+ * rather than being shadowed by a no-op. They are claimed now, and the four
+ * questions that had to be answered first are answered in
+ * `interaction/clipboard.ts` — who owns a clipboard (a session object, not the
+ * per-asset store), how a paste mints identity (freshly, and not through
+ * `draftAnnotation`, whose attribute defaults are the wrong thing for a copy),
+ * which frame the 20 px offset is in (screen, converted by `tolerance.ts`, the
+ * one module allowed to name a zoom), and what pasting a `classification_tag`
+ * does (nothing, the way `tags.ts` makes a second tag unrepresentable rather
+ * than refusing one).
+ *
+ * The rule they inherit from the deferral is the *adapter's*: a chord in a text
+ * field is the browser's. `AnnotatorCanvas` checks `isTextEntry` before it runs
+ * anything, so `mod+c` in the notes field copies text and not boxes.
  *
  * **`Delete`'s vertex arm.** v1 deleted the selected *vertex* first and the
  * annotation second. There is no vertex selection here — `Selection` is
@@ -149,6 +155,8 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { chord: "mod+z", action: { kind: "undo" } },
   { chord: "mod+shift+z", action: { kind: "redo" } },
   { chord: "mod+a", action: { kind: "select-all" } },
+  { chord: "mod+c", action: { kind: "copy-selection" } },
+  { chord: "mod+v", action: { kind: "paste" } },
   { chord: "mod+0", action: { kind: "host", name: RESET_ZOOM } },
   { chord: "?", action: { kind: "host", name: TOGGLE_HELP } },
   { chord: "v", action: { kind: "activate-class", labelClass: null } },
