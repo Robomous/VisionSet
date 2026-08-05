@@ -819,7 +819,10 @@ class IngestService:
         asset_ids = [asset.id for asset in assets]
         if batch_id is None:
             return self._batches.create(project_id, name, asset_ids)
-        return self._batches.add_assets(batch_id, asset_ids)
+        # The batch, not the change: an ingest reports the assets *it* gathered
+        # through `IngestResult`, and a second, narrower count of what membership
+        # happened to gain would be a different number for the same run.
+        return self._batches.add_assets(batch_id, asset_ids).batch
 
     def _record_progress(
         self, job_id: UUID, *, processed: int, total: int | None, failures: list[IngestFailure]

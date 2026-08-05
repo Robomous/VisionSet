@@ -892,6 +892,48 @@
         "title": "BatchCreate",
         "type": "object"
       },
+      "BatchMembership": {
+        "additionalProperties": false,
+        "description": "Which assets to put in, or take out of, a draft batch.",
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Asset Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset_ids"
+        ],
+        "title": "BatchMembership",
+        "type": "object"
+      },
+      "BatchMembershipOut": {
+        "description": "A membership edit's outcome: the batch afterwards, and what actually moved.",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/BatchOut"
+          },
+          "changed": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "changed"
+        ],
+        "title": "BatchMembershipOut",
+        "type": "object"
+      },
       "BatchOut": {
         "description": "A curated slice of a project's assets that moves through annotation together.",
         "properties": {
@@ -2852,6 +2894,119 @@
       }
     },
     "/batches/{batch_id}/assets": {
+      "delete": {
+        "description": "Take assets out of a draft batch. One transaction, however many ids you pass.\n\n**This removes membership, not assets.** The asset stays in its project, in\nthe blob store, and in every other batch that carries it; only this batch\nstops listing it.\n\nDraft only, like adding, and for the sharper half of the same reason: after\napproval a job already describes work over that asset, and removing the\nmember would leave the job describing work that no longer exists. From then\non the way to exclude an asset is to mark it `skipped` \u2014 a decision the\nrecord keeps rather than erases \u2014 and this answers 409 `BATCH_NOT_EDITABLE`.\n\nAn id the batch does not hold is ignored rather than refused, and `changed`\nreports what actually went, so \"removed 3\" can be told from \"3 were already\ngone\".",
+        "operationId": "remove_batch_assets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "An asset to remove from the batch. Repeat the parameter per id.",
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "An asset to remove from the batch. Repeat the parameter per id.",
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Id",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchMembershipOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Batch Assets",
+        "tags": [
+          "batches"
+        ]
+      },
       "get": {
         "description": "Everything in the batch, in membership order, with where each asset has got to.\n\nThe order is stored, so reading twice gives the same sequence and an ingest\ninto an existing batch appends rather than reshuffles. `total` is the size of\nthe whole batch and not of the page; an offset past the end is an empty list\nand a 200, never a 404.\n\n`job_id` and `progress` are null while the batch is a draft, because a draft\nhas no jobs. Bytes are not here: an asset is named by its hashes, and\n`GET /projects/{project_id}/assets/{asset_id}/content` is what serves them.",
         "operationId": "list_batch_assets",
@@ -2967,6 +3122,113 @@
           }
         ],
         "summary": "List Batch Assets",
+        "tags": [
+          "batches"
+        ]
+      },
+      "post": {
+        "description": "Put assets into a draft batch.\n\n**Only while the batch is a draft**, which is what `edit_membership` in its\n`allowed_actions` declares. Approval partitions the batch into jobs against a\npinned schema version, so an asset added afterwards would belong to no job \u2014\nhence 409 `BATCH_NOT_EDITABLE` from that point on, and there is no flag that\nlifts it.\n\nIdempotent, and it says so in the answer rather than leaving it to be\ninferred: `changed` lists the ids this call actually wrote, so adding three\nassets of which two were already members reports one. An asset the batch\nalready holds is not an error.\n\nAn id that is not an asset of this batch's project is 404 `ASSET_NOT_FOUND`\nand **nothing is written** \u2014 the whole call is refused, for the reason\nannotation writes are all-or-nothing.",
+        "operationId": "add_batch_assets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchMembership"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchMembershipOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Batch Assets",
         "tags": [
           "batches"
         ]

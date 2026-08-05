@@ -785,3 +785,167 @@ def test_an_open_batch_refuses_to_be_corrected(
     assert answer.status_code == 409
     assert answer.json()["code"] == "INVALID_TRANSITION"
     assert "create_correction" not in client.get(f"/batches/{batch_id}").json()["allowed_actions"]
+
+
+# --- membership editing (#281) ------------------------------------------------
+
+
+def _walk_to(client: TestClient, batch_id: str, state: str) -> None:
+    """Take a batch to `state` through the routes a client would actually call."""
+    if state == "draft":
+        return
+    client.post(f"/batches/{batch_id}/approve")
+    if state == "approved":
+        return
+    client.post(f"/batches/{batch_id}/start")
+    if state == "in_annotation":
+        return
+    job_id = client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
+    client.post(f"/jobs/{job_id}/start")
+    for asset_id in asset_ids(client, batch_id):
+        client.post(f"/jobs/{job_id}/assets/{asset_id}/progress", json={"progress": "skipped"})
+    client.post(f"/jobs/{job_id}/complete")
+    client.post(f"/batches/{batch_id}/complete")
+
+
+@pytest.fixture()
+def spare(client: TestClient, tmp_path: Path, runner: RecordingRunner, project: str) -> str:
+    """An asset of the same project that no batch under test holds."""
+    source = client.post(
+        f"/projects/{project}/sources/images", files=[png_part(tmp_path, "spare.png", seed=99)]
+    ).json()["id"]
+    job = client.post(f"/sources/{source}/ingest-jobs").json()
+    runner.wait()
+    other = client.get(f"/ingest-jobs/{job['id']}").json()["batch_id"]
+    return asset_ids(client, other)[0]
+
+
+def test_adding_an_asset_to_a_draft_reports_what_it_wrote(
+    client: TestClient, ingested: str, spare: str
+) -> None:
+    answer = client.post(f"/batches/{ingested}/assets", json={"asset_ids": [spare]})
+
+    assert answer.status_code == 200
+    body = answer.json()
+    assert body["changed"] == [spare]
+    assert body["batch"]["asset_count"] == 4
+    assert spare in asset_ids(client, ingested)
+
+
+def test_removing_assets_from_a_draft_reports_what_it_removed(
+    client: TestClient, ingested: str
+) -> None:
+    held = asset_ids(client, ingested)
+
+    answer = client.request("DELETE", f"/batches/{ingested}/assets", params={"id": held[:2]})
+
+    assert answer.status_code == 200
+    body = answer.json()
+    assert body["changed"] == held[:2]
+    assert body["batch"]["asset_count"] == 1
+    assert asset_ids(client, ingested) == held[2:]
+
+
+def test_removing_membership_leaves_the_asset_in_its_project(
+    client: TestClient, ingested: str, project: str
+) -> None:
+    """The naming question, settled by the behaviour: this is membership, not deletion."""
+    gone = asset_ids(client, ingested)[0]
+
+    client.request("DELETE", f"/batches/{ingested}/assets", params={"id": [gone]})
+
+    listed = client.get(f"/projects/{project}/assets").json()["items"]
+    assert gone in [asset["id"] for asset in listed]
+
+
+def test_adding_an_asset_the_batch_already_holds_changes_nothing(
+    client: TestClient, ingested: str
+) -> None:
+    """Idempotent, and it says so: a no-op is `changed: []`, not a refusal."""
+    held = asset_ids(client, ingested)
+
+    answer = client.post(f"/batches/{ingested}/assets", json={"asset_ids": [held[0]]})
+
+    assert answer.status_code == 200
+    assert answer.json()["changed"] == []
+    assert answer.json()["batch"]["asset_count"] == 3
+
+
+def test_removing_an_asset_the_batch_does_not_hold_changes_nothing(
+    client: TestClient, ingested: str, spare: str
+) -> None:
+    answer = client.request("DELETE", f"/batches/{ingested}/assets", params={"id": [spare]})
+
+    assert answer.status_code == 200
+    assert answer.json()["changed"] == []
+    assert answer.json()["batch"]["asset_count"] == 3
+
+
+def test_an_asset_outside_the_project_cannot_join_the_batch(
+    client: TestClient, ingested: str
+) -> None:
+    answer = client.post(f"/batches/{ingested}/assets", json={"asset_ids": [str(uuid4())]})
+
+    assert answer.status_code == 404
+    assert answer.json()["code"] == "ASSET_NOT_FOUND"
+    # Refused whole: nothing was written before the stranger was found.
+    assert len(asset_ids(client, ingested)) == 3
+
+
+def test_editing_the_membership_of_an_unknown_batch_is_a_404(client: TestClient) -> None:
+    missing = uuid4()
+    assert (
+        client.post(f"/batches/{missing}/assets", json={"asset_ids": [str(uuid4())]}).json()["code"]
+        == "BATCH_NOT_FOUND"
+    )
+    assert (
+        client.request(
+            "DELETE", f"/batches/{missing}/assets", params={"id": [str(uuid4())]}
+        ).json()["code"]
+        == "BATCH_NOT_FOUND"
+    )
+
+
+def test_an_edit_naming_no_asset_is_refused_by_both_halves(
+    client: TestClient, ingested: str
+) -> None:
+    """A membership edit about nothing would be a silent 200 that did nothing."""
+    assert client.post(f"/batches/{ingested}/assets", json={"asset_ids": []}).status_code == 422
+    assert client.request("DELETE", f"/batches/{ingested}/assets").status_code == 422
+
+
+@pytest.mark.parametrize("state", ["draft", "approved", "in_annotation", "completed"])
+def test_membership_routes_agree_with_what_the_batch_declares(
+    client: TestClient, ingested: str, spare: str, state: str
+) -> None:
+    """The contract, closed at the wire rather than only at the service.
+
+    `tests/kernel/test_capabilities.py` proves `edit_membership` declared ⇔
+    `BatchService.add_assets` succeeds, over the whole state square. It drives
+    services, so it cannot see whether a *route* exists in front of one — which
+    is exactly the gap #281 was: a capability declared on every draft, with
+    nothing on the wire to call.
+
+    So this closes the other half, in the only way that is honest without a new
+    framework: for every batch state, read what the batch declares and assert
+    both routes agree with it. It is not derived from the declaration the way the
+    kernel matrix is — a route cannot be enumerated from a `BatchAction` — but it
+    does fail if either side moves alone.
+    """
+    _walk_to(client, ingested, state)
+    declared = "edit_membership" in client.get(f"/batches/{ingested}").json()["allowed_actions"]
+    assert declared is (state == "draft")
+
+    added = client.post(f"/batches/{ingested}/assets", json={"asset_ids": [spare]})
+    removed = client.request("DELETE", f"/batches/{ingested}/assets", params={"id": [spare]})
+
+    if declared:
+        assert added.status_code == 200
+        assert removed.status_code == 200
+    else:
+        assert added.status_code == 409
+        assert added.json()["code"] == "BATCH_NOT_EDITABLE"
+        assert removed.status_code == 409
+        assert removed.json()["code"] == "BATCH_NOT_EDITABLE"
+        # The refusal names the remedy the kernel offers instead.
+        assert "skipped" in added.json()["message"]

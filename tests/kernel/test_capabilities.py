@@ -314,7 +314,8 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
 
     def edit_membership() -> None:
         grown = fixture.batches.add_assets(batch_id, [fixture.spare])
-        assert fixture.spare in grown.asset_ids
+        assert fixture.spare in grown.batch.asset_ids
+        assert grown.changed == (fixture.spare,)
 
     def create_correction() -> None:
         # The one action here whose effect is on a *different* batch, so the

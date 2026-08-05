@@ -18,6 +18,7 @@ from visionset.kernel.domain.batch import (
     REPINNABLE_STATES,
     Batch,
     BatchState,
+    MembershipChange,
 )
 from visionset.kernel.domain.capabilities import (
     ASSET_MOVES,
@@ -215,6 +216,7 @@ __all__ = [
     "Manifest",
     "ManifestAnnotation",
     "ManifestAsset",
+    "MembershipChange",
     "Partition",
     "PolygonGeometry",
     "Project",

@@ -26,7 +26,7 @@ without a server, an account, or your pixels leaving the machine.
 | **Version** | schema versions are immutable and every label records the one it was judged against. A release freezes the whole thing into a manifest; publish twice from unchanged data and the bytes are identical. |
 | **Split** | a stored recipe rather than a materialised assignment, keyed on **content hash** — so two copies of one image cannot straddle a train/test boundary. |
 | **Export** | YOLO, COCO and Pascal VOC, each declaring what it can carry. VisionSet works out exactly what a format would drop *before* writing anything, and refuses to drop it silently. |
-| **Automate** | one SDK under everything, reachable as a Python API, a REST API, a CLI, and 33 MCP tools an agent can drive. |
+| **Automate** | one SDK under everything, reachable as a Python API, a REST API, a CLI, and 39 MCP tools an agent can drive. |
 
 ## Quickstart
 

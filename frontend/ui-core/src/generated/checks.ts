@@ -85,6 +85,9 @@ export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
 export const checkBatchOut: Check<Schemas["BatchOut"]> =
   /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "name": [true, isString], "parent_batch_id": [true, either([isString, isNull] as const)], "progress": [true, checkProgressCounts], "project_id": [true, isString], "promoted_asset_count": [true, isInteger], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
 
+export const checkBatchMembershipOut: Check<Schemas["BatchMembershipOut"]> =
+  /*#__PURE__*/ object({ "batch": [true, checkBatchOut], "changed": [true, arrayOf(isString)] } as const);
+
 export const checkBatchPage: Check<Schemas["BatchPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchOut)], "total": [true, isInteger] } as const);
 
@@ -209,6 +212,7 @@ export const checkSplitAssignmentOut: Check<Schemas["SplitAssignmentOut"]> =
 // `tests/scripts/checks_wiring.test.mjs` can pair every call with its own operationId.
 
 export const checkAddAnnotations = checkAnnotationPage;
+export const checkAddBatchAssets = checkBatchMembershipOut;
 export const checkApproveBatch = checkBatchOut;
 export const checkCheckExport = checkExportCompatibilityOut;
 export const checkCompareSchemaVersions = checkSchemaDiffOut;
@@ -260,6 +264,7 @@ export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;
 export const checkRegisterImageSource = checkSourceOut;
 export const checkRegisterVideoSource = checkSourceOut;
+export const checkRemoveBatchAssets = checkBatchMembershipOut;
 export const checkRemoveDatasetAsset = checkNoContent;
 export const checkRenameProject = checkProjectOut;
 export const checkRepinBatch = checkBatchOut;

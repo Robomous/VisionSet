@@ -303,11 +303,40 @@ def test_batch_membership_keeps_the_order_it_was_written_in(tmp_path: Path) -> N
         assert stored is not None
         assert stored.asset_ids == [second, first]
 
-        stored.asset_ids = [first, second]
-        uow.batches.update(stored)
+        assert uow.add_batch_assets(batch_id, [first]) == []
         reread = uow.batches.get(batch_id)
         assert reread is not None
-        assert reread.asset_ids == [first, second]
+        assert reread.asset_ids == [second, first]
+    store.close()
+
+
+def test_updating_a_batch_does_not_touch_its_membership(tmp_path: Path) -> None:
+    """The capability #281 deliberately removed, asserted rather than left absent.
+
+    `Repository.update` replaces a whole entity, and a `Batch` carries every
+    member — which is how two concurrent membership edits used to lose one of the
+    two. So membership is written at creation and afterwards only by the two
+    narrow writes, and a permuted `asset_ids` handed to `update` is now ignored
+    rather than honoured.
+
+    Stated as its own test because "reordering stopped working" should read as a
+    decision somebody made, not as a hole somebody left.
+    """
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        seeded = _seed(uow)
+        first, second, batch_id = seeded[4][1], seeded[5][1], seeded[7][1]
+        stored = uow.batches.get(batch_id)
+        assert stored is not None
+
+        stored.asset_ids = [first]
+        stored.name = "renamed"
+        uow.batches.update(stored)
+
+        reread = uow.batches.get(batch_id)
+        assert reread is not None
+        assert reread.name == "renamed"
+        assert reread.asset_ids == [second, first]
     store.close()
 
 

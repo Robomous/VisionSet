@@ -8,10 +8,12 @@ hangs off *it* (its assets, its jobs) does not sit four segments deep.
 ``promote`` also lives here, and its path is the argument for it — see the
 comment on the handler.
 
-**A batch is born from an ingest**, not from a POST. There is deliberately no
-create, delete or membership route here: an ingest run puts what it gathered into
-a batch, and curating one out of an arbitrary subset of assets has no caller
-until M5's gallery. ``BatchService`` has the methods; the API grows a route when
+**A batch is born from an ingest** in the ordinary case, and creation and
+membership editing are both here now because the gallery is the caller #29 was
+waiting for. Both are ``draft``-only: approval freezes membership, and that
+refusal is the batch's own (``BATCH_NOT_EDITABLE``), never a rule this module
+restates. A *delete* route is still absent; ``BatchService.delete`` has the
+method and ``DELETABLE_STATES`` the rule, and the API grows a route when
 somebody needs one.
 
 The lifecycle *is* here, because without it nothing downstream is reachable: an
@@ -26,9 +28,12 @@ Handlers are ``def``, not ``async def``, for the reason ``projects.py`` gives.
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from visionset.kernel.domain import AssetProgress
+from fastapi import Query
+
+from visionset.kernel.domain import AssetProgress, MembershipChange
 from visionset.kernel.services import BatchService, DatasetService, JobService, ProjectService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -40,6 +45,8 @@ from visionset.server.models import (
     BatchAssetPage,
     BatchCorrection,
     BatchCreate,
+    BatchMembership,
+    BatchMembershipOut,
     BatchOut,
     BatchPage,
     JobOut,
@@ -298,6 +305,81 @@ def list_batch_assets(
             BatchAssetOut.in_batch(asset, job_id=job_id, progress=progress, batch_state=batch.state)
         )
     return BatchAssetPage(items=items, total=len(found))
+
+
+#: Which assets to take out of the batch, repeated once per id. The
+#: ``delete_annotations`` shape: the ids are what the request is *about* rather
+#: than a gate on it, and a request body on DELETE is legal in OpenAPI 3.1 and
+#: stripped by enough proxies to be a bad thing to require.
+#:
+#: ``min_length=1`` mirrors ``BatchMembership``'s, so the two halves of one
+#: operation refuse the same empty request — a removal naming nothing is a
+#: request that means nothing, and answering it 200 would be a silent no-op the
+#: caller reads as success.
+BatchAssetIdsQuery = Annotated[
+    list[UUID],
+    Query(
+        alias="id",
+        min_length=1,
+        description="An asset to remove from the batch. Repeat the parameter per id.",
+    ),
+]
+
+
+def _membership(workspace: WorkspaceDep, change: MembershipChange) -> BatchMembershipOut:
+    """One projection for both halves, so add and remove cannot answer differently."""
+    return BatchMembershipOut.of(
+        change,
+        JobService(workspace).batch_progress(change.batch.id),
+        promoted=_promoted(workspace, change.batch.project_id),
+    )
+
+
+@router.post("/{batch_id}/assets", responses=documented(404, 409))
+def add_batch_assets(
+    workspace: WorkspaceDep, batch_id: UUID, body: BatchMembership
+) -> BatchMembershipOut:
+    """Put assets into a draft batch.
+
+    **Only while the batch is a draft**, which is what `edit_membership` in its
+    `allowed_actions` declares. Approval partitions the batch into jobs against a
+    pinned schema version, so an asset added afterwards would belong to no job —
+    hence 409 `BATCH_NOT_EDITABLE` from that point on, and there is no flag that
+    lifts it.
+
+    Idempotent, and it says so in the answer rather than leaving it to be
+    inferred: `changed` lists the ids this call actually wrote, so adding three
+    assets of which two were already members reports one. An asset the batch
+    already holds is not an error.
+
+    An id that is not an asset of this batch's project is 404 `ASSET_NOT_FOUND`
+    and **nothing is written** — the whole call is refused, for the reason
+    annotation writes are all-or-nothing.
+    """
+    return _membership(workspace, BatchService(workspace).add_assets(batch_id, body.asset_ids))
+
+
+@router.delete("/{batch_id}/assets", responses=documented(404, 409))
+def remove_batch_assets(
+    workspace: WorkspaceDep, batch_id: UUID, asset_ids: BatchAssetIdsQuery
+) -> BatchMembershipOut:
+    """Take assets out of a draft batch. One transaction, however many ids you pass.
+
+    **This removes membership, not assets.** The asset stays in its project, in
+    the blob store, and in every other batch that carries it; only this batch
+    stops listing it.
+
+    Draft only, like adding, and for the sharper half of the same reason: after
+    approval a job already describes work over that asset, and removing the
+    member would leave the job describing work that no longer exists. From then
+    on the way to exclude an asset is to mark it `skipped` — a decision the
+    record keeps rather than erases — and this answers 409 `BATCH_NOT_EDITABLE`.
+
+    An id the batch does not hold is ignored rather than refused, and `changed`
+    reports what actually went, so "removed 3" can be told from "3 were already
+    gone".
+    """
+    return _membership(workspace, BatchService(workspace).remove_assets(batch_id, asset_ids))
 
 
 # The one dataset operation that lives here rather than in ``datasets.py``, and

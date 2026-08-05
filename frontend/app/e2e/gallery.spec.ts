@@ -88,11 +88,19 @@ function assets(
   jobId: string | null,
   settled = false,
   batchState = "in_annotation",
+  removed: ReadonlySet<string> = new Set(),
 ): Record<string, unknown> {
-  const states: readonly string[] = settled ? SETTLED_STATES : STATES;
+  const all: readonly string[] = settled ? SETTLED_STATES : STATES;
+  // Derived from what the run has actually removed, never a frozen list: a stub
+  // that keeps answering the same membership after a DELETE lets an
+  // implementation that never sent one pass, and lets one that sent the wrong
+  // ids pass just as easily.
+  const kept = all
+    .map((progress, at) => ({ progress, at }))
+    .filter(({ at }) => !removed.has(`asset-${at}`));
   return {
-    total: states.length,
-    items: states.map((progress, at) => ({
+    total: kept.length,
+    items: kept.map(({ progress, at }) => ({
       id: `asset-${at}`,
       project_id: PROJECT,
       modality: "image",
@@ -163,6 +171,9 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
   // rather than something the page decided — approval is not optimistic, and a
   // static stub would let an optimistic implementation pass.
   let current = state;
+  // What this run has removed, so the listing and the counts move with the
+  // DELETE the same way the server's would.
+  const removed = new Set<string>();
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -254,7 +265,11 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           name: "drive-01",
           state: current,
           schema_version: current === "draft" ? null : 3,
-          asset_count: counts.total,
+          // Follows the removals, because the server's would: a stub answering a
+          // frozen count lets a page that never invalidates the batch pass, and
+          // the header saying 48 over 46 tiles is exactly the stale-count shape
+          // the invalidation exists to prevent.
+          asset_count: counts.total - removed.size,
           progress: counts,
           allowed_actions: batchActions(current),
           promoted_asset_count: 0,
@@ -262,10 +277,46 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
         },
       });
     }
+    if (request.method() === "DELETE" && path === `/batches/${BATCH}/assets`) {
+      // The kernel's own gate, kept rather than stubbed away: membership is
+      // editable in `draft` and nowhere else, so a page that offers this on an
+      // approved batch gets the 409 a real server would send.
+      if (current !== "draft") {
+        return route.fulfill({
+          status: 409,
+          json: {
+            code: "BATCH_NOT_EDITABLE",
+            message: `batch 'drive-01' is '${current}', so its membership is frozen`,
+          },
+        });
+      }
+      const asked = new URL(request.url()).searchParams.getAll("id");
+      // `changed` is what was *there*, not what was asked for — idempotent both
+      // ways, which is the distinction the report is built on.
+      const changed = asked.filter((id) => !removed.has(id));
+      for (const id of changed) removed.add(id);
+      return route.fulfill({
+        json: {
+          batch: {
+            id: BATCH,
+            project_id: PROJECT,
+            name: "drive-01",
+            state: current,
+            schema_version: null,
+            asset_count: counts.total - removed.size,
+            progress: counts,
+            allowed_actions: batchActions(current),
+            promoted_asset_count: 0,
+            parent_batch_id: null,
+          },
+          changed,
+        },
+      });
+    }
     if (path === `/batches/${BATCH}/assets`) {
       // `current`, not `state`: an approve during the test moves it, and the
       // frames' declarations move with the batch exactly as the server's would.
-      return route.fulfill({ json: assets(jobId, settledStates, current) });
+      return route.fulfill({ json: assets(jobId, settledStates, current, removed) });
     }
     if (path === `/sources/${SOURCE}`) {
       return route.fulfill({
@@ -666,19 +717,24 @@ test("marking a selection skipped sends one request per frame", async ({ page })
     .toBe(2);
 });
 
-test("a draft offers no selection, because nothing could act on one", async ({ page }) => {
+test("a draft offers the selection membership editing needs, and only that", async ({ page }) => {
   const sent: Request[] = [];
   await openGallery(page, sent, { state: "draft" });
 
-  // `remove_assets` is not on the wire (#281) and `Mark skipped` needs a job that
-  // a draft does not have, so every action a checkbox could offer is
-  // unavailable. A control whose every action is unavailable is worse than no
-  // control — which is the whole of the pre/post-approval difference.
+  // A draft offered no selection at all while `remove_assets` had no wire
+  // surface: `Mark skipped` needs a job a draft does not have, so every action a
+  // checkbox could offer was unavailable, and a control whose every action is
+  // unavailable is worse than no control. Membership editing (#281) is the
+  // action that is legal here and nowhere else, so the bar is back — with the
+  // progress moves still dead, for their own reason.
   await expect(page.getByTestId("tile-asset-0")).toBeVisible();
-  await expect(page.getByTestId("select-asset-0")).toHaveCount(0);
-  await expect(page.getByTestId("bulk-bar")).toHaveCount(0);
+  await page.getByTestId("select-asset-0").click();
+
+  await expect(page.getByTestId("bulk-remove")).toBeEnabled();
+  await expect(page.getByTestId("bulk-skip")).toBeDisabled();
+  await expect(page.getByTestId("bulk-restore")).toBeDisabled();
   // #160's third criterion, on the element the pointer is over: not-yet rather
-  // than broken.
+  // than broken. Opening a frame is still what a draft cannot do.
   await expect(page.getByTestId("tile-asset-0")).toHaveAttribute("data-pending", "true");
   await expect(page.getByTestId("tile-asset-0")).toHaveAttribute("title", /draft/i);
 });
@@ -925,4 +981,54 @@ test("a batch with no work left still offers a way into the annotator", async ({
   // the door must not be conditional on unannotated work in the first place.
   await page.getByTestId("start-annotating").click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/jobs/${JOB}`);
+});
+
+// --- membership editing (#281) -----------------------------------------------
+
+test("frames can be taken out of a draft batch, and the counts follow", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { state: "draft" });
+
+  // A draft rendered no selection at all until membership editing had a wire
+  // surface — which put the one state where it is legal behind the one gate that
+  // hid the control.
+  await page.getByTestId("select-asset-0").click();
+  await page.getByTestId("select-asset-1").click({ modifiers: ["ControlOrMeta"] });
+  await expect(page.getByTestId("bulk-remove")).toHaveText(/Remove from batch \(2\)/);
+  await expect(page.getByTestId("bulk-remove")).toBeEnabled();
+
+  await page.getByTestId("bulk-remove").click();
+  // The gate is a gate: nothing is sent until the question is answered, and the
+  // question states the consequence rather than asking for a nod.
+  await expect(page.getByTestId("remove-consequence")).toHaveText(/stay in the project/i);
+  expect(sent.filter((one) => one.method() === "DELETE")).toEqual([]);
+
+  await page.getByTestId("remove-confirm").click();
+
+  await expect(page.getByTestId("bulk-removed")).toHaveText(/Removed 2/);
+  // The listing followed, which is the half a report alone cannot promise.
+  await expect(page.getByTestId("tile-asset-0")).toHaveCount(0);
+  await expect(page.getByTestId("tile-asset-1")).toHaveCount(0);
+  await expect(page.getByTestId("tile-asset-2")).toBeVisible();
+  // And the batch's own facts, because `asset_count` lives on `BatchOut` and a
+  // header still saying 48 over 46 tiles is the stale-count shape.
+  await expect(page.getByTestId("batch-facts")).toContainText("46 frames");
+});
+
+test("removal is refused on an approved batch, and the control says so first", async ({ page }) => {
+  const sent: Request[] = [];
+  await openGallery(page, sent, { state: "approved" });
+
+  await page.getByTestId("select-asset-0").click();
+
+  // Disabled-with-reason rather than hidden, and the reason names the moment
+  // rather than the state — it reads the same on every state past `draft`.
+  await expect(page.getByTestId("bulk-remove")).toBeDisabled();
+  await expect(page.getByTestId("bulk-remove")).toHaveAttribute(
+    "title",
+    /fixed once the batch is approved/i,
+  );
+  // Nothing was sent, which is the half the disabled attribute cannot promise on
+  // its own: the old bar's failure mode was to offer a move and take the 409.
+  expect(sent.filter((one) => one.method() === "DELETE")).toEqual([]);
 });

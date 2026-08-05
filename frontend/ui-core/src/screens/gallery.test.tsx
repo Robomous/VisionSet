@@ -518,7 +518,14 @@ describe("the gallery", () => {
       on("GET", /\/assets$/, {
         status: 200,
         body: {
-          total: 48,
+          // `total` matches what the page carries, and that is load-bearing
+          // rather than tidy: `useBatchAssets` is an infinite query, so a stub
+          // claiming 48 while handing back 3 makes it fetch the next page
+          // forever — against a stub that answers the same three every time,
+          // which accumulates duplicate ids. It only ever surfaced as
+          // "found multiple elements" in a test that queried late enough.
+          // The batch's own `asset_count` is still 48; the facts line reads that.
+          total: 3,
           items: [0, 1, 2].map((index) => asset(index, { job_id: null, progress: null })),
         },
       });
@@ -547,16 +554,23 @@ describe("the gallery", () => {
       expect(screen.queryByTestId("density")).not.toBeNull();
     });
 
-    it("does not offer a selection nothing could act on", async () => {
+    it("offers the selection membership editing needs, and only that", async () => {
       render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
       const tile = await screen.findByTestId("tile-asset-0");
 
-      // `remove_assets` is not on the wire (#281) and `Mark skipped` needs a job
-      // that does not exist, so every action a checkbox could offer is
-      // unavailable. A control whose every action is unavailable is worse than
-      // no control.
-      expect(screen.queryByTestId("select-asset-0")).toBeNull();
-      expect(screen.queryByTestId("bulk-bar")).toBeNull();
+      // A draft used to render no selection at all, because every action a
+      // checkbox could offer was unavailable — `Mark skipped` needs a job that
+      // does not exist, and membership editing had no wire surface (#281). It
+      // has one now, and `draft` is the *only* state where it is legal, so the
+      // one gate that hid this bar was hiding the one state it is for.
+      fireEvent.click(await screen.findByTestId("select-asset-0"));
+      await screen.findByTestId("bulk-bar");
+
+      expect((screen.getByTestId("bulk-remove") as HTMLButtonElement).disabled).toBe(false);
+      // The progress moves stay dead, and for their own reason rather than this
+      // one: a draft has no jobs, so there is no progress to move.
+      expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
       // #160's third criterion survives the change: not-yet rather than broken,
       // on the element the pointer is actually over.
       expect(tile.getAttribute("data-pending")).toBe("true");
@@ -1127,6 +1141,129 @@ describe("the bulk bar", () => {
   });
 
   /**
+   * Removing frames from a batch (#281).
+   *
+   * The mirror image of the block above, and worth its own describe for that
+   * reason: every action there is per-frame and legal only while the batch is
+   * *open*, while this one is per-batch and legal only while it is a *draft*.
+   * The two never overlap, which is why the bar can carry both without either
+   * gate having to know about the other.
+   */
+  describe("removing frames from the batch (#281)", () => {
+    function removalsSent(): { path: string; ids: string[] }[] {
+      return sent
+        .filter((one) => one.method === "DELETE")
+        .map((one) => ({
+          path: new URL(one.url).pathname,
+          ids: new URL(one.url).searchParams.getAll("id"),
+        }));
+    }
+
+    it("is offered on a draft, which is the one state that declares it", async () => {
+      await withBatch("draft", "unannotated", "unannotated");
+      selectAll(2);
+
+      expect((screen.getByTestId("bulk-remove") as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.getByTestId("bulk-remove").textContent).toContain("(2)");
+    });
+
+    for (const state of ["approved", "in_annotation", "completed"] as const) {
+      it(`is disabled with the reason on a ${state} batch`, async () => {
+        await withBatch(state, "unannotated", "skipped");
+        selectAll(2);
+
+        const control = screen.getByTestId("bulk-remove") as HTMLButtonElement;
+        expect(control.disabled).toBe(true);
+        // Disabled-with-reason, never hidden: taking frames out is meaningful on
+        // this screen in every state, and why it is unavailable is the one thing
+        // the tiles cannot show.
+        expect(control.getAttribute("title")).toMatch(/fixed once the batch is approved/i);
+      });
+    }
+
+    it("asks before it acts, and the question states the actual consequence", async () => {
+      await withBatch("draft", "unannotated", "unannotated");
+      selectAll(2);
+      await userEvent.click(screen.getByTestId("bulk-remove"));
+
+      // Nothing has been sent yet — the dialog is a gate, not a receipt.
+      expect(removalsSent()).toEqual([]);
+      const said = screen.getByTestId("remove-consequence").textContent ?? "";
+      expect(said).toMatch(/stay in the project/i);
+      expect(said).toMatch(/other batch/i);
+    });
+
+    it("takes no action when the question is declined", async () => {
+      await withBatch("draft", "unannotated", "unannotated");
+      selectAll(2);
+      await userEvent.click(screen.getByTestId("bulk-remove"));
+      await userEvent.click(screen.getByTestId("remove-cancel"));
+
+      expect(removalsSent()).toEqual([]);
+      expect(screen.getByTestId("bulk-count").textContent).toContain("2 frames selected");
+    });
+
+    it("sends one request carrying every id, and reports what came back", async () => {
+      on("DELETE", /\/assets$/, {
+        status: 200,
+        body: {
+          batch: batch({ state: "draft", asset_count: 0 }),
+          changed: ["asset-0", "asset-1"],
+        },
+      });
+      await withBatch("draft", "unannotated", "unannotated");
+      selectAll(2);
+      await userEvent.click(screen.getByTestId("bulk-remove"));
+      await userEvent.click(screen.getByTestId("remove-confirm"));
+
+      await waitFor(() => expect(removalsSent()).toHaveLength(1));
+      // One request, not two: the wire takes every id at once, so there is no
+      // partial outcome to render and none is invented.
+      expect(removalsSent()[0]?.ids).toEqual(["asset-0", "asset-1"]);
+      await waitFor(() =>
+        expect(screen.getByTestId("bulk-removed").textContent).toContain("Removed 2"),
+      );
+    });
+
+    it("reports what the server actually removed, not what was asked", async () => {
+      // Removal is idempotent, so an id the batch no longer holds is a 200 that
+      // removed nothing. Reporting the selection size would report work that did
+      // not happen.
+      on("DELETE", /\/assets$/, {
+        status: 200,
+        body: { batch: batch({ state: "draft", asset_count: 2 }), changed: [] },
+      });
+      await withBatch("draft", "unannotated", "unannotated");
+      selectAll(2);
+      await userEvent.click(screen.getByTestId("bulk-remove"));
+      await userEvent.click(screen.getByTestId("remove-confirm"));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("bulk-removed").textContent).toMatch(/nothing to remove/i),
+      );
+    });
+
+    it("renders a refusal as prose rather than as a code or as silence", async () => {
+      on("DELETE", /\/assets$/, {
+        status: 409,
+        body: {
+          code: "BATCH_NOT_EDITABLE",
+          message: "batch 'drive-01' is 'approved', so its membership is frozen",
+        },
+      });
+      await withBatch("draft", "unannotated", "unannotated");
+      selectAll(2);
+      await userEvent.click(screen.getByTestId("bulk-remove"));
+      await userEvent.click(screen.getByTestId("remove-confirm"));
+
+      await waitFor(() => expect(screen.queryByTestId("bulk-remove-error")).not.toBeNull());
+      const shown = screen.getByTestId("bulk-remove-error").textContent ?? "";
+      expect(shown).not.toContain("BATCH_NOT_EDITABLE");
+      expect(shown.length).toBeGreaterThan(0);
+    });
+  });
+
+  /**
    * The batch-state dimension, across every state that renders a bulk bar.
    *
    * **This is finding F1, and it is the matrix the old code could not have
@@ -1136,9 +1273,10 @@ describe("the bulk bar", () => {
    * kernel refuses without even reaching the progress check
    * (`JobService.mark` runs `require_open_batch` first, deliberately).
    *
-   * A `draft` is absent because it renders no selection at all — its frames have
-   * no jobs, so there is nothing a bar could act on. That is `hasJobs`, and it
-   * is a question about data rather than about permission.
+   * A `draft` is absent from *these* cases because its frames have no jobs, so
+   * there is no progress to move — a question about data rather than about
+   * permission. It does render a bar now, for the one action that is legal
+   * exactly there: see the membership block below.
    */
   describe("the batch-state dimension the old mirror dropped (F1)", () => {
     const OPEN_TO_WRITES: readonly BatchState[] = ["in_annotation"];
