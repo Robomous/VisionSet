@@ -93,6 +93,30 @@ const RELEASE_ROW = {
   visionset_version: "0.0.1.dev0",
 };
 
+const ASSET = "55555555-5555-4555-8555-555555555555";
+
+/**
+ * One trunk member, with every field `AssetOut` declares.
+ *
+ * Present rather than omitted, including the nulls: the generated shape check
+ * runs at `unwrap` and rejects a body missing a required field before the screen
+ * renders, so a stub answering a shape the endpoint never sends tests nothing.
+ */
+const ASSET_ROW = {
+  id: ASSET,
+  project_id: PROJECT,
+  modality: "image",
+  content_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  width: 640,
+  height: 480,
+  format: "png",
+  source_id: null,
+  frame_index: 7,
+  frame_timestamp: null,
+  thumbnail_hash: null,
+  ingested_at: "2026-07-31T09:00:00.000000Z",
+};
+
 function baseline(): void {
   on("GET", /\/dataset$/, {
     status: 200,
@@ -112,6 +136,10 @@ function baseline(): void {
     },
   });
   on("GET", /\/releases$/, { status: 200, body: { items: [RELEASE_ROW], total: 1 } });
+  // Registered last of the GETs, so a test wanting a different trunk registers
+  // its own before calling this — first matching handler wins, and a default
+  // that could not be overridden would make every trunk test assert the fixture.
+  on("GET", /\/assets$/, { status: 200, body: { items: [ASSET_ROW], total: 1 } });
   on("GET", /\/formats$/, {
     status: 200,
     body: { items: [{ name: "dummy", lossy: false, ...FORMAT_REST }, { name: "yolo", lossy: true, ...FORMAT_REST }], total: 2 },
@@ -361,5 +389,177 @@ describe("export, and the third gate word", () => {
         sent.filter((r) => r.url.includes("allow_lossy=true")).length,
       ).toBeGreaterThan(0),
     );
+  });
+});
+
+/**
+ * Curating the trunk (#316).
+ *
+ * `DELETE /datasets/{id}/assets/{id}` had been on the wire since M3 with no
+ * caller anywhere in the product. The claim worth the block is that removal is
+ * **curation, not deletion** — which is why the kernel gives it no `confirm=`
+ * gate — and that the counts a removal invalidates include one on a screen this
+ * mutation never touches.
+ */
+describe("curating the trunk", () => {
+  it("lists what is in the trunk, which is what the counts above are counts of", async () => {
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+
+    const row = await screen.findByTestId(`trunk-asset-${ASSET}`);
+    // The frame number when there is one: `frame 7`, not a content hash nobody
+    // can act on.
+    expect(row.textContent).toContain("frame 7");
+  });
+
+  it("says what removal costs, and is honest that almost nothing is destroyed", async () => {
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+
+    const consequence = await screen.findByTestId("remove-asset-consequence");
+    // Every clause read off `DatasetService.remove_asset`, not assumed. The
+    // release clause is the one a curator would otherwise have to guess at: a
+    // release is a snapshot, so curating the trunk does not reach back into it.
+    expect(consequence.textContent).toContain("annotations leave with it");
+    expect(consequence.textContent).toContain("Nothing is deleted");
+    expect(consequence.textContent).toContain("releases already published");
+    expect(consequence.textContent).toContain("Promoting its batch again puts it back");
+  });
+
+  it("takes no action until the confirmation is answered", async () => {
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    await screen.findByTestId("remove-asset-dialog");
+
+    // Opening the dialog is not the decision. Nothing has been sent.
+    expect(sent.some((r) => r.method === "DELETE")).toBe(false);
+  });
+
+  it("sends the removal for the asset whose row was pressed", async () => {
+    baseline();
+    on("DELETE", /\/assets\//, { status: 204 });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    await userEvent.click(await screen.findByTestId("remove-asset-submit"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "DELETE")).toBe(true));
+    const request = sent.find((r) => r.method === "DELETE");
+    expect(new URL(request?.url ?? "").pathname).toBe(`/datasets/${DATASET}/assets/${ASSET}`);
+  });
+
+  it("re-reads the counts and the trunk once one is gone, because both are stale", async () => {
+    baseline();
+    on("DELETE", /\/assets\//, { status: 204 });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await screen.findByTestId(`trunk-asset-${ASSET}`);
+    const before = {
+      stats: sent.filter((r) => r.url.endsWith("/stats")).length,
+      assets: sent.filter((r) => new URL(r.url).pathname.endsWith("/assets")).length,
+    };
+
+    await userEvent.click(screen.getByTestId(`remove-${ASSET}`));
+    await userEvent.click(await screen.findByTestId("remove-asset-submit"));
+
+    // A declaration — or a count — is a cached answer, so a mutation that moves
+    // it has to invalidate it. `asset_count` is derived per call by the kernel
+    // and would otherwise keep reporting the pre-removal trunk.
+    await waitFor(() =>
+      expect(sent.filter((r) => r.url.endsWith("/stats")).length).toBeGreaterThan(before.stats),
+    );
+    await waitFor(() =>
+      expect(
+        sent.filter((r) => new URL(r.url).pathname.endsWith("/assets")).length,
+      ).toBeGreaterThan(before.assets),
+    );
+  });
+
+  it("invalidates the batches too, because a batch reports current trunk membership", async () => {
+    baseline();
+    on("DELETE", /\/assets\//, { status: 204 });
+    // A batch cache the screen never reads, seeded so the invalidation has
+    // something to land on. `BatchOut.promoted_asset_count` is how many of a
+    // batch's assets are in the trunk *right now* — current membership, derived
+    // per read, deliberately not a promotion log — so a removal here moves a
+    // number on a screen this mutation never touches.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["batches", "some-batch"], { promoted_asset_count: 12 });
+
+    render(
+      <ApiProvider baseUrl={API} queryClient={client}>
+        <DatasetScreen projectId={PROJECT} />
+      </ApiProvider>,
+    );
+    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    await userEvent.click(await screen.findByTestId("remove-asset-submit"));
+
+    await waitFor(() =>
+      expect(client.getQueryState(["batches", "some-batch"])?.isInvalidated).toBe(true),
+    );
+  });
+
+  it("renders a refusal as prose rather than as a code, and keeps the dialog open", async () => {
+    baseline();
+    on("DELETE", /\/assets\//, {
+      status: 404,
+      body: { code: "DATASET_NOT_FOUND", message: "No dataset with that id." },
+    });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    await userEvent.click(await screen.findByTestId("remove-asset-submit"));
+
+    const failure = await screen.findByTestId("remove-asset-error");
+    // The kernel's own sentence survives: `refusalProse` falls through to the
+    // server's `message` for a code with no entry, because discarding the one
+    // description the kernel wrote is worse than restating it badly.
+    expect(failure.textContent).toContain("No dataset with that id.");
+    // And the dialog stays, so the person can read it and retry.
+    expect(screen.queryByTestId("remove-asset-dialog")).not.toBeNull();
+  });
+
+  it("offers no paging for a trunk that fits on one page", async () => {
+    baseline();
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+
+    await screen.findByTestId(`trunk-asset-${ASSET}`);
+    expect(screen.queryByTestId("trunk-paging")).toBeNull();
+  });
+
+  it("pages by offset, because the trunk is the collection that only grows", async () => {
+    // Registered *before* `baseline`, which is what makes it win: the first
+    // matching handler answers, so the default registered later cannot shadow
+    // it. And it derives its answer from the offset the screen asked for rather
+    // than from a frozen literal, so the assertion below is about the screen.
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method !== "GET" || !url.pathname.endsWith("/assets")) return undefined;
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+      return {
+        status: 200,
+        body: {
+          items: [{ ...ASSET_ROW, id: ASSET, frame_index: offset }],
+          total: 60,
+        },
+      };
+    });
+    baseline();
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await screen.findByTestId("trunk-paging");
+    // `total` is the whole trunk, not the page — `docs/api.md`: paging bounds
+    // the response, not the read.
+    expect(screen.getByTestId("trunk-paging").textContent).toContain("of 60");
+    expect(screen.getByTestId("trunk-previous")).toHaveProperty("disabled", true);
+
+    await userEvent.click(screen.getByTestId("trunk-next"));
+
+    await waitFor(() =>
+      expect(sent.some((r) => new URL(r.url).searchParams.get("offset") === "25")).toBe(true),
+    );
+    expect(screen.getByTestId("trunk-previous")).toHaveProperty("disabled", false);
   });
 });

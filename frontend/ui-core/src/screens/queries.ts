@@ -53,6 +53,7 @@ import {
   checkListBatchAssets,
   checkListBatchJobs,
   checkListBatches,
+  checkListDatasetAssets,
   checkListFormats,
   checkListProjectAssets,
   checkListProjects,
@@ -64,6 +65,7 @@ import {
   checkPublishRelease,
   checkRegisterImageSource,
   checkRegisterVideoSource,
+  checkRemoveDatasetAsset,
   checkRenameProject,
   checkResumeIngest,
   checkSetAssetProgress,
@@ -941,10 +943,22 @@ export type SplitRecipe = components["schemas"]["SplitRecipeBody"];
 export const datasetKeys = {
   dataset: (projectId: string) => ["projects", projectId, "dataset"] as const,
   stats: (datasetId: string) => ["datasets", datasetId, "stats"] as const,
+  // The page is part of the key: two offsets are two answers, and sharing one
+  // key would make paging a cache overwrite rather than a second read.
+  assets: (datasetId: string, offset: number) =>
+    ["datasets", datasetId, "assets", offset] as const,
+  allAssets: (datasetId: string) => ["datasets", datasetId, "assets"] as const,
   releases: (datasetId: string) => ["datasets", datasetId, "releases"] as const,
   verification: (releaseId: string) => ["releases", releaseId, "verify"] as const,
   formats: () => ["formats"] as const,
 };
+
+/**
+ * One page of the trunk. `docs/api.md`: paging bounds the **response, not the
+ * read**, so `total` is the whole trunk and a client pages until it has seen
+ * that many rather than until the number moves.
+ */
+export const TRUNK_PAGE_SIZE = 25;
 
 export function useProjectDataset(projectId: string): UseQueryResult<Dataset, Error> {
   const client = useApiClient();
@@ -980,6 +994,73 @@ export function useDatasetStats(datasetId: string | undefined): UseQueryResult<D
         }),
         checkDatasetStats,
       ),
+  });
+}
+
+/**
+ * The trunk's own membership, one page at a time.
+ *
+ * The order is the kernel's stored insertion order, so reading twice gives the
+ * same sequence and promoting a new batch appends rather than reshuffles — which
+ * is what makes an offset a stable thing to hold.
+ */
+export function useDatasetAssets(
+  datasetId: string | undefined,
+  offset: number,
+): UseQueryResult<AssetPage, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: datasetKeys.assets(datasetId ?? "none", offset),
+    enabled: datasetId !== undefined,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/datasets/{dataset_id}/assets", {
+          params: {
+            path: { dataset_id: datasetId ?? "" },
+            query: { limit: TRUNK_PAGE_SIZE, offset },
+          },
+        }),
+        checkListDatasetAssets,
+      ),
+  });
+}
+
+/**
+ * Curate one asset out of the trunk.
+ *
+ * **Not a deletion, and the kernel is explicit about it**: the asset stays, its
+ * annotations stay and its blob stays — content is hash-addressed and shared, so
+ * no dataset can know it is the last owner, and `BlobStore` has no `delete` at
+ * all. A release that already named the asset is untouched, because a release is
+ * a snapshot and curating the trunk afterwards does not reach back into it. That
+ * is why `DatasetService.remove_asset` is one of exactly two service methods
+ * with no `confirm=` gate.
+ *
+ * Three invalidations, and the third is the one worth naming. The page it came
+ * from and the trunk's counts are obvious. `["batches"]` is not:
+ * `BatchOut.promoted_asset_count` reports how many of a batch's assets are in
+ * the trunk **right now** — current membership, derived per read, deliberately
+ * not a promotion log — so a removal moves a number on a screen this mutation
+ * never touched.
+ */
+export function useRemoveDatasetAsset(datasetId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (assetId: string) =>
+      unwrap(
+        await client.DELETE("/datasets/{dataset_id}/assets/{asset_id}", {
+          params: { path: { dataset_id: datasetId, asset_id: assetId } },
+        }),
+        checkRemoveDatasetAsset,
+      ),
+    onSuccess: () => {
+      // Every page, not the current one: removing a row shifts every offset
+      // after it, so a cached later page now describes a window that moved.
+      void queries.invalidateQueries({ queryKey: datasetKeys.allAssets(datasetId) });
+      void queries.invalidateQueries({ queryKey: datasetKeys.stats(datasetId) });
+      void queries.invalidateQueries({ queryKey: ["batches"] });
+    },
   });
 }
 

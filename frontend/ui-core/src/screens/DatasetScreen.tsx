@@ -24,6 +24,16 @@
  * *format*, because a bbox-only format loses a polygon whether or not today's
  * dataset holds one.
  *
+ * ## The trunk's membership is on the screen now, and so is curation
+ *
+ * `DELETE /datasets/{id}/assets/{id}` had been on the wire since M3 and no screen
+ * called it — the API's only curation operation, unreachable from the product
+ * (#316). It could not simply be added to a listing, because this screen showed
+ * the counts and never the membership those counts are *of*. `TrunkAssets` below
+ * is both halves. Removal is curation and not deletion, which is why
+ * `DatasetService.remove_asset` is one of exactly two service methods with no
+ * `confirm=` gate — see `RemoveAssetDialog` for what that means for the copy.
+ *
  * ## Verification is on demand, because it re-reads every blob
  *
  * `ReleaseService.verify` re-reads and re-hashes the lot: `BlobStore.exists` is
@@ -32,7 +42,7 @@
  * button runs it.
  */
 
-import { Check, Download, FileJson, ShieldCheck, Tag, Upload } from "lucide-react";
+import { Check, Download, FileJson, ShieldCheck, Tag, Trash2, Upload } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -59,8 +69,12 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
+import { formatWhen } from "../lib/format";
+import { AssetThumbnail } from "./AssetThumbnail";
 import { saveBlob } from "./download";
 import {
+  TRUNK_PAGE_SIZE,
+  useDatasetAssets,
   useDatasetStats,
   useDownloadManifest,
   useExportRelease,
@@ -69,7 +83,9 @@ import {
   useProjectDataset,
   usePublishRelease,
   useReleases,
+  useRemoveDatasetAsset,
   useVerifyRelease,
+  type Asset,
   type Release,
 } from "./queries";
 
@@ -159,6 +175,8 @@ export function DatasetScreen({ projectId, onBack }: DatasetScreenProps): JSX.El
         )}
       </Async>
 
+      <TrunkAssets projectId={projectId} datasetId={dataset.data?.id} />
+
       <section className="flex flex-col gap-3">
         <h2 className="text-section font-semibold">Releases</h2>
         <Async
@@ -188,6 +206,234 @@ export function DatasetScreen({ projectId, onBack }: DatasetScreenProps): JSX.El
         onClose={() => setPublishing(false)}
       />
     </div>
+  );
+}
+
+/**
+ * What is in the trunk, and the one way to take something out of it.
+ *
+ * ## Why there is a listing here at all
+ *
+ * `DELETE /datasets/{id}/assets/{id}` has been on the wire since M3 and no screen
+ * called it — the API's only curation operation over the trunk, unreachable from
+ * the product. It could not be added to a listing, because there was no listing:
+ * this screen showed counts and releases and never the membership those counts
+ * are *of*. So the control needed a row to hang on, and this is that row.
+ *
+ * ## Paged, because the trunk is the one collection that only grows
+ *
+ * Every completed batch a project ever promoted accumulates here. `docs/api.md`
+ * is explicit that `limit`/`offset` bound the **response, not the read**, so
+ * `total` stays the size of the whole trunk and the control pages until it has
+ * seen that many — never until the number stops moving.
+ *
+ * ## No capability gate, and that is a decision rather than an omission
+ *
+ * `AssetOut` declares no `allowed_actions`, and the route is unconditional: it
+ * answers 204 whether or not the asset was a member, refuses nothing about the
+ * asset's state, and the kernel gives it no `confirm=` gate. Writing a
+ * `canRemove(asset)` here would be the hand-mirrored table the `ui-capabilities`
+ * skill bans, inventing a rule the wire does not have. If removal ever *does*
+ * become conditional, the fix is a declaration on the wire, not a helper here.
+ */
+function TrunkAssets({
+  projectId,
+  datasetId,
+}: {
+  readonly projectId: string;
+  readonly datasetId: string | undefined;
+}): JSX.Element {
+  const [offset, setOffset] = useState(0);
+  const page = useDatasetAssets(datasetId, offset);
+  const [removing, setRemoving] = useState<Asset | null>(null);
+  const total = page.data?.total ?? 0;
+
+  return (
+    <section className="flex flex-col gap-3" data-testid="trunk-assets">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="text-section font-semibold">Assets</h2>
+          <p className="text-meta text-muted-foreground">
+            Every asset a completed batch has promoted, in the order they were promoted.
+          </p>
+        </div>
+        {total > TRUNK_PAGE_SIZE && (
+          <div className="flex items-center gap-2" data-testid="trunk-paging">
+            <span className="text-meta tabular-nums text-muted-foreground">
+              {offset + 1}&ndash;{Math.min(offset + TRUNK_PAGE_SIZE, total)} of {total}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="trunk-previous"
+              disabled={offset === 0}
+              onClick={() => setOffset(Math.max(0, offset - TRUNK_PAGE_SIZE))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="trunk-next"
+              disabled={offset + TRUNK_PAGE_SIZE >= total}
+              onClick={() => setOffset(offset + TRUNK_PAGE_SIZE)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <Async
+        query={page}
+        loadingRows={3}
+        empty={{
+          title: "Nothing promoted yet",
+          description:
+            "Completing a batch and promoting it puts its assets here. Until then the trunk is empty.",
+        }}
+      >
+        {(assets) => (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-20">Preview</TableHead>
+                <TableHead>Asset</TableHead>
+                <TableHead className="w-44">Ingested</TableHead>
+                <TableHead className="w-28" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {assets.items.map((asset) => (
+                <TableRow key={asset.id} data-testid={`trunk-asset-${asset.id}`}>
+                  <TableCell>
+                    <AssetThumbnail
+                      projectId={projectId}
+                      assetId={asset.id}
+                      thumbnailHash={asset.thumbnail_hash}
+                      alt={assetLabel(asset)}
+                      className="size-12 rounded-md border border-border object-cover"
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-meta">{assetLabel(asset)}</TableCell>
+                  {/* Null means *unknown*, not "never": rows written before #216
+                      are legitimately unstamped, and rendering that as a date
+                      would invent one. */}
+                  <TableCell className="text-muted-foreground">
+                    {asset.ingested_at == null ? "—" : formatWhen(asset.ingested_at)}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`remove-${asset.id}`}
+                      onClick={() => setRemoving(asset)}
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                      Remove
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Async>
+
+      {removing !== null && datasetId !== undefined && (
+        <RemoveAssetDialog
+          datasetId={datasetId}
+          asset={removing}
+          onClose={() => setRemoving(null)}
+          onRemoved={() => {
+            // The page this row was on may no longer exist: removing the only
+            // member of the last page leaves an offset past the end, which the
+            // API answers 200-and-empty rather than 404. Stepping back is the
+            // honest place to land.
+            if (offset > 0 && (page.data?.items.length ?? 0) === 1) {
+              setOffset(Math.max(0, offset - TRUNK_PAGE_SIZE));
+            }
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+/** The frame number when there is one, and a short content hash when there is not. */
+function assetLabel(asset: Asset): string {
+  return asset.frame_index == null ? asset.content_hash.slice(0, 12) : `frame ${asset.frame_index}`;
+}
+
+/**
+ * Curation, and a confirmation that says what it actually costs.
+ *
+ * `DESIGN.md`: a confirmation names what will happen. Here the useful half of
+ * that is mostly what will **not** happen, and every clause below was read off
+ * `DatasetService.remove_asset` rather than assumed:
+ *
+ * - the asset, its annotations and its bytes all stay — content is hash-addressed
+ *   and shared, so no dataset can know it is the last owner, and `BlobStore` has
+ *   no `delete` at all;
+ * - **a release that already names the asset is untouched**, because a release is
+ *   a snapshot and curating the trunk afterwards does not reach back into it;
+ * - promotion is a *union* with no memory of removals, so re-promoting the batch
+ *   the asset came from puts it back.
+ *
+ * Which is exactly why the kernel gives this no `confirm=` gate — it is one of
+ * only two service methods without one. The dialog is here because taking an
+ * asset out of a release-bound dataset is still a decision, not because the
+ * kernel demands consent for it, and the copy has to be honest about that
+ * difference or it teaches the wrong thing about what removal means.
+ */
+function RemoveAssetDialog({
+  datasetId,
+  asset,
+  onClose,
+  onRemoved,
+}: {
+  readonly datasetId: string;
+  readonly asset: Asset;
+  readonly onClose: () => void;
+  readonly onRemoved: () => void;
+}): JSX.Element {
+  const remove = useRemoveDatasetAsset(datasetId);
+
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent data-testid="remove-asset-dialog">
+        <DialogTitle>Remove {assetLabel(asset)} from the dataset?</DialogTitle>
+        <DialogDescription data-testid="remove-asset-consequence">
+          It leaves the trunk, and its annotations leave with it — the trunk carries assets, so
+          nothing labelled on this one stays in the dataset. Nothing is deleted: the image, its
+          annotations and its stored bytes all remain, and releases already published are
+          snapshots and are untouched. Promoting its batch again puts it back.
+        </DialogDescription>
+        {remove.isError && (
+          <FieldError data-testid="remove-asset-error">{refusalProse(remove.error)}</FieldError>
+        )}
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            data-testid="remove-asset-submit"
+            disabled={remove.isPending}
+            onClick={() =>
+              remove.mutate(asset.id, {
+                onSuccess: () => {
+                  onRemoved();
+                  onClose();
+                },
+              })
+            }
+          >
+            {remove.isPending ? "Removing…" : "Remove from dataset"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
