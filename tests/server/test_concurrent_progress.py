@@ -8,11 +8,18 @@ every request answered `200` is visible afterwards, and that anything not
 visible was answered something else. That holds whatever order the runner
 happens to give the threads, which is the point of stating it that way.
 
-The one test that *does* need a particular interleaving gates on
+The tests that *do* need a particular interleaving gate on
 `JobService.require_open_batch`, which is the last read `mark` performs before
 it decides. `TestClient` runs the application in this process, so patching the
 class reaches the real request handler — a gate there is not a stand-in for the
 race, it is the race, held still.
+
+Which of them need it is not a matter of taste: **any assertion about the
+*final* state that names a count of winners needs the gate**, because without
+it the writers may serialize, and a sequence of legal moves each answered `200`
+truthfully leaves a final state matching only the last. Only assertions that
+hold under any interleaving — every write lands, or nothing is refused — can be
+left to `_at_once`'s barrier alone.
 
 Threads rather than a task group: `TestClient` is a synchronous client, and the
 route it calls is a `def` handler that FastAPI runs in a worker thread against a
@@ -100,6 +107,33 @@ def _at_once(client: TestClient, job_id: str, moves: list[tuple[str, str]]) -> l
     return answers
 
 
+def _all_read_before_any_decides(monkeypatch: pytest.MonkeyPatch, writers: int) -> None:
+    """Hold every writer inside `mark` until all of them have read the asset.
+
+    `JobService.require_open_batch` is the last read `mark` performs before it
+    decides, and `current` is taken just above it — so a barrier here is the
+    point where every writer has its "what this move was judged against" in
+    hand and none has written. `TestClient` runs the application in this
+    process, so patching the class reaches the real request handler.
+
+    This is what a `threading.Barrier` in `_at_once` alone cannot do. That one
+    aligns the moment each thread *enters* `client.put`; it leaves the
+    read-decide-write window free to serialize, and on a loaded machine it
+    does. Overlap then stops being a property of the harness and becomes a
+    property of how busy the runner is, which is how #332 blocked unrelated
+    PRs while passing every local run.
+    """
+    everyone_has_read = threading.Barrier(writers, timeout=TIMEOUT_SECONDS)
+    read_the_job = JobService.require_open_batch
+
+    def gated(self: JobService, uow: Any, job: Any) -> Any:
+        batch = read_the_job(self, uow, job)
+        everyone_has_read.wait()
+        return batch
+
+    monkeypatch.setattr(JobService, "require_open_batch", gated)
+
+
 def test_three_concurrent_moves_over_one_job_move_three_assets(
     client: TestClient, working: tuple[str, str]
 ) -> None:
@@ -120,7 +154,7 @@ def test_three_concurrent_moves_over_one_job_move_three_assets(
 
 
 def test_a_move_answered_200_is_in_the_stored_state_whoever_else_was_writing(
-    client: TestClient, working: tuple[str, str]
+    client: TestClient, working: tuple[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """One asset, three writers, two destinations — the invariant, stated directly.
 
@@ -134,10 +168,19 @@ def test_a_move_answered_200_is_in_the_stored_state_whoever_else_was_writing(
     from where they were read, so which one lands is the scheduler's business
     and neither answer is a defect. What would be a defect is a `200` for a
     value that is not there.
+
+    Gated, because that claim is only true while the three writers genuinely
+    overlap. Let them serialize and all three answer `200` truthfully —
+    `unannotated -> annotated`, the same move again as a no-op, then
+    `annotated -> skipped`, each legal and each stored when it was reported —
+    and the final state matches only the last of them. That is not a lost
+    write, so weakening the assertion to admit it would stop pinning what #302
+    was about; holding the interleaving still is what keeps it pinned.
     """
     batch_id, job_id = working
     asset = asset_ids(client, batch_id)[0]
     moves = [(asset, "skipped"), (asset, "annotated"), (asset, "annotated")]
+    _all_read_before_any_decides(monkeypatch, WRITERS)
 
     answers = _at_once(client, job_id, moves)
 
@@ -162,16 +205,7 @@ def test_the_writer_that_lost_the_race_is_refused_with_stale_write(
     """
     batch_id, job_id = working
     asset = asset_ids(client, batch_id)[0]
-
-    both_have_read = threading.Barrier(2, timeout=TIMEOUT_SECONDS)
-    read_the_job = JobService.require_open_batch
-
-    def gated(self: JobService, uow: Any, job: Any) -> Any:
-        batch = read_the_job(self, uow, job)
-        both_have_read.wait()
-        return batch
-
-    monkeypatch.setattr(JobService, "require_open_batch", gated)
+    _all_read_before_any_decides(monkeypatch, 2)
 
     answers = _at_once(client, job_id, [(asset, "skipped"), (asset, "annotated")])
 
