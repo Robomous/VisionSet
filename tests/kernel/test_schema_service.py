@@ -31,6 +31,7 @@ from visionset.kernel import (
     SchemaVersionConflict,
     UnsupportedGeometry,
 )
+from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
     Annotation,
@@ -42,7 +43,6 @@ from visionset.kernel.domain import (
     LabelClass,
     SchemaProvenance,
 )
-from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.services import ProjectService, SchemaService, WorkspaceService
 
 SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
@@ -680,7 +680,7 @@ def test_the_provenance_a_caller_stated_survives_the_round_trip(
 
 
 def test_a_version_published_without_a_provenance_has_none(tmp_path: Path) -> None:
-    """"Nobody said" is a legal answer, and the service does not fill it in.
+    """ "Nobody said" is a legal answer, and the service does not fill it in.
 
     The SDK is the caller this is for: a script composing a schema in Python is
     neither surface, and making it choose would put a decision where there is no

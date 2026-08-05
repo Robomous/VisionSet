@@ -27,6 +27,7 @@ export const SCHEMA: AnnotationSchema = {
   ],
   description: null,
   created_at: null,
+  provenance: null,
 };
 
 /** A bbox annotation on the sample asset. `x` is the field the edits move. */

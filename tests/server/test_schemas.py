@@ -524,9 +524,7 @@ def test_a_provenance_the_contract_does_not_declare_is_422(
     assert response.json()["code"] == "VALIDATION_ERROR"
 
 
-def test_the_listing_carries_each_versions_own_provenance(
-    client: TestClient, project: str
-) -> None:
+def test_the_listing_carries_each_versions_own_provenance(client: TestClient, project: str) -> None:
     """The run-versus-milestone shape a version history reads."""
     client.post(
         f"/projects/{project}/schema/versions",

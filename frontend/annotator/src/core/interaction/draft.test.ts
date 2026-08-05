@@ -53,6 +53,7 @@ const SCHEMA: AnnotationSchema = {
   classes: [SIGN, BARE],
   description: null,
   created_at: null,
+  provenance: null,
 };
 
 function documentHere(): AnnotationDocument {

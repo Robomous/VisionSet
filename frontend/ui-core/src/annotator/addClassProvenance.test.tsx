@@ -95,7 +95,7 @@ function answer(path: string): unknown {
           ingested_at: null,
           job_id: JOB,
           progress: "unannotated",
-          allowed_actions: assetActions("unannotated", { batch: "in_annotation" }),
+          allowed_actions: assetActions("unannotated", { batchState: "in_annotation" }),
         },
       ],
       total: 1,

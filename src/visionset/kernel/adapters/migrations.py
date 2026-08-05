@@ -6,13 +6,14 @@ whatever is missing. There is no alembic here — a local-first, single-file,
 single-writer store does not need a migration framework, and ``format_version``
 would then have to be kept in sync with a second ledger by hand.
 
-**There is exactly one migration, and it is the baseline.** A long chain of
-generations got the schema to its present shape while VisionSet was unreleased;
-every database they could have upgraded was disposable test data in this
-repository. Keeping them meant carrying an idempotency argument and an undo line
-per generation, plus the scaffolding that proves each one actually ran — all to
-protect files that do not exist. So today's ``_tables`` *is* generation 1, and a
-fresh database is created directly at it.
+**Generation 1 is the baseline; everything after it is an ordinary migration.** A
+long chain of generations got the schema to its present shape while VisionSet was
+unreleased; every database they could have upgraded was disposable test data in
+this repository. Keeping them meant carrying an idempotency argument and an undo
+line per generation, plus the scaffolding that proves each one actually ran — all
+to protect files that do not exist. So today's ``_tables`` *is* generation 1, and
+a fresh database is created directly at it. The chain restarted from there, and
+the three rules below are in force again for every entry appended since.
 
 **There are no downgrade paths, deliberately.** Nothing here walks a file
 backwards and the tests no longer do either. A downgrade is a compatibility
@@ -24,9 +25,13 @@ an ``upgrade`` that takes a live connection. Do NOT edit an existing one — a
 workspace already stamped at that version will never run it again.
 ``FORMAT_VERSION`` is derived from the list, so it cannot drift from reality.
 
-Three rules go back into force the moment a second migration exists. They are
-written down here rather than left in the deleted code's history, because this
-is where the next person will look:
+Three rules, back in force since migration 2. They are written down here rather
+than left in the deleted code's history, because this is where the next person
+will look. A fourth lives in the tests and belongs beside them: a migration that
+adds a **column** must also have that column dropped in
+``tests/kernel/test_migrations.py``'s ``_at_generation_one``, or it finds the
+column already present, returns early, and the fresh-versus-migrated comparison
+passes while exercising nothing.
 
 * **Every migration after the first must be idempotent.** Migration 1 is
   ``create_all`` of *today's* metadata, not a frozen snapshot, so adding a

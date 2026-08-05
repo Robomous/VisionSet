@@ -86,6 +86,7 @@ const SCHEMA: AnnotationSchema = {
   classes: [WEATHER, NIGHT, SIGN, LANE, RAIL],
   description: null,
   created_at: null,
+  provenance: null,
 };
 
 function documentHere(annotations: readonly Annotation[] = []): AnnotationDocument {
