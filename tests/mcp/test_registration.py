@@ -41,6 +41,8 @@ SHIPPED = {
     "promote_batch",
     "create_correction_batch",
     "create_batch",
+    "add_batch_assets",
+    "remove_batch_assets",
     "get_job",
     "start_job",
     "complete_job",

@@ -66,6 +66,8 @@ POST   /batches/{batch_id}/repin                          ?allow_destructive=
 POST   /batches/{batch_id}/complete
 GET    /batches/{batch_id}/jobs
 GET    /batches/{batch_id}/assets                         paged
+POST   /batches/{batch_id}/assets                         draft only
+DELETE /batches/{batch_id}/assets?id=&id=                 draft only
 GET    /jobs/{job_id}
 GET    /jobs/{job_id}/progress
 POST   /jobs/{job_id}/start

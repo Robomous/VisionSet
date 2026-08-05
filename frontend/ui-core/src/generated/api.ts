@@ -91,8 +91,45 @@ export interface paths {
          */
         get: operations["list_batch_assets"];
         put?: never;
-        post?: never;
-        delete?: never;
+        /**
+         * Add Batch Assets
+         * @description Put assets into a draft batch.
+         *
+         *     **Only while the batch is a draft**, which is what `edit_membership` in its
+         *     `allowed_actions` declares. Approval partitions the batch into jobs against a
+         *     pinned schema version, so an asset added afterwards would belong to no job —
+         *     hence 409 `BATCH_NOT_EDITABLE` from that point on, and there is no flag that
+         *     lifts it.
+         *
+         *     Idempotent, and it says so in the answer rather than leaving it to be
+         *     inferred: `changed` lists the ids this call actually wrote, so adding three
+         *     assets of which two were already members reports one. An asset the batch
+         *     already holds is not an error.
+         *
+         *     An id that is not an asset of this batch's project is 404 `ASSET_NOT_FOUND`
+         *     and **nothing is written** — the whole call is refused, for the reason
+         *     annotation writes are all-or-nothing.
+         */
+        post: operations["add_batch_assets"];
+        /**
+         * Remove Batch Assets
+         * @description Take assets out of a draft batch. One transaction, however many ids you pass.
+         *
+         *     **This removes membership, not assets.** The asset stays in its project, in
+         *     the blob store, and in every other batch that carries it; only this batch
+         *     stops listing it.
+         *
+         *     Draft only, like adding, and for the sharper half of the same reason: after
+         *     approval a job already describes work over that asset, and removing the
+         *     member would leave the job describing work that no longer exists. From then
+         *     on the way to exclude an asset is to mark it `skipped` — a decision the
+         *     record keeps rather than erases — and this answers 409 `BATCH_NOT_EDITABLE`.
+         *
+         *     An id the batch does not hold is ignored rather than refused, and `changed`
+         *     reports what actually went, so "removed 3" can be told from "3 were already
+         *     gone".
+         */
+        delete: operations["remove_batch_assets"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1890,6 +1927,23 @@ export interface components {
             name: string;
         };
         /**
+         * BatchMembership
+         * @description Which assets to put in, or take out of, a draft batch.
+         */
+        BatchMembership: {
+            /** Asset Ids */
+            asset_ids: string[];
+        };
+        /**
+         * BatchMembershipOut
+         * @description A membership edit's outcome: the batch afterwards, and what actually moved.
+         */
+        BatchMembershipOut: {
+            batch: components["schemas"]["BatchOut"];
+            /** Changed */
+            changed: string[];
+        };
+        /**
          * BatchOut
          * @description A curated slice of a project's assets that moves through annotation together.
          */
@@ -2935,6 +2989,165 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_batch_assets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchMembership"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchMembershipOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_batch_assets: {
+        parameters: {
+            query: {
+                /** @description An asset to remove from the batch. Repeat the parameter per id. */
+                id: string[];
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchMembershipOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

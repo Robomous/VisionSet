@@ -78,6 +78,7 @@ from visionset.kernel.domain import (
     IngestState,
     JobAction,
     LabelClass,
+    MembershipChange,
     Partition,
     PolygonGeometry,
     Project,
@@ -740,6 +741,45 @@ class BatchCreate(BaseModel):
     # state, and `EmptyBatch` is what refuses *approving* one. The kernel refuses
     # an id outside the project with `AssetNotFound`, so nothing is restated here.
     asset_ids: list[UUID] = Field(default_factory=list)
+
+
+class BatchMembership(BaseModel):
+    """Which assets to put in, or take out of, a draft batch."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Required, unlike `BatchCreate.asset_ids`: creating an empty batch is a
+    # legitimate intermediate state, but *editing* membership without naming a
+    # single asset is a request that means nothing, and a default would turn it
+    # into a silent 200 that did nothing.
+    asset_ids: list[UUID] = Field(min_length=1)
+
+
+class BatchMembershipOut(BaseModel):
+    """A membership edit's outcome: the batch afterwards, and what actually moved."""
+
+    # Two facts rather than one, because the batch alone cannot answer the
+    # question a bulk edit raises. `changed` is what *this call* wrote — every id
+    # it was given minus the ones the batch already agreed about — so "removed 3"
+    # can be told from "3 were already gone". An idempotent operation that
+    # reports only the final state loses exactly that distinction, and #305's
+    # third banned pattern is a surface with no way to tell "did N" from "nothing
+    # to do".
+    batch: BatchOut
+    changed: list[UUID]
+
+    @classmethod
+    def of(
+        cls,
+        change: MembershipChange,
+        counts: dict[AssetProgress, int],
+        *,
+        promoted: AbstractSet[UUID],
+    ) -> Self:
+        return cls(
+            batch=BatchOut.of(change.batch, counts, promoted=promoted),
+            changed=list(change.changed),
+        )
 
 
 class BatchCorrection(BaseModel):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from tests.mcp._flow import (
@@ -269,3 +270,73 @@ def test_a_repin_that_would_orphan_this_batchs_labels_offers_no_retry(
     assert refused["retry_with"] is None
     assert "sign" in refused["message"]
     assert payload(call("get_batch", batch_id=batch_id))["schema_version"] == 1
+
+
+# --- membership editing (#281) ------------------------------------------------
+
+
+def _members(batch_id: str) -> list[str]:
+    return [str(a["id"]) for a in payload(call("list_batch_assets", batch_id=batch_id))["items"]]
+
+
+def test_an_agent_can_move_an_asset_between_two_draft_batches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The whole capability in one walk, which is how an agent would meet it."""
+    project, source = ingested(monkeypatch, tmp_path, count=3)
+    target = str(payload(call("create_batch", project=project, name="hand-cut"))["id"])
+    moving = _members(source)[0]
+
+    added = payload(call("add_batch_assets", batch_id=target, asset_ids=[moving]))
+    removed = payload(call("remove_batch_assets", batch_id=source, asset_ids=[moving]))
+
+    assert added["changed"] == [moving]
+    assert added["asset_count"] == 1
+    assert removed["changed"] == [moving]
+    assert _members(target) == [moving]
+    assert moving not in _members(source)
+
+
+def test_membership_edits_that_change_nothing_report_that_they_changed_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Idempotent both ways, and legible: an agent must not read a no-op as work."""
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+    held = _members(batch_id)
+
+    assert payload(call("add_batch_assets", batch_id=batch_id, asset_ids=held))["changed"] == []
+    stranger = str(uuid4())
+    assert (
+        payload(call("remove_batch_assets", batch_id=batch_id, asset_ids=[stranger]))["changed"]
+        == []
+    )
+    assert _members(batch_id) == held
+
+
+def test_membership_is_refused_once_the_batch_is_approved(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """And the refusal names the remedy, which is the whole reason it is legible."""
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+    held = _members(batch_id)
+    payload(call("approve_batch", batch_id=batch_id))
+
+    refusal = error(call("remove_batch_assets", batch_id=batch_id, asset_ids=[held[0]]))
+
+    assert "skipped" in refusal["message"]
+    # `retry_with` is null rather than a flag name: no flag lifts this, and an
+    # agent told otherwise would loop.
+    assert refusal["retry_with"] is None
+    assert _members(batch_id) == held
+
+
+def test_the_batch_declares_the_capability_the_tools_enforce(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """What an agent should read before calling, agreeing with what happens if it does."""
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+    assert "edit_membership" in payload(call("get_batch", batch_id=batch_id))["allowed_actions"]
+
+    payload(call("approve_batch", batch_id=batch_id))
+
+    assert "edit_membership" not in payload(call("get_batch", batch_id=batch_id))["allowed_actions"]
