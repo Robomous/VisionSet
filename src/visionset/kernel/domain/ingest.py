@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import StrEnum
+from pathlib import Path
 from typing import Final
 from uuid import UUID, uuid4
 
@@ -89,11 +90,12 @@ class IngestFailureKind(StrEnum):
 class IngestFailure(BaseModel):
     """One item an ingest run could not turn into an asset.
 
-    ``name`` is the run's own name for the item — a path for a file on disk,
+    ``name`` is the run's own name for the item — a filename for a file on disk,
     ``clip.mp4#frame=42`` for a frame — and never the exception's, which
     ``MediaError`` documents as reporting rather than identity. ``reason`` never
     repeats the name, which is what lets a report be a table instead of a list
-    of sentences.
+    of sentences. It is built by ``report_name`` below, which is what keeps a
+    server path out of it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -101,6 +103,40 @@ class IngestFailure(BaseModel):
     name: str
     kind: IngestFailureKind
     reason: str
+
+
+def report_name(item: Path | str, *, root: Path | None = None) -> str:
+    """What a report calls one item, with the server's own layout left out.
+
+    ``Source.path`` and ``Asset.uri`` are deliberately unpublished — an absolute
+    path is useless to a client and needlessly disclosive, which is why
+    ``SourceOut.name`` carries a basename and reaching bytes goes through a
+    route keyed on an asset id. ``IngestFailure.name`` was the one field that
+    carried one anyway, and by accident rather than by decision: it is whatever
+    the run's own loop happened to be holding, so a directory ingest published a
+    path and a clip published another (#317).
+
+    ``root`` is the directory the run was reading, when it has one. The answer
+    is then the path **relative to** it, so a file stays distinguishable from a
+    namesake in a sibling directory without naming the machine either lives on.
+    With no root — a clip, or an asset whose source is no longer in hand — the
+    answer is the basename, which is the rule every neighbouring decision makes.
+
+    A frame's ``clip.mp4#frame=42`` survives either branch: the fragment holds no
+    separator, so it belongs to the basename rather than going with the path.
+    """
+    path = Path(item)
+    if root is not None:
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            # Not under that root after all. Nothing to report about the
+            # mismatch — the basename below is still an honest answer.
+            pass
+        else:
+            if relative != Path("."):
+                return str(relative)
+    return path.name
 
 
 class IngestJob(BaseModel):
