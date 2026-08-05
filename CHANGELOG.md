@@ -121,6 +121,22 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **`scripts/check.sh` says what it covered, on the stream a caller actually reads** (#336). It
+  had aborted correctly on a missing `node_modules` since #249 — but on **stderr**, with nothing
+  at all on stdout, so an agent or a CI step capturing stdout saw a partial run and a full one as
+  the same thing: some green pytest output, then silence. The exit code was right, and nobody
+  reads an exit code out of a transcript.
+
+  Every run now ends with `check.sh: PASSED  ran=…  skipped=…` on stdout, printed from a
+  `trap … EXIT` so no way out can skip it. `ran=` is what *completed*, never what was asked for,
+  and `INCOMPLETE` is kept apart from `FAILED` because "the checks did not happen" and "the checks
+  found something" are different news. The browser banner now follows what ran rather than what
+  was requested — a run that asked for everything and died in `frontend` skipped those suites just
+  as completely as `--fast` did — and stays quiet when nothing ran at all, so a usage error is not
+  buried under twelve lines about Playwright. `tests/scripts/check_stages.test.mjs` guards it,
+  including that every group the script knows is still dispatched: the way this rots is a stage
+  quietly leaving the loop, which shrinks coverage while everything left passes.
+
 - **The annotator's address bar names the frame on screen** (#353). `?asset=` recorded where the
   annotator was *entered*: the next and previous buttons moved through the job in the page's own
   state and never touched it, so after one press the URL named a different picture than the

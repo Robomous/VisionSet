@@ -43,6 +43,23 @@ real-server cycle suite was three separate times the *only* one to catch a regre
 than quietly, because "All checks passed" has always meant "all the checks this invocation
 ran".
 
+**The last line on stdout says what the run covered**, so "all the checks this invocation
+ran" is something a reader can check rather than infer (#336):
+
+```
+check.sh: PASSED  ran=python,frontend,generated,browser  skipped=none
+```
+
+`ran=` is what *completed* — never what was asked for — and the verdict is one of three:
+`PASSED`, `FAILED` (a step reported a problem) or `INCOMPLETE` (the run left early, so
+nothing was found wrong; the checks simply did not happen). It comes from a `trap … EXIT`,
+so a missing `node_modules` three groups in cannot skip it. That matters because the abort
+message goes to **stderr**: before this, a caller capturing stdout saw a partial run and a
+full one as the same thing — some green pytest output and then silence — which is the
+false-calm failure this file warns about for `| tail`, arriving from the other direction.
+`tests/scripts/check_stages.test.mjs` holds it, including that every group the script knows
+is still dispatched.
+
 The script sets **`CI=1`** for the Playwright steps itself. It is load-bearing:
 `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so without it a stale
 vite server left on this worktree's e2e port answers instead of the build under test, and

@@ -173,6 +173,86 @@ run_browser() {
   step "browser cycle, real server (chromium)" browser_cycle
 }
 
+# Every group this script knows, in the order they run. Also the roster the
+# verdict line below measures coverage against, and what
+# `tests/scripts/check_stages.test.mjs` holds the dispatch `case` to — a group
+# that loses its arm, or an arm with no group, is a silently shortened run.
+declare -a ALL_GROUPS=(python frontend generated browser)
+
+# What actually *completed*, comma-joined — never what was asked for. A string
+# rather than an array because macOS still ships bash **3.2**, where an empty
+# array under `set -u` is an unbound variable; the timing table below is
+# length-checked for the same reason, and this way there is nothing to forget.
+ran=""
+
+# The last line on **stdout**, on every exit path, and the whole of #336.
+#
+# `require_node_modules` aborts correctly and says so — on stderr, with nothing at
+# all on stdout. So a caller that captures stdout (an agent, a CI step, a
+# `$(…)`) sees a partial run and a full one as the same thing: some green pytest
+# output, and then silence. The exit code is right, and nobody reads an exit code
+# out of a transcript. It is the same false-calm failure this file's own header
+# warns about for `| tail`, arriving from the other direction.
+#
+# Printed from a `trap … EXIT`, which is what makes it unconditional: there is no
+# way out of this script — a failed step, an unknown group, a missing
+# `node_modules` three groups in — that can skip it.
+#
+# Three outcomes, because "did not run" and "ran and was wrong" are different
+# news: PASSED, FAILED (a step reported a problem), INCOMPLETE (the script left
+# before the group loop finished — nothing was found wrong with the tree, the
+# checks simply did not happen).
+summary() {
+  local status=$?
+  local outcome skipped=""
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    outcome=FAILED
+  elif [[ $status -ne 0 ]]; then
+    outcome=INCOMPLETE
+  else
+    outcome=PASSED
+  fi
+  local group
+  for group in "${ALL_GROUPS[@]}"; do
+    case ",$ran," in
+      *",$group,"*) ;;
+      *) skipped="${skipped:+$skipped,}$group" ;;
+    esac
+  done
+  echo
+  printf 'check.sh: %s  ran=%s  skipped=%s\n' "$outcome" "${ran:-none}" "${skipped:-none}"
+
+  # The banner, **after** the line it qualifies — it exists to say what
+  # "PASSED" did not cover, so it has to be what is still on screen once that
+  # line has scrolled into the backlog. Keyed on what *ran*, not on what was
+  # asked for, which is what this comment always claimed and now is: a run that
+  # requested `browser` and died in `frontend` skipped it just as completely as
+  # `--fast` did. ASCII rather than box drawing, so it survives every terminal
+  # it lands in.
+  #
+  # Nothing at all having run is the one case it stays quiet for. A usage error
+  # or a missing prerequisite is not a partial run somebody might mistake for a
+  # complete one, and the INCOMPLETE line above has already said so — twelve
+  # lines about the browser suites in front of `unknown group 'nope'` buries the
+  # answer under the wrong warning.
+  if [[ -z $ran ]]; then return; fi
+  case ",$ran," in
+    *",browser,"*) return ;;
+  esac
+  echo "=============================================================================" >&2
+  echo " !!  THE BROWSER SUITES DID NOT RUN  --  this is not what CI runs         !!" >&2
+  echo "=============================================================================" >&2
+  echo " skipped:  annotator + app e2e           CI job: annotator e2e (chromium)" >&2
+  echo "           browser cycle, real server    CI job: browser cycle (chromium)" >&2
+  echo "" >&2
+  echo " The real-server cycle run was three separate times the ONLY suite to" >&2
+  echo " catch a regression during the 2026-08 remediation run (#306, #308, #309)." >&2
+  echo "" >&2
+  echo " Run them:  bash scripts/check.sh browser" >&2
+  echo "=============================================================================" >&2
+}
+trap summary EXIT
+
 declare -a groups=()
 fast=0
 for arg in "$@"; do
@@ -209,6 +289,9 @@ for group in "${groups[@]}"; do
       exit 2
       ;;
   esac
+  # Recorded *after* the group returns, so a group that aborted partway through —
+  # `require_node_modules`, which exits — is never counted as covered.
+  ran="${ran:+$ran,}$group"
 done
 
 echo
@@ -233,25 +316,6 @@ else
   echo "All checks passed."
 fi
 
-# Printed **after** the verdict, and that is the placement rather than an
-# accident: the banner exists to qualify "All checks passed", so it has to be
-# the thing still on screen once that line has scrolled into the backlog.
-# Printed whenever the browser suites did not run, not only under `--fast` — a
-# partial run is the same lie however it was asked for. ASCII rather than box
-# drawing, so it survives every terminal it lands in.
-if [[ " ${groups[*]} " != *" browser "* ]]; then
-  echo
-  echo "=============================================================================" >&2
-  echo " !!  THE BROWSER SUITES DID NOT RUN  --  this is not what CI runs         !!" >&2
-  echo "=============================================================================" >&2
-  echo " skipped:  annotator + app e2e           CI job: annotator e2e (chromium)" >&2
-  echo "           browser cycle, real server    CI job: browser cycle (chromium)" >&2
-  echo "" >&2
-  echo " The real-server cycle run was three separate times the ONLY suite to" >&2
-  echo " catch a regression during the 2026-08 remediation run (#306, #308, #309)." >&2
-  echo "" >&2
-  echo " Run them:  bash scripts/check.sh browser" >&2
-  echo "=============================================================================" >&2
-fi
-
+# The machine-readable line and the browser banner both come from `summary`, on
+# the way out. Nothing more to print here.
 exit "$verdict"
