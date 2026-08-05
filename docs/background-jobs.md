@@ -77,6 +77,31 @@ here `attempt` on one row would have to mean two different things, and a list of
 jobs would hide a history behind a single line. So the orphan sweep re-enqueues
 an idempotent job as a fresh one, and a list shows the crash *and* the recovery.
 
+**The `job` table has no `project_id`, and no foreign key at all.** Settled, not
+outstanding — it is the thing about this schema most likely to read as an
+oversight, so: do not add one.
+
+A job is *workspace-scoped execution plumbing*. What a job is **about** lives in
+its `payload`, keyed by id, and different types are about different things: an
+export is about a release, an ingest about an ingest job, the next one about
+something else again. A `project_id` would be null for some types and wrong for
+others, and a column that is sometimes meaningless is one every reader learns to
+distrust.
+
+The keyless half is load-bearing. Under `PRAGMA foreign_keys = ON` a key means a
+cascade, and a cascade here would delete the record of work that already
+*happened*: "this export ran and here is where it put the archive" stays true
+after the release is gone, and a job row outliving its subject is the behaviour
+rather than a leak. It also leaves this the one table a later migration can widen
+freely — a column carrying a foreign key cannot arrive by `ALTER TABLE` in
+SQLite, so a table with no keys never needs the rebuild that `_tables.py`
+documents for everything else.
+
+What it costs, stated: there is no `GET /projects/{id}/background-jobs` and there
+cannot be one without reading payloads. Nobody has asked. If somebody does, the
+honest shape is a nullable, unindexed, **no-key** `scope` column written by
+whoever enqueues — not a foreign key.
+
 **Cancellation is cooperative.** A queued job is cancelled outright; a running
 one is only *told*, and its handler decides where stopping is safe. Nothing is
 killed mid-statement, because a handler halfway through writing rows would leave
@@ -183,6 +208,14 @@ answered them.
 - **No scheduled or recurring jobs.** A job exists because a request made one.
 - **No hard cancellation.** See above.
 - **No cross-process events.** A durable outbox is pro/multi-node territory.
+- **No artifact retention policy.** What a job leaves in `<workspace>/exports/`
+  stays there until somebody deletes it — no TTL, no size cap, no sweeper, and no
+  `DELETE` route. Deliberate: the disk is the user's, and it is the posture blobs
+  and staged uploads already have. `docs/releases.md` and `docs/workspaces.md`
+  argue it; a deployment that wants a policy owns one, over plain files.
+- **No `project_id` on the `job` table**, and no foreign key at all. See "The
+  decisions, and why" above — scoping lives in the payload, and a key would
+  cascade away the record of work that already happened.
 - **`ingest_job` and `job` coexist.** An ingest has two rows for one run: the
   `ingest_job` is the domain record and the wire contract, the `job` is execution
   plumbing. Collapsing them is a migration with its own wire-contract discussion.

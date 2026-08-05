@@ -578,6 +578,17 @@ like `uploads/`, and the handler clears it before each run so the archive descri
 and not the last one. The archive is a sibling of that directory rather than a file inside it, so
 a re-export cannot sweep the previous one into the new one.
 
+**Nothing expires it, and that is the policy rather than a gap.** An export stays in
+`<workspace>/exports/` until somebody deletes it: there is no TTL, no size cap, no sweeper, and
+no `DELETE` route. VisionSet is local-first and the disk is the user's — a tool that quietly
+removed a training set somebody had exported, on a schedule they did not choose, would be
+solving a problem they did not report by taking an action they cannot undo. It is the same
+posture blobs and staged uploads already have, and it is stated here rather than left implicit
+so that "exports are never cleaned up" reads as an answer instead of an omission. A deployment
+that does want a policy owns one: the directory is plain files under a path the operator chose,
+and `find`, a cron job or a retention rule on the volume are all better placed to express it
+than this product is. Re-exporting is free, so deleting the lot is safe.
+
 **Which formats exist is a property of the deployment**, so `GET /formats` answers it rather
 than this document. `lossy` is on the row so a client knows before it POSTs whether the export
 will need `allow_lossy=true`, instead of discovering it by getting a 409; `geometries` and
