@@ -66,6 +66,20 @@ There is no membership row for a label, and there never will be. An `Annotation`
 `(dataset_id, asset_id)` and that is all it is — a second table would be a second thing to keep
 in step with the first, with nothing gained.
 
+Two consequences, both settled policy (audit G5) and both worked through in
+[batches.md](batches.md#what-the-trunk-projects-one-set-per-asset-never-one-per-round):
+
+- **The trunk projects one annotation set per asset, never one per round.** A correction batch
+  over a promoted asset opens on the labels already there and edits them in place, so it
+  *replaces* rather than accumulating — and deleting a box is therefore expressible. Two
+  completed batches over one asset hold whatever the last **writer** left, in either promotion
+  order.
+- **The projection is live.** An edit inside an open batch reaches the trunk when it is saved,
+  not when the batch is promoted; membership is the thing promotion gates. Snapshotting would
+  mean the trunk naming annotations too, which is the second table this section refuses. A
+  published `Release` is unaffected — its manifest is a frozen blob and its hash is the
+  contract.
+
 ### Order
 
 Membership lands in the **batch's** asset order — which is ingest order — not in the order the

@@ -113,6 +113,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   // a resource the *browser* went looking for on its own, which is the only kind
   // #161 is about and the only kind nothing else would notice.
   const apiRefusals = new Set<string>();
+  // Requests the *app* issued that the network stack reported as aborted.
+  // Asserted rather than ignored — see the final step for why they are not
+  // `badRequests` and what the one expected member of this list is.
+  const abortedApiCalls: string[] = [];
   page.on("response", (response) => {
     const kind = response.request().resourceType();
     if (response.status() < 400) return;
@@ -124,7 +128,20 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     if (apiRefusals.has(message.location().url)) return;
     consoleErrors.push(`${message.text()} @ ${message.location().url}`);
   });
-  page.on("requestfailed", (request) => badRequests.push(`failed ${request.url()}`));
+  page.on("requestfailed", (request) => {
+    // **The reason, not just the URL.** A bare `failed <url>` cannot tell a
+    // resource the browser could not fetch from a call that completed and whose
+    // empty body stream the network stack then tore down, and those want
+    // opposite responses. Splitting them here is what lets each be asserted for
+    // what it is instead of one of them being quietly tolerated.
+    const reason = request.failure()?.errorText ?? "unknown";
+    const kind = request.resourceType();
+    if ((kind === "fetch" || kind === "xhr") && reason === "net::ERR_ABORTED") {
+      abortedApiCalls.push(`${request.method()} ${new URL(request.url()).pathname}`);
+      return;
+    }
+    badRequests.push(`failed ${reason} ${request.url()}`);
+  });
 
   await test.step("open the app, which asks for nothing", async () => {
     await page.goto("./");
@@ -597,6 +614,125 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId(`verified-${TAG}`)).toContainText("Intact");
   });
 
+  await test.step("walk the correction through, and watch the trunk follow it", async () => {
+    /*
+     * **Trunk supersession, end to end** (audit G5, settled 2026-08). The policy
+     * is asset-level replacement with corrections seeded on approval, and every
+     * claim in it is about what a person *sees*, so this is where it is proved.
+     *
+     * The correction batch was created several steps up; `v1` has since been
+     * published and verified. What follows is the rest of the story: approve it,
+     * find the earlier round's labels already drawn, change them, promote, and
+     * check that the trunk moved while the release did not.
+     *
+     * The three assertions worth naming in advance, because each of them failed
+     * before this task or could not be made at all:
+     *
+     * 1. the correction's frames read as **annotated with N boxes**, not
+     *    "Unannotated" — they were `unannotated` while displaying labels, which
+     *    is the lie the seeding rule removes;
+     * 2. a box deleted here is **gone from the trunk**, class and all —
+     *    replacement rather than accumulation, which is what makes deletion
+     *    expressible at all; and
+     * 3. an asset the correction left alone still shows the parent round's
+     *    labels, so replacement is per asset and not collateral.
+     *
+     * What is *not* here: editing a label in place, which needs two classes of
+     * one geometry and this schema has none. It is pinned in
+     * `tests/kernel/test_trunk_supersession.py` instead, where a reclass through
+     * `AnnotationService.update` is one line.
+     */
+    await openProject(page, PROJECT, "batches");
+    // `defaultCorrectionName` built this, and the dialog above was submitted
+    // with it untouched. Spelled out rather than read back off the row so a
+    // rename of the suggestion is a failure here rather than a silent pass.
+    const CORRECTION = "cycle-batch — correction";
+    await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("pending approval");
+
+    await page.getByTestId(`approve-${CORRECTION}`).click();
+    await page.getByTestId("approve-submit").click();
+    await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("approved");
+    // The child pins the project's *active* version at its own approval rather
+    // than inheriting the parent's. They are the same number here because
+    // nothing has published since — the claim is that it pinned, not that it
+    // copied.
+    await expect(page.getByTestId(`batch-${CORRECTION}`)).toContainText("v1");
+    await page.getByTestId(`start-${CORRECTION}`).click();
+    await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("in progress");
+
+    await page.getByTestId(`open-batch-${CORRECTION}`).click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
+
+    // (1) Seeded. Nothing was copied to make this true — annotations hang off an
+    // `asset_id`, so the labels were already on these frames; what approval
+    // added is the honest progress. A tile only counts its boxes once its
+    // progress says there are some to count, which is exactly why the old
+    // `unannotated` was not a cosmetic problem.
+    const tiles = page.getByTestId(/^tile-/);
+    await expect(tiles).toHaveCount(3);
+    const corrected = (await tiles.first().getAttribute("data-testid"))!.replace("tile-", "");
+    const untouched = (await tiles.nth(2).getAttribute("data-testid"))!.replace("tile-", "");
+    await expect(page.getByTestId(`state-${corrected}`)).toContainText("1 box");
+    // The third frame carries the tag and the lane from the parent round.
+    await expect(page.getByTestId(`state-${untouched}`)).toContainText("2 boxes");
+
+    await tiles.first().getByTestId(`open-${corrected}`).click();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    // The parent's box, drawn, selectable and deletable — on a job that has
+    // written nothing of its own.
+    await expect(page.getByTestId("object-total")).toHaveText("1 object");
+    await page.getByTestId("tab-objects").click();
+    await expect(page.getByTestId("object-row-0")).toContainText("vehicle");
+
+    await page.getByTestId("object-delete-0").click();
+    await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+    // And something of the correction's own, so the frame stays settled and the
+    // trunk has an addition to show as well as a removal.
+    await drawPolygon(page);
+    await page.getByTestId("save").click();
+    await expect(page.getByTestId("save-state")).toContainText("Saved");
+
+    await page.getByTestId("finish-job").click();
+    await expect(page.getByTestId("finish-job")).toHaveText("Finished");
+
+    await openProject(page, PROJECT, "batches");
+    await page.getByTestId(`complete-${CORRECTION}`).click();
+    await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("completed", {
+      timeout: 30_000,
+    });
+
+    // Promotion moves membership and nothing else, and these three frames are
+    // already members — so the honest report is *nothing new*, not "promoted 3".
+    // The labels moved when they were saved, which is the live half of the
+    // policy and the part that surprises.
+    await page.getByTestId(`promote-${CORRECTION}`).click();
+    await expect(page.getByTestId(`promoted-${CORRECTION}`)).toHaveText(
+      /Already in the dataset/,
+      { timeout: 30_000 },
+    );
+
+    await page.getByTestId("tab-dataset").click();
+    await expect(page.getByTestId("dataset-screen")).toBeVisible();
+    // (2) The deleted box is gone from the trunk — and `vehicle` was the only one
+    // of its class, so the row goes with it. `DatasetStats.per_class` lists only
+    // classes that appear, which is what makes absence the assertable outcome.
+    await expect(page.getByTestId("class-count-vehicle")).toHaveCount(0);
+    // The correction's own polygon arrived beside the parent's.
+    await expect(page.getByTestId("class-count-lane")).toContainText("2");
+    // (3) The frame nobody opened still carries what the first round left.
+    await expect(page.getByTestId("class-count-daytime")).toContainText("1");
+    await expect(page.getByTestId("class-count-centerline")).toContainText("1");
+    // Membership never moved: replacement is about labels, not about who is in.
+    await expect(page.getByTestId("dataset-stats")).toContainText("3");
+
+    // And the release is exactly where it was left. Its manifest is a frozen
+    // blob and its hash is the contract, so a correction cannot reach back into
+    // one already published — checked through `verify`, which re-reads and
+    // re-hashes every blob rather than trusting the row it is compared against.
+    await page.getByTestId(`verify-${TAG}`).click();
+    await expect(page.getByTestId(`verified-${TAG}`)).toContainText("Intact");
+  });
+
   await test.step("export through the dummy format and download the archive", async () => {
     await page.getByTestId(`export-${TAG}`).click();
     await page.getByTestId("export-format").click();
@@ -646,6 +782,28 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // goes — and by the request below.
     expect(consoleErrors).toEqual([]);
     expect(badRequests).toEqual([]);
+
+    /*
+     * **The one aborted API call, pinned rather than tolerated.**
+     *
+     * `DELETE /jobs/{id}/annotations` answers `204 No Content`, and Chromium
+     * reports the request as `net::ERR_ABORTED` — there is no body for the
+     * renderer to read, so the network stack tears the stream down and files it
+     * as cancelled. Measured, not assumed: the deletion is committed (the
+     * `vehicle` class disappeared from the trunk two steps up), `save-state`
+     * read `Saved`, and the POST that follows it in `useSaveAnnotations` only
+     * fires after the DELETE's `await` resolves. It is bookkeeping, not a
+     * failure.
+     *
+     * It had no coverage before this walk because nothing in the browser had
+     * ever deleted an annotation — the correction story is the first thing that
+     * does, and it is the repo's only `204` fetch.
+     *
+     * Asserted as an exact list rather than filtered away: a *second* aborted
+     * call, or one on another route, is the shape of a request the app really
+     * did abandon, and that is worth failing on.
+     */
+    expect(abortedApiCalls).toEqual([expect.stringMatching(/^DELETE .*\/annotations$/)]);
     // And the icon is genuinely served under the mount, rather than absent and
     // unnoticed: `vite preview` would answer 200 with `index.html` here, which is
     // #49's trap and the reason this is checked against the real server.
