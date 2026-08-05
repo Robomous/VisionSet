@@ -12,6 +12,9 @@ description: Execution rules for any refactoring or feature task in the VisionSe
 - **Do not fix unrelated bugs you discover.** Record them in the PR body under "Found, not fixed".
 - **Layer boundaries**: no kernel changes unless the task explicitly grants them; `@visionset/annotator` internals untouched unless named; import-linter contracts must stay green — kernel purity is non-negotiable.
 - Settled domain decisions (see `batch-lifecycle` skill) are not re-litigated in implementation. If a task appears to require violating one, stop and flag.
+- **When a task renames or removes a command, subcommand, flag, or public symbol, a phrase grep for the old spelling is not proof of scope.** The call sites that actually *use* the name frequently do not contain the phrase: argv passes it as its own element (`["visionset", "ui", …]`), and it also travels as a config value, a dict key, or a string-built identifier. A clean `git grep -n "visionset ui"` reported the work finished while an example was still invoking the removed command. — #333
+- **Sweep with a word-boundary grep for the bare name over code and config** — `git grep -nwE "<name>"` — alongside the phrase grep, which still covers prose and docs. Triage every hit: update it, or name it in the PR body as deliberately left (CHANGELOG history, an unrelated homonym).
+- **The proof is a test that exercises the renamed surface end to end** — for a CLI command, one that spawns the real process. A test that patches the implementation underneath the name proves nothing about the name.
 
 ## Worktree isolation
 
