@@ -7,7 +7,7 @@
  * would prove nothing about the thing that was broken.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
@@ -67,14 +67,47 @@ describe("the tools a schema can reach", () => {
     expect(screen.getAllByTestId("tool-bbox")).toHaveLength(1);
   });
 
-  it("gives a tag and an unimplemented geometry no canvas tool", () => {
+  it("gives a classification tag no canvas tool at all", () => {
     render(mount());
 
-    // Both answer `null` from `drawableGeometry`, for different reasons, and
-    // neither is drawable. `daytime` is reachable from the Labels tab; `kerb` is
-    // not reachable at all, and must not look like it is.
+    // `drawableGeometry` answers `null`, and unlike `polyline` it always will:
+    // there is nothing to draw, because the label is about the whole image. The
+    // Labels tab is where it is toggled, so a strip button would be a second
+    // spelling of a control that exists elsewhere.
     expect(screen.queryByTestId("tool-classification_tag")).toBeNull();
-    expect(screen.queryByTestId("tool-polyline")).toBeNull();
+  });
+
+  it("shows polyline disabled with the reason, rather than not at all", () => {
+    render(mount());
+
+    // #223 shipped the geometry and not the tool (#342). Hiding the button says
+    // "this schema has no lanes", which is false — `kerb` is declared, the API
+    // accepts lanes under it, and the canvas renders them. Absent and
+    // not-yet-available must not look identical.
+    const button = screen.getByTestId("tool-polyline");
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.getAttribute("aria-label")).toContain("0.2");
+    expect(button.getAttribute("aria-label")).toContain("reviewed here");
+  });
+
+  it("does not activate a class when the disabled polyline button is pressed", () => {
+    // Activating `kerb` would leave `toolFor` answering `select` with a lane
+    // class held: a canvas whose primary gesture is inert, which is exactly the
+    // bug #198 fixed. The refusal is in the handler, not only in the styling.
+    const onActivateClass = vi.fn();
+    render(mount({ onActivateClass }));
+
+    fireEvent.click(screen.getByTestId("tool-polyline"));
+
+    expect(onActivateClass).not.toHaveBeenCalled();
+  });
+
+  it("puts every usable tool before the one that is not yet usable", () => {
+    // Top to bottom the strip reads as "what you can do". A disabled control in
+    // the middle of that list reads as a broken one rather than a coming one.
+    const choices = toolChoices(SCHEMA);
+    const firstUnavailable = choices.findIndex((choice) => choice.unavailable !== null);
+    expect(firstUnavailable).toBe(choices.length - 1);
   });
 
   it("names each geometry's first declaring class, in authored order", () => {
@@ -82,8 +115,31 @@ describe("the tools a schema can reach", () => {
     // bbox second must not be what the box button reaches for, because the digit
     // row is bound in the same order.
     const choices = toolChoices(SCHEMA);
-    expect(choices.map((choice) => choice.tool)).toEqual(["select", "bbox", "polygon"]);
-    expect(choices.map((choice) => choice.labelClass)).toEqual([null, "vehicle", "lane"]);
+    expect(choices.map((choice) => choice.tool)).toEqual([
+      "select",
+      "bbox",
+      "polygon",
+      "polyline",
+    ]);
+    // The pending one activates nothing, because there is no tool to activate.
+    expect(choices.map((choice) => choice.labelClass)).toEqual([
+      null,
+      "vehicle",
+      "lane",
+      null,
+    ]);
+  });
+
+  it("offers no polyline button at all when the schema declares no lane class", () => {
+    // The affordance is about *this* schema. A strip advertising a geometry
+    // nobody declared would be a roadmap, not a tool strip.
+    const noLanes = {
+      ...SCHEMA,
+      classes: SCHEMA.classes.filter((declared) => declared.geometry !== "polyline"),
+    } as typeof SCHEMA;
+    render(mount({ schema: noLanes }));
+
+    expect(screen.queryByTestId("tool-polyline")).toBeNull();
   });
 
   it("carries the digit the engine actually binds, and V for select", () => {

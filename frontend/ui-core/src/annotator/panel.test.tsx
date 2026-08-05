@@ -27,19 +27,26 @@ const SCHEMA = {
     { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
     { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
     { name: "daytime", geometry: "classification_tag", color: "#a3e635", attributes: [] },
+    { name: "centerline", geometry: "polyline", color: "#eb5a47", attributes: [] },
   ],
 };
 
-function annotation(id: string, labelClass: string, type: "bbox" | "polygon"): unknown {
+function annotation(
+  id: string,
+  labelClass: string,
+  type: "bbox" | "polygon" | "polyline",
+): unknown {
+  const shapes = {
+    bbox: { type: "bbox", x: 10, y: 10, width: 20, height: 20 },
+    polygon: { type: "polygon", points: [[0, 0], [10, 0], [10, 10]] },
+    polyline: { type: "polyline", points: [[2, 4], [12, 40], [30, 96]] },
+  } as const;
   return {
     id,
     asset_id: "asset-1",
     label_class: labelClass,
     schema_version: 1,
-    geometry:
-      type === "bbox"
-        ? { type: "bbox", x: 10, y: 10, width: 20, height: 20 }
-        : { type: "polygon", points: [[0, 0], [10, 0], [10, 10]] },
+    geometry: shapes[type],
     attributes: {},
     provenance: "human",
     model_ref: null,
@@ -91,6 +98,24 @@ describe("the Objects tab", () => {
     expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
     expect(screen.getByTestId("object-row-0").textContent).toContain("1. vehicle");
     expect(screen.getByTestId("object-row-1").textContent).toContain("2. lane");
+  });
+
+  it("lists a lane like any other object, and selects it from its row", async () => {
+    // #223 shipped the polyline geometry without a drawing tool, so the object
+    // list is the *only* way to reach one: `geometryContains` deliberately
+    // answers false for an open path, so a canvas press cannot select it. A row
+    // that could not select would leave a lane visible and untouchable.
+    const store = storeWith([
+      annotation("a", "vehicle", "bbox"),
+      annotation("b", "centerline", "polyline"),
+    ]);
+    render(mount(store));
+
+    expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
+    expect(screen.getByTestId("object-row-1").textContent).toContain("2. centerline");
+
+    await userEvent.click(screen.getByTestId("object-select-1"));
+    expect([...store.selection]).toEqual(["b"]);
   });
 
   it("round-trips the selection, because there is only one", async () => {
