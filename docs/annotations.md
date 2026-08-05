@@ -534,9 +534,12 @@ the fix is a `data-testid`.
 pnpm --filter @visionset/app e2e
 ```
 
-The config starts its own server on **port 5273** — not vite's 5173, which the first run
-of this suite found already held by an unrelated stack, and drove for twelve scenarios
-before failing. It builds the annotator first, deliberately: the app resolves
+The config starts its own server — on **5273** in the main checkout and in CI, and on a
+port derived from the worktree's own path in a linked worktree, so two of them can run
+this suite at once (#346; `frontend/app/e2e-ports.ts` argues the derivation, and every
+run prints the number it resolved). Never vite's 5173, which the first run of this suite
+found already held by an unrelated stack, and drove for twelve scenarios before failing.
+It builds the annotator first, deliberately: the app resolves
 `@visionset/annotator` through `dist/`, so an unbuilt engine is invisible rather than a
 compile error. `reuseExistingServer` skips that rebuild locally — if the demo behaves
 like an older build, kill the dev server you already had open.
@@ -707,8 +710,9 @@ Three things about that command are deliberate and easy to get wrong:
   answers at `/` while the build has `/app/assets/…` baked into its HTML, the SPA fallback
   returns **200 with `index.html`** for the missing script, and every scenario fails
   hunting for a canvas on a blank page. Nothing errors.
-- **it never reuses an existing server**, on its own port 5373. The build is part of what
-  is being measured.
+- **it never reuses an existing server**, on a port of its own — 5373 in the main
+  checkout, derived from the worktree's path in a linked one (#346). The build is part of
+  what is being measured.
 
 And one trap inside the harness, since the same shape will be wanted again: **a CDP
 session's `detach()` silently reverts `Emulation.setCPUThrottlingRate`.** An

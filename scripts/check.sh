@@ -45,10 +45,11 @@
 #
 # **`CI=1` is set here, for the Playwright steps, and it is load-bearing.**
 # `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so without
-# it a stale vite server left on port 5273 answers instead of the build under
-# test — which produces failures in unrelated scenarios that read as genuine
-# code bugs. The lesson lived in a skill and in three people's memories; it
-# lives in the script now.
+# it a stale vite server left on this worktree's e2e port answers instead of the
+# build under test — which produces failures in unrelated scenarios that read as
+# genuine code bugs. The lesson lived in a skill and in three people's memories;
+# it lives in the script now. (Which port that is depends on the worktree since
+# #346: `frontend/app/e2e-ports.ts` derives it, and each run prints it.)
 #
 # **Caveat that no exit code will tell you: several gates read `git ls-files`,
 # which is the index rather than the working tree.** A new file you have not

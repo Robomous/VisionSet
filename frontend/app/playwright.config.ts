@@ -29,19 +29,29 @@
  * The cost is that `reuseExistingServer` skips it locally: if the demo behaves like
  * an older build, kill the dev server you already had open.
  *
- * ## Port 5273, not vite's default 5173
+ * ## A port of its own, and one per worktree
  *
  * `reuseExistingServer` asks only whether *something* answers on the URL, and
  * anything returning 200 will do. The first run of this suite proved the point by
  * driving v1's stack: an OrbStack container already held 5173, so twelve scenarios
  * failed hunting for a canvas on somebody else's application. A dedicated port
  * makes the reuse a reuse of *our* server and `--strictPort` turns a clash into a
- * refusal rather than a silent hop to 5274. `polygon.spec.ts`'s first scenario
- * still checks the demo's own heading, because a port is a convention and an
- * assertion is a guarantee.
+ * refusal rather than a silent hop to the next number. `polygon.spec.ts`'s first
+ * scenario still checks the demo's own heading, because a port is a convention and
+ * an assertion is a guarantee.
+ *
+ * One dedicated port was not enough once several worktrees started running their
+ * gates at once, so since #346 the number is derived from this worktree's own path —
+ * 5273 in the main checkout and in CI, its own elsewhere. `e2e-ports.ts` argues it
+ * and `--guard` refuses the run, saying where the number came from, if somebody is
+ * already on it.
  */
 
 import { defineConfig, devices } from "@playwright/test";
+
+import { PORT, announce } from "./e2e-ports.ts";
+
+announce();
 
 /**
  * Large enough that the 1280x720 asset fits at a zoom around 0.80 rather than the
@@ -70,7 +80,7 @@ export default defineConfig({
     ? [["github"], ["html", { open: "never" }]]
     : [["list"]],
   use: {
-    baseURL: "http://localhost:5273",
+    baseURL: `http://localhost:${PORT.e2e}`,
     viewport: VIEWPORT,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
@@ -78,10 +88,13 @@ export default defineConfig({
   },
   webServer: {
     command:
+      // First, so a taken port is a sentence rather than a minute of building
+      // followed by vite's own four words about it.
+      "node e2e-ports.ts --guard e2e && " +
       "pnpm --filter @visionset/annotator build && " +
       "pnpm --filter @visionset/ui-core build && " +
-      "vite --port 5273 --strictPort",
-    url: "http://localhost:5273",
+      `vite --port ${PORT.e2e} --strictPort`,
+    url: `http://localhost:${PORT.e2e}`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     stdout: "pipe",

@@ -27,8 +27,10 @@
  * convenience there and a correctness bug here: the build **is** part of what is
  * being measured. `reuseExistingServer` also asks only whether *something*
  * answers 200 — the trap that had #48's first run driving v1's OrbStack stack on
- * vite's 5173 — so this takes port 5373 of its own, with `--strictPort` to turn a
- * clash into a refusal rather than a silent hop.
+ * vite's 5173 — so this takes a port of its own, with `--strictPort` to turn a clash
+ * into a refusal rather than a silent hop. Since #346 that port is 5373 in the main
+ * checkout and derived from the path in a linked worktree, so two worktrees can
+ * measure at once; `e2e-ports.ts` argues it.
  *
  * ## Why `baseURL` carries a path, and why `--base` is passed by hand
  *
@@ -50,6 +52,10 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
+import { PORT, announce } from "./e2e-ports.ts";
+
+announce();
+
 /** The end-to-end suite's viewport, so a coordinate means the same thing in both. */
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -68,7 +74,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [["list"]],
   use: {
-    baseURL: "http://localhost:5373/app/",
+    baseURL: `http://localhost:${PORT.bench}/app/`,
     viewport: VIEWPORT,
     trace: "off",
     screenshot: "off",
@@ -76,13 +82,14 @@ export default defineConfig({
   },
   webServer: {
     command:
+      "node e2e-ports.ts --guard bench && " +
       "pnpm --filter @visionset/annotator build && " +
       // In dependency order, and both of them: `frontend/app` resolves each through
       // its `dist/`. See the note in `playwright.config.ts` — on a clean checkout an
       // unbuilt workspace package is a blank page, not a compile error.
       "pnpm --filter @visionset/ui-core build && " +
-      "vite build && vite preview --base /app/ --port 5373 --strictPort",
-    url: "http://localhost:5373/app/",
+      `vite build && vite preview --base /app/ --port ${PORT.bench} --strictPort`,
+    url: `http://localhost:${PORT.bench}/app/`,
     reuseExistingServer: false,
     timeout: 180_000,
     stdout: "pipe",

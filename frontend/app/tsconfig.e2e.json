@@ -13,7 +13,14 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
-    "noEmit": true
+    "noEmit": true,
+    // The three Playwright configs import `./e2e-ports.ts` with its extension, which
+    // TypeScript refuses by default and permits under this flag once nothing is being
+    // emitted. Extensionless is the convention next door in `e2e/` and `bench/`, and
+    // it is wrong here for one reason: Playwright's loader resolves it and plain Node
+    // does not, so `tests/scripts/e2e_ports.test.mjs` — which imports each config to
+    // prove it actually binds the derived port — could not load them at all.
+    "allowImportingTsExtensions": true
   },
   "include": [
     "e2e",
