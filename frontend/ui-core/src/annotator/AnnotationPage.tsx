@@ -1292,7 +1292,11 @@ function SaveState({
     );
   }
   return (
-    <span className="flex items-center gap-1 text-meta text-muted-foreground" data-testid="save-state">
+    // `success`, which is the indicator v1 wanted a hardcoded `text-green-600` for
+    // and `DESIGN.md` carried as its one sanctioned exception. #323 published the
+    // token, so the exception is retired rather than inherited. The tick still
+    // carries the meaning on its own — state is never colour alone.
+    <span className="flex items-center gap-1 text-meta text-success" data-testid="save-state">
       <Check className="size-3.5" aria-hidden="true" />
       Saved
     </span>

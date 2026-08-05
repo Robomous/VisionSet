@@ -127,7 +127,10 @@ export function OverviewPanel({
             description="Ingest images or a video to see counts, class distribution and samples here."
             action={
               onIngest === undefined ? undefined : (
-                <Button variant="primary" data-testid="overview-ingest" onClick={onIngest}>
+                // `secondary`: the project header's "Ingest" is on screen right
+                // above this one, same label and same handler, so a filled button
+                // here rendered the identical action twice (#323).
+                <Button variant="secondary" data-testid="overview-ingest" onClick={onIngest}>
                   <Upload className="size-4" aria-hidden="true" />
                   Ingest
                 </Button>

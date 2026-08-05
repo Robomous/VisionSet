@@ -28,8 +28,10 @@ export const SelectTrigger = forwardRef<
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
+        // `card` and the neutral disabled skin, for `Input`'s reasons (#323).
         "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input " +
-          "bg-background px-3 text-body text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+          "bg-card px-3 text-body text-foreground disabled:cursor-not-allowed " +
+          "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground",
         className,
       )}
       {...props}

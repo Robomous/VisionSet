@@ -101,7 +101,7 @@ export function ClassFields({
             id={`class-color-${slot}`}
             data-testid={`class-color-${slot}`}
             type="color"
-            className="h-9 w-12 rounded-md border border-input bg-background p-1"
+            className="h-9 w-12 rounded-md border border-input bg-card p-1"
             value={hexOf(swatch)}
             onChange={(event) => onChange({ ...declared, color: event.target.value })}
           />

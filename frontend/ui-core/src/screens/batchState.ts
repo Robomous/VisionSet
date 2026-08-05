@@ -13,26 +13,32 @@
  * promoted-not-copied rule. The variant map moved here out of `BatchesScreen`
  * unchanged, so no shipped pixel moved with it.
  *
- * ## Why there is no amber, no green and no blue
+ * ## Green arrived, and it arrived the way the old note said it would have to
  *
- * The design brief asked for them. `DESIGN.md` principle 3 gives this product
- * **one** accent and no status palette, and `tests/scripts/design_tokens.test.mjs`
- * fails the build on a colour that is not a token — so inventing three would mean
- * either three new tokens (a design-system change nobody asked for) or three
- * hardcoded hexes (gated, correctly). What carries the meaning instead is the
- * word, which is also the accessibility rule: state is never colour alone. The
- * variants below are the four the design system publishes, and `draft` takes the
- * accent because it is the one state with something to do.
+ * This file used to argue there was no green: the design brief wanted one,
+ * `DESIGN.md` published a single accent and no status palette, and
+ * `tests/scripts/design_tokens.test.mjs` fails the build on a colour that is not a
+ * token — so a green would have meant either a design-system change nobody had
+ * asked for, or a hardcoded hex (gated, correctly). #323 *is* that design-system
+ * change: `success` is a published token now, so `completed` takes it.
+ *
+ * The rest of the old note stands and is the reason nothing else moved. What
+ * carries the meaning is the **word**, which is also the accessibility rule —
+ * state is never colour alone — so `approved` stays `outline` rather than
+ * acquiring a colour for symmetry's sake. `in_annotation` keeps the accent
+ * because it is the state with something to do, and on a neutral-first palette
+ * that accent is a near-black rather than a second status colour competing with
+ * the green.
  */
 
 import type { AssetProgress } from "../annotator/jobQueries.js";
 
 /** `BatchState`, and how each reads. The order is the machine's own. */
-export const BATCH_STATE_VARIANT: Record<string, "neutral" | "accent" | "outline"> = {
+export const BATCH_STATE_VARIANT: Record<string, "neutral" | "accent" | "outline" | "success"> = {
   draft: "neutral",
   approved: "outline",
   in_annotation: "accent",
-  completed: "outline",
+  completed: "success",
 };
 
 /**
