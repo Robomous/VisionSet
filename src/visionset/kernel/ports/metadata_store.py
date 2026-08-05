@@ -16,6 +16,7 @@ from visionset.kernel.domain import (
     AnnotationJob,
     AnnotationSchema,
     Asset,
+    AssetProgress,
     Batch,
     Dataset,
     DatasetChange,
@@ -132,6 +133,42 @@ class UnitOfWork(Protocol):
 
     @property
     def releases(self) -> Repository[Release]: ...
+
+    def set_asset_progress(
+        self,
+        job_id: UUID,
+        asset_id: UUID,
+        *,
+        expected: AssetProgress,
+        progress: AssetProgress,
+    ) -> AssetProgress | None:
+        """Move one asset's progress, and only if it is still where it was read.
+
+        **The one write here that is not a repository**, for the reason
+        :meth:`batches_holding` is not a read: ``Repository`` replaces a whole
+        entity by id, and an ``AnnotationJob`` carries every asset's progress. Two
+        annotators moving *different* assets of one job therefore write the same
+        entity, and the second write puts back the copy of the map the first one
+        had already changed — the lost update in #302, answered ``200`` on the
+        wire. Narrowing the write to one asset makes those two disjoint by
+        construction, and there is no way to say that in terms of ``Repository``
+        without giving projects and tokens a per-asset method as well.
+
+        ``expected`` is what the caller read before it decided, and it is checked
+        **in the same statement that writes**, so nothing can move in between. It
+        is the version stamp this row already has: the contended datum is the
+        progress itself, so a separate version column would only be a second name
+        for it — and a second thing to keep in step.
+
+        Returns ``None`` when the write landed. Returns the **stored** value when
+        it did not, which is the whole answer the caller needs: it says both that
+        the write was refused and where the asset actually is. A caller finding
+        its own target there has nothing left to do.
+
+        Raises ``EntityNotFound`` if the job does not carry that asset at all,
+        matching ``Repository.update`` on an id that is not stored.
+        """
+        ...
 
     def batches_holding(self, asset_id: UUID) -> list[UUID]:
         """Which batches carry this asset, oldest membership first.

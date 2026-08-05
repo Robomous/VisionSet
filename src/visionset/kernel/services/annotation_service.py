@@ -74,6 +74,7 @@ from visionset.kernel.errors import (
     InvalidAttributeValue,
     LabelClassNotInSchema,
     MissingRequiredAttribute,
+    StaleWrite,
     UnknownAttribute,
     VisionSetError,
     WorkspaceCorrupt,
@@ -535,15 +536,26 @@ def _refresh_progress(uow: UnitOfWork, job: AnnotationJob, asset_ids: Iterable[U
     write from it while this one is still open.
 
     ``SqlRepository.add`` and ``delete`` flush, so the re-read below sees what
-    this call just did. And the progress dict is updated by **rewriting one
-    key**, not rebuilt: the whole child collection is written out on every save
-    and ``position`` rides on insertion order, so a rebuild would reshuffle the
-    order ``JobService.next_pending`` depends on.
+    this call just did.
+
+    The write is ``set_asset_progress``, guarded on the value this move was
+    derived from, and **not** ``annotation_jobs.update`` — that replaces the whole
+    job, so two annotators labeling two different assets of one job would each put
+    back the other's progress as they read it (#302). A guard that fails aborts
+    the whole call, and that is the right outcome rather than a harsh one: this
+    service is all-or-nothing, so the labels roll back with it, and a caller that
+    reads again derives its progress from a state that is actually there.
     """
     for asset_id in dict.fromkeys(asset_ids):
         remaining = uow.annotations.list(asset_id)
-        target = progress_after_annotating(job.progress[asset_id], has_annotations=bool(remaining))
-        if target is not None:
-            job = uow.annotation_jobs.update(
-                job.model_copy(update={"progress": {**job.progress, asset_id: target}})
+        current = job.progress[asset_id]
+        target = progress_after_annotating(current, has_annotations=bool(remaining))
+        if target is None:
+            continue
+        stored = uow.set_asset_progress(job.id, asset_id, expected=current, progress=target)
+        if stored is not None and stored is not target:
+            raise StaleWrite(
+                f"asset {asset_id} in job {job.id} was {current.value!r} when these labels were "
+                f"written and is {stored.value!r} now; nothing was saved — read it again and "
+                f"write again"
             )
