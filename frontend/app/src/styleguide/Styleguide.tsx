@@ -121,14 +121,27 @@ export function Styleguide(): JSX.Element {
           </p>
         </header>
 
-        <Section title="Colour" description="Intent, never a value. Orange is an accent.">
+        <Section
+          title="Colour"
+          description="Intent, never a value. The interface is neutral; brand is two sites."
+        >
           <div className="flex flex-wrap gap-3" data-testid="swatches">
             <Swatch name="primary" className="bg-primary" />
             <Swatch name="foreground" className="bg-foreground" />
+            <Swatch name="muted-foreground" className="bg-muted-foreground" />
+            <Swatch name="disabled-foreground" className="bg-disabled-foreground" />
             <Swatch name="muted" className="bg-muted" />
             <Swatch name="border" className="bg-border" />
+            <Swatch name="input" className="bg-input" />
+            <Swatch name="stage" className="bg-stage" />
+            <Swatch name="success" className="bg-success" />
+            <Swatch name="warning" className="bg-warning" />
             <Swatch name="destructive" className="bg-destructive" />
             <Swatch name="sidebar" className="bg-sidebar" />
+            {/* The brand, shown here because a styleguide is where a value is
+                inspected rather than used. Its two product sites are the rail's
+                wordmark and the progress fill (#323). */}
+            <Swatch name="brand" className="bg-brand" />
           </div>
         </Section>
 
@@ -234,7 +247,9 @@ export function Styleguide(): JSX.Element {
           <div className="flex flex-wrap items-center gap-2">
             <Badge>draft</Badge>
             <Badge variant="accent">in_annotation</Badge>
-            <Badge variant="outline">completed</Badge>
+            <Badge variant="success">completed</Badge>
+            <Badge variant="warning">stale</Badge>
+            <Badge variant="outline">outline</Badge>
             <Badge variant="destructive">failed</Badge>
           </div>
           <div className="max-w-md">

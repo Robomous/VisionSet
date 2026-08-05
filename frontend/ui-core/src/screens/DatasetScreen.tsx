@@ -100,8 +100,13 @@ export function DatasetScreen({ projectId, onBack }: DatasetScreenProps): JSX.El
             The trunk: every asset a completed batch has promoted.
           </p>
         </div>
+        {/*
+         * `secondary`: this header renders as a *panel* under `ProjectScreen`'s
+         * own header on the dataset tab, whose "Annotate" is the page's forward
+         * action. One filled action per view (#323).
+         */}
         <Button
-          variant="primary"
+          variant="secondary"
           data-testid="publish-release"
           disabled={dataset.data === undefined}
           onClick={() => setPublishing(true)}

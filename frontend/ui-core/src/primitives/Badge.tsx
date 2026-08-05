@@ -3,8 +3,13 @@
  *
  * The badge's variants are the ones the domain actually produces — a batch state,
  * an asset's progress, a refusal — so a screen picks an intent and never a colour.
- * `accent` is the accent at 10% with a `primary` border, `DESIGN.md`'s rule for a
- * selected row, and the only place orange appears as a fill at all.
+ *
+ * Every variant is its colour as ink over that colour at 10% behind its own
+ * border. On a near-monochrome page (#323) that is enough separation to read as a
+ * state without any of them becoming a saturated block: `accent` is the near-black
+ * action, so it is the neutral chip, and `success` / `warning` / `destructive` are
+ * the three desaturated statuses. `success` exists as of #323 — `DESIGN.md` used
+ * to record its absence as v1's one hardcoded-colour exception.
  *
  * `Alert` carries `role="alert"` on the destructive variant only. An informational
  * panel announced as an alert interrupts a screen reader for something nobody
@@ -23,8 +28,10 @@ export const badgeVariants = cva(
       variant: {
         neutral: "border-border bg-muted text-muted-foreground",
         accent: "border-primary bg-primary/10 text-primary",
+        success: "border-success bg-success/10 text-success",
+        warning: "border-warning bg-warning/10 text-warning",
         destructive: "border-destructive bg-destructive/10 text-destructive",
-        outline: "border-border bg-background text-foreground",
+        outline: "border-border bg-card text-foreground",
       },
     },
     defaultVariants: { variant: "neutral" },

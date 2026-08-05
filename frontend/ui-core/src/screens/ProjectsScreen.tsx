@@ -73,8 +73,13 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
         empty={{
           title: "No projects yet",
           description: "A project is where a schema, its batches and its dataset live.",
+          // `secondary`, not `primary`: the header's "New project" is always on
+          // screen and is the same label calling the same handler, so on an empty
+          // list the two used to render as a pair of identical filled buttons.
+          // One filled action per view (#323) — and the header's is the one that
+          // survives when the list fills up.
           action: (
-            <Button variant="primary" onClick={() => setCreating(true)}>
+            <Button variant="secondary" onClick={() => setCreating(true)}>
               New project
             </Button>
           ),
