@@ -25,6 +25,8 @@ git worktree add ../visionset-<task-slug> -b <type>/<task-slug> origin/main
 
 All work in the worktree; never the primary checkout. Conventional commits in logical units; wire/kernel changes in their own commits, separate from UI commits.
 
+- **Re-verify any in-flight state the prompt names before acting on it.** A branch, worktree, PR, or "unpushed work" a prompt describes is a snapshot, not a fact — parallel sessions move fast enough for it to go stale within the hour. Before adopting, rebasing, or pruning anything: `git fetch --prune`, `gh pr list --state all --head <branch>`, and `gh issue view <n> --json state,closedAt` for the issue it belongs to. #228 was handed over as a local-only branch with no remote and no PR; another session had already pushed, merged and cleaned it up, leaving only a stale worktree registration to `git worktree prune`. #356's predicted rebase conflict had likewise already dissolved. — #228, #356
+
 ## Testing requirements
 
 - **Layout, virtualization, and observer behavior are asserted in real chromium (Playwright), never jsdom.** A never-attached ResizeObserver passes green in jsdom forever (bug #159). Column counts, scroll-parent assertions, and re-flow on resize are e2e concerns.
