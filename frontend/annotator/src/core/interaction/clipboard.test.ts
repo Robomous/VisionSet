@@ -28,6 +28,7 @@ const SCHEMA: AnnotationSchema = {
   version: 4,
   description: null,
   created_at: "2026-08-06T00:00:00Z",
+  provenance: null,
   classes: [
     { name: "sign", geometry: "bbox", color: null, attributes: [] },
     { name: "lane", geometry: "polygon", color: null, attributes: [] },

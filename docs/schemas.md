@@ -112,6 +112,48 @@ version was written, and a plausible-looking wrong timestamp is worse than an ad
 because nothing downstream can tell it is wrong. `Asset.ingested_at` made the same call for
 the same reason.
 
+## A version also says which kind of work published it
+
+```python
+schemas.create_version(project.id, classes, provenance=SchemaProvenance.CURATED)
+```
+
+`provenance` is `curated`, `annotation`, or absent. It exists because a version history
+becomes unreadable otherwise: a project annotated for a week accumulates a version for every
+class somebody turned out to need, and those bury the handful a person actually sat down and
+designed. A surface reading the history collapses consecutive `annotation` versions into one
+row and renders every other version individually.
+
+**What makes a version incidental is the surface it came from, never the size of the
+change.** A one-class save in the schema editor is `curated`; a one-class save from the
+annotator's add-class dialog is `annotation`. So each writer states its own answer and the
+kernel stores it verbatim:
+
+| Writer | Records |
+| --- | --- |
+| The browser's Schema tab | `curated` |
+| `visionset schema apply` | `curated` |
+| MCP `create_schema_version` | `curated`, unless the caller passes `provenance` |
+| The annotator's add-class dialog | `annotation` |
+| An SDK call that says nothing | absent |
+
+Nothing infers it, because nothing else can: the only thing that knows which kind of work is
+happening is the surface the person is using. It is not a gate, it does not appear in a
+[diff](#additive-versus-destructive), and two versions differing only in provenance are the
+same contract.
+
+**Absent is not a third kind — it means nobody said**, and a reader groups it with `curated`.
+Every version published before this field existed is absent and nothing backfills them: no
+build ever recorded which surface published a version, so the alternative is a guess, and a
+history that groups on a guess is confidently wrong about exactly the milestones somebody
+opened it to find. Showing a version that deserved collapsing is the smaller error.
+
+> **Two different things are called provenance**, and they are about different entities.
+> This one is on a **schema version** and says whether the *version* was designed or fell
+> out of labeling. [`Annotation.provenance`](annotations.md) is on a **label** and says
+> whether the *box* was drawn by a person, produced by a model, or imported. They share a
+> word and nothing else; neither is derivable from the other.
+
 ## The active version is derived, not stored
 
 `get_active` returns the highest version. There is no `active` column, because the version

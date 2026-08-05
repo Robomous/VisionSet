@@ -13,6 +13,25 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **A schema version records which kind of work published it** (#368). New nullable
+  `provenance` on `AnnotationSchema`: `curated` for a version somebody sat down and designed,
+  `annotation` for one that fell out of adding a class part-way through labeling. It gates
+  nothing, enters no diff, and two versions differing only in provenance are the same
+  contract — it exists so a version history can tell the milestones apart from the runs
+  between them.
+
+  Each writer states its own answer, because what makes a version incidental is the *surface*
+  it came from and never the size of the change: the browser's Schema tab and
+  `visionset schema apply` say `curated`, the annotator's add-class dialog says `annotation`,
+  and the MCP tool takes an optional parameter defaulting to `curated`. An SDK caller may say
+  nothing.
+
+  Migration 5 (`schema_provenance`) appends the column and `FORMAT_VERSION` becomes 5.
+  **Nothing is backfilled and nothing could be** — no build ever recorded which surface
+  published a version, so every existing one reads as "nobody said", which a reader groups
+  with `curated`. Not to be confused with `Annotation.provenance` (`human` / `model` /
+  `import`), which is a different question about a different entity.
+
 - **`⌘/Ctrl + C` and `⌘/Ctrl + V` in the annotator, and the clipboard survives moving to the next
   frame** (#123). Copy the selection, walk forward, paste it — the second half is the point: the
   clipboard is held per *job*, above the per-asset store, because a store carries an undo history

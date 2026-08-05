@@ -268,3 +268,53 @@ def test_version_zero_is_a_malformed_request_rather_than_a_domain_refusal(
     result = call("compare_schema_versions", project=named, from_version=0, to_version=1)
 
     assert result.is_error
+
+
+# --- provenance: the agent's own answer, defaulted to the honest one (#368) ----
+
+
+def test_an_agent_publishing_a_version_records_it_as_curated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The default is `curated`, not null, and the default is the whole design.
+
+    An agent calling this tool is designing the contract — the mid-job case has no
+    MCP spelling, because nothing over this transport is part-way through drawing
+    on an asset. Leaving the parameter out therefore means "curated" rather than
+    "nobody said", which is the one place a surface may state provenance without
+    the caller typing it.
+    """
+    named = schema(monkeypatch, tmp_path)
+
+    created = payload(call("create_schema_version", project=named, classes=BOTH))
+
+    assert created["provenance"] == "curated"
+
+
+def test_an_agent_may_state_the_annotation_provenance_explicitly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The override exists so an agent driving the annotation loop can be honest."""
+    named = schema(monkeypatch, tmp_path)
+
+    created = payload(
+        call("create_schema_version", project=named, classes=BOTH, provenance="annotation")
+    )
+
+    assert created["provenance"] == "annotation"
+
+
+def test_a_provenance_the_enum_does_not_declare_is_a_malformed_request(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Refused by the protocol's own input validation, before the kernel sees it.
+
+    The column is plain text and no layer below refuses an invented value, so a
+    version carrying one would be stored and unreadable forever — a version is
+    never edited.
+    """
+    named = schema(monkeypatch, tmp_path)
+
+    result = call("create_schema_version", project=named, classes=BOTH, provenance="invented")
+
+    assert result.is_error

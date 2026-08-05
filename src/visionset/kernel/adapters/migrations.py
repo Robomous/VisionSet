@@ -6,13 +6,14 @@ whatever is missing. There is no alembic here — a local-first, single-file,
 single-writer store does not need a migration framework, and ``format_version``
 would then have to be kept in sync with a second ledger by hand.
 
-**There is exactly one migration, and it is the baseline.** A long chain of
-generations got the schema to its present shape while VisionSet was unreleased;
-every database they could have upgraded was disposable test data in this
-repository. Keeping them meant carrying an idempotency argument and an undo line
-per generation, plus the scaffolding that proves each one actually ran — all to
-protect files that do not exist. So today's ``_tables`` *is* generation 1, and a
-fresh database is created directly at it.
+**Generation 1 is the baseline; everything after it is an ordinary migration.** A
+long chain of generations got the schema to its present shape while VisionSet was
+unreleased; every database they could have upgraded was disposable test data in
+this repository. Keeping them meant carrying an idempotency argument and an undo
+line per generation, plus the scaffolding that proves each one actually ran — all
+to protect files that do not exist. So today's ``_tables`` *is* generation 1, and
+a fresh database is created directly at it. The chain restarted from there, and
+the three rules below are in force again for every entry appended since.
 
 **There are no downgrade paths, deliberately.** Nothing here walks a file
 backwards and the tests no longer do either. A downgrade is a compatibility
@@ -24,9 +25,13 @@ an ``upgrade`` that takes a live connection. Do NOT edit an existing one — a
 workspace already stamped at that version will never run it again.
 ``FORMAT_VERSION`` is derived from the list, so it cannot drift from reality.
 
-Three rules go back into force the moment a second migration exists. They are
-written down here rather than left in the deleted code's history, because this
-is where the next person will look:
+Three rules, back in force since migration 2. They are written down here rather
+than left in the deleted code's history, because this is where the next person
+will look. A fourth lives in the tests and belongs beside them: a migration that
+adds a **column** must also have that column dropped in
+``tests/kernel/test_migrations.py``'s ``_at_generation_one``, or it finds the
+column already present, returns early, and the fresh-versus-migrated comparison
+passes while exercising nothing.
 
 * **Every migration after the first must be idempotent.** Migration 1 is
   ``create_all`` of *today's* metadata, not a frozen snapshot, so adding a
@@ -192,11 +197,30 @@ def _add_job_queue(connection: Connection) -> None:
     Base.metadata.create_all(connection, tables=[Base.metadata.tables["job"]])
 
 
+def _add_schema_provenance(connection: Connection) -> None:
+    """``annotation_schema.provenance``: which kind of work published a version.
+
+    **Nothing to backfill, and unlike migration 3 there is nothing that *could*
+    be.** Migration 3 could attribute a label because the schema recorded enough
+    to answer it in the unambiguous case; here nothing anywhere records who
+    published a version or from which surface. Every existing version therefore
+    stays NULL, which the domain reads as "nobody said" rather than as a third
+    kind — see ``SchemaProvenance``.
+
+    Guessing was considered and is worse than absence: "a version with one class
+    more than its predecessor was probably added while annotating" is a heuristic,
+    and a history that groups versions on a guess would be confidently wrong about
+    exactly the milestones a reader opened it to find.
+    """
+    _add_column(connection, "annotation_schema", "provenance")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
     Migration(version=3, name="annotation_provenance", upgrade=_add_annotation_provenance),
     Migration(version=4, name="job_queue", upgrade=_add_job_queue),
+    Migration(version=5, name="schema_provenance", upgrade=_add_schema_provenance),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

@@ -206,8 +206,11 @@ export const checkAttributeBody: Check<Schemas["AttributeBody"]> =
 export const checkLabelClassBody: Check<Schemas["LabelClassBody"]> =
   /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometry": [true, checkGeometryType], "name": [true, isString] } as const);
 
+export const checkSchemaProvenance: Check<Schemas["SchemaProvenance"]> =
+  /*#__PURE__*/ oneOf(["curated", "annotation"] as const);
+
 export const checkSchemaVersionOut: Check<Schemas["SchemaVersionOut"]> =
-  /*#__PURE__*/ object({ "classes": [true, arrayOf(checkLabelClassBody)], "created_at": [false, either([isString, isNull] as const)], "description": [false, either([isString, isNull] as const)], "project_id": [true, isString], "version": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "classes": [true, arrayOf(checkLabelClassBody)], "created_at": [false, either([isString, isNull] as const)], "description": [false, either([isString, isNull] as const)], "project_id": [true, isString], "provenance": [false, either([checkSchemaProvenance, isNull] as const)], "version": [true, isInteger] } as const);
 
 export const checkSchemaVersionPage: Check<Schemas["SchemaVersionPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkSchemaVersionOut)], "total": [true, isInteger] } as const);

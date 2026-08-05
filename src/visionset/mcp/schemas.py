@@ -36,7 +36,7 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from visionset import wire
-from visionset.kernel.domain import LabelClass
+from visionset.kernel.domain import LabelClass, SchemaProvenance
 from visionset.kernel.services import SchemaService
 from visionset.mcp._resolve import ProjectRef, resolve_project
 from visionset.mcp._workspace import opened_workspace
@@ -153,6 +153,18 @@ def create_schema_version(
             )
         ),
     ] = None,
+    provenance: Annotated[
+        SchemaProvenance,
+        Field(
+            description=(
+                "Which kind of work is publishing this version. Leave it at "
+                "'curated' when you are designing the contract; pass 'annotation' "
+                "only when you are adding a class you needed part-way through "
+                "labeling an asset. It gates nothing — a version history uses it "
+                "to separate the deliberate versions from the incidental ones."
+            )
+        ),
+    ] = SchemaProvenance.CURATED,
     allow_destructive: Annotated[
         bool,
         Field(
@@ -190,6 +202,7 @@ def create_schema_version(
             resolved.id,
             classes,
             description=description,
+            provenance=provenance,
             allow_destructive=allow_destructive,
         )
     return wire.schema_version(created)

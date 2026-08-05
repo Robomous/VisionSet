@@ -150,8 +150,8 @@ def label_class(value: LabelClass) -> dict[str, Any]:
 def schema_version(value: AnnotationSchema) -> dict[str, Any]:
     """One version of a project's schema. Its own UUID is absent: nothing addresses it.
 
-    ``description`` and ``created_at`` are both null for a version published
-    before they existed, and nothing backfills either.
+    ``description``, ``created_at`` and ``provenance`` are all null for a version
+    published before they existed, and nothing backfills any of them.
     """
     return {
         "project_id": str(value.project_id),
@@ -159,6 +159,7 @@ def schema_version(value: AnnotationSchema) -> dict[str, Any]:
         "classes": [label_class(c) for c in value.classes],
         "description": value.description,
         "created_at": None if value.created_at is None else _moment(value.created_at),
+        "provenance": None if value.provenance is None else value.provenance.value,
     }
 
 

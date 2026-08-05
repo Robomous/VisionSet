@@ -2583,6 +2583,15 @@
         "title": "SchemaDiffOut",
         "type": "object"
       },
+      "SchemaProvenance": {
+        "description": "Which kind of work published a schema version.\n\n`curated` is a version authored deliberately \u2014 somebody sat down and decided\nwhat the project labels. `annotation` is one that fell out of adding a class\npart-way through labeling an asset. It gates nothing and is part of no\ncontract comparison; a version history uses it to tell the milestones apart\nfrom the incidental runs between them.",
+        "enum": [
+          "curated",
+          "annotation"
+        ],
+        "title": "SchemaProvenance",
+        "type": "string"
+      },
       "SchemaVersionCreate": {
         "additionalProperties": false,
         "description": "The whole proposed version. There is no partial edit of a schema.",
@@ -2605,6 +2614,16 @@
               }
             ],
             "title": "Description"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "SchemaVersionCreate",
@@ -2647,6 +2666,16 @@
             "format": "uuid",
             "title": "Project Id",
             "type": "string"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "version": {
             "title": "Version",
@@ -7960,7 +7989,7 @@
         ]
       },
       "post": {
-        "description": "Append the next version of the project's schema.\n\nThe body is the whole proposed version; versions are never edited in place.\n\n`description` is this version's commit message \u2014 written once, here, and\nnever afterwards, because a version is immutable and there is no route that\nedits one. Blank is legal and comes back as null. `created_at` is stamped by\nthe server, so it is a response field and not a request one.\n\nRemoving a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`\nuntil `allow_destructive=true` says so deliberately. If annotations already\nexist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`\ninstead, and **no flag overrides that one** \u2014 which is why a client branches\non `code` and not on the status.",
+        "description": "Append the next version of the project's schema.\n\nThe body is the whole proposed version; versions are never edited in place.\n\n`description` is this version's commit message \u2014 written once, here, and\nnever afterwards, because a version is immutable and there is no route that\nedits one. Blank is legal and comes back as null. `created_at` is stamped by\nthe server, so it is a response field and not a request one.\n\n`provenance` says which kind of work is publishing: `curated` for a version\nauthored in a schema editor, `annotation` for one that fell out of adding a\nclass while labeling. It is stored exactly as sent and never inferred, so a\nclient with no opinion omits it and the version records null \u2014 which readers\ngroup with `curated`. It gates nothing and changes no behaviour; it exists so\na version history can separate the milestones from the runs.\n\nRemoving a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`\nuntil `allow_destructive=true` says so deliberately. If annotations already\nexist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`\ninstead, and **no flag overrides that one** \u2014 which is why a client branches\non `code` and not on the status.",
         "operationId": "create_schema_version",
         "parameters": [
           {

@@ -486,6 +486,10 @@ export function parseSchema(value: unknown): AnnotationSchema {
       value["created_at"] === undefined
         ? null
         : requireNullableString(value["created_at"], "schema.created_at"),
+    provenance:
+      value["provenance"] === undefined
+        ? null
+        : requireNullableString(value["provenance"], "schema.provenance"),
   };
 }
 
