@@ -353,6 +353,38 @@ what the machine says. The zoom `−`/`%`/`+` and fit drive
 The version dropdown and Merge render **disabled**: they are #127 and post-beta, and
 drawing them keeps the bar the shape the design shows.
 
+#### The tool strip, and the one geometry with no tool behind it
+
+The strip lists `select` plus one button per distinct **drawable** geometry the
+schema declares, built from `drawableGeometry`. A `classification_tag` gets no
+button and never will: there is nothing to draw, because the label is about the
+whole image, and the Labels tab is where it is toggled.
+
+`polyline` is the one that is declared, real, and not yet drawable. #223 shipped
+the geometry end to end — a schema declares it, the API and MCP write it, five lane
+exporters consume it, the canvas renders it — and stopped short of an interactive
+drawing tool, which is **#342**. The intended workflow is that an agent pre-labels
+lanes and a person reviews them here.
+
+So a schema declaring a polyline class gets a **disabled button carrying the
+reason**, placed after every usable tool, never a gap. A missing control says "this
+schema has no lanes", which is false, and it is exactly the ambiguity
+`ui-capabilities` forbids: absent and not-yet-available look identical and only one
+of them is true.
+
+The button uses **`aria-disabled`, never the native `disabled` attribute**. A
+disabled `<button>` receives no pointer events, so the tooltip would never open —
+and a disabled-with-reason control whose reason cannot be read is a bare disabled
+control. The press is refused in the handler instead, because activating a lane
+class would leave `toolFor` answering `select` with that class held: a canvas whose
+primary gesture is inert, which is the bug #198 fixed.
+
+Two things follow that are worth stating so they are not "fixed": a lane is **not
+selectable from the canvas** (`geometryContains` refuses an open path — hitting one
+is distance-to-segment with a zoom-independent tolerance, and it is only worth
+solving beside the tool that edits the result), and it is **not draggable**. The
+object list is how a lane is selected, which is a real affordance rather than a gap.
+
 ### The annotation side panel
 
 `AnnotatorPanel` — Objects and Labels — lives in **`ui-core`**, not in the

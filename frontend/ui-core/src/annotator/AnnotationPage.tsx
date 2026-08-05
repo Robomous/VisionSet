@@ -767,7 +767,13 @@ function Workspace({
           : `This frame is ${progressWord} — its labels are settled and cannot be changed here.`;
 
   return (
-    <div className="flex h-screen flex-col" data-testid="annotation-page">
+    // `data-asset` names the frame on screen, the way a rendered shape carries
+    // `data-annotation-id`. The asset travels as a *query parameter* and the
+    // navigator moves `assetIndex` in component state without rewriting it, so
+    // the URL names where the page was entered rather than where it is — and a
+    // harness reading the URL addresses the wrong frame while every assertion it
+    // makes still passes. #223's cycle step is where that was found.
+    <div className="flex h-screen flex-col" data-testid="annotation-page" data-asset={asset.id}>
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-card px-2">
         <Button variant="ghost" size="icon" aria-label="Back to the batch" data-testid="back" onClick={onOpenGallery} disabled={onOpenGallery === undefined}>
           <ArrowLeft className="size-4" />

@@ -28,8 +28,24 @@
  *    the Labels tab, which lists all of them.
  * 2. The strip shows only the tools **this schema can reach** — `select`, plus one
  *    button per distinct drawable geometry among the declared classes, built from
- *    `drawableGeometry`. A `classification_tag` and a `polyline` both answer
- *    `null`, and neither gets a canvas tool.
+ *    `drawableGeometry`. A `classification_tag` answers `null` and gets no canvas
+ *    tool, because there is nothing to draw: the label is about the whole image
+ *    and the Labels tab is where it is toggled.
+ *
+ * ## `polyline` is the one geometry that is declared, real, and not yet drawable
+ *
+ * `drawableGeometry` answers `null` for it too, but for a different reason and
+ * only for now. #223 shipped the geometry end to end — a schema declares it, the
+ * API and MCP write it, five lane exporters consume it, and the canvas renders it
+ * — and stopped short of an interactive drawing tool, which is #342. The intended
+ * workflow is that an agent pre-labels lanes and a person reviews them here.
+ *
+ * So a schema declaring a polyline class gets a **disabled button with the reason
+ * on it**, never a gap. A missing control says "this schema has no lanes", which
+ * is false and is exactly the ambiguity `ui-capabilities` forbids: absent and
+ * not-yet-available look identical, and only one of them is true. The button
+ * carries the sentence, so the answer to "where do lanes come from?" is on the
+ * strip rather than in a changelog.
  *
  * ## Why this is a second component rather than the showcase's, moved
  *
@@ -57,19 +73,42 @@ import {
   type AnnotationSchema,
   type Tool,
 } from "@visionset/annotator";
-import { CircleHelp, MousePointer2, Plus, Spline, Square } from "lucide-react";
+import { CircleHelp, MousePointer2, Plus, Spline, Square, Waypoints } from "lucide-react";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
 import { Button } from "../primitives/Button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 
+/**
+ * Why a declared geometry has no tool yet, keyed by the geometry.
+ *
+ * One entry, and the shape is what matters: this is a map rather than an `if`
+ * so the day `mask` or `keypoints` lands the same way, the strip says so without
+ * anyone remembering that it should.
+ */
+const PENDING_TOOLS: Readonly<Record<string, string>> = {
+  polyline:
+    "Polyline drawing arrives with 0.2 — lanes are written via the SDK or MCP " +
+    "and reviewed here.",
+};
+
 /** A schema's tools, in the order the strip lists them. */
 interface ToolChoice {
-  readonly tool: Tool;
+  /** A real `Tool`, or a geometry the strip shows as not-yet-drawable. */
+  readonly tool: Tool | keyof typeof PENDING_TOOLS;
   readonly label: string;
   /** The class this button activates — `null` is select mode. */
   readonly labelClass: string | null;
   readonly hotkey: string;
+  /**
+   * Why this tool cannot be picked, or `null` when it can.
+   *
+   * Disabled-with-reason rather than hidden: see the module docstring. A button
+   * carrying this never calls `onActivateClass`, because activating a class whose
+   * tool does not exist would leave the canvas in `select` with a lane class held
+   * — inert, and indistinguishable from the bug #198 fixed.
+   */
+  readonly unavailable: string | null;
 }
 
 /**
@@ -81,7 +120,7 @@ interface ToolChoice {
  */
 export function toolChoices(schema: AnnotationSchema): readonly ToolChoice[] {
   const choices: ToolChoice[] = [
-    { tool: "select", label: "Select", labelClass: null, hotkey: "V" },
+    { tool: "select", label: "Select", labelClass: null, hotkey: "V", unavailable: null },
   ];
   for (const declared of schema.classes) {
     const geometry = drawableGeometry(declared);
@@ -92,6 +131,23 @@ export function toolChoices(schema: AnnotationSchema): readonly ToolChoice[] {
       label: geometry === "bbox" ? "Box" : "Polygon",
       labelClass: declared.name,
       hotkey: hotkeyForClass(schema, declared.name) ?? "—",
+      unavailable: null,
+    });
+  }
+  // After the usable tools, never interleaved: the strip reads top to bottom as
+  // "what you can do", and a disabled control in the middle of that list reads as
+  // a broken one rather than as a coming one.
+  for (const declared of schema.classes) {
+    const pending = PENDING_TOOLS[declared.geometry];
+    if (pending === undefined) continue;
+    if (choices.some((choice) => choice.tool === declared.geometry)) continue;
+    choices.push({
+      tool: declared.geometry,
+      label: "Polyline",
+      // No class to activate, because there is no tool to activate it for.
+      labelClass: null,
+      hotkey: "—",
+      unavailable: pending,
     });
   }
   return choices;
@@ -140,11 +196,15 @@ export function ToolPalette({
         <PaletteButton
           key={choice.tool}
           testId={`tool-${choice.tool}`}
-          label={`${choice.label} (${choice.hotkey})`}
+          label={
+            choice.unavailable ?? `${choice.label} (${choice.hotkey})`
+          }
           active={tool === choice.tool}
+          disabled={choice.unavailable !== null}
           onMouseDown={keepFocus}
           // (1) above: the tool did not move, so nothing moves.
           onClick={() => {
+            if (choice.unavailable !== null) return;
             if (tool !== choice.tool) onActivateClass(choice.labelClass);
           }}
         >
@@ -187,6 +247,7 @@ function PaletteButton({
   testId,
   label,
   active,
+  disabled = false,
   onClick,
   onMouseDown,
   children,
@@ -194,6 +255,7 @@ function PaletteButton({
   readonly testId: string;
   readonly label: string;
   readonly active: boolean;
+  readonly disabled?: boolean;
   readonly onClick: () => void;
   readonly onMouseDown: (event: MouseEvent) => void;
   readonly children: ReactNode;
@@ -206,8 +268,14 @@ function PaletteButton({
           size="icon"
           aria-label={label}
           aria-pressed={active}
+          // `aria-disabled`, never the native `disabled` attribute. A disabled
+          // <button> receives no pointer events, so Radix's trigger never opens —
+          // and a disabled-with-reason control whose reason cannot be read is a
+          // bare disabled control. This keeps the hover and refuses the press.
+          aria-disabled={disabled || undefined}
           data-testid={testId}
           data-active={active ? "true" : "false"}
+          className={disabled ? "cursor-not-allowed opacity-40" : undefined}
           onMouseDown={onMouseDown}
           onClick={onClick}
         >
@@ -222,8 +290,11 @@ function PaletteButton({
 }
 
 /** `DESIGN.md` pins the three icons. */
-function ToolIcon({ tool }: { readonly tool: Tool }): JSX.Element {
+function ToolIcon({ tool }: { readonly tool: ToolChoice["tool"] }): JSX.Element {
   if (tool === "bbox") return <Square className="size-4" />;
   if (tool === "polygon") return <Spline className="size-4" />;
+  // A lane is a path, and `Waypoints` is the one icon in the set that reads as an
+  // open one — `Spline` is already the polygon's and would say "closed".
+  if (tool === "polyline") return <Waypoints className="size-4" />;
   return <MousePointer2 className="size-4" />;
 }
