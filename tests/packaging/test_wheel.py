@@ -270,7 +270,17 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     names = [line.split()[0] for line in result.stdout.splitlines()[1:]]
-    assert names == ["coco", "dummy", "voc", "yolo"]
+    assert names == [
+        "bdd100k-lane",
+        "coco",
+        "culane",
+        "curvelanes",
+        "dummy",
+        "openlane-2d",
+        "tusimple",
+        "voc",
+        "yolo",
+    ]
 
 
 def test_the_installed_server_serves_the_real_app(installed: Path, tmp_path: Path) -> None:
