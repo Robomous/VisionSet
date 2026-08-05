@@ -648,6 +648,44 @@ The document-size dependence is real — the small scene zooms perfectly at the 
 throttle — but it is a raster cost, not a React one. #131's diagnosis named the writes;
 the writes are gone and the ceiling has not moved.
 
+### The ceiling is raster, so it is a limit rather than a bug (#228)
+
+That is where the measuring stopped and a decision was taken: **infinite zoom serves
+nothing, so the zoom is capped**. The three parts of it are in
+`adapters/viewport.ts`, and each answers a different half of "what does a person meet
+at the bottom of the range".
+
+| | | |
+| --- | --- | --- |
+| `MAX_ZOOM` | **8** | one asset pixel as an eight-pixel block |
+| `PIXELATED_ABOVE_ZOOM` | **4** | past this the image layer renders `image-rendering: pixelated` |
+| `atZoomCeiling` / `atZoomFloor` | — | so a host's controls can be disabled *with the reason* |
+
+**8x is the depth past which the picture has nothing left to show.** An asset pixel is
+already an eight-pixel block there; magnifying further produces larger blocks of the same
+data, and no render architecture changes that — it is the image's own sampling grid. That
+the browser's raster is also struggling by then is a second reason for the same number,
+not the primary one.
+
+**Above 4x the image is drawn as pixels rather than smoothed**, and only the image: the
+SVG chrome is untouched by the rule. Bilinear smoothing is right where the sampling grid
+is not the subject, and wrong once somebody has zoomed in *to look at* individual pixels —
+it invents gradients between them, so a blurry magnification reads as a soft image where a
+blocky one reads as what it is. `imageRenderingAt` is strictly above the threshold, so 4x
+itself still smooths.
+
+**Both bounds are stated in the UI, never silent.** `AnnotationPage`'s `−`/`+` were plain
+buttons that stayed enabled at the ends of the range and did nothing when pressed; they
+now carry `aria-disabled` and a tooltip naming the limit, and the readout stops at exactly
+`800%`. `aria-disabled` and not the native attribute, for `ToolPalette`'s reason: a
+disabled `<button>` takes no pointer events, so its tooltip never opens and the reason
+cannot be read. The bounds come from `@visionset/annotator` rather than from numbers in
+the page, because `clampZoom` is the one thing that decides them.
+
+**Vector re-rendering of the annotation chrome is deferred** to the drawing-tool orbit,
+`cf. #342`. It is the remaining lever on sharpness at depth, and drawing precision is the
+thing that would justify paying for it; nothing in the annotation loop today does.
+
 ### The recorded baseline
 
 ```
@@ -688,7 +726,8 @@ the main thread turns that into something the same instrument can read:
 - **the zoom breaks between 4x and 10x** — the first gesture to go. This baseline was
   recorded before #131 and is left as it was; #131 removed the 880 writes per notch and
   **these numbers did not move**, which is the finding written up above. The ceiling is
-  the browser's raster of a scaled stage, and it is still where it was.
+  the browser's raster of a scaled stage, and it is still where it was — #228 accepted it
+  as a limit and capped the zoom at 8x rather than chasing it further.
 
 An input-to-frame **latency** metric was built first and thrown away: with one input per
 frame it measures where in the frame the input happened to land, and duly reported a p95

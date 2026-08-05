@@ -590,6 +590,86 @@ test("the zoom buttons drive the same stage mod+0 resets", async ({ page }) => {
   await expect(readout).toHaveText(fitted);
 });
 
+/**
+ * The zoom's three settled facts (#228), in the one place all three are visible.
+ *
+ * The ceiling is a decision rather than a bug: past 8x the picture has no more
+ * information in it, and the browser's raster of a scaled stage is where the frame
+ * budget goes (`docs/annotations.md`, "The ceiling is raster"). What a person must
+ * not meet is a control that accepts presses and does nothing — so the limit is
+ * *stated* at both ends, the readout stops at the capped number, and deep zoom
+ * shows real pixel blocks instead of interpolated blur.
+ *
+ * A wheel notch and not twenty button presses: `zoomAbout` is exponential, so one
+ * large `deltaY` lands on the ceiling in a single event, and it exercises the path
+ * that has no button to be disabled — a wheel past the limit must stop too.
+ */
+test("the zoom stops at 8x, and the control says so rather than going quiet", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const readout = page.getByTestId("zoom-readout");
+  const zoomIn = page.getByTestId("zoom-in");
+  await expect(readout).toHaveText(/%$/);
+
+  // Below the pixelated threshold at the fit, which is what makes the assertion
+  // after the wheel a change rather than a coincidence.
+  await expect(page.getByTestId("annotator-image")).toHaveCSS("image-rendering", "auto");
+  await expect(zoomIn).toHaveAttribute("data-at-bound", "false");
+
+  // Moved onto the pane before *every* notch, never once at the top. The wheel
+  // listener is the pane's own, and a `mouse.wheel` after a button press is
+  // dispatched wherever that press left the cursor — over the header, where it
+  // reaches nothing. That silently turned this scenario's refusal assertions into
+  // assertions about a wheel event nobody received.
+  const wheelOverCanvas = async (delta: number): Promise<void> => {
+    const box = await page.getByTestId("annotator-root").boundingBox();
+    if (box === null) throw new Error("annotator-root has no bounding box");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, delta);
+  };
+
+  await wheelOverCanvas(-4000);
+
+  // The capped value exactly — never an uncapped internal number, and never a
+  // rounding of one. `MAX_ZOOM` is 8.
+  await expect(readout).toHaveText("800%");
+  await expect(page.getByTestId("annotator-image")).toHaveCSS("image-rendering", "pixelated");
+
+  // Disabled with the reason, and `aria-disabled` rather than the native
+  // attribute — a natively disabled button takes no pointer events, so its
+  // tooltip never opens and the reason is unreadable.
+  await expect(zoomIn).toHaveAttribute("aria-disabled", "true");
+  await expect(zoomIn).toHaveAttribute("aria-label", "Maximum zoom — 8× image pixels");
+  await zoomIn.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Maximum zoom — 8× image pixels");
+
+  // Playwright's own actionability check reads `aria-disabled`, so an ordinary
+  // click waits for it to become enabled and times out — which is the assertion
+  // this line makes, and evidence the control is disabled to more than the eye.
+  await expect(zoomIn).toBeDisabled();
+
+  // Both ways past it are refused, and neither moves the readout. The press is
+  // forced past the actionability wait on purpose: the guard inside `onClick` is
+  // what refuses, and a click that never lands would not exercise it.
+  await zoomIn.click({ force: true });
+  await wheelOverCanvas(-4000);
+  await expect(readout).toHaveText("800%");
+
+  // The floor gets the same treatment — it was the same bare button before #228.
+  const zoomOut = page.getByTestId("zoom-out");
+  await expect(zoomOut).toHaveAttribute("data-at-bound", "false");
+  await wheelOverCanvas(8000);
+  await expect(readout).toHaveText("5%");
+  await expect(zoomOut).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("annotator-image")).toHaveCSS("image-rendering", "auto");
+  // …and the other control is live again, which is what tells the two apart from
+  // a pair that is simply always disabled.
+  await expect(zoomIn).toHaveAttribute("data-at-bound", "false");
+});
+
 test("Skip settles the asset and advances", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent);

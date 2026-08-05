@@ -451,7 +451,15 @@ The page the reference design shows (#56), with measurements verified in v1's so
   px-1.5 py-1`, meta-size text `N. class`; **selected = `border-primary` +
   `bg-primary/10`**; hidden = 50% opacity; per-row eye and trash as 24px ghost icon
   buttons. Header row: object count in muted meta text + all-visibility toggle.
-- **Zoom**: minimum 30%, percent readout between the −/+ buttons.
+- **Zoom**: **5%–800%**, percent readout between the −/+ buttons, showing the capped value
+  exactly at each end. The floor is not v1's 30%: an 8K frame does not *fit* a laptop pane
+  above about 18%, so a 30% floor makes "zoom out until you can see the whole thing"
+  unreachable (`MIN_ZOOM`, since #49). The ceiling is 8x, where one asset pixel is an
+  eight-pixel block and the picture has nothing further to show (#228); above 4x the image
+  renders `image-rendering: pixelated`, so depth shows real pixel blocks rather than
+  interpolated blur. Both bounds are **disabled with the reason** per principle 9 — the
+  `−`/`+` carry `aria-disabled` and a tooltip naming the limit, never a press that silently
+  does nothing. `docs/annotations.md` carries the argument.
 
 ### The canvas surround
 

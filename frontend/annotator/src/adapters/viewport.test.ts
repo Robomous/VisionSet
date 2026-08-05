@@ -11,8 +11,12 @@ import {
   IDENTITY_VIEWPORT,
   MAX_ZOOM,
   MIN_ZOOM,
+  PIXELATED_ABOVE_ZOOM,
+  atZoomCeiling,
+  atZoomFloor,
   clampZoom,
   fitToViewport,
+  imageRenderingAt,
   imageToScreen,
   panBy,
   screenToImage,
@@ -75,11 +79,83 @@ describe("the zoom is bounded, and a bad number resets the view", () => {
     expect(clampZoom(Number.POSITIVE_INFINITY)).toBe(1);
   });
 
+  it("caps at 8x, where one asset pixel is an eight-pixel block (#228)", () => {
+    // Named rather than inferred: this is the ceiling the readout shows as 800%,
+    // the one a zoom-in control is disabled at, and the one `docs/annotations.md`
+    // argues for. Anything past it is larger blocks of the same pixels.
+    expect(MAX_ZOOM).toBe(8);
+  });
+
+  it("clamps every path in, not just the direct one", () => {
+    // The three doors a zoom can arrive through. A ceiling honoured by `clampZoom`
+    // and skipped by a caller is not a ceiling, and the wheel is a caller.
+    expect(clampZoom(MAX_ZOOM * 4)).toBe(MAX_ZOOM);
+    // The wheel, the pinch and both buttons are all `zoomAbout`.
+    expect(zoomAbout({ zoom: 1, panX: 0, panY: 0 }, 1000, 50, 50).zoom).toBe(MAX_ZOOM);
+    expect(zoomAbout({ zoom: 1, panX: 0, panY: 0 }, 0.00001, 50, 50).zoom).toBe(MIN_ZOOM);
+    // `fit` on an asset far larger than any pane cannot land under the floor.
+    const enormous: AssetDescriptor = { id: "c", width: 200_000, height: 200_000 };
+    expect(fitToViewport(enormous, 1400, 900).zoom).toBe(MIN_ZOOM);
+  });
+
   it("lets an 8K asset fit a laptop pane, which v1's 0.3 floor did not", () => {
     const eightK: AssetDescriptor = { id: "b", width: 7680, height: 4320 };
     const fitted = fitToViewport(eightK, 1400, 900);
     expect(fitted.zoom).toBeLessThan(0.3);
     expect(fitted.zoom).toBeGreaterThan(MIN_ZOOM);
+  });
+});
+
+describe("deep zoom shows pixels, not smoothed guesses (#228)", () => {
+  it("smooths at ordinary working zooms", () => {
+    expect(imageRenderingAt(1)).toBe("auto");
+    expect(imageRenderingAt(MIN_ZOOM)).toBe("auto");
+    expect(imageRenderingAt(PIXELATED_ABOVE_ZOOM / 2)).toBe("auto");
+  });
+
+  it("switches strictly above the threshold, so 4x itself still smooths", () => {
+    // The constant is named `PIXELATED_ABOVE_ZOOM`, and a boundary behaving as
+    // "at 4x" would make the name wrong for the one zoom a control can land on
+    // exactly. This is the assertion that pins which side the boundary is on.
+    expect(imageRenderingAt(PIXELATED_ABOVE_ZOOM)).toBe("auto");
+    expect(imageRenderingAt(PIXELATED_ABOVE_ZOOM + 0.01)).toBe("pixelated");
+  });
+
+  it("is pixelated all the way to the ceiling", () => {
+    expect(imageRenderingAt(MAX_ZOOM)).toBe("pixelated");
+  });
+
+  it("puts the threshold below the ceiling, or it would never be reached", () => {
+    expect(PIXELATED_ABOVE_ZOOM).toBeLessThan(MAX_ZOOM);
+    expect(PIXELATED_ABOVE_ZOOM).toBeGreaterThan(MIN_ZOOM);
+  });
+});
+
+describe("the bounds are published, so a control can say why it stopped", () => {
+  it("answers the ceiling at it and past it, never only at exactly it", () => {
+    // A viewport can be constructed rather than clamped — a host may hold one
+    // from before a ceiling moved — so `>=`. A control that refuses only at
+    // exactly `MAX_ZOOM` is a control that silently works past it.
+    expect(atZoomCeiling(MAX_ZOOM)).toBe(true);
+    expect(atZoomCeiling(MAX_ZOOM + 1)).toBe(true);
+    expect(atZoomCeiling(MAX_ZOOM - 0.01)).toBe(false);
+    expect(atZoomCeiling(1)).toBe(false);
+  });
+
+  it("answers the floor the same way", () => {
+    expect(atZoomFloor(MIN_ZOOM)).toBe(true);
+    expect(atZoomFloor(MIN_ZOOM / 2)).toBe(true);
+    expect(atZoomFloor(MIN_ZOOM + 0.01)).toBe(false);
+    expect(atZoomFloor(1)).toBe(false);
+  });
+
+  it("agrees with the clamp that actually enforces them", () => {
+    // The predicates exist so a host does not re-derive the bounds; this is what
+    // makes "does not re-derive" checkable rather than a comment.
+    expect(atZoomCeiling(clampZoom(9999))).toBe(true);
+    expect(atZoomFloor(clampZoom(0))).toBe(true);
+    expect(atZoomCeiling(clampZoom(1))).toBe(false);
+    expect(atZoomFloor(clampZoom(1))).toBe(false);
   });
 });
 
