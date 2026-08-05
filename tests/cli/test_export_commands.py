@@ -109,10 +109,17 @@ def test_format_list_names_the_installed_exporters() -> None:
     assert result.exit_code == 0, result.output
     rows = result.stdout.splitlines()
     assert rows[0].split() == ["NAME", "LOSSY"]
-    # Sorted by name, so `coco` leads and `yolo` closes.
+    # Sorted by name, so `bdd100k-lane` leads and `yolo` closes. Five of the nine
+    # are #223's lane family, and every one of them is lossy — a lane file has
+    # fields for a lane and none for an annotation's attributes or confidence.
     assert [row.split() for row in rows[1:]] == [
+        ["bdd100k-lane", "yes"],
         ["coco", "no"],
+        ["culane", "yes"],
+        ["curvelanes", "yes"],
         ["dummy", "no"],
+        ["openlane-2d", "yes"],
+        ["tusimple", "yes"],
         ["voc", "yes"],
         ["yolo", "yes"],
     ]
@@ -137,12 +144,36 @@ def test_format_list_json_is_the_envelope() -> None:
     # claims everything — declaring less would make the report describe a loss
     # that never happens.
     assert json.loads(result.stdout)["items"] == [
+        # #223's lane family. All five lossy; only `tusimple` reduces the geometry,
+        # because its file *is* the X where a lane crosses each of a fixed set of
+        # rows — vertices in, samples out.
+        {
+            "name": "bdd100k-lane",
+            "lossy": True,
+            "geometries": ["polyline"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+        },
         {
             # #63. Lossless: boxes and polygons are native, and everything COCO
             # has no field for rides in a `visionset` object per annotation.
             "name": "coco",
             "lossy": False,
             "geometries": ["bbox", "polygon"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+        },
+        {
+            "name": "culane",
+            "lossy": True,
+            "geometries": ["polyline"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+        },
+        {
+            "name": "curvelanes",
+            "lossy": True,
+            "geometries": ["polyline"],
             "degraded_geometries": [],
             "modalities": ["image"],
         },
@@ -161,6 +192,21 @@ def test_format_list_json_is_the_envelope() -> None:
             ],
             "degraded_geometries": [],
             "modalities": ["image", "point_cloud", "video"],
+        },
+        {
+            "name": "openlane-2d",
+            "lossy": True,
+            "geometries": ["polyline"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+        },
+        {
+            # The one lane format that does not write the vertices it was given.
+            "name": "tusimple",
+            "lossy": True,
+            "geometries": [],
+            "degraded_geometries": ["polyline"],
+            "modalities": ["image"],
         },
         {
             # #64. Lossy for a different reason from `yolo`'s: a VOC `<object>`

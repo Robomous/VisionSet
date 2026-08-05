@@ -15,6 +15,7 @@ file agree with itself about something the rest of the system does differently.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
@@ -64,7 +65,13 @@ IMAGE_SIZE = (64, 48)
 class Fixture:
     """A project whose one batch can be labelled and promoted, then published."""
 
-    def __init__(self, tmp_path: Path, *, images: int = 3) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        *,
+        images: int = 3,
+        classes: Sequence[LabelClass] = CLASSES,
+    ) -> None:
         self.root = tmp_path / "ws"
         self.workspace = WorkspaceService.init(self.root)
         self.projects = ProjectService(self.workspace)
@@ -78,7 +85,7 @@ class Fixture:
         self.releases = ReleaseService(self.workspace)
 
         self.project = self.projects.create("road-signs")
-        self.schemas.create_version(self.project.id, list(CLASSES))
+        self.schemas.create_version(self.project.id, list(classes))
         incoming = tmp_path / "incoming"
         incoming.mkdir()
         for index in range(images):

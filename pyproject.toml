@@ -59,6 +59,13 @@ dummy = "visionset.formats._dummy:DummyExporter"
 yolo = "visionset.formats.yolo:YoloDetectionExporter"
 coco = "visionset.formats.coco:CocoExporter"
 voc = "visionset.formats.voc:VocExporter"
+# The lane family (#223). Five plugins over v1's six exporter functions: CULane's
+# annotation file and its segmentation mask are two artifacts of one format.
+tusimple = "visionset.formats.lanes:TuSimpleExporter"
+curvelanes = "visionset.formats.lanes:CurveLanesExporter"
+bdd100k-lane = "visionset.formats.lanes:Bdd100kLaneExporter"
+culane = "visionset.formats.lanes:CuLaneExporter"
+openlane-2d = "visionset.formats.lanes:OpenLane2dExporter"
 
 [dependency-groups]
 dev = [
