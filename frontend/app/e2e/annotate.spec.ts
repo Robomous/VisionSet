@@ -742,12 +742,21 @@ test("a viewer can still navigate between frames, because a read-only mode you c
   await expect(page.getByTestId("asset-position")).toContainText("1/2");
 });
 
-/** The reserved slots, drawn so the bar is the shape the design shows. */
-test("the versioning controls are present and disabled, not absent", async ({ page }) => {
+/**
+ * The inverse of what this used to assert. The version-select and Merge slots were
+ * drawn disabled to hold the design's shape; #127 is post-beta and blocked on a
+ * decision, so there is nothing to explain them with and principle 9 forbids the
+ * bare disabled control that leaves. They are gone until the model is.
+ */
+test("the versioning controls are absent, not disabled", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent);
-  await expect(page.getByTestId("version-select")).toBeDisabled();
-  await expect(page.getByTestId("merge")).toBeDisabled();
+  await expect(page.getByTestId("version-select")).toHaveCount(0);
+  await expect(page.getByTestId("merge")).toHaveCount(0);
+  // The bar did not lose anything real with them: the controls either side are
+  // still there, so this is a removal rather than a header that failed to render.
+  await expect(page.getByTestId("open-gallery")).toBeVisible();
+  await expect(page.getByTestId("save")).toBeVisible();
 });
 
 /**

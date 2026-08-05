@@ -426,12 +426,18 @@ The page the reference design shows (#56), with measurements verified in v1's so
 - **Top bar** (`AnnotationToolHeader` in v1): one 44px (`h-11`) row on `card` with a
   `border-b`, 32px (`h-8`) controls, `h-5 w-px` divider between groups. Left to right:
   back · project name + date in muted text with `·` separators at 40% opacity · asset
-  navigator `‹ filename n/m ›` · grid jump · class field · version select (GitBranch
-  icon, `h-8` trigger) + create-branch (GitBranchPlus) · save-state indicator ("Saving…"
-  pulsing meta text / "Saved" green check, shown ~3s / error in destructive with an
-  underlined Retry) · **Save** (primary, Save icon) · **Accept** (CheckCheck) ·
-  **Merge** (GitMerge) · `n / m annotated` · zoom out / percent / zoom in ·
-  fullscreen (Maximize2) · help.
+  navigator `‹ filename n/m ›` · grid jump · class field · save-state indicator
+  ("Saving…" pulsing meta text / "Saved" green check, shown ~3s / error in destructive
+  with an underlined Retry) · **Save** (primary, Save icon) · **Accept** (CheckCheck) ·
+  `n / m annotated` · zoom out / percent / zoom in · fullscreen (Maximize2) · help.
+
+  The reference draws three more controls between the navigator and the save state —
+  version select (GitBranch), create-branch (GitBranchPlus) and **Merge** (GitMerge).
+  **They are not rendered**, because the model they operate does not exist: annotation
+  versioning is #127, post-beta and blocked on a decision. They were drawn disabled
+  until 2026-08-05 to hold the design's shape, which principle 9 forbids — the only
+  honest tooltip for them is "this feature does not exist", and that is not an
+  explanation of what would enable the button. They return with the model, not before.
 - **Tool strip**: floating at the canvas's left edge — 48px (`w-12`) column, `muted`
   surface, `border`, 12px radius, 8px padding; 36px icon buttons; **active tool = primary
   variant** (the near-black), inactive = ghost; a `h-px w-6` divider; help at the bottom.
@@ -538,7 +544,9 @@ Adapted from v1's `DESIGN.md` (`computer-vision-lab-app`, sibling checkout) on
 workspace components (`AnnotationToolHeader` / `AnnotationToolStrip` /
 `AnnotationSidePanel`). The reference screenshots are described in the 2026-07-30 design
 comment on #51. The version-control affordances (branch dropdown, Merge) are recorded in
-#127 and are post-beta; their top-bar slots render disabled.
+#127 and are post-beta. Their top-bar slots were removed on 2026-08-05: this record is
+what re-milestoned #127 out of 0.1.0, and a disabled control whose only explanation is
+"this does not exist yet" is the thing principle 9 names.
 
 **2026-08-01 (#206)** added principles 6–9, the whole of **Project surfaces**, and the
 qualification to principle 3, ahead of the project view redesign (#207–#213).
