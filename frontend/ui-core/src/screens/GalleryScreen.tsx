@@ -42,13 +42,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Check, Eye, PlayCircle, SkipForward, Undo2, X } from "lucide-react";
+import { Check, Eye, PlayCircle, SkipForward, Trash2, Undo2, X } from "lucide-react";
 
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
 import { useAssetAnnotations } from "../annotator/jobQueries";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "../primitives/Dialog";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
@@ -87,6 +94,7 @@ import {
   useBatches,
   useBulkSetProgress,
   useProject,
+  useRemoveBatchAssets,
   useSource,
   type Batch,
   type BatchAsset,
@@ -313,6 +321,16 @@ export function GalleryScreen({
   // than the screen refusing to let anything be picked.
   const showsProgress = hasJobs(batch.data?.state);
 
+  // ...and it is on for a **draft** too, since #281. `showsProgress` gated
+  // selection as well until membership editing had a wire surface, which put the
+  // one state where `edit_membership` is legal behind the one gate that hid the
+  // bar. Progress badges and the segmented filter still hang off
+  // `showsProgress` — a draft has no jobs, so it genuinely has no progress to
+  // show — but what may be *picked* is now a separate question from what may be
+  // *displayed*, which is the same split the batch-state mirror got wrong in the
+  // other direction.
+  const selectable = showsProgress || declares(batch.data, BATCH_ACTION.editMembership);
+
   /**
    * This batch's place in a correction chain, both ways.
    *
@@ -451,7 +469,7 @@ export function GalleryScreen({
                           asset={asset}
                           selected={selected.has(asset.id)}
                           highlighted={asset.id === highlighted}
-                          {...(showsProgress
+                          {...(selectable
                             ? {
                                 onSelect: (modifiers: Modifiers) =>
                                   toggle(row.index * columns + offset, modifiers),
@@ -470,10 +488,10 @@ export function GalleryScreen({
         )}
       </Async>
 
-      {showsProgress && (
+      {selectable && (
         <BulkBar
           batchId={batchId}
-          batchState={batch.data?.state}
+          batch={batch.data}
           selected={selected}
           assets={loaded}
           onClear={() => setSelected(new Set())}
@@ -1083,11 +1101,14 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
  * anywhere in the browser**. A mis-aimed shift-click over forty frames was
  * unrecoverable without opening each one in the annotator. `Restore` is that edge.
  *
- * `Delete frames` is still absent and still a scope fact: batch membership editing
- * is not on the wire (#281), and after approval the kernel refuses it outright —
- * excluding an asset from an approved batch **is** the skip. `Assign` was cut with
- * #282: jobs are cut once at approval by an exact partition, and there is no
- * annotator identity to assign to.
+ * `Remove from batch` is the third, and it is **not** called `Delete frames`
+ * anywhere — control, dialog or report. The issue's phrasing was the founder's,
+ * and it is the wrong word by exactly the amount the confirmation would have had
+ * to un-teach: this removes membership, and the frame stays in its project, keeps
+ * its annotations and stays in every other batch that carries it. A label whose
+ * own dialog has to say "this does not really delete anything" is a label that
+ * already misled somebody. `Assign` was cut with #282: jobs are cut once at
+ * approval by an exact partition, and there is no annotator identity to assign to.
  *
  * ## Each button counts the frames its move is legal for, and sends only those
  *
@@ -1125,7 +1146,7 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
  */
 function BulkBar({
   batchId,
-  batchState,
+  batch,
   selected,
   assets,
   onClear,
@@ -1134,13 +1155,25 @@ function BulkBar({
   readonly batchId: string;
   /** Open the correction dialog the header owns, with this selection as its scope. */
   readonly onCorrect?: () => void;
-  /** The batch's own state — the reason a move is unavailable, when it is. */
-  readonly batchState: string | undefined;
+  /**
+   * The batch itself, not only its state.
+   *
+   * It was `batchState: string` while every action here was a *per-frame* move
+   * and the state was only ever a sentence to explain a refusal. `Remove from
+   * batch` is a **batch-level** capability, so the bar now needs the batch's own
+   * `allowed_actions` — and reading `edit_membership` off it is the difference
+   * between rendering what the wire declares and re-deriving `state === "draft"`,
+   * which is the mirror this whole module was rewritten to remove.
+   */
+  readonly batch: Batch | undefined;
   readonly selected: ReadonlySet<string>;
   readonly assets: readonly BatchAsset[];
   readonly onClear: () => void;
 }): JSX.Element | null {
   const bulk = useBulkSetProgress(batchId);
+  const remove = useRemoveBatchAssets(batchId);
+  const [confirming, setConfirming] = useState(false);
+  const batchState = batch?.state;
   // A job id is null exactly while the batch is a draft, and a draft renders no
   // selection at all — so this filter is about the *frames*, not about the state.
   const chosen = assets.filter((one) => selected.has(one.id) && one.job_id !== null);
@@ -1163,7 +1196,32 @@ function BulkBar({
   const batchIsOpen = assets.some((one) => one.allowed_actions.length > 0);
   const withheld = batchIsOpen ? null : withheldBecause(batchState);
 
-  if (selected.size === 0) return null;
+  // Batch-level, unlike the two above: membership is a property of the batch, so
+  // every selected frame is removable or none is.
+  const removable = declares(batch, BATCH_ACTION.editMembership);
+
+  /**
+   * The selected frames that are **still in the listing**, which is what this bar
+   * counts and acts on.
+   *
+   * `selected` is a set of ids and outlives the frames it names — removal is the
+   * first action here that makes a selected frame stop existing. Counting the set
+   * would report two frames selected over a grid holding none of them, and
+   * sending its ids would ask the server to remove what is already gone.
+   *
+   * It also replaces clearing the selection on success, which is the version of
+   * this that shipped for about ten minutes and destroyed its own report: the bar
+   * unmounts at zero selected, so `onClear()` took "Removed 2" off the screen in
+   * the same commit that rendered it. A removed frame leaves this list on its
+   * own, so there is nothing to clear.
+   */
+  const present = assets.filter((one) => selected.has(one.id));
+  const removalIds = present.map((one) => one.id);
+  const reporting = remove.isSuccess || remove.isError;
+
+  // Mounted while there is a report to give even after the selection has emptied
+  // itself out — see `present`.
+  if (present.length === 0 && !reporting) return null;
 
   return (
     <div
@@ -1173,7 +1231,7 @@ function BulkBar({
       aria-label="Bulk actions"
     >
       <span className="text-meta font-medium" data-testid="bulk-count">
-        {selected.size} frame{selected.size === 1 ? "" : "s"} selected
+        {present.length} frame{present.length === 1 ? "" : "s"} selected
       </span>
 
       <Button
@@ -1199,6 +1257,44 @@ function BulkBar({
         <Undo2 className="size-4" aria-hidden="true" />
         {bulk.isPending ? "Working…" : `Restore (${restorable.length})`}
       </Button>
+
+      {/*
+        Batch-level, so it is enabled or disabled for the whole selection rather
+        than counting targets like the two above. Disabled-with-reason rather
+        than hidden: taking frames out of a batch is meaningful on this screen in
+        every state, and the reason it is unavailable in most of them is the one
+        thing a person cannot see from the tiles.
+      */}
+      <Button
+        variant="secondary"
+        size="sm"
+        data-testid="bulk-remove"
+        disabled={!removable || removalIds.length === 0 || remove.isPending}
+        {...(removable ? {} : { title: MEMBERSHIP_FIXED })}
+        onClick={() => setConfirming(true)}
+      >
+        <Trash2 className="size-4" aria-hidden="true" />
+        {remove.isPending ? "Removing…" : `Remove from batch (${removalIds.length})`}
+      </Button>
+
+      {/*
+        What the call actually did, which is not what it was asked to do. Removal
+        is idempotent, so an id the batch no longer holds is a 200 that removed
+        nothing — reporting the selection size would report work that did not
+        happen, which is `ui-capabilities`' third banned pattern.
+      */}
+      {remove.isSuccess && (
+        <span className="text-meta text-muted-foreground" data-testid="bulk-removed">
+          {remove.data.changed.length === 0
+            ? "Nothing to remove — those frames were not in this batch."
+            : `Removed ${remove.data.changed.length} from the batch.`}
+        </span>
+      )}
+      {remove.isError && (
+        <span className="text-meta text-destructive" data-testid="bulk-remove-error">
+          {refusalProse(remove.error)}
+        </span>
+      )}
 
       {/*
         The partial outcome, with the reason it was partial. A count alone —
@@ -1260,7 +1356,78 @@ function BulkBar({
       >
         <X className="size-4" aria-hidden="true" />
       </button>
+
+      <RemoveFromBatchDialog
+        open={confirming}
+        count={removalIds.length}
+        pending={remove.isPending}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          // `mutateAsync` with the rejection handled, never a bare `void
+          // mutate(...)`: an unhandled rejection is `ui-capabilities`' second
+          // banned pattern, and the error is rendered from `remove.error` above.
+          remove
+            .mutateAsync(removalIds)
+            .then(() => setConfirming(false))
+            .catch(() => setConfirming(false));
+        }}
+      />
     </div>
+  );
+}
+
+/**
+ * The confirmation, stating what actually happens rather than that something will.
+ *
+ * A destructive-looking action needs a gate, and a gate that says "are you sure?"
+ * is a speed bump rather than information. The one thing a person cannot tell
+ * from the button is the **blast radius**, and it is much smaller than the word
+ * "remove" suggests — so that is what the dialog spends its sentences on.
+ */
+/**
+ * Why the control is disabled, when it is.
+ *
+ * Not `withheldBecause`, and the difference is the point: those sentences explain
+ * why a *frame* cannot move, and are keyed on the batch's state one case at a
+ * time. Membership has one rule with one moment — approval — so it has one
+ * sentence, and it names the moment rather than the current state so it reads the
+ * same on `approved`, `in_annotation` and `completed`.
+ */
+const MEMBERSHIP_FIXED = "Membership is fixed once the batch is approved.";
+
+function RemoveFromBatchDialog({
+  open,
+  count,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  readonly open: boolean;
+  readonly count: number;
+  readonly pending: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}): JSX.Element {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent data-testid="remove-dialog">
+          <DialogTitle>
+            Remove {count} frame{count === 1 ? "" : "s"} from this batch?
+          </DialogTitle>
+          <DialogDescription data-testid="remove-consequence">
+            They stay in the project, keep any annotations, and stay in every other batch that
+            holds them. Only this batch stops listing them.
+          </DialogDescription>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onCancel} data-testid="remove-cancel">
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={pending} data-testid="remove-confirm">
+            {pending ? "Removing…" : "Remove from batch"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
