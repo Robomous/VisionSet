@@ -46,7 +46,6 @@ from visionset.kernel.domain import (
     AnnotationJobState,
     AnnotationSchema,
     Asset,
-    AssetProgress,
     Batch,
     BatchApproved,
     BatchCompleted,
@@ -59,6 +58,7 @@ from visionset.kernel.domain import (
     SingleJob,
     TaskGroup,
     diff_classes,
+    initial_progress,
     normalize_name,
     partition_assets,
     require_move,
@@ -316,6 +316,18 @@ class BatchService:
         committed, so a subscriber can never see a partition that was rolled
         back, and one that raises cannot roll this one back.
 
+        **An asset that already carries labels starts ``annotated``, not
+        ``unannotated``** (:func:`initial_progress`). That is how a correction
+        batch comes out *seeded*: annotations hang off an ``asset_id``, so a
+        batch cut over an already-labeled asset opens with the earlier round's
+        boxes already drawn on it, and filing such an asset under "nothing
+        labeled here" would be a lie the gallery's filters repeat. Nothing here
+        asks whether this batch is a correction — the rule reads the asset, not
+        the lineage. Its honest consequence is that a correction whose every
+        asset seeded this way is already *settled*, so it can be completed with
+        no edits at all; a correction is opt-in per asset, and the alternative
+        is to make a reviewer re-declare work nobody disputed.
+
         Raises:
             BatchNotFound: no such batch in this workspace.
             InvalidTransition: the batch is not a ``draft``.
@@ -339,12 +351,16 @@ class BatchService:
                 batch.asset_ids, SingleJob() if partition is None else partition
             )
 
+            labeled = _already_labeled(uow, batch.asset_ids)
             group = uow.task_groups.add(TaskGroup(batch_id=batch.id, name=FIRST_ROUND))
             job_ids = [
                 uow.annotation_jobs.add(
                     AnnotationJob(
                         task_group_id=group.id,
-                        progress={asset_id: AssetProgress.UNANNOTATED for asset_id in segment},
+                        progress={
+                            asset_id: initial_progress(has_annotations=asset_id in labeled)
+                            for asset_id in segment
+                        },
                     )
                 ).id
                 for segment in segments
@@ -636,6 +652,25 @@ def _annotated_classes(uow: UnitOfWork, batch: Batch) -> dict[str, int]:
         for annotation in uow.annotations.list(asset_id):
             counts[annotation.label_class] = counts.get(annotation.label_class, 0) + 1
     return counts
+
+
+def _already_labeled(uow: UnitOfWork, asset_ids: Iterable[UUID]) -> set[UUID]:
+    """Which of these assets already carry at least one annotation.
+
+    What :func:`initial_progress` is asked, for the whole batch at once rather
+    than per asset inside the partition loop — the segments are a partition of
+    the same membership, so asking per segment would be the same reads in a
+    shape that makes the count depend on how the work was cut up.
+
+    N + 1 walks, and the ``_annotated_classes`` note above applies verbatim: an
+    Annotation's parent is its Asset and ``Repository.list`` takes one
+    ``parent_id``. This one is paid once per batch, at approval. When it starts
+    to cost, the fix is a method on the port, never a SQLAlchemy import here.
+
+    Only *whether*, never how many: the caller's question is a boolean and
+    counting would be a number nobody reads.
+    """
+    return {asset_id for asset_id in asset_ids if uow.annotations.list(asset_id)}
 
 
 def assets_of(uow: UnitOfWork, batch: Batch) -> list[Asset]:

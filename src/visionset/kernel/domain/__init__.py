@@ -142,6 +142,7 @@ from visionset.kernel.domain.task import (
     AnnotationJobState,
     AssetProgress,
     TaskGroup,
+    initial_progress,
     progress_after_annotating,
 )
 from visionset.kernel.domain.token import (
@@ -269,6 +270,7 @@ __all__ = [
     "diff_classes",
     "generate_secret",
     "hash_secret",
+    "initial_progress",
     "normalize_name",
     "partition_assets",
     "progress_after_annotating",
