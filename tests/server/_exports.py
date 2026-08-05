@@ -11,7 +11,7 @@ declares itself lossy — and they reach the app through `dependency_overrides` 
 the real entry-point group; `tests/formats/test_registry.py` is what covers the
 discovery path, and this covers what happens after.
 
-Plain classes in a private module, the `_probe.py` / `_runner.py` precedent, and
+Plain classes in a private module, the `_probe.py` / `_jobs.py` precedent, and
 still no `conftest.py` anywhere.
 """
 
@@ -22,9 +22,14 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from visionset.formats import registry
 from visionset.kernel.domain import GeometryType, Manifest, Release
 from visionset.kernel.ports import ContentReader, Exporter
 from visionset.server.dependencies import get_exporters
+
+#: The real scan, captured at import so `reset_exporters` can restore it however
+#: many times a suite has swapped it.
+_REAL_EXPORTERS = registry.exporters
 
 
 class WritingExporter:
@@ -84,16 +89,41 @@ class LossyExporter:
         (dest / "boxes-only.txt").write_text(str(len(manifest.assets)))
 
 
+def reset_exporters() -> None:
+    """Put the real entry-point scan back. Every fixture that serves doubles calls it.
+
+    Restoring is a *fixture's* job rather than the caller's, because
+    `with_exporters` is called inside a test body and a test that fails partway
+    would otherwise leave the swap in place for whatever ran next — and the
+    symptom would be `tests/formats/test_registry.py` reporting that this
+    repository ships an exporter called "writing".
+    """
+    registry.exporters = _REAL_EXPORTERS  # type: ignore[assignment]
+
+
 def with_exporters(app: FastAPI, *plugins: Exporter) -> None:
     """Serve exactly these formats, replacing whatever is installed.
 
     Replaces rather than adds, so a test asserting on `GET /formats` sees a set
     it chose. `DummyExporter` is still covered — by the registry tests, and by
     the ones here that deliberately do not override.
+
+    **Two seams, because since #328 an export has two readers.** The route
+    resolves through `get_exporters`, which is a dependency precisely so a test
+    can override it; the *handler* runs in a worker with no dependency graph and
+    reads `registry.exporters()` directly. Overriding only the first was the
+    first thing to break when export moved behind the queue: the route accepted
+    the job and the handler failed it with `EXPORT_FORMAT_NOT_FOUND`, naming
+    plugins the test had never heard of.
+
+    The registry half is a module-global swap rather than `monkeypatch.setattr`,
+    so this stays a plain function like everything else in `tests/server/`. What
+    puts it back is `reset_exporters`, called by the fixtures below rather than by
+    the caller — see that function for why.
     """
-    app.dependency_overrides[get_exporters] = lambda: {
-        plugin.format_name: plugin for plugin in plugins
-    }
+    chosen = {plugin.format_name: plugin for plugin in plugins}
+    app.dependency_overrides[get_exporters] = lambda: chosen
+    registry.exporters = lambda: dict(chosen)  # type: ignore[assignment]
 
 
 class BoxesOnlyExporter:

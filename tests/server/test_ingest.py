@@ -4,10 +4,12 @@ The acceptance walk of #28 is one test here: upload a clip, register it at 5 fps
 launch, wait, read the assets. It is deliberately the shape a real client has —
 nothing reaches past the API for an answer the API is supposed to give.
 
-**Nothing in this module sleeps.** Waiting is `RecordingRunner.wait()`, which
-joins the worker's future, and sequencing is `GatedRunner`'s events — the
-discipline `tests/kernel/test_concurrency.py` set. A test that polls with sleeps
-is slow when it passes and flaky when it does not.
+**Nothing in this module sleeps, and since #328 nothing needs to.** Work is
+claimed off a durable queue, so "launched but not yet run" is a row rather than a
+thread parked on an `Event`: `ManualDispatcher` simply does not run it, and
+`InlineDispatcher` runs it before the launch responds. The discipline
+`tests/kernel/test_concurrency.py` set is unchanged; there is just less to
+sequence.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.fixtures.media import write_image, write_video
 from tests.server._api import api_client
-from tests.server._runner import JOIN_TIMEOUT, GatedRunner, RecordingRunner
+from tests.server._jobs import JOIN_TIMEOUT, InlineDispatcher, ManualDispatcher
 
 from visionset.kernel.services import WorkspaceService
 
@@ -36,13 +38,13 @@ EXPECTED_FRAMES = 10
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
 
 
@@ -52,6 +54,20 @@ def project(client: TestClient) -> str:
     assert response.status_code == 201, response.text
     project_id: str = response.json()["id"]
     return project_id
+
+
+def queued_jobs(client: TestClient) -> int:
+    """How much background work is waiting, read off the wire.
+
+    Replaces the old `len(runner.futures)`, and it is a better assertion than the
+    one it replaces: a future was an in-memory artefact of the test's own double,
+    while this is the durable row a restarted server would find. It also means the
+    "nothing was started" tests are checking the thing that would actually start.
+    """
+    response = client.get("/background-jobs", params={"state": "queued"})
+    assert response.status_code == 200, response.text
+    total: int = response.json()["total"]
+    return total
 
 
 def registered_clip(client: TestClient, project: str, tmp_path: Path) -> str:
@@ -88,7 +104,7 @@ def launch(client: TestClient, source: str, **body: Any) -> Any:
 
 
 def test_a_clip_uploaded_and_ingested_at_five_fps_lists_its_assets(
-    client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     source = registered_clip(client, project, tmp_path)
 
@@ -122,27 +138,34 @@ def test_a_clip_uploaded_and_ingested_at_five_fps_lists_its_assets(
 def test_a_launch_answers_before_the_worker_has_picked_the_job_up(
     tmp_path: Path, project: str
 ) -> None:
-    """The whole promise of the 202: the row is pollable while the work has not begun."""
-    gated = GatedRunner()
-    with api_client(tmp_path / "gated", runner=gated) as client:
+    """The whole promise of the 202: the row is pollable while the work has not begun.
+
+    `ManualDispatcher` runs nothing until `run()`, so the observable state is
+    simply the one the launch left behind. The old shape of this test parked a
+    worker thread on an `Event` to reach the same instant; the queue makes the
+    instant durable instead, which is the substantive change #328 made rather than
+    an easier way to write the assertion.
+    """
+    gated = ManualDispatcher()
+    with api_client(tmp_path / "gated", dispatcher=gated) as client:
         made = client.post("/projects", json={"name": "gated"}).json()["id"]
         source = registered_images(client, made, png_part(tmp_path))
 
         job = launch(client, source).json()
-        assert gated.entered.wait(timeout=JOIN_TIMEOUT)
+        # The launch nudged the dispatcher rather than trusting the poll interval.
+        assert gated.wakes == 1
 
         parked = client.get(f"/ingest-jobs/{job['id']}")
         assert parked.status_code == 200
         assert parked.json()["state"] == "pending"
 
-        gated.release.set()
-        gated.wait()
+        assert gated.run() == 1
 
         assert client.get(f"/ingest-jobs/{job['id']}").json()["state"] == "completed"
 
 
 def test_a_launch_names_the_batch_it_was_asked_to(
-    client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     source = registered_images(client, project, png_part(tmp_path))
 
@@ -153,7 +176,7 @@ def test_a_launch_names_the_batch_it_was_asked_to(
 
 
 def test_a_blank_batch_name_is_the_domains_own_422_not_a_500(
-    client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     """`InvalidName` is a mapped domain error, so no wire-model validator restates it.
 
@@ -168,25 +191,25 @@ def test_a_blank_batch_name_is_the_domains_own_422_not_a_500(
 
     assert response.status_code == 422
     assert response.json()["code"] == "INVALID_NAME"
-    assert runner.futures == []
+    assert queued_jobs(client) == 0
 
 
 def test_launching_over_an_unknown_source_is_404_and_starts_nothing(
-    client: TestClient, runner: RecordingRunner
+    client: TestClient, runner: InlineDispatcher
 ) -> None:
     """Refused on the calling thread, so a 202 never points at a job row nobody wrote."""
     response = launch(client, str(uuid4()))
 
     assert response.status_code == 404
     assert response.json()["code"] == "SOURCE_NOT_FOUND"
-    assert runner.futures == []
+    assert queued_jobs(client) == 0
 
 
 # --- what a run reports ------------------------------------------------------
 
 
 def test_an_unreadable_item_is_reported_and_does_not_fail_the_run(
-    client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     """Failure splits by remedy: operator noise is a line in the report, not a dead run."""
     source = registered_images(
@@ -215,7 +238,7 @@ def test_an_unreadable_item_is_reported_and_does_not_fail_the_run(
 
 
 def test_listing_the_runs_of_a_source(
-    client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     source = registered_images(client, project, png_part(tmp_path))
     first = launch(client, source).json()
@@ -230,7 +253,7 @@ def test_listing_the_runs_of_a_source(
 
 
 def test_re_ingesting_a_source_creates_nothing(
-    client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     """Content is addressed by hash, so a second run reports the same items as already held."""
     source = registered_images(client, project, png_part(tmp_path))
@@ -259,20 +282,20 @@ def test_reading_an_unknown_job_is_404(client: TestClient) -> None:
 
 
 def test_resuming_a_completed_run_is_409_rather_than_a_silent_no_op(
-    client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     """Refused on the calling thread: a 202 here would leave a client unable to tell
     a redo from a job that did nothing."""
     source = registered_images(client, project, png_part(tmp_path))
     job = launch(client, source).json()
     runner.wait()
-    before = len(runner.futures)
+    before = queued_jobs(client)
 
     response = client.post(f"/ingest-jobs/{job['id']}/resume")
 
     assert response.status_code == 409
     assert response.json()["code"] == "INVALID_TRANSITION"
-    assert len(runner.futures) == before
+    assert queued_jobs(client) == before
 
 
 def test_resuming_an_unknown_job_is_404(client: TestClient) -> None:
@@ -301,15 +324,14 @@ def test_a_resume_that_is_allowed_answers_202_and_says_where_to_poll(
     instrument `test_a_launch_answers_before_the_worker_has_picked_the_job_up`
     uses — nothing here sleeps.
     """
-    gated = GatedRunner()
-    with api_client(tmp_path / "resumable", runner=gated) as client:
+    gated = ManualDispatcher()
+    with api_client(tmp_path / "resumable", dispatcher=gated) as client:
         made = client.post("/projects", json={"name": "resumable"}).json()["id"]
         source = registered_images(client, made, png_part(tmp_path))
 
         job = launch(client, source).json()
-        assert gated.entered.wait(timeout=JOIN_TIMEOUT)
         assert client.get(f"/ingest-jobs/{job['id']}").json()["state"] == "pending"
-        submitted = len(gated.futures)
+        submitted = queued_jobs(client)
 
         response = client.post(f"/ingest-jobs/{job['id']}/resume")
 
@@ -318,17 +340,19 @@ def test_a_resume_that_is_allowed_answers_202_and_says_where_to_poll(
         # holds — a resume runs the same job and never forks a second row.
         assert response.json()["id"] == job["id"]
         assert response.headers["Location"] == f"/ingest-jobs/{job['id']}"
-        # Accepted means handed to the worker, not merely "not refused".
-        assert len(gated.futures) == submitted + 1
+        # Accepted means queued, not merely "not refused". The *ingest* job is the
+        # same row; the work queued against it is a second background job, which is
+        # exactly what "two attempts for one row" now looks like on disk.
+        assert queued_jobs(client) == submitted + 1
 
-        gated.release.set()
-        gated.wait()
+        gated.run()
 
-        # Two attempts are now in flight for one row, which is what resuming a job
-        # whose first run is still queued *means*. One worker runs them in order,
-        # the loser finds the job settled and `IngestRunner.submit` swallows and
-        # logs its `InvalidTransition` — so an ERROR line here is the design
-        # working, not a failure. What matters is that the loser left no mark:
+        # Two background jobs now point at one ingest row, which is what resuming
+        # a job whose first run is still queued *means*. The dispatcher runs them
+        # in order; the loser finds the ingest job settled, and its
+        # `InvalidTransition` fails that background job rather than escaping — so
+        # a failed second job here is the design working, not a defect. What
+        # matters is that the loser left no mark on the *ingest* row:
         # `resumable` refuses before the run touches the row, so `error` stays
         # null and the row is not the place a second caller's refusal shows up.
         settled = client.get(f"/ingest-jobs/{job['id']}").json()
@@ -342,7 +366,7 @@ def test_a_resume_that_is_allowed_answers_202_and_says_where_to_poll(
 
 
 def test_polling_is_answered_while_another_writer_holds_the_workspace(
-    client: TestClient, project: str, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     """#80's payoff, at the surface it was landed for.
 

@@ -87,8 +87,13 @@ a launch that answered "accepted" and only discovered in a worker that the job w
 `completed` would give nobody a way to tell a redo from a no-op.
 
 Nothing here decides *when* the second half runs. That is deliberately not the kernel's
-business: the API supplies a single background worker (`server/runner.py`), the CLI just calls
-`ingest`, and neither arrangement is visible in this module.
+business: the API queues the work on the embedded executor (`docs/background-jobs.md`), the CLI
+just calls `ingest`, and neither arrangement is visible in this module.
+
+**An ingest therefore has two rows**: the `ingest_job` this document is about, which is the
+domain record and what a client polls, and a generic `job` that records the *execution*. The
+duplication is transitional and known — collapsing them is a migration with its own
+wire-contract discussion, and until then progress for an ingest stays here.
 
 ## The run has a lifecycle, and it is a table
 

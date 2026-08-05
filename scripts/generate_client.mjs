@@ -270,6 +270,14 @@ export function compile(schema, pointer = "#") {
 
   if (schema.$ref !== undefined) return schemaCheckName(refName(schema.$ref));
 
+  // `{}` — OpenAPI for "any JSON, no constraints", which is what pydantic's
+  // `JsonValue` emits. `openapi-typescript` renders it `unknown` under
+  // `emptyObjectsUnknown`, so the agreeing check is the one that accepts anything;
+  // see `isJsonValue` for why a pass-through is the honest answer here and nowhere
+  // else. Distinct from `responsesOf`'s reading of an empty *response* schema,
+  // which means bytes.
+  if (Object.keys(schema).length === 0) return "isJsonValue";
+
   if (schema.const !== undefined) {
     if (typeof schema.const !== "string") {
       throw new Error(`unsupported non-string const at ${pointer}`);
@@ -403,6 +411,7 @@ export function renderChecks(root = repoRoot()) {
     "either",
     "isBoolean",
     "isInteger",
+    "isJsonValue",
     "isNull",
     "isNumber",
     "isString",

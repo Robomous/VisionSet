@@ -49,6 +49,7 @@ from visionset.kernel import (
     AssetNotInBatch,
     AssetNotInJob,
     AssetNotWritable,
+    BackgroundJobNotFound,
     BatchImmutable,
     BatchNotComplete,
     BatchNotEditable,
@@ -96,6 +97,7 @@ from visionset.kernel import (
     TokenNameTaken,
     TokenNotFound,
     UnknownAttribute,
+    UnknownJobType,
     UnserializableManifest,
     UnsupportedGeometry,
     UnsupportedMedia,
@@ -181,6 +183,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     BatchNotFound: ErrorRule(404, "BATCH_NOT_FOUND"),
     JobNotFound: ErrorRule(404, "JOB_NOT_FOUND"),
     IngestJobNotFound: ErrorRule(404, "INGEST_JOB_NOT_FOUND"),
+    BackgroundJobNotFound: ErrorRule(404, "BACKGROUND_JOB_NOT_FOUND"),
     AssetNotFound: ErrorRule(404, "ASSET_NOT_FOUND"),
     SourceNotFound: ErrorRule(404, "SOURCE_NOT_FOUND"),
     DatasetNotFound: ErrorRule(404, "DATASET_NOT_FOUND"),
@@ -284,6 +287,13 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     UnknownAttribute: ErrorRule(422, "UNKNOWN_ATTRIBUTE"),
     InvalidAttributeValue: ErrorRule(422, "INVALID_ATTRIBUTE_VALUE"),
     InvalidPartition: ErrorRule(422, "INVALID_PARTITION"),
+    # 422 rather than 404: the type is part of the *payload* a surface built, so
+    # a request naming one nothing runs is a malformed request rather than a
+    # reference to something missing. In practice a route never lets one through
+    # — every enqueue site names a type from the registry it imported — so this
+    # exists for the dispatcher's sake and for a stale row written by a build
+    # that knew one more handler.
+    UnknownJobType: ErrorRule(422, "UNKNOWN_JOB_TYPE"),
     MediaError: ErrorRule(422, "MEDIA_ERROR"),
     # Not a 415: every raise site reads a file *on disk* during ingest, and 415
     # is about the request's own Content-Type. On a future direct-upload route

@@ -22,10 +22,10 @@ workspace is open and are checkpointed away by ``close()``. They still belong to
 the workspace while they are there: a copy taken mid-run that includes only
 ``visionset.db`` is missing whatever has not been checkpointed yet.
 
-Four of the six ports have no line in that layout, and that is the point: the
+Five of the seven ports have no line in that layout, and that is the point: the
 event bus is in-process, the two media processors are decoders, and the auth
-provider reads a table inside the database above, so none of them leaves
-anything behind. They are composed here anyway, because a workspace is what
+provider and the job queue both read tables inside the database above, so none of
+them leaves anything behind. They are composed here anyway, because a workspace is what
 services are handed and every port has to arrive with it.
 
 There is no sidecar file carrying the format version. It lives inside the
@@ -63,6 +63,7 @@ from visionset.kernel.adapters import (
     FilesystemBlobStore,
     InProcessEventBus,
     PillowImageProcessor,
+    SqliteJobQueue,
     SqliteMetadataStore,
     StoredTokenAuthProvider,
 )
@@ -80,6 +81,7 @@ from visionset.kernel.ports import (
     BlobStore,
     EventBus,
     ImageProcessor,
+    JobQueue,
     MetadataStore,
     UnitOfWork,
     VideoProcessor,
@@ -127,6 +129,13 @@ type VideoProcessorFactory = Callable[[], VideoProcessor]
 #: table, scoped to the workspace that owns it. ``StoredTokenAuthProvider`` binds
 #: both positionally, so the bare class reference still satisfies this type.
 type AuthProviderFactory = Callable[[MetadataStore, UUID], AuthProvider]
+#: One argument, and the second port derived from the store rather than the path.
+#: A queue is rows, and the rows live in the workspace's own database — see
+#: ``SqliteJobQueue`` for why they are not in a file of their own. It takes no
+#: workspace id because a job is not scoped to one: a server serves exactly one
+#: workspace, so the queue in this handle is that workspace's queue by
+#: construction.
+type JobQueueFactory = Callable[[MetadataStore], JobQueue]
 
 
 def _resolved(path: Path | str) -> Path:
@@ -199,7 +208,7 @@ def _workspace_above(start: Path) -> Path | None:
 
 
 class WorkspaceService:
-    """One open workspace: its identity, its directory, and its six ports.
+    """One open workspace: its identity, its directory, and its seven ports.
 
     Instances come from :meth:`init` and :meth:`open`. Constructing one directly
     is the injection seam — hand it ports and nothing here touches a disk.
@@ -230,6 +239,7 @@ class WorkspaceService:
         image_processor: ImageProcessor,
         video_processor: VideoProcessor,
         auth_provider: AuthProvider,
+        job_queue: JobQueue,
     ) -> None:
         self._root = root
         self._workspace = workspace
@@ -239,6 +249,7 @@ class WorkspaceService:
         self._image_processor = image_processor
         self._video_processor = video_processor
         self._auth_provider = auth_provider
+        self._job_queue = job_queue
 
     # --- composition: the only two ways to get one ------------------------
 
@@ -254,6 +265,7 @@ class WorkspaceService:
         image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
         video_processor_factory: VideoProcessorFactory = FfmpegVideoProcessor,
         auth_provider_factory: AuthProviderFactory = StoredTokenAuthProvider,
+        job_queue_factory: JobQueueFactory = SqliteJobQueue,
     ) -> WorkspaceService:
         """Create a workspace at ``path`` and return it open.
 
@@ -315,6 +327,7 @@ class WorkspaceService:
             image_processor_factory(),
             video_processor_factory(),
             auth_provider_factory(metadata_store, workspace.id),
+            job_queue_factory(metadata_store),
         )
 
     @classmethod
@@ -328,6 +341,7 @@ class WorkspaceService:
         image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
         video_processor_factory: VideoProcessorFactory = FfmpegVideoProcessor,
         auth_provider_factory: AuthProviderFactory = StoredTokenAuthProvider,
+        job_queue_factory: JobQueueFactory = SqliteJobQueue,
     ) -> WorkspaceService:
         """Open the workspace at ``path``, migrating it forward if it is behind.
 
@@ -384,6 +398,7 @@ class WorkspaceService:
             image_processor_factory(),
             video_processor_factory(),
             auth_provider_factory(metadata_store, rows[0].id),
+            job_queue_factory(metadata_store),
         )
 
     # --- what the surfaces and the later services read --------------------
@@ -478,6 +493,29 @@ class WorkspaceService:
         return self._auth_provider
 
     @property
+    def job_queue(self) -> JobQueue:
+        """Where background work waits, and where a poller reads its state.
+
+        The **seventh** port, appended last to both classmethods rather than
+        inserted, which is the rule this class states about itself: the two
+        constructors bind positionally, so a parameter added in the middle
+        silently re-binds every one after it.
+
+        The second port with no kernel-service caller, after the auth provider,
+        and composed here for that port's reason rather than in spite of it: the
+        alternative is a delivery module constructing ``SqliteJobQueue``, which is
+        a surface naming a kernel adapter. Nothing in ``kernel/services`` enqueues
+        anything — a service does its work, and *deciding* that some work should
+        happen later is a question about the deployment, which is the surface's to
+        answer.
+
+        It has no line in the workspace layout above because its rows are in the
+        database that does. :meth:`close` has nothing to do here either: closing
+        the store closes what this writes through.
+        """
+        return self._job_queue
+
+    @property
     def format_version(self) -> int:
         return self._metadata_store.format_version
 
@@ -538,11 +576,11 @@ class WorkspaceService:
     def close(self) -> None:
         """Release the metadata store's connections. Safe to call twice.
 
-        The other five ports are not closed and have nothing to close: the blob
+        The other six ports are not closed and have nothing to close: the blob
         store addresses files by hash and opens them per call, the event bus holds
         a list of callables, the two media processors hold nothing whatsoever, and
-        the auth provider holds a reference to the store this line closes. Only
-        the database keeps a connection. A frame iterator does own a running
+        the auth provider and the job queue each hold a reference to the store this
+        line closes. Only the database keeps a connection. A frame iterator does own a running
         decoder, but it belongs to whoever asked for it, not to the workspace.
         """
         self._metadata_store.close()

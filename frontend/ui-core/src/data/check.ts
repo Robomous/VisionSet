@@ -127,6 +127,29 @@ export const isNull: Check<null> = (value, at, report): value is null => {
 };
 
 /**
+ * Any JSON at all — the check for a field the contract deliberately does not shape.
+ *
+ * `{}` in OpenAPI means "no constraints", and pydantic's `JsonValue` emits exactly
+ * that. `openapi-typescript` renders it as `unknown`, so this is the check that
+ * agrees with the generated type: it accepts whatever came back and hands the
+ * caller something it must narrow before using.
+ *
+ * **It is a pass-through, and that is honest rather than lazy.** Every other check
+ * here exists because the contract promised a shape and the server could break it.
+ * A `BackgroundJob.result` promises nothing — its shape belongs to whichever
+ * handler produced it, and the one caller that reads a key out of it (the export
+ * flow, looking for `archive`) narrows that key itself. Asserting a shape here
+ * would be inventing a contract in the client.
+ */
+export const isJsonValue: Check<unknown> = (value): value is unknown => {
+  // `value` is named rather than discarded because a type predicate has to be
+  // *about* a parameter; the two the other checks use are what they report a
+  // mismatch with, and there is no mismatch to report.
+  void value;
+  return true;
+};
+
+/**
  * A body read with `parseAs: "blob"`.
  *
  * A real check rather than a pass-through, and it earns it: without one, an error

@@ -168,10 +168,35 @@ def _add_annotation_provenance(connection: Connection) -> None:
     )
 
 
+def _add_job_queue(connection: Connection) -> None:
+    """``job``: the background executor's queue, created whole.
+
+    **A table, not a column, and that is what makes this the easy kind of
+    migration.** The third rule in the module docstring — a column carrying a
+    foreign key cannot arrive by ``ALTER`` — never comes up, because ``JobRow``
+    declares no key at all (see its own docstring for why that is a decision
+    about what a job *is*, not a dodge around this rule).
+
+    ``create_all`` restricted to the one table, rather than a bare
+    ``Base.metadata.create_all(connection)``: unrestricted it would also create
+    anything else a *later* baseline happens to declare, which would let this
+    migration silently do a future one's work on an old file. ``checkfirst`` is
+    on by default and is this migration's idempotency — migration 1 is
+    ``create_all`` of today's metadata, so a fresh database already has this
+    table and then runs this anyway.
+
+    **Nothing to backfill.** A queue's contents are in-flight work, and a
+    workspace written before the executor existed had none. The empty table is
+    the honest starting state rather than a shortcut.
+    """
+    Base.metadata.create_all(connection, tables=[Base.metadata.tables["job"]])
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
     Migration(version=3, name="annotation_provenance", upgrade=_add_annotation_provenance),
+    Migration(version=4, name="job_queue", upgrade=_add_job_queue),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

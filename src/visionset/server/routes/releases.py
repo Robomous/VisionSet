@@ -10,12 +10,10 @@ and the whole promise is that publishing twice from an unchanged dataset gives
 byte-identical documents; parsing one and dumping it again would put this
 build's JSON encoder between a client and the bytes the hash is *of*.
 
-**Export is synchronous**, and that is a stated limit rather than an oversight.
-The launch-and-poll pattern the ingest routes use needs a row to poll, and a row
-needs a table — M3's migration ledger is spent, and inventing a second place to
-keep job state would be exactly the logic-leaking-upward this milestone watches
-for. Today the only installed format writes nothing, so the wait is nil; M6
-brings real exporters and, with them, the case for a job.
+**Export is queued, not synchronous**, and the limit this file used to record is
+gone: the row to poll now exists, because #328 gave the product a generic one.
+What is left of that argument is its shape — the refusals a *request* can make are
+still made on the request, and only the work moved. See ``export_release``.
 
 The exporter is resolved *here* rather than in the kernel. ``ReleaseService``
 takes an ``Exporter`` instance because import-linter forbids the kernel from
@@ -28,18 +26,26 @@ Handlers are ``def``, not ``async def``, for the reason ``projects.py`` gives.
 
 from __future__ import annotations
 
-import shutil
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from fastapi import Query, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import Query, Response, status
+from fastapi.responses import StreamingResponse
 
 from visionset.formats.registry import pick
+from visionset.jobs.export import JOB_TYPE as export_job_type
+from visionset.jobs.export import payload_for as export_payload_for
+from visionset.kernel.domain import BackgroundJobSpec
 from visionset.kernel.services import ReleaseService
-from visionset.server.dependencies import ExportersDep, WorkspaceDep, protected_router
+from visionset.server.dependencies import (
+    ExportersDep,
+    RunnerDep,
+    WorkspaceDep,
+    protected_router,
+)
 from visionset.server.errors import documented
 from visionset.server.models import (
+    BackgroundJobOut,
     ExportCompatibilityOut,
     ReleaseCreate,
     ReleaseOut,
@@ -51,12 +57,6 @@ from visionset.server.models import (
 project_router = protected_router(prefix="/datasets/{dataset_id}/releases", tags=["releases"])
 router = protected_router(prefix="/releases", tags=["releases"])
 
-#: Where an export lands, under the workspace root. A sibling of ``uploads/``
-#: and server-owned in the same way: the kernel writes neither, and
-#: ``WorkspaceService.open`` tolerates both because it only ever refuses a
-#: *non-empty* directory at ``init``.
-EXPORTS_DIRNAME: Final = "exports"
-
 #: A manifest is one JSON document that is already in memory-sized reach, but it
 #: is streamed anyway — it names every asset and every label of a fifty-thousand
 #: item release, and there is no size at which reading it whole becomes the right
@@ -65,13 +65,6 @@ _MANIFEST_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
     200: {
         "content": {"application/json": {"schema": {}}},
         "description": "The canonical manifest document, byte for byte.",
-    }
-}
-
-_EXPORT_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
-    200: {
-        "content": {"application/zip": {"schema": {}}},
-        "description": "Everything the exporter wrote, as one archive.",
     }
 }
 
@@ -238,54 +231,57 @@ def check_export(
 
 @router.post(
     "/{release_id}/export",
-    response_class=FileResponse,
-    response_model=None,
-    responses={**documented(404, 409), **_EXPORT_RESPONSE},
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=documented(404, 409),
 )
 def export_release(
     workspace: WorkspaceDep,
     exporters: ExportersDep,
+    runner: RunnerDep,
+    response: Response,
     release_id: UUID,
     format: FormatQuery,
     allow_lossy: AllowLossyQuery = False,
-) -> FileResponse:
-    """Write the release in the named format and send back the result as one archive.
+) -> BackgroundJobOut:
+    """Queue the release for writing, and answer at once with the job to poll.
 
-    Which formats exist is a property of this deployment, not of this document —
-    `GET /formats` lists what is installed, and a distribution registering into
-    the `visionset.formats` entry-point group adds to it. An unknown name is 404
-    `EXPORT_FORMAT_NOT_FOUND`.
+    **202, not 200, and this is a breaking change to this one endpoint.** It used
+    to block until the exporter finished and answer with the archive. A real
+    exporter walks every asset in a release and copies its bytes, which is
+    minutes of work behind a request that has no way to report progress and every
+    proxy's timeout in front of it. So this now follows the launch-and-poll
+    contract the ingest routes have always used: poll
+    `GET /background-jobs/{id}` — the `Location` header names it — until `state`
+    is `succeeded`, then `GET /background-jobs/{id}/artifact` for the archive.
 
-    A format that cannot carry everything the kernel can represent declares itself
-    lossy, and exporting in one is 409 `LOSSY_EXPORT_NOT_CONSENTED` until the
-    request repeats with `allow_lossy=true`. Retrying is the identical request
-    plus that one parameter. Nothing is written before the refusal.
+    **Everything a caller can be told now is still told now.** Which formats
+    exist is a property of this deployment — `GET /formats` lists what is
+    installed — and an unknown name is 404 `EXPORT_FORMAT_NOT_FOUND` on this
+    request. A format that cannot carry everything the release holds is 409
+    `LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the
+    identical call plus `allow_lossy=true`. Neither refusal creates a job, so a
+    caller holding a job id holds one that will run.
 
     A POST because it does work and writes files, though it changes nothing a
-    later read can see: the release is immutable, and re-exporting simply
-    overwrites the previous archive. There is no job to poll — this answers when
-    the exporter is done.
+    later read can see: the release is immutable, and re-exporting overwrites the
+    previous archive.
     """
     # ``pick`` rather than ``exporters[format]``: a ``KeyError`` is outside the
     # ``VisionSetError`` tree and would answer 500 to a caller who mistyped a
     # format name. One wording for the refusal, and it lives in the registry.
     exporter = pick(exporters, format)
-    releases = ReleaseService(workspace)
-    destination = workspace.root / EXPORTS_DIRNAME / str(release_id) / format
-    # Cleared first, because the archive must describe *this* run. The kernel
-    # will not delete under a path a caller named — see ``ReleaseService.export``
-    # — and this is the caller that can, since it built the path out of the
-    # workspace root, a release id and a format name and nothing else lives there.
-    shutil.rmtree(destination, ignore_errors=True)
-    result = releases.export(release_id, exporter, destination, allow_lossy=allow_lossy)
-    # Zipped after the fact rather than streamed as it is written, because
-    # ``Exporter`` writes a directory and says nothing about how many files or in
-    # what order. ``make_archive`` wants the name without the suffix and appends
-    # one; the archive is a sibling of the directory rather than inside it, so a
-    # re-export does not sweep the previous archive into the new one.
-    archive = shutil.make_archive(str(destination), "zip", root_dir=destination)
-    return FileResponse(
-        archive,
-        media_type="application/zip",
-        filename=f"{result.format_name}.zip",
+    # Synchronously, before the job exists — #28's rule that a refusal a request
+    # can make is a refusal the request makes. Discovering the consent gate in a
+    # worker would put a 409 on a row somebody has to go and read. The worker
+    # checks again; that one is the guarantee, this one is the answer.
+    ReleaseService(workspace).require_export_consent(release_id, exporter, allow_lossy=allow_lossy)
+    job = workspace.job_queue.enqueue(
+        BackgroundJobSpec(
+            type=export_job_type,
+            payload=export_payload_for(release_id, format, allow_lossy=allow_lossy),
+            idempotent=True,
+        )
     )
+    runner.wake()
+    response.headers["Location"] = f"/background-jobs/{job.id}"
+    return BackgroundJobOut.of(job)

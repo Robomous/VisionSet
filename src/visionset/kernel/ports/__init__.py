@@ -14,6 +14,7 @@ from visionset.kernel.ports.image_processor import (
     ImageProcessor,
 )
 from visionset.kernel.ports.importer import Importer
+from visionset.kernel.ports.job_queue import JobQueue
 from visionset.kernel.ports.metadata_store import (
     UNINITIALIZED,
     MetadataStore,
@@ -21,6 +22,7 @@ from visionset.kernel.ports.metadata_store import (
     UnitOfWork,
 )
 from visionset.kernel.ports.model_provider import ModelProvider
+from visionset.kernel.ports.progress_reporter import ProgressReporter
 from visionset.kernel.ports.video_processor import (
     DEFAULT_EXTRACTION_FPS,
     FRAME_FORMAT,
@@ -40,8 +42,10 @@ __all__ = [
     "Exporter",
     "ImageProcessor",
     "Importer",
+    "JobQueue",
     "MetadataStore",
     "ModelProvider",
+    "ProgressReporter",
     "Repository",
     "UnitOfWork",
     "VideoProcessor",

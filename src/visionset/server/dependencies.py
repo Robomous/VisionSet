@@ -19,6 +19,7 @@ already gives sync routes, which is what the synchronous kernel wants anyway.
 
 from __future__ import annotations
 
+import logging
 import secrets
 import threading
 from collections.abc import Callable, Sequence
@@ -29,6 +30,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.requests import Request
 
 from visionset.formats.registry import exporters
+from visionset.jobs import JobRunner
+from visionset.kernel.errors import VisionSetError
 from visionset.kernel.ports import AuthProvider, Exporter
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR as WORKSPACE_ENV_VAR,
@@ -41,7 +44,7 @@ from visionset.kernel.services import (
 )
 from visionset.server import session
 from visionset.server.errors import ERROR_RESPONSES
-from visionset.server.runner import IngestRunner
+from visionset.server.settings import job_settings
 
 # ``WORKSPACE_ENV_VAR`` and ``resolve_workspace_root`` are re-exported above
 # rather than defined here — the redundant ``as`` aliases are the explicit
@@ -58,6 +61,8 @@ from visionset.server.runner import IngestRunner
 # ``VISIONSET_WORKSPACE`` set, a server started *below* a workspace now serves
 # that workspace instead of answering 500 ``NOT_A_WORKSPACE``. See
 # ``docs/workspaces.md`` for the precedence and for why only that case walks.
+
+_logger: Final = logging.getLogger(__name__)
 
 bearer_scheme: Final = HTTPBearer(
     auto_error=False,
@@ -152,16 +157,97 @@ def get_workspace(request: Request) -> WorkspaceService:
     return handle.get()
 
 
-def get_ingest_runner(request: Request) -> IngestRunner:
-    """The background worker this application launches ingests on.
+class DispatcherHandle:
+    """One lazily built dispatcher, started and stopped by the application lifespan.
 
-    Read off ``app.state`` and reached through a dependency rather than by
-    routes touching ``request.app`` themselves, for the reason
-    :func:`get_auth_provider` is its own dependency: this is the seam a test
-    replaces, and ``dependency_overrides`` only reaches what the graph resolves.
+    ``WorkspaceHandle``'s shape, one layer up, and lazy for the same two reasons
+    plus one of its own. The shared reasons: every probe application in
+    ``tests/server`` replaces ``app.state.workspace_handle`` *after*
+    ``create_app`` returns, so anything that resolved a workspace during
+    construction would be bound to the wrong one; and
+    ``scripts/export_openapi.py`` imports the module-level ``app`` in a checkout
+    where the upward walk may well find a workspace, which must not be opened by
+    an import.
+
+    Its own reason: a ``ProcessPoolExecutor`` must not exist at import time. Under
+    ``spawn`` a child re-executes its parent's ``__main__``, and a pool built
+    while a module is still being imported is how that turns into a second
+    application inside a worker.
+
+    **A workspace that will not open is not fatal.** ``/health`` is public and
+    answers without one, and the handle below is lazy precisely so a misconfigured
+    server reports ``NOT_A_WORKSPACE`` per request rather than refusing to boot. So
+    :meth:`start` logs and gives up, leaving :meth:`wake` a no-op — queued work
+    simply does not run, which is the honest state of a server with no workspace.
     """
-    runner: IngestRunner = request.app.state.ingest_runner
-    return runner
+
+    def __init__(self, workspace: WorkspaceHandle) -> None:
+        self._workspace = workspace
+        self._runner: JobRunner | None = None
+
+    @property
+    def runner(self) -> JobRunner | None:
+        """The dispatcher, or ``None`` if it was never started."""
+        return self._runner
+
+    def start(self) -> None:
+        """Build the dispatcher over this application's workspace and run it."""
+        if self._runner is not None:
+            return
+        settings = job_settings()
+        try:
+            workspace = self._workspace.get()
+        except VisionSetError:
+            _logger.warning(
+                "no workspace to run background work in; queued jobs will not start",
+                exc_info=True,
+            )
+            return
+        runner = JobRunner(
+            workspace.job_queue,
+            workspace.root,
+            event_bus=workspace.event_bus,
+            workers=settings.job_workers,
+            poll_interval_s=settings.job_poll_interval_s,
+            progress_min_interval_s=settings.job_progress_min_interval_s,
+        )
+        runner.start()
+        self._runner = runner
+
+    def wake(self) -> None:
+        """Nudge the dispatcher, if there is one. Safe to call when there is not.
+
+        What a route calls after enqueueing. It is a hint rather than a
+        requirement — a queued row is durable and the next dispatcher to run picks
+        it up — which is exactly what lets this be a no-op instead of a branch at
+        every call site.
+        """
+        if self._runner is not None:
+            self._runner.wake()
+
+    def stop(self) -> None:
+        """Drain and release. Safe to call twice, and when nothing ever started."""
+        runner, self._runner = self._runner, None
+        if runner is not None:
+            runner.stop()
+
+
+def get_job_runner(request: Request) -> DispatcherHandle:
+    """The dispatcher this application queues work on.
+
+    Read off ``app.state`` and reached through a dependency rather than by routes
+    touching ``request.app`` themselves, for the reason :func:`get_auth_provider`
+    is its own dependency: this is the seam a test replaces, and
+    ``dependency_overrides`` only reaches what the graph resolves.
+
+    A route uses it for exactly one thing — :meth:`DispatcherHandle.wake`, so a
+    launched job starts now rather than at the next poll. Enqueueing itself goes
+    through ``workspace.job_queue``, because the row is durable state and the
+    dispatcher is not: a runner that was never started still leaves a queued row
+    for the next one to pick up.
+    """
+    handle: DispatcherHandle = request.app.state.job_runner
+    return handle
 
 
 def get_exporters() -> dict[str, Exporter]:
@@ -258,8 +344,8 @@ def require_token(
 WorkspaceDep = Annotated[WorkspaceService, Depends(get_workspace)]
 """The workspace, for a route that needs to build a service over it."""
 
-RunnerDep = Annotated[IngestRunner, Depends(get_ingest_runner)]
-"""The background worker, for a route that launches a run rather than doing it."""
+RunnerDep = Annotated[DispatcherHandle, Depends(get_job_runner)]
+"""The dispatcher, for a route that launches work rather than doing it."""
 
 ExportersDep = Annotated[dict[str, Exporter], Depends(get_exporters)]
 """The installed export formats, for a route that lists or runs one."""

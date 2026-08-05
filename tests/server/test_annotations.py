@@ -22,22 +22,22 @@ from tests.server._flow import (
     open_job,
     project_with_schema,
 )
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
 
 
 @pytest.fixture()
-def working(client: TestClient, tmp_path: Path, runner: RecordingRunner) -> tuple[str, str]:
+def working(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> tuple[str, str]:
     """A started job over a three-asset batch. Returns ``(batch_id, job_id)``."""
     return open_job(client, runner, tmp_path, images=3)
 
@@ -411,7 +411,7 @@ def test_an_asset_in_a_body_the_job_does_not_carry_is_422(
 
 
 def test_nothing_is_written_into_a_batch_nobody_opened(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     project = project_with_schema(client)
     batch_id = batch_from_ingest(client, runner, tmp_path, project, images=2)

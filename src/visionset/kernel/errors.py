@@ -459,6 +459,34 @@ class IngestJobNotFound(VisionSetError):
     """
 
 
+class BackgroundJobNotFound(VisionSetError):
+    """No background job with that id lives in this workspace.
+
+    The third error in this file saying "no job", and the third *entity* it says
+    it about. ``JobNotFound`` is an annotation job — a slice of human work;
+    ``IngestJobNotFound`` is one ingestion run; this is a row on the generic
+    executor's queue. They share a word and nothing else, so they stay three
+    classes for the reason ``IngestJobNotFound`` gives: one ``except`` catching
+    all three would be catching them because of the English.
+    """
+
+
+class UnknownJobType(VisionSetError):
+    """Nothing is registered to run work of that type.
+
+    Raised at **enqueue**, not at dispatch, and that placement is the whole
+    value: at enqueue there is still a caller to tell, while a job that reaches
+    the dispatcher and finds no handler can only be marked failed on a row
+    somebody has to go and read. It is therefore a refusal of the request rather
+    than an outcome of the work.
+
+    In practice it means one of two things and the message says which is likelier:
+    a typo in a job type, or a handler module that was never imported — the
+    registry is populated by import, so a type is only known once something has
+    named it.
+    """
+
+
 class SchemaVersionConflict(VisionSetError):
     """Two writers raced for the same next version number, and this one lost.
 

@@ -33,6 +33,8 @@ from visionset.kernel.domain import (
     AnnotationOperation,
     AnnotationsWritten,
     Asset,
+    BackgroundJobFailed,
+    BackgroundJobSucceeded,
     BatchApproved,
     BatchCompleted,
     BatchState,
@@ -90,6 +92,18 @@ SAMPLES: dict[type[DomainEvent], DomainEvent] = {
         project_id=uuid4(),
         source_id=uuid4(),
         asset_count=2,
+    ),
+    BackgroundJobSucceeded: BackgroundJobSucceeded(
+        job_id=uuid4(),
+        job_type="export.release",
+        processed=3,
+        result={"archive": "exports/a.zip"},
+    ),
+    BackgroundJobFailed: BackgroundJobFailed(
+        job_id=uuid4(),
+        job_type="export.release",
+        error="the exporter said no",
+        attempt=1,
     ),
 }
 

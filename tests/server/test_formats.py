@@ -16,7 +16,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
-from tests.server._exports import LossyExporter, WritingExporter, with_exporters
+from tests.server._exports import (
+    LossyExporter,
+    WritingExporter,
+    reset_exporters,
+    with_exporters,
+)
 
 from visionset.kernel.domain import GeometryType
 
@@ -25,6 +30,7 @@ from visionset.kernel.domain import GeometryType
 def client(tmp_path: Path) -> Iterator[TestClient]:
     with api_client(tmp_path / "ws") as made:
         yield made
+    reset_exporters()
 
 
 def test_the_shipped_format_is_listed_without_any_override(client: TestClient) -> None:

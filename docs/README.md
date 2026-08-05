@@ -22,6 +22,7 @@ rather than here — it is the file to read *before* building any screen, and th
 | [schemas.md](schemas.md) | The annotation schema: immutable monotonic versions, additive vs destructive change, and the two gates on narrowing |
 | [batches.md](batches.md) | The unit of annotation work: the state machine, membership frozen at approval, the schema pin, and the exact partition into jobs |
 | [jobs.md](jobs.md) | Annotation jobs: the job and per-asset progress machines, what counts as settled, ordered `next_pending`, and derived progress |
+| [background-jobs.md](background-jobs.md) | The embedded executor: a `JobQueue` port, a SQLite queue, a `spawn` dispatcher inside the server, and the handler contract. A different thing from `jobs.md`, which is human work |
 | [annotations.md](annotations.md) | The labels themselves: the one door, the batch's pinned version, the five hard rejects, attribute values, progress derived from the annotations, and the editor's shortcut table |
 | [media.md](media.md) | Decoding raw media: the two processor ports, the accepted image formats, the orientation policy for stills and clips, pinned thumbnails and seek-free frame extraction, and what their determinism does and does not promise |
 | [datasets.md](datasets.md) | The curated trunk: promotion from a completed batch, what `skipped` keeps out, curation without a `confirm=`, and the append-only change log |

@@ -611,6 +611,151 @@
         "title": "AttributeBody",
         "type": "object"
       },
+      "BackgroundJobOut": {
+        "description": "One unit of background work, and how far it has got.",
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/ItemFailureOut"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "result": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Result",
+            "type": "object"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "$ref": "#/components/schemas/BackgroundJobState"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "state",
+          "processed",
+          "total",
+          "failures",
+          "error",
+          "result",
+          "cancel_requested",
+          "attempt",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "BackgroundJobOut",
+        "type": "object"
+      },
+      "BackgroundJobPage": {
+        "description": "A page of background jobs.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BackgroundJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "BackgroundJobPage",
+        "type": "object"
+      },
+      "BackgroundJobState": {
+        "description": "Lifecycle: queued -> running -> (succeeded | failed | cancelled).\n\nFive states rather than four. ``cancelled`` is not a flavour of ``failed``\nbecause the two answer different questions for the person reading a list:\na failure is something to look into, a cancellation is something somebody\ndid. Merging them would make \"why did this stop?\" unanswerable from the row.",
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "BackgroundJobState",
+        "type": "string"
+      },
       "BatchAction": {
         "description": "What can be asked of a batch. Declaration order is display order.",
         "enum": [
@@ -1798,6 +1943,25 @@
         "title": "IngestState",
         "type": "string"
       },
+      "ItemFailureOut": {
+        "description": "One item a job could not process, and why.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "reason"
+        ],
+        "title": "ItemFailureOut",
+        "type": "object"
+      },
       "JobAction": {
         "description": "What can be asked of an annotation job.",
         "enum": [
@@ -1867,6 +2031,7 @@
         "title": "JobPage",
         "type": "object"
       },
+      "JsonValue": {},
       "LabelClassBody": {
         "additionalProperties": false,
         "description": "One labelable class, bound to a geometry.",
@@ -2688,6 +2853,374 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/background-jobs": {
+      "get": {
+        "description": "Every job this workspace has run, newest first.\n\nNewest first because the caller is looking at what is happening now \u2014 the\nopposite order to the one the dispatcher claims in, which is oldest first.\n\nNo paging parameters. The collection is bounded by how much work a workspace\nhas ever queued, which is the same order of magnitude as its ingest runs, and\n`limit`/`offset` join `total` without a breaking change on the day one has a\ncaller \u2014 the rule `docs/api.md` states for every collection here.",
+        "operationId": "list_background_jobs",
+        "parameters": [
+          {
+            "description": "Only jobs in these states. Repeat the parameter for several. Omitted, every job is returned.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/BackgroundJobState"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only jobs in these states. Repeat the parameter for several. Omitted, every job is returned.",
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundJobPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Background Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/background-jobs/{job_id}": {
+      "get": {
+        "description": "Where a queued unit of work is now.\n\nThe generic twin of `GET /ingest-jobs/{id}`, and the same contract:\n`processed` and `total` are written while the run is in flight, so this\nanswers \"where is it\" rather than \"where did it end\". `total` is null when the\nwork cannot know it in advance.\n\nTerminal states are `succeeded`, `failed` and `cancelled`. A finished job\nkeeps its counters where they stopped; `error` says why a failure failed, and\n`result` carries whatever the work produced \u2014 for an export, the archive\n`GET /background-jobs/{id}/artifact` will hand back.",
+        "operationId": "get_background_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Background Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/background-jobs/{job_id}/artifact": {
+      "get": {
+        "description": "Download whatever the job left behind. Today that is an export archive.\n\nA **second route rather than bytes on the poll**, because the two are read on\ndifferent schedules: a client polls this job every couple of seconds and wants\nJSON each time, and asks for the archive exactly once.\n\nThe path comes from the job's own `result`, is **relative to the workspace\nroot**, and is rejoined here \u2014 an absolute path is a server-side path, which\nis the rule that keeps `Source.path` and `Asset.uri` off the wire. It is also\nre-checked to be inside the root before anything is opened: the value has been\nthrough a JSON column, and a route that trusts a stored path to stay inside\nthe directory it was written for is one bad row away from serving `/etc`.\n\n404 if the job never produced one, or if the file is gone \u2014 an export\ndirectory is not garbage-collected, but a workspace is a directory somebody\ncan tidy. 409 while the job has not succeeded, because \"not yet\" and \"never\"\nare different answers and only one of them is worth retrying.",
+        "operationId": "get_background_job_artifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {}
+              },
+              "application/zip": {
+                "schema": {}
+              }
+            },
+            "description": "The file the job produced."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Background Job Artifact",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/background-jobs/{job_id}/cancel": {
+      "post": {
+        "description": "Ask a job to stop, and answer with where that left it.\n\n**Two different things behind one verb, and the answer says which happened.**\nA `queued` job has not started, so it comes back `cancelled` outright. A\n`running` job is only *told*: `cancel_requested` becomes true, `state` stays\n`running`, and the work stops at the next point its handler considers safe \u2014\nwhich for a job with no such point is not until it finishes. Nothing is ever\nkilled mid-write.\n\nCancelling a job that has already settled is a no-op that returns it\nunchanged, not a refusal: the caller wanted it stopped and it is stopped.\n\n200 rather than 202, because this answers with the state it produced rather\nthan promising something later.",
+        "operationId": "cancel_background_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Background Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/batches/{batch_id}": {
       "get": {
         "description": "The batch, with how far its assets have got.\n\n`progress` counts every asset of every job in the batch, so a draft \u2014 which\nhas no jobs yet \u2014 reports zeros across the board while `asset_count` is\nalready whatever the ingest gathered. `schema_version` is null until approval\npins one, and moves after that only through `repin`.",
@@ -8158,7 +8691,7 @@
     },
     "/releases/{release_id}/export": {
       "post": {
-        "description": "Write the release in the named format and send back the result as one archive.\n\nWhich formats exist is a property of this deployment, not of this document \u2014\n`GET /formats` lists what is installed, and a distribution registering into\nthe `visionset.formats` entry-point group adds to it. An unknown name is 404\n`EXPORT_FORMAT_NOT_FOUND`.\n\nA format that cannot carry everything the kernel can represent declares itself\nlossy, and exporting in one is 409 `LOSSY_EXPORT_NOT_CONSENTED` until the\nrequest repeats with `allow_lossy=true`. Retrying is the identical request\nplus that one parameter. Nothing is written before the refusal.\n\nA POST because it does work and writes files, though it changes nothing a\nlater read can see: the release is immutable, and re-exporting simply\noverwrites the previous archive. There is no job to poll \u2014 this answers when\nthe exporter is done.",
+        "description": "Queue the release for writing, and answer at once with the job to poll.\n\n**202, not 200, and this is a breaking change to this one endpoint.** It used\nto block until the exporter finished and answer with the archive. A real\nexporter walks every asset in a release and copies its bytes, which is\nminutes of work behind a request that has no way to report progress and every\nproxy's timeout in front of it. So this now follows the launch-and-poll\ncontract the ingest routes have always used: poll\n`GET /background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state`\nis `succeeded`, then `GET /background-jobs/{id}/artifact` for the archive.\n\n**Everything a caller can be told now is still told now.** Which formats\nexist is a property of this deployment \u2014 `GET /formats` lists what is\ninstalled \u2014 and an unknown name is 404 `EXPORT_FORMAT_NOT_FOUND` on this\nrequest. A format that cannot carry everything the release holds is 409\n`LOSSY_EXPORT_NOT_CONSENTED` on this request too, and retrying is the\nidentical call plus `allow_lossy=true`. Neither refusal creates a job, so a\ncaller holding a job id holds one that will run.\n\nA POST because it does work and writes files, though it changes nothing a\nlater read can see: the release is immutable, and re-exporting overwrites the\nprevious archive.",
         "operationId": "export_release",
         "parameters": [
           {
@@ -8196,13 +8729,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
-              "application/zip": {
-                "schema": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundJobOut"
+                }
               }
             },
-            "description": "Everything the exporter wrote, as one archive."
+            "description": "Successful Response"
           },
           "401": {
             "content": {

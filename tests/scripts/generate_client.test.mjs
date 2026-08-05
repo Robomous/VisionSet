@@ -142,5 +142,12 @@ test("the checks are generated from this spec, not from an empty one", () => {
   assert.match(source, /tuple\(\[isNumber, isNumber\] as const\)/); // PolygonBody.points
   assert.match(source, /mapOf\(/); // AnnotationOut.attributes
   assert.match(source, /export const checkDeleteProject = checkNoContent;/); // a 204
-  assert.match(source, /export const checkExportRelease = checkBlob;/); // bytes
+  // Bytes. `POST /releases/{id}/export` used to be the example here and stopped
+  // being one when #328 moved it behind the queue — the archive now leaves through
+  // the artifact route instead, which is the operation this pins.
+  assert.match(source, /export const checkGetBackgroundJobArtifact = checkBlob;/);
+  // An unconstrained schema. `BackgroundJob.result` is whatever its handler
+  // produced, so the contract shapes nothing and the check accepts anything —
+  // see `isJsonValue` for why a pass-through is honest exactly here.
+  assert.match(source, /export const checkJsonValue: Check<Schemas\["JsonValue"\]> =\n  \/\*#__PURE__\*\/ isJsonValue;/);
 });

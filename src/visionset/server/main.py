@@ -16,14 +16,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from visionset import __version__
 from visionset.server import session
-from visionset.server.dependencies import WorkspaceHandle
+from visionset.server.dependencies import DispatcherHandle, WorkspaceHandle
 from visionset.server.errors import (
     UNIVERSAL_ERROR_RESPONSES,
     http_exception_handler,
     install_error_handlers,
 )
 from visionset.server.routes import ROUTERS
-from visionset.server.runner import IngestRunner
 
 DESCRIPTION = "REST surface of the VisionSet SDK. The committed openapi.json is the contract."
 
@@ -118,18 +117,35 @@ async def browser_session(request: Request, response: Response) -> dict[str, boo
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Stop the ingest worker and close the workspace, in that order.
+    """Start the dispatcher on the way in; stop it before the workspace on the way out.
 
-    Only the closing half. Both objects are built in :func:`create_app`, because
-    ``TestClient(app)`` used without its context manager never runs startup —
-    and anything that only existed after startup would simply be missing there.
+    **The opening half is new, and the dispatcher is the first thing here that
+    needs one.** Everything else is built in :func:`create_app`, because
+    ``TestClient(app)`` used without its context manager never runs startup and
+    anything that only existed after startup would simply be missing there. A
+    ``ProcessPoolExecutor`` cannot follow that rule: building one at import time
+    under ``spawn`` is how a child re-executes its parent and forks a second
+    application. So the runner *object* is built in ``create_app`` like its
+    neighbours — constructing one starts nothing — and only its pool and thread
+    wait for here.
 
-    The order is load-bearing: a run still in flight holds the workspace, so
-    closing it first would pull the store out from under a worker mid-write.
+    That leaves a ``TestClient(app)`` used without its context manager with a
+    runner that was never started, which is the right failure: jobs queue and
+    nothing runs them, rather than a pool appearing in a test that asked for none.
+
+    **Startup is guarded, and deliberately so.** A workspace that cannot be opened
+    must not stop the server booting — ``/health`` is public and answers without
+    one, and ``WorkspaceHandle`` is lazy precisely so that a misconfigured server
+    reports ``NOT_A_WORKSPACE`` per request instead of refusing to start.
+
+    The closing order is load-bearing and unchanged: a run still in flight holds
+    the workspace, so closing it first would pull the store out from under a
+    worker mid-write.
     """
+    dispatcher: DispatcherHandle = app.state.job_runner
+    dispatcher.start()
     yield
-    runner: IngestRunner = app.state.ingest_runner
-    runner.shutdown()
+    dispatcher.stop()
     handle: WorkspaceHandle = app.state.workspace_handle
     handle.close()
 
@@ -284,12 +300,16 @@ def create_app() -> FastAPI:
         generate_unique_id_function=operation_id,
     )
     app.state.workspace_handle = WorkspaceHandle()
-    # Beside the handle and for the same reason — one per application, so two
-    # apps in one pytest process never share a worker. Neither touches disk or
-    # starts a thread until a request asks it to.
-    app.state.ingest_runner = IngestRunner()
+    # Beside the handle, taking it rather than a workspace, and for the reason the
+    # handle itself is lazy: every probe application in ``tests/server`` replaces
+    # ``workspace_handle`` *after* ``create_app`` returns, so a dispatcher that had
+    # already resolved a workspace here would be bound to the wrong one — and, in a
+    # checkout where the upward walk finds a workspace, ``scripts/export_openapi.py``
+    # would open a database merely by importing this module.
+    app.state.job_runner = DispatcherHandle(app.state.workspace_handle)
     install_error_handlers(app)
     app.include_router(router)
+
     for resource in ROUTERS:
         app.include_router(resource)
     # Last, and the ordering is documentation rather than a requirement: a mount

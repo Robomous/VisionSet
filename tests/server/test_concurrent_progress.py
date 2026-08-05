@@ -39,7 +39,7 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
 from tests.server._flow import asset_ids, open_job
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 from visionset.kernel.services import JobService
 
@@ -54,18 +54,18 @@ WRITERS = 3
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
 
 
 @pytest.fixture()
-def working(client: TestClient, tmp_path: Path, runner: RecordingRunner) -> tuple[str, str]:
+def working(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> tuple[str, str]:
     """A started job over a three-asset batch. Returns ``(batch_id, job_id)``."""
     return open_job(client, runner, tmp_path, images=WRITERS)
 

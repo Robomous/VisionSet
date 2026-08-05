@@ -25,6 +25,7 @@ from fastapi import APIRouter
 from visionset.server.routes import (
     annotations,
     assets,
+    background_jobs,
     batches,
     datasets,
     formats,
@@ -60,11 +61,16 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     releases.project_router,
     releases.router,
     formats.router,
+    # Last, and outside the pipeline order above on purpose: a background job is
+    # not a stage of the data's life, it is how some of those stages run. Reading
+    # it into the sequence would suggest a place it does not have.
+    background_jobs.router,
 )
 
 __all__ = [
     "ROUTERS",
     "annotations",
+    "background_jobs",
     "assets",
     "batches",
     "datasets",
