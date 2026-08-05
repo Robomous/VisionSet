@@ -3154,6 +3154,7 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": unknown;
+                    "application/zip": unknown;
                 };
             };
             /** @description Missing or invalid bearer token */

@@ -75,7 +75,7 @@ class HandlerRef(BaseModel):
 
     Frozen and trivially picklable — three strings and a boolean — because this
     is what crosses into the worker. ``func`` is ``module:attribute``, the same
-    spelling uvicorn takes for an application and ``visionset ui`` already relies
+    spelling uvicorn takes for an application and ``visionset server`` already relies
     on, so there is one convention for "name some code without importing it".
     """
 

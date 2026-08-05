@@ -15,11 +15,11 @@
 import {
   arrayOf,
   checkBlob,
-  isJsonValue,
   checkNoContent,
   either,
   isBoolean,
   isInteger,
+  isJsonValue,
   isNull,
   isNumber,
   isString,

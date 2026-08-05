@@ -26,6 +26,7 @@ src/visionset/
   cli/        Typer. Thin: parse -> call SDK -> print
   mcp/        MCP stdio server. Thin: tool -> SDK call
   formats/    importer/exporter plugins, discovered via the `visionset.formats` entry point
+  jobs/       background handlers + the dispatcher — above the kernel, below the surfaces
   _static/    compiled UI bundle, injected at build time
 ```
 
@@ -40,6 +41,9 @@ in only one of them, it is in the wrong place.
    test under `tests/architecture/`.
 2. **Delivery clients are siblings** — `server`, `cli`, and `mcp` never import each other.
    Shared logic moves down into the kernel, never sideways.
+3. **Job handlers are below the surfaces** — `visionset.jobs` never imports `server`, `cli`,
+   `mcp`, `fastapi`, `typer` or `uvicorn`. Load-bearing under `spawn`: a worker importing
+   `visionset.server` would re-execute its module-level `app = create_app()`.
 
 ```bash
 uv run lint-imports        # both contracts
@@ -61,6 +65,7 @@ contract in `pyproject.toml` to make a build pass; restructure instead.
 | A `visionset ...` subcommand, flags, human output | `cli/` |
 | An MCP tool declaration and its mapping | `mcp/` |
 | Reading/writing COCO, YOLO, … | `formats/` + an entry point |
+| Work that outlives a request (a handler, a payload shape) | `jobs/` — see `docs/background-jobs.md` |
 
 Rule of thumb: **if it would still make sense with no HTTP, no terminal, and no LLM, it belongs
 in the kernel.**

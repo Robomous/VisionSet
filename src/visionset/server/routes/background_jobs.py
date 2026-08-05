@@ -20,7 +20,8 @@ Handlers are ``def``, not ``async def``, for the reason ``projects.py`` gives.
 
 from __future__ import annotations
 
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Final
 from uuid import UUID
 
 from fastapi import HTTPException, Query, status
@@ -33,6 +34,13 @@ from visionset.server.errors import documented
 from visionset.server.models import BackgroundJobOut, BackgroundJobPage
 
 router = protected_router(prefix="/background-jobs", tags=["jobs"])
+
+#: Suffix to content type, for the one route that serves a file a *handler* named.
+#:
+#: Indexed directly and kept small on purpose: this is not a general mime table,
+#: it is the list of things a job in this product produces. A suffix absent here
+#: is bytes, which is a true statement rather than a guess.
+_ARTIFACT_MEDIA_TYPES: Final[dict[str, str]] = {".zip": "application/zip"}
 
 StateQuery = Annotated[
     list[BackgroundJobState] | None,
@@ -119,7 +127,16 @@ def cancel_background_job(workspace: WorkspaceDep, job_id: UUID) -> BackgroundJo
     responses={
         **documented(404, 409),
         200: {
-            "content": {"application/octet-stream": {"schema": {}}},
+            # **Both**, and declaring only one would be the mistake #32 caught on
+            # `get_asset_content`: that route declared two image types while
+            # `_media_type()` could also answer `application/octet-stream`, and a
+            # response the contract omits is a lie the generated client inherits.
+            # Today's only artifact is a zip; anything else falls back to the
+            # generic type, and both are what a caller may actually receive.
+            "content": {
+                "application/zip": {"schema": {}},
+                "application/octet-stream": {"schema": {}},
+            },
             "description": "The file the job produced.",
         },
     },
@@ -167,4 +184,17 @@ def get_background_job_artifact(workspace: WorkspaceDep, job_id: UUID) -> FileRe
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"the artifact for job {job_id} is no longer on disk",
         )
-    return FileResponse(path, media_type="application/zip", filename=path.name)
+    return FileResponse(path, media_type=_media_type(path), filename=path.name)
+
+
+def _media_type(path: Path) -> str:
+    """What the bytes are, from the name the handler chose.
+
+    Indexed off the suffix rather than sniffed, because the handler already knows
+    — and rather than hardcoded, because this route is generic and the next
+    artifact will not be a zip. An unrecognised suffix answers
+    ``application/octet-stream``, which is honest: it says "bytes" rather than
+    guessing, and it is what ``_media_type`` in ``routes/assets.py`` answers for
+    an asset whose format was never probed.
+    """
+    return _ARTIFACT_MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")

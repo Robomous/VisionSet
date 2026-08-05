@@ -16,9 +16,9 @@ from __future__ import annotations
 import hashlib
 import io
 import zipfile
-from typing import Any
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest

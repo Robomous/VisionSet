@@ -3053,6 +3053,9 @@
             "content": {
               "application/octet-stream": {
                 "schema": {}
+              },
+              "application/zip": {
+                "schema": {}
               }
             },
             "description": "The file the job produced."

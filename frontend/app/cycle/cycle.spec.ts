@@ -517,6 +517,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("export-format").click();
     await page.getByRole("option", { name: /dummy/ }).click();
 
+    // **Three requests behind one click, since #328.** The launch answers 202 with
+    // a job id, the screen polls `/background-jobs/{id}` until it succeeds, and
+    // only then fetches the artifact and saves it. The assertion is unchanged
+    // because the *outcome* is unchanged — which is the point of waiting on the
+    // download event rather than on any of the steps that produce it.
+    //
+    // It is also the only place the whole queue runs for real: a spawned worker
+    // opens this workspace, resolves the `dummy` exporter through the entry-point
+    // group, and writes into `exports/`. Every other test of that path runs the
+    // handler inline.
     const [download] = await Promise.all([
       page.waitForEvent("download"),
       page.getByTestId("export-submit").click(),

@@ -311,7 +311,11 @@ class SqlUnitOfWork:
         candidate = self._session.scalar(
             select(t.JobRow.id)
             .where(t.JobRow.state == BackgroundJobState.QUEUED)
-            .order_by(t.JobRow.created_at)
+            # ``rowid`` breaks a tie, and ties are real: ``created_at`` has
+            # microsecond resolution and two jobs queued by one request handler
+            # can share one. Without it "oldest first" would be arbitrary among
+            # them, which is the kind of ordering a test discovers on CI.
+            .order_by(t.JobRow.created_at, text("rowid"))
             .limit(1)
         )
         if candidate is None:

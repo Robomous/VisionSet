@@ -15,7 +15,7 @@ justifies. That is what this file is for.
 arguments, so nothing below the delivery layer reads an environment variable —
 the rule that keeps a service testable without ``monkeypatch.setenv``. Nothing
 here is a CLI flag either: these are knobs for an operator tuning a deployment,
-not features somebody chooses per run, and ``visionset ui`` already has more flags
+not features somebody chooses per run, and ``visionset server`` already has more flags
 than it wants.
 
 **The existing four reads stay where they are.** Migrating them is a change to

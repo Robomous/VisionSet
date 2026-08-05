@@ -18,9 +18,9 @@ from typing import Final
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from tests.server._jobs import ManualDispatcher
 from tests.server._probe import handle_for
 
-from tests.server._jobs import ManualDispatcher
 from visionset.kernel.services import TokenService, WorkspaceService
 from visionset.server.main import create_app
 
@@ -70,4 +70,3 @@ def api_client(root: Path, *, dispatcher: ManualDispatcher | None = None) -> Tes
     return TestClient(
         served_app(root, dispatcher=dispatcher), headers={"Authorization": f"Bearer {secret}"}
     )
-

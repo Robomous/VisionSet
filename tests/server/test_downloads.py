@@ -40,7 +40,9 @@ def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
 
 
 @pytest.fixture()
-def ingested(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> tuple[str, str, bytes]:
+def ingested(
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
+) -> tuple[str, str, bytes]:
     """``(project_id, asset_id, the bytes that were uploaded)`` for one still."""
     project_id = project_with_schema(client)
     written = write_image(tmp_path / "one.png", seed=7).read_bytes()

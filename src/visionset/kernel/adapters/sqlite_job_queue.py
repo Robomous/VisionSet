@@ -182,10 +182,16 @@ class SqliteJobQueue:
         a query language in it. The row count is bounded by how much work a
         workspace has ever queued, which is the same order of magnitude as its
         ingest runs.
+
+        **The key is ``created_at`` alone, and that is load-bearing.** Python's
+        sort is stable and the input is in insertion order, so two jobs sharing a
+        microsecond — which two enqueued by one request handler will — come back
+        in reverse insertion order rather than in whatever order their ids happen
+        to compare. Adding the id as a tie-break would *remove* that property.
         """
         wanted = None if states is None else frozenset(states)
         with self._store.unit_of_work() as uow:
             found = uow.jobs.list()
         if wanted is not None:
             found = [job for job in found if job.state in wanted]
-        return sorted(found, key=lambda job: (job.created_at, str(job.id)), reverse=True)
+        return sorted(found, key=lambda job: job.created_at, reverse=True)
