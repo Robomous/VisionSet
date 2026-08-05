@@ -327,10 +327,6 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
         assert child.state is BatchState.DRAFT
         assert child.asset_ids == fixture.batches.get(batch_id).asset_ids
 
-    def delete() -> None:
-        fixture.batches.delete(batch_id, confirm=True)
-        assert fixture.batches.list(fixture.project.id) == []
-
     return {
         BatchAction.APPROVE: approve,
         BatchAction.START: start,
@@ -339,7 +335,6 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
         BatchAction.PROMOTE: promote,
         BatchAction.CREATE_CORRECTION: create_correction,
         BatchAction.EDIT_MEMBERSHIP: edit_membership,
-        BatchAction.DELETE: delete,
     }[action]
 
 
@@ -607,10 +602,29 @@ def test_declaration_order_is_stable(tmp_path: Path) -> None:
     assert batch_actions(BatchState.DRAFT) == [
         BatchAction.APPROVE,
         BatchAction.EDIT_MEMBERSHIP,
-        BatchAction.DELETE,
     ]
     assert asset_actions(ANNOTATED, batch_state=BatchState.IN_ANNOTATION) == [
         AssetAction.ANNOTATE,
         AssetAction.SKIP,
         AssetAction.SUBMIT_FOR_REVIEW,
     ]
+
+
+def test_no_state_declares_delete_because_nothing_can_perform_it() -> None:
+    """#331: the capability was withdrawn rather than routed.
+
+    `BatchService.delete` and `DELETABLE_STATES` both survive — the rule is
+    unchanged and `test_batch_service.py` still holds it to every state. What was
+    withdrawn is the *declaration*, because no route, MCP tool or control reaches
+    the method, and under the `ui-capabilities` contract a client renders what the
+    wire declares. An action nothing can perform obliges every conforming client
+    to offer a control that cannot work.
+
+    Asserted directly rather than left to the parametrized matrix above: that one
+    derives its cases from `BatchAction` itself, so it can only ever check the
+    members that exist. Proving a member is *absent* takes naming it.
+    """
+    assert "delete" not in {action.value for action in BatchAction}
+    assert all(
+        "delete" not in {action.value for action in batch_actions(state)} for state in BatchState
+    )

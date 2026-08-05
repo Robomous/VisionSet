@@ -14,7 +14,10 @@ waiting for. Both are ``draft``-only: approval freezes membership, and that
 refusal is the batch's own (``BATCH_NOT_EDITABLE``), never a rule this module
 restates. A *delete* route is still absent; ``BatchService.delete`` has the
 method and ``DELETABLE_STATES`` the rule, and the API grows a route when
-somebody needs one.
+somebody needs one. Since #331 the wire no longer *declares* the capability
+either: ``BatchAction`` has no ``delete`` member, so the contract stops
+promising a control nothing can perform. Adding the route means adding the
+member back, in the same change.
 
 The lifecycle *is* here, because without it nothing downstream is reachable: an
 annotation may only be written into a batch that is ``in_annotation``, and a
