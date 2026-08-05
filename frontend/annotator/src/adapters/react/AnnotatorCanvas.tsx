@@ -153,7 +153,14 @@ import type { Selection } from "../../core/state/selection";
 import type { AnnotatorStore } from "../../core/state/store";
 import type { Point } from "../../core/types";
 import { randomUuid } from "../ids";
-import { IDENTITY_VIEWPORT, fitToViewport, panBy, screenToImage, zoomAbout } from "../viewport";
+import {
+  IDENTITY_VIEWPORT,
+  fitToViewport,
+  imageRenderingAt,
+  panBy,
+  screenToImage,
+  zoomAbout,
+} from "../viewport";
 import type { Viewport } from "../viewport";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { useAnnotatorSnapshot } from "./hooks";
@@ -718,10 +725,23 @@ export function AnnotatorCanvas({
             src={imageSrc}
             alt=""
             aria-hidden="true"
+            // Named so the pixelated-at-depth rule (#228) is asserted against the
+            // image layer itself rather than against whichever element a
+            // positional selector happens to reach.
+            data-testid="annotator-image"
             draggable={false}
             width={asset.width}
             height={asset.height}
-            style={{ display: "block", pointerEvents: "none", userSelect: "none" }}
+            style={{
+              display: "block",
+              pointerEvents: "none",
+              userSelect: "none",
+              // Honest pixels past `PIXELATED_ABOVE_ZOOM` (#228): deep zoom shows
+              // the asset's real sampling grid instead of gradients the browser
+              // invented between the pixels somebody zoomed in to look at. The
+              // image layer only — the `<svg>` below is untouched by this.
+              imageRendering: imageRenderingAt(view.zoom),
+            }}
           />
           <svg
             data-testid="annotator-canvas"

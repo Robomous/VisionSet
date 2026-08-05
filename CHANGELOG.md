@@ -46,6 +46,24 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The annotator's zoom has a named ceiling, honest pixels at depth, and controls that say when
+  they stop** (#228). The maximum is **8x**, where one asset pixel is already an eight-pixel
+  block and further magnification produces larger blocks of the same data; it was 16. Above
+  **4x** the image layer renders `image-rendering: pixelated`, so deep zoom shows the asset's
+  real sampling grid instead of gradients the browser invented between the pixels somebody
+  zoomed in to look at — the annotation chrome is untouched by the rule.
+
+  The annotation page's `−`/`+` used to stay enabled at both ends of the range and do nothing
+  when pressed. They now carry `aria-disabled` and a tooltip naming the limit ("Maximum zoom —
+  8× image pixels"), and the readout stops at exactly `800%`. `aria-disabled` rather than the
+  native attribute, because a disabled `<button>` takes no pointer events and its tooltip would
+  never open — a disabled-with-reason control whose reason cannot be read is a bare disabled
+  control.
+
+  This closes out #131's measurement: the frame ceiling at depth is the browser's raster of a
+  scaled stage, not anything this codebase executes, so it is accepted as a limit rather than
+  chased. Vector re-rendering of the annotation chrome is deferred to `cf. #342`.
+
 - **The MCP server retires `start_job`: the first write starts the job** (#109). **Breaking for
   MCP clients**, and for that surface only — the REST route and the CLI are untouched. An agent
   no longer marks a job as being worked on: `add_annotations`, `update_annotations`,

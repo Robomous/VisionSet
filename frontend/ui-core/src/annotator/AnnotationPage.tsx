@@ -74,7 +74,11 @@
 
 import {
   AnnotatorCanvas,
+  MAX_ZOOM,
+  MIN_ZOOM,
   TOGGLE_HELP,
+  atZoomCeiling,
+  atZoomFloor,
   defaultRegistry,
   annotationsInDrawOrder,
   documentFromWire,
@@ -120,6 +124,7 @@ import { refusalProse } from "../data/refusals";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 import { Eye } from "lucide-react";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { ShortcutSheet } from "./ShortcutSheet";
@@ -1004,15 +1009,41 @@ function Workspace({
 
           <span className="h-5 w-px bg-border" />
 
-          <Button variant="ghost" size="icon" aria-label="Zoom out" data-testid="zoom-out" onClick={() => viewRef.current?.zoomBy(1 / ZOOM_STEP)}>
+          {/*
+            Both bounds are disabled *with the reason* (#228, `DESIGN.md`
+            principle 9). They used to be plain buttons that stayed enabled at
+            the ends of the range and did nothing when pressed — the readout
+            simply refused to move, which reads as a broken control rather than
+            as a limit somebody chose.
+
+            The bounds come from `@visionset/annotator` rather than from a number
+            here: `clampZoom` is the one thing that decides them, so a control
+            re-deriving `>= 8` would be a second spelling free to disagree with
+            the stage it is driving.
+          */}
+          <ZoomButton
+            testId="zoom-out"
+            label="Zoom out"
+            atBound={view !== null && atZoomFloor(view.zoom)}
+            reason={`Minimum zoom — ${Math.round(MIN_ZOOM * 100)}% of the asset`}
+            onClick={() => viewRef.current?.zoomBy(1 / ZOOM_STEP)}
+          >
             <Minus className="size-4" />
-          </Button>
+          </ZoomButton>
+          {/* The stage's own scale, capped by it — so the ceiling reads exactly
+              `800%` and never an internal number the clamp already refused. */}
           <span className="w-12 text-center font-mono text-meta text-muted-foreground" data-testid="zoom-readout">
             {view === null ? "—" : `${Math.round(view.zoom * 100)}%`}
           </span>
-          <Button variant="ghost" size="icon" aria-label="Zoom in" data-testid="zoom-in" onClick={() => viewRef.current?.zoomBy(ZOOM_STEP)}>
+          <ZoomButton
+            testId="zoom-in"
+            label="Zoom in"
+            atBound={view !== null && atZoomCeiling(view.zoom)}
+            reason={`Maximum zoom — ${MAX_ZOOM}× image pixels`}
+            onClick={() => viewRef.current?.zoomBy(ZOOM_STEP)}
+          >
             <Plus className="size-4" />
-          </Button>
+          </ZoomButton>
           {/* The same implementation `mod+0` reaches, which is why that chord stays
               intercepted rather than forwarded to the host. */}
           <Button variant="ghost" size="icon" aria-label="Fit to window" data-testid="fit" onClick={() => viewRef.current?.fit()}>
@@ -1201,6 +1232,58 @@ function Workspace({
 
       <ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} registry={registry} />
     </div>
+  );
+}
+
+/**
+ * A zoom control that says why it stopped working (#228).
+ *
+ * `ToolPalette`'s `PaletteButton` is the pattern and the two share its one
+ * load-bearing detail: **`aria-disabled`, never the native `disabled` attribute**.
+ * A disabled `<button>` receives no pointer events, so Radix's trigger never
+ * opens and a disabled-with-reason control whose reason cannot be read is just a
+ * dead button. This keeps the hover and refuses the press.
+ *
+ * The tooltip is always there — the ordinary label away from a bound, the reason
+ * at one. A tooltip that only appears at the limit would make the limit the one
+ * state with no hover affordance to discover it by.
+ */
+function ZoomButton({
+  testId,
+  label,
+  atBound,
+  reason,
+  onClick,
+  children,
+}: {
+  readonly testId: string;
+  readonly label: string;
+  readonly atBound: boolean;
+  readonly reason: string;
+  readonly onClick: () => void;
+  readonly children: JSX.Element;
+}): JSX.Element {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={atBound ? reason : label}
+          aria-disabled={atBound || undefined}
+          data-testid={testId}
+          data-at-bound={atBound ? "true" : "false"}
+          className={atBound ? "cursor-not-allowed opacity-40" : undefined}
+          onClick={() => {
+            if (atBound) return;
+            onClick();
+          }}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{atBound ? reason : label}</TooltipContent>
+    </Tooltip>
   );
 }
 
