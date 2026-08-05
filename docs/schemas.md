@@ -121,7 +121,8 @@ not damage.
 
 ## Geometries a class may use
 
-`GeometryType` names eight geometries; three have a model in the `Geometry` union today.
+`GeometryType` names eight geometries; four have a model in the `Geometry` union today —
+`bbox`, `polygon`, `polyline` and `classification_tag`.
 `IMPLEMENTED_GEOMETRIES` is read *off* the union, so shipping a variant widens it with no
 second edit, and `create_version` refuses anything outside it:
 
@@ -132,6 +133,13 @@ schemas.create_version(project.id, [that])  # UnsupportedGeometry
 
 Declaring a class whose geometry has no implementation would create a class nobody could
 ever label. Refusing at the schema is better than discovering it at the first annotation.
+
+**`polyline` is the one that is writable before it is drawable.** It joined the union in
+#223 so that lane datasets work end to end — the SDK, the REST API and MCP all accept one,
+`visionset.formats.lanes` exports five lane formats from it, and the annotator renders and
+reviews them. What does not exist yet is an interactive tool for *drawing* a lane; that is
+0.2. A polyline class is therefore a perfectly ordinary class that an agent or a script
+fills in and a person checks, which is the workflow it was added for.
 
 `allowed_geometries` is the flip side, derived the same way: the set of geometries a
 version's classes are bound to. It is what an annotation's `geometry.type` is

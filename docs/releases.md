@@ -438,6 +438,41 @@ There is **no reference-reader smoke test** for this format, unlike the other tw
 MATLAB and every Python consumer parses the XML itself, so there is no loader worth pinning a CI
 job to: the document is the contract, and the golden-file tests assert it as text.
 
+### The lane formats
+
+Five plugins — `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` — over the
+`polyline` geometry #223 added. They are the port of the workload VisionSet's predecessor
+actually ran, and they are what makes a lane dataset a first-class product of this tool rather
+than a thing you write a script for.
+
+All five declare `lossy = True`. A lane file has fields for a *lane*, and none of them has
+anywhere to put an annotation's arbitrary attributes, its confidence, its provenance or its id.
+Four of them write the vertices they were given, so `polyline` is in `supported_geometries`;
+**TuSimple does not**, because its file format is "the X where the lane crosses each of these
+rows", so a lane goes in as vertices and comes out as samples on a fixed grid. That is the third
+state — carried, but reduced — and it is why `tusimple` declares `polyline` under
+`degraded_geometries` while the other four do not.
+
+The lane vocabulary is a convention on attribute names — `style`, `color`, `position_role`, each
+a `select` — defined in `visionset/formats/lanes/_core.py` and not in the kernel, because the
+domain does not know what a road is and the same geometry labels railway tracks. A missing
+attribute resolves to `other` rather than refusing, and `position_role` falls back to the class
+name, so a schema whose classes *are* the road positions needs no attributes at all. See
+[`src/visionset/formats/lanes/README.md`](../src/visionset/formats/lanes/README.md).
+
+Two of the five refuse rather than invent: TuSimple will not write a lane whose points are not
+sorted by ascending Y — its row sampling has no meaning for a path that doubles back — and CULane
+will not write two lanes claiming the same one of its four mask slots. Both name the asset, and
+both are the same `ExportSourceUnreadable` the YOLO exporter raises for a class the schema does
+not declare.
+
+**YOLO, COCO and VOC carry no polyline at all**, and that is checked rather than assumed
+(`test_the_three_general_formats_declare_polyline_truthfully`). YOLO and VOC reduce a *polygon*
+to its bounding box, which is defensible because a polygon encloses an area a box approximates;
+an open path encloses nothing, so a box drawn round it would be an invention. COCO's
+`segmentation` is a closed ring and it has no open-path primitive. All three therefore report a
+polyline class as **dropped**, and their label files contain no trace of one.
+
 ### The destination is the caller's
 
 `dest` is created if it is not there and is **not** emptied if it is — deleting files under a
