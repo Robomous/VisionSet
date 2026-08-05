@@ -29,10 +29,23 @@ All work in the worktree; never the primary checkout. Conventional commits in lo
 - **Every mutation touched must have a refusal-rendering test**: force the refusal, assert the user sees prose (not a raw code, not nothing).
 - E2e fixtures seed all five asset-progress states and at least one batch per batch state when the task touches state-dependent UI.
 - Run the full existing suites (Python + TS) and linters; fix what your change broke, and only that.
+- **Three suites, all of them, before every push** — `scripts/check.sh` runs **no browser suite at all**, so "check.sh green" is not "CI will be green":
+
+  ```bash
+  bash scripts/check.sh
+  cd frontend/app && CI=1 npx playwright test
+  cd frontend/app && CI=1 npx playwright test -c playwright.cycle.config.ts
+  ```
+
+  The third is the **real-server cycle run**, and it is mandatory for anything touching state, gating, or progress: it was three separate times the *only* suite to catch a regression — a stale job declaration, a label flip standing in for feedback, and a progress counter running backwards. — 2026-08 run, T3/T5/T6
+- **Always `CI=1` for a local Playwright run.** `playwright.config.ts` sets `reuseExistingServer: !CI`, so a stale vite server on :5273 answers instead of your build and produces failures that read as code bugs. — 2026-08 run, T3
+- **`git add` new files before trusting any local check run.** Several gates read `git ls-files` — the index, not the working tree — so an untracked new file is invisible to them and passes locally while failing in CI. — 2026-08 run, T4
+- **A test double must not encode invisible-order or frozen-state semantics.** Put defaults in the *unmatched-request fallback* so an explicit stub always wins whichever order it was registered in, and derive stub responses from the state the test walks rather than from frozen literals. Both failure modes make a test assert against the fixture instead of the code, and both are silent. — 2026-08 run, T6/T7/T10
 
 ## PR & CI
 
 1. `gh pr create` — body includes: what changed, "Found, not fixed" list, test plan, `Closes #NNN` only for issues actually and fully closed.
+   **GitHub reads a closing keyword anywhere in the PR body or a squashed commit message, including inside a sentence that denies it.** "Nothing here closes #281" closed #281. To say an issue is *not* closed, name it without the keyword — `#281 is untouched`, `cf. #281`. — 2026-08 run, T9
 2. `gh pr merge --auto --squash`.
 3. Monitor `gh pr checks --watch`; on failure read logs, fix, push. **After 3 consecutive failures of the same check with no clear fix, stop and report** — never loop indefinitely, never disable or skip a failing check to get green.
 
