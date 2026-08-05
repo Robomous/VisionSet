@@ -1,7 +1,7 @@
 """The HTTP end-to-end example, run as a smoke test.
 
 M3's exit criterion turned into a regression guard for one of its three legs: if
-a route stops composing with the ones around it, or if `visionset ui` stops
+a route stops composing with the ones around it, or if `visionset server` stops
 being able to start at all, this fails long before anyone runs the example by
 hand. The assertions are about *outcomes* — what the release holds, whether the
 manifest still hashes to itself — rather than about the printed narration, which
@@ -56,9 +56,9 @@ def summary(example: ModuleType, tmp_path_factory: pytest.TempPathFactory) -> An
 
 
 def test_the_server_actually_started_and_answered(summary: Any) -> None:
-    """`visionset ui` bound a socket and served the API through it.
+    """`visionset server` bound a socket and served the API through it.
 
-    Nothing else in the suite proves this: `tests/cli/test_ui.py` patches
+    Nothing else in the suite proves this: `tests/cli/test_server.py` patches
     `uvicorn.run` and asserts the arguments, which is right for a unit test and
     says nothing about whether the process comes up.
     """

@@ -246,8 +246,8 @@ beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
 thirty-odd tools would put a path an agent has no way to know into every call. The workspace is
-opened and closed per tool call rather than held, so the file is never kept from `visionset ui` or
-a second agent between calls.
+opened and closed per tool call rather than held, so the file is never kept from `visionset server`
+or a second agent between calls.
 
 **A discriminated union's `type` must be spelled out.** `geometry` and the partition variants
 carry a default on their tag, so the generated schema shows `type` as optional — but it is read

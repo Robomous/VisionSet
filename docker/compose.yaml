@@ -114,7 +114,7 @@ services:
       # port open to every interface would hand the workspace to the LAN. The two
       # lines belong together and neither is safe alone.
       VISIONSET_UI_SESSION: always
-    # Raw uvicorn rather than `visionset ui`, and deliberately so: that
+    # Raw uvicorn rather than `visionset server`, and deliberately so: that
     # command also serves the compiled bundle at /app, which in development is
     # vite's job on :5173 — and building that bundle is exactly what this stack
     # exists to avoid needing.

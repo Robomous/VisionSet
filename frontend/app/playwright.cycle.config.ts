@@ -3,7 +3,7 @@
  *
  * Every other suite in this repository stubs the API — `annotate.spec.ts` holds
  * the routes still so a failure names the page, and the annotator's 76 scenarios
- * have no server at all. This one has no mocks anywhere: `visionset ui` serves the
+ * have no server at all. This one has no mocks anywhere: `visionset server` serves the
  * compiled bundle out of `_static/` and the API off the same origin, exactly as the
  * wheel does, and Playwright drives the product from a pasted token to a downloaded
  * export.
@@ -72,7 +72,7 @@ export default defineConfig({
   },
   webServer: {
     // The whole stack, in the order the wheel builds it: engine, design system,
-    // bundle, and the bundle copied into the package data `visionset ui` serves.
+    // bundle, and the bundle copied into the package data `visionset server` serves.
     command: [
       "pnpm --filter @visionset/annotator build",
       "pnpm --filter @visionset/ui-core build",

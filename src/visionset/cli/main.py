@@ -17,8 +17,8 @@ from visionset.cli.mcp import mcp
 from visionset.cli.projects import project_app
 from visionset.cli.releases import release_app
 from visionset.cli.schemas import schema_app
+from visionset.cli.server import server
 from visionset.cli.tokens import token_app
-from visionset.cli.ui import ui
 
 app = typer.Typer(
     name="visionset",
@@ -35,9 +35,9 @@ app = typer.Typer(
 # cycle is shown in one sequence.
 #
 # Bare commands are registered here rather than decorated at their definition
-# site: a ``@app.command()`` in ``ui.py`` would have to import this module, which
-# imports ``ui.py``. Typer reads a command's annotations out of its *defining*
-# module's globals either way, which is what lets the shared ``WorkspaceOption``
+# site: a ``@app.command()`` in ``server.py`` would have to import this module,
+# which imports ``server.py``. Typer reads a command's annotations out of its
+# *defining* module's globals either way, which is what lets the shared ``WorkspaceOption``
 # and ``JsonOption`` aliases resolve there. The name is spelled out rather than
 # derived from the function, so ``backfill-thumbnails`` is not a guess.
 app.command("init")(init)
@@ -51,7 +51,7 @@ app.command("export")(export)
 app.add_typer(format_app, name="format")
 app.command("backfill-thumbnails")(backfill_thumbnails)
 app.add_typer(token_app, name="token")
-app.command()(ui)
+app.command()(server)
 app.command()(mcp)
 
 

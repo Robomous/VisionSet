@@ -73,7 +73,7 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built | `frontend` |
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
 | Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) | `browser` |
-| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset ui`; needs `uv sync` and `playwright install chromium`. Repeatable in one workspace: `--repeat-each=N` costs one build rather than N | `browser` |
+| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset server`; needs `uv sync` and `playwright install chromium`. Repeatable in one workspace: `--repeat-each=N` costs one build rather than N | `browser` |
 | Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated | — manual |
 | Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server | part of `frontend` |
 | Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror | part of `frontend` |
@@ -149,7 +149,7 @@ VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging
 **The order in that script is the whole point.** `uv build` copies
 `src/visionset/_static/` as package data *at the moment it runs*, and a fresh checkout's
 `_static/` holds only `README.md` and `.gitkeep` — so a wheel built before
-`pnpm bundle:static` contains **no app at all**. It installs, `visionset ui` starts, and
+`pnpm bundle:static` contains **no app at all**. It installs, `visionset server` starts, and
 `/app/` answers a 404 naming a script the user does not have. There is no error and no
 traceback anywhere in that sequence, which is why the script checks after each step and
 why `tests/dist/` checks the artifact rather than the source tree.

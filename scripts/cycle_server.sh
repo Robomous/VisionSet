@@ -5,7 +5,7 @@
 # steps can fail in ways worth naming, and a `&&` chain reports only the exit code.
 #
 # It creates a throwaway workspace, mints a token into a file the suite reads, and
-# then **execs** the server: `visionset ui` inherits the process, so Playwright's
+# then **execs** the server: `visionset server` inherits the process, so Playwright's
 # own shutdown reaches uvicorn rather than a shell that outlives it.
 set -euo pipefail
 
@@ -44,4 +44,4 @@ for index, colour in enumerate([(210, 90, 70), (70, 140, 210), (120, 190, 120)])
 PY
 
 echo "cycle workspace ready at $ws" >&2
-exec visionset ui --workspace "$ws" --host 127.0.0.1 --port "$port"
+exec visionset server --workspace "$ws" --host 127.0.0.1 --port "$port"

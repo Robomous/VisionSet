@@ -35,7 +35,7 @@ uv tool install "git+https://github.com/Robomous/VisionSet"   # PyPI lands with 
 
 visionset init ~/datasets/road-signs     # a workspace, here and nowhere else
 cd ~/datasets/road-signs
-visionset ui                             # API at http://127.0.0.1:8000, app at /app
+visionset server                         # API at http://127.0.0.1:8000, app at /app
 ```
 
 Then follow [the tutorial](docs/tutorial.md): a clip of video to a YOLO dataset in about half an
@@ -43,7 +43,7 @@ hour. Full prerequisites — Python 3.12, and ffmpeg only if you are starting fr
 [docs/install.md](docs/install.md).
 
 `init` is the only command that creates a workspace, and it refuses a directory that already holds
-something. `visionset ui` run outside one refuses with one sentence and exit 1; it never creates
+something. `visionset server` run outside one refuses with one sentence and exit 1; it never creates
 one, because a command that silently made a workspace out of whatever directory you were standing
 in is how data ends up somewhere nobody chose.
 
@@ -93,9 +93,9 @@ into 50 deduplicated assets in an approved batch, then shows a re-run creating n
 ffmpeg.
 
 The same cycle runs over each of the other two surfaces, and both start the shipped command for
-real: [`examples/http_end_to_end.py`](examples/http_end_to_end.py) starts `visionset ui` on a free
-port and drives the API with `urllib` and a bearer token — multipart upload, 202-and-poll ingest,
-hash-checked manifest and a 401 it asserts — while
+real: [`examples/http_end_to_end.py`](examples/http_end_to_end.py) starts `visionset server` on a
+free port and drives the API with `urllib` and a bearer token — multipart upload, 202-and-poll
+ingest, hash-checked manifest and a 401 it asserts — while
 [`examples/mcp_end_to_end.py`](examples/mcp_end_to_end.py) spawns `visionset mcp` and talks
 JSON-RPC down its pipe, scaling every box out of the preview it saw and into the asset's own
 pixels.
@@ -136,7 +136,7 @@ uv sync         # Python env + dev tools
 pnpm install    # frontend workspace
 ```
 
-Then `uv run visionset ui` and `pnpm --filter @visionset/app dev`. Or run the whole thing in
+Then `uv run visionset server` and `pnpm --filter @visionset/app dev`. Or run the whole thing in
 containers instead, with nothing installed on the host and nothing built.
 
 ### Run it with Docker, and sign in with nothing

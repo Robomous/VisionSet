@@ -311,7 +311,7 @@ it would print a traceback rather than a sentence. A missing path is exit 2 for 
 
 **The run is synchronous, and the CLI never calls `enqueue`.** A queued job needs a worker to pick
 it up, and a CLI process has none — a detached job would simply never run. Polling is what the
-server is for: `visionset ui`, then `GET /ingest-jobs/{id}`.
+server is for: `visionset server`, then `GET /ingest-jobs/{id}`.
 
 **Interrupting a run leaves the job row at `running`, and there is no `--resume`.** The remedy needs
 no new vocabulary: run the same line again. Registration finds the same source, `enqueue` does not

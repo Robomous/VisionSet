@@ -3,7 +3,7 @@
  *
  * Token → project → schema → ingest → approve → annotate → complete → promote →
  * publish → export → download. No mocks anywhere: the bundle is the built one that
- * ships in the wheel, and `visionset ui` serves it beside the real API over the
+ * ships in the wheel, and `visionset server` serves it beside the real API over the
  * real kernel.
  *
  * ## One test, and that is deliberate
@@ -121,7 +121,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
   await test.step("open the app, which asks for nothing", async () => {
     await page.goto("./");
-    // #179's first acceptance criterion, against the real thing: `visionset ui`
+    // #179's first acceptance criterion, against the real thing: `visionset server`
     // on this machine, a browser, and the product — nothing typed, nothing
     // pasted, no token anywhere in this step.
     await expect(page.getByTestId("app-rail")).toBeVisible();

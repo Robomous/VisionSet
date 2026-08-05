@@ -23,7 +23,7 @@ first is the one that decided it:
    would have to be torn down between tests and would leak a workspace into the
    next module when a test forgot.
 2. SQLite has one writer. A stdio server that held the file between calls would
-   keep ``visionset ui`` and a second agent out of a workspace nobody is using.
+   keep ``visionset server`` and a second agent out of a workspace nobody is using.
 3. ``close()`` checkpoints the WAL, so a client that disappears mid-session
    leaves no ``visionset.db-wal`` behind.
 

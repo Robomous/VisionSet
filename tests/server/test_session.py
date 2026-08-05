@@ -13,7 +13,7 @@ says which workspace it means without touching process-wide state. This one
 cannot: the secret is a *file in the workspace directory*, and
 `visionset.server.session` finds that directory with `resolve_workspace_root()` —
 deliberately, because it must not open the database to answer a public route. So
-the tests set `VISIONSET_WORKSPACE`, which is exactly what `visionset ui` and the
+the tests set `VISIONSET_WORKSPACE`, which is exactly what `visionset server` and the
 compose stack do, and the handle is pointed at the same path so the two halves
 cannot disagree.
 

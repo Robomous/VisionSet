@@ -116,7 +116,8 @@ browser  ->  GET /session
              Set-Cookie: visionset_session=…; HttpOnly; SameSite=Strict; Path=/
 ```
 
-`visionset ui`, then a browser, and you are on the project list. Nothing typed and nothing copied.
+`visionset server`, then a browser, and you are on the project list. Nothing typed and nothing
+copied.
 
 **The token is untouched.** `Authorization: Bearer` still authenticates every route, the SDK, the
 CLI, MCP and every third-party client are unaffected, and `AuthProvider.verify(token) -> bool` did
@@ -224,10 +225,10 @@ branches it can only reach two: **`VISIONSET_WORKSPACE`**, then the nearest work
 the working directory. The precedence table and the argument for why only that last case walks
 upward live in [workspaces.md](workspaces.md#which-workspace-when-nobody-said).
 
-A server started by **`visionset ui`** always lands on the first of those. That command applies the
-full precedence itself — including `--workspace`, which no server can see — and then exports the
+A server started by **`visionset server`** always lands on the first of those. That command applies
+the full precedence itself — including `--workspace`, which no server can see — and then exports the
 answer, so the two resolvers cannot disagree about a workspace one of them was told about and the
-other was not. See [cli.md](cli.md#visionset-ui).
+other was not. See [cli.md](cli.md#visionset-server).
 
 It is opened by the first request that needs it and kept for the life of the process — never at
 import time, because `scripts/export_openapi.py` imports the application in a checkout that has no

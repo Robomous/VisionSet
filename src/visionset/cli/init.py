@@ -59,4 +59,4 @@ def init(
             workspace.close()
     note(f"Created workspace {created!r} at {root}.")
     typer.echo(str(root))
-    note("Next: visionset token create --name <name>, then visionset ui.")
+    note("Next: visionset token create --name <name>, then visionset server.")
