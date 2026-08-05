@@ -102,6 +102,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   ASSET_ACTION,
@@ -127,6 +128,7 @@ import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
 import type { WireAnnotation } from "./jobQueries";
 import {
+  jobKeys,
   assetPositionOf,
   isEmptyPlan,
   planSave,
@@ -144,7 +146,12 @@ import {
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { PROGRESS_LABEL } from "../screens/batchState";
 import type { LabelClassBody } from "../screens/queries";
-import { useActiveSchema, useBatchTransition, useCreateSchemaVersion } from "../screens/queries";
+import {
+  batchKeys,
+  useActiveSchema,
+  useBatchTransition,
+  useCreateSchemaVersion,
+} from "../screens/queries";
 
 /** One notch, matching what a wheel step feels like on the same stage. */
 const ZOOM_STEP = 1.25;
@@ -490,28 +497,65 @@ function Workspace({
    * StrictMode's doing: the send fires from the first, throwaway effect
    * invocation, whose observer is not the one the committed render reads, so
    * the hook can answer idle over a mutation that really refused. The promise
-   * and the setter survive either way. It surfaces in the save-state slot
-   * below, rather than being discovered at Save.
+   * and the setter survive either way. It surfaces in its **own** slot beside
+   * the save state, rather than being discovered at Save.
+   *
+   * ## Whether to send: the wire's answer, not this page's arithmetic (#319)
+   *
+   * The gates were `batchState !== "approved"` and `jobState !== "pending"` —
+   * two rows of `BATCH_TRANSITIONS` and `JOB_TRANSITIONS` restated here, which
+   * is the hand-mirror the capabilities contract exists to delete. Both are now
+   * `declares(...)`, so the question "may this move be made" has one answer and
+   * the kernel gives it. It reads the same today and cannot drift tomorrow.
+   *
+   * ## Already-made is not a failure, and this is what made the suite flake
+   *
+   * Both declarations come from a **cache**. An invalidation's refetch is
+   * asynchronous, so there is a window where the read still declares `start`
+   * over a resource the server has already started — and the kernel answers the
+   * second start `INVALID_TRANSITION`. That is the only thing it can mean here:
+   * `start` moves `pending → in_progress`, so refusing it says the job is not
+   * pending, which is the state the effect was reaching for. Reporting it tells
+   * somebody their page is broken because it is already working.
+   *
+   * So an already-made refusal re-reads the resource and says nothing, and
+   * everything else the kernel refuses with is still surfaced — a batch that
+   * genuinely may not be opened still says so, before the first Save.
    */
   const [openingRefusal, setOpeningRefusal] = useState<unknown>(null);
   const sentBatchStart = useRef(false);
   const sentJobStart = useRef(false);
+  const queries = useQueryClient();
+
+  const openingFailed = useCallback(
+    (error: unknown, stale: readonly unknown[]): void => {
+      if (asApiError(error).code === "INVALID_TRANSITION") {
+        void queries.invalidateQueries({ queryKey: stale });
+        return;
+      }
+      setOpeningRefusal(error);
+    },
+    [queries],
+  );
+
+  const mayStartBatch = declares({ allowed_actions: batchActions }, BATCH_ACTION.start);
+  const mayStartJob = declares({ allowed_actions: jobActions }, JOB_ACTION.start);
 
   useEffect(() => {
-    if (batchState !== "approved" || sentBatchStart.current) return;
+    if (!mayStartBatch || sentBatchStart.current) return;
     sentBatchStart.current = true;
     startBatch.mutateAsync().catch((error: unknown) => {
-      setOpeningRefusal(error);
+      openingFailed(error, batchKeys.batch(batchId));
     });
-  }, [batchState, startBatch]);
+  }, [batchId, mayStartBatch, openingFailed, startBatch]);
 
   useEffect(() => {
-    if (batchState !== "in_annotation" || jobState !== "pending" || sentJobStart.current) return;
+    if (!mayStartJob || sentJobStart.current) return;
     sentJobStart.current = true;
     startJob.mutateAsync().catch((error: unknown) => {
-      setOpeningRefusal(error);
+      openingFailed(error, jobKeys.job(jobId));
     });
-  }, [batchState, jobState, startJob]);
+  }, [jobId, mayStartJob, openingFailed, startJob]);
 
   const plan = useMemo(() => planSave(snapshot.document, loaded), [snapshot.document, loaded]);
   const dirty = !isEmptyPlan(plan);
@@ -798,16 +842,19 @@ function Workspace({
           <AssetProgressState progress={asset.progress ?? "unannotated"} />
 
           {/*
-            The save's own refusal first; failing that, a refused opening move
-            (#299) — the batch or job start this page fires on open. Without the
-            fallback, a batch that could not be opened looks fully functional
-            until the first Save answers a code.
+            A refused opening move (#299) — the batch or job start this page
+            fires on open. Without it, a batch that could not be opened looks
+            fully functional until the first Save answers a code.
+
+            It has its own slot because it used to share the save's, as a
+            fallback, and never cleared: a save that fully succeeded rendered the
+            opening refusal for the life of the mount (#319). A report somebody
+            else can fill is not a report, and the two failures are not the same
+            question — "this batch would not open" outlives any one save, while
+            "this save did not land" is about the press just made.
           */}
-          <SaveState
-            dirty={dirty}
-            pending={save.isPending}
-            error={save.isError ? save.error : openingRefusal}
-          />
+          <OpeningRefusal error={openingRefusal} />
+          <SaveState dirty={dirty} pending={save.isPending} error={save.isError ? save.error : null} />
 
           {/*
             Read-only cannot become dirty — no primary press reaches the machine
@@ -1182,6 +1229,24 @@ function AssetProgressState({ progress }: { readonly progress: string }): JSX.El
       data-testid="asset-progress"
     >
       {PROGRESS_LABEL[progress] ?? progress}
+    </Badge>
+  );
+}
+
+/**
+ * Why the page could not open the batch or the job it was asked to open (#299).
+ *
+ * Nothing at all when there is nothing to say — the common case by far, and the
+ * only one the annotator's own flake ever produced (#319). It renders beside the
+ * save state rather than inside it: the two answer different questions, and the
+ * one that outlives every save must not be overwritten by the next one, nor
+ * overwrite it.
+ */
+function OpeningRefusal({ error }: { readonly error: unknown }): JSX.Element | null {
+  if (error === null || error === undefined) return null;
+  return (
+    <Badge variant="destructive" data-testid="opening-refusal" title={asApiError(error).code}>
+      {refusalProse(error)}
     </Badge>
   );
 }
