@@ -298,18 +298,24 @@ describe("parsing the schema the kernel produced", () => {
     expect(typeof schema.description).toBe("string");
     expect(schema.description).toBeTruthy();
     expect(schema.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(schema.provenance).toBe("curated");
   });
 
-  it("reads a version that carries neither, which is every version before #230", () => {
-    // Both branches by hand, because the committed fixture can only be in one
+  it("reads a version that carries none of them, which is every version before #230", () => {
+    // All three branches by hand, because the committed fixture can only be in one
     // state at a time and it is populated so the round-trip above means something.
     const bare = { project_id: "p", version: 1, classes: [] };
-    expect(parseSchema(bare)).toEqual({ ...bare, description: null, created_at: null });
-    expect(parseSchema({ ...bare, description: null, created_at: null })).toEqual({
-      ...bare,
-      description: null,
-      created_at: null,
-    });
+    const empty = { description: null, created_at: null, provenance: null };
+    expect(parseSchema(bare)).toEqual({ ...bare, ...empty });
+    expect(parseSchema({ ...bare, ...empty })).toEqual({ ...bare, ...empty });
+  });
+
+  it("carries a provenance spelling this build has never heard of", () => {
+    // Typed as a bare `string` rather than as a union of the two spellings the
+    // server declares today, so a newer server's third value travels through
+    // instead of failing the parse — rule 4, and the engine never branches on it.
+    const bare = { project_id: "p", version: 1, classes: [] };
+    expect(parseSchema({ ...bare, provenance: "imported" }).provenance).toBe("imported");
   });
 
   it("ignores a key the schema contract does not declare", () => {

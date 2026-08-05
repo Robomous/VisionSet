@@ -119,6 +119,7 @@ from visionset.kernel.domain.schema import (
     AttributeValue,
     GeometryType,
     LabelClass,
+    SchemaProvenance,
 )
 from visionset.kernel.domain.schema_diff import (
     ChangeKind,
@@ -252,6 +253,7 @@ __all__ = [
     "ReleaseVerification",
     "SchemaChange",
     "SchemaDiff",
+    "SchemaProvenance",
     "SingleJob",
     "Source",
     "SourceKind",

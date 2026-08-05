@@ -85,6 +85,7 @@ export type SchemaVersion = components["schemas"]["SchemaVersionOut"];
 export type SchemaVersionPage = components["schemas"]["SchemaVersionPage"];
 export type SchemaDiff = components["schemas"]["SchemaDiffOut"];
 export type SchemaChange = components["schemas"]["SchemaChangeOut"];
+export type SchemaProvenance = components["schemas"]["SchemaProvenance"];
 export type LabelClassBody = components["schemas"]["LabelClassBody"];
 export type AttributeBody = components["schemas"]["AttributeBody"];
 export type GeometryType = components["schemas"]["GeometryType"];
@@ -348,6 +349,12 @@ export function useCreateSchemaVersion(projectId: string) {
       // The version's commit message (#230). Written once at publish and never
       // editable afterwards, so there is no update mutation to pair with this.
       description?: string | null;
+      // Which kind of work is publishing (#368). Required rather than optional,
+      // and deliberately: every caller in this repo *is* one surface or the other
+      // and knows which, so leaving it defaultable would let a new screen record
+      // "nobody said" by forgetting rather than by deciding. The wire keeps it
+      // optional for clients outside this build.
+      provenance: SchemaProvenance;
     }) =>
       unwrap(
         await client.POST("/projects/{project_id}/schema/versions", {
@@ -365,6 +372,7 @@ export function useCreateSchemaVersion(projectId: string) {
             ...(input.description !== undefined && input.description !== null
               ? { description: input.description }
               : {}),
+            provenance: input.provenance,
           },
         }),
         checkCreateSchemaVersion,

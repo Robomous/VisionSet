@@ -91,6 +91,7 @@ from visionset.kernel.domain import (
     ReleaseVerification,
     SchemaChange,
     SchemaDiff,
+    SchemaProvenance,
     SingleJob,
     Source,
     SourceKind,
@@ -323,6 +324,12 @@ class SchemaVersionOut(BaseModel):
     # workspace actually meets.
     description: str | None = None
     created_at: datetime | None = None
+    # Null for a version published before this existed and for any writer with no
+    # opinion, so a client groups null with `curated` rather than treating it as a
+    # third kind. Used directly, the `GeometryType` precedent: a `StrEnum` the
+    # kernel branches on, no writer outside this build produces one, and the set
+    # grows deliberately.
+    provenance: SchemaProvenance | None = None
 
     @classmethod
     def of(cls, schema: AnnotationSchema) -> Self:
@@ -332,6 +339,7 @@ class SchemaVersionOut(BaseModel):
             classes=tuple(LabelClassBody.of(c) for c in schema.classes),
             description=schema.description,
             created_at=schema.created_at,
+            provenance=schema.provenance,
         )
 
 
@@ -390,6 +398,10 @@ class SchemaVersionCreate(BaseModel):
     # The version's commit message, written once here. There is no route that
     # edits one afterwards, because there is no service method that does.
     description: str | None = None
+    # Which kind of work is publishing this. Optional because a client with no
+    # opinion should say nothing rather than pick a side; stored verbatim, never
+    # inferred from the request.
+    provenance: SchemaProvenance | None = None
 
 
 # --- sources -----------------------------------------------------------------

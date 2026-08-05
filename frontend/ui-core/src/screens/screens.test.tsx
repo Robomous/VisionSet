@@ -656,6 +656,25 @@ describe("the schema version history", () => {
     expect("description" in JSON.parse(bodies.get(request!) ?? "{}")).toBe(false);
   });
 
+  it("declares every version it publishes as curated", async () => {
+    // The editor is where somebody sits down and decides what the project labels,
+    // so what makes a version a milestone is the *surface* rather than the size of
+    // the change — a one-class save from here is still curated. The sibling claim,
+    // that the annotator's dialog says `annotation`, lives in `addClass.test.ts`.
+    withHistory();
+    withDiff(NOTHING);
+    on("POST", /schema\/versions$/, { status: 201, body: { ...VERSIONS[2], version: 4 } });
+    await open();
+
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
+    const request = sent.find((r) => r.method === "POST");
+    expect(JSON.parse(bodies.get(request!) ?? "{}").provenance).toBe("curated");
+  });
+
   it("shows a published description as soon as the refetch lands", async () => {
     withHistory();
     withDiff(NOTHING);

@@ -161,14 +161,23 @@ def _at_generation_one(path: Path) -> None:
     the tables from today's metadata and then *drops the columns the later
     migrations add*, which is what a generation-1 file genuinely lacked, and
     re-stamps the version to match. Dropping is safe for exactly the reason the
-    two columns are the shape they are: neither carries a foreign key, and
-    SQLite refuses to drop one that does.
+    columns are the shape they are: none carries a foreign key, and SQLite
+    refuses to drop one that does.
+
+    **Every column-adding migration must be undone here, and the failure is the
+    silent kind.** A column left in place makes its migration find the column
+    already there and return early, so the migration never runs and
+    ``test_a_fresh_database_and_a_migrated_one_have_the_same_schema`` compares a
+    file against itself and passes. Migration 4 is the standing exception and is
+    deliberately not undone: it creates a *table*, and dropping ``job`` here
+    would test SQLite's DDL rather than anything this module owns.
     """
     store = SqliteMetadataStore(path)
     store.initialize()
     with store.engine.begin() as connection:
         connection.execute(text("ALTER TABLE batch DROP COLUMN parent_batch_id"))
         connection.execute(text("ALTER TABLE annotation DROP COLUMN job_id"))
+        connection.execute(text("ALTER TABLE annotation_schema DROP COLUMN provenance"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
     store.close()
 
@@ -221,7 +230,10 @@ def test_running_every_migration_again_changes_nothing(tmp_path: Path) -> None:
 #: The tail of every table whose last columns arrived by ``ALTER TABLE``, and
 #: which therefore must not be reordered. See the test below.
 _DECLARED_TAILS = {
-    "annotation_schema": ["description", "created_at"],
+    # Migration 5 appends ``provenance`` after the two #230 added, so the tail is
+    # three deep and its *order* is the assertion — swapping any two would split
+    # the ``create_all`` path from the migration path.
+    "annotation_schema": ["description", "created_at", "provenance"],
     "source": ["display_name"],
     "asset": ["thumbnail_hash", "ingested_at"],
     # Migration 2 and migration 3, in that order. Both arrive by ``ALTER`` and
@@ -506,6 +518,47 @@ def test_a_second_run_does_not_overwrite_an_attribution_already_there(tmp_path: 
     reopened.initialize()
 
     assert _job_of(reopened, "n") == "chosen"
+    reopened.close()
+
+
+def test_schema_provenance_starts_null_because_nothing_recorded_who_published(
+    tmp_path: Path,
+) -> None:
+    """Migration 5 backfills nothing, and unlike migration 3 there is nothing it could.
+
+    Migration 3 can attribute a label because ``annotation_job_asset`` recorded
+    enough to answer it in the unambiguous case. Nothing anywhere recorded which
+    surface published a schema version, so every pre-existing version stays NULL
+    — which the domain reads as "nobody said" rather than as a third kind.
+
+    Worth its own test rather than riding on the schema comparison above: that one
+    proves the *column* arrives, and this proves the migration does not invent a
+    value for the rows that were already there.
+    """
+    path = tmp_path / "provenance.db"
+    _at_generation_one(path)
+    store = SqliteMetadataStore(path)
+    with store.engine.begin() as connection:
+        for statement in (
+            "insert into workspace (id, name) values ('w', 'ws')",
+            "insert into project (id, workspace_id, name, description) "
+            "values ('p', 'w', 'highway', null)",
+            "insert into annotation_schema (id, project_id, version, classes) "
+            "values ('s', 'p', 1, '[]')",
+        ):
+            connection.execute(text(statement))
+    store.close()
+
+    reopened = SqliteMetadataStore(path)
+    reopened.initialize()
+
+    with reopened.engine.connect() as connection:
+        assert (
+            connection.execute(
+                text("select provenance from annotation_schema where id = 's'")
+            ).scalar_one()
+            is None
+        )
     reopened.close()
 
 

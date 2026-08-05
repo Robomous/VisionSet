@@ -35,6 +35,7 @@ const SCHEMA: AnnotationSchema = {
   ],
   description: null,
   created_at: null,
+  provenance: null,
 };
 
 /** A minimal annotation. The tests that care about a field set it explicitly. */

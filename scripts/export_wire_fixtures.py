@@ -48,6 +48,7 @@ from visionset.kernel.domain import (  # noqa: E402
     Attribute,
     GeometryType,
     LabelClass,
+    SchemaProvenance,
 )
 from visionset.server.models import AnnotationOut, AssetOut, SchemaVersionOut  # noqa: E402
 
@@ -78,12 +79,12 @@ def _schema() -> AnnotationSchema:
     One class per geometry is not decoration either: an annotator picks a class
     and gets a geometry, so #43-#45 each need one to draw with.
 
-    ``description`` and ``created_at`` are populated rather than left null for the
-    reason the classes are: a fixture carrying ``null`` in a nullable field proves
-    the mirror can parse ``null`` and nothing else. The null half is covered by
-    ``wire.test.ts``, which is where a hand-written payload belongs. The moment is
-    a fixed literal, never ``now()`` — this file is committed and diffed, so a
-    clock in it would make every regeneration a change.
+    ``description``, ``created_at`` and ``provenance`` are populated rather than
+    left null for the reason the classes are: a fixture carrying ``null`` in a
+    nullable field proves the mirror can parse ``null`` and nothing else. The null
+    half is covered by ``wire.test.ts``, which is where a hand-written payload
+    belongs. The moment is a fixed literal, never ``now()`` — this file is
+    committed and diffed, so a clock in it would make every regeneration a change.
     """
     populated = SCHEMA_VERSION.classes[0]
     assert populated.geometry is GeometryType.BBOX, "the sample class is the bbox one"
@@ -92,6 +93,7 @@ def _schema() -> AnnotationSchema:
         version=SCHEMA_VERSION.version,
         description="the fixture's contract: one class per carryable geometry",
         created_at=datetime(2026, 8, 2, 12, 34, 56, 789012, tzinfo=UTC),
+        provenance=SchemaProvenance.CURATED,
         classes=(
             populated,
             # No colour, no attributes. A renderer must choose its own colour for

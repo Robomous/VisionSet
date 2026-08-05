@@ -150,6 +150,10 @@ def _schema_to_row(entity: AnnotationSchema) -> t.Base:
         classes=[c.model_dump(mode="json") for c in entity.classes],
         description=entity.description,
         created_at=None if entity.created_at is None else entity.created_at.isoformat(),
+        # ``.value``, not the member: a ``StrEnum`` *is* a ``str``, so writing the
+        # member works and stores the same text — but only by accident of the
+        # subclass, and nothing here would notice if the enum stopped being one.
+        provenance=None if entity.provenance is None else entity.provenance.value,
     )
 
 
@@ -161,6 +165,7 @@ def _schema_to_domain(_: Session, row: Any) -> AnnotationSchema:
         classes=tuple(LabelClass.model_validate(c) for c in row.classes),
         description=row.description,
         created_at=None if row.created_at is None else datetime.fromisoformat(row.created_at),
+        provenance=row.provenance,
     )
 
 

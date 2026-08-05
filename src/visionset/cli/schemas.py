@@ -43,7 +43,7 @@ from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.kernel.domain import LabelClass
+from visionset.kernel.domain import LabelClass, SchemaProvenance
 from visionset.kernel.services import SchemaService
 
 schema_app = typer.Typer(help="Apply and inspect annotation schemas.", no_args_is_help=True)
@@ -108,7 +108,15 @@ def schema_apply(
     with opened_workspace(workspace) as service:
         resolved = resolve_project(service, project)
         version = SchemaService(service).create_version(
-            resolved.id, classes, allow_destructive=allow_destructive
+            resolved.id,
+            classes,
+            # Applying a whole authored document from a file is the curated act
+            # by construction — there is no way to reach this command mid-job
+            # with one class in hand. Stated here rather than left to the
+            # service's ``None`` default, because "nobody said" and "a person
+            # designed this" are different facts and only the surface knows which.
+            provenance=SchemaProvenance.CURATED,
+            allow_destructive=allow_destructive,
         )
     if json_out:
         document(wire.schema_version(version))
