@@ -75,6 +75,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "WorkspaceNotEmpty": (409, "WORKSPACE_NOT_EMPTY"),
     "SchemaVersionConflict": (409, "SCHEMA_VERSION_CONFLICT"),
     "InvalidTransition": (409, "INVALID_TRANSITION"),
+    "StaleWrite": (409, "STALE_WRITE"),
     "BatchNotEditable": (409, "BATCH_NOT_EDITABLE"),
     "BatchNotInAnnotation": (409, "BATCH_NOT_IN_ANNOTATION"),
     "BatchImmutable": (409, "BATCH_IMMUTABLE"),
