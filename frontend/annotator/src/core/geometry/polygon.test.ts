@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { PolygonGeometry, Point } from "../types";
+import type { PolygonGeometry, PolylineGeometry, Point } from "../types";
 import {
   MIN_POLYGON_POINTS,
   insertPolygonVertex,
@@ -15,6 +15,7 @@ import {
   polygonContains,
   removePolygonVertex,
   translatePolygon,
+  translatePolyline,
 } from "./polygon";
 import type { Bounds } from "./primitives";
 
@@ -192,6 +193,34 @@ describe("moving a polygon moves it rigidly", () => {
 
   it("translates nothing when there is nothing to translate", () => {
     expect(translatePolygon(polygon(), [50, 50], FRAME)).toEqual(polygon());
+  });
+
+  /**
+   * The polyline arm, which exists because a polyline can be **pasted** (#123)
+   * even though nothing can drag one — `MovableGeometry` is `bbox | polygon`, and
+   * vertex editing is `cf. #342`.
+   *
+   * The claims worth making are that it is the *same* clamp and that it keeps its
+   * own `type`: a shared private is what makes the first true, and a lane that
+   * came back as a `polygon` would be a closed shape drawn over an open one.
+   */
+  it("moves a polyline by the same rule, and it stays a polyline", () => {
+    const line: PolylineGeometry = { type: "polyline", points: [[100, 100], [200, 150]] };
+    expect(translatePolyline(line, [0, 0], FRAME)).toEqual({
+      type: "polyline",
+      points: [
+        [0, 0],
+        [100, 50],
+      ],
+    });
+  });
+
+  it("clamps a polyline into the frame exactly as it clamps a polygon", () => {
+    const line: PolylineGeometry = { type: "polyline", points: [[100, 100], [200, 200]] };
+    const asPolygon: PolygonGeometry = { type: "polygon", points: line.points };
+    const line9999 = translatePolyline(line, [9999, 9999], FRAME);
+    const polygon9999 = translatePolygon(asPolygon, [9999, 9999], FRAME);
+    expect(line9999.points).toEqual(polygon9999.points);
   });
 });
 

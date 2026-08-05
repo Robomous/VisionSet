@@ -144,15 +144,42 @@ export function translatePolygon(
   origin: Point,
   bounds: Bounds,
 ): PolygonGeometry {
-  const extent = polygonBbox(polygon);
+  return { type: "polygon", points: translatedPoints(polygon, origin, bounds) };
+}
+
+/**
+ * The same rigid move, for the geometry that is structurally identical and has no
+ * pointer tool of its own.
+ *
+ * A polyline cannot be dragged — `MovableGeometry` is `bbox | polygon`, and vertex
+ * editing is `cf. #342` — but it can be **pasted** (#123), and a paste places a
+ * shape exactly the way a move does: shift the whole thing, clamp the translation
+ * rather than the vertices, never deform. Two doors over `translatedPoints` rather
+ * than one function returning a union, because the machine's call site narrows to
+ * `PolygonGeometry` and widening its return would ripple through `MovableGeometry`
+ * for no gain. What must not happen is a second spelling of the clamp: that is the
+ * bug this module's own docstring is about, one geometry over.
+ */
+export function translatePolyline(
+  polyline: PolylineGeometry,
+  origin: Point,
+  bounds: Bounds,
+): PolylineGeometry {
+  return { type: "polyline", points: translatedPoints(polyline, origin, bounds) };
+}
+
+/** The one clamp: the shape's bounding box moved to `origin`, pinned inside `bounds`. */
+function translatedPoints(
+  shape: PolygonGeometry | PolylineGeometry,
+  origin: Point,
+  bounds: Bounds,
+): readonly Point[] {
+  const extent = polygonBbox(shape);
   const targetX = clamp(origin[0], 0, Math.max(0, bounds.width - extent.width));
   const targetY = clamp(origin[1], 0, Math.max(0, bounds.height - extent.height));
   const dx = targetX - extent.x;
   const dy = targetY - extent.y;
-  return {
-    type: "polygon",
-    points: polygon.points.map(([x, y]): Point => [x + dx, y + dy]),
-  };
+  return shape.points.map(([x, y]): Point => [x + dx, y + dy]);
 }
 
 /**

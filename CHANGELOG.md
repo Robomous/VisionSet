@@ -13,6 +13,24 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **`⌘/Ctrl + C` and `⌘/Ctrl + V` in the annotator, and the clipboard survives moving to the next
+  frame** (#123). Copy the selection, walk forward, paste it — the second half is the point: the
+  clipboard is held per *job*, above the per-asset store, because a store carries an undo history
+  that must not follow you between frames. It is the annotator's own clipboard, never the system
+  one: what is copied is a geometry in that asset's pixel frame, meaningless anywhere else.
+
+  A paste re-mints every id, reads `asset_id` and `schema_version` off the frame it lands on,
+  and is **one** undo step however many annotations it carries. It offsets by 20 *screen* pixels
+  — v1's number, divided by the live zoom, so the copy is grabbable at a fitted 20% and not
+  flung across the pane at 8× — steps further out rather than stacking when a repeat would land
+  on the copy before it, and clamps into a smaller frame the way dragging into the edge does,
+  keeping the shape rather than flattening it. Pasting a classification tag the frame already
+  carries does nothing, so a duplicate cannot reach the kernel's `DUPLICATE_CLASSIFICATION_TAG`.
+
+  Copy is a read and works in a read-only view — carrying a box out of a completed batch is how a
+  correction starts; paste is refused there by the engine itself. In a text field both chords stay
+  the browser's. See `docs/annotations.md`.
+
 - **An embedded job system: work that outlives its request now has a queue, and it survives a
   restart** (#328). The whole background story was 77 lines — a one-worker `ThreadPoolExecutor`
   holding closures in memory, reachable from two lambdas, losing everything queued when the

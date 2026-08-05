@@ -79,6 +79,7 @@ import {
   TOGGLE_HELP,
   atZoomCeiling,
   atZoomFloor,
+  createClipboard,
   defaultRegistry,
   annotationsInDrawOrder,
   documentFromWire,
@@ -86,6 +87,7 @@ import {
   useAnnotatorSnapshot,
   type AnnotatorStore,
   type AnnotatorView,
+  type Clipboard,
   type Viewport,
 } from "@visionset/annotator";
 import { AnnotatorStore as Store } from "@visionset/annotator";
@@ -280,6 +282,25 @@ function JobScreen({
   // to where they started. An id the job does not carry lands on the first asset:
   // a stale link is not an error state.
   const [chosen, setChosen] = useState<number | null>(null);
+
+  /**
+   * The annotator's clipboard, held **here** rather than inside the workspace
+   * (#123).
+   *
+   * This is the whole of cross-frame paste. `Workspace` is remounted per asset —
+   * `key={asset.id}`, so an `AnnotatorStore`'s undo history cannot walk into the
+   * previous picture — and anything it holds dies with it. Copying the car on
+   * frame 12 and pasting it on frame 13 therefore needs an object that outlives
+   * the remount, and this component is the nearest thing that does: it survives
+   * navigation between assets and is rebuilt when the *job* changes, which is
+   * exactly the scope a paste should reach. Nothing carries a geometry into
+   * another job, where the asset frame and the pinned schema are somebody else's.
+   *
+   * It is never the system clipboard, and `core/interaction/clipboard.ts` says
+   * why: what is copied is a geometry in this asset's own pixels.
+   */
+  const [clipboard] = useState<Clipboard>(createClipboard);
+
   const index = chosen ?? assetPositionOf(assets.data, initialAssetId);
   const asset = assets.data?.[index];
   const annotations = useAssetAnnotations(jobId, asset?.id);
@@ -321,6 +342,7 @@ function JobScreen({
       batchId={batch.data.id}
       loaded={annotations.data}
       counts={progress.data ?? null}
+      clipboard={clipboard}
       onNavigate={setChosen}
       {...(onOpenGallery === undefined
         ? {}
@@ -373,6 +395,8 @@ interface WorkspaceProps {
     readonly total: number;
     readonly unannotated: number;
   } | null;
+  /** Held by `JobScreen`, so `mod+c` here and `mod+v` on the next frame is one clipboard. */
+  readonly clipboard: Clipboard;
   readonly onNavigate: (index: number) => void;
   readonly onOpenGallery?: () => void;
 }
@@ -412,6 +436,7 @@ function Workspace({
   batchId,
   loaded,
   counts,
+  clipboard,
   onNavigate,
   onOpenGallery,
 }: WorkspaceProps): JSX.Element {
@@ -1163,6 +1188,9 @@ function Workspace({
                 onViewChange={setView}
                 hiddenIds={hiddenIds}
                 viewRef={viewRef}
+                // One per job, from `JobScreen` — the canvas would otherwise make
+                // its own and lose it on every navigation (#123).
+                clipboard={clipboard}
                 onHostAction={hostAction}
               />
             )}

@@ -85,6 +85,7 @@ export {
   polygonContains,
   removePolygonVertex,
   translatePolygon,
+  translatePolyline,
 } from "./core/geometry/polygon";
 export {
   geometryContains,
@@ -104,6 +105,7 @@ export {
   EDGE_TOLERANCE_PX,
   HANDLE_TOLERANCE_PX,
   MIN_DRAW_SIZE_PX,
+  PASTE_OFFSET_PX,
   SHAPE_TOLERANCE_PX,
   VERTEX_TOLERANCE_PX,
   assetTolerances,
@@ -151,6 +153,14 @@ export {
   type Turn,
 } from "./core/interaction/machine";
 export { runEffects } from "./core/interaction/runEffects";
+// Copy and paste (#123) — a session clipboard, and the two transformations over it
+export {
+  copiedEntries,
+  createClipboard,
+  pastedAnnotations,
+  type Clipboard,
+  type ClipboardEntry,
+} from "./core/interaction/clipboard";
 // The classification tag tool (#45) — a panel, and the only tool not on the canvas
 export {
   isTaggableClass,
@@ -164,6 +174,7 @@ export {
 export {
   CLASS_HOTKEY_DIGITS,
   DEFAULT_BINDINGS,
+  READ_ONLY_KINDS,
   RESET_ZOOM,
   TOGGLE_HELP,
   chordOf,

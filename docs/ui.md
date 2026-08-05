@@ -337,11 +337,12 @@ appears. Both are mutation-tested, which is the check v1's hand-written
 `HelpModal.tsx` never had.
 
 The English is not derived: an action's `kind` is a discriminant, so a
-`Record<ActionKind, …>` turns one into a sentence, and a ninth action kind fails to
+`Record<ActionKind, …>` turns one into a sentence, and an eleventh action kind fails to
 compile rather than rendering a blank row. Host actions stay open — core enumerates no
-capability — so an unknown name renders as itself. `mod+c` / `mod+v` are listed as
-**deliberately unbound**, because a user who cannot find them has no way to tell "not
-implemented" from "not listed".
+capability — so an unknown name renders as itself. `mod+c` / `mod+v` were listed as
+**deliberately unbound** until #123 claimed them; they are ordinary rows now, and the
+slot that held the note carries the fact that became the surprising one — inside a text
+field the two chords are still the browser's.
 
 **Accept** calls the existing progress endpoint with `accepted`, and is enabled only
 where `ASSET_PROGRESS_TRANSITIONS` allows the move — offering it on an untouched

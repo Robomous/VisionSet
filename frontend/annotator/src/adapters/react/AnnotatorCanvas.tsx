@@ -137,6 +137,7 @@ import { NO_TARGET } from "../../core/interaction/target";
 import { toolFor } from "../../core/interaction/tool";
 import type { Tool } from "../../core/interaction/tool";
 import {
+  READ_ONLY_KINDS,
   RESET_ZOOM,
   defaultRegistry,
   keystrokeOf,
@@ -147,6 +148,8 @@ import {
   runAction,
 } from "../../core/input";
 import type { Binding, InputHost } from "../../core/input";
+import { createClipboard } from "../../core/interaction/clipboard";
+import type { Clipboard } from "../../core/interaction/clipboard";
 import type { IdFactory } from "../../core/ids";
 import type { AnnotationDocument } from "../../core/state/document";
 import type { Selection } from "../../core/state/selection";
@@ -263,6 +266,22 @@ export interface AnnotatorCanvasProps {
   readonly onHostAction?: (name: string) => boolean;
   /** Folded after the defaults and the class hotkeys, so a row here wins. */
   readonly bindings?: readonly Binding[];
+  /**
+   * Where `mod+c` puts things and where `mod+v` takes them from (#123).
+   *
+   * Optional, and the default is the interesting half: with none supplied this
+   * component makes its own, so duplicating a shape inside one asset works with
+   * no host wiring at all. What a host buys by passing one is **survival** — a
+   * store is per asset (`ui-core` remounts the workspace with `key={asset.id}`,
+   * so `mod+z` cannot walk into the previous frame), and so is a clipboard held
+   * in here. Copy on frame 12 and paste on frame 13 needs an object that outlives
+   * both, which only a host can own.
+   *
+   * `useState`'s lazy initializer, never `useMemo`: React may drop a memo and
+   * rebuild it, and that would quietly empty the clipboard — the same reasoning
+   * `useAnnotatorStore` gives for the undo history.
+   */
+  readonly clipboard?: Clipboard;
   readonly mint?: IdFactory;
   readonly className?: string;
   /**
@@ -296,10 +315,12 @@ export interface AnnotatorCanvasProps {
    *   a press on a shape body *is* the start of a move, and a rule with a
    *   carve-out is a rule with a hole in it. Selection is still reachable from a
    *   host's object list, which cannot start a drag.
-   * - a keystroke runs only if it resolves to a **host** action. Those are the
-   *   rows core declares and does not implement — help, zoom, next asset — and
-   *   they are by definition not document changes. Everything else, including
-   *   undo, is refused.
+   * - a keystroke runs only if it resolves to one of `READ_ONLY_KINDS`. Those
+   *   are the **host** rows core declares and does not implement — help, zoom,
+   *   next asset — plus `copy-selection`, which reads the document and writes
+   *   nothing: carrying a box out of a closed batch and into a correction is the
+   *   one thing a viewer legitimately does with a selection. Everything else,
+   *   including undo and paste, is refused.
    *
    * What is deliberately still live: **panning, the wheel zoom, `mod+0`, hover
    * and the cursor**. None of them touch the document, and a read-only mode you
@@ -331,6 +352,7 @@ export function AnnotatorCanvas({
   hiddenIds,
   onHostAction,
   bindings,
+  clipboard: hostClipboard,
   mint = randomUuid,
   className,
   viewRef,
@@ -341,6 +363,10 @@ export function AnnotatorCanvas({
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
+
+  // The fallback, built once — see the prop's docstring for why `useState`.
+  const [ownClipboard] = useState(createClipboard);
+  const clipboard = hostClipboard ?? ownClipboard;
 
   const [view, setView] = useState<Viewport>(IDENTITY_VIEWPORT);
   const [interaction, setInteraction] = useState<InteractionState>(IDLE);
@@ -520,19 +546,17 @@ export function AnnotatorCanvas({
     // to be asked before anything runs, or `mod+z` with an empty history would
     // fall through to the browser's own undo inside a text field.
     if (action === null) return;
-    // Read-only: only the rows core declares and does not implement — help,
-    // zoom, next asset — which are by definition not document changes. Placed
-    // after `resolve` so a claimed chord is still swallowed rather than falling
-    // through to the browser's own undo, which is what `mod+z` would otherwise
-    // reach inside a page that has just told the user it cannot be edited.
-    if (readOnly && action.kind !== "host") {
-      event.preventDefault();
-      return;
-    }
 
     // (3) The guard, with Escape surviving it. v1 ran Escape *before* its `inInput`
     // check, deliberately, so Escape blurs a field; that ordering is easy to lose
     // and is ported verbatim.
+    //
+    // It runs **before** the read-only branch below, which #123 moved and which
+    // matters now that `mod+v` is claimed: a text field is the browser's whatever
+    // mode the canvas is in, so swallowing the chord there would leave somebody
+    // on a read-only page unable to paste into an ordinary input. Nothing else
+    // changes hands — the branch below still swallows a claimed chord that
+    // reached the canvas.
     const target = event.target instanceof HTMLElement ? event.target : null;
     const cancelling = action.kind === "send" && action.event.type === "cancel";
     if (isTextEntry(target)) {
@@ -540,8 +564,29 @@ export function AnnotatorCanvas({
       target?.blur();
     }
 
+    // Read-only: only the kinds that change no document. Those are the host rows
+    // core declares and does not implement — help, zoom, next asset — plus
+    // `copy-selection`, which is a read and is how a box leaves a batch that can
+    // no longer be edited. Placed after `resolve` so a claimed chord is still
+    // swallowed rather than falling through to the browser's own undo, which is
+    // what `mod+z` would otherwise reach inside a page that has just told the
+    // user it cannot be edited.
+    if (readOnly && !READ_ONLY_KINDS.has(action.kind)) {
+      event.preventDefault();
+      return;
+    }
+
     event.preventDefault();
-    const outcome = runAction(action, { store, host, mint });
+    const outcome = runAction(action, {
+      store,
+      host,
+      mint,
+      clipboard,
+      // Read off the ref rather than the render's `tolerances`, for the reason
+      // `dispatch` reads `viewNow`: two events in one frame would otherwise both
+      // compute from the zoom the first of them replaced.
+      pasteOffset: assetTolerances(viewNow.current.zoom).pasteOffset,
+    });
     for (const sent of outcome.events) dispatch(sent);
     // Keep the palette effect above from firing a second, redundant `tool-changed`
     // once the host's state catches up: this path already told the machine.
