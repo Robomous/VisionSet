@@ -10,6 +10,11 @@ would be reasoning about nothing. So ``AnnotationInput`` omits it, exactly as
 ``AnnotationCreate`` does on the wire, and the geometry is still the domain's own
 union.
 
+All three writes **start the job they are addressed to**, if nobody has, and say
+so in ``job_started`` — #109, and the reasoning is in ``_autostart``. Nothing else
+about them changed: the gate is still the batch being ``in_annotation``, which is
+what refuses when the write is not allowed at all.
+
 All three writes are **one transaction and all-or-nothing**: a batch of ten
 annotations with one bad geometry writes none of them. When that happens the
 refusal carries ``index``, the position in the list you sent — which is
@@ -32,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from visionset import wire
 from visionset.kernel.domain import Annotation, AttributeValue, Geometry, Provenance
 from visionset.kernel.services import AnnotationService
+from visionset.mcp._autostart import autostarted
 from visionset.mcp._resolve import identifier
 from visionset.mcp._workspace import opened_workspace
 
@@ -153,16 +159,18 @@ def add_annotations(
     Set `provenance` to `model` and give `model_ref` for anything you inferred;
     that is what lets a human reviewer tell your work from theirs later.
 
-    Writing an annotation moves its asset to `annotated` on its own. Refuses if
-    the job's batch is not `in_annotation`, and if any single item is bad the
-    refusal names its position in `index` — nothing was written, so that position
-    is the only thing that identifies it.
+    Writing an annotation moves its asset to `annotated` on its own, and starts
+    the job if nobody had — `job_started` in the answer says whether that
+    happened, so you never have to mark a job as being worked on yourself.
+    Refuses if the job's batch is not `in_annotation`, and if any single item is
+    bad the refusal names its position in `index` — nothing was written, so that
+    position is the only thing that identifies it.
     """
     with opened_workspace() as workspace:
-        written = AnnotationService(workspace).add(
-            identifier(job_id, what="job_id"), [a.to_domain() for a in annotations]
-        )
-    return wire.page([wire.annotation(a) for a in written])
+        resolved = identifier(job_id, what="job_id")
+        started = autostarted(workspace, resolved)
+        written = AnnotationService(workspace).add(resolved, [a.to_domain() for a in annotations])
+    return {**wire.page([wire.annotation(a) for a in written]), "job_started": started}
 
 
 def update_annotations(
@@ -179,14 +187,16 @@ def update_annotations(
     cannot be changed — the stored one always wins — and the schema version is
     re-stamped from the batch's pin.
 
-    Same validation and the same all-or-nothing rule as `add_annotations`, with
-    `index` naming the offending position.
+    Same validation and the same all-or-nothing rule as `add_annotations`, and
+    the same `job_started` in the answer.
     """
     with opened_workspace() as workspace:
+        resolved = identifier(job_id, what="job_id")
+        started = autostarted(workspace, resolved)
         written = AnnotationService(workspace).update(
-            identifier(job_id, what="job_id"), [a.to_domain() for a in annotations]
+            resolved, [a.to_domain() for a in annotations]
         )
-    return wire.page([wire.annotation(a) for a in written])
+    return {**wire.page([wire.annotation(a) for a in written]), "job_started": started}
 
 
 def delete_annotations(
@@ -203,11 +213,14 @@ def delete_annotations(
     moves it back to `unannotated`.
 
     A repeated id counts once, and the refusal for an unknown one blames the
-    position you gave it rather than a deduplicated offset.
+    position you gave it rather than a deduplicated offset. Like the other two
+    writes, this starts the job if nobody had, and reports it in `job_started`.
     """
     with opened_workspace() as workspace:
+        resolved = identifier(job_id, what="job_id")
+        started = autostarted(workspace, resolved)
         removed = AnnotationService(workspace).delete(
-            identifier(job_id, what="job_id"),
+            resolved,
             [identifier(a, what="annotation_ids") for a in annotation_ids],
         )
-    return {"deleted": removed}
+    return {"deleted": removed, "job_started": started}

@@ -267,7 +267,10 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
         scale = 0.0
         for job in started["jobs"]:
             job_id = job["id"]
-            assert ok(await tool("start_job", job_id=job_id))["state"] == "in_progress"
+            # Nothing marks the job as being worked on: there is no tool for it
+            # (#109). It is `pending` until the first write, which starts it and
+            # says so — so this walk never spends a call on ceremony.
+            assert ok(await tool("get_job", job_id=job_id))["state"] == "pending"
             pending = ok(await tool("next_pending_assets", job_id=job_id, count=10))
 
             for index, asset in enumerate(pending["items"]):
@@ -306,6 +309,11 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
                             ],
                         )
                     )
+                    # The write took the job to `in_progress` and reported it, so
+                    # the move is a fact the agent is told rather than one it has
+                    # to go and read back.
+                    assert labels["job_started"] is True, labels
+                    assert ok(await tool("get_job", job_id=job_id))["state"] == "in_progress"
                     written += len(labels["items"])
                     box = labels["items"][0]["geometry"]
                     assert box["x"] + box["width"] <= frame["width"], box
