@@ -143,14 +143,10 @@ class JobRunner:
             return
         orphans = self._queue.sweep_orphans(reason=ORPHAN_REASON)
         if orphans:
-            _logger.warning(
-                "settled %d job(s) left running by a previous process", len(orphans)
-            )
+            _logger.warning("settled %d job(s) left running by a previous process", len(orphans))
         self._stopping.clear()
         self._executor = self._executor_factory(self._workers)
-        self._thread = threading.Thread(
-            target=self._loop, name="visionset-dispatcher", daemon=True
-        )
+        self._thread = threading.Thread(target=self._loop, name="visionset-dispatcher", daemon=True)
         self._thread.start()
 
     def wake(self) -> None:
@@ -190,16 +186,65 @@ class JobRunner:
             # marked running with nothing running them.
             if not self._slots.acquire(timeout=self._poll_interval_s):
                 continue
-            job = None
-            try:
-                job = self._claim()
-            finally:
-                if job is None:
-                    self._slots.release()
-            if job is None:
+            if not self._claim_and_dispatch():
                 self._wait()
-                continue
-            self._dispatch(job)
+
+    def _claim_and_dispatch(self) -> bool:
+        """One pass with a slot already held. Returns whether a job was taken.
+
+        The slot is released here when nothing was claimed, and by
+        :meth:`_settle` when something was — so every acquire has exactly one
+        release on every path, which is the property a leak here would break
+        silently: the pool would look full forever and the dispatcher would
+        stop claiming with no error anywhere.
+        """
+        job = None
+        try:
+            job = self._claim()
+        finally:
+            if job is None:
+                self._slots.release()
+        if job is None:
+            return False
+        self._dispatch(job)
+        return True
+
+    def drain(self) -> int:
+        """Claim and run everything queued, on the **calling** thread. Returns the count.
+
+        The synchronous face of :meth:`_loop`, and it exists for two callers that
+        are the same shape: a test, which wants a job to have finished by the time
+        the line after it runs, and a future ``visionset jobs run-once`` for a
+        deployment that would rather schedule the process than host a dispatcher.
+
+        With the default pool this still hands work to a worker and blocks on the
+        slot coming back; with an inline executor it runs the handler here. Either
+        way nothing is left in flight when it returns, because a slot is only
+        released once a job has settled.
+
+        It does **not** need :meth:`start`: no thread, no orphan sweep, no pool of
+        its own beyond whatever the factory builds. A runner that has been started
+        may still be drained, and the two simply compete for slots.
+        """
+        if self._executor is None:
+            self._executor = self._executor_factory(self._workers)
+        taken = 0
+        while True:
+            self._slots.acquire()
+            # Releases the slot itself when it claims nothing, so the loop leaves
+            # holding none.
+            if not self._claim_and_dispatch():
+                break
+            taken += 1
+        # Everything dispatched above still holds a slot until it settles, so
+        # taking all of them is how this waits without a sleep or a poll — the
+        # discipline ``tests/kernel/test_concurrency.py`` set. They go straight
+        # back, because a drained runner is a runner ready to claim again.
+        for _ in range(self._workers):
+            self._slots.acquire()
+        for _ in range(self._workers):
+            self._slots.release()
+        return taken
 
     def _claim(self) -> BackgroundJob | None:
         if self._stopping.is_set():
@@ -280,11 +325,7 @@ class JobRunner:
             self._settle_failure(job, str(exc) or exc.__class__.__name__)
             return
 
-        state = (
-            BackgroundJobState.CANCELLED
-            if outcome.cancelled
-            else BackgroundJobState.SUCCEEDED
-        )
+        state = BackgroundJobState.CANCELLED if outcome.cancelled else BackgroundJobState.SUCCEEDED
         self._finish(
             job,
             BackgroundJobOutcome(
@@ -306,13 +347,9 @@ class JobRunner:
             )
 
     def _settle_failure(self, job: BackgroundJob, error: str) -> None:
-        self._finish(
-            job, BackgroundJobOutcome(state=BackgroundJobState.FAILED, error=error)
-        )
+        self._finish(job, BackgroundJobOutcome(state=BackgroundJobState.FAILED, error=error))
         self._announce(
-            BackgroundJobFailed(
-                job_id=job.id, job_type=job.type, error=error, attempt=job.attempt
-            )
+            BackgroundJobFailed(job_id=job.id, job_type=job.type, error=error, attempt=job.attempt)
         )
 
     def _finish(self, job: BackgroundJob, outcome: BackgroundJobOutcome) -> None:

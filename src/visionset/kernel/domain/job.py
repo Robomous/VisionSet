@@ -83,9 +83,7 @@ SETTLED_JOB_STATES: Final[frozenset[BackgroundJobState]] = frozenset(
 )
 
 
-BACKGROUND_JOB_TRANSITIONS: Final[
-    Mapping[BackgroundJobState, frozenset[BackgroundJobState]]
-] = {
+BACKGROUND_JOB_TRANSITIONS: Final[Mapping[BackgroundJobState, frozenset[BackgroundJobState]]] = {
     BackgroundJobState.QUEUED: frozenset(
         {BackgroundJobState.RUNNING, BackgroundJobState.CANCELLED}
     ),

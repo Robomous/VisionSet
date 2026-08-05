@@ -42,6 +42,8 @@ import {
   checkDatasetStats,
   checkDeleteProject,
   checkExportRelease,
+  checkGetBackgroundJob,
+  checkGetBackgroundJobArtifact,
   checkGetActiveSchema,
   checkGetBatch,
   checkGetIngestJob,
@@ -376,6 +378,7 @@ export function useCreateSchemaVersion(projectId: string) {
 export type Source = components["schemas"]["SourceOut"];
 export type SourcePage = components["schemas"]["SourcePage"];
 export type IngestJob = components["schemas"]["IngestJobOut"];
+export type BackgroundJob = components["schemas"]["BackgroundJobOut"];
 export type IngestFailure = components["schemas"]["IngestFailureOut"];
 export type Batch = components["schemas"]["BatchOut"];
 export type BatchPage = components["schemas"]["BatchPage"];
@@ -1286,26 +1289,74 @@ export function useVerifyRelease(releaseId: string): UseQueryResult<ReleaseVerif
 export function useExportRelease(releaseId: string) {
   const client = useApiClient();
   return useMutation({
-    mutationFn: async (input: { format: string; allowLossy?: boolean }) => {
-      const result = await client.POST("/releases/{release_id}/export", {
-        params: {
-          path: { release_id: releaseId },
-          query: {
-            format: input.format,
-            ...(input.allowLossy === true ? { allow_lossy: true } : {}),
+    mutationFn: async (input: { format: string; allowLossy?: boolean }) =>
+      unwrap(
+        await client.POST("/releases/{release_id}/export", {
+          params: {
+            path: { release_id: releaseId },
+            query: {
+              format: input.format,
+              ...(input.allowLossy === true ? { allow_lossy: true } : {}),
+            },
           },
-        },
-        // The route answers `application/zip`; JSON parsing it fails on the first
-        // byte, and the failure would read as a malformed response rather than as
-        // a working export.
-        parseAs: "blob",
-      });
-      // `checkExportRelease` is `checkBlob`: the contract declares this response with an
-      // empty schema, which is OpenAPI for "bytes, and nothing more to say". It replaces a
-      // `as unknown as Blob` that asserted the same thing and verified none of it — an
-      // error page served as JSON and read as a blob would have been saved as `release.zip`.
-      return unwrap(result, checkExportRelease);
-    },
+        }),
+        checkExportRelease,
+      ),
+  });
+}
+
+/**
+ * Watch a queued unit of work to its end.
+ *
+ * The generic twin of `useIngestJob`, over `/background-jobs`, and it takes the
+ * same `usePollingQuery` unchanged — `processed`/`total` mean what they mean
+ * there, and `total` is null when the work cannot know it up front.
+ *
+ * Three terminal states rather than two: a job can be `cancelled` as well as
+ * `succeeded` or `failed`, and a poller that only stopped on the first two would
+ * spin forever on the third. `isSettled` is named for the terminal condition
+ * precisely so that adding a state is a change here rather than a silent leak.
+ */
+export function useBackgroundJob(jobId: string | null): UseQueryResult<BackgroundJob, Error> {
+  const client = useApiClient();
+  return usePollingQuery({
+    queryKey: ["background-jobs", jobId ?? "none"],
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/background-jobs/{job_id}", {
+          params: { path: { job_id: jobId ?? "" } },
+        }),
+        checkGetBackgroundJob,
+      ),
+    isSettled: (job) =>
+      job.state === "succeeded" || job.state === "failed" || job.state === "cancelled",
+    enabled: jobId !== null,
+  });
+}
+
+/**
+ * Fetch what a finished job produced.
+ *
+ * A separate call from the poll for the reason the API keeps them separate: the
+ * job is read every couple of seconds and wants JSON, and the archive is asked
+ * for exactly once.
+ *
+ * `parseAs: "blob"` and `checkJobArtifact` is `checkBlob` — the contract declares
+ * this response with an empty schema, OpenAPI for "bytes, and nothing more to
+ * say". The check earns its place: an error page served as JSON and read as a blob
+ * would otherwise be saved to disk as `release.zip`.
+ */
+export function useJobArtifact() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async (jobId: string) =>
+      unwrap(
+        await client.GET("/background-jobs/{job_id}/artifact", {
+          params: { path: { job_id: jobId } },
+          parseAs: "blob",
+        }),
+        checkGetBackgroundJobArtifact,
+      ),
   });
 }
 

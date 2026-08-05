@@ -157,9 +157,7 @@ class JobQueue(Protocol):
         """
         ...
 
-    def list(
-        self, *, states: Collection[BackgroundJobState] | None = None
-    ) -> list[BackgroundJob]:
+    def list(self, *, states: Collection[BackgroundJobState] | None = None) -> list[BackgroundJob]:
         """Every job, newest first, optionally narrowed to some states.
 
         Newest first because the caller is a person looking at what is happening

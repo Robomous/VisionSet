@@ -16,22 +16,22 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
 from tests.server._flow import batch_from_ingest, open_job, project_with_schema
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
 
 
 @pytest.fixture()
-def working(client: TestClient, tmp_path: Path, runner: RecordingRunner) -> tuple[str, str]:
+def working(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> tuple[str, str]:
     """A started job over a three-asset batch. Returns ``(batch_id, job_id)``."""
     return open_job(client, runner, tmp_path, images=3)
 
@@ -226,7 +226,7 @@ def test_asking_for_no_assets_is_422_not_500(
 
 
 def test_a_job_cannot_start_before_its_batch_is_open(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     project = project_with_schema(client)
     batch_id = batch_from_ingest(client, runner, tmp_path, project, images=2)

@@ -43,7 +43,7 @@ from typing import Annotated, Literal, Self
 from uuid import UUID, uuid4
 
 from fastapi import Query
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from visionset.kernel.domain import (
     Annotation,
@@ -54,6 +54,8 @@ from visionset.kernel.domain import (
     AssetAction,
     AssetProgress,
     Attribute,
+    BackgroundJob,
+    BackgroundJobState,
     Batch,
     BatchAction,
     BatchState,
@@ -76,6 +78,7 @@ from visionset.kernel.domain import (
     IngestFailureKind,
     IngestJob,
     IngestState,
+    ItemFailure,
     JobAction,
     LabelClass,
     MembershipChange,
@@ -527,6 +530,75 @@ class IngestStart(BaseModel):
 
     batch_id: UUID | None = None
     batch_name: str | None = None
+
+
+# --- background jobs ----------------------------------------------------------
+
+
+class ItemFailureOut(BaseModel):
+    """One item a job could not process, and why."""
+
+    name: str
+    reason: str
+
+    @classmethod
+    def of(cls, failure: ItemFailure) -> Self:
+        return cls(name=failure.name, reason=failure.reason)
+
+
+# The generic polling contract, and the deliberate twin of ``IngestJobOut``.
+#
+# **They are two shapes because they describe two things**, and merging them
+# would make both worse. An ingest job knows what it is about — a source, a batch
+# — and publishes those as named fields a client can navigate. A background job
+# is about whatever its ``payload`` says, so it publishes ``type`` and ``result``
+# instead: opaque to this model, meaningful to whoever queued it. What they share
+# — ``processed``/``total``/``failures``/``error`` — they share by convention, so
+# a progress bar written against one renders the other unchanged.
+#
+# ``payload`` is **absent**. It is an internal contract between a surface and a
+# handler, it can name a path, and nothing on the client side has any business
+# reading it — the rule that keeps ``Source.path`` and ``Asset.uri`` off the wire.
+# ``result`` is present because it is the answer: it is how a caller learns an
+# export finished and where the archive is.
+class BackgroundJobOut(BaseModel):
+    """One unit of background work, and how far it has got."""
+
+    id: UUID
+    type: str
+    state: BackgroundJobState
+    processed: int
+    total: int | None
+    failures: tuple[ItemFailureOut, ...]
+    error: str | None
+    result: dict[str, JsonValue]
+    cancel_requested: bool
+    attempt: int
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+    @classmethod
+    def of(cls, job: BackgroundJob) -> Self:
+        return cls(
+            id=job.id,
+            type=job.type,
+            state=job.state,
+            processed=job.processed,
+            total=job.total,
+            failures=tuple(ItemFailureOut.of(failure) for failure in job.failures),
+            error=job.error,
+            result=job.result,
+            cancel_requested=job.cancel_requested,
+            attempt=job.attempt,
+            created_at=job.created_at,
+            started_at=job.started_at,
+            finished_at=job.finished_at,
+        )
+
+
+class BackgroundJobPage(Page[BackgroundJobOut]):
+    """A page of background jobs."""
 
 
 # --- assets ------------------------------------------------------------------

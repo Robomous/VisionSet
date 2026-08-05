@@ -43,7 +43,7 @@
  */
 
 import { Check, Download, FileJson, ShieldCheck, Tag, Trash2, Upload } from "lucide-react";
-import { useState, type FormEvent, type JSX } from "react";
+import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
@@ -74,11 +74,13 @@ import { AssetThumbnail } from "./AssetThumbnail";
 import { saveBlob } from "./download";
 import {
   TRUNK_PAGE_SIZE,
+  useBackgroundJob,
   useDatasetAssets,
   useDatasetStats,
   useDownloadManifest,
   useExportRelease,
   useFormats,
+  useJobArtifact,
   useProject,
   useProjectDataset,
   usePublishRelease,
@@ -86,6 +88,7 @@ import {
   useRemoveDatasetAsset,
   useVerifyRelease,
   type Asset,
+  type BackgroundJob,
   type Release,
 } from "./queries";
 
@@ -744,6 +747,12 @@ function PublishDialog({
   );
 }
 
+/** Whether a job will not change again. The client half of `SETTLED_JOB_STATES`. */
+function isSettled(job: BackgroundJob): boolean {
+  return job.state === "succeeded" || job.state === "failed" || job.state === "cancelled";
+}
+
+
 function ExportDialog({
   releaseId,
   tag,
@@ -757,20 +766,54 @@ function ExportDialog({
 }): JSX.Element {
   const formats = useFormats();
   const exportRelease = useExportRelease(releaseId);
+  const artifact = useJobArtifact();
   const [format, setFormat] = useState("");
   const [consented, setConsented] = useState(false);
+  // The job this dialog is watching. Null until a launch is accepted, and null
+  // again once the archive has been saved — a finished download is not something
+  // to keep polling.
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const job = useBackgroundJob(jobId);
 
   const installed = formats.data?.items ?? [];
   const chosen = installed.find((one) => one.name === format);
+  // **The refusals still arrive on the launch.** An unknown format is a 404 and a
+  // lossy format without consent is a 409, both answered by the request rather
+  // than by the job — so the consent flow below is exactly the one that shipped
+  // before export was queued.
   const failure = exportRelease.isError ? asApiError(exportRelease.error) : null;
   const needsConsent = failure?.code === LOSSY;
+  const running = exportRelease.isPending || (job.data !== undefined && !isSettled(job.data));
+  const stopped =
+    job.data !== undefined && job.data.state !== "succeeded" ? job.data : null;
 
   function run(allowLossy: boolean): void {
+    setSaved(false);
     exportRelease.mutate(
       { format, ...(allowLossy ? { allowLossy: true } : {}) },
-      { onSuccess: (blob) => saveBlob(blob, `${tag}-${format}.zip`) },
+      { onSuccess: (queued) => setJobId(queued.id) },
     );
   }
+
+  // The download, once and only once the work has succeeded.
+  //
+  // An effect rather than a `usePollingQuery` callback because the *transition*
+  // is what matters: the poll answers `succeeded` on every subsequent tick too,
+  // and a browser asked to save the same archive four times does it four times.
+  // `saved` is the guard, and it is state rather than a ref because #299 found
+  // that a ref-guarded effect under `<StrictMode>` loses the very error it was
+  // guarding.
+  useEffect(() => {
+    if (saved || jobId === null || job.data?.state !== "succeeded") return;
+    setSaved(true);
+    artifact.mutate(jobId, {
+      onSuccess: (blob) => {
+        saveBlob(blob, `${tag}-${format}.zip`);
+        setJobId(null);
+      },
+    });
+  }, [saved, jobId, job.data?.state, artifact, tag, format]);
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -826,6 +869,23 @@ function ExportDialog({
               {refusalProse(failure)}
             </FieldError>
           )}
+
+          {/* A job that stopped without producing anything. Its `error` is the
+              handler's own sentence, which is the only account of a failure that
+              happened after the request had already been answered. */}
+          {stopped !== null && (
+            <FieldError data-testid="export-job-error">
+              {stopped.state === "cancelled"
+                ? "The export was cancelled."
+                : (stopped.error ?? "The export stopped without saying why.")}
+            </FieldError>
+          )}
+
+          {artifact.isError && (
+            <FieldError data-testid="export-download-error">
+              {refusalProse(asApiError(artifact.error))}
+            </FieldError>
+          )}
         </div>
 
         <DialogFooter>
@@ -837,11 +897,11 @@ function ExportDialog({
             data-testid="export-submit"
             // The consent gate: while the API is asking, the button stays shut until
             // the box is ticked. It is `allow_lossy` and never `confirm`.
-            disabled={format === "" || exportRelease.isPending || (needsConsent && !consented)}
+            disabled={format === "" || running || (needsConsent && !consented)}
             onClick={() => run(needsConsent)}
           >
             <Download className="size-4" aria-hidden="true" />
-            {exportRelease.isPending ? "Exporting…" : needsConsent ? "Export anyway" : "Export"}
+            {running ? "Exporting…" : needsConsent ? "Export anyway" : "Export"}
           </Button>
         </DialogFooter>
       </DialogContent>

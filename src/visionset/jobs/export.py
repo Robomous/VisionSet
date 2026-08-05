@@ -33,7 +33,7 @@ from uuid import UUID
 
 from pydantic import JsonValue
 
-from visionset.formats.registry import exporters, pick
+from visionset.formats import registry
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
 from visionset.kernel.ports import ProgressReporter
@@ -102,10 +102,15 @@ def run(
     allow_lossy = bool(payload["allow_lossy"])
 
     workspace = workspace_for(workspace_root)
+    # Through the *module*, never ``from ... import exporters``: a module global
+    # is what a test can replace, and the alternative would leave this the one
+    # place an injected exporter cannot reach. It is the seam
+    # ``registry.exporter()`` already uses, for the same reason.
+    #
     # ``pick``, never ``exporters()[name]``: a ``KeyError`` is outside the
     # ``VisionSetError`` tree, and here it would fail a job with a traceback
     # instead of a sentence naming what is installed.
-    exporter = pick(exporters(), format_name)
+    exporter = registry.pick(registry.exporters(), format_name)
 
     destination = workspace_root / EXPORTS_DIRNAME / str(release_id) / format_name
     # Cleared first, because the archive must describe *this* run.

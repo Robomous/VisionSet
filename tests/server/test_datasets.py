@@ -26,22 +26,22 @@ from tests.server._flow import (
     open_job,
     project_with_schema,
 )
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
 
 
 @pytest.fixture()
-def finished(client: TestClient, tmp_path: Path, runner: RecordingRunner) -> tuple[str, str]:
+def finished(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> tuple[str, str]:
     """``(project_id, batch_id)`` for a completed batch whose assets are labeled."""
     return annotated_batch(client, runner, tmp_path)
 
@@ -108,7 +108,7 @@ def test_a_completed_batch_promotes_its_labeled_assets(
 
 
 def test_promoting_a_batch_that_is_not_complete_is_refused(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     batch_id, _ = open_job(client, runner, tmp_path)
 
@@ -141,7 +141,7 @@ def test_promoting_an_unknown_batch_is_404(client: TestClient) -> None:
 
 
 def test_a_skipped_asset_stays_out_of_the_trunk(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     """Skipping is a decision on the record, not a membership edit."""
     batch_id, job_id = open_job(client, runner, tmp_path)

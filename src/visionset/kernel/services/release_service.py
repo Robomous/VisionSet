@@ -452,9 +452,7 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        compatibility = self.require_export_consent(
-            release_id, exporter, allow_lossy=allow_lossy
-        )
+        compatibility = self.require_export_consent(release_id, exporter, allow_lossy=allow_lossy)
         dest.mkdir(parents=True, exist_ok=True)
         exporter.export(
             release,

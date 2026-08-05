@@ -30,6 +30,13 @@ dependencies = [
     # so it is allowed inside kernel/adapters/ and needs no import-linter change. The 11.0
     # floor is the first release with Python 3.13 wheels, which the classifiers promise.
     "pillow>=11.0",
+    # Settings for the embedded job executor (#328). The first pydantic-settings
+    # use in this repository; `server/settings.py` argues why the executor is what
+    # finally earned one, and why the four existing bare `os.environ` reads stay
+    # where they are. Installed already as a transitive dependency of nothing —
+    # this one is genuinely new — but it is pydantic's own companion package and
+    # pydantic 2 is already a hard runtime dependency.
+    "pydantic-settings>=2.4",
     # Multipart parsing for the upload routes (#28). FastAPI requires it for
     # `UploadFile` and raises at import time without it. It is already installed
     # here as a transitive dependency of `mcp` — which is exactly why it is

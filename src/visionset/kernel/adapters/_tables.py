@@ -632,14 +632,10 @@ class JobRow(Base):
     #: created_at`` runs on an interval for as long as the server is up, which is
     #: the one read here whose cost is paid whether or not anything is happening.
     state: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    idempotent: Mapped[bool] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    idempotent: Mapped[bool] = mapped_column(Integer, nullable=False, server_default=text("0"))
     processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     total: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    failures: Mapped[list[Any]] = mapped_column(
-        JSON, nullable=False, server_default=text("'[]'")
-    )
+    failures: Mapped[list[Any]] = mapped_column(JSON, nullable=False, server_default=text("'[]'"))
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     result: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, server_default=text("'{}'")

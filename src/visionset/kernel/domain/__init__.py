@@ -53,16 +53,6 @@ from visionset.kernel.domain.events import (
     IngestCompleted,
     ReleasePublished,
 )
-from visionset.kernel.domain.job import (
-    BACKGROUND_JOB_TRANSITIONS,
-    SETTLED_JOB_STATES,
-    BackgroundJob,
-    BackgroundJobOutcome,
-    BackgroundJobSpec,
-    BackgroundJobState,
-    ItemFailure,
-    JobPayload,
-)
 from visionset.kernel.domain.geometry import (
     IMPLEMENTED_GEOMETRIES,
     BboxGeometry,
@@ -79,6 +69,16 @@ from visionset.kernel.domain.ingest import (
     IngestState,
     ThumbnailBackfill,
     report_name,
+)
+from visionset.kernel.domain.job import (
+    BACKGROUND_JOB_TRANSITIONS,
+    SETTLED_JOB_STATES,
+    BackgroundJob,
+    BackgroundJobOutcome,
+    BackgroundJobSpec,
+    BackgroundJobState,
+    ItemFailure,
+    JobPayload,
 )
 from visionset.kernel.domain.media import (
     ImageFormat,
@@ -160,6 +160,7 @@ __all__ = [
     "asset_actions",
     "Move",
     "JobAction",
+    "JobPayload",
     "BatchAction",
     "AssetAction",
     "UNNAMED_EDGES",
@@ -231,6 +232,7 @@ __all__ = [
     "IngestJob",
     "IngestResult",
     "IngestState",
+    "ItemFailure",
     "IssuedToken",
     "LabelClass",
     "Manifest",

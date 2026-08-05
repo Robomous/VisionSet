@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import io
 import zipfile
+from typing import Any
 from collections.abc import Iterator
 from pathlib import Path
 from uuid import uuid4
@@ -28,10 +29,11 @@ from tests.server._exports import (
     LossyExporter,
     PolygonsOnlyExporter,
     WritingExporter,
+    reset_exporters,
     with_exporters,
 )
 from tests.server._flow import dataset_of, promoted_dataset
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME
 
@@ -39,18 +41,21 @@ RECIPE = {"train": 0.6, "val": 0.2, "test": 0.2, "seed": 42}
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
+    # `with_exporters` swaps a module global that the *worker* side of an export
+    # reads, so putting it back is a fixture's job — see `reset_exporters`.
+    reset_exporters()
 
 
 @pytest.fixture()
-def dataset(client: TestClient, tmp_path: Path, runner: RecordingRunner) -> str:
+def dataset(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> str:
     """A trunk with three labeled assets already promoted into it."""
     return promoted_dataset(client, runner, tmp_path)
 
@@ -339,6 +344,28 @@ def test_the_assignment_of_an_unknown_release_is_404(client: TestClient) -> None
 # --- export -------------------------------------------------------------------
 
 
+def exported(client: TestClient, release: str, **params: Any) -> Any:
+    """Run an export to completion and hand back the artifact response.
+
+    The launch is a 202 since #328, so `response.content` is no longer the
+    archive: the work happens in a job and the bytes come from a second route.
+    This helper is what keeps the assertions below about *what was written*
+    rather than about the plumbing that moved — and the job's own contract has
+    its own tests in `test_background_jobs.py`.
+
+    The `InlineDispatcher` behind `client` has already run the job by the time
+    the launch responds, so nothing here polls.
+    """
+    launched = client.post(f"/releases/{release}/export", params=params)
+    assert launched.status_code == 202, launched.text
+    job_id = launched.json()["id"]
+    settled = client.get(f"/background-jobs/{job_id}").json()
+    assert settled["state"] == "succeeded", settled
+    artifact = client.get(f"/background-jobs/{job_id}/artifact")
+    assert artifact.status_code == 200, artifact.text
+    return artifact
+
+
 def _names_in(payload: bytes) -> set[str]:
     """The files in the archive. Directory entries are a zip artefact, not output."""
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
@@ -350,9 +377,8 @@ def test_exporting_streams_back_an_archive_of_what_the_plugin_wrote(
 ) -> None:
     with_exporters(client.app, WritingExporter())
 
-    response = client.post(f"/releases/{release}/export", params={"format": "writing"})
+    response = exported(client, release, format="writing")
 
-    assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
     # …plus the compatibility report, which #65 attaches to every export
     # output so the answer to "what would this format have dropped" travels
@@ -394,11 +420,8 @@ def test_the_lossy_retry_is_the_identical_request_plus_one_parameter(
     with_exporters(client.app, LossyExporter())
     client.post(f"/releases/{release}/export", params={"format": "lossy"})
 
-    response = client.post(
-        f"/releases/{release}/export", params={"format": "lossy", "allow_lossy": "true"}
-    )
+    response = exported(client, release, format="lossy", allow_lossy="true")
 
-    assert response.status_code == 200
     assert _names_in(response.content) == {"boxes-only.txt", EXPORT_REPORT_FILENAME}
 
 
@@ -417,10 +440,8 @@ def test_consenting_to_loss_changes_nothing_for_a_lossless_format(
 ) -> None:
     with_exporters(client.app, WritingExporter())
 
-    permitted = client.post(
-        f"/releases/{release}/export", params={"format": "writing", "allow_lossy": "true"}
-    )
-    plain = client.post(f"/releases/{release}/export", params={"format": "writing"})
+    permitted = exported(client, release, format="writing", allow_lossy="true")
+    plain = exported(client, release, format="writing")
 
     assert _names_in(permitted.content) == _names_in(plain.content)
 
@@ -431,7 +452,7 @@ def test_the_export_lands_under_the_workspaces_own_exports_directory(
     """A sibling of `uploads/`, and server-owned in the same way."""
     with_exporters(client.app, WritingExporter())
 
-    client.post(f"/releases/{release}/export", params={"format": "writing"})
+    exported(client, release, format="writing")
 
     assert (tmp_path / "ws" / "exports" / release / "writing" / "manifest.json").is_file()
 
@@ -439,13 +460,13 @@ def test_the_export_lands_under_the_workspaces_own_exports_directory(
 def test_re_exporting_describes_the_new_run_and_not_the_old_one(
     client: TestClient, tmp_path: Path, release: str
 ) -> None:
-    """The route clears the directory it owns, so a stale file cannot ride along."""
+    """The handler clears the directory it owns, so a stale file cannot ride along."""
     with_exporters(client.app, WritingExporter())
-    client.post(f"/releases/{release}/export", params={"format": "writing"})
+    exported(client, release, format="writing")
     stale = tmp_path / "ws" / "exports" / release / "writing" / "left-over.txt"
     stale.write_text("from an earlier plugin")
 
-    response = client.post(f"/releases/{release}/export", params={"format": "writing"})
+    response = exported(client, release, format="writing")
 
     assert "left-over.txt" not in _names_in(response.content)
     assert not stale.exists()
@@ -560,10 +581,6 @@ def test_a_lossless_format_that_would_drop_a_class_is_refused_with_the_report(
 def test_the_report_travels_inside_the_archive_as_well(client: TestClient, release: str) -> None:
     with_exporters(client.app, PolygonsOnlyExporter())
 
-    response = client.post(
-        f"/releases/{release}/export",
-        params={"format": "polygons-only", "allow_lossy": "true"},
-    )
+    response = exported(client, release, format="polygons-only", allow_lossy="true")
 
-    assert response.status_code == 200
     assert EXPORT_REPORT_FILENAME in _names_in(response.content)

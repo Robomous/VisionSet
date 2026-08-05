@@ -21,7 +21,7 @@ from tests.server._flow import (
     dataset_of,
     project_with_schema,
 )
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 
 @pytest.fixture()
@@ -290,13 +290,13 @@ def test_every_project_route_refuses_a_request_without_a_token(
 
 
 @pytest.fixture()
-def stats_runner() -> RecordingRunner:
-    return RecordingRunner()
+def stats_runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def flow_client(tmp_path: Path, stats_runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=stats_runner) as made:
+def flow_client(tmp_path: Path, stats_runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=stats_runner) as made:
         yield made
 
 
@@ -340,7 +340,7 @@ def test_a_project_that_has_ingested_nothing_reports_no_last_ingest(client: Test
 
 
 def test_stats_count_assets_an_ingest_produced_before_anybody_promoted_them(
-    flow_client: TestClient, stats_runner: RecordingRunner, tmp_path: Path
+    flow_client: TestClient, stats_runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     """The endpoint's whole reason to exist, asserted against its sibling.
 
@@ -359,7 +359,7 @@ def test_stats_count_assets_an_ingest_produced_before_anybody_promoted_them(
 
 
 def test_an_ingest_gives_the_project_a_last_ingest_timestamp(
-    flow_client: TestClient, stats_runner: RecordingRunner, tmp_path: Path
+    flow_client: TestClient, stats_runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     """The chip's data, end to end: null before an ingest and a real moment after one."""
     project_id = project_with_schema(flow_client)
@@ -375,7 +375,7 @@ def test_an_ingest_gives_the_project_a_last_ingest_timestamp(
 
 
 def test_annotated_pct_is_a_percentage_of_the_projects_own_assets(
-    flow_client: TestClient, stats_runner: RecordingRunner, tmp_path: Path
+    flow_client: TestClient, stats_runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     project_id = project_with_schema(flow_client)
     batch_id = batch_from_ingest(flow_client, stats_runner, tmp_path, project_id, images=4)

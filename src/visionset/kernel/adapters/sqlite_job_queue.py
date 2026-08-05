@@ -95,9 +95,7 @@ class SqliteJobQueue:
         """
         with self._store.unit_of_work() as uow:
             job = self._require(uow.jobs.get(job_id), job_id)
-            require_move(
-                BACKGROUND_JOB_TRANSITIONS, job.state, outcome.state, _subject(job_id)
-            )
+            require_move(BACKGROUND_JOB_TRANSITIONS, job.state, outcome.state, _subject(job_id))
             return uow.jobs.update(
                 job.model_copy(
                     update={
@@ -164,11 +162,7 @@ class SqliteJobQueue:
                     )
                 )
                 if job.idempotent:
-                    uow.jobs.add(
-                        BackgroundJob(
-                            type=job.type, payload=job.payload, idempotent=True
-                        )
-                    )
+                    uow.jobs.add(BackgroundJob(type=job.type, payload=job.payload, idempotent=True))
         return settled
 
     @staticmethod
@@ -180,9 +174,7 @@ class SqliteJobQueue:
     # ``list`` shadows the builtin for every annotation after it in a class body,
     # so it is declared last. See ``BatchService`` for the precedent.
 
-    def list(
-        self, *, states: Collection[BackgroundJobState] | None = None
-    ) -> list[BackgroundJob]:
+    def list(self, *, states: Collection[BackgroundJobState] | None = None) -> list[BackgroundJob]:
         """Newest first, optionally narrowed — the opposite order to ``claim``.
 
         Sorted here rather than in SQL because ``Repository.list`` returns

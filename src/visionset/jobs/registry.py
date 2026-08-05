@@ -159,7 +159,9 @@ def load(ref: HandlerRef) -> _Handler:
     try:
         module = import_module(module_name)
     except ImportError as exc:
-        raise UnknownJobType(f"handler {ref.func!r} names a module that will not import: {exc}")
+        raise UnknownJobType(
+            f"handler {ref.func!r} names a module that will not import: {exc}"
+        ) from exc
     found = getattr(module, attribute, None)
     if not callable(found):
         raise UnknownJobType(f"handler {ref.func!r} names nothing callable")

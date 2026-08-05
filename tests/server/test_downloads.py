@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
 from tests.server._flow import batch_from_ingest, project_with_schema
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 from visionset.kernel.domain import ImageFormat
 from visionset.kernel.ports import THUMBNAIL_FORMAT
@@ -29,18 +29,18 @@ from visionset.server.routes.assets import _MEDIA_TYPES
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
 
 
 @pytest.fixture()
-def ingested(client: TestClient, tmp_path: Path, runner: RecordingRunner) -> tuple[str, str, bytes]:
+def ingested(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> tuple[str, str, bytes]:
     """``(project_id, asset_id, the bytes that were uploaded)`` for one still."""
     project_id = project_with_schema(client)
     written = write_image(tmp_path / "one.png", seed=7).read_bytes()
@@ -290,7 +290,7 @@ def test_a_project_with_no_assets_answers_an_empty_page_rather_than_404(
 
 
 def test_the_listing_carries_every_asset_of_the_project(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     project_id = project_with_schema(client)
     batch_from_ingest(client, runner, tmp_path, project_id, images=4)
@@ -302,7 +302,7 @@ def test_the_listing_carries_every_asset_of_the_project(
 
 
 def test_limit_bounds_the_page_and_total_still_counts_the_project(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     """What the Overview's six tiles and its `+N` overflow are computed from."""
     project_id = project_with_schema(client)
@@ -315,7 +315,7 @@ def test_limit_bounds_the_page_and_total_still_counts_the_project(
 
 
 def test_the_order_is_the_same_on_every_call(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     """Stability is the property the gallery actually needs.
 
@@ -333,7 +333,7 @@ def test_the_order_is_the_same_on_every_call(
 
 
 def test_a_window_is_a_prefix_of_the_whole_listing(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     """A client paging with `limit` sees the same sequence it would have seen whole."""
     project_id = project_with_schema(client)
@@ -346,7 +346,7 @@ def test_a_window_is_a_prefix_of_the_whole_listing(
 
 
 def test_an_offset_past_the_end_is_an_empty_page_and_not_an_error(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     project_id = project_with_schema(client)
     batch_from_ingest(client, runner, tmp_path, project_id, images=2)
@@ -358,7 +358,7 @@ def test_an_offset_past_the_end_is_an_empty_page_and_not_an_error(
 
 
 def test_an_asset_carries_the_thumbnail_hash_a_tile_decides_on(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     """A NULL hash is a placeholder tile, not a broken image — so it must travel."""
     project_id = project_with_schema(client)
@@ -371,7 +371,7 @@ def test_an_asset_carries_the_thumbnail_hash_a_tile_decides_on(
 
 
 def test_the_listing_never_reaches_into_another_project(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     mine = project_with_schema(client, name="mine")
     theirs = project_with_schema(client, name="theirs")

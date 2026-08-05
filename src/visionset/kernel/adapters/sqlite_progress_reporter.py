@@ -99,9 +99,7 @@ class SqliteProgressReporter:
         if not self._due(self._last_write):
             return
         self._last_write = self._clock()
-        self._write(
-            processed=processed, total=self.reported_total, failures=self.reported_failures
-        )
+        self._write(processed=processed, total=self.reported_total, failures=self.reported_failures)
 
     def is_cancelled(self) -> bool:
         """Whether a cancel has been requested, re-read at most once per interval.
