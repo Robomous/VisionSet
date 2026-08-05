@@ -11,6 +11,7 @@ import {
   EDGE_TOLERANCE_PX,
   HANDLE_TOLERANCE_PX,
   MIN_DRAW_SIZE_PX,
+  PASTE_OFFSET_PX,
   SHAPE_TOLERANCE_PX,
   VERTEX_TOLERANCE_PX,
   assetTolerances,
@@ -96,9 +97,20 @@ describe("the tolerances themselves", () => {
     // later is a one-line edit here rather than a surprise somewhere else.
     expect(MIN_DRAW_SIZE_PX).toBe(3);
   });
+
+  it("keeps v1's paste offset, and converts it like every other screen constant", () => {
+    // v1's 20 px, and the reason it is here rather than in `clipboard.ts` is
+    // #123's own deferral: it is a screen distance, and this is the one module
+    // allowed to divide by a zoom. The conversion is what makes a pasted copy sit
+    // 20 screen pixels from its original at *every* zoom — invisible at a fitted
+    // 5% and half a pane away at 8x if it were a fixed asset-pixel delta.
+    expect(PASTE_OFFSET_PX).toBe(20);
+    expect(assetTolerances(4).pasteOffset).toBe(5);
+    expect(assetTolerances(0.25).pasteOffset).toBe(80);
+  });
 });
 
-describe("all seven at once, which is the call an adapter actually makes", () => {
+describe("all eight at once, which is the call an adapter actually makes", () => {
   /** Every field, so a constant added without a conversion fails to compile. */
   const SCREEN: Record<keyof Tolerances, number> = {
     handle: HANDLE_TOLERANCE_PX,
@@ -108,6 +120,7 @@ describe("all seven at once, which is the call an adapter actually makes", () =>
     shape: SHAPE_TOLERANCE_PX,
     click: CLICK_SLOP_PX,
     minDraw: MIN_DRAW_SIZE_PX,
+    pasteOffset: PASTE_OFFSET_PX,
   };
 
   it("is the constants themselves at a zoom of one", () => {

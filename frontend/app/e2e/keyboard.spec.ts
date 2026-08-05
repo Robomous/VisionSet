@@ -199,6 +199,82 @@ test("typing in the notes field types, and draws nothing", async ({ page }) => {
   await expect(notes).toHaveValue("vvv1111 delete");
   await expectCounts(page, 1, 1);
   expect(await wire(page)).toHaveLength(1);
+
+  // #123 claimed `mod+c`/`mod+v`, which makes this the chord a user is most
+  // likely to press inside a field — and the browser has to keep it, or copying
+  // a note out of the panel would silently duplicate a box instead.
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+  await expectCounts(page, 1, 1);
+  expect(await wire(page)).toHaveLength(1);
+});
+
+/**
+ * Copy and paste (#123), which the engine deferred and left to the browser until
+ * the founder settled what a clipboard is.
+ *
+ * The offset is the part only a browser can check: `PASTE_OFFSET_PX` is **20
+ * screen pixels**, converted to asset pixels by dividing by the live zoom — so
+ * the number the document ends up carrying depends on a fit this page computed
+ * from its own pane, which is exactly what a unit test cannot supply.
+ */
+test("copy and paste duplicates the selection, offset and selected", async ({ page }) => {
+  const frame = await frameOf(page);
+  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 500, y: 340 });
+  await expectCounts(page, 1, 1);
+
+  await page.keyboard.press("ControlOrMeta+c");
+  // A copy is a read: nothing is added and nothing is selected differently.
+  await expectCounts(page, 1, 1);
+
+  await page.keyboard.press("ControlOrMeta+v");
+  // The copy exists, and **it** is what is selected — so the next drag moves the
+  // duplicate rather than the original.
+  await expectCounts(page, 2, 1);
+
+  const drawn = await wire(page);
+  expect(drawn).toHaveLength(2);
+  const source = drawn[0].geometry as { x: number; y: number };
+  const copy = drawn[1].geometry as { x: number; y: number };
+  // 20 screen pixels, in asset pixels at this page's own fit zoom.
+  const expected = 20 / frame.zoom;
+  expect(copy.x - source.x).toBeCloseTo(expected, 5);
+  expect(copy.y - source.y).toBeCloseTo(expected, 5);
+
+  // One history entry for the whole paste.
+  await page.keyboard.press("ControlOrMeta+z");
+  await expectCounts(page, 1, 0);
+});
+
+test("a second paste steps further out rather than stacking on the first", async ({ page }) => {
+  // Two presses of `mod+v` landing on one spot would put two annotations under
+  // one visible shape — a dataset with a duplicate in it and nothing on screen
+  // saying so. The rule reads the document rather than counting presses, which is
+  // what makes the undo below restore the slot it took.
+  const frame = await frameOf(page);
+  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 500, y: 340 });
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+  await page.keyboard.press("ControlOrMeta+v");
+  await expectCounts(page, 3, 1);
+
+  const drawn = await wire(page);
+  const xs = drawn.map((one) => (one.geometry as { x: number }).x);
+  const step = 20 / frame.zoom;
+  expect(xs[1] - xs[0]).toBeCloseTo(step, 5);
+  expect(xs[2] - xs[0]).toBeCloseTo(step * 2, 5);
+});
+
+test("paste with nothing copied does nothing at all", async ({ page }) => {
+  const frame = await frameOf(page);
+  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 500, y: 340 });
+  await expectCounts(page, 1, 1);
+
+  await page.keyboard.press("ControlOrMeta+v");
+  await expectCounts(page, 1, 1);
+  // Nothing to undo but the box itself, so the paste recorded no entry.
+  await expect(page.getByTestId("undo")).toHaveText(/Undo add vehicle/);
 });
 
 /**

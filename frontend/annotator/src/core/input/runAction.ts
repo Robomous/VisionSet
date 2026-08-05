@@ -1,5 +1,5 @@
 /**
- * The interpreter: eight action kinds turned into store calls, host calls and
+ * The interpreter: ten action kinds turned into store calls, host calls and
  * machine events.
  *
  * The **only** file in `input/` that imports `state/store.ts`, which is the point
@@ -90,6 +90,22 @@
  * `useSyncExternalStore` consumer would re-render for nothing, against the
  * store's explicit "the snapshot's identity is load-bearing".
  *
+ * ## Copy is a read; paste is one write and one selection (#123)
+ *
+ * The asymmetry is the whole of why they are two kinds rather than a pair of
+ * halves. `copy-selection` touches no document, which is what puts it in
+ * `READ_ONLY_KINDS` — copying a box out of a batch that can no longer be edited
+ * is how somebody carries it into a correction. `paste` goes through
+ * `store.execute` like every other document change, so the F11 progress gate, the
+ * batch gate and the capability gate all apply to it without being restated:
+ * `AnnotatorCanvas` refuses it in read-only mode before this file is reached, and
+ * the kernel refuses the resulting save if anything else changed underneath.
+ *
+ * Both refuse by value, like everything here. An empty selection copies nothing
+ * *and leaves the clipboard alone*; an empty clipboard pastes nothing; a paste
+ * whose every entry already exists as a tag executes nothing, so the history does
+ * not grow an entry for a press that changed no bytes.
+ *
  * One thing it deliberately does not special-case: `delete-selection` on a
  * selected tag removes it through `removeAnnotationsCommand` rather than
  * `untagCommand` — the "two removal paths for one concept" `tags.ts` warns about.
@@ -98,11 +114,17 @@
  */
 
 import type { IdFactory } from "../ids";
+import { copiedEntries, pastedAnnotations } from "../interaction/clipboard";
+import type { Clipboard } from "../interaction/clipboard";
 import { toggleTagCommand } from "../interaction/tags";
 import { toolFor } from "../interaction/tool";
-import { removeAnnotationsCommand } from "../state/commands";
+import {
+  addAnnotationCommand,
+  composeCommands,
+  removeAnnotationsCommand,
+} from "../state/commands";
 import { classNamed } from "../state/document";
-import { selectAll, selectedAnnotations } from "../state/selection";
+import { selectAll, selectedAnnotations, selectionOf } from "../state/selection";
 import type { AnnotatorStore } from "../state/store";
 import type { Action, SentEvent } from "./actions";
 
@@ -128,8 +150,27 @@ export interface InputHost {
 export interface ActionContext {
   readonly store: AnnotatorStore;
   readonly host: InputHost;
-  /** The id port. Reached only by a tag that is being added. */
+  /** The id port. Reached by a tag being added and by every pasted annotation. */
   readonly mint: IdFactory;
+  /**
+   * Where a copy goes and where a paste comes from.
+   *
+   * A port in `InputHost`'s shape, and required for `InputHost`'s reason — an
+   * optional one would make "this host has no clipboard" and "this host forgot"
+   * the same program. A host with nowhere to keep one writes
+   * `createClipboard()`, which is honest and is what `AnnotatorCanvas` does when
+   * it is handed none.
+   */
+  readonly clipboard: Clipboard;
+  /**
+   * How far a pasted copy lands from the original, **in asset pixels**.
+   *
+   * `Tolerances.pasteOffset` — already divided by the zoom. A plain number
+   * rather than the whole record, on `primitives.ts`'s rule that a parameter
+   * carrying something the function cannot use is an invitation to start using
+   * it: nothing here hit-tests.
+   */
+  readonly pasteOffset: number;
 }
 
 /** What running an action produced. See the two booleans, above. */
@@ -181,6 +222,49 @@ export function runAction(action: Action, context: ActionContext): ActionOutcome
       const everything = selectAll(store.document);
       if (everything.size === 0) return UNCHANGED;
       store.select(everything);
+      return CHANGED;
+    }
+    case "copy-selection": {
+      // `selectedAnnotations`, never the raw `Selection` — the same guard
+      // `delete-selection` takes above, and for the same reason: the set keeps
+      // ids the document no longer holds, on purpose.
+      const picked = selectedAnnotations(store.document, store.selection);
+      // Nothing selected leaves the clipboard alone rather than emptying it.
+      // Overwriting it with nothing would make a stray `mod+c` on empty canvas
+      // silently throw away what somebody copied a frame ago — and this is the
+      // one action whose state a user cannot see.
+      if (picked.length === 0) return UNCHANGED;
+      context.clipboard.write(copiedEntries(picked));
+      return CHANGED;
+    }
+    case "paste": {
+      const entries = context.clipboard.read();
+      if (entries.length === 0) return UNCHANGED;
+      const pasted = pastedAnnotations(
+        // The **committed** document, never `rendered` — `tags.ts`'s rule, and
+        // `store.execute` drops the preview anyway.
+        store.document,
+        entries,
+        context.pasteOffset,
+        context.mint,
+      );
+      // Everything the clipboard held was already on the asset: a selection of
+      // one tag, pasted twice. Nothing to execute, and no history entry.
+      if (pasted.length === 0) return UNCHANGED;
+      // One entry, whatever was pasted — `composeCommands` is the whole of
+      // "several commands as one undo step", and it is the same path
+      // `delete-selection` uses to remove many as one.
+      store.execute(
+        composeCommands(
+          `paste ${pasted.length} ${pasted.length === 1 ? "annotation" : "annotations"}`,
+          pasted.map(addAnnotationCommand),
+        ),
+      );
+      // After the execute, and outside the history: `finishDrawing` pairs its add
+      // with a select for the same reason — what you just made is what you are
+      // about to move — and `selection.ts` keeps selection out of the log so an
+      // undo does not have to put it back.
+      store.select(selectionOf(pasted.map((annotation) => annotation.id)));
       return CHANGED;
     }
     case "activate-class": {

@@ -128,11 +128,38 @@ export const CLICK_SLOP_PX = 3;
 export const MIN_DRAW_SIZE_PX = 3;
 
 /**
- * Every tolerance a hit test takes, in the asset's own pixels.
+ * How far a pasted copy lands from what it was copied from, in screen pixels.
+ * v1's 20 (`AnnotationCanvas.tsx`), kept.
+ *
+ * The eighth constant, and the one that is not about how near counts as on — it
+ * is here because it is the *only* other screen-pixel number the engine has, and
+ * #123's deferral named that as its third reason to wait: *"v1's 20 px is screen
+ * pixels; every coordinate in `core/` is asset pixels, and converting one needs a
+ * zoom — which `state.ts` says only `tolerance.ts` may name. So the offset is
+ * either the adapter's or it is not 20 px."* It is 20 px, and it is this module's,
+ * which is the third possibility that answer left out.
+ *
+ * Screen rather than asset pixels for the reason `MIN_DRAW_SIZE_PX` gives, with
+ * the failure at both ends this time. A fixed asset-pixel offset is **invisible**
+ * at a fitted zoom — 20 asset pixels is one screen pixel on an 8K frame at the 5%
+ * floor, so the copy lands under the original and reads as a paste that did
+ * nothing — and it throws the copy most of a pane away at 8x. "Visibly distinct
+ * and grabbable" is a fact about a screen, so it is stated on a screen.
+ */
+export const PASTE_OFFSET_PX = 20;
+
+/**
+ * Every screen-pixel constant above, in the asset's own pixels.
  *
  * The adapter builds one per zoom change and threads it through; #42's
  * `resolveTarget` and its state machine take this record and never a zoom, which
  * is what keeps the audit above answering with this file alone.
+ *
+ * Seven of the eight are tolerances in the strict sense and the name is theirs.
+ * `pasteOffset` is a displacement rather than a radius, and it rides here anyway
+ * because the *frame conversion* is the thing being shared: a second builder for
+ * one field would be a second place the zoom is named, which is the one thing
+ * this module exists to prevent.
  */
 export interface Tolerances {
   readonly handle: number;
@@ -142,6 +169,8 @@ export interface Tolerances {
   readonly shape: number;
   readonly click: number;
   readonly minDraw: number;
+  /** Not a tolerance — see above. Asset pixels, like every field here. */
+  readonly pasteOffset: number;
 }
 
 /**
@@ -162,11 +191,11 @@ export function toleranceInAssetPixels(screenPixels: number, zoom: number): numb
 }
 
 /**
- * All seven constants converted at once — the call an adapter makes when the zoom
- * changes, instead of seven.
+ * All eight constants converted at once — the call an adapter makes when the zoom
+ * changes, instead of eight.
  *
- * One builder rather than seven call sites is also what keeps the frame
- * discipline checkable: a caller that converted six and forgot one would produce
+ * One builder rather than eight call sites is also what keeps the frame
+ * discipline checkable: a caller that converted seven and forgot one would produce
  * a record whose fields are in two different units, which is the "individually
  * plausible and uniformly wrong" failure again, one layer down.
  */
@@ -179,5 +208,6 @@ export function assetTolerances(zoom: number): Tolerances {
     shape: toleranceInAssetPixels(SHAPE_TOLERANCE_PX, zoom),
     click: toleranceInAssetPixels(CLICK_SLOP_PX, zoom),
     minDraw: toleranceInAssetPixels(MIN_DRAW_SIZE_PX, zoom),
+    pasteOffset: toleranceInAssetPixels(PASTE_OFFSET_PX, zoom),
   };
 }
