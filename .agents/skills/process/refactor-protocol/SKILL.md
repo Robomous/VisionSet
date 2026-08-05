@@ -29,16 +29,17 @@ All work in the worktree; never the primary checkout. Conventional commits in lo
 - **Every mutation touched must have a refusal-rendering test**: force the refusal, assert the user sees prose (not a raw code, not nothing).
 - E2e fixtures seed all five asset-progress states and at least one batch per batch state when the task touches state-dependent UI.
 - Run the full existing suites (Python + TS) and linters; fix what your change broke, and only that.
-- **Three suites, all of them, before every push** — `scripts/check.sh` runs **no browser suite at all**, so "check.sh green" is not "CI will be green":
+- **Three suites, all of them, before every push — and `bash scripts/check.sh` now runs all three.** It used to run none of the browser ones; #314 made the full run the default and `--fast` the exception, so the rule below is one command rather than three:
 
   ```bash
-  bash scripts/check.sh
-  cd frontend/app && CI=1 npx playwright test
-  cd frontend/app && CI=1 npx playwright test -c playwright.cycle.config.ts
+  bash scripts/check.sh          # everything, including both browser suites
+  bash scripts/check.sh --fast   # inner loop only; prints a banner naming what it skipped
+  bash scripts/check.sh browser  # just the two browser suites
   ```
 
-  The third is the **real-server cycle run**, and it is mandatory for anything touching state, gating, or progress: it was three separate times the *only* suite to catch a regression — a stale job declaration, a label flip standing in for feedback, and a progress counter running backwards. — 2026-08 run, T3/T5/T6
-- **Always `CI=1` for a local Playwright run.** `playwright.config.ts` sets `reuseExistingServer: !CI`, so a stale vite server on :5273 answers instead of your build and produces failures that read as code bugs. — 2026-08 run, T3
+  The script sets `CI=1` for the Playwright steps itself, so that is no longer yours to remember. **`--fast` is never enough before a push.** The real-server cycle run is mandatory for anything touching state, gating, or progress: it was three separate times the *only* suite to catch a regression — a stale job declaration, a label flip standing in for feedback, and a progress counter running backwards. — 2026-08 run, T3/T5/T6; #314
+- **`CI=1` on any Playwright run you invoke by hand.** `playwright.config.ts` sets `reuseExistingServer: !CI`, so a stale vite server on :5273 answers instead of your build and produces failures that read as code bugs. `check.sh` does this for you; `npx playwright test` typed directly does not. — 2026-08 run, T3
+- **To rerun the cycle suite N times, use `--repeat-each=N`** — it costs one build rather than N, because the suite's names are run-scoped since #314. Before that a fixed project name made repeat 2 die on `POST /projects → 409`, and repetition meant N whole invocations at ~90 s of rebuild each.
 - **`git add` new files before trusting any local check run.** Several gates read `git ls-files` — the index, not the working tree — so an untracked new file is invisible to them and passes locally while failing in CI. — 2026-08 run, T4
 - **A test double must not encode invisible-order or frozen-state semantics.** Put defaults in the *unmatched-request fallback* so an explicit stub always wins whichever order it was registered in, and derive stub responses from the state the test walks rather than from frozen literals. Both failure modes make a test assert against the fixture instead of the code, and both are silent. — 2026-08 run, T6/T7/T10
 
