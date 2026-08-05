@@ -22,17 +22,26 @@ reason: HTTP has bytes where the kernel has paths.
 `SourceService` — which registers a source by *path* — has a path to be given.
 
 `exports/<release_id>/<format>/` is where a format plugin writes, and `<format>.zip` beside it
-is the archive the export route streams back. The kernel does not choose the location:
-`ReleaseService.export` writes into whatever directory it is handed, and this one is the REST
-surface's choice because the REST surface is the caller that has to turn the result into a
-response. The route clears the directory before each run, which it can do safely precisely
-because it built the path out of the workspace root, a release id and a format name.
+is the archive `GET /background-jobs/{job_id}/artifact` streams back. The kernel does not choose
+the location: `ReleaseService.export` writes into whatever directory it is handed, and this one
+is chosen by the export *handler* (`visionset/jobs/export.py`) — since #328 an export runs in a
+worker rather than in the request, and the handler is the caller that has to turn the result
+into something a later request can serve. It clears the directory before each run, which it can
+do safely precisely because it built the path out of the workspace root, a release id and a
+format name.
 
 The kernel neither writes nor reads either, `open` simply tolerates them the way it tolerates
 anything else beside the database and `blobs/`, and the CLI and MCP surfaces create neither —
 they already hold real paths. Like blobs, staged uploads and finished exports are never
 deleted: a workspace grows with what was offered to it and with what was asked of it, not only
 with what it kept.
+
+**That "never" is a decision, not an unwritten TODO.** There is no TTL, no size cap and no
+sweeper for any of the three, and none is planned for the OSS product: the disk belongs to the
+user, and a local-first tool that deleted their staged uploads or their exported training set on
+a schedule they never chose would be taking an action they cannot undo. What that costs is
+honest — a workspace only grows — and the remedy is `rm`, which is safe for `uploads/` and
+`exports/` because both are reproducible, and is *not* safe for `blobs/`, which is the data.
 
 The store runs in **WAL mode**, which is why the two sidecars are
 part of the format: `close()` checkpoints them into `visionset.db` and removes them, so a

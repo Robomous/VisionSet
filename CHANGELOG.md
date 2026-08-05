@@ -47,10 +47,12 @@ nothing was being distributed. This is the first version that is.
 ### Changed
 
 - **`POST /releases/{id}/export` answers `202` instead of the archive** (#328). **Breaking, for
-  this one endpoint.** It used to block until the exporter finished; a real format walks every
-  asset in a release and copies its bytes, which is minutes of work behind a request with no way
-  to report progress and every proxy's timeout in front of it. It now returns a job to poll and
-  a `Location`, with the archive at `GET /background-jobs/{id}/artifact`.
+  this one endpoint.** It used to be a synchronous `FileResponse` that blocked until the exporter
+  finished; a real format walks every asset in a release and copies its bytes, which is minutes
+  of work behind a request with no way to report progress and every proxy's timeout in front of
+  it. It now returns `202` with a job to poll and a `Location: /background-jobs/{job_id}`, and
+  the archive comes from `GET /background-jobs/{job_id}/artifact` once that job reports
+  `succeeded`.
 
   Everything a *request* can refuse is still refused on the request: an unknown format is a 404
   and an unconsented lossy export a 409, neither creating a job. The browser's consent flow is
