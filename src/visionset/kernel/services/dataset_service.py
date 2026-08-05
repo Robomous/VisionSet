@@ -198,6 +198,27 @@ class DatasetService:
         Their annotations come too, without being named here: a label hangs off
         its asset, so admitting the asset admits everything drawn on it.
 
+        **What the trunk projects for an asset is that asset's whole current
+        annotation set — one set per asset, never one per round** (audit G5,
+        settled 2026-08; ``docs/batches.md`` has the worked example). Promotion
+        moves membership and nothing else, and the replacement semantics fall
+        out of that rather than being implemented on top of it: a correction
+        batch cut over a promoted asset opens on the labels that are already
+        there, edits them in place, and the trunk projects whatever it left.
+        Deleting a box in a correction deletes it from the trunk; two completed
+        batches over one asset do not accumulate two rounds, because there was
+        only ever one set for them to write into. What the trunk holds for a
+        given asset is therefore whoever wrote last, which is observable and
+        defined rather than a race.
+
+        The corollary worth stating plainly, because it is the one that
+        surprises: **that projection is live.** An edit inside an open batch
+        reaches the trunk when it is saved, not when the batch is promoted —
+        membership is the thing promotion gates, and an asset already in the
+        trunk needs no second admission for its labels to move. A snapshot would
+        need the trunk to name annotations as well as assets, which is the
+        second source of truth ``DatasetMember``'s docstring exists to refuse.
+
         **Idempotent.** Promoting the same batch twice adds nothing the second
         time, returns ``[]``, and appends no entry to the log — an append-only
         record of mutations should not fill up with calls that changed nothing.

@@ -162,8 +162,9 @@ Batch "city centre" (60 assets)
      └─ AnnotationJob   assets 51–60
 ```
 
-Every asset starts `unannotated`. A later review round would be a second group beside the
-first, with no schema change.
+An asset starts `unannotated` — unless it already carries labels, in which case it starts
+`annotated`. See [Corrections open on the labels that are already there](#corrections-open-on-the-labels-that-are-already-there).
+A later review round would be a second group beside the first, with no schema change.
 
 ## Completion is derived
 
@@ -175,6 +176,75 @@ batches.complete(batch.id)  # BatchNotComplete: 2 of 5 jobs still unfinished
 — it means the service recomputes rather than taking the caller's word, because a completed
 batch is what lets its annotated assets be promoted into the Dataset. Moving a job to
 `completed` is the job service's business — see [jobs.md](jobs.md); this service only reads it.
+
+## Corrections open on the labels that are already there
+
+A `completed` batch has no exit, so the answer to "this frame is wrong" is a **correction
+batch** — a new batch over the same assets, carrying `parent_batch_id` back to the one it
+corrects. What that batch *starts with* is the subject of this section, and it is settled
+policy (audit G5): the correction opens on the labels the earlier round left.
+
+Nothing is copied to make that happen. An `Annotation` hangs off its `asset_id` and nothing
+else, so the labels are already on the asset:
+
+```python
+parent = batches.create_correction(finished.id, "fix the three bad frames", [frame])
+batches.approve(parent.id)
+(job,) = batches.jobs(parent.id)
+
+annotations.for_asset(job.id, frame)  # the earlier round's boxes, drawn and editable
+```
+
+Each of those labels still records the round that wrote it (`Annotation.job_id`) and the
+schema version it was judged against, and being seen by a later job rewrites neither. A label
+the correction *edits* is re-stamped with the correcting job and the correction's own pinned
+version; one it leaves alone keeps both.
+
+**A seeded asset starts `annotated`, not `unannotated`.** An asset displaying three boxes
+while a gallery filters it under "Unannotated" is a lie, and `annotated` is also the state
+the progress machine can move *out of* when somebody deletes the last box. The rule reads the
+asset, never the lineage — an ordinary batch cut by hand over already-labeled assets is
+seeded exactly the same way, because a rule that asked "is this a correction?" would be wrong
+about whichever case it had not been written for.
+
+The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
+asset seeded that way can be completed with no edits at all**. That is the intended reading —
+a correction is opt-in per asset, and the alternative is making somebody re-declare work
+nobody disputed.
+
+### What the trunk projects: one set per asset, never one per round
+
+Promotion moves **membership** and nothing else, and the replacement semantics fall out of
+that rather than being implemented on top of it:
+
+| What happens in a correction | What the trunk projects afterwards |
+| --- | --- |
+| A box is edited | the edited box, and not also the original |
+| A box is deleted | nothing — deletion is expressible |
+| A box is added | the addition, beside what was kept |
+| An asset is left alone | exactly what the parent round left |
+| An asset is `skipped` | exactly what the parent round left — skipping is *no statement*, not *delete* |
+
+Two completed batches over one asset therefore do not accumulate two rounds; there was only
+ever one set for them to write into. What the trunk holds is whoever wrote last, in whichever
+order the batches are promoted — defined behaviour rather than a race.
+
+**That projection is live**, and it is the part that surprises: an edit inside an open batch
+reaches the trunk when it is saved, not when the batch is promoted. Membership is what
+promotion gates, and an asset already in the trunk needs no second admission for its labels
+to move. Snapshotting instead would mean the trunk naming annotations as well as assets,
+which is the second source of truth `DatasetMember` exists to refuse — see
+[datasets.md](datasets.md).
+
+A **Release** is unaffected either way. Its manifest is a frozen blob and its hash is the
+contract, so correcting the trunk afterwards cannot reach back into one that was already
+published — including through `verify`, which re-reads and re-hashes rather than trusting the
+row. That is the immutability hierarchy doing its job: releases are content-immutable,
+`completed` batches are workflow-immutable, the trunk is live.
+
+Still open, deliberately: an asset sitting in several *ordinary* batches has one progress per
+job and nothing reconciles them (F14). This policy governs what promotion writes, not how two
+batches coordinate.
 
 ## What a batch says it allows
 

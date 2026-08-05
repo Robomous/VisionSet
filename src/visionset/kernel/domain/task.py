@@ -173,6 +173,38 @@ def progress_after_annotating(
     return None
 
 
+def initial_progress(*, has_annotations: bool) -> AssetProgress:
+    """Where an asset's progress starts when a job is cut over it.
+
+    ``unannotated`` for the ordinary case, and ``annotated`` for an asset that
+    already carries labels — which is a real case rather than an exotic one, and
+    the whole reason this is a function instead of a literal. Annotations hang
+    off an ``asset_id`` and nothing else, so a **correction batch** over an
+    already-labeled asset opens with the earlier round's boxes drawn on it (see
+    ``docs/batches.md``). Starting such an asset at ``unannotated`` would file it
+    under "nothing labeled here" while the annotator is displaying three boxes,
+    which is a lie a gallery filter repeats.
+
+    It is also what keeps those labels editable. ``WRITABLE_PROGRESS`` is
+    ``{unannotated, annotated}``, so both answers leave the asset writable today
+    — but only one of them stays true after somebody deletes the last box:
+    ``progress_after_annotating`` moves ``annotated -> unannotated`` and would
+    otherwise be asked to move a state the asset was never honestly in.
+
+    Uniform, and deliberately blind to *why* the asset has labels: nothing here
+    asks whether the batch is a correction. A correction batch is an ordinary
+    batch that happens to be cut over labeled assets, and the rule that reads
+    the asset rather than the batch is the one that cannot be wrong about a case
+    nobody thought of.
+
+    Pure, and here rather than in ``BatchService``, for :func:`progress_after_annotating`'s
+    reason: "what does this mean for progress" is a domain question, and the two
+    have to agree — a fresh asset that has labels must start where an
+    ``unannotated`` one carrying its first annotation would land.
+    """
+    return AssetProgress.ANNOTATED if has_annotations else AssetProgress.UNANNOTATED
+
+
 class TaskGroup(BaseModel):
     """One round of annotation work over a Batch, partitioned into jobs.
 
