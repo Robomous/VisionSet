@@ -91,6 +91,7 @@ from visionset.kernel import (
     SchemaNotFound,
     SchemaVersionConflict,
     SourceNotFound,
+    StaleWrite,
     ThumbnailNotCached,
     TokenNameTaken,
     TokenNotFound,
@@ -226,6 +227,11 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # docs/api.md; a `retryable` field on the public body would widen it for one case.
     SchemaVersionConflict: ErrorRule(409, "SCHEMA_VERSION_CONFLICT"),
     InvalidTransition: ErrorRule(409, "INVALID_TRANSITION"),
+    # Retryable immediately, like SCHEMA_VERSION_CONFLICT above and for the same
+    # reason: the request was well formed and was refused by a state that moved
+    # under it, so a re-read and a resubmit is the whole remedy. It has no flag,
+    # deliberately — a "write anyway" would be the lost update this closes.
+    StaleWrite: ErrorRule(409, "STALE_WRITE"),
     BatchNotEditable: ErrorRule(409, "BATCH_NOT_EDITABLE"),
     # No route reaches this yet — batch delete is SDK-only. Mapped anyway,
     # because the exact-correspondence test is what keeps the table honest, and

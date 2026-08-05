@@ -46,6 +46,11 @@ export const REFUSAL_PROSE: Record<string, string> = {
   BATCH_NOT_COMPLETE: "Some of this batch's jobs are still unfinished.",
   BATCH_IMMUTABLE: "This batch is completed, and completed batches are kept.",
   INVALID_TRANSITION: "This has already moved on — reload to see where it is now.",
+  // Not the same sentence as INVALID_TRANSITION, though they are neighbours.
+  // That one means the move was never allowed from here; this one means it was
+  // allowed a moment ago and somebody else got there first — so the remedy names
+  // the other person rather than the rule (#302).
+  STALE_WRITE: "Someone else changed this while you were working on it — reload to see it.",
 
   // The per-asset family.
   ASSET_NOT_WRITABLE: "This frame's labeling is settled — its labels cannot be changed here.",

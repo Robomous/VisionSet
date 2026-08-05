@@ -16,17 +16,34 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
 
-from visionset.kernel import ConstraintViolated, WorkspaceBusy, WorkspaceCorrupt
+from visionset.kernel import ConstraintViolated, StaleWrite, WorkspaceBusy, WorkspaceCorrupt
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters.sqlite_metadata_store import DEFAULT_BUSY_TIMEOUT_MS
-from visionset.kernel.domain import Project, Workspace
-from visionset.kernel.ports import UNINITIALIZED
+from visionset.kernel.domain import (
+    AnnotationJob,
+    Asset,
+    AssetProgress,
+    Batch,
+    GeometryType,
+    LabelClass,
+    Project,
+    Workspace,
+)
+from visionset.kernel.ports import UNINITIALIZED, UnitOfWork
+from visionset.kernel.services import (
+    BatchService,
+    JobService,
+    ProjectService,
+    SchemaService,
+    WorkspaceService,
+)
 
 #: Every wait in this file. Long enough that a loaded CI runner does not trip it,
 #: short enough that a genuine deadlock fails the suite instead of stalling it.
@@ -203,3 +220,201 @@ def test_contention_and_damage_are_different_errors() -> None:
     """
     assert not issubclass(WorkspaceBusy, WorkspaceCorrupt)
     assert not issubclass(WorkspaceCorrupt, WorkspaceBusy)
+
+
+# --- two writers on one job (#302) --------------------------------------------
+#
+# The defect this closes is a lost update, and a lost update lives in the gap
+# between a read and the write it justifies. In `JobService.mark` that gap is a
+# few microseconds wide — far too narrow to hit by starting threads at the same
+# moment and then asserting on what happened. So these tests do not race: they
+# hold every writer at a gate that opens only once all of them have read, which
+# reproduces the interleaving every single run instead of on a bad day.
+
+
+class _GatedJobService(JobService):
+    """A `JobService` that stops between reading a job and writing to it.
+
+    `require_open_batch` is the last read `mark` performs before it decides, and
+    `mark` calls it exactly once — which makes overriding it the one seam that
+    puts a gate in the right place without touching the service under test.
+    """
+
+    def __init__(
+        self,
+        workspace: WorkspaceService,
+        *,
+        arrived: threading.Event,
+        go: threading.Event,
+    ) -> None:
+        super().__init__(workspace)
+        self._arrived = arrived
+        self._go = go
+
+    def require_open_batch(self, uow: UnitOfWork, job: AnnotationJob) -> Batch:
+        batch = super().require_open_batch(uow, job)
+        self._arrived.set()
+        assert self._go.wait(TIMEOUT_SECONDS), "the gate was never opened"
+        return batch
+
+
+def _open_job(root: Path) -> tuple[UUID, list[UUID]]:
+    """A workspace whose one job is open. Returns the job id and its assets."""
+    workspace = WorkspaceService.init(root)
+    try:
+        project = ProjectService(workspace).create("p")
+        SchemaService(workspace).create_version(
+            project.id, [LabelClass(name="sign", geometry=GeometryType.BBOX)]
+        )
+        assets = []
+        for seed in ("a", "b", "c"):
+            content_hash = workspace.blob_store.put(BytesIO(seed.encode()))
+            with workspace.unit_of_work() as uow:
+                assets.append(
+                    uow.assets.add(
+                        Asset(
+                            project_id=project.id,
+                            content_hash=content_hash,
+                            uri=f"/tmp/{seed}.png",
+                        )
+                    ).id
+                )
+        batches = BatchService(workspace)
+        batch = batches.create(project.id, "first", assets)
+        batches.approve(batch.id)
+        batches.start(batch.id)
+        job = batches.jobs(batch.id)[0]
+        JobService(workspace).start(job.id)
+        return job.id, assets
+    finally:
+        workspace.close()
+
+
+def _raced(root: Path, moves: list[tuple[UUID, UUID, AssetProgress]]) -> list[object]:
+    """Run every move from its own workspace, each having read before any writes.
+
+    Each writer opens the workspace itself — two `WorkspaceService` objects over
+    one file is two engines and no shared lock, which is what two *processes*
+    look like to SQLite and what two HTTP requests look like once the app has a
+    connection pool. Returns the outcome per move: the job it wrote, or the
+    exception it was refused with.
+    """
+    gates = [(threading.Event(), threading.Event()) for _ in moves]
+    outcomes: list[object] = [None] * len(moves)
+
+    def run(index: int) -> None:
+        arrived, go = gates[index]
+        job_id, asset_id, progress = moves[index]
+        workspace = WorkspaceService.open(root)
+        try:
+            service = _GatedJobService(workspace, arrived=arrived, go=go)
+            outcomes[index] = service.mark(job_id, asset_id, progress)
+        except BaseException as exc:  # noqa: BLE001 - reported on the main thread
+            outcomes[index] = exc
+        finally:
+            # Set unconditionally: a writer refused *before* the gate would
+            # otherwise leave the main thread waiting out the whole timeout.
+            arrived.set()
+            workspace.close()
+
+    threads = [
+        threading.Thread(target=run, args=(index,), name=f"writer-{index}")
+        for index in range(len(moves))
+    ]
+    for thread in threads:
+        thread.start()
+    try:
+        for arrived, _ in gates:
+            assert arrived.wait(TIMEOUT_SECONDS), "a writer never reached the gate"
+    finally:
+        for _, go in gates:
+            go.set()
+    for thread in threads:
+        thread.join(TIMEOUT_SECONDS)
+        assert not thread.is_alive(), f"{thread.name} never finished"
+    return outcomes
+
+
+def _stored(root: Path, job_id: UUID) -> dict[UUID, AssetProgress]:
+    workspace = WorkspaceService.open(root)
+    try:
+        return JobService(workspace).get(job_id).progress
+    finally:
+        workspace.close()
+
+
+def test_two_writers_moving_different_assets_of_one_job_both_land(tmp_path: Path) -> None:
+    """The #302 report, in the smallest arrangement that produced it.
+
+    Three concurrent moves over one job answered `200`, `200`, `200` and moved
+    one asset. Two of them are enough to show it: both read the same progress
+    map, and before this both wrote the whole map back.
+    """
+    root = tmp_path / "ws"
+    job_id, assets = _open_job(root)
+
+    outcomes = _raced(
+        root,
+        [
+            (job_id, assets[0], AssetProgress.SKIPPED),
+            (job_id, assets[1], AssetProgress.SKIPPED),
+        ],
+    )
+
+    assert not [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
+    progress = _stored(root, job_id)
+    assert progress[assets[0]] is AssetProgress.SKIPPED
+    assert progress[assets[1]] is AssetProgress.SKIPPED
+    assert progress[assets[2]] is AssetProgress.UNANNOTATED
+
+
+def test_the_loser_of_a_race_for_one_asset_is_refused_rather_than_dropped(
+    tmp_path: Path,
+) -> None:
+    """One asset, two writers, two different destinations — one of them refused.
+
+    Both moves are legal from `unannotated`, so nothing here is a transition
+    error: the second writer's move was legal *when it read* and is not any more.
+    Whichever wins, exactly one write is stored and the other writer is told so
+    rather than being answered success for a write that is not there.
+    """
+    root = tmp_path / "ws"
+    job_id, assets = _open_job(root)
+
+    outcomes = _raced(
+        root,
+        [
+            (job_id, assets[0], AssetProgress.SKIPPED),
+            (job_id, assets[0], AssetProgress.ANNOTATED),
+        ],
+    )
+
+    refused = [outcome for outcome in outcomes if isinstance(outcome, StaleWrite)]
+    assert len(refused) == 1, outcomes
+    assert "read it again and decide again" in str(refused[0])
+
+    lost_second = isinstance(outcomes[1], StaleWrite)
+    winner = AssetProgress.SKIPPED if lost_second else AssetProgress.ANNOTATED
+    assert _stored(root, job_id)[assets[0]] is winner
+
+
+def test_two_writers_making_the_same_move_are_both_answered_yes(tmp_path: Path) -> None:
+    """Losing a race to somebody who did what you asked for is not a refusal.
+
+    `mark` treats re-stating a state an asset is already in as a no-op, and
+    concurrency does not change what that means: the caller's intent holds, so
+    a `StaleWrite` here would be an error about nothing.
+    """
+    root = tmp_path / "ws"
+    job_id, assets = _open_job(root)
+
+    outcomes = _raced(
+        root,
+        [
+            (job_id, assets[0], AssetProgress.SKIPPED),
+            (job_id, assets[0], AssetProgress.SKIPPED),
+        ],
+    )
+
+    assert not [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
+    assert _stored(root, job_id)[assets[0]] is AssetProgress.SKIPPED

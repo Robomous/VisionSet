@@ -52,6 +52,7 @@ from visionset.kernel.errors import (
     JobNotComplete,
     JobNotFound,
     ProjectNotFound,
+    StaleWrite,
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
@@ -230,6 +231,7 @@ class JobService:
             AssetNotInJob: the job does not carry that asset.
             BatchNotInAnnotation: the job's batch is not open for annotation.
             InvalidTransition: the asset cannot move from where it is to there.
+            StaleWrite: somebody moved this asset while this call was deciding.
         """
         with self._workspace.unit_of_work() as uow:
             job = self.require_job(uow, job_id)
@@ -249,11 +251,26 @@ class JobService:
             require_move(
                 ASSET_PROGRESS_TRANSITIONS, current, progress, f"asset {asset_id} in job {job.id}"
             )
-            # Rewriting an existing key keeps its place in the dict, which keeps
-            # its stored ``position`` — which is what makes next_pending stable.
-            return uow.annotation_jobs.update(
-                job.model_copy(update={"progress": {**job.progress, asset_id: progress}})
-            )
+            # One asset's row, guarded on the value this transition was judged
+            # against — never ``annotation_jobs.update``, which replaces the whole
+            # job and would put back every *other* asset as it was read. A
+            # returning value means the guard failed, i.e. somebody moved this
+            # asset while the lines above were deciding.
+            stored = uow.set_asset_progress(job.id, asset_id, expected=current, progress=progress)
+            if stored is not None:
+                if stored is progress:
+                    # Somebody else made the same move first. The caller's intent
+                    # holds, which is the no-op above arriving a moment later.
+                    return self.require_job(uow, job_id)
+                raise StaleWrite(
+                    f"asset {asset_id} in job {job.id} was {current.value!r} when this move was "
+                    f"decided and is {stored.value!r} now, so moving it to {progress.value!r} "
+                    f"would overwrite a change nobody here saw; read it again and decide again"
+                )
+            # Re-read rather than patching the map in hand: this transaction holds
+            # the write lock, so what it sees now is its own write plus everything
+            # that committed before it — the freshest honest answer there is.
+            return self.require_job(uow, job_id)
 
     # --- lookups shared by the operations above ----------------------------
 

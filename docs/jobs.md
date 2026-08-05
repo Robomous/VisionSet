@@ -100,6 +100,46 @@ deliberately unlike `BatchService.approve`, where a second call would re-partiti
 is legal, and a second spelling of it would only drift. Friendlier wrappers belong on the
 surfaces — a CLI `visionset job skip` maps onto this.
 
+## Two writers on one job, and what a success means (#302)
+
+A person annotating while an MCP agent works the same job is the ordinary case here, not an
+edge one — so it is worth saying exactly what the kernel promises about it.
+
+**A write that returns has happened.** It is not "was attempted", and it is not "was legal when
+it was decided". That was not true before: `mark` read the whole `AnnotationJob`, changed one
+entry of `progress`, and wrote the entity back — and `Repository.update` replaces a whole row.
+Three overlapping moves over *different* assets of one job each read the same map, each wrote
+back its own copy of it, and the last one won. Three successes, one asset moved, nothing
+refused anywhere. SQLite's single writer does not prevent it: serializing the *writes* is not
+serializing read-modify-write, and pysqlite defers `BEGIN` to the first write, so none of those
+reads is inside a transaction at all.
+
+Two things close it, and they are different halves:
+
+- **Progress is written one asset at a time**, through `UnitOfWork.set_asset_progress` — the
+  port's one write that is not a repository, for the reason `batches_holding` is its one read
+  that is not. Two moves over different assets are two rows and cannot conflict at all.
+- **The write is guarded on the value the move was decided against**, in the same statement that
+  writes it. There is no version column: the contended datum *is* the progress, so a version
+  would only be a second name for it. A guard that fails raises `StaleWrite`, naming both the
+  state the caller read and the state that is actually there, so a re-read and a resubmit is the
+  entire remedy.
+
+`StaleWrite` is not `InvalidTransition`, and the difference is worth keeping: that one means the
+move is not in the table at all, this one means it was in the table from where the caller read
+and the state has moved since. A losing writer whose target is *already stored* is not refused —
+the no-op rule above does not stop meaning what it means because somebody else got there first.
+
+Writing labels takes the same guard, for the same reason: `AnnotationService` moves progress
+through `progress_after_annotating`, and two annotators labeling two assets of one job used to
+put back each other's progress. That service is all-or-nothing, so a guard that fails there rolls
+the labels back with it — which is the honest outcome, since the move they implied was derived
+from a state nobody is in.
+
+A consequence worth stating: **no write of a job touches its assets' progress.**
+`JobService.complete` reads a job, changes `state` and saves it, and that save no longer rebuilds
+the per-asset rows from the map it read.
+
 ## What a job and an asset say they allow
 
 `JobOut` and `BatchAssetOut` carry `allowed_actions`, derived in
