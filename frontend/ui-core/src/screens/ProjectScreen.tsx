@@ -268,6 +268,10 @@ export function ProjectScreen({
             project={loaded}
             onIngest={onIngest}
             onOpenBatch={onOpenBatch}
+            // The schema tab owns a filled "Save version" of its own, and it is
+            // that view's forward action. Telling the header lets it step back,
+            // so the page still shows exactly one filled button (#323).
+            panelOwnsTheAction={current === "schema"}
             {...(onTabChange === undefined ? {} : { onOpenDataset: () => onTabChange("dataset") })}
             onRename={() => setRenaming(true)}
             onDelete={() => setDeleting(true)}
@@ -523,12 +527,23 @@ function ProjectHeader({
   onOpenBatch,
   onRename,
   onDelete,
+  panelOwnsTheAction = false,
 }: {
   readonly project: Project;
   readonly onIngest?: () => void;
   readonly onOpenBatch?: (batchId: string) => void;
   readonly onRename: () => void;
   readonly onDelete: () => void;
+  /**
+   * The open tab carries its own filled action, so this header must not.
+   *
+   * `DESIGN.md` gives a page one filled button and the header normally owns it,
+   * which is why every panel's own header action is `secondary`. The schema
+   * editor is the exception worth making: "Save version" commits work a person
+   * has just typed, and a commit control that is not the loudest thing on the
+   * screen is the wrong trade. So the header defers instead.
+   */
+  readonly panelOwnsTheAction?: boolean;
 }): JSX.Element {
   const schema = useActiveSchema(project.id);
   const stats = useProjectStats(project.id);
@@ -583,16 +598,20 @@ function ProjectHeader({
 
       <div className="flex items-center gap-2">
         {annotate !== undefined && (
-          <Button variant="primary" data-testid="go-annotate" onClick={annotate}>
+          <Button
+            variant={panelOwnsTheAction ? "secondary" : "primary"}
+            data-testid="go-annotate"
+            onClick={annotate}
+          >
             <PenLine className="size-4" aria-hidden="true" />
             Annotate
           </Button>
         )}
         {onIngest !== undefined && (
           <Button
-            // Primary only when Annotate is not, so the page always has exactly
-            // one primary action rather than two or none.
-            variant={annotate === undefined ? "primary" : "secondary"}
+            // Primary only when nothing else on the page is, so there is exactly
+            // one filled action rather than two or none.
+            variant={annotate === undefined && !panelOwnsTheAction ? "primary" : "secondary"}
             data-testid="go-ingest"
             onClick={onIngest}
           >

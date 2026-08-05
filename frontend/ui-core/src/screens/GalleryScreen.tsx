@@ -863,10 +863,12 @@ function Timeline({
  * A timeline cell's fill, from the same four dot styles the cards use.
  *
  * One vocabulary for both, so a colour on the strip and a dot on a card cannot
- * come to mean different things. `primary` is the only accent this design system
- * has (`DESIGN.md` principle 3), so settled work is the accent and everything else
- * is a neutral surface — the distinction a person needs at a glance is *done vs
- * not*, and the exact state is one hover away in the label.
+ * come to mean different things. So the strip is a monochrome ramp off `primary`
+ * — settled work is the solid action colour, partial work is it at 40%, and the
+ * rest are neutral surfaces. The distinction a person needs at a glance is *done
+ * vs not*, and the exact state is one hover away in the label. #323 made this
+ * read better rather than worse: a ramp of one near-black is a quantity, where a
+ * ramp of a brand colour looked like four different meanings.
  */
 function cellClass(dot: DotStyle, isHighlighted: boolean): string {
   const base = "h-full min-w-0 flex-1 ";

@@ -13,27 +13,36 @@ description: >
   with a test asserting the two agree in both directions. This file is the prose
   half; those two are the running half.
 colors:
-  # Brand
-  primary: "#eb5a47"            # Robomous orange — accent only (CTAs, active states, focus ring)
-  primary-hover: "#d94a37"
+  # Primary action — a near-black with an indigo undertone. NOT the brand.
+  primary: "#1e2130"            # filled buttons, active tab rule, active tool
+  primary-hover: "#2a2d40"
+  primary-foreground: "#ffffff"
+  # Brand — Robomous coral, TWO sites in the whole product (see "Where the brand is")
+  brand: "#e85d44"              # the rail's wordmark, and the progress bar's fill
   # Surfaces
-  background: "#ffffff"
-  card: "#ffffff"
+  background: "#fafafb"         # the page
+  card: "#ffffff"               # a surface sitting on it
   popover: "#ffffff"
-  muted: "#f6f8fa"              # subtle fills, hover backgrounds, secondary surfaces
-  stage: "#e1e6eb"              # the annotator's surround — the neutral a picture is judged against
+  muted: "#f3f4f6"              # subtle fills, hover backgrounds, secondary surfaces
+  disabled: "#f3f4f6"           # a disabled control's fill
+  stage: "#e4e6ec"              # the annotator's surround — the neutral a picture is judged against
   # Text
-  foreground: "#252949"         # primary text (Robomous ink)
-  muted-foreground: "#57606a"   # secondary / meta text
+  foreground: "#1b1d28"         # primary text
+  muted-foreground: "#6b6e7e"   # secondary / meta text, inactive tabs
+  disabled-foreground: "#a0a3b1"
   # Lines & focus
-  border: "#d0d7de"
-  input: "#d0d7de"
-  ring: "#eb5a47"
-  # Status
-  destructive: "#dc2626"        # errors, destructive actions
-  # Dark chrome (app rail / sidebar)
-  sidebar: "#1f2937"
-  sidebar-accent-bg: "#2d3748"
+  border: "#e7e8ec"             # hairlines, dividers
+  input: "#dcdde4"              # input and secondary-button borders — a step darker
+  ring: "rgba(30, 33, 48, 0.35)"  # the action colour at 35%
+  # Status — desaturated, to sit on a near-monochrome page
+  success: "#2e7d5b"            # completed states
+  warning: "#b98217"
+  destructive: "#c93b3b"        # errors, destructive actions
+  # Dark chrome (app rail / sidebar) — the same near-black as `primary`
+  sidebar: "#1e2130"
+  sidebar-accent: "#2a2d40"     # rail hover, and the ACTIVE rail item's fill
+  sidebar-strong: "#161823"
+  sidebar-muted: "#8b8fa3"      # inactive rail icons and labels
   sidebar-foreground: "#ffffff"
 typography:
   page-title:
@@ -83,10 +92,16 @@ layout:
 
 ## Overview
 
-VisionSet's interface is **GitHub-inspired, content-first, and accessible**. The screen is
-mostly calm neutral surfaces and ink-colored text, with a single Robomous orange
-(`#eb5a47`) reserved for things the user can act on: primary buttons, active tools and
-navigation, links, and focus rings. A dark rail (`#1f2937`) frames a bright content area.
+VisionSet's interface is **neutral-first, content-first, and accessible**. The screen is
+almost monochrome — cool greys with a faint indigo undertone — and the colour a person can
+act on is a **near-black** (`#1e2130`): filled buttons, the active tab's rule, the active
+tool. A dark rail in that same near-black frames a bright content area.
+
+**Robomous coral (`#e85d44`) is not the interface's colour.** It appears in exactly two
+places (see *Where the brand is*, below), and everything else that used to wear it now
+wears the near-black. The reasoning is in the token file and worth repeating here: an
+interface whose every button is brand-coloured spends the brand on "Cancel". Making colour
+scarce is what lets the two places it survives actually mean something.
 
 **Design principles** (inherited from v1, kept):
 
@@ -102,7 +117,8 @@ navigation, links, and focus rings. A dark rail (`#1f2937`) frames a bright cont
    which is Radix + Tailwind — the same constraint from the other end. FontAwesome is v1
    legacy and does not come along.
 3. **Content over chrome.** Subtle borders, minimal shadows, no gradients, quiet
-   hover/focus effects. Orange is an accent, never a surface fill. Whitespace is generous
+   hover/focus effects. The interface is neutral; the brand is not a surface fill and is not
+   an interaction colour at all. Whitespace is generous
    on forms and lists, where the content is a few things a person reads one at a time —
    and **is not a substitute for information**: see principle 7, which governs the
    surfaces whose content is a dataset.
@@ -142,23 +158,66 @@ Map intent → token; never invent a value:
 
 | Intent | Token |
 |--------|-------|
-| Primary action / accent / active tool | `primary` (`#eb5a47`), hover `primary-hover` |
-| Active navigation (rail item, tab underline) | `primary` — see **Tabs** below |
+| Primary action / active tool | `primary` (`#1e2130`), hover `primary-hover` |
+| Active tab rule | `primary` — see **Tabs** below |
 | Accent tint (chips, selected rows) | `primary` at 10% alpha, border `primary` |
-| Page / app surface | `background` |
-| Card / popover surface | `card` / `popover` |
-| Subtle fill / hover / secondary surface | `muted` (`#f6f8fa`) |
-| The stage a picture sits on (annotator surround) | `stage` (`#e1e6eb`) |
-| Primary text | `foreground` (`#252949`) |
-| Secondary / meta text | `muted-foreground` (`#57606a`) |
-| Borders & dividers | `border` (`#d0d7de`) |
-| Focus ring | `ring` (= primary) |
-| Errors / destructive | `destructive` (`#dc2626`) |
-| Dark rail chrome | `sidebar` (`#1f2937`), text white |
+| Page surface | `background` (`#fafafb`) |
+| Card / popover surface | `card` / `popover` (`#ffffff`) |
+| Subtle fill / hover / secondary surface | `muted` (`#f3f4f6`) |
+| A disabled control | `disabled` fill, `disabled-foreground` ink, **no border** |
+| The stage a picture sits on (annotator surround) | `stage` (`#e4e6ec`) |
+| Primary text | `foreground` (`#1b1d28`) |
+| Secondary / meta text, inactive tabs | `muted-foreground` (`#6b6e7e`) |
+| Borders & dividers | `border` (`#e7e8ec`) |
+| Input / secondary-button border | `input` (`#dcdde4`) |
+| Focus ring | `ring` — the action colour at 35% |
+| Completed / success | `success` (`#2e7d5b`) |
+| Warning | `warning` (`#b98217`) |
+| Errors / destructive | `destructive` (`#c93b3b`) |
+| Dark rail chrome | `sidebar` (`#1e2130`); active item `sidebar-accent` + white; the rest `sidebar-muted` |
+| The brand | `brand` (`#e85d44`) — **two sites only**, below |
 
-Success has no dedicated token yet; v1's documented exception (`text-green-600` for the
-"saved" indicator) carries over as *the* exception until a token is added. The palette is
-defined for light mode; dark mode is a post-beta concern.
+The palette is defined for light mode; dark mode is a post-beta concern.
+
+### Where the brand is
+
+Coral appears in the product in exactly two places, and adding a third is a design
+decision rather than a styling one — raise it in review, do not put it in a diff:
+
+1. **The wordmark** in the rail (`frontend/app/src/shell/AppShell.tsx`).
+2. **The ingest progress bar's fill** (`Progress` in `frontend/ui-core/src/primitives/Feedback.tsx`).
+
+A progress bar is the one piece of chrome a person watches rather than reads, which is
+where the coral buys attention instead of spending it. The styleguide shows a `brand`
+swatch as well — a styleguide is where a value is inspected, not where it is used.
+
+To check the invariant:
+
+```
+git grep -nE '\b(bg|text|border|ring|fill|stroke)-brand\b' -- frontend
+```
+
+Three hits is the expected state: the two above, plus the styleguide swatch.
+
+### One filled button per view
+
+Principle 8 says a screen answers "what do I do next?" with exactly one primary CTA. With
+a near-black primary the rule is *visual* as well as structural: a filled button is now the
+loudest thing on a grey page, so two of them compete far more than two coral ones did.
+Sibling actions are the outlined `secondary` variant — `card` fill, `input` border,
+`foreground` ink. A row action inside a table is per-row, never the view's forward action,
+so those are `secondary` too.
+
+The known exceptions, all legitimate: a modal `Dialog`'s confirm button (it overlays the
+page, so it is its own view), and the steps of the ingest stepper (only the active step
+renders).
+
+### Success and the exception that no longer exists
+
+`success` (`#2e7d5b`) is a real token as of #323. v1's documented exception — a hardcoded
+`text-green-600` for the "saved" indicator — is retired with it: there is no longer a
+sanctioned hardcoded colour anywhere in the frontend, and `design_tokens.test.mjs` was
+already refusing one.
 
 ## Typography
 
@@ -259,12 +318,13 @@ forget: a `Tabs` which is not a flex column at all still spaces correctly. Asser
 measurement — the styleguide's two specimens and both real screens — rather than by a
 class string, since a class assertion would have seen both rules and been satisfied.
 
-**The active underline is `primary`, and that is not an exception to the accent rule.**
-The rule reserves orange for "primary buttons, active tools and **navigation**" — the
-rail's active item is a solid `bg-primary` fill, and an open section is the same kind of
-statement. A 2px rule is also not a surface fill, which is the accent rule this could
-have broken. (An earlier docstring in `Tabs.tsx` argued the opposite and cited the rail
-as its precedent; the rail says the reverse.)
+**The active underline is `primary`**, the same near-black as a filled button, so the
+section you are in looks like the rest of the interface rather than like an advertisement.
+The active label is `foreground` at the base `font-medium`; inactive labels are
+`muted-foreground`. There is deliberately **no extra weight bump** on the active tab —
+colour and the rule already carry it, and a second signal reflows the row's metrics for
+nothing. (Two earlier `Tabs.tsx` docstrings argued over whether this rule could be orange.
+#323 settled it by removing the orange: `primary` is not the brand any more.)
 
 Focus is **not** styled per variant: `styles.css`'s base layer gives every
 `:focus-visible` element a 2px `ring` outline, and an outline is painted outside the box,
@@ -374,7 +434,7 @@ The page the reference design shows (#56), with measurements verified in v1's so
   fullscreen (Maximize2) · help.
 - **Tool strip**: floating at the canvas's left edge — 48px (`w-12`) column, `muted`
   surface, `border`, 12px radius, 8px padding; 36px icon buttons; **active tool = primary
-  variant** (orange), inactive = ghost; a `h-px w-6` divider; help at the bottom.
+  variant** (the near-black), inactive = ghost; a `h-px w-6` divider; help at the bottom.
   Tooltips open right with the shortcut ("Select (V)", "Box (B)", "Polygon (P)").
   Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow.
 - **Side panel** (#126): 288px (`w-72`) column, `muted` surface, `border`, 12px radius;

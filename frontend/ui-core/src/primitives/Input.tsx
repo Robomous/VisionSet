@@ -22,9 +22,14 @@ import {
 
 import { cn } from "../lib/cn";
 
+// `card`, not `background`: a field is a surface you type into, and #323 made the
+// page a faint grey, so `bg-background` would render every input as a slightly
+// dirty version of the page rather than as a thing sitting on it. Disabled takes
+// the same neutral skin `Button` does — `opacity-50` over a grey page is muddy.
 const FIELD =
-  "w-full rounded-md border border-input bg-background px-3 text-body text-foreground " +
-  "placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50";
+  "w-full rounded-md border border-input bg-card px-3 text-body text-foreground " +
+  "placeholder:text-muted-foreground disabled:cursor-not-allowed " +
+  "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {

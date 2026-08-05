@@ -18,7 +18,7 @@
  *
  * The page was a debug surface in dark inline styles that predated the design
  * alignment. It now follows the repo-root `DESIGN.md` — light GitHub-style
- * surfaces, Robomous orange strictly as an accent, one type scale — with the tool
+ * surfaces, a near-black action colour and no brand at all, one type scale — with the tool
  * strip and the zoom readout borrowed from the annotation page M5 builds (#56), so
  * the showcase and the product read as one thing. `theme.ts` holds the tokens and
  * records the single deliberate exception (the canvas well stays dark).

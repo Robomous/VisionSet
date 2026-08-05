@@ -68,17 +68,32 @@ describe("the design tokens", () => {
     expect([...declared.keys()].sort()).toEqual(Object.keys(DESIGN_TOKENS).sort());
   });
 
-  it("carries the Robomous accent and the GitHub-style neutrals DESIGN.md records", () => {
+  it("carries the near-black action and the cool neutrals DESIGN.md records", () => {
     // The four values a restyle would most plausibly get wrong, pinned by name so
     // a diff that changes them has to change a test that says what they are.
-    expect(COLOR.primary).toBe("#eb5a47");
-    expect(COLOR.foreground).toBe("#252949");
-    expect(COLOR.border).toBe("#d0d7de");
-    expect(COLOR.muted).toBe("#f6f8fa");
+    expect(COLOR.primary).toBe("#1e2130");
+    expect(COLOR.foreground).toBe("#1b1d28");
+    expect(COLOR.border).toBe("#e7e8ec");
+    expect(COLOR.muted).toBe("#f3f4f6");
   });
 
-  it("makes the accent the focus ring, so the two cannot drift apart", () => {
-    expect(COLOR.ring).toBe(COLOR.primary);
+  it("keeps the brand out of the action colour, which is the point of #323", () => {
+    // The palette's whole argument: coral is not what a button is made of. If
+    // these ever converge, the neutral-first decision has been reverted by
+    // accident and every screen goes coral again at once.
+    expect(COLOR.brand).toBe("#e85d44");
+    expect(COLOR.primary).not.toBe(COLOR.brand);
+  });
+
+  it("derives the focus ring from the action colour, so the two cannot drift apart", () => {
+    // They are no longer one value — a solid near-black ring two pixels off a
+    // near-black button is a smudge — so the relationship is asserted instead of
+    // being structural. `#1e2130` is (30, 33, 48).
+    const channels = COLOR.primary
+      .slice(1)
+      .match(/../g)
+      ?.map((pair) => Number.parseInt(pair, 16));
+    expect(COLOR.ring).toBe(`rgba(${channels?.join(", ")}, 0.35)`);
   });
 
   it("keeps 14px as the body size the whole scale was measured against", () => {

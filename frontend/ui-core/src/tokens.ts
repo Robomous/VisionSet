@@ -13,50 +13,67 @@
  * `_MEDIA_TYPES` against `ImageFormat`. A rule that lives in two places is only
  * safe when a machine compares them.
  *
- * Every value is verified against v1's `frontend/src/styles/global.css` and
- * recorded in the repository-root `DESIGN.md`, which is the prose half of this
- * contract and the file to read before building any screen.
+ * Every value is recorded in the repository-root `DESIGN.md`, which is the prose
+ * half of this contract and the file to read before building any screen. The
+ * neutrals and the near-black action came from #323; the coral that preceded
+ * them was v1's, and survives only as `brand`.
  */
 
 /**
  * Colour, by **intent**. A component names the intent; only this file and
  * `styles.css` know a hex.
  *
- * Robomous orange is an *accent*: primary buttons, the active tool, links and the
- * focus ring. It is never a surface fill, and `DESIGN.md` says so in the one place
- * a reviewer will look.
+ * The palette is neutral-first (#323): a near-monochrome cool grey interface, a
+ * near-black `primary` for the one action a view is about, and Robomous coral
+ * held back to `brand` — two sites in the whole product, both named in
+ * `DESIGN.md`. Colour is scarce here so that the places it appears mean
+ * something.
  */
 export const COLOR = {
-  primary: "#eb5a47",
-  "primary-hover": "#d94a37",
+  primary: "#1e2130",
+  "primary-hover": "#2a2d40",
   "primary-foreground": "#ffffff",
 
-  background: "#ffffff",
-  foreground: "#252949",
+  // Robomous coral. The wordmark and the ingest progress fill, and nothing else.
+  brand: "#e85d44",
+
+  background: "#fafafb",
+  foreground: "#1b1d28",
   card: "#ffffff",
-  "card-foreground": "#252949",
+  "card-foreground": "#1b1d28",
   popover: "#ffffff",
-  "popover-foreground": "#252949",
-  muted: "#f6f8fa",
-  "muted-foreground": "#57606a",
+  "popover-foreground": "#1b1d28",
+  muted: "#f3f4f6",
+  "muted-foreground": "#6b6e7e",
+
+  // A disabled control: `muted`'s value under its own name, because what marks
+  // one is the ink and the missing border rather than a colour of its own.
+  disabled: "#f3f4f6",
+  "disabled-foreground": "#a0a3b1",
 
   // The stage a picture sits on (#185) — the annotator's surround. Its own role:
   // not a subtle fill and not a surface content sits in, but the neutral a
   // photograph is judged against.
-  stage: "#e1e6eb",
+  stage: "#e4e6ec",
 
-  border: "#d0d7de",
-  input: "#d0d7de",
-  ring: "#eb5a47",
+  border: "#e7e8ec",
+  input: "#dcdde4",
+  // The action colour at 35%. Same RGB channels as `primary`, asserted in
+  // `tokens.test.ts` — a solid near-black ring on a near-black button is a smudge.
+  ring: "rgba(30, 33, 48, 0.35)",
 
-  destructive: "#dc2626",
+  success: "#2e7d5b",
+  warning: "#b98217",
+  destructive: "#c93b3b",
   "destructive-foreground": "#ffffff",
 
   // The dark rail (#58). Bright content, dark chrome — the one place a large
-  // surface is deliberately not `background`.
-  sidebar: "#1f2937",
-  "sidebar-accent": "#2d3748",
-  "sidebar-strong": "#111827",
+  // surface is deliberately not `background`, and the same near-black as
+  // `primary` so the rail and a filled button read as one family.
+  sidebar: "#1e2130",
+  "sidebar-accent": "#2a2d40",
+  "sidebar-strong": "#161823",
+  "sidebar-muted": "#8b8fa3",
   "sidebar-foreground": "#ffffff",
 } as const;
 

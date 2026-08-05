@@ -26,20 +26,61 @@
 @source ".";
 
 @theme {
-  /* Brand — an accent, never a surface fill. */
-  --color-primary: #eb5a47;
-  --color-primary-hover: #d94a37;
+  /*
+   * The primary action: a near-black with an indigo undertone (#323).
+   *
+   * It is not the brand colour and is deliberately not read as one. An interface
+   * whose every button is brand-coloured spends the brand on "Cancel"; a
+   * near-black spends nothing, and leaves the eye free to find the one place
+   * colour actually means something.
+   */
+  --color-primary: #1e2130;
+  --color-primary-hover: #2a2d40;
   --color-primary-foreground: #ffffff;
 
-  /* Surfaces and ink. */
-  --color-background: #ffffff;
-  --color-foreground: #252949;
+  /*
+   * Robomous coral, and the whole reason the palette above is grey.
+   *
+   * It appears in exactly **two** places in the product — the wordmark in the
+   * rail, and the ingest progress bar's fill — and `DESIGN.md` names both. That
+   * scarcity is the token's contract, not a coincidence of the current screens:
+   * a third `bg-brand` is a design decision, not a styling one, and belongs in a
+   * review rather than in a diff.
+   */
+  --color-brand: #e85d44;
+
+  /*
+   * Surfaces and ink, on one cool ramp.
+   *
+   * `background` is the page and `card` the thing sitting on it, which is why
+   * they are no longer the same white: a card with a hairline on a white page
+   * reads as a box drawn on nothing, and the same card on `#fafafb` reads as a
+   * surface. The ramp runs page → surface → subtle fill → hairline → input line.
+   */
+  --color-background: #fafafb;
+  --color-foreground: #1b1d28;
   --color-card: #ffffff;
-  --color-card-foreground: #252949;
+  --color-card-foreground: #1b1d28;
   --color-popover: #ffffff;
-  --color-popover-foreground: #252949;
-  --color-muted: #f6f8fa;
-  --color-muted-foreground: #57606a;
+  --color-popover-foreground: #1b1d28;
+  --color-muted: #f3f4f6;
+  --color-muted-foreground: #6b6e7e;
+
+  /*
+   * A disabled control.
+   *
+   * `disabled` carries the same value as `muted` today, and that is the point
+   * rather than an oversight: a disabled control is not a new colour, it is the
+   * absence of one. What marks it is the ink and the missing border, which is
+   * why the pair is named for its intent — a later change to the hover fill must
+   * not silently restyle every disabled button along with it.
+   *
+   * `DESIGN.md` principle 9 still stands: this is what a disabled control looks
+   * like when one is warranted (a mutation in flight), never a licence to render
+   * a bare grey button in place of an explanation.
+   */
+  --color-disabled: #f3f4f6;
+  --color-disabled-foreground: #a0a3b1;
 
   /*
    * The stage a picture sits on (#185): the surround around an asset in the
@@ -48,21 +89,41 @@
    * photograph is judged against, and it has to stay distinguishable from
    * `background` so an asset with white borders still shows where it ends.
    */
-  --color-stage: #e1e6eb;
+  --color-stage: #e4e6ec;
 
-  /* Lines and focus. */
-  --color-border: #d0d7de;
-  --color-input: #d0d7de;
-  --color-ring: #eb5a47;
+  /*
+   * Lines and focus.
+   *
+   * `input` is a step darker than `border` because a hairline that separates and
+   * a hairline that says "you can type here" are different claims, and the
+   * secondary button borrows the second one.
+   *
+   * The ring is the action colour at 35%, not the action colour: a solid
+   * near-black outline two pixels off a near-black button is a smudge. Its RGB
+   * channels are `--color-primary`'s, and `tokens.test.ts` asserts so, which is
+   * what keeps the two from drifting apart now that they are not one value.
+   */
+  --color-border: #e7e8ec;
+  --color-input: #dcdde4;
+  --color-ring: rgba(30, 33, 48, 0.35);
 
-  /* Status. Success has no token yet — `DESIGN.md` records the one exception. */
-  --color-destructive: #dc2626;
+  /*
+   * Status, desaturated to sit on a near-monochrome page. Each is used as ink
+   * and as a 10%-alpha fill behind its own border, never as a saturated block.
+   */
+  --color-success: #2e7d5b;
+  --color-warning: #b98217;
+  --color-destructive: #c93b3b;
   --color-destructive-foreground: #ffffff;
 
-  /* The dark rail (#58). */
-  --color-sidebar: #1f2937;
-  --color-sidebar-accent: #2d3748;
-  --color-sidebar-strong: #111827;
+  /*
+   * The dark rail (#58) — now the same near-black as the primary action, so the
+   * rail and a filled button are recognisably one family rather than two darks.
+   */
+  --color-sidebar: #1e2130;
+  --color-sidebar-accent: #2a2d40;
+  --color-sidebar-strong: #161823;
+  --color-sidebar-muted: #8b8fa3;
   --color-sidebar-foreground: #ffffff;
 
   /* Radius. `md` is the default — buttons, inputs, badges. */
