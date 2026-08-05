@@ -264,9 +264,10 @@ If it is ever wanted it arrives as `--segments FILE.json`.
 `--jobs-of` carries `min=1` at the Click layer, because `BySize.size` is `gt=0` and a pydantic error
 is not a `VisionSetError` — it would print a traceback rather than a sentence.
 
-**There is no `batch create`, and no membership editing**, for the reason there is none over HTTP: a
-batch is born from an ingest. `BatchService` still has all four methods; this is a decision about
-the surfaces.
+**There is no `batch create`, and no membership editing.** Both are on the API and on MCP (#281),
+and the CLI is the one surface where they have found no caller: a batch is born from an ingest, and
+picking an arbitrary subset of assets by pasting UUIDs into a shell is what a gallery exists to do
+instead. `BatchService` still has all four methods; this is a decision about this surface alone.
 
 `promote` is here rather than under a dataset group because `DatasetService.promote` takes a *batch*
 id and derives the dataset from it — the same argument its route makes.
@@ -285,13 +286,45 @@ POST /batches/{id}/complete                          → 200 BatchOut
 POST /batches/{id}/promote                           → 200 AssetPage, the assets that entered
 GET  /batches/{id}/jobs                              → 200 JobPage
 GET  /batches/{id}/assets?limit=&offset=             → 200 BatchAssetPage
+
+POST   /projects/{id}/batches  { "name": …, "asset_ids": […] }  → 201 BatchOut
+POST   /batches/{id}/assets    { "asset_ids": […] }             → 200 BatchMembershipOut
+DELETE /batches/{id}/assets?id=&id=                             → 200 BatchMembershipOut
 ```
 
-**A batch is born from an ingest, not from a POST.** There is no create, no delete and no
-membership route: an ingest run puts what it gathered into a batch (`batch_name` for a new one,
-`batch_id` to join an existing draft — see [ingest.md](ingest.md)), and curating a batch out of
-an arbitrary subset of assets has no caller yet. `create`, `delete`, `add_assets` and
-`remove_assets` are still on the SDK; the API grows a route when somebody needs one.
+**A batch is born from an ingest in the ordinary case**, and that has not changed: an ingest run
+puts what it gathered into a batch (`batch_name` for a new one, `batch_id` to join an existing
+draft — see [ingest.md](ingest.md)). What the gallery needed and the API did not have was curating
+one by hand, so creation landed with #312 and membership editing with #281. A *delete* route is
+still absent; `BatchService.delete` has the method.
+
+### Editing membership
+
+Both routes are `draft` only, which is what `edit_membership` in a batch's `allowed_actions`
+declares — read the declaration, do not re-derive it. Past `draft` they answer 409
+`BATCH_NOT_EDITABLE`, and no flag lifts it: the batch is already cut into jobs against a pinned
+schema, so an added asset would belong to no job and a removed one would leave a job describing
+work that no longer exists. From then on the way to exclude an asset is to mark it `skipped`.
+
+The ids go in a **body** to add and in **repeated query parameters** to remove — the shape
+`DELETE /jobs/{id}/annotations` chose, because a request body on DELETE is legal in OpenAPI 3.1
+and stripped by enough proxies to be a bad thing to require. Both refuse an empty list: an edit
+naming no asset would be a 200 that did nothing, which a caller reads as success.
+
+The response is the batch **and** `changed` — the ids this call actually wrote:
+
+```json
+{ "batch": { "asset_count": 47, "…": "…" }, "changed": ["…", "…"] }
+```
+
+Both directions are idempotent, and `changed` is what makes that legible rather than lossy:
+adding an asset the batch already holds, or removing one it does not, is a `200` with
+`"changed": []`. Reporting only the final state would leave "removed 3" and "3 were already
+gone" indistinguishable.
+
+**Removing membership is not deleting an asset.** The asset stays in its project, keeps its
+annotations and its blob, and stays in every other batch that carries it. Deleting an asset from a
+project is not an operation this API has at all.
 
 The lifecycle *is* on the wire, because nothing downstream is reachable without it — an
 annotation may only be written into a batch that is `in_annotation`. Each move keeps the

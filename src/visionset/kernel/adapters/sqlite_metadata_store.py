@@ -16,7 +16,7 @@ place rather than a habit spread across several.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final, cast
@@ -28,12 +28,15 @@ from sqlalchemy import (
     create_engine,
     delete,
     event,
+    func,
     insert,
     inspect,
+    literal,
     select,
     text,
     update,
 )
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import URL, CursorResult
 from sqlalchemy.exc import DatabaseError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
@@ -194,9 +197,9 @@ class SqlRepository[T: m.Entity]:
     def _row(self, entity_id: UUID) -> Any:
         return self._session.get(self._mapping.row, entity_id)
 
-    def _sync_children(self, entity: T) -> None:
-        if self._mapping.sync_children is not None:
-            self._mapping.sync_children(self._session, entity)
+    def _write_children(self, entity: T, *, inserting: bool) -> None:
+        if self._mapping.write_children is not None:
+            self._mapping.write_children(self._session, entity, inserting=inserting)
 
     def _flush(self) -> None:
         # Only the constraint case is caught here, so that a caller wrapping a
@@ -215,7 +218,14 @@ class SqlRepository[T: m.Entity]:
                 f"{self._mapping.row.__tablename__} {entity.id} already exists"
             )
         self._session.add(self._mapping.to_row(entity))
-        self._sync_children(entity)
+        # Flushed **before** the children, because they carry a foreign key to
+        # the row just added and there is no ORM relationship for SQLAlchemy to
+        # order the two by. This used to happen by accident: every child writer
+        # began with a `session.execute(delete(...))`, whose autoflush pushed the
+        # parent out first. #281 removed the batch's delete and the accident with
+        # it, and the whole suite answered `FOREIGN KEY constraint failed`.
+        self._flush()
+        self._write_children(entity, inserting=True)
         self._flush()
         return entity
 
@@ -223,7 +233,7 @@ class SqlRepository[T: m.Entity]:
         if self._row(entity.id) is None:
             raise EntityNotFound(f"no {self._mapping.row.__tablename__} with id {entity.id}")
         self._session.merge(self._mapping.to_row(entity))
-        self._sync_children(entity)
+        self._write_children(entity, inserting=False)
         self._flush()
         return entity
 
@@ -320,6 +330,84 @@ class SqlUnitOfWork:
         if stored is None:
             raise EntityNotFound(f"job {job_id} does not carry asset {asset_id}")
         return AssetProgress(stored)
+
+    def add_batch_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> list[UUID]:
+        """One ``INSERT ... SELECT`` per asset — see the port's docstring for why.
+
+        **The position comes from a subquery inside the insert, never from a
+        read before it**, and that is the whole of what makes two concurrent
+        appends safe. ``COALESCE(MAX(position), -1) + 1`` is evaluated while the
+        statement holds the write lock, so the second appender sees the first
+        one's row; reading the maximum first and inserting second has a window
+        between the two, and two callers in it land on the same number.
+
+        ``ON CONFLICT DO NOTHING`` on the composite key is what makes a repeated
+        add a no-op rather than a constraint violation, and ``rowcount`` is what
+        says which of the two happened — no read is needed to find out.
+
+        One statement per asset rather than one for the list: each needs its own
+        maximum, since the ones before it have already moved it.
+        """
+        stored = self._session.get(t.BatchRow, batch_id)
+        if stored is None:
+            raise EntityNotFound(f"no batch {batch_id}")
+
+        added: list[UUID] = []
+        for asset_id in asset_ids:
+            next_position = (
+                select(func.coalesce(func.max(t.BatchAssetRow.position), -1) + 1)
+                .where(t.BatchAssetRow.batch_id == batch_id)
+                .scalar_subquery()
+            )
+            statement = sqlite_insert(t.BatchAssetRow).from_select(
+                ["batch_id", "asset_id", "position"],
+                select(
+                    literal(batch_id, type_=t.BatchAssetRow.batch_id.type),
+                    literal(asset_id, type_=t.BatchAssetRow.asset_id.type),
+                    next_position,
+                ),
+            )
+            result = cast(
+                "CursorResult[Any]",
+                self._session.execute(
+                    statement.on_conflict_do_nothing(index_elements=["batch_id", "asset_id"])
+                ),
+            )
+            if result.rowcount == 1:
+                added.append(asset_id)
+        return added
+
+    def remove_batch_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> list[UUID]:
+        """One ``DELETE`` over the ids given, and a read to say which ones matched.
+
+        ``rowcount`` alone would answer *how many* went, and the caller needs
+        *which* — a bulk remove reports what it removed. So membership is read
+        first, inside this transaction, and intersected: a row another writer
+        takes between that read and the delete simply is not in the answer,
+        which is the same thing the delete would have said about it.
+        """
+        stored = self._session.get(t.BatchRow, batch_id)
+        if stored is None:
+            raise EntityNotFound(f"no batch {batch_id}")
+
+        wanted = list(dict.fromkeys(asset_ids))
+        if not wanted:
+            return []
+        held = set(
+            self._session.scalars(
+                select(t.BatchAssetRow.asset_id)
+                .where(t.BatchAssetRow.batch_id == batch_id)
+                .where(t.BatchAssetRow.asset_id.in_(wanted))
+            ).all()
+        )
+        if not held:
+            return []
+        self._session.execute(
+            delete(t.BatchAssetRow)
+            .where(t.BatchAssetRow.batch_id == batch_id)
+            .where(t.BatchAssetRow.asset_id.in_(held))
+        )
+        return [asset_id for asset_id in wanted if asset_id in held]
 
     def batches_holding(self, asset_id: UUID) -> list[UUID]:
         """The port's one non-repository read — see its docstring for why.

@@ -68,6 +68,7 @@ import {
   checkRemoveDatasetAsset,
   checkRenameProject,
   checkResumeIngest,
+  checkRemoveBatchAssets,
   checkSetAssetProgress,
   checkStartBatch,
   checkStartIngest,
@@ -925,6 +926,49 @@ export function useBulkSetProgress(batchId: string) {
       // state lives in the listing.
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+    },
+  });
+}
+
+/**
+ * Take frames out of a draft batch's membership.
+ *
+ * **One request, not N**, which is the difference from `useBulkSetProgress` and
+ * the reason this reports no partial outcome: `DELETE /batches/{id}/assets`
+ * takes every id at once and the kernel writes them in one transaction. There is
+ * no "forty of fifty succeeded" state to render, so there is none to invent.
+ *
+ * The answer carries `changed` — the ids the call actually removed — and the
+ * caller renders that count rather than the count it sent. Removing is
+ * idempotent, so an id the batch no longer holds is a `200` that removed
+ * nothing, and reporting the request's own length would report work that did not
+ * happen. This is `ui-capabilities`' third rule: an idempotent operation must
+ * distinguish "did N" from "nothing to do".
+ *
+ * Adding is deliberately not here. `POST /batches/{id}/assets` exists and has no
+ * caller in this client: a batch is filled by an ingest, and the gallery a
+ * person is looking at shows one batch, so there is nowhere to pick the assets
+ * to add *from*. The hook arrives with the screen that needs it.
+ */
+export function useRemoveBatchAssets(batchId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (assetIds: readonly string[]) =>
+      unwrap(
+        await client.DELETE("/batches/{batch_id}/assets", {
+          params: { path: { batch_id: batchId }, query: { id: [...assetIds] } },
+        }),
+        checkRemoveBatchAssets,
+      ),
+    onSuccess: () => {
+      // The batch itself, and not only its assets: `asset_count`, the segmented
+      // filter counts and `allowed_actions` all live on `BatchOut`, and a
+      // declaration is a cached answer like any number (#319's lesson). The
+      // project listing carries per-batch counts too.
+      void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
+      void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+      void queries.invalidateQueries({ queryKey: ["projects"] });
     },
   });
 }

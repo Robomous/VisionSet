@@ -7,6 +7,7 @@ written against this file cannot accidentally depend on SQLite.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from contextlib import AbstractContextManager
 from typing import Final, Protocol, runtime_checkable
 from uuid import UUID
@@ -167,6 +168,61 @@ class UnitOfWork(Protocol):
 
         Raises ``EntityNotFound`` if the job does not carry that asset at all,
         matching ``Repository.update`` on an id that is not stored.
+        """
+        ...
+
+    def add_batch_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> list[UUID]:
+        """Append assets to a batch's membership, skipping any it already holds.
+
+        **The membership twin of :meth:`set_asset_progress`, and it exists for
+        the identical reason.** ``batch_asset`` is keyed ``(batch_id,
+        asset_id)`` — one row per member, which is exactly the shape a disjoint
+        write wants — but a ``Batch`` carries every member, so two callers
+        adding *different* assets to one draft wrote the same entity through
+        ``Repository.update`` and the second put back the membership the first
+        had already changed. Same lost update as #302, answered ``200`` twice.
+        Narrowing the write to one row makes those two disjoint by construction.
+
+        There is **no ``expected``** here, and that is the difference from
+        ``set_asset_progress`` rather than an omission: progress is a value that
+        moves between states, so the caller has one to have read. Membership is
+        row *existence*, which is its own version stamp — the row is either
+        there or it is not, and the insert says which. That is also why no
+        version column appears: it would be a second name for the same fact.
+
+        Returns the ids this call actually wrote, in the order given. An id the
+        batch already holds is **absent from the return and is not an error**:
+        adding a member twice is not new information, and a caller that lost the
+        race to a writer aiming at the same asset finds its target already true,
+        which is nothing left to do. The count is what a surface reports.
+
+        Position — and so the batch's asset order — is assigned by appending
+        after the current maximum, evaluated inside the writing statement rather
+        than read first, so two concurrent appends cannot land on one number.
+
+        Raises ``EntityNotFound`` if there is no such batch, matching
+        ``Repository.update`` on an id that is not stored. Assets are *not*
+        checked against the project here: that is a domain rule and belongs to
+        the service that already reads them.
+        """
+        ...
+
+    def remove_batch_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> list[UUID]:
+        """Drop assets from a batch's membership, ignoring any it does not hold.
+
+        The other half of :meth:`add_batch_assets`, and symmetric with it: one
+        row per asset, so two callers removing different assets cannot undo each
+        other. Returns the ids this call actually removed; an id the batch does
+        not hold is absent from the return and is **not** an error, for the same
+        reason a repeated add is not — the state the caller wanted already
+        holds.
+
+        Positions are left as they are rather than closed up. They order the
+        membership and nothing reads them as a dense sequence, so renumbering
+        would be a whole-collection write reintroduced to tidy a gap nobody can
+        see.
+
+        Raises ``EntityNotFound`` if there is no such batch.
         """
         ...
 

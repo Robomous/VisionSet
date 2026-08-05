@@ -6,12 +6,18 @@ Approval freezes membership, pins the project's active schema version, and cuts
 the batch into jobs; nothing after that can return it to a draft, because the
 jobs are already partitioned against the pin.
 
-**There is no ``create_batch`` and no membership editing.** A batch is born from
-an ingest. Curating one out of an arbitrary subset of assets has no caller until
-a gallery exists to pick that subset in, and after approval the way to exclude an
-asset is ``set_asset_progress`` with ``skipped``, not a membership change.
-``BatchService`` still has all four methods — this is a decision about the
-surface, the same one the REST API and the CLI made.
+**Membership editing ships, and it is ``draft``-only** (#281). ``add_batch_assets``
+and ``remove_batch_assets`` are the twins of the REST routes; the gallery is the
+caller that ended the "no caller" argument, and an agent assembling a batch out of
+assets it has already listed is the same shape. After approval there is no
+membership edit at all: the way to exclude an asset is ``set_asset_progress`` with
+``skipped``, which keeps the decision on the record, and the tools say so where a
+model will read it.
+
+**Removing membership is not deleting an asset**, and both the tool name and its
+description say so — the asset stays in its project and in every other batch. An
+agent that reads "delete" and reaches for it to clean up a project would be doing
+something no tool here can do.
 
 ``list_batch_jobs`` folds into ``get_batch``: a batch's jobs are how it is worked,
 so an agent asking about a batch is about to ask about its jobs.
@@ -98,6 +104,67 @@ def create_batch(
             [identifier(one, what="asset_id") for one in asset_ids or []],
         )
         return _batch_payload(workspace, created.id)
+
+
+def add_batch_assets(
+    batch_id: BatchRef,
+    asset_ids: Annotated[
+        list[str],
+        Field(description="Which of the project's assets to put in the batch.", min_length=1),
+    ],
+) -> dict[str, Any]:
+    """Put assets into a draft batch.
+
+    Only while the batch is a draft: approval cuts it into jobs against a pinned
+    schema, so an asset added afterwards would belong to no job. A batch past
+    `draft` refuses this, and there is no flag that lifts it — check
+    `allowed_actions` for `edit_membership` before offering it.
+
+    Adding an asset the batch already holds is not an error and writes nothing.
+    `changed` lists the ids this call actually added, so three ids of which two
+    were already members reports one.
+    """
+    with opened_workspace() as workspace:
+        change = BatchService(workspace).add_assets(
+            identifier(batch_id, what="batch_id"),
+            [identifier(one, what="asset_id") for one in asset_ids],
+        )
+        return {
+            **_batch_payload(workspace, change.batch.id),
+            "changed": [str(one) for one in change.changed],
+        }
+
+
+def remove_batch_assets(
+    batch_id: BatchRef,
+    asset_ids: Annotated[
+        list[str],
+        Field(description="Which assets to take out of the batch.", min_length=1),
+    ],
+) -> dict[str, Any]:
+    """Take assets out of a draft batch. This does not delete anything.
+
+    The asset stays in its project, keeps its annotations, and stays in every
+    other batch that carries it; only this batch stops listing it. There is no
+    tool that deletes an asset.
+
+    Only while the batch is a draft, and after approval the refusal is the point:
+    a job already describes work over that asset. From then on the way to exclude
+    one is `set_asset_progress` with `skipped`, which records the decision instead
+    of erasing it.
+
+    An id the batch does not hold is ignored rather than refused; `changed`
+    reports what actually went.
+    """
+    with opened_workspace() as workspace:
+        change = BatchService(workspace).remove_assets(
+            identifier(batch_id, what="batch_id"),
+            [identifier(one, what="asset_id") for one in asset_ids],
+        )
+        return {
+            **_batch_payload(workspace, change.batch.id),
+            "changed": [str(one) for one in change.changed],
+        }
 
 
 def list_batches(project: ProjectRef) -> dict[str, Any]:

@@ -67,11 +67,18 @@ const TAG = "v1";
  * about, and the only way to run the cycle twice was two whole invocations at
  * about ninety seconds of rebuild each.
  *
- * `repeatEachIndex` is the whole of the uniqueness needed. The workspace really
- * is fresh per invocation (the script `rm -rf`s it before `init`), and
- * `workers: 1` means two repetitions never overlap. The suffix is unconditional
- * rather than omitted on the first, so every run's names have one shape and a
- * failure message reads the same way whether or not somebody passed the flag.
+ * `repeatEachIndex` **and `retry`**, because a retry is the same repetition run
+ * again into the same workspace. #314 scoped only the first, and #281's run is
+ * where that showed: a genuine failure left its project behind, the retry died
+ * on `POST /projects → 409`, and the report named the 409 — turning one readable
+ * failure into two unreadable ones, which is the exact wall the scoping was
+ * added to remove. The workspace really is fresh per invocation (the script
+ * `rm -rf`s it before `init`) and `workers: 1` means two repetitions never
+ * overlap, so those two indices are the whole of the uniqueness needed.
+ *
+ * The suffix is unconditional rather than omitted on the first, so every run's
+ * names have one shape and a failure message reads the same way whether or not
+ * somebody passed the flag.
  *
  * The project is the only name that has to move, and that is worth stating so
  * the next collision is looked for rather than assumed: a release tag is unique
@@ -80,7 +87,7 @@ const TAG = "v1";
  * scoped by a project that is new.
  */
 function projectFor(info: TestInfo): string {
-  return `browser-cycle-${info.repeatEachIndex}`;
+  return `browser-cycle-${info.repeatEachIndex}-${info.retry}`;
 }
 
 test("the whole cycle, from opening the app to a downloaded export", async ({ page }, info) => {
@@ -223,14 +230,25 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("gallery")).toBeVisible();
     const first = page.getByTestId(/^tile-/).first();
     await expect(first).toHaveAttribute("data-pending", "true");
-    // No route into the annotator, no selection either — every action one could
-    // offer is unavailable before jobs exist — and the reason on the card itself,
-    // which is the element a pointer is over wherever it lands. That last
-    // assertion is the pre-#284 spelling, restored: the explanation went back
-    // onto the tile when the caption row that had been carrying it went away.
+    // No route into the annotator, and the reason on the card itself — which is
+    // the element a pointer is over wherever it lands. That last assertion is the
+    // pre-#284 spelling, restored: the explanation went back onto the tile when
+    // the caption row that had been carrying it went away.
     await expect(first.getByTestId(/^open-/)).toHaveCount(0);
-    await expect(first.getByTestId(/^select-/)).toHaveCount(0);
     await expect(first).toHaveAttribute("title", /draft/i);
+
+    // **Selection is offered, and it was not until #281.** A draft is the one
+    // state where `edit_membership` is legal, so "every action one could offer is
+    // unavailable before jobs exist" stopped being true the moment membership
+    // editing reached the wire — and the gate that hid the bar was hiding the one
+    // state it is for. Against a real server, so the batch's own
+    // `allowed_actions` is the kernel's answer rather than a fixture's.
+    await first.getByTestId(/^select-/).click();
+    await expect(page.getByTestId("bulk-remove")).toBeEnabled();
+    // The progress moves stay dead here, for their own reason: no jobs, so no
+    // progress to move.
+    await expect(page.getByTestId("bulk-skip")).toBeDisabled();
+    await page.getByTestId("bulk-clear").click();
   });
 
   await test.step("the grid fills the pane, and re-flows when the window narrows", async () => {

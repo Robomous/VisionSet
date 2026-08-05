@@ -93,6 +93,11 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (batches.repin_batch, WRITES),
     (batches.list_batch_assets, READS),
     (batches.create_batch, WRITES),
+    # WRITES, not DESTROYS: removing membership destroys nothing — the asset
+    # stays in its project and in every other batch. `delete_project` is
+    # still the only DESTROYS.
+    (batches.add_batch_assets, WRITES),
+    (batches.remove_batch_assets, WRITES),
     (jobs.get_job, READS),
     (jobs.start_job, WRITES),
     (jobs.next_pending_assets, READS),
