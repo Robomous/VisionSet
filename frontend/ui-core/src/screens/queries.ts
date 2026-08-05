@@ -690,6 +690,14 @@ export function useBatchTransition(batchId: string, move: "start" | "complete") 
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: ["projects"] });
+      // Every job in this batch, by prefix — a job's own declaration carries the
+      // batch's state (`job_actions` answers nothing at all outside
+      // `in_annotation`), so moving the batch silently restates what each of its
+      // jobs may be asked to do. Leaving them cached is the stale-declaration
+      // bug in its cache-side form: the annotator opened an `approved` batch,
+      // started it here, and then read a job that still declared nothing (#319).
+      // `useJobTransition` invalidates `["batches"]` for the mirror-image reason.
+      void queries.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
 }

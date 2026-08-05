@@ -89,6 +89,16 @@ interface Lifecycle {
   job: string;
   /** When set, `POST /batches/{id}/start` refuses 409 with this code instead. */
   refuseBatchStart?: string;
+  /**
+   * When set, `POST /jobs/{id}/start` refuses 409 with this code instead.
+   *
+   * The stale-read case, made deterministic (#319): the client's cached `JobOut`
+   * says `pending` and declares `start`, while the server's job has already been
+   * started. In a real browser that window is opened by an invalidation whose
+   * refetch has not landed yet, which is why it only ever appeared on a loaded
+   * CI runner. Here it is simply what the stub answers, every time.
+   */
+  refuseJobStart?: string;
   /** When set, every `PUT .../progress` refuses 409 with this code instead. */
   refuseProgress?: string;
   /** When set, `POST /jobs/{id}/complete` refuses 409 with this code instead. */
@@ -144,6 +154,12 @@ async function serveApi(
     sent.push(request);
 
     if (path === `/jobs/${JOB}/start` && request.method() === "POST") {
+      if (lifecycle.refuseJobStart !== undefined) {
+        return route.fulfill({
+          status: 409,
+          json: { code: lifecycle.refuseJobStart, message: "the kernel's own wording" },
+        });
+      }
       lifecycle.job = "in_progress";
       return route.fulfill({ json: jobBody() });
     }
@@ -383,9 +399,11 @@ test("a refused opening move is sent once, never looped, and its code is on the 
   // The move was attempted and refused…
   await expect.poll(() => startsSent(sent)).toEqual([`/batches/${BATCH}/start`]);
 
-  // …and the refusal surfaces where the save-state lives, before anybody has
-  // saved — the page must never look inert about a batch it could not open.
-  await expect(page.getByTestId("save-state")).toContainText(/not open for annotation/i);
+  // …and the refusal surfaces beside the save state, before anybody has saved —
+  // the page must never look inert about a batch it could not open. It moved out
+  // of the save's own slot with #319, where as a fallback it survived every
+  // later save and reported a failure that had not happened.
+  await expect(page.getByTestId("opening-refusal")).toContainText(/not open for annotation/i);
 
   // Force a run of re-renders, then look at the wire. The old effect's bail flags
   // were all false again after a refusal, so every one of these renders re-sent
@@ -401,11 +419,129 @@ test("a refused opening move is sent once, never looped, and its code is on the 
   for (let notch = 0; notch < 8; notch += 1) await zoomIn.click();
   // The renders really happened, and the bar keeps the refusal.
   await expect(page.getByTestId("zoom-readout")).not.toHaveText("100%");
-  await expect(page.getByTestId("save-state")).toContainText(/not open for annotation/i);
+  await expect(page.getByTestId("opening-refusal")).toContainText(/not open for annotation/i);
 
   // Once — and the job's own start never fired at all, because the batch never
   // reached `in_annotation` for it to be legal in.
   expect(startsSent(sent)).toEqual([`/batches/${BATCH}/start`]);
+});
+
+/**
+ * #319, and the reason the cycle suite was intermittently red.
+ *
+ * The page fires its opening moves against a *cached* read of the job. An
+ * invalidation's refetch is asynchronous, so there is a window where the cache
+ * still says `pending` and declares `start` while the server has already moved
+ * the job on — and the kernel answers that second start `INVALID_TRANSITION`.
+ *
+ * Two things were wrong with what happened next, and they are separable.
+ *
+ * The first is this one: the refusal was written into the slot the **save**
+ * reports through, and never cleared. So a save that fully succeeded rendered
+ * `INVALID_TRANSITION`'s prose instead of `Saved`, for the life of the mount, for
+ * a reason that had nothing to do with the save. A slot that can be filled by an
+ * unrelated failure is not a report.
+ */
+test("a save reports its own outcome, not an opening move's refusal", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, {
+    batch: "in_annotation",
+    job: "pending",
+    refuseJobStart: "INVALID_TRANSITION",
+  });
+
+  await expect.poll(() => startsSent(sent)).toEqual([`/jobs/${JOB}/start`]);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  await page.getByTestId("save").click();
+
+  // The save landed, so the save says so. This is the assertion the cycle suite
+  // was making at `cycle.spec.ts:321` when it failed.
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+});
+
+/**
+ * #319's second half: an opening move refused **because it was already made** is
+ * not a failure, and reporting it is reporting a non-event.
+ *
+ * `start` moves a job `pending → in_progress`. The only way that is refused
+ * `INVALID_TRANSITION` is that the job is no longer `pending` — which is the
+ * state the effect was trying to reach. The honest answer is to go and read the
+ * truth, not to tell somebody their page is broken. Anything else the kernel
+ * refuses with still surfaces; the scenario above this one proves that.
+ */
+test("an opening move refused as already-made is not reported, and the page re-reads", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, {
+    batch: "in_annotation",
+    job: "pending",
+    refuseJobStart: "INVALID_TRANSITION",
+  });
+
+  await expect.poll(() => startsSent(sent)).toEqual([`/jobs/${JOB}/start`]);
+
+  // Nothing is claimed at the user. The page opened, the job is open, and the
+  // one thing that happened is a POST nobody needed to know about.
+  await expect(page.getByTestId("opening-refusal")).toBeHidden();
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+
+  // And it went back to the wire rather than trusting the read that misled it:
+  // a second `GET /jobs/{id}` after the refusal is the re-read.
+  const reads = (): number =>
+    sent.filter((r) => r.method() === "GET" && new URL(r.url()).pathname.endsWith(`/jobs/${JOB}`))
+      .length;
+  await expect.poll(reads).toBeGreaterThan(1);
+});
+
+/**
+ * The slot contract on its own, with a refusal that is **not** suppressed.
+ *
+ * The two halves of #319 need separating, or reverting either one leaves the
+ * other's test green. `INVALID_TRANSITION` never reaches the bar any more, so a
+ * scenario built on it cannot tell whether the save's slot still falls back to
+ * an opening refusal. This one uses a refusal that does reach the bar — the
+ * batch closed under a stale read, which `require_open_batch` answers
+ * `BATCH_NOT_IN_ANNOTATION` — and then saves successfully anyway, because the
+ * stub is the server and the page's cache is what is stale.
+ *
+ * Both statements must be true at once: the opening failure is still on screen,
+ * and the save reports the save.
+ */
+test("an opening refusal stays on the bar without claiming the next save failed", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, {
+    batch: "in_annotation",
+    job: "pending",
+    refuseJobStart: "BATCH_NOT_IN_ANNOTATION",
+  });
+
+  await expect(page.getByTestId("opening-refusal")).toContainText(/not open for annotation/i);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  await page.getByTestId("save").click();
+
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+  // …and the opening failure did not disappear either. It is a fact about this
+  // page, not about the last press.
+  await expect(page.getByTestId("opening-refusal")).toContainText(/not open for annotation/i);
 });
 
 test("Accept is offered only where the kernel's machine allows the move", async ({ page }) => {
@@ -1155,7 +1291,7 @@ test("a refused Finish job says why, rather than re-enabling in silence", async 
   await expect(page.getByTestId("finish-job")).toHaveText(/Finish job/);
 });
 
-test("the save's own refusal is a sentence now, not a kernel identifier", async ({ page }) => {
+test("a refusal on the bar is a sentence now, not a kernel identifier", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, {
     batch: "approved",
@@ -1164,8 +1300,10 @@ test("the save's own refusal is a sentence now, not a kernel identifier", async 
   });
 
   // `SaveState` rendered the raw code as a destructive badge — the exact class of
-  // rendering #292 removed elsewhere, caught here by F16.
-  const state = page.getByTestId("save-state");
+  // rendering #292 removed elsewhere, caught here by F16. The claim is unchanged
+  // and the slot moved: this is an *opening* refusal, and #319 gave those their
+  // own badge. Both render through `refusalProse`, so both carry it.
+  const state = page.getByTestId("opening-refusal");
   await expect(state).toContainText(/not open for annotation/i);
   await expect(state).not.toContainText("BATCH_NOT_IN_ANNOTATION");
   await expect(state).toHaveAttribute("title", "BATCH_NOT_IN_ANNOTATION");
