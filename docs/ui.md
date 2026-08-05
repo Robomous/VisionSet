@@ -38,7 +38,7 @@ handler is not an operation.
 | --- | --- | --- |
 | `/` | Home | yes |
 | `/projects`, `/projects/:id` (`?tab=schema\|batches\|versions`), `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
-| `/jobs/:jobId` | the annotation page | yes |
+| `/jobs/:jobId` (`?asset=<id>`) | the annotation page | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
 | `/styleguide` | the rendered design system | **no** |
 
@@ -46,6 +46,15 @@ The last two need no server and no credential — the showcase's picture is a `d
 URI and the styleguide is pure CSS — so putting them behind the gate would ask for a
 token to look at a page that cannot use one. They are also what lets the browser
 suite run with no backend.
+
+Two of those query parameters are kept true rather than only read, and it is the same
+rule twice: `?tab=` on the project page (#171) and `?asset=` on the annotator (#353)
+are both **rewritten** as the page moves, with `replace` rather than `push`. A URL
+that no longer describes what is on screen is not a place you can send somebody, and
+`replace` is what stops Back from walking back through tabs — or, in the annotator,
+one picture at a time through an annotation session. `ui-core` imports no router, so
+in both cases the screen reports and `routes.tsx` spells: `resolveProjectTab` and
+`assetParamFor` are those two decisions, pure and testable without a browser.
 
 The router's basename is `import.meta.env.BASE_URL`, which is what vite substitutes
 for its `base` option — so the router and the bundle cannot disagree about the `/app`

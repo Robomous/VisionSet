@@ -690,6 +690,116 @@ test("Skip settles the asset and advances", async ({ page }) => {
   const put = sent.find((r) => r.method() === "PUT");
   expect(JSON.parse(put?.postData() ?? "{}")).toEqual({ progress: "skipped" });
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  // #353: settling a frame advances, and the address follows that too — the
+  // auto-advance goes through the same `onNavigate` the buttons do.
+  await expect(page).toHaveURL(/asset=asset-2/);
+});
+
+/**
+ * #353: the address bar names the frame on screen.
+ *
+ * `?asset=` used to record where the annotator was *entered* — the next and
+ * previous buttons moved through the job in component state and never touched it.
+ * Copy the URL on frame 7, send it, and the reader lands on frame 1 with nothing
+ * saying so; worse, they answer about a picture that was never meant.
+ *
+ * `data-asset` on the page root is the truth these assert against, and it is here
+ * for exactly this reason: #223's cycle step read the frame *out of the URL*, wrote
+ * a lane against that id, and watched every assertion pass — against frame 1, which
+ * was not the frame under test. The URL being wrong made a test lie. So the claim
+ * worth pinning is not "the URL changes" but "the URL and the screen agree".
+ */
+async function frameOnScreen(page: Page): Promise<{ url: string | null; screen: string | null }> {
+  return {
+    url: new URL(page.url()).searchParams.get("asset"),
+    screen: await page.getByTestId("annotation-page").getAttribute("data-asset"),
+  };
+}
+
+test("the address names the frame on screen, and keeps naming it as the job is walked", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // Entered with no parameter at all, which is a legitimate way in — a reload, or
+  // a job id typed by hand. The frame it lands on is now sendable.
+  await expect(page).toHaveURL(/asset=asset-1/);
+  expect(await frameOnScreen(page)).toEqual({ url: "asset-1", screen: "asset-1" });
+
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  expect(await frameOnScreen(page)).toEqual({ url: "asset-2", screen: "asset-2" });
+
+  await page.getByTestId("prev-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("1/2");
+  expect(await frameOnScreen(page)).toEqual({ url: "asset-1", screen: "asset-1" });
+});
+
+test("the address follows the walk even when the link named a frame to start on", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await serveApi(page, sent);
+  // The way in that actually happens: a gallery tile, which mints `?asset=`.
+  // Entering *without* one cannot tell "reports the frame on screen" apart from
+  // "reports the frame it was entered on" — they are the same value there, and
+  // the second is the defect.
+  await page.goto(`/jobs/${JOB}?asset=asset-1`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
+  expect(await frameOnScreen(page)).toEqual({ url: "asset-1", screen: "asset-1" });
+
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  expect(await frameOnScreen(page)).toEqual({ url: "asset-2", screen: "asset-2" });
+});
+
+test("walking the job leaves the history alone, so Back still means leave", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  await expect(page).toHaveURL(/asset=asset-1/);
+
+  // `replace`, not `push`, and this is the assertion that tells them apart. With
+  // `push`, Back would walk an annotation session backwards one picture at a time
+  // — the browser's own button turned into an undo nobody asked for, two keys away
+  // from the real one.
+  const before = await page.evaluate(() => history.length);
+  await page.getByTestId("next-asset").click();
+  await expect(page).toHaveURL(/asset=asset-2/);
+  expect(await page.evaluate(() => history.length)).toBe(before);
+});
+
+test("a reload lands on the frame the address names, not back at the start", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+
+  await page.reload();
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  expect(await frameOnScreen(page)).toEqual({ url: "asset-2", screen: "asset-2" });
+});
+
+test("an asset this job does not carry is corrected in the address, not silently ignored", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await serveApi(page, sent);
+  // A stale link: the asset moved to another job, or the batch was re-partitioned.
+  await page.goto(`/jobs/${JOB}?asset=asset-99`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
+
+  // The fallback to the first asset is old behaviour and stays — a stale link is
+  // not an error state. What is new is that it is now *visible*: the address stops
+  // naming an asset nobody can see, so the link can be re-copied and be right.
+  await expect(page.getByTestId("asset-position")).toContainText("1/2");
+  expect(await frameOnScreen(page)).toEqual({ url: "asset-1", screen: "asset-1" });
 });
 
 /**

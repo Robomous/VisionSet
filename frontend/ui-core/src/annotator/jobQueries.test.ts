@@ -11,7 +11,13 @@
 import { AnnotatorStore, addAnnotationCommand, documentFromWire } from "@visionset/annotator";
 import { describe, expect, it } from "vitest";
 
-import { assetPositionOf, isEmptyPlan, planSave, type WireAnnotation } from "./jobQueries";
+import {
+  assetParamFor,
+  assetPositionOf,
+  isEmptyPlan,
+  planSave,
+  type WireAnnotation,
+} from "./jobQueries";
 
 const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
@@ -176,5 +182,41 @@ describe("assetPositionOf", () => {
     // derived on every render rather than seeded once by an effect — which is the
     // shape that made #159 possible.
     expect(assetPositionOf(undefined, "c")).toBe(0);
+  });
+});
+
+/**
+ * `assetPositionOf`'s inverse, and the whole of #353's decision.
+ *
+ * The wiring either side of it is a browser claim — that pressing next rewrites
+ * the address, and that the address survives a reload — so it lives in
+ * `frontend/app/e2e/annotate.spec.ts` against the real router. What is decidable
+ * without one is *when* to write, and that is here.
+ */
+describe("assetParamFor", () => {
+  it("names the frame on screen when the URL names another one", () => {
+    // The defect itself: one press of next, and `?asset=` still named the frame
+    // the annotator was entered on.
+    expect(assetParamFor("b", "a")).toBe("b");
+  });
+
+  it("names the frame on screen when the URL names no asset at all", () => {
+    // `/jobs/{id}` with no parameter is a legitimate way in, and the frame it
+    // lands on is worth being able to send to somebody.
+    expect(assetParamFor("a", null)).toBe("a");
+  });
+
+  it("names the frame on screen when the URL names one this job does not carry", () => {
+    // A stale link falls back to the first asset (`assetPositionOf`). Until this,
+    // it fell back invisibly — the address kept naming an asset nobody could see.
+    expect(assetParamFor("a", "gone")).toBe("a");
+  });
+
+  it("leaves the URL alone when it already names the frame on screen", () => {
+    // Load-bearing, not an optimisation. The page reports on arrival as well as on
+    // a change, so without this every entry through a correct link would write to
+    // history — and `replace` would write over whatever the annotator was opened
+    // from, which is the one place Back has somewhere useful to go.
+    expect(assetParamFor("a", "a")).toBeNull();
   });
 });
