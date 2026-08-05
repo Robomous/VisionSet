@@ -66,3 +66,43 @@ git fetch --prune
 ```
 
 If not merged at session end: leave the worktree, report path + branch + PR URL + CI status.
+
+### Background processes you spawned
+
+A worktree is not the only thing a session leaves behind. Synthetic load generators, a
+long-running server, a watcher, anything backgrounded with `&` — you own it until it is
+**observed dead**.
+
+- **Collect the PID at spawn time with `$!`.** Never reconstruct the list afterwards with
+  `jobs -p`: inside a command substitution it runs in a forked subshell with an empty job
+  table, so `LOADPIDS=$(jobs -p)` is the empty string while a bare `jobs -p` on the next line
+  prints every PID.
+
+  ```zsh
+  LOADPIDS=()
+  for j in $(seq 1 12); do (while :; do :; done) & LOADPIDS+=($!); done
+  trap 'kill "${LOADPIDS[@]}" 2>/dev/null; wait' EXIT INT TERM
+  ```
+
+- **Clean up in a `trap … EXIT`**, so the path that skips cleanup does not exist. A cleanup
+  line at the bottom of the script is not reached when the harness kills the command at its
+  ~10-minute ceiling, and that is the case where the leak is largest.
+- **Cleanup must be able to report its own failure.** Never send its stderr to `/dev/null` —
+  that is what hides a `kill` that received no arguments. After killing, **verify**: re-check
+  each PID and print the survivor count. "I ran kill" is not "they are gone".
+- **Kill by explicit PID.** Not `kill -- -<PGID>` once the group leader has exited — the PGID
+  is then a free number the kernel may hand to a stranger — and not `pkill -f` on the loop
+  body, which matches any shell in the same family, including another session's legitimate
+  work.
+- **Hunt orphans by `PPID == 1`, never by grepping for the command you remember writing.**
+  A leaked process is one whose owner is gone, so parentage is the property that defines it;
+  the command line is a guess about spelling and about which of your own commands leaked.
+
+#332 is the worked example, and the shape of it is the warning: that task **closed cleanly** —
+PR merged, worktree removed, git metadata pruned — while **twenty-four** spin loops it had
+spawned were reparented to PID 1 and ran on. Its cleanup was `kill $LOADPIDS 2>/dev/null`,
+which killed nothing, reported nothing, and exited zero — twice, from two different worktrees,
+because the same technique was reused and the same line failed the same way. They burned
+~24 CPU-hours, put 24 on a load average of 45–95, and were a direct cause of two later sessions
+(#339, #340) being unable to complete `scripts/check.sh` and having to invoke the declared
+fallback above. Nothing inside #332 could see any of it. — #332
