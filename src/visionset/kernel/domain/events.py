@@ -32,7 +32,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 
 class AnnotationOperation(StrEnum):
@@ -143,6 +143,44 @@ class ReleasePublished(DomainEvent):
     schema_version: int = Field(ge=1)
     asset_count: int = Field(ge=0)
     annotation_count: int = Field(ge=0)
+
+
+class BackgroundJobSucceeded(DomainEvent):
+    """A queued unit of machine work finished, and finished cleanly.
+
+    **Announced by the dispatcher, not by the handler**, and that is the point of
+    it rather than an implementation detail. A handler runs in another process,
+    where the bus is a different object with no subscribers — so an event it
+    published would be delivered to nobody. The dispatcher is in the API process,
+    watching the future resolve, which makes this the one announcement about
+    background work that an API-side subscriber can actually receive.
+    ``ports/event_bus.py`` records the consequence for the other direction.
+
+    ``result`` is the handler's own answer, carried so that a subscriber does not
+    have to read the row back to learn where the work put its output.
+    """
+
+    name: Literal["background_job_succeeded"] = "background_job_succeeded"
+    job_id: UUID
+    job_type: str
+    processed: int = Field(ge=0)
+    result: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class BackgroundJobFailed(DomainEvent):
+    """A queued unit of machine work stopped, and said why.
+
+    Its sibling above, on the same terms. ``cancelled`` deliberately announces
+    **nothing**: a cancellation is something a person just did through an API that
+    already answered them, so an event for it would be telling the caller what
+    they asked for. This is for the outcome nobody asked for.
+    """
+
+    name: Literal["background_job_failed"] = "background_job_failed"
+    job_id: UUID
+    job_type: str
+    error: str
+    attempt: int = Field(ge=0)
 
 
 class IngestCompleted(DomainEvent):

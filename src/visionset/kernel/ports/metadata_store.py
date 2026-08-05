@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
+from datetime import datetime
 from typing import Final, Protocol, runtime_checkable
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     Asset,
     AssetProgress,
+    BackgroundJob,
     Batch,
     Dataset,
     DatasetChange,
@@ -135,6 +137,45 @@ class UnitOfWork(Protocol):
     @property
     def releases(self) -> Repository[Release]: ...
 
+    @property
+    def jobs(self) -> Repository[BackgroundJob]:
+        """The background executor's queue.
+
+        The **second** root entity, after ``Workspace``, and the only other place
+        ``list()`` with no argument is the correct call — a job has no parent, so
+        there is nothing to scope it by. See ``JobRow`` for why it carries no
+        foreign key, and ``BACKGROUND_JOBS`` in ``_mappers`` for the trap that
+        makes this worth saying out loud.
+        """
+        ...
+
+    def claim_job(self, *, worker: str, now: datetime) -> BackgroundJob | None:
+        """Take the oldest queued job, atomically, or answer ``None``.
+
+        **The second write here that is not a repository**, and it is here for
+        exactly :meth:`set_asset_progress`' reason: ``Repository.update``
+        replaces a whole entity read a moment earlier, and between that read and
+        that write is a window a second dispatcher fits into — with the symptom
+        being one job run twice and one row reporting whichever finished last.
+        Narrowing it to a guarded ``UPDATE`` makes two claims disjoint by
+        construction.
+
+        The guard is ``state = 'queued'`` on the row the sub-select picked, so
+        the choosing and the taking happen in one statement. ``rowcount`` is the
+        answer, the way it is for progress: one means this caller holds the job,
+        zero means somebody else got there first and the caller simply asks again.
+
+        ``now`` is passed in rather than read here, because this is the layer that
+        must not decide anything: the same instant stamps ``started_at`` and is
+        reported in whatever the caller logs, and a store reaching for a clock is
+        a store a test cannot pin.
+
+        Answers ``None`` when the queue is empty **and** when a race was lost.
+        The two are indistinguishable to a dispatcher and both mean "poll again",
+        so distinguishing them would be a return value nobody could act on.
+        """
+        ...
+
     def set_asset_progress(
         self,
         job_id: UUID,
@@ -145,7 +186,8 @@ class UnitOfWork(Protocol):
     ) -> AssetProgress | None:
         """Move one asset's progress, and only if it is still where it was read.
 
-        **The one write here that is not a repository**, for the reason
+        **The first write here that is not a repository** — :meth:`claim_job` is
+        the second, and it is here for the same reason — for the reason
         :meth:`batches_holding` is not a read: ``Repository`` replaces a whole
         entity by id, and an ``AnnotationJob`` carries every asset's progress. Two
         annotators moving *different* assets of one job therefore write the same
