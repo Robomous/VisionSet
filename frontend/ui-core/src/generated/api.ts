@@ -1768,7 +1768,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["ClassificationBody"];
             /** Label Class */
             label_class: string;
             /** Model Ref */
@@ -1805,7 +1805,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -1850,7 +1850,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -2652,6 +2652,22 @@ export interface components {
              * @enum {string}
              */
             type: "polygon";
+        };
+        /**
+         * PolylineBody
+         * @description An open path of at least two points, in order. Nothing joins the ends.
+         */
+        PolylineBody: {
+            /** Points */
+            points: [
+                number,
+                number
+            ][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "polyline";
         };
         /**
          * ProgressCounts

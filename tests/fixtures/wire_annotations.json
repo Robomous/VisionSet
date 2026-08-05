@@ -57,6 +57,36 @@
       },
       "confidence": 0.87,
       "geometry": {
+        "points": [
+          [
+            2.0,
+            4.0
+          ],
+          [
+            12.0,
+            40.0
+          ],
+          [
+            30.0,
+            96.0
+          ]
+        ],
+        "type": "polyline"
+      },
+      "id": "30341ff9-040f-5e5b-9c04-e6b60ebd5a67",
+      "job_id": null,
+      "label_class": "sign",
+      "model_ref": "yolo-v8n@1",
+      "provenance": "model",
+      "schema_version": 3
+    },
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {
+        "condition": "faded"
+      },
+      "confidence": 0.87,
+      "geometry": {
         "type": "classification_tag"
       },
       "id": "0c4afc30-255b-5ea9-88d6-42020efb3c28",
@@ -118,7 +148,8 @@
   "implemented_geometry_types": [
     "bbox",
     "classification_tag",
-    "polygon"
+    "polygon",
+    "polyline"
   ],
   "schema": {
     "classes": [
@@ -144,6 +175,12 @@
         "color": null,
         "geometry": "polygon",
         "name": "lane"
+      },
+      {
+        "attributes": [],
+        "color": "#eb5a47",
+        "geometry": "polyline",
+        "name": "centerline"
       },
       {
         "attributes": [

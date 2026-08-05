@@ -7,19 +7,21 @@ which geometries a class allows in terms of ``GeometryType``, so validating an
 annotation against it is a plain membership test on ``geometry.type``, with no
 translation layer in between.
 
-Adding a geometry (polyline, keypoints, mask, the 3D variants) means defining a
-model whose ``type`` is the matching ``GeometryType`` member and appending it to
-the ``Geometry`` union. Nothing about the discriminator changes shape, and no
-existing payload stops parsing. ``GeometryType`` names eight geometries; three
-are implemented here — the rest are roadmap, and a payload naming one is
-rejected until its model exists.
+Adding a geometry (keypoints, mask, the 3D variants) means defining a model whose
+``type`` is the matching ``GeometryType`` member and appending it to the
+``Geometry`` union. Nothing about the discriminator changes shape, and no
+existing payload stops parsing — which #223 proved by doing it: ``polyline``
+moved from roadmap to implemented as one variant plus one name in the union, with
+no migration, because geometry rides in the annotation's JSON column.
+``GeometryType`` names eight geometries; four are implemented here — the rest are
+roadmap, and a payload naming one is rejected until its model exists.
 """
 
 from __future__ import annotations
 
 from typing import Annotated, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from visionset.kernel.domain.schema import GeometryType
 
@@ -57,6 +59,45 @@ class PolygonGeometry(BaseModel):
     points: list[tuple[float, float]] = Field(min_length=3)
 
 
+class PolylineGeometry(BaseModel):
+    """An open path, as at least two ``(x, y)`` vertices in order.
+
+    The contrast with :class:`PolygonGeometry` is the whole definition: a polygon
+    is a *ring* whose closing edge is implicit, and a polyline is a *path* whose
+    ends stay apart. Nothing joins the last point to the first, and a caller that
+    repeats the first point at the end has drawn a closed path — which is a legal
+    polyline, and not the same value as the polygon with those vertices.
+
+    **The order of the points is the geometry**, not an incidental detail of how
+    they were collected. A lane runs from one end to the other, and reversing the
+    list is a different annotation of the same pixels. There is nothing to
+    validate in that — an ordered sequence is ordered — which is worth saying
+    because the ordering rule a lane *format* wants is a different rule: TuSimple
+    requires points sorted by ascending Y, and :mod:`visionset.formats.lanes`
+    enforces that at the boundary where it applies. Putting it here would make one
+    format's invariant a condition of storing a lane at all, and would refuse
+    every horizontal path in a domain that has no idea what a road is.
+
+    Degeneracy is refused in exactly one case, the analogue of the zero-area box
+    :class:`BboxGeometry` already declines: a path whose points are all the same
+    point has no length and describes nothing. Consecutive duplicates within a
+    longer path are left alone — they arrive from real digitizers and from honest
+    resampling, and they cost a renderer nothing — and self-intersection is not
+    validated here for the same reason it is not validated for a polygon.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    type: Literal[GeometryType.POLYLINE] = GeometryType.POLYLINE
+    points: list[tuple[float, float]] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _has_length(self) -> PolylineGeometry:
+        if len(set(self.points)) == 1:
+            raise ValueError("a polyline whose points are all the same point has no length")
+        return self
+
+
 class ClassificationGeometry(BaseModel):
     """A whole-asset tag: the annotation carries a class but no coordinates.
 
@@ -71,7 +112,7 @@ class ClassificationGeometry(BaseModel):
 
 
 Geometry = Annotated[
-    BboxGeometry | PolygonGeometry | ClassificationGeometry,
+    BboxGeometry | PolygonGeometry | PolylineGeometry | ClassificationGeometry,
     Field(discriminator="type"),
 ]
 """Every geometry an Annotation can carry.

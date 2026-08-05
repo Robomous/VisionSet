@@ -27,6 +27,10 @@ SIGN: Final[dict[str, Any]] = {
     "attributes": [{"name": "occluded", "kind": "boolean", "required": True}],
 }
 LANE: Final[dict[str, Any]] = {"name": "lane", "geometry": "polygon"}
+#: #223's geometry. NOT in the default schema: four tests elsewhere count the
+#: classes `project_with_schema` declares, so a suite that needs a lane passes
+#: `classes=[SIGN, LANE, CENTERLINE]` rather than widening what everyone gets.
+CENTERLINE: Final[dict[str, Any]] = {"name": "centerline", "geometry": "polyline"}
 
 
 def image_parts(tmp_path: Path, count: int) -> list[tuple[str, tuple[str, bytes, str]]]:
@@ -75,13 +79,18 @@ def batch_from_ingest(
 
 
 def open_job(
-    client: TestClient, runner: InlineDispatcher, tmp_path: Path, *, images: int = 3
+    client: TestClient,
+    runner: InlineDispatcher,
+    tmp_path: Path,
+    *,
+    images: int = 3,
+    classes: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
     """A batch approved into one started job, ready to be annotated.
 
     Returns ``(batch_id, job_id)``.
     """
-    project_id = project_with_schema(client)
+    project_id = project_with_schema(client, classes=classes)
     batch_id = batch_from_ingest(client, runner, tmp_path, project_id, images=images)
     client.post(f"/batches/{batch_id}/approve")
     client.post(f"/batches/{batch_id}/start")

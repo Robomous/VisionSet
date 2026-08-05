@@ -59,6 +59,7 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Geometry,
     PolygonGeometry,
+    PolylineGeometry,
 )
 from visionset.kernel.domain.ingest import (
     INGEST_TRANSITIONS,
@@ -241,6 +242,7 @@ __all__ = [
     "MembershipChange",
     "Partition",
     "PolygonGeometry",
+    "PolylineGeometry",
     "Project",
     "ProjectStats",
     "Provenance",

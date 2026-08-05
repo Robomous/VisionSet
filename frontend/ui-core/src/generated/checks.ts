@@ -44,8 +44,11 @@ export const checkClassificationBody: Check<Schemas["ClassificationBody"]> =
 export const checkPolygonBody: Check<Schemas["PolygonBody"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
 
+export const checkPolylineBody: Check<Schemas["PolylineBody"]> =
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")] } as const);
+
 export const checkAnnotationOut: Check<Schemas["AnnotationOut"]> =
-  /*#__PURE__*/ object({ "asset_id": [true, isString], "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "polygon": checkPolygonBody })], "id": [true, isString], "job_id": [true, either([isString, isNull] as const)], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "asset_id": [true, isString], "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "polygon": checkPolygonBody, "polyline": checkPolylineBody })], "id": [true, isString], "job_id": [true, either([isString, isNull] as const)], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
 
 export const checkAnnotationPage: Check<Schemas["AnnotationPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkAnnotationOut)], "total": [true, isInteger] } as const);
