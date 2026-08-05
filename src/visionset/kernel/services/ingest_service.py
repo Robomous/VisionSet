@@ -95,6 +95,7 @@ from visionset.kernel.domain import (
     SourceKind,
     ThumbnailBackfill,
     normalize_name,
+    report_name,
     require_move,
 )
 from visionset.kernel.errors import (
@@ -468,7 +469,11 @@ class IngestService:
             except FileNotFoundError:
                 missing.append(asset_id)
             except MediaError as exc:
-                unreadable.append(_failure(uri, exc))
+                # ``Asset.uri`` is unpublished for the same reason ``Source.path``
+                # is, and this report travels: no root is in hand here, so the
+                # basename is the answer — which keeps a frame's ``#frame=n``,
+                # the only part of that string a reader can act on.
+                unreadable.append(_failure(report_name(uri), exc))
             else:
                 rendered[asset_id] = thumbnail_hash
 
@@ -616,7 +621,12 @@ class IngestService:
                     # why the rewind above is still the caller's job.
                     thumbnail_hash = self._cache_thumbnail(handle, name=str(path))
             except MediaError as exc:
-                failures.append(_failure(str(path), exc))
+                # Relative to the directory being read, never the absolute path
+                # the loop is holding — see ``report_name``. The walk is top
+                # level today, so the two differ only for a root a future
+                # ``recursive=True`` would introduce; the rule is applied here
+                # rather than left for that task to remember.
+                failures.append(_failure(report_name(path, root=directory), exc))
             else:
                 candidates.append(
                     Asset(
@@ -704,7 +714,10 @@ class IngestService:
                     job_id, processed=len(candidates), total=None, failures=failures
                 )
         except MediaError as exc:
-            failures.append(_failure(source.path, exc))
+            # The clip's own filename, which is already what ``frames`` was told
+            # to call it. ``source.path`` is absolute and would put the server's
+            # directory layout in a client's failure table.
+            failures.append(_failure(report_name(clip), exc))
             self._record_progress(job_id, processed=len(candidates), total=None, failures=failures)
         return candidates, failures
 
@@ -970,7 +983,9 @@ def _failure(name: str, exc: MediaError) -> IngestFailure:
 
     The name comes from the loop's own item and never from ``exc.name``:
     ``MediaError`` documents its own as reporting rather than identity, and the
-    caller here already knows exactly what it was reading.
+    caller here already knows exactly what it was reading. Every caller passes
+    it through ``report_name`` first, which is what keeps the server's own
+    directory layout out of a report that travels to a client.
 
     The two branches are the whole family — ``UnsupportedMedia`` is "intact and
     not for us", ``CorruptMedia`` is "for us and broken" — and a third member

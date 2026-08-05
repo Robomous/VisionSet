@@ -497,7 +497,9 @@ def test_a_truncated_clip_keeps_what_decoded_and_reports_the_break(tmp_path: Pat
 
     assert 0 < result.created < clip.frame_count
     assert [failure.kind for failure in result.failures] == [IngestFailureKind.CORRUPT]
-    assert result.failures[0].name == source.path
+    # The clip's filename, not `source.path` — that one is absolute (#317).
+    assert result.failures[0].name == "broken.mp4"
+    assert source.path not in result.failures[0].name
     assert fixture.ingest.get(result.job_id).state is IngestState.COMPLETED
     fixture.close()
 
@@ -746,7 +748,7 @@ def test_a_file_that_is_not_an_image_is_reported_and_the_run_carries_on(tmp_path
     result = fixture.ingest.ingest(source.id)
 
     assert result.created == 2
-    assert [failure.name for failure in result.failures] == [str(notes)]
+    assert [failure.name for failure in result.failures] == [notes.name]
     fixture.close()
 
 
@@ -770,9 +772,31 @@ def test_a_report_line_keeps_the_name_and_the_reason_apart(tmp_path: Path) -> No
 
     failure = fixture.ingest.ingest(source.id).failures[0]
 
-    assert failure.name == str(notes)
+    assert failure.name == notes.name
     assert str(notes) not in failure.reason
     assert notes.name not in failure.reason
+    fixture.close()
+
+
+def test_a_report_line_names_the_file_without_naming_the_server(tmp_path: Path) -> None:
+    """#317: this report travels to REST, the CLI and MCP, and it used to carry
+    the absolute path the run's own loop happened to be holding — the one place a
+    server path reached a client, while `Source.path` and `Asset.uri` are kept
+    off the wire on purpose.
+    """
+    fixture = Fixture(tmp_path)
+    write_unsupported_file(fixture.stills / "notes.txt")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    failure = fixture.ingest.ingest(source.id).failures[0]
+
+    assert failure.name == "notes.txt"
+    # Both halves matter: not the directory that was read, and not the workspace
+    # it sits under. A basename that happened to contain neither would pass the
+    # first and tell us nothing.
+    assert str(fixture.stills) not in failure.name
+    assert str(tmp_path) not in failure.name
+    assert source.path not in failure.name
     fixture.close()
 
 
@@ -786,7 +810,7 @@ def test_the_report_separates_data_loss_from_operator_noise(tmp_path: Path) -> N
 
     result = fixture.ingest.ingest(source.id)
 
-    by_name = {Path(failure.name).name: failure.kind for failure in result.failures}
+    by_name = {failure.name: failure.kind for failure in result.failures}
     assert by_name == {
         "notes.txt": IngestFailureKind.UNSUPPORTED,
         "old.bmp": IngestFailureKind.UNSUPPORTED,
@@ -1615,7 +1639,9 @@ def test_stored_bytes_that_will_not_render_are_reported_by_remedy(tmp_path: Path
 
     assert report.filled == (planted[1].id,)
     assert [failure.kind for failure in report.unreadable] == [IngestFailureKind.UNSUPPORTED]
-    assert report.unreadable[0].name == planted[0].uri
+    # The basename of the uri, never the uri: `Asset.uri` is unpublished and
+    # this report travels to the CLI and to MCP (#317).
+    assert report.unreadable[0].name == Path(planted[0].uri).name
     assert planted[0].uri not in report.unreadable[0].reason
     fixture.close()
 

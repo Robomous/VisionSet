@@ -65,6 +65,7 @@ from visionset.kernel.domain.ingest import (
     IngestResult,
     IngestState,
     ThumbnailBackfill,
+    report_name,
 )
 from visionset.kernel.domain.media import (
     ImageFormat,
@@ -245,6 +246,7 @@ __all__ = [
     "normalize_name",
     "partition_assets",
     "progress_after_annotating",
+    "report_name",
     "require_move",
     "require_state",
     "sha256_hex",
