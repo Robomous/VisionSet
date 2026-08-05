@@ -301,6 +301,7 @@ export {
 export { AnnotationPage, type AnnotationPageProps } from "./annotator/AnnotationPage.js";
 export { AssetImage, type AssetImageProps } from "./annotator/AssetImage.js";
 export {
+  assetParamFor,
   isEmptyPlan,
   jobKeys,
   planSave,

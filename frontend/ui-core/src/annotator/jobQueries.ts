@@ -218,6 +218,31 @@ export function assetPositionOf(
   return at < 0 ? 0 : at;
 }
 
+/**
+ * What `?asset=` should say, given the frame actually on screen — `null` to leave
+ * the URL alone.
+ *
+ * `assetPositionOf`'s inverse, and it exists for the defect that one created
+ * (#353): the parameter recorded *where the annotator was entered*, so after one
+ * press of next the address bar named a different picture than the screen. Copy
+ * that URL on frame 7 and the colleague you send it to lands on frame 1, with
+ * nothing anywhere saying so — and answers about a picture that was never meant.
+ *
+ * Pure and exported because the app spells URLs and `ui-core` imports no router
+ * (#171): the page can only *say* which frame it is showing, so the rule for what
+ * that means for the address has to travel to whoever holds the router. The same
+ * split `planSave` and `assetPositionOf` are on.
+ *
+ * `null` when it already agrees is the load-bearing half. The page reports the
+ * frame on mount as well as on every change — which is what makes a stale or
+ * absent parameter get corrected — so without this, arriving on a link that was
+ * already right would still write to history, and `replace` would be doing it
+ * over the top of whatever the annotator was opened from.
+ */
+export function assetParamFor(showing: string, current: string | null | undefined): string | null {
+  return current === showing ? null : showing;
+}
+
 export function useAssetAnnotations(
   jobId: string,
   assetId: string | undefined,
