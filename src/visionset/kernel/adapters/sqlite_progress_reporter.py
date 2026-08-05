@@ -74,6 +74,16 @@ class SqliteProgressReporter:
         self._last_write: float | None = None
         self._last_cancel_read: float | None = None
         self._cancelled = False
+        #: What the handler last *said*, whether or not it was written.
+        #:
+        #: This is what makes throttling safe rather than lossy: the dispatcher
+        #: builds its outcome from these, so the final numbers are the handler's
+        #: own last word even when the write that would have carried them fell
+        #: inside the interval. Without it, a run of three items finishing in
+        #: under half a second would report ``0 of 3`` forever.
+        self.reported_processed = 0
+        self.reported_total: int | None = None
+        self.reported_failures: tuple[ItemFailure, ...] = ()
 
     def report(
         self,
@@ -82,10 +92,16 @@ class SqliteProgressReporter:
         total: int | None = None,
         failures: Sequence[ItemFailure] = (),
     ) -> None:
+        self.reported_processed = processed
+        if total is not None:
+            self.reported_total = total
+        self.reported_failures = tuple(failures)
         if not self._due(self._last_write):
             return
         self._last_write = self._clock()
-        self._write(processed=processed, total=total, failures=tuple(failures))
+        self._write(
+            processed=processed, total=self.reported_total, failures=self.reported_failures
+        )
 
     def is_cancelled(self) -> bool:
         """Whether a cancel has been requested, re-read at most once per interval.

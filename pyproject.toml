@@ -152,6 +152,13 @@ forbidden_modules = [
     # it would close a loop and make a publication decision reachable from the
     # place that decides what exists.
     "visionset.wire",
+    # The background handlers and the dispatcher. Same direction again, and this
+    # one is load-bearing rather than tidy: a handler resolves a format plugin, so
+    # `visionset.jobs` imports `visionset.formats` — and a kernel that could reach
+    # a handler could reach a plugin through it, which is the wall contract 1
+    # exists to hold. It is also what keeps `SqliteJobQueue` unable to resolve a
+    # job type, which is why `UnknownJobType` is raised outside the kernel.
+    "visionset.jobs",
     "fastapi",
     "typer",
     "mcp",
@@ -162,3 +169,22 @@ forbidden_modules = [
 name = "Delivery clients are siblings: server, cli and mcp never import each other"
 type = "independence"
 modules = ["visionset.server", "visionset.cli", "visionset.mcp"]
+
+# A handler runs in a worker process that `spawn` started with nothing loaded, and
+# it imports whatever it names. If it named `visionset.server`, the child would
+# re-execute that module's `app = create_app()` and build a second application —
+# with its own workspace handle and its own dispatcher — inside a worker. The
+# other two are forbidden for the ordinary reason: a handler is below the
+# surfaces, so nothing it does may depend on which one asked.
+[[tool.importlinter.contracts]]
+name = "Job handlers are below the surfaces: visionset.jobs imports no delivery package"
+type = "forbidden"
+source_modules = ["visionset.jobs"]
+forbidden_modules = [
+    "visionset.server",
+    "visionset.cli",
+    "visionset.mcp",
+    "fastapi",
+    "typer",
+    "uvicorn",
+]
