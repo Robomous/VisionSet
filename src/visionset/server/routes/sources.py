@@ -27,6 +27,9 @@ from uuid import UUID
 
 from fastapi import File, Form, Response, UploadFile, status
 
+from visionset.jobs.ingest import JOB_TYPE as ingest_job_type
+from visionset.jobs.ingest import payload_for as ingest_payload_for
+from visionset.kernel.domain import BackgroundJobSpec
 from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
 from visionset.kernel.services import IngestService, SourceService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
@@ -159,16 +162,23 @@ def start_ingest(
     here, before the job row is written. `batch_name` names a new batch instead;
     passing neither uses the source's own name.
     """
-    ingest = IngestService(workspace)
-    job = ingest.enqueue(
+    job = IngestService(workspace).enqueue(
         source_id,
         batch_id=None if body is None else body.batch_id,
         batch_name=None if body is None else body.batch_name,
     )
-    # ``resume``, not ``ingest``: the row is already there and ``pending`` is
-    # exactly what ``resume`` picks up. Doing the whole call in the worker would
-    # mean creating a second job.
-    runner.submit(lambda: ingest.resume(job.id))
+    # Two rows for one run, and the ingest job is still the one a client polls.
+    # ``enqueue`` above wrote it and made every refusal a caller can act on; this
+    # queues the *work*, whose handler calls ``resume`` — which is exactly what
+    # ``pending`` was reserved for. See ``visionset/jobs/ingest.py``.
+    workspace.job_queue.enqueue(
+        BackgroundJobSpec(
+            type=ingest_job_type,
+            payload=ingest_payload_for(job.id),
+            idempotent=True,
+        )
+    )
+    runner.wake()
     response.headers["Location"] = f"/ingest-jobs/{job.id}"
     return IngestJobOut.of(job)
 

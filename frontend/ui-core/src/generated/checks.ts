@@ -19,6 +19,7 @@ import {
   either,
   isBoolean,
   isInteger,
+  isJsonValue,
   isNull,
   isNumber,
   isString,
@@ -63,6 +64,21 @@ export const checkAssetProgress: Check<Schemas["AssetProgress"]> =
 
 export const checkAssetProgressOut: Check<Schemas["AssetProgressOut"]> =
   /*#__PURE__*/ object({ "asset_id": [true, isString], "progress": [true, checkAssetProgress] } as const);
+
+export const checkBackgroundJobState: Check<Schemas["BackgroundJobState"]> =
+  /*#__PURE__*/ oneOf(["queued", "running", "succeeded", "failed", "cancelled"] as const);
+
+export const checkItemFailureOut: Check<Schemas["ItemFailureOut"]> =
+  /*#__PURE__*/ object({ "name": [true, isString], "reason": [true, isString] } as const);
+
+export const checkJsonValue: Check<Schemas["JsonValue"]> =
+  /*#__PURE__*/ isJsonValue;
+
+export const checkBackgroundJobOut: Check<Schemas["BackgroundJobOut"]> =
+  /*#__PURE__*/ object({ "attempt": [true, isInteger], "cancel_requested": [true, isBoolean], "created_at": [true, isString], "error": [true, either([isString, isNull] as const)], "failures": [true, arrayOf(checkItemFailureOut)], "finished_at": [true, either([isString, isNull] as const)], "id": [true, isString], "processed": [true, isInteger], "result": [true, mapOf(checkJsonValue)], "started_at": [true, either([isString, isNull] as const)], "state": [true, checkBackgroundJobState], "total": [true, either([isInteger, isNull] as const)], "type": [true, isString] } as const);
+
+export const checkBackgroundJobPage: Check<Schemas["BackgroundJobPage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkBackgroundJobOut)], "total": [true, isInteger] } as const);
 
 export const checkAssetAction: Check<Schemas["AssetAction"]> =
   /*#__PURE__*/ oneOf(["annotate", "skip", "restore", "submit_for_review", "accept", "return_to_annotator"] as const);
@@ -214,6 +230,7 @@ export const checkSplitAssignmentOut: Check<Schemas["SplitAssignmentOut"]> =
 export const checkAddAnnotations = checkAnnotationPage;
 export const checkAddBatchAssets = checkBatchMembershipOut;
 export const checkApproveBatch = checkBatchOut;
+export const checkCancelBackgroundJob = checkBackgroundJobOut;
 export const checkCheckExport = checkExportCompatibilityOut;
 export const checkCompareSchemaVersions = checkSchemaDiffOut;
 export const checkCompleteBatch = checkBatchOut;
@@ -225,11 +242,13 @@ export const checkCreateSchemaVersion = checkSchemaVersionOut;
 export const checkDatasetStats = checkDatasetStatsOut;
 export const checkDeleteAnnotations = checkNoContent;
 export const checkDeleteProject = checkNoContent;
-export const checkExportRelease = checkBlob;
+export const checkExportRelease = checkBackgroundJobOut;
 export const checkGetActiveSchema = checkSchemaVersionOut;
 export const checkGetAsset = checkAssetOut;
 export const checkGetAssetContent = checkBlob;
 export const checkGetAssetThumbnail = checkBlob;
+export const checkGetBackgroundJob = checkBackgroundJobOut;
+export const checkGetBackgroundJobArtifact = checkBlob;
 export const checkGetBatch = checkBatchOut;
 export const checkGetDataset = checkDatasetOut;
 export const checkGetIngestJob = checkIngestJobOut;
@@ -247,6 +266,7 @@ export const checkHealth: Check<operations["health"]["responses"][200]["content"
   /*#__PURE__*/ mapOf(isString);
 export const checkListAssetAnnotations = checkAnnotationPage;
 export const checkListAssetBatches = checkBatchPage;
+export const checkListBackgroundJobs = checkBackgroundJobPage;
 export const checkListBatchAssets = checkBatchAssetPage;
 export const checkListBatchJobs = checkJobPage;
 export const checkListBatches = checkBatchPage;

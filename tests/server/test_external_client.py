@@ -29,19 +29,19 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
 
 
@@ -68,7 +68,7 @@ def ok(response: Any, *expected: int) -> Any:
 
 
 def test_an_external_client_drives_the_cycle_from_ingest_to_an_exported_release(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     # 1. A project, and the labeling contract its work will be judged against.
     project = ok(client.post("/projects", json={"name": "chest-xray"}), 201)["id"]
@@ -254,7 +254,20 @@ def test_an_external_client_drives_the_cycle_from_ingest_to_an_exported_release(
     installed = ok(client.get("/formats"), 200)
     assert "dummy" in {row["name"] for row in installed["items"]}
 
-    archive = client.post(f"/releases/{release['id']}/export", params={"format": "dummy"})
+    # Launch-and-poll, since #328. The walk keeps doing it the way a real client
+    # would — read the 202's `Location`, poll the job, then take the artifact —
+    # because that is now the contract, and the point of this module is that the
+    # whole cycle is visible in one function.
+    launched = client.post(f"/releases/{release['id']}/export", params={"format": "dummy"})
+    export_job = ok(launched, 202)
+    assert launched.headers["Location"] == f"/background-jobs/{export_job['id']}"
+    assert export_job["state"] == "queued"
+
+    settled = ok(client.get(f"/background-jobs/{export_job['id']}"), 200)
+    assert settled["state"] == "succeeded", settled
+    assert settled["result"]["format"] == "dummy"
+
+    archive = client.get(f"/background-jobs/{export_job['id']}/artifact")
     ok(archive, 200)
     assert archive.headers["content-type"] == "application/zip"
     # `dummy` writes no annotations at all, so the only thing in the archive

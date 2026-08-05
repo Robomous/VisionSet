@@ -15,6 +15,9 @@ from uuid import UUID
 
 from fastapi import Response, status
 
+from visionset.jobs.ingest import JOB_TYPE as ingest_job_type
+from visionset.jobs.ingest import payload_for as ingest_payload_for
+from visionset.kernel.domain import BackgroundJobSpec
 from visionset.kernel.services import IngestService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -60,11 +63,13 @@ def resume_ingest(
     instead, which creates nothing and leaves the stuck row as the record it is.
     Both answer 409 `INVALID_TRANSITION`.
     """
-    ingest = IngestService(workspace)
     # ``resumable``, not ``get``: a completed job must be 409 *here*, because a
     # 202 followed by a refusal only the worker ever saw gives a client no way
     # to tell a redo from a no-op. It reads the same table the run will.
-    job = ingest.resumable(job_id)
-    runner.submit(lambda: ingest.resume(job.id))
+    job = IngestService(workspace).resumable(job_id)
+    workspace.job_queue.enqueue(
+        BackgroundJobSpec(type=ingest_job_type, payload=ingest_payload_for(job.id), idempotent=True)
+    )
+    runner.wake()
     response.headers["Location"] = f"/ingest-jobs/{job.id}"
     return IngestJobOut.of(job)

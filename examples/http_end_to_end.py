@@ -459,15 +459,27 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
     _say(f"release {release['tag']} — {len(manifest)} manifest bytes hash true, verify {verified}")
 
     # (9) Export it. Which formats exist is a property of the deployment, so the
-    # client asks rather than assuming, and the archive comes back inline.
+    # client asks rather than assuming — and since #328 an export is *launched*,
+    # the same shape as the ingest above: 202, a `Location`, poll, then take the
+    # artifact. A real exporter copies every image in the release, which is not
+    # something a request can hold open.
     installed = client.json("GET", "/formats", 200)
     assert "dummy" in {row["name"] for row in installed["items"]}, installed
+    status, export_headers, launched_export = client.request(
+        "POST", f"/releases/{release['id']}/export?format=dummy", 202
+    )
+    export_job = json.loads(launched_export)
+    assert export_headers["Location"] == f"/background-jobs/{export_job['id']}", export_headers
+    assert export_job["state"] == "queued", export_job
+
+    settled, export_polls = _poll_job(client, export_job["id"])
+    assert settled["result"]["format"] == "dummy", settled
     _, archive_headers, archive = client.request(
-        "POST", f"/releases/{release['id']}/export?format=dummy", 200
+        "GET", f"/background-jobs/{export_job['id']}/artifact", 200
     )
     assert archive_headers["Content-Type"] == "application/zip", archive_headers
     (downloads / "release.zip").write_bytes(archive)
-    _say(f"exported {len(archive)} bytes of zip to {downloads}")
+    _say(f"export settled after {export_polls} polls: {len(archive)} bytes of zip to {downloads}")
 
     # (10) And reach the pixels. A gallery renders these directly, so the media
     # type has to be right and the bytes have to be the originals — asserted by
@@ -528,6 +540,25 @@ def _poll_ingest(client: Client, job_id: str) -> tuple[dict[str, Any], int]:
             return job, polls
         time.sleep(POLL_INTERVAL)
     raise SystemExit(f"ingest job {job_id} did not settle within {INGEST_TIMEOUT:.0f}s")
+
+
+def _poll_job(client: Client, job_id: str) -> tuple[dict[str, Any], int]:
+    """Watch a background job until it settles, and say how many looks it took.
+
+    The generic twin of :func:`_poll_ingest`, over ``/background-jobs``. Three
+    terminal states rather than two — a job can be ``cancelled`` as well — and a
+    poller that stopped on only the first two would spin forever on the third.
+    """
+    deadline = time.monotonic() + INGEST_TIMEOUT
+    polls = 0
+    while time.monotonic() < deadline:
+        polls += 1
+        job = client.json("GET", f"/background-jobs/{job_id}", 200)
+        if job["state"] in {"succeeded", "failed", "cancelled"}:
+            assert job["state"] == "succeeded", job
+            return job, polls
+        time.sleep(POLL_INTERVAL)
+    raise SystemExit(f"background job {job_id} did not settle within {INGEST_TIMEOUT:.0f}s")
 
 
 def _say(message: str) -> None:

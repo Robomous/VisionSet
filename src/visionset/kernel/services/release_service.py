@@ -362,6 +362,44 @@ class ReleaseService:
         manifest = self._read_manifest(release)
         return _compatibility(release, manifest, exporter)
 
+    def require_export_consent(
+        self, release_id: UUID, exporter: Exporter, *, allow_lossy: bool
+    ) -> ExportCompatibility:
+        """The compatibility report, or refuse because the caller has not consented.
+
+        **Public, and promoted out of :meth:`export` rather than copied**, because
+        a second caller appeared: export now runs in a worker process, and a
+        refusal discovered there can only be written on a job row somebody has to
+        go and read. So the route asks this first, synchronously, and answers 409
+        the way it always did — the "refusals split by *when they can be known*"
+        rule ``IngestService.enqueue`` established.
+
+        That makes the check run twice for one export, which is deliberate and is
+        the shape this repository already uses for uniqueness: the pre-check is
+        the error message and the one inside :meth:`export` is the guarantee. A
+        worker that skipped it would depend on every future caller remembering.
+
+        Consent is required if *either* half says so — a lossy format always asks,
+        and a format declaring itself lossless still cannot silently drop a
+        geometry it never claimed to write.
+
+        Raises:
+            ReleaseNotFound: no such release in this workspace.
+            LossyExportNotConsented: the format drops information and the caller
+                has not said that is acceptable.
+            WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
+        """
+        release = self.get(release_id)
+        manifest = self._read_manifest(release)
+        compatibility = _compatibility(release, manifest, exporter)
+        if (exporter.lossy or not compatibility.compatible) and not allow_lossy:
+            raise LossyExportNotConsented(
+                f"format {exporter.format_name!r} cannot carry everything release "
+                f"{release.tag!r} holds; re-run with allow_lossy to accept the loss",
+                compatibility=compatibility,
+            )
+        return compatibility
+
     def export(
         self,
         release_id: UUID,
@@ -384,6 +422,9 @@ class ReleaseService:
         ``confirm=`` and ``allow_destructive=`` rather than a reuse of either:
         those guard destroying data and narrowing a contract, and this guards
         emitting an incomplete copy of something that stays exactly as it was.
+        The check itself is :meth:`require_export_consent`, which is public
+        because the REST surface asks it first — see that method for why running
+        it twice is the point rather than the cost.
 
         The plugin runs outside any transaction. It is third-party code doing
         file I/O over what may be a very large manifest, and holding the
@@ -411,17 +452,7 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        compatibility = _compatibility(release, manifest, exporter)
-        # Consent is required if *either* says so, which is monotone with what #30
-        # shipped — a lossy format still always asks — and adds the case #65 was
-        # filed for: a format declaring itself lossless still cannot silently drop
-        # a geometry it never claimed to write.
-        if (exporter.lossy or not compatibility.compatible) and not allow_lossy:
-            raise LossyExportNotConsented(
-                f"format {exporter.format_name!r} cannot carry everything release "
-                f"{release.tag!r} holds; re-run with allow_lossy to accept the loss",
-                compatibility=compatibility,
-            )
+        compatibility = self.require_export_consent(release_id, exporter, allow_lossy=allow_lossy)
         dest.mkdir(parents=True, exist_ok=True)
         exporter.export(
             release,

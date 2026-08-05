@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, cast
 from uuid import UUID
@@ -45,7 +46,7 @@ from visionset.kernel.adapters import _mappers as m
 from visionset.kernel.adapters import _tables as t
 from visionset.kernel.adapters._tables import META_TABLE, Base, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
-from visionset.kernel.domain import AssetProgress
+from visionset.kernel.domain import AssetProgress, BackgroundJob, BackgroundJobState
 from visionset.kernel.errors import (
     ConstraintViolated,
     EntityAlreadyExists,
@@ -282,6 +283,61 @@ class SqlUnitOfWork:
         self.dataset_changes = SqlRepository(session, m.DATASET_CHANGES)
         self.releases = SqlRepository(session, m.RELEASES)
         self.tokens = SqlRepository(session, m.TOKENS)
+        self.jobs = SqlRepository(session, m.BACKGROUND_JOBS)
+
+    def claim_job(self, *, worker: str, now: datetime) -> BackgroundJob | None:
+        """One guarded ``UPDATE`` — see the port's docstring for why it exists.
+
+        Two statements, and the **second** one is the whole guarantee. The first
+        only nominates a candidate; the ``UPDATE`` then re-tests ``state =
+        'queued'`` on that exact id while holding the write lock, so between the
+        test and the write there is no window at all. Two dispatchers that both
+        nominate the same row therefore produce one winner and one ``rowcount``
+        of zero — never two runners.
+
+        The loser answers ``None`` even when another job was queued behind the
+        one it lost. That is deliberate rather than a shortcoming: it is
+        indistinguishable from an empty queue to the caller, both mean "ask
+        again", and the alternative is a retry loop inside a store that has no
+        business deciding how long anybody waits.
+
+        ``attempt`` is incremented from the column rather than from a value read
+        in Python, so a count cannot be lost to the same race.
+
+        The final ``get`` is not a re-check — the write already decided. It
+        hydrates the row this caller now owns, inside this transaction, so
+        nothing can change it before the caller sees it.
+        """
+        candidate = self._session.scalar(
+            select(t.JobRow.id)
+            .where(t.JobRow.state == BackgroundJobState.QUEUED)
+            # ``rowid`` breaks a tie, and ties are real: ``created_at`` has
+            # microsecond resolution and two jobs queued by one request handler
+            # can share one. Without it "oldest first" would be arbitrary among
+            # them, which is the kind of ordering a test discovers on CI.
+            .order_by(t.JobRow.created_at, text("rowid"))
+            .limit(1)
+        )
+        if candidate is None:
+            return None
+
+        result = cast(
+            "CursorResult[Any]",
+            self._session.execute(
+                update(t.JobRow)
+                .where(t.JobRow.id == candidate)
+                .where(t.JobRow.state == BackgroundJobState.QUEUED)
+                .values(
+                    state=BackgroundJobState.RUNNING,
+                    started_at=now.isoformat(),
+                    worker=worker,
+                    attempt=t.JobRow.attempt + 1,
+                )
+            ),
+        )
+        if result.rowcount != 1:
+            return None
+        return self.jobs.get(candidate)
 
     def set_asset_progress(
         self,

@@ -25,17 +25,17 @@ from tests.server._flow import (
     dataset_of,
     project_with_schema,
 )
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 
 @pytest.fixture()
-def runner() -> RecordingRunner:
-    return RecordingRunner()
+def runner() -> InlineDispatcher:
+    return InlineDispatcher()
 
 
 @pytest.fixture()
-def client(tmp_path: Path, runner: RecordingRunner) -> Iterator[TestClient]:
-    with api_client(tmp_path / "ws", runner=runner) as made:
+def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
+    with api_client(tmp_path / "ws", dispatcher=runner) as made:
         yield made
 
 
@@ -50,7 +50,7 @@ def project(client: TestClient) -> str:
 
 
 @pytest.fixture()
-def ingested(client: TestClient, tmp_path: Path, runner: RecordingRunner, project: str) -> str:
+def ingested(client: TestClient, tmp_path: Path, runner: InlineDispatcher, project: str) -> str:
     """A batch id, reached the way a client reaches one: by ingesting into it."""
     return batch_from_ingest(client, runner, tmp_path, project, images=3)
 
@@ -86,7 +86,7 @@ def test_an_asset_carries_its_hashes_but_not_its_path(client: TestClient, ingest
 
 
 def test_a_batch_an_ingest_could_not_fill_is_an_empty_page_not_a_404(
-    client: TestClient, runner: RecordingRunner, project: str
+    client: TestClient, runner: InlineDispatcher, project: str
 ) -> None:
     """A run whose every item was unreadable still makes a batch. It is just empty."""
     source = client.post(
@@ -350,7 +350,7 @@ def test_a_batch_with_an_unfinished_job_will_not_complete(
 
 
 def test_an_empty_batch_cannot_be_approved(
-    client: TestClient, runner: RecordingRunner, project: str
+    client: TestClient, runner: InlineDispatcher, project: str
 ) -> None:
     """It would have no jobs, so it could never complete."""
     source = client.post(
@@ -368,7 +368,7 @@ def test_an_empty_batch_cannot_be_approved(
 
 
 def test_a_project_with_no_schema_has_nothing_to_pin(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     project = client.post("/projects", json={"name": "schemaless"}).json()["id"]
     batch_id = batch_from_ingest(client, runner, tmp_path, project, images=1)
@@ -391,7 +391,7 @@ def test_a_lifecycle_move_on_an_unknown_batch_is_404(client: TestClient, action:
 
 
 def test_a_second_ingest_can_be_pointed_at_the_first_ones_batch(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner, project: str, ingested: str
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher, project: str, ingested: str
 ) -> None:
     second = tmp_path / "second"
     second.mkdir()
@@ -499,7 +499,7 @@ def test_a_narrowing_repin_is_409_and_the_flag_is_the_retry(
 
 
 def test_a_repin_that_would_orphan_this_batchs_labels_has_no_flag(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     """Two 409s, and only one of them is retryable — branch on `code`, not status."""
     project = project_with_schema(client)
@@ -539,7 +539,7 @@ def test_a_draft_has_no_pin_to_move(client: TestClient, project: str, ingested: 
 
 
 def test_a_completed_batchs_pin_is_history(
-    client: TestClient, tmp_path: Path, runner: RecordingRunner
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     project, batch_id = annotated_batch(client, runner, tmp_path, images=2)
     new_version(client, project, SIGN, LANE, {"name": "crossing", "geometry": "bbox"})
@@ -559,7 +559,7 @@ def test_a_completed_batchs_pin_is_history(
 
 
 def test_a_batch_nobody_promoted_reports_nothing_in_the_dataset(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     _, batch_id = annotated_batch(client, runner, tmp_path)
 
@@ -570,7 +570,7 @@ def test_a_batch_nobody_promoted_reports_nothing_in_the_dataset(
 
 
 def test_promoting_moves_the_count_on_the_batch_itself(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     # The half that survives a reload. The response says what *this press* did and
     # cannot be recovered afterwards; this says what is in the trunk *now*, and is
@@ -586,7 +586,7 @@ def test_promoting_moves_the_count_on_the_batch_itself(
 
 
 def test_the_count_leaves_out_a_frame_that_was_skipped(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     # `PROMOTABLE_PROGRESS` excludes `skipped`, so a count below `asset_count` is
     # the ordinary shape rather than a shortfall — and it is the shape the founder
@@ -611,7 +611,7 @@ def test_the_count_leaves_out_a_frame_that_was_skipped(
 
 
 def test_promoting_twice_leaves_the_count_where_it_was(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     # The idempotent no-op, which is the outcome that looked most like a failure.
     # The second press answers an empty page — and the count says the work is
@@ -626,7 +626,7 @@ def test_promoting_twice_leaves_the_count_where_it_was(
 
 
 def test_the_listing_reports_it_too(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     # One read of the trunk covers every batch in the page — the reason `promoted`
     # is passed into `BatchOut.of` rather than read inside it.
@@ -639,7 +639,7 @@ def test_the_listing_reports_it_too(
 
 
 def test_removing_an_asset_from_the_trunk_takes_it_off_the_count(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     # Current membership, never a promotion log.
     project_id, batch_id = annotated_batch(client, runner, tmp_path)
@@ -708,7 +708,7 @@ def test_a_blank_name_is_refused_in_the_kernels_own_words(client: TestClient, pr
 
 
 def test_a_completed_batch_declares_it_can_be_corrected(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     _, batch_id = annotated_batch(client, runner, tmp_path)
 
@@ -716,7 +716,7 @@ def test_a_completed_batch_declares_it_can_be_corrected(
 
 
 def test_correcting_a_completed_batch_cuts_a_draft_that_points_back_at_it(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     """The forward-only answer: a new batch, not a reopened one."""
     _, batch_id = annotated_batch(client, runner, tmp_path)
@@ -736,7 +736,7 @@ def test_correcting_a_completed_batch_cuts_a_draft_that_points_back_at_it(
 
 
 def test_a_correction_may_name_a_subset(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     # The other ordinary ask: the three frames somebody found wrong.
     _, batch_id = annotated_batch(client, runner, tmp_path)
@@ -751,7 +751,7 @@ def test_a_correction_may_name_a_subset(
 
 
 def test_a_correction_cannot_admit_an_asset_the_parent_never_carried(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:
     """Lineage would otherwise be a claim about nothing."""
     _, batch_id = annotated_batch(client, runner, tmp_path)
@@ -766,7 +766,7 @@ def test_a_correction_cannot_admit_an_asset_the_parent_never_carried(
 
 @pytest.mark.parametrize("stop_at", ["draft", "approved", "in_annotation"])
 def test_an_open_batch_refuses_to_be_corrected(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path, stop_at: str
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, stop_at: str
 ) -> None:
     """Correcting an open batch is not a correction — it is the work.
 
@@ -809,7 +809,7 @@ def _walk_to(client: TestClient, batch_id: str, state: str) -> None:
 
 
 @pytest.fixture()
-def spare(client: TestClient, tmp_path: Path, runner: RecordingRunner, project: str) -> str:
+def spare(client: TestClient, tmp_path: Path, runner: InlineDispatcher, project: str) -> str:
     """An asset of the same project that no batch under test holds."""
     source = client.post(
         f"/projects/{project}/sources/images", files=[png_part(tmp_path, "spare.png", seed=99)]

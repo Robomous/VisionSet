@@ -239,6 +239,27 @@ GET  /ingest-jobs/{job_id}       →  200 { "state": "running",   "processed": 1
 GET  /ingest-jobs/{job_id}       →  200 { "state": "completed", "batch_id": …,   … }
 ```
 
+Export follows the same shape, over the generic surface #328 added:
+
+```
+POST /releases/{id}/export?format=yolo   →  202 Accepted
+                                            Location: /background-jobs/{job_id}
+
+GET  /background-jobs/{job_id}           →  200 { "state": "running",   "processed": 12, … }
+GET  /background-jobs/{job_id}/artifact  →  200 application/zip
+```
+
+The two surfaces are separate because they describe different things. An ingest job knows what it
+is *about* — a source, a batch — and publishes those as fields a client can navigate. A background
+job is about whatever its payload says, so it publishes `type` and `result` instead. What they
+share is the progress shape, deliberately: `processed`, `total`, `failures` and `error` mean the
+same thing on both, so a progress bar written against one renders the other unchanged.
+
+**There is no `POST /background-jobs`.** What work means belongs to the resource it is about, so
+every launch is on that resource. A generic route taking a type and a payload would be a
+remote-code surface with a token in front of it, and every payload shape would become public the
+day it shipped.
+
 **202, not 201**: the row exists, the work does not. The row is what makes the id worth handing
 back — it is written and committed before the response is sent, so the first poll always finds
 something. That is also why anything the request can refuse is refused *synchronously*: an

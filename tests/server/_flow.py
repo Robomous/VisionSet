@@ -3,7 +3,7 @@
 Three modules need the same first four steps — a project, a schema, some
 uploaded stills, and a batch that an ingest filled — before they can test
 anything about batches, jobs or annotations. Written once here rather than
-copied three times, the `_api.py` / `_runner.py` precedent: plain functions in a
+copied three times, the `_api.py` / `_jobs.py` precedent: plain functions in a
 private module, and still no `conftest.py` anywhere.
 
 `test_external_client.py` deliberately does **not** use any of this. Its whole
@@ -17,7 +17,7 @@ from typing import Any, Final
 
 from fastapi.testclient import TestClient
 from tests.fixtures.media import write_image
-from tests.server._runner import RecordingRunner
+from tests.server._jobs import InlineDispatcher
 
 #: A bbox class with one required boolean, which is what makes an annotation
 #: payload able to be wrong in an interesting way.
@@ -58,7 +58,7 @@ def project_with_schema(
 
 def batch_from_ingest(
     client: TestClient,
-    runner: RecordingRunner,
+    runner: InlineDispatcher,
     tmp_path: Path,
     project_id: str,
     *,
@@ -75,7 +75,7 @@ def batch_from_ingest(
 
 
 def open_job(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path, *, images: int = 3
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, *, images: int = 3
 ) -> tuple[str, str]:
     """A batch approved into one started job, ready to be annotated.
 
@@ -109,7 +109,7 @@ def a_box(asset_id: str, **overrides: Any) -> dict[str, Any]:
 
 
 def annotated_batch(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path, *, images: int = 3
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, *, images: int = 3
 ) -> tuple[str, str]:
     """A completed batch whose assets all carry a label, ready to be promoted.
 
@@ -141,7 +141,7 @@ def dataset_of(client: TestClient, project_id: str) -> str:
 
 
 def promoted_dataset(
-    client: TestClient, runner: RecordingRunner, tmp_path: Path, *, images: int = 3
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, *, images: int = 3
 ) -> str:
     """A dataset with a completed batch's labeled assets already in it."""
     project_id, batch_id = annotated_batch(client, runner, tmp_path, images=images)

@@ -553,14 +553,30 @@ plain field so a client does not re-derive the conjunction slightly differently 
 than an empty answer. No recipe means one undivided set; answering all-train would be
 indistinguishable from a real recipe that said so.
 
-**Export is synchronous**, and that is a stated limit. The launch-and-poll pattern the ingest
-routes use needs a row to poll and a row needs a table, and M3's migration ledger is spent —
-inventing a second place to keep job state would be exactly the logic leaking upward this
-milestone watches for. `yolo` writes one file per image and copies the pixels, so the wait is now
-real for a large release; the case for a job is filed rather than taken here. The archive comes back inline as
-`application/zip`, built from `<workspace>/exports/<release_id>/<format>/`, which is a
-server-owned directory like `uploads/`. The route clears it before each run so the archive
-describes *this* export and not the last one.
+**Export is queued**, and this document used to record the opposite. The limit was that
+launch-and-poll needs a row to poll and a row needs a table; #328 gave the product a generic one,
+so the argument expired. `yolo` writes one file per image and copies the pixels, which is minutes
+of work behind a request with no way to report progress and every proxy's timeout in front of it.
+
+```
+POST /releases/{id}/export?format=yolo   →  202 Accepted
+                                            Location: /background-jobs/{job_id}
+
+GET  /background-jobs/{job_id}           →  200 { "state": "running",   … }
+GET  /background-jobs/{job_id}           →  200 { "state": "succeeded", "result": { … } }
+GET  /background-jobs/{job_id}/artifact  →  200 application/zip
+```
+
+**Everything a caller can be told now is still told now**, which is the half of the old shape
+that survived: an unknown format is a 404 and an unconsented lossy export is a 409, both on
+*this* request, and neither creates a job. So a caller holding a job id holds one that will run.
+The consent check therefore happens twice — once here as the answer, once in the worker as the
+guarantee — which is the same bargain a uniqueness pre-check and its unique index already strike.
+
+The output is built in `<workspace>/exports/<release_id>/<format>/`, a server-owned directory
+like `uploads/`, and the handler clears it before each run so the archive describes *this* export
+and not the last one. The archive is a sibling of that directory rather than a file inside it, so
+a re-export cannot sweep the previous one into the new one.
 
 **Which formats exist is a property of the deployment**, so `GET /formats` answers it rather
 than this document. `lossy` is on the row so a client knows before it POSTs whether the export

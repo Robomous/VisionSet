@@ -11,6 +11,57 @@ nothing was being distributed. This is the first version that is.
 
 ## [Unreleased]
 
+### Added
+
+- **An embedded job system: work that outlives its request now has a queue, and it survives a
+  restart** (#328). The whole background story was 77 lines — a one-worker `ThreadPoolExecutor`
+  holding closures in memory, reachable from two lambdas, losing everything queued when the
+  server stopped. There is now a `JobQueue` port with a SQLite adapter (a `job` table in the
+  workspace's own database, migration 4), a `ProgressReporter` port, and a dispatcher thread in
+  the FastAPI lifespan feeding a `spawn` `ProcessPoolExecutor`. No separate worker command:
+  `visionset ui` still starts everything.
+
+  The claim is one guarded `UPDATE` whose `rowcount` is the answer — the shape
+  `set_asset_progress` already uses — so two dispatchers can never hand one job to two workers.
+  A row left `running` by a dead server is settled at the next startup, and an idempotent one is
+  re-queued as a **new** job so a list shows the crash *and* the recovery. `spawn` is pinned
+  rather than defaulted: `fork` is unsafe beside a live pooled SQLite connection.
+
+  Handlers live in a new `visionset.jobs` package — a sibling of `formats` and `wire` — because
+  the export handler resolves a format plugin, which the kernel may not import. Two new
+  import-linter contracts hold both directions; the second is load-bearing, since a worker that
+  imported `visionset.server` would re-execute its module-level `app = create_app()` under
+  `spawn`. See `docs/background-jobs.md`.
+
+- **`GET /background-jobs`, `/background-jobs/{id}`, `/background-jobs/{id}/cancel` and
+  `/background-jobs/{id}/artifact`** (#328). The generic twin of `/ingest-jobs`. Not `/jobs`:
+  that prefix has served *annotation* jobs since #29 and two different things wanted the word.
+  There is deliberately no `POST` — a generic launch route taking a type and a payload would be
+  a remote-code surface, so every launch stays on the resource it is about.
+
+- **`VISIONSET_JOB_WORKERS`, `VISIONSET_JOB_POLL_INTERVAL_S` and
+  `VISIONSET_JOB_PROGRESS_MIN_INTERVAL_S`** (#328), through this repository's first
+  `pydantic-settings` object. The default is **one** worker, and that is a property of the store
+  rather than a cautious guess: SQLite has a single writer and a run writes progress as it goes.
+
+### Changed
+
+- **`POST /releases/{id}/export` answers `202` instead of the archive** (#328). **Breaking, for
+  this one endpoint.** It used to block until the exporter finished; a real format walks every
+  asset in a release and copies its bytes, which is minutes of work behind a request with no way
+  to report progress and every proxy's timeout in front of it. It now returns a job to poll and
+  a `Location`, with the archive at `GET /background-jobs/{id}/artifact`.
+
+  Everything a *request* can refuse is still refused on the request: an unknown format is a 404
+  and an unconsented lossy export a 409, neither creating a job. The browser's consent flow is
+  unchanged; the export dialog polls and downloads when the job succeeds.
+
+- **Ingest runs on the same executor**, with no wire change at all (#328). `IngestJobOut` is
+  still what a client polls and `POST /sources/{id}/ingest-jobs` still answers 202 with the same
+  body — only who does the work moved. An ingest now has two rows for one run: the `ingest_job`
+  is the domain record, the `job` is execution plumbing, and collapsing them is a later
+  migration with its own wire discussion.
+
 ### Fixed
 
 - **A batch whose every frame was finished could not be completed** (#301). `Complete` answered

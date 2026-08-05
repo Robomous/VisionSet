@@ -18,27 +18,35 @@ from typing import Final
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from tests.server._jobs import ManualDispatcher
 from tests.server._probe import handle_for
 
 from visionset.kernel.services import TokenService, WorkspaceService
 from visionset.server.main import create_app
-from visionset.server.runner import IngestRunner
 
 TOKEN_NAME: Final = "api-tests"
 
 
-def served_app(root: Path, *, runner: IngestRunner | None = None) -> FastAPI:
+def served_app(root: Path, *, dispatcher: ManualDispatcher | None = None) -> FastAPI:
     """The shipped application, serving the workspace at ``root``.
 
     The handle is replaced rather than the environment patched, so the test says
-    which workspace it means instead of relying on process-wide state. A
-    ``runner`` is replaced the same way and for the same reason; the one
-    ``create_app`` built has started no thread, so dropping it costs nothing.
+    which workspace it means instead of relying on process-wide state. The
+    dispatcher is replaced the same way and for the same reason; the one
+    ``create_app`` built has started no thread and opened no workspace, so
+    dropping it costs nothing.
+
+    **Left alone, no job ever runs**, and that is the honest default: the real
+    dispatcher only starts inside the lifespan, and a ``TestClient`` used without
+    its context manager never runs one. A test that wants work done passes an
+    ``InlineDispatcher``; one that wants to watch a launch *before* the work
+    passes a ``ManualDispatcher``.
     """
     app = create_app()
     app.state.workspace_handle = handle_for(root)
-    if runner is not None:
-        app.state.ingest_runner = runner
+    if dispatcher is not None:
+        dispatcher.bind(app.state.workspace_handle)
+        app.state.job_runner = dispatcher
     return app
 
 
@@ -51,14 +59,14 @@ def api_workspace(root: Path) -> str:
         workspace.close()
 
 
-def api_client(root: Path, *, runner: IngestRunner | None = None) -> TestClient:
+def api_client(root: Path, *, dispatcher: ManualDispatcher | None = None) -> TestClient:
     """A client for a fresh workspace at ``root``, authenticated on every request.
 
     Use it as a context manager: the lifespan is what closes the workspace and
-    stops the ingest worker, and a `visionset.db-wal` left behind would outlive
-    the test's ``tmp_path``.
+    stops the dispatcher, and a `visionset.db-wal` left behind would outlive the
+    test's ``tmp_path``.
     """
     secret = api_workspace(root)
     return TestClient(
-        served_app(root, runner=runner), headers={"Authorization": f"Bearer {secret}"}
+        served_app(root, dispatcher=dispatcher), headers={"Authorization": f"Bearer {secret}"}
     )

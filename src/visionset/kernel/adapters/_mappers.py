@@ -7,7 +7,7 @@ directions of the conversion; the repository in
 fifteen times against fifteen tables.
 
 Most entities are flat — every field is a column — and share
-``_flat_mapping``. The ten that are not say so explicitly:
+``_flat_mapping``. The eleven that are not say so explicitly:
 
 - ``AnnotationSchema``, ``Annotation`` and ``IngestJob`` hold immutable nested
   values, encoded as JSON.
@@ -17,6 +17,8 @@ Most entities are flat — every field is a column — and share
   timezone-aware timestamp, which a ``String`` column must be handed as text
   rather than as a ``datetime``. ``Source`` also carries a nested
   ``VideoProvenance`` as JSON.
+- ``BackgroundJob`` does both, and is the only entity here that does: three
+  timestamps *and* a tuple of ``ItemFailure`` models.
 
 ``Asset`` is the newest of those and the only one that *became* one: it was flat
 until ``ingested_at`` arrived (#216). Adding a timestamp to an entity costs it
@@ -43,6 +45,8 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     Asset,
     AssetProgress,
+    BackgroundJob,
+    BackgroundJobState,
     Batch,
     Dataset,
     DatasetChange,
@@ -52,6 +56,7 @@ from visionset.kernel.domain import (
     IngestFailure,
     IngestJob,
     IngestState,
+    ItemFailure,
     LabelClass,
     Project,
     Release,
@@ -187,6 +192,54 @@ def _ingest_job_to_domain(_: Session, row: Any) -> IngestJob:
         processed=row.processed,
         total=row.total,
         failures=tuple(IngestFailure.model_validate(f) for f in row.failures),
+    )
+
+
+def _background_job_to_row(entity: BackgroundJob) -> t.Base:
+    """Both reasons an entity loses ``_flat_mapping``, in one model.
+
+    Three timestamps that a ``String`` column must be handed as text, and a tuple
+    of ``ItemFailure`` models a ``JSON`` column has no business receiving. Either
+    alone would cost this pair; it has both.
+    """
+    return t.JobRow(
+        id=entity.id,
+        type=entity.type,
+        payload=dict(entity.payload),
+        state=entity.state,
+        idempotent=entity.idempotent,
+        processed=entity.processed,
+        total=entity.total,
+        failures=[failure.model_dump(mode="json") for failure in entity.failures],
+        error=entity.error,
+        result=dict(entity.result),
+        cancel_requested=entity.cancel_requested,
+        attempt=entity.attempt,
+        worker=entity.worker,
+        created_at=entity.created_at.isoformat(),
+        started_at=None if entity.started_at is None else entity.started_at.isoformat(),
+        finished_at=None if entity.finished_at is None else entity.finished_at.isoformat(),
+    )
+
+
+def _background_job_to_domain(_: Session, row: Any) -> BackgroundJob:
+    return BackgroundJob(
+        id=row.id,
+        type=row.type,
+        payload=row.payload,
+        state=BackgroundJobState(row.state),
+        idempotent=bool(row.idempotent),
+        processed=row.processed,
+        total=row.total,
+        failures=tuple(ItemFailure.model_validate(f) for f in row.failures),
+        error=row.error,
+        result=row.result,
+        cancel_requested=bool(row.cancel_requested),
+        attempt=row.attempt,
+        worker=row.worker,
+        created_at=datetime.fromisoformat(row.created_at),
+        started_at=None if row.started_at is None else datetime.fromisoformat(row.started_at),
+        finished_at=None if row.finished_at is None else datetime.fromisoformat(row.finished_at),
     )
 
 
@@ -532,6 +585,20 @@ ANNOTATIONS: EntityMapping[Annotation] = EntityMapping(
     parent_column="asset_id",
     to_row=_annotation_to_row,
     to_domain=_annotation_to_domain,
+)
+#: ``parent_column=None``, like ``Workspace`` and unlike everything else here.
+#:
+#: A job has no parent to be scoped by — see ``JobRow`` for why it carries no
+#: foreign key. The consequence is worth stating, because it is the trap #25
+#: recorded from the other side: ``SqlRepository.list(None)`` on a *scoped*
+#: entity silently returns every row in the table, so a root entity is the one
+#: place that call is correct. ``JobQueue.list`` is what callers use, and it
+#: filters by state rather than by parent.
+BACKGROUND_JOBS: EntityMapping[BackgroundJob] = EntityMapping(
+    row=t.JobRow,
+    parent_column=None,
+    to_row=_background_job_to_row,
+    to_domain=_background_job_to_domain,
 )
 INGEST_JOBS: EntityMapping[IngestJob] = EntityMapping(
     row=t.IngestJobRow,

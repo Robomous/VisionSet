@@ -594,3 +594,73 @@ TOKEN_NAME_UNIQUE = Index(
     TokenRow.name.collate("NOCASE"),
     unique=True,
 )
+
+
+class JobRow(Base):
+    """The background executor's queue: one row per unit of machine work.
+
+    **No foreign key, and that is a decision rather than an omission.** A job is
+    workspace-scoped plumbing: what it is *about* lives in ``payload``, keyed by
+    id, and different job types are about different entities — an export is about
+    a release, an ingest about an ingest job. A ``project_id`` would be null for
+    some types, wrong for others, and would make ``ON DELETE CASCADE`` quietly
+    destroy the record of work that already happened. The row outlives its
+    subject on purpose: "this export ran and here is where it put the archive"
+    stays true after the release is gone.
+
+    It also keeps this table free of the rebuild rule. A column carrying a key
+    cannot arrive by ``ALTER TABLE`` — SQLite spells an added key inline while
+    ``create_all`` spells one as a table constraint — so a table with no keys at
+    all is one a later migration can widen without touching its rows.
+
+    ``payload``, ``result`` and ``failures`` are JSON for the reason
+    ``ingest_job.failures`` is: they are read whole, never queried by field.
+    ``payload`` in particular is opaque to everything but its own handler, which
+    is what makes the executor generic.
+    """
+
+    __tablename__ = "job"
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    #: The registry key that resolves to a handler. Indexed because "what are all
+    #: the exports doing?" is the one question a list is filtered by after state.
+    type: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, server_default=text("'{}'")
+    )
+    #: Indexed because the dispatcher polls it: ``WHERE state = 'queued' ORDER BY
+    #: created_at`` runs on an interval for as long as the server is up, which is
+    #: the one read here whose cost is paid whether or not anything is happening.
+    state: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    idempotent: Mapped[bool] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    failures: Mapped[list[Any]] = mapped_column(JSON, nullable=False, server_default=text("'[]'"))
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    result: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, server_default=text("'{}'")
+    )
+    #: A request, not a state. See ``BackgroundJob.cancel_requested``.
+    cancel_requested: Mapped[bool] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    #: Who claimed it. Recorded, never validated — it is for a person reading a
+    #: list, not for the queue to trust.
+    worker: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: ISO-8601 with offset, never SQLite ``DATETIME``. See the module docstring.
+    #: Indexed with ``state`` below: the claim orders by it.
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    started_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    finished_at: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+#: The dispatcher's poll, in one index.
+#:
+#: ``claim`` is ``WHERE state = 'queued' ORDER BY created_at LIMIT 1``, issued
+#: every poll interval for the life of the server whether or not there is work.
+#: Composite rather than two indexes because that is the only read shape here
+#: that runs unattended: SQLite can satisfy both the filter and the ordering from
+#: this one, so an idle queue costs an index seek rather than a scan that grows
+#: with every job the workspace has ever run.
+JOB_QUEUE_ORDER = Index("ix_job_state_created_at", JobRow.state, JobRow.created_at)
