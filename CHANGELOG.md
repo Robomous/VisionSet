@@ -48,7 +48,18 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
-- **The browser application moved from `/ui` to `/app`.** `visionset ui` now serves it at
+- **`visionset ui` is now `visionset server`** (#329). The command starts the FastAPI server; the
+  browser application is one client of it, alongside REST, the SDK and MCP, so the old name
+  described a single consumer of the process rather than the process. Nothing else moved — same
+  flags and defaults, same `/app` mount, same one-sentence refusal at exit 1 outside a workspace.
+
+  **There is no alias.** `visionset ui` now fails with Typer's ordinary `No such command 'ui'`,
+  so a script that calls the old name needs one edit. A deprecation shim was declined
+  deliberately rather than overlooked: this is a pre-1.0 beta with no installed base to carry,
+  and a hidden second spelling of the front door is a thing every later reader has to explain
+  away.
+
+- **The browser application moved from `/ui` to `/app`.** `visionset server` now serves it at
   `http://127.0.0.1:8000/app/`, and `/` still redirects there. One constant moved —
   `UI_PREFIX` in `src/visionset/server/main.py` — and `frontend/app/vite.config.ts`'s build
   `base` follows it, which is what keeps the router's basename in agreement: it is read from

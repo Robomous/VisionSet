@@ -217,7 +217,7 @@ real dependency since #16, so a second hand-rolled PNG encoder beside it would b
 | Stage | What happens |
 | --- | --- |
 | Setup | `WorkspaceService.init` then `TokenService.create` — the last SDK lines in the file |
-| Serve | `visionset ui --host 127.0.0.1 --port <free> --workspace <root>` as a subprocess, polled at `/health` until it answers |
+| Serve | `visionset server --host 127.0.0.1 --port <free> --workspace <root>` as a subprocess, polled at `/health` until it answers |
 | Project | `POST /projects`, `POST /projects/{p}/schema/versions` |
 | Upload | `POST /projects/{p}/sources/images` — four PNGs as `multipart/form-data`, built by hand |
 | Ingest | `POST /sources/{s}/ingest-jobs` → **202** + `Location`, then `GET /ingest-jobs/{id}` until it settles |
@@ -237,7 +237,7 @@ nothing else — not `httpx`, not `requests`, not `curl`. That is two arguments 
 contract only a smart client can drive is not really a contract. The multipart body is twenty-odd
 lines in the file, written out rather than delegated, and it is the price of the claim.
 
-**The server actually starts.** [`tests/cli/test_ui.py`](../tests/cli/test_ui.py) patches
+**The server actually starts.** [`tests/cli/test_server.py`](../tests/cli/test_server.py) patches
 `uvicorn.run` and asserts the arguments, which is right for a unit test and says nothing about
 whether the process comes up. This example binds an ephemeral port, spawns the shipped command
 against it, and waits for `/health` — the one unauthenticated route, and therefore the readiness
@@ -342,7 +342,7 @@ travels the way it really travels: resolved by the CLI, opened once to run any m
 **One session for the whole walk.** `tests/mcp/_flow.py` opens a fresh session per call, which is
 convenient for a test and is not what a client does. Holding one open is safe because the server
 opens and closes the workspace *inside each tool call* — so a long-lived session holds no SQLite
-handle and locks nobody out of `visionset ui`.
+handle and locks nobody out of `visionset server`.
 
 **The pixels an agent sees are not the frame its coordinates live in.** The frames are 640×480 on
 purpose. The preview is capped at 256 pixels on its long edge, so what arrives is 256×192 and

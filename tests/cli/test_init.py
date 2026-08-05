@@ -39,7 +39,7 @@ def test_the_resolved_root_is_the_only_thing_on_stdout(tmp_path: Path) -> None:
     result = runner.invoke(app, ["init", str(tmp_path / "ws")])
     assert result.stdout.strip() == str((tmp_path / "ws").resolve())
     assert "Created workspace" in result.stderr
-    assert "visionset ui" in result.stderr
+    assert "visionset server" in result.stderr
 
 
 def test_it_names_the_workspace_after_its_directory(tmp_path: Path) -> None:

@@ -256,7 +256,7 @@ def create_app() -> FastAPI:
     and so does ``uvicorn visionset.server.main:app``.
 
     It takes **no parameters**, and that is a decision rather than an omission.
-    ``visionset ui`` starts this server by *import string* — import-linter forbids
+    ``visionset server`` starts this server by *import string* — import-linter forbids
     ``visionset.cli`` importing ``visionset.server``, and ``uvicorn --reload``
     requires the import-string form anyway — so an argument here would be
     unreachable from the only production caller. Production configures through

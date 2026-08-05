@@ -37,7 +37,7 @@ visionset backfill-thumbnails --project P
 visionset token create --name NAME
 visionset token list
 visionset token revoke NAME [--yes]
-visionset ui  [--host] [--port] [--reload]               # no --json
+visionset server [--host] [--port] [--reload]            # no --json
 visionset mcp                                            # stdio; no --json
 ```
 
@@ -84,7 +84,7 @@ actually do. It does not rewrite the kernel's sentence: bending a domain message
 is how the other surfaces end up with the wrong wording.
 
 ```
-$ visionset ui
+$ visionset server
 Error: /tmp is not a VisionSet workspace (no visionset.db); use WorkspaceService.init to create one
 Point at one with --workspace, or set VISIONSET_WORKSPACE.
 $ echo $?
@@ -207,7 +207,7 @@ Creates a workspace, which every other command needs and none of them makes.
 $ visionset init ./datasets/robots
 Created workspace 'robots' at /home/you/datasets/robots.
 /home/you/datasets/robots
-Next: visionset token create --name <name>, then visionset ui.
+Next: visionset token create --name <name>, then visionset server.
 ```
 
 The root is the only thing on stdout, so `WS=$(visionset init ./robots)` is exactly the path — and
@@ -221,18 +221,18 @@ it is the *resolved* path, which is the useful answer when you typed `.`.
 Creating one where a workspace already sits is refused too — the remedy is to use it, not to make a
 second. Both refusals are one sentence at exit 1.
 
-Deliberately **not** folded into `visionset ui`, which would have to create a workspace when the
+Deliberately **not** folded into `visionset server`, which would have to create a workspace when the
 directory looked empty: that breaks "`init` creates, `open` never does" and means a mistyped path
 silently becomes a new empty workspace instead of an error. See
 [workspaces.md](workspaces.md#at-a-terminal).
 
-## `visionset ui`
+## `visionset server`
 
 Starts the server against the resolved workspace, serving the REST API at the root and the compiled
 UI bundle at `/app`; `/` redirects to the app.
 
 ```
-$ visionset ui
+$ visionset server
 VisionSet 0.0.1.dev0
   workspace   /home/you/datasets/robots
   UI and API  http://127.0.0.1:8000/
@@ -309,7 +309,7 @@ content addressing means it also creates no asset it created before, which is th
 interrupted run. The batch id goes to stdout.
 
 `--fps` is video-only and a usage error on a folder. The run is **synchronous**, and there is no
-`--resume`: polling needs a second process, which is what `visionset ui` and
+`--resume`: polling needs a second process, which is what `visionset server` and
 `GET /ingest-jobs/{id}` are for. See [ingest.md](ingest.md#at-a-terminal).
 
 ### `visionset batch`
@@ -393,12 +393,12 @@ looks like.
 visionset mcp [--workspace PATH]
 ```
 
-Normally a client spawns it rather than a person running it. Like `ui`, it resolves the workspace
+Normally a client spawns it rather than a person running it. Like `server`, it resolves the workspace
 with the full precedence and then **states** the answer in `VISIONSET_WORKSPACE`, so the server it
 starts cannot disagree with it, and it opens the workspace first so that `NotAWorkspace` is one
 sentence at exit 1 rather than a refusal inside the agent's first tool call.
 
-The target is named as a module for a subprocess rather than imported, for the reason `ui` names
+The target is named as a module for a subprocess rather than imported, for the reason `server` names
 uvicorn's app by import string — import-linter forbids `visionset.cli` importing `visionset.mcp`.
 The subprocess inherits stdin and stdout, because those two streams *are* the transport, which is
 also why this is the one command that prints **nothing at all** on stdout: a stray line would
@@ -445,7 +445,7 @@ repository; each module declares its own fixtures, including an autouse one that
 `VISIONSET_WORKSPACE` so a developer with it exported gets CI's results. **Use
 `monkeypatch.setenv(VAR, "")` if any command the module exercises can write `os.environ`, and
 `delenv(VAR, raising=False)` otherwise** — `delenv` records no undo when the variable was already
-absent, so a written one leaks into every later module. Only `ui` writes it today.
+absent, so a written one leaks into every later module. Only `server` writes it today.
 
 **A test module's basename must be unique across the whole suite.** With no `__init__.py` anywhere,
 pytest imports a test module under its bare basename, so `tests/cli/test_batches.py` beside

@@ -117,7 +117,7 @@ export interface ApiProviderProps {
   /**
    * Where the API lives, **without** a trailing slash.
    *
-   * `""` — same origin — is what production uses: `visionset ui` serves the bundle
+   * `""` — same origin — is what production uses: `visionset server` serves the bundle
    * at `/app` and the API at the root, so a relative request already lands on it.
    * Development points at a proxy prefix instead; the app decides, because a
    * library that reads `import.meta.env` is a library that can only be built one

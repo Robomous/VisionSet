@@ -5,7 +5,7 @@
  * whole job is to notice which one applies before showing anybody a form.
  *
  * **A browser session.** The server signs in the page it served itself, over an
- * `HttpOnly` cookie (#179). Opening `visionset ui` on the machine it runs on
+ * `HttpOnly` cookie (#179). Opening `visionset server` on the machine it runs on
  * reaches the product with nothing typed and nothing copied, because asking
  * somebody to paste a credential to read their own files off their own disk is
  * ceremony with no threat model behind it. This component is what asks — once, on
@@ -41,7 +41,7 @@
  * sentence, and a pointer at the command that mints one. The *other* failures are
  * worth telling apart, and are: a server that is not running (`NETWORK_ERROR`) is
  * the most likely failure of all on a local-first tool, and saying "check the
- * token" to somebody who has not started `visionset ui` sends them the wrong way
+ * token" to somebody who has not started `visionset server` sends them the wrong way
  * for ten minutes.
  */
 
@@ -179,7 +179,7 @@ function refusalOf(cause: unknown): string {
     return "That token was refused. It may be mistyped, revoked, or minted for a different workspace.";
   }
   if (failure.code === NETWORK_ERROR) {
-    return "No answer from the server. Is `visionset ui` running?";
+    return "No answer from the server. Is `visionset server` running?";
   }
   // Everything else through the shared vocabulary. The two branches above stay
   // local because they are about *this* screen — a token being refused and a

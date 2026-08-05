@@ -292,7 +292,7 @@ def main(dest: Path) -> Summary:
     base_url = f"http://{HOST}:{port}"
     server = subprocess.Popen(  # noqa: S603
         [
-            "visionset", "ui",
+            "visionset", "server",
             "--host", HOST,
             "--port", str(port),
             "--workspace", str(root),
@@ -300,7 +300,7 @@ def main(dest: Path) -> Summary:
     )  # fmt: skip
     try:
         wait_until_serving(server, base_url)
-        _say(f"`visionset ui` is serving {base_url}")
+        _say(f"`visionset server` is serving {base_url}")
         return _walk(Client(base_url, token), base_url, downloads)
     finally:
         server.terminate()
@@ -575,7 +575,7 @@ def _run() -> None:
         f"\nDone. {summary.promoted} assets and {summary.annotation_count} labels released as "
         f"{summary.release_tag}, verified {summary.verified}, over {summary.base_url}.\n"
         f"Workspace left at {dest / 'ws'} — serve it again with "
-        f"`visionset ui --workspace {dest / 'ws'}`."
+        f"`visionset server --workspace {dest / 'ws'}`."
     )
 
 

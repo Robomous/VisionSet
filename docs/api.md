@@ -7,11 +7,10 @@ endpoint — what a failure looks like, and how to read one.
 The routes themselves are described by [`openapi.json`](../openapi.json) at the repo root, which
 is generated (`uv run python scripts/export_openapi.py`) and diffed in CI. Never hand-edit it.
 
-For a worked external client, [`examples/http_end_to_end.py`](../examples/http_end_to_end.py)
-starts `visionset ui` on a free port and drives the whole cycle — upload, launch-and-poll ingest,
-annotate, promote, publish, verify, export — with `urllib` and a bearer token, and nothing else.
-It is deliberately dependency-free: a contract only a smart client can drive is not really a
-contract.
+For a worked external client, [`examples/http_end_to_end.py`](../examples/http_end_to_end.py) starts
+`visionset server` on a free port and drives the whole cycle — upload, launch-and-poll ingest,
+annotate, promote, publish, verify, export — with `urllib` and a bearer token, and nothing else. It
+is deliberately dependency-free: a contract only a smart client can drive is not really a contract.
 
 ## Authentication
 
@@ -293,8 +292,8 @@ because somebody added it to an entity.
 
 ## Where the UI lives
 
-The compiled application is mounted at **`/app`** and `/` redirects to it. `visionset ui` starts
-both halves with one command; see [cli.md](cli.md#visionset-ui).
+The compiled application is mounted at **`/app`** and `/` redirects to it. `visionset server` starts
+both halves with one command; see [cli.md](cli.md#visionset-server).
 
 **The API owns the root, and that is why the app does not.** `/projects/{project_id}` is a shipped
 route, so an application served from `/` could never claim `/projects/abc` as one of its *own*

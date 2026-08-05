@@ -1,5 +1,5 @@
-# usage: from visionset.cli.ui import ui
-"""``visionset ui`` — the front door: one command, the API and the app.
+# usage: from visionset.cli.server import server
+"""``visionset server`` — the front door: one command, the API and the app.
 
 **The server is named, never imported.** ``uvicorn.run`` is handed the import
 string ``visionset.server.main:app`` because import-linter forbids
@@ -84,7 +84,7 @@ def _package_dir() -> Path:
     return Path(str(resources.files("visionset")))
 
 
-def ui(
+def server(
     host: Annotated[str, typer.Option("--host", help="Address to bind.")] = DEFAULT_HOST,
     port: Annotated[int, typer.Option("--port", help="Port to bind.")] = DEFAULT_PORT,
     reload: Annotated[

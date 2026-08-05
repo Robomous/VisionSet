@@ -13,7 +13,7 @@
  *
  * ## Why the base URL is absolute here and empty in production
  *
- * Production passes `""` — same origin — because `visionset ui` serves the bundle
+ * Production passes `""` — same origin — because `visionset server` serves the bundle
  * at `/app` and the API at the root, so a relative request already lands on it. That
  * cannot be exercised under vitest: jsdom does **not** replace Node's `Request`, and
  * undici's requires an absolute URL, so `new Request("/projects")` throws *"Failed
@@ -285,7 +285,7 @@ describe("the token form", () => {
     await userEvent.click(screen.getByTestId("token-submit"));
 
     await waitFor(() => expect(screen.queryByTestId("token-error")).not.toBeNull());
-    expect(screen.getByTestId("token-error").textContent).toContain("visionset ui");
+    expect(screen.getByTestId("token-error").textContent).toContain("visionset server");
 
     vi.unstubAllGlobals();
   });

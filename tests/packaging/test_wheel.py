@@ -9,7 +9,7 @@ cleanly, starts cleanly, and is wrong.
 The first is the one worth naming. `uv build` copies `src/visionset/_static/` as
 package data *at the moment it runs*, and a fresh checkout's `_static/` holds two
 placeholder files — so a wheel built before `pnpm bundle:static` contains no app
-at all. It installs. `visionset ui` starts. `/app/` answers a 404 naming a script
+at all. It installs. `visionset server` starts. `/app/` answers a 404 naming a script
 the user cannot run, because they do not have the repository. There is no error
 and no traceback anywhere in that sequence.
 
@@ -314,7 +314,7 @@ def _serving(venv: Path, workspace: Path, port: int) -> _Server:
 
 
 class _Server:
-    """`visionset ui` for the duration of a `with`, or say why it never came up."""
+    """`visionset server` for the duration of a `with`, or say why it never came up."""
 
     def __init__(self, venv: Path, workspace: Path, port: int) -> None:
         self._venv = venv
@@ -338,7 +338,7 @@ class _Server:
         self._process = subprocess.Popen(
             [
                 str(binary),
-                "ui",
+                "server",
                 "--workspace",
                 str(self._workspace),
                 "--port",

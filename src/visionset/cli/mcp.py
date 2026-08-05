@@ -1,12 +1,12 @@
 # usage: from visionset.cli.mcp import mcp
 """``visionset mcp`` — the front door for an agent: one command, the whole listing.
 
-``ui.py``'s shape exactly, with a subprocess where that one has uvicorn, and the
+``server.py``'s shape exactly, with a subprocess where that one has uvicorn, and the
 same three decisions behind it.
 
 **The server is named, never imported.** import-linter forbids ``visionset.cli``
 importing ``visionset.mcp``, so the target is spelled as a module for the
-interpreter to find. ``ui`` gets to hand uvicorn an import string; there is no
+interpreter to find. ``server`` gets to hand uvicorn an import string; there is no
 equivalent here, so this spawns ``python -m visionset.mcp.main`` and lets it
 inherit stdin and stdout — which is the whole point, because those two streams
 *are* the MCP transport. Nothing is captured, nothing is piped, and this process
@@ -22,7 +22,7 @@ including the upward walk — and then **states** the answer, so the child's own
 real ``open``: it runs the migration, so ``NotAWorkspace``, ``WorkspaceCorrupt``
 and ``WorkspaceFormatTooNew`` land at a terminal as one sentence and exit 1 rather
 than inside the agent's first tool call, where the answer is a JSON envelope
-nobody is watching. Closing again matters for the same reason it does in ``ui``:
+nobody is watching. Closing again matters for the same reason it does in ``server``:
 an uncheckpointed SQLite leaves ``visionset.db-wal`` behind, and the child is
 about to open the file for itself.
 

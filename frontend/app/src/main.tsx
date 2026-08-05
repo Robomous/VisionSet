@@ -18,7 +18,7 @@
  *
  * ## `BrowserRouter`, and the basename the wheel needs
  *
- * `visionset ui` serves the bundle under `/app` — the API owns the root, which
+ * `visionset server` serves the bundle under `/app` — the API owns the root, which
  * `UI_PREFIX`'s docstring argues is a consequence of an unprefixed API rather than
  * something a later milestone can lift. So the router's basename has to match
  * vite's `base`, and both are read from the same place: `import.meta.env.BASE_URL`
