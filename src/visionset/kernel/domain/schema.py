@@ -48,6 +48,39 @@ class GeometryType(StrEnum):
     CLASSIFICATION_TAG = "classification_tag"
 
 
+# This enum travels on the wire as itself (the ``GeometryType`` precedent), and a
+# domain docstring is copied verbatim into ``openapi.json`` as the schema's
+# description — so the docstring below is written for a client reading the
+# contract, and the reasoning that is nobody else's business lives here:
+#
+# * **The name collides, and the collision is only in the word.** ``Provenance``
+#   in ``domain/annotation.py`` asks whether a *label* was drawn, predicted or
+#   imported. This asks whether a *version* was designed or fell out of somebody
+#   needing a class mid-job. Different entity, different question; #368 records
+#   that docs must disambiguate the two wherever both appear.
+# * **Nothing infers it and nothing backfills it.** The only thing that knows
+#   which kind of work is happening is the surface the person is using, so the
+#   value is recorded verbatim from the caller. A version published before this
+#   column existed stays NULL, because the alternative is a guess — and a history
+#   that groups on a guess is confidently wrong about exactly the milestones a
+#   reader opened it to find.
+# * **NULL is not a third kind.** It means "nobody said", and a reader groups it
+#   with ``CURATED`` rather than with ``ANNOTATION`` — showing a version that
+#   deserved collapsing is a smaller error than hiding one that did not.
+class SchemaProvenance(StrEnum):
+    """Which kind of work published a schema version.
+
+    `curated` is a version authored deliberately — somebody sat down and decided
+    what the project labels. `annotation` is one that fell out of adding a class
+    part-way through labeling an asset. It gates nothing and is part of no
+    contract comparison; a version history uses it to tell the milestones apart
+    from the incidental runs between them.
+    """
+
+    CURATED = "curated"
+    ANNOTATION = "annotation"
+
+
 #: What ``Attribute.default`` may hold, in the order pydantic's smart union tries.
 #:
 #: ``bool`` first is not cosmetic: ``True`` is an ``int`` to Python, so a laxer
@@ -195,6 +228,13 @@ class AnnotationSchema(BaseModel):
     #: backfills one either: the only honest source is the service that
     #: publishes the version, and it stamps this at that moment.
     created_at: datetime | None = None
+
+    #: Which kind of work published this version — see ``SchemaProvenance``.
+    #: Recorded verbatim from the caller rather than inferred, because the only
+    #: thing that knows whether a class was designed or needed-right-now is the
+    #: surface the person was using. Null for a version published before this
+    #: existed, and for any writer that declines to say.
+    provenance: SchemaProvenance | None = None
 
     @field_validator("description")
     @classmethod

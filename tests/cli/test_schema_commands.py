@@ -59,6 +59,17 @@ def test_the_classes_survive_the_round_trip(root: Path, tmp_path: Path) -> None:
     assert document["classes"][0]["attributes"][0]["name"] == "occluded"
 
 
+def test_apply_records_the_version_as_curated(root: Path, tmp_path: Path) -> None:
+    """Applying an authored document from a file is the curated act by construction.
+
+    Asserted through ``--json`` rather than by reading the database, because the
+    projection is what a caller can actually see — and it is the same field the
+    REST wire publishes.
+    """
+    document = payload(root, "schema", "apply", str(schema_file(tmp_path)), "-p", "road-signs")
+    assert document["provenance"] == "curated"
+
+
 def test_the_same_document_is_a_valid_request_body(tmp_path: Path) -> None:
     # The cross-surface claim, tested rather than promised: one schema file works
     # against ``visionset schema apply`` and against

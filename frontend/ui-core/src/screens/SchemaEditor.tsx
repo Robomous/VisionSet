@@ -214,6 +214,11 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
         classes: draft,
         ...(allowDestructive ? { allowDestructive: true } : {}),
         ...(note.trim() === "" ? {} : { description: note }),
+        // This screen is where somebody sits down and decides what the project
+        // labels, so every version it publishes is a milestone — including one
+        // that happens to add a single class. What makes a version incidental is
+        // the *surface*, not the size of the change (#368).
+        provenance: "curated",
       },
       { onSuccess: () => setConfirming(false) },
     );

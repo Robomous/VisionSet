@@ -200,6 +200,7 @@
     "created_at": "2026-08-02T12:34:56.789012Z",
     "description": "the fixture's contract: one class per carryable geometry",
     "project_id": "7ea854f2-431a-54a0-b09c-ab53adb21f5b",
+    "provenance": "curated",
     "version": 3
   }
 }

@@ -477,3 +477,67 @@ def test_both_query_parameters_are_required(client: TestClient, project: str) ->
 
     assert compare(client, project, **{"from": 1}).status_code == 422
     assert compare(client, project, **{"to": 1}).status_code == 422
+
+
+# --- provenance: which kind of work published a version (#368) ----------------
+
+
+@pytest.mark.parametrize("stated", ["curated", "annotation"])
+def test_a_version_carries_the_provenance_it_was_published_with(
+    client: TestClient, project: str, stated: str
+) -> None:
+    response = client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [a_class("sign")], "provenance": stated},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provenance"] == stated
+
+
+def test_a_version_published_without_a_provenance_answers_null(
+    client: TestClient, project: str
+) -> None:
+    """Omitting it is legal, and the server does not choose on the client's behalf.
+
+    Null is what a client reading an old workspace meets too, which is why the
+    field is declared with a default rather than as required.
+    """
+    assert post_version(client, project, a_class("sign")).json()["provenance"] is None
+
+
+def test_a_provenance_the_contract_does_not_declare_is_422(
+    client: TestClient, project: str
+) -> None:
+    """The enum is the whole of the validation, and it happens in request parsing.
+
+    Worth pinning because the column is plain text: nothing below this layer would
+    refuse `"whatever"`, so a version carrying an unreadable provenance would be
+    stored and then be unreadable forever — a version is never edited.
+    """
+    response = client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [a_class("sign")], "provenance": "invented"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_the_listing_carries_each_versions_own_provenance(
+    client: TestClient, project: str
+) -> None:
+    """The run-versus-milestone shape a version history reads."""
+    client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [a_class("sign")], "provenance": "curated"},
+    )
+    client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [a_class("sign"), a_class("lane")], "provenance": "annotation"},
+    )
+    post_version(client, project, a_class("sign"), a_class("lane"))
+
+    listed = client.get(f"/projects/{project}/schema/versions").json()["items"]
+
+    assert [v["provenance"] for v in listed] == ["curated", "annotation", None]

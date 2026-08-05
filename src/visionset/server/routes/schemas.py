@@ -69,6 +69,13 @@ def create_schema_version(
     edits one. Blank is legal and comes back as null. `created_at` is stamped by
     the server, so it is a response field and not a request one.
 
+    `provenance` says which kind of work is publishing: `curated` for a version
+    authored in a schema editor, `annotation` for one that fell out of adding a
+    class while labeling. It is stored exactly as sent and never inferred, so a
+    client with no opinion omits it and the version records null — which readers
+    group with `curated`. It gates nothing and changes no behaviour; it exists so
+    a version history can separate the milestones from the runs.
+
     Removing a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`
     until `allow_destructive=true` says so deliberately. If annotations already
     exist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`
@@ -80,6 +87,7 @@ def create_schema_version(
         project_id,
         classes,
         description=body.description,
+        provenance=body.provenance,
         allow_destructive=allow_destructive,
     )
     return SchemaVersionOut.of(created)

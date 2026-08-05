@@ -1347,6 +1347,13 @@ export interface paths {
          *     edits one. Blank is legal and comes back as null. `created_at` is stamped by
          *     the server, so it is a response field and not a request one.
          *
+         *     `provenance` says which kind of work is publishing: `curated` for a version
+         *     authored in a schema editor, `annotation` for one that fell out of adding a
+         *     class while labeling. It is stored exactly as sent and never inferred, so a
+         *     client with no opinion omits it and the version records null — which readers
+         *     group with `curated`. It gates nothing and changes no behaviour; it exists so
+         *     a version history can separate the milestones from the runs.
+         *
          *     Removing a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`
          *     until `allow_destructive=true` says so deliberately. If annotations already
          *     exist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`
@@ -2862,6 +2869,18 @@ export interface components {
             is_destructive: boolean;
         };
         /**
+         * SchemaProvenance
+         * @description Which kind of work published a schema version.
+         *
+         *     `curated` is a version authored deliberately — somebody sat down and decided
+         *     what the project labels. `annotation` is one that fell out of adding a class
+         *     part-way through labeling an asset. It gates nothing and is part of no
+         *     contract comparison; a version history uses it to tell the milestones apart
+         *     from the incidental runs between them.
+         * @enum {string}
+         */
+        SchemaProvenance: "curated" | "annotation";
+        /**
          * SchemaVersionCreate
          * @description The whole proposed version. There is no partial edit of a schema.
          */
@@ -2873,6 +2892,7 @@ export interface components {
             classes: components["schemas"]["LabelClassBody"][];
             /** Description */
             description?: string | null;
+            provenance?: components["schemas"]["SchemaProvenance"] | null;
         };
         /**
          * SchemaVersionOut
@@ -2890,6 +2910,7 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            provenance?: components["schemas"]["SchemaProvenance"] | null;
             /** Version */
             version: number;
         };

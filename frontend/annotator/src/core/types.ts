@@ -243,6 +243,15 @@ export interface LabelClass {
  * was published — but a host rendering "you are annotating against version 3,
  * published Tuesday" should not have to fetch the same object twice to say so.
  * Both are `null` for a version published before they existed.
+ *
+ * `provenance` is carried for the same reason and read by the engine just as
+ * little: it says whether a version was designed deliberately (`curated`) or fell
+ * out of adding a class mid-job (`annotation`), so a host can collapse the runs
+ * in a version history. It is `null` for a version published before it existed
+ * and for any writer that declined to say, and it is deliberately typed as a bare
+ * `string` rather than a union of the two spellings — the engine never branches
+ * on it, and a closed union here would make a *newer* server's third value a
+ * parse failure in an older annotator, which is exactly rule 4's hazard.
  */
 export interface AnnotationSchema {
   readonly project_id: string;
@@ -250,6 +259,7 @@ export interface AnnotationSchema {
   readonly classes: readonly LabelClass[];
   readonly description: string | null;
   readonly created_at: string | null;
+  readonly provenance: string | null;
 }
 
 /**

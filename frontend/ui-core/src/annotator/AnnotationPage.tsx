@@ -633,7 +633,12 @@ function Workspace({
         await runAddClass({
           save: commit,
           publish: (classes, description) =>
-            createVersion.mutateAsync({ classes, description }),
+            // `annotation`, because this door is only reachable part-way through
+            // labeling an asset: somebody needed a class that was not there and
+            // the version is a side effect of that, not a decision about the
+            // contract. It is what lets a version history collapse a run of these
+            // and still show every version authored in the schema editor (#368).
+            createVersion.mutateAsync({ classes, description, provenance: "annotation" }),
           // Asked before anything is published, which is the whole of F23: the
           // chain used to publish and *then* discover the pin would not move.
           repin: canRepin ? () => repin.mutateAsync() : null,

@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import text
 
 from visionset.kernel import (
     ConstraintViolated,
@@ -39,7 +40,9 @@ from visionset.kernel.domain import (
     BboxGeometry,
     GeometryType,
     LabelClass,
+    SchemaProvenance,
 )
+from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.services import ProjectService, SchemaService, WorkspaceService
 
 SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
@@ -645,4 +648,108 @@ def test_each_version_carries_its_own_description(tmp_path: Path) -> None:
 
     assert [v.description for v in versions] == ["first", "lanes too"]
     assert all(v.created_at is not None for v in versions)
+    workspace.close()
+
+
+# --- provenance: which kind of work published a version (#368) ---------------
+#
+# It is recorded, never derived. Nothing in the service reads it back, no gate
+# consults it and no diff sees it — so what these tests are for is that the value
+# a caller stated survives the round trip through JSON and SQLite unchanged, and
+# that a caller who stated nothing is not given an opinion.
+
+
+@pytest.mark.parametrize("stated", list(SchemaProvenance))
+def test_the_provenance_a_caller_stated_survives_the_round_trip(
+    tmp_path: Path, stated: SchemaProvenance
+) -> None:
+    """Parametrized over the enum itself, so a third member cannot go uncovered."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+
+    created = schemas.create_version(project.id, [SIGN], provenance=stated)
+
+    assert created.provenance is stated
+    read = schemas.get(project.id, 1)
+    assert read.provenance is stated
+    # A ``StrEnum`` compares equal to its own text, so the member assertions above
+    # would also pass against the bare string. This is what pins that rehydration
+    # produces the enum rather than whatever SQLite handed back.
+    assert isinstance(read.provenance, SchemaProvenance)
+    workspace.close()
+
+
+def test_a_version_published_without_a_provenance_has_none(tmp_path: Path) -> None:
+    """"Nobody said" is a legal answer, and the service does not fill it in.
+
+    The SDK is the caller this is for: a script composing a schema in Python is
+    neither surface, and making it choose would put a decision where there is no
+    decision to make.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+
+    created = schemas.create_version(project.id, [SIGN])
+
+    assert created.provenance is None
+    assert schemas.get(project.id, 1).provenance is None
+    workspace.close()
+
+
+def test_a_stored_version_predating_provenance_rehydrates_as_none(tmp_path: Path) -> None:
+    """The migrated case, from the domain's side rather than the column's.
+
+    ``test_schema_provenance_starts_null_because_nothing_recorded_who_published``
+    proves the *column* stays NULL. This proves a NULL comes back as ``None`` and
+    not as some default the model invented on the way out — which is the half a
+    reader of the version history actually depends on.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    schemas.create_version(project.id, [SIGN], provenance=SchemaProvenance.CURATED)
+    workspace.close()
+
+    # Emptied through the store rather than through a service, because no service
+    # can produce this state — which is the point: the only writer that leaves a
+    # NULL here is a build that predates the column.
+    store = SqliteMetadataStore(tmp_path / "ws" / "visionset.db")
+    with store.engine.begin() as connection:
+        connection.execute(text("update annotation_schema set provenance = null"))
+    store.close()
+
+    reopened = WorkspaceService.open(tmp_path / "ws")
+    assert SchemaService(reopened).get(project.id, 1).provenance is None
+    reopened.close()
+
+
+def test_provenance_is_not_part_of_what_a_version_declares(tmp_path: Path) -> None:
+    """Two versions differing only in provenance are the same contract.
+
+    Stated as a test because the opposite is a plausible thing to build later: a
+    diff that reported "provenance changed" would make an incidental version look
+    like a contract change in every surface that renders one.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    schemas.create_version(project.id, [SIGN], provenance=SchemaProvenance.CURATED)
+    schemas.create_version(project.id, [SIGN], provenance=SchemaProvenance.ANNOTATION)
+
+    assert schemas.compare(project.id, 1, 2).changes == ()
+    assert not schemas.compare(project.id, 1, 2).is_destructive
+    workspace.close()
+
+
+def test_each_version_carries_its_own_provenance(tmp_path: Path) -> None:
+    """The run-versus-milestone shape a version history has to be able to read."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("roads")
+    schemas.create_version(project.id, [SIGN], provenance=SchemaProvenance.CURATED)
+    schemas.create_version(project.id, [SIGN, LANE], provenance=SchemaProvenance.ANNOTATION)
+    schemas.create_version(project.id, [SIGN, LANE])
+
+    assert [v.provenance for v in schemas.list_versions(project.id)] == [
+        SchemaProvenance.CURATED,
+        SchemaProvenance.ANNOTATION,
+        None,
+    ]
     workspace.close()

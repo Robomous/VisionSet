@@ -100,10 +100,16 @@ PROJECT_NAME_UNIQUE = Index(
 class AnnotationSchemaRow(Base):
     """One version of a project's labeling contract.
 
-    ``description`` and ``created_at`` are the newest columns here, and they stay
-    **last** — see the module docstring's ordering rule. Both are nullable
-    because a version can be published without a description and nothing invents
-    one; ``SchemaService`` is what decides when each is written.
+    ``description``, ``created_at`` and ``provenance`` are the newest columns
+    here, in that order, and they stay **last** — see the module docstring's
+    ordering rule. ``provenance`` arrived by ``ALTER`` after the other two, so it
+    goes after them; reordering the three would split the ``create_all`` path
+    from the migration path, which
+    ``test_the_newest_columns_are_declared_last_on_their_row_class`` exists to
+    catch. All three are nullable because a version can be published without a
+    description, and because nothing invents an answer for a version written
+    before the column existed; ``SchemaService`` is what decides when each is
+    written.
     """
 
     __tablename__ = "annotation_schema"
@@ -117,6 +123,12 @@ class AnnotationSchemaRow(Base):
     classes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: A ``SchemaProvenance``, or NULL for a version whose writer said nothing.
+    #: Stored as its text value rather than as a constrained column: the domain
+    #: enum is what validates, and a CHECK here would be a second spelling that
+    #: a new member has to be remembered into. The newest column, so it is
+    #: declared last — see the class docstring.
+    provenance: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class SourceRow(Base):

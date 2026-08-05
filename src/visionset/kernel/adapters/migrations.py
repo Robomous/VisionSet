@@ -192,11 +192,30 @@ def _add_job_queue(connection: Connection) -> None:
     Base.metadata.create_all(connection, tables=[Base.metadata.tables["job"]])
 
 
+def _add_schema_provenance(connection: Connection) -> None:
+    """``annotation_schema.provenance``: which kind of work published a version.
+
+    **Nothing to backfill, and unlike migration 3 there is nothing that *could*
+    be.** Migration 3 could attribute a label because the schema recorded enough
+    to answer it in the unambiguous case; here nothing anywhere records who
+    published a version or from which surface. Every existing version therefore
+    stays NULL, which the domain reads as "nobody said" rather than as a third
+    kind — see ``SchemaProvenance``.
+
+    Guessing was considered and is worse than absence: "a version with one class
+    more than its predecessor was probably added while annotating" is a heuristic,
+    and a history that groups versions on a guess would be confidently wrong about
+    exactly the milestones a reader opened it to find.
+    """
+    _add_column(connection, "annotation_schema", "provenance")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
     Migration(version=3, name="annotation_provenance", upgrade=_add_annotation_provenance),
     Migration(version=4, name="job_queue", upgrade=_add_job_queue),
+    Migration(version=5, name="schema_provenance", upgrade=_add_schema_provenance),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

@@ -45,6 +45,7 @@ from visionset.kernel.domain import (
     LabelClass,
     Project,
     SchemaDiff,
+    SchemaProvenance,
     diff_classes,
 )
 from visionset.kernel.errors import (
@@ -166,6 +167,7 @@ class SchemaService:
         classes: Sequence[LabelClass],
         *,
         description: str | None = None,
+        provenance: SchemaProvenance | None = None,
         allow_destructive: bool = False,
     ) -> AnnotationSchema:
         """Add the next version of the project's schema.
@@ -182,6 +184,15 @@ class SchemaService:
         for the same reason the version number is: it is a fact about the
         publication, not an opinion of the caller, so whatever arrived in the
         field is replaced.
+
+        ``provenance`` is the opposite of both: it is the caller's own answer and
+        is stored **verbatim**, because the only thing that knows whether a class
+        was designed or needed-right-now is the surface the person was using.
+        Nothing here infers it and nothing validates it beyond the enum, so a
+        caller with no opinion — an SDK script, a test — omits it and the version
+        records ``None``, which readers group with the deliberate ones. It changes
+        no behaviour: it is not a gate, it does not enter any diff, and two
+        versions differing only in provenance are the same contract.
 
         The gate is ``allow_destructive`` rather than ``confirm`` because the
         two guard different things. ``confirm`` stands in front of destroying
@@ -216,6 +227,7 @@ class SchemaService:
                         classes=proposed,
                         description=description,
                         created_at=datetime.now(UTC),
+                        provenance=provenance,
                     )
                 )
         except ConstraintViolated as exc:
