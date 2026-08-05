@@ -46,6 +46,25 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The MCP server retires `start_job`: the first write starts the job** (#109). **Breaking for
+  MCP clients**, and for that surface only — the REST route and the CLI are untouched. An agent
+  no longer marks a job as being worked on: `add_annotations`, `update_annotations`,
+  `delete_annotations`, `set_asset_progress` and `complete_job` each take a `pending` job to
+  `in_progress` on the way in, and each publishes **`job_started`** in its answer so the move is
+  never invisible. Thirty-eight tools, down from thirty-nine.
+
+  The evidence is #36's twelve real agent runs: two of them labeled a whole job and then had
+  `complete_job` refuse, because writing is gated on the *batch* being `in_annotation` and never
+  on the job, so nothing in the loop forced the call until the end. #36 answered that with tool
+  descriptions pointing at each other; this removes the failure mode instead.
+
+  **Adapter policy, not a domain change.** `JOB_TRANSITIONS` is untouched, `require_move` is
+  still the funnel, and only `pending` moves — a `completed` job is left alone and a batch that
+  is not `in_annotation` refuses first, so nothing is quietly marked as being worked on.
+  `complete_job` starts a job too, which is not redundant: a correction batch cut over
+  already-labeled assets opens fully settled, so its job can be finished with no edits and no
+  other write would ever reach it.
+
 - **`POST /releases/{id}/export` answers `202` instead of the archive** (#328). **Breaking, for
   this one endpoint.** It used to be a synchronous `FileResponse` that blocked until the exporter
   finished; a real format walks every asset in a release and copies its bytes, which is minutes

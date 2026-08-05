@@ -1,9 +1,14 @@
 # usage: from visionset.mcp import jobs
 """Job tools: the annotation loop an agent actually drives.
 
-A job is one segment of an approved batch. ``start_job`` →
-``next_pending_assets`` → look at the pixels → ``add_annotations`` →
-``set_asset_progress`` where nothing is there to label → ``complete_job``.
+A job is one segment of an approved batch. ``next_pending_assets`` → look at the
+pixels → ``add_annotations`` → ``set_asset_progress`` where nothing is there to
+label → ``complete_job``.
+
+**There is no ``start_job``** (#109). A job is taken to ``in_progress`` by the
+first write that touches it, and the result says so; see ``_autostart``. The
+lifecycle verb was retired rather than folded, because the only thing an agent
+could do with it was remember to call it — and two of #36's twelve runs did not.
 
 ``get_job_progress`` folds into ``get_job``: the counts *are* what a caller wants
 a job for, and a second tool to fetch them is a round trip for a field.
@@ -23,6 +28,7 @@ from pydantic import Field
 from visionset import wire
 from visionset.kernel.domain import AssetProgress
 from visionset.kernel.services import JobService
+from visionset.mcp._autostart import autostarted
 from visionset.mcp._resolve import identifier
 from visionset.mcp._workspace import opened_workspace
 
@@ -30,16 +36,23 @@ JobRef = Annotated[str, Field(description="The annotation job, by id.")]
 """The job a tool acts on. Module-level for the ``inspect.signature`` reason."""
 
 
-def _job_payload(service: JobService, job_id: Any) -> dict[str, Any]:
-    """The job, the batch it belongs to, and its counts — the shape three tools return."""
+def _job_payload(
+    service: JobService, job_id: Any, *, job_started: bool | None = None
+) -> dict[str, Any]:
+    """The job, the batch it belongs to, and its counts — the shape two tools return.
+
+    ``job_started`` is omitted for a read and present for a write, because only a
+    write can have started anything. See :func:`autostarted`.
+    """
     job = service.get(job_id)
     batch = service.batch(job.id)
-    return {
+    payload = {
         **wire.job(job, batch_id=batch.id, batch_state=batch.state),
         "batch_state": batch.state.value,
         "schema_version": batch.schema_version,
         "progress": wire.progress_counts(service.job_progress(job.id)),
     }
+    return payload if job_started is None else {**payload, "job_started": job_started}
 
 
 def get_job(job_id: JobRef) -> dict[str, Any]:
@@ -61,24 +74,6 @@ def get_job(job_id: JobRef) -> dict[str, Any]:
         return _job_payload(JobService(workspace), identifier(job_id, what="job_id"))
 
 
-def start_job(job_id: JobRef) -> dict[str, Any]:
-    """Mark a job as being worked on. Call this before you write anything.
-
-    Nothing forces it at the time: annotations may be written into a job that
-    was never started, because the gate on a write is the *batch* being
-    `in_annotation`, not the job. What refuses is `complete_job` — a job still
-    `pending` cannot become `completed` — so skipping this costs a wasted call
-    at the end of the loop rather than at the start of it.
-
-    Refuses unless the job's batch is already `in_annotation`. Starting a job
-    does not start its batch — that is `start_batch`, and it comes first.
-    """
-    with opened_workspace() as workspace:
-        service = JobService(workspace)
-        started = service.start(identifier(job_id, what="job_id"))
-        return _job_payload(service, started.id)
-
-
 def complete_job(job_id: JobRef) -> dict[str, Any]:
     """Close a job, once every one of its assets has been settled.
 
@@ -86,18 +81,20 @@ def complete_job(job_id: JobRef) -> dict[str, Any]:
     `unannotated` or `review_pending` blocks this, and the remedy is either to
     annotate it or to `set_asset_progress` it to `skipped`.
 
-    The job must also have been started. Writing annotations does not start it,
-    so a job whose labels are all in place is still `pending` unless `start_job`
-    was called — and this refuses it, naming `in_progress` as the only state it
-    can reach from there.
+    You do not have to start the job first. A job nobody has written to yet is
+    started here before it is closed, and `job_started` in the answer says
+    whether that happened — which is the ordinary case for a correction batch
+    whose assets all arrived already labeled and needed no edits.
 
     Completing a job does not complete its batch: `complete_batch` derives that
     from all the jobs, and is a separate call.
     """
     with opened_workspace() as workspace:
+        resolved = identifier(job_id, what="job_id")
+        started = autostarted(workspace, resolved)
         service = JobService(workspace)
-        completed = service.complete(identifier(job_id, what="job_id"))
-        return _job_payload(service, completed.id)
+        completed = service.complete(resolved)
+        return _job_payload(service, completed.id, job_started=started)
 
 
 def next_pending_assets(
@@ -145,8 +142,13 @@ def set_asset_progress(
     only be reached from `annotated`. Marking an asset with the state it already
     holds does nothing and is not an error. Refuses if the job's batch is not
     `in_annotation`.
+
+    Marking an asset starts the job if nobody had, and `job_started` says whether
+    that happened.
     """
     with opened_workspace() as workspace:
+        resolved_job = identifier(job_id, what="job_id")
         resolved_asset = identifier(asset_id, what="asset_id")
-        JobService(workspace).mark(identifier(job_id, what="job_id"), resolved_asset, progress)
-    return wire.asset_progress(resolved_asset, progress)
+        started = autostarted(workspace, resolved_job)
+        JobService(workspace).mark(resolved_job, resolved_asset, progress)
+    return {**wire.asset_progress(resolved_asset, progress), "job_started": started}

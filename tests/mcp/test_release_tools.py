@@ -17,7 +17,6 @@ from visionset.kernel.services import EXPORT_REPORT_FILENAME
 def promoted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, count: int = 2) -> str:
     """A project whose dataset holds `count` annotated assets. Returns the project."""
     named, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=count)
-    payload(call("start_job", job_id=job_id))
     for asset in payload(call("next_pending_assets", job_id=job_id, count=count))["items"]:
         payload(
             call(

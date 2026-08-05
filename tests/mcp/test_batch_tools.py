@@ -144,7 +144,6 @@ def test_promotion_carries_only_the_settled_assets_and_leaves_a_skip_behind(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=2)
-    payload(call("start_job", job_id=job_id))
     pending = payload(call("next_pending_assets", job_id=job_id, count=2))["items"]
     payload(
         call(
@@ -241,7 +240,6 @@ def test_a_repin_that_would_orphan_this_batchs_labels_offers_no_retry(
     """`retry_with` is null, which is the whole reason it is published instead of a code."""
     project, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=1)
     asset_id = payload(call("next_pending_assets", job_id=job_id))["items"][0]["id"]
-    payload(call("start_job", job_id=job_id))
     payload(
         call(
             "create_schema_version",

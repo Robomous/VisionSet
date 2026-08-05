@@ -120,7 +120,6 @@ request — see [above](#destructive-tools-are-not-offered-unless-you-ask).
 | | |
 | --- | --- |
 | `get_job` | State, counts, and the batch and schema it answers to. |
-| `start_job` | Mark it as being worked on. |
 | `next_pending_assets` | The loop primitive: what is left to annotate. |
 | `get_asset_image` | **Look at the pixels.** See below. |
 | `list_asset_annotations` | What is already on an asset, with ids for editing. |
@@ -129,6 +128,29 @@ request — see [above](#destructive-tools-are-not-offered-unless-you-ask).
 | `delete_annotations` | Remove labels. All or none. No confirmation. |
 | `set_asset_progress` | Say an asset is `skipped`, or move it otherwise. |
 | `complete_job` | Close it, once every asset is settled. |
+
+#### There is no `start_job`: the first write starts it
+
+A job moves `pending → in_progress → completed`, and over this surface **nothing asks you to make
+the first move**. Every tool that writes — the three annotation tools, `set_asset_progress`, and
+`complete_job` itself — starts a `pending` job on the way in, and every one of them publishes
+**`job_started`** in its answer, so the move is a fact you are told rather than one that happens
+behind you. `job_started` is `false` on every later call.
+
+Only `pending` moves. A job that is already `in_progress` reports no start, a `completed` one is
+left alone, and a job whose batch is not `in_annotation` refuses exactly as it always did — the
+batch gate is checked first, so a closed batch is not quietly marked as being worked on.
+
+`complete_job` starts a job too, which is not redundant: a correction batch cut over
+already-labeled assets opens fully settled (see [batches.md](batches.md)), so its job can be
+finished with no edits at all and no other write would ever have reached it.
+
+This is a **decision about this surface**, not about the model. `JOB_TRANSITIONS` is unchanged and
+both hops still go through the same funnel; the REST API and the CLI keep their explicit start,
+because the annotator page is what drives REST and it has always started a job when a human opens
+one, while a CLI's explicitness is its contract. #109 has the measurements: two of #36's twelve
+real agent runs labeled a whole job and then had `complete_job` refuse, having had no reason to
+start it — writing is gated on the *batch*, so nothing in the loop forced the call until the end.
 
 ### Datasets, releases and export
 
