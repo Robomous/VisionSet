@@ -10,8 +10,8 @@
  *
  * ## Why a second config rather than a second project
  *
- * The default suite runs against `vite` on 5273 with the dev proxy in front of a
- * server that does not exist. This one runs against the **built** bundle at
+ * The default suite runs against `vite` with the dev proxy in front of a server that
+ * does not exist. This one runs against the **built** bundle at
  * `/app/`, which is a different base URL, a different build and a different server.
  * A `projects[]` entry cannot carry a different `webServer`.
  *
@@ -31,11 +31,20 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { PORT as SUITE_PORT, announce } from "./e2e-ports.ts";
+
+announce();
+
 /** Where the workspace, the token and the fixture images live. */
 const CYCLE_DIR =
   process.env["VISIONSET_CYCLE_DIR"] ?? mkdtempSync(path.join(tmpdir(), "visionset-cycle-"));
 
-const PORT = process.env["VISIONSET_CYCLE_PORT"] ?? "8123";
+/**
+ * 8123 in the main checkout and in CI, and this worktree's own slot anywhere else —
+ * `e2e-ports.ts` argues why. `VISIONSET_CYCLE_PORT` still overrides it, and is still
+ * how `cycle_server.sh` is told which port to bind.
+ */
+const PORT = String(SUITE_PORT.cycle);
 
 /**
  * Put the directory back into the environment, for the **workers**.
@@ -74,6 +83,9 @@ export default defineConfig({
     // The whole stack, in the order the wheel builds it: engine, design system,
     // bundle, and the bundle copied into the package data `visionset server` serves.
     command: [
+      // First, so a taken port is a sentence rather than four builds and a wheel's
+      // worth of waiting followed by uvicorn's own complaint about it.
+      "node frontend/app/e2e-ports.ts --guard cycle",
       "pnpm --filter @visionset/annotator build",
       "pnpm --filter @visionset/ui-core build",
       "pnpm --filter @visionset/app build",
