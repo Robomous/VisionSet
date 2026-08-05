@@ -66,7 +66,9 @@ export const BATCH_ACTION = {
   promote: "promote",
   createCorrection: "create_correction",
   editMembership: "edit_membership",
-  delete: "delete",
+  // No `delete` (#331): the kernel withdrew the declaration rather than route it,
+  // because nothing outside the SDK can perform it. `satisfies` is what caught the
+  // stale spelling here the moment the generated union lost the member.
 } as const satisfies Record<string, BatchAction>;
 
 export const JOB_ACTION = {

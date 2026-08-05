@@ -2037,7 +2037,7 @@ export interface components {
          * @description What can be asked of a batch. Declaration order is display order.
          * @enum {string}
          */
-        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete";
+        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership";
         /**
          * BatchApprove
          * @description How to cut the batch into jobs. One job for the whole batch by default.

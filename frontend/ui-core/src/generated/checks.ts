@@ -93,7 +93,7 @@ export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);
 
 export const checkBatchAction: Check<Schemas["BatchAction"]> =
-  /*#__PURE__*/ oneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "edit_membership", "delete"] as const);
+  /*#__PURE__*/ oneOf(["approve", "start", "complete", "repin", "promote", "create_correction", "edit_membership"] as const);
 
 export const checkBatchState: Check<Schemas["BatchState"]> =
   /*#__PURE__*/ oneOf(["draft", "approved", "in_annotation", "completed"] as const);

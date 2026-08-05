@@ -196,8 +196,14 @@ carry `allowed_actions` — a list of names, closed and published in the spec as
 
 ```
 GET /batches/{id}   →  { "state": "in_annotation",
-                         "allowed_actions": ["complete", "repin", "delete"], … }
+                         "allowed_actions": ["complete", "repin"], … }
 ```
+
+**A capability nothing can perform is withdrawn, not declared.** `BatchService.delete` exists
+and `DELETABLE_STATES` is still its rule, but no route reaches it — so since #331 `BatchAction`
+has no `delete` member at all (cf. [batches.md](batches.md)). The rule above cuts both ways: if
+a client must render what the wire declares, the wire may only declare what some surface can
+actually do.
 
 **A client renders these; it never computes them.** Re-deriving the rules from `state` and
 `progress` is what the browser used to do, and its copy drifted by dropping the batch-state

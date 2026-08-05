@@ -777,8 +777,7 @@
           "repin",
           "promote",
           "create_correction",
-          "edit_membership",
-          "delete"
+          "edit_membership"
         ],
         "title": "BatchAction",
         "type": "string"

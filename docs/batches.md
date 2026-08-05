@@ -253,14 +253,21 @@ same table and named sets this service enforces with — never a second copy of 
 
 | State | Declares | From |
 | --- | --- | --- |
-| `draft` | `approve`, `edit_membership`, `delete` | `BATCH_TRANSITIONS`, `EDITABLE_STATES`, `DELETABLE_STATES` |
-| `approved` | `start`, `repin`, `delete` | `BATCH_TRANSITIONS`, `REPINNABLE_STATES`, `DELETABLE_STATES` |
-| `in_annotation` | `complete`, `repin`, `delete` | as above |
-| `completed` | `promote` | `PROMOTABLE_STATES` |
+| `draft` | `approve`, `edit_membership` | `BATCH_TRANSITIONS`, `EDITABLE_STATES` |
+| `approved` | `start`, `repin` | `BATCH_TRANSITIONS`, `REPINNABLE_STATES` |
+| `in_annotation` | `complete`, `repin` | as above |
+| `completed` | `promote`, `create_correction` | `PROMOTABLE_STATES`, `CORRECTABLE_STATES` |
 
 Four of the seven change no state at all and so appear in no row of `BATCH_TRANSITIONS` — which
 is why those sets are named rather than written inline. Promotion is the clearest: it moves
 assets into the trunk and leaves the batch exactly where it was.
+
+**There is no `delete` action, and `DELETABLE_STATES` is the one named set with no row here**
+(#331). Deleting a batch is a real capability — `BatchService.delete` below — but no route, MCP
+tool or control reaches it, and `allowed_actions` is a promise a client is entitled to keep: a
+conforming one renders what the wire declares, so declaring an action nothing can perform would
+oblige every client to offer a control that cannot work. The declaration returns when a route
+does, in the same change.
 
 `complete` is the one declaration that can still be refused. Completion is *derived* from the
 jobs, and a projection cannot read them, so it is declared wherever the transition table allows
