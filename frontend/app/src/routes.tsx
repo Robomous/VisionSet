@@ -43,6 +43,7 @@
 
 import {
   AnnotationPage,
+  assetParamFor,
   GalleryScreen,
   resolveProjectTab,
   IngestScreen,
@@ -282,10 +283,18 @@ function DatasetRedirect(): JSX.Element {
  * the page drives both controls with it: the batch gallery is this page's parent,
  * the arrow means *up* and the grid means *show me the grid*, and they coincide
  * because the annotator's parent is the grid.
+ *
+ * #353: the parameter is now kept true rather than only read. The page says which
+ * frame it is showing and this route writes it, which is the split `?tab=` is on
+ * one screen over — `ui-core` imports no router, so spelling a URL is this file's
+ * job. `replace` rather than `push`, for the tabs' reason applied to frames: with
+ * `push`, Back would walk an annotation session backwards one picture at a time,
+ * turning the browser's own button into an undo nobody asked for — and the
+ * annotator has a real one two keys away.
  */
 function Annotate(): JSX.Element {
   const { jobId } = useParams();
-  const [query] = useSearchParams();
+  const [query, setQuery] = useSearchParams();
   const navigate = useNavigate();
   if (jobId === undefined) return <NotFound />;
   const asset = query.get("asset");
@@ -296,6 +305,10 @@ function Annotate(): JSX.Element {
       onOpenGallery={(projectId, batchId) =>
         void navigate(`/projects/${projectId}/batches/${batchId}`)
       }
+      onAssetChange={(showing) => {
+        const next = assetParamFor(showing, query.get("asset"));
+        if (next !== null) setQuery({ asset: next }, { replace: true });
+      }}
     />
   );
 }

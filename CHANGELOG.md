@@ -121,6 +121,23 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **The annotator's address bar names the frame on screen** (#353). `?asset=` recorded where the
+  annotator was *entered*: the next and previous buttons moved through the job in the page's own
+  state and never touched it, so after one press the URL named a different picture than the
+  screen. Copy that link on frame 7 and the colleague you send it to lands on frame 1 — with
+  nothing anywhere saying so, and answering about a picture that was never meant.
+
+  Every frame change now rewrites it, with `replace` rather than `push`: Back still leaves the
+  annotator instead of walking backwards one picture at a time, which would turn the browser's
+  own button into an undo two keys away from the real one. A reload lands where you were, and a
+  `?asset=` naming an asset this job does not carry is *corrected* in the address rather than
+  falling back to the first frame in silence.
+
+  It was also making tests lie: #223's cycle step read the frame out of the URL, wrote a lane
+  against that id, and watched every assertion pass — against a frame that was not the one under
+  test. `data-asset` on the page root was added then so a harness would stop having to ask the
+  URL; the two now agree.
+
 - **A batch whose every frame was finished could not be completed** (#301). `Complete` answered
   `BATCH_NOT_COMPLETE` beside a progress bar reading `0 to do`, and both were true: completion is
   derived at *two* levels — `BatchService.complete` refuses while any **job** is outstanding,

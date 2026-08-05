@@ -196,6 +196,22 @@ export interface AnnotationPageProps {
    * making a second request for something the screen is already holding.
    */
   readonly onOpenGallery?: (projectId: string, batchId: string) => void;
+  /**
+   * The frame on screen, reported whenever it changes — and once on arrival.
+   *
+   * #353: `initialAssetId` says where the annotator was *entered*, and the
+   * next/previous buttons move through the job without it. So the caller holding
+   * the URL had no way to keep it true, and a link pasted from frame 7 took the
+   * reader to frame 1 — silently, which is the part that makes it a defect rather
+   * than a shortfall. This is the page's half of the fix: it reports which frame
+   * it is showing, and the caller spells the address (`assetParamFor`).
+   *
+   * Reported on arrival as well as on a change, deliberately. That is what
+   * corrects a `?asset=` naming an id this job does not carry: such a link
+   * already falls back to the first asset, and until now it fell back
+   * *invisibly*, leaving the address bar naming a frame nobody was looking at.
+   */
+  readonly onAssetChange?: (assetId: string) => void;
 }
 
 export function AnnotationPage(props: AnnotationPageProps): JSX.Element {
@@ -265,6 +281,7 @@ function JobScreen({
   jobId,
   initialAssetId,
   onOpenGallery,
+  onAssetChange,
 }: AnnotationPageProps): JSX.Element {
   const job = useJob(jobId);
   const batch = useBatchOf(job.data?.batch_id);
@@ -304,6 +321,20 @@ function JobScreen({
   const index = chosen ?? assetPositionOf(assets.data, initialAssetId);
   const asset = assets.data?.[index];
   const annotations = useAssetAnnotations(jobId, asset?.id);
+
+  // Say which frame is on screen, so whoever holds the router can keep the URL
+  // true (#353). An effect rather than a line inside `onNavigate`, because the
+  // first frame is a change too — from *no answer* to one — and that is the case
+  // where the address is most often wrong: a stale `?asset=` that resolved to the
+  // first asset, or no parameter at all.
+  //
+  // Firing again when the callback's identity moves is harmless and not worth
+  // a ref to prevent: `assetParamFor` answers null once the URL agrees, so the
+  // second call writes nothing.
+  const showing = asset?.id;
+  useEffect(() => {
+    if (showing !== undefined) onAssetChange?.(showing);
+  }, [showing, onAssetChange]);
 
   const failure = [job, batch, schema, assets].find((query) => query.isError)?.error ?? null;
   if (failure !== null) {
