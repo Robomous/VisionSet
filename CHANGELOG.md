@@ -19,7 +19,7 @@ nothing was being distributed. This is the first version that is.
   server stopped. There is now a `JobQueue` port with a SQLite adapter (a `job` table in the
   workspace's own database, migration 4), a `ProgressReporter` port, and a dispatcher thread in
   the FastAPI lifespan feeding a `spawn` `ProcessPoolExecutor`. No separate worker command:
-  `visionset ui` still starts everything.
+  `visionset server` still starts everything.
 
   The claim is one guarded `UPDATE` whose `rowcount` is the answer — the shape
   `set_asset_progress` already uses — so two dispatchers can never hand one job to two workers.
