@@ -28,10 +28,13 @@
  *
  * ## What the top bar has and what it does not
  *
- * `DESIGN.md` draws a version dropdown, create-branch and Merge. Those are #127 and
- * post-beta; they render **disabled** so the layout is the one the design shows and
- * a later task fills them in rather than moving everything along. Everything else
- * on the bar is real.
+ * `DESIGN.md` draws a version dropdown, create-branch and Merge. Those are #127,
+ * which is post-beta and blocked on a decision nobody has taken. They used to
+ * render **disabled**, to hold the design's shape — but a disabled control with no
+ * model behind it cannot be explained in the terms principle 9 asks for, because
+ * the honest explanation is "this feature does not exist". So the slots are gone
+ * and they come back with the thing they operate. Every control on the bar now
+ * corresponds to a capability that exists.
  *
  * ## There is a minimum viewport, and the decision is made before anything mounts
  *
@@ -89,8 +92,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
-  GitBranch,
-  GitMerge,
   Grid3x3,
   Maximize2,
   Minus,
@@ -120,7 +121,6 @@ import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Eye } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { ShortcutSheet } from "./ShortcutSheet";
 import { ToolPalette } from "./ToolPalette";
@@ -820,23 +820,9 @@ function Workspace({
           <Grid3x3 className="size-4" />
         </Button>
 
-        <span className="h-5 w-px bg-border" />
-
-        {/* #127, post-beta. Rendered disabled so the bar is the shape the design
-            shows and a later task fills them in rather than moving everything. */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span>
-              <Button variant="ghost" size="icon" aria-label="Version" data-testid="version-select" disabled>
-                <GitBranch className="size-4" />
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>Annotation versioning lands post-beta (#127)</TooltipContent>
-        </Tooltip>
-        <Button variant="ghost" size="icon" aria-label="Merge" data-testid="merge" disabled>
-          <GitMerge className="size-4" />
-        </Button>
+        {/* The version dropdown and Merge that `DESIGN.md` draws are #127, and
+            they used to sit here disabled. They are gone: the slots return with
+            the model behind them. */}
 
         <div className="ml-auto flex items-center gap-2">
           {/*
