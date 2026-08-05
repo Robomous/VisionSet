@@ -140,6 +140,21 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **A broken internal doc link now fails a test instead of landing quietly at the top of the
+  page** (#337). Renaming a `##` heading invalidates every inbound `#fragment` pointing at it, and
+  nothing anywhere says so — the link still works, it just goes somewhere else, which is
+  indistinguishable from correct unless you already knew which paragraph you were promised. A near
+  miss during the `visionset ui` → `visionset server` rename (#329).
+
+  `tests/scripts/docs_links.test.mjs` resolves every internal link and every anchor across all 46
+  tracked Markdown files — 266 links, 551 headings — naming the file, the line and the dead
+  fragment. It rides `pnpm test`, so it is in `check.sh` and in CI with no new job and no new
+  dependency. External URLs are deliberately out of scope: a gate that goes red for somebody
+  else's rate limit is one people learn to re-run rather than read. **No broken links were
+  found** — the five its first run reported were all the checker being wrong (headings that are
+  entirely inline code, and underscores in slugs), which is its own argument for the unit tests
+  beside it.
+
 - **`scripts/check.sh` says what it covered, on the stream a caller actually reads** (#336). It
   had aborted correctly on a missing `node_modules` since #249 — but on **stderr**, with nothing
   at all on stdout, so an agent or a CI step capturing stdout saw a partial run and a full one as
