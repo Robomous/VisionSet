@@ -52,6 +52,7 @@ from visionset.kernel.domain import (
     BatchCompleted,
     BatchState,
     ChangeKind,
+    MembershipChange,
     Partition,
     Project,
     SchemaDiff,
@@ -248,11 +249,22 @@ class BatchService:
                 )
             )
 
-    def add_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> Batch:
+    def add_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> MembershipChange:
         """Put assets in the batch. Adding one it already holds changes nothing.
 
         Membership is a set, so repeating an asset is not new information. Order
         is the order assets were first added.
+
+        **Written one row at a time**, through ``UnitOfWork.add_batch_assets``
+        rather than by replacing the batch. Two callers adding different assets
+        to one draft used to write the whole entity and lose one of the two — see
+        that method for the mechanism. The consequence worth stating here is what
+        it buys: this method no longer has an opinion about the members it was not
+        given, so it cannot undo a concurrent edit even in principle.
+
+        Returns what actually changed, not just the batch: ``changed`` excludes
+        every id the batch already held, which is the number a surface reports
+        and the only way "added 3" can be told from "3 were already there".
 
         Raises:
             BatchNotFound: no such batch in this workspace.
@@ -261,17 +273,25 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_draft(uow, batch_id)
-            added = _require_assets(uow, batch.project_id, asset_ids)
-            return uow.batches.update(
-                batch.model_copy(update={"asset_ids": _deduplicated([*batch.asset_ids, *added])})
-            )
+            wanted = _require_assets(uow, batch.project_id, asset_ids)
+            added = uow.add_batch_assets(batch.id, _deduplicated(wanted))
+            return MembershipChange(batch=self.require_batch(uow, batch_id), changed=tuple(added))
 
-    def remove_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> Batch:
+    def remove_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> MembershipChange:
         """Take assets out of the batch. Removing one it does not hold is a no-op.
 
         Only while the batch is a draft. Once it is approved, an asset that
         should not be labeled is marked ``skipped`` instead — a decision the
         record keeps, rather than a membership edit that erases it.
+
+        A draft has no jobs — they are cut at approval — so nothing downstream
+        describes the asset being removed and there is nothing to reconcile. That
+        is the reason the gate is ``draft`` and not a matter of taste, and
+        ``test_removing_from_a_draft_leaves_no_job_behind_because_there_are_none``
+        asserts it rather than leaving it to this paragraph.
+
+        Row-at-a-time like :meth:`add_assets`, and returning the ids it actually
+        removed for the same reason.
 
         Raises:
             BatchNotFound: no such batch in this workspace.
@@ -279,12 +299,8 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_draft(uow, batch_id)
-            dropped = set(asset_ids)
-            return uow.batches.update(
-                batch.model_copy(
-                    update={"asset_ids": [a for a in batch.asset_ids if a not in dropped]}
-                )
-            )
+            removed = uow.remove_batch_assets(batch.id, list(asset_ids))
+            return MembershipChange(batch=self.require_batch(uow, batch_id), changed=tuple(removed))
 
     # --- lifecycle ---------------------------------------------------------
 

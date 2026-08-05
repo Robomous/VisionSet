@@ -12,7 +12,7 @@ Most entities are flat — every field is a column — and share
 - ``AnnotationSchema``, ``Annotation`` and ``IngestJob`` hold immutable nested
   values, encoded as JSON.
 - ``Batch`` and ``AnnotationJob`` own child tables, so their mappings carry a
-  ``sync_children`` hook and rebuild their collections on read.
+  ``write_children`` hook and rebuild their collections on read.
 - ``Asset``, ``DatasetChange``, ``Release``, ``Source`` and ``Token`` encode a
   timezone-aware timestamp, which a ``String`` column must be handed as text
   rather than as a ``datetime``. ``Source`` also carries a nested
@@ -73,6 +73,18 @@ class Entity(Protocol):
     id: UUID
 
 
+class ChildWriter[T](Protocol):
+    """How an entity's child rows are written, told whether the parent is new.
+
+    ``inserting`` is keyword-only because it is the whole of what distinguishes
+    the two calls, and a bare ``True`` at a call site says nothing. Batches use
+    it to write membership once and never again (#281); jobs ignore it, and say
+    so.
+    """
+
+    def __call__(self, session: Session, entity: T, *, inserting: bool) -> None: ...
+
+
 @dataclass(frozen=True)
 class EntityMapping[T: Entity]:
     """How one domain model is stored, read back, and scoped to its parent.
@@ -86,7 +98,7 @@ class EntityMapping[T: Entity]:
     parent_column: str | None
     to_row: Callable[[T], t.Base]
     to_domain: Callable[[Session, Any], T]
-    sync_children: Callable[[Session, T], None] | None = None
+    write_children: ChildWriter[T] | None = None
 
 
 def _columns(row: Any) -> dict[str, Any]:
@@ -392,8 +404,40 @@ def _batch_to_domain(session: Session, row: Any) -> Batch:
     )
 
 
-def _batch_sync_children(session: Session, entity: Batch) -> None:
-    session.execute(delete(t.BatchAssetRow).where(t.BatchAssetRow.batch_id == entity.id))
+def _batch_write_children(session: Session, entity: Batch, *, inserting: bool) -> None:
+    """Write the batch's membership — **at creation, and never again**.
+
+    This used to be delete-everything-and-insert on every write, and that was
+    #281's blocking defect. ``Repository.update`` replaces a whole entity and a
+    ``Batch`` carries every member, so two callers adding *different* assets to
+    one draft both wrote this, and the second deleted the first one's row before
+    re-inserting the membership it had read. The identical lost update #302
+    fixed for progress, on the identical mechanism, and both answered ``200``.
+
+    Insert-if-absent instead of the delete would not have been enough, which is
+    worth stating because it is the tempting half-fix: a stale entity would then
+    *resurrect* a member another writer had just removed. Both directions of the
+    clobber come from the same place — a whole-collection write derived from a
+    copy of the membership that is already out of date — so the write is not
+    narrowed, it is removed.
+
+    So membership is written exactly once per member, when the batch is created,
+    and from then on only by ``UnitOfWork.add_batch_assets`` /
+    ``remove_batch_assets``. Every other update of a batch — a state transition,
+    a schema pin — now leaves its membership entirely alone, which also closes
+    the case with no race in it at all: ``approve`` reads a batch, sets
+    ``state``, and would otherwise put back the membership as it stood before
+    whatever landed while it was deciding.
+
+    The cost, stated rather than discovered later: **``Batch.asset_ids`` is no
+    longer writable through ``Repository.update``**, so a stored membership
+    cannot be reordered by handing back a permuted list. Nothing offers that —
+    order is the order assets were added, and the two narrow writes preserve it —
+    and a capability whose only implementation is the defect is not one worth
+    keeping.
+    """
+    if not inserting or not entity.asset_ids:
+        return
     session.add_all(
         t.BatchAssetRow(batch_id=entity.id, asset_id=asset_id, position=position)
         for position, asset_id in enumerate(entity.asset_ids)
@@ -421,10 +465,14 @@ def _job_to_domain(session: Session, row: Any) -> AnnotationJob:
     )
 
 
-def _job_sync_children(session: Session, entity: AnnotationJob) -> None:
+def _job_write_children(session: Session, entity: AnnotationJob, *, inserting: bool) -> None:
     """Write the job's per-asset rows — but never overwrite a stored ``progress``.
 
-    Unlike ``_batch_sync_children`` this is **not** delete-everything-and-insert:
+    Reconciled on every write, unlike ``_batch_write_children``, and that
+    asymmetry is the difference between the two collections rather than an
+    oversight: a job's membership is fixed at approval and never edited, so
+    there is no second writer for this delete to lose. It is **not**
+    delete-everything-and-insert:
     it upserts by key and deletes only what the entity no longer carries. The
     difference is #302. ``progress`` is the one child column two callers contend
     over, so it has its own narrow write (``UnitOfWork.set_asset_progress``); a
@@ -520,12 +568,12 @@ BATCHES: EntityMapping[Batch] = EntityMapping(
     parent_column="project_id",
     to_row=_batch_to_row,
     to_domain=_batch_to_domain,
-    sync_children=_batch_sync_children,
+    write_children=_batch_write_children,
 )
 ANNOTATION_JOBS: EntityMapping[AnnotationJob] = EntityMapping(
     row=t.AnnotationJobRow,
     parent_column="task_group_id",
     to_row=_job_to_row,
     to_domain=_job_to_domain,
-    sync_children=_job_sync_children,
+    write_children=_job_write_children,
 )

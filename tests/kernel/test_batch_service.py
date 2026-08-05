@@ -191,10 +191,12 @@ def test_assets_can_be_added_and_removed_while_it_is_a_draft(tmp_path: Path) -> 
     batch = fixture.batches.create(fixture.project.id, "first", fixture.assets[:2])
 
     added = fixture.batches.add_assets(batch.id, fixture.assets[2:])
-    assert added.asset_ids == fixture.assets
+    assert added.batch.asset_ids == fixture.assets
+    assert added.changed == tuple(fixture.assets[2:])
 
     removed = fixture.batches.remove_assets(batch.id, [fixture.assets[0]])
-    assert removed.asset_ids == fixture.assets[1:]
+    assert removed.batch.asset_ids == fixture.assets[1:]
+    assert removed.changed == (fixture.assets[0],)
     fixture.close()
 
 
@@ -202,14 +204,41 @@ def test_adding_an_asset_the_batch_already_holds_changes_nothing(tmp_path: Path)
     fixture = Fixture(tmp_path)
     batch = fixture.batches.create(fixture.project.id, "first", fixture.assets)
     again = fixture.batches.add_assets(batch.id, [fixture.assets[1], fixture.assets[1]])
-    assert again.asset_ids == fixture.assets
+    assert again.batch.asset_ids == fixture.assets
+    # Nothing was written, and that is reported rather than left to be inferred
+    # from a membership that happens to look the same as before.
+    assert again.changed == ()
     fixture.close()
 
 
 def test_removing_an_asset_the_batch_does_not_hold_is_a_no_op(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     batch = fixture.batches.create(fixture.project.id, "first", fixture.assets)
-    assert fixture.batches.remove_assets(batch.id, [uuid4()]).asset_ids == fixture.assets
+    outcome = fixture.batches.remove_assets(batch.id, [uuid4()])
+    assert outcome.batch.asset_ids == fixture.assets
+    assert outcome.changed == ()
+    fixture.close()
+
+
+def test_removing_from_a_draft_leaves_no_job_behind_because_there_are_none(
+    tmp_path: Path,
+) -> None:
+    """Why `draft` is the gate, asserted rather than argued in a docstring.
+
+    Removal is safe here precisely because jobs are cut at approval, so a draft
+    has nothing downstream describing the asset going away — no partition to
+    invalidate, no per-asset progress row to orphan. That is the whole reason the
+    membership routes need no reconciliation step, and it is the kind of claim
+    that stays true silently until it does not.
+    """
+    fixture = Fixture(tmp_path)
+    batch = fixture.batches.create(fixture.project.id, "first", fixture.assets)
+    assert fixture.batches.jobs(batch.id) == []
+
+    fixture.batches.remove_assets(batch.id, [fixture.assets[0]])
+
+    assert fixture.batches.jobs(batch.id) == []
+    assert fixture.batches.get(batch.id).asset_ids == fixture.assets[1:]
     fixture.close()
 
 

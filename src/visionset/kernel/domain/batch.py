@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Final
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BatchState(StrEnum):
@@ -159,3 +159,30 @@ class Batch(BaseModel):
     #: batch that exists today. It is not "unknown": a batch either was cut from
     #: another or was not, and both answers are complete.
     parent_batch_id: UUID | None = None
+
+
+class MembershipChange(BaseModel):
+    """A membership edit's outcome: the batch afterwards, and what actually moved.
+
+    Two facts rather than one, because the batch alone cannot answer the question
+    a caller asks after a bulk edit. ``changed`` is what **this call** wrote —
+    every id it was given minus the ones the batch already agreed about — so
+    "removed 3" can be told from "3 were already gone", which is exactly the
+    distinction an idempotent operation loses when it reports only the final
+    state. It is the ``ExportResult`` bargain: the operation reports what it did,
+    not merely what is now true.
+
+    Ordered as the caller gave them, with duplicates already collapsed. Empty
+    means the batch already held (or already lacked) every id — a no-op, and
+    deliberately not an error: a caller who lost a race to another writer aiming
+    at the same asset finds its target true, which is nothing left to do.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    batch: Batch
+    #: Named ``changed`` and not ``asset_ids`` on purpose: this model carries a
+    #: ``Batch``, which has an ``asset_ids`` of its own meaning the membership
+    #: afterwards. Two fields one dot apart meaning "what moved" and "what is
+    #: there now" is a mistake nothing would catch at the call site.
+    changed: tuple[UUID, ...] = ()
