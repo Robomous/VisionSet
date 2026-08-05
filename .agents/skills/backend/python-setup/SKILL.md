@@ -46,6 +46,12 @@ Run at minimum `ruff check`, `ruff format`, `pytest`, and `lint-imports` after a
 change. If you touched the kernel, add `mypy`. If you touched FastAPI routes or response
 models, re-export `openapi.json` — it is a committed contract, a stale one is a bug.
 
+**Never pass `-q` to pytest.** `pyproject.toml` already sets `addopts = "-q"`, and verbosity is a
+counter, so a second one stacks to `-qq` — which drops the test count and the summary line and
+leaves the exit code as the only signal, on a log that ends mid-progress and reads as truncated.
+Plain `uv run pytest` already prints the count; where a wrapper you cannot edit has added a `-q`,
+one `-v` cancels it. — #341
+
 ## Formatting and lint
 
 **ruff is both the formatter and the linter** — do not introduce black, isort, flake8, or
