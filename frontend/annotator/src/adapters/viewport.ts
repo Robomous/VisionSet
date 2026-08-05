@@ -78,13 +78,82 @@ export const IDENTITY_VIEWPORT: Viewport = { zoom: 1, panX: 0, panY: 0 };
  */
 export const MIN_ZOOM = 0.05;
 
-/** The ceiling: one asset pixel as a 16-pixel block, which is vertex-placing precision. */
-export const MAX_ZOOM = 16;
+/**
+ * The ceiling: **8x, one asset pixel as an eight-pixel block** (#228).
+ *
+ * Above this there is no more information in the picture — only larger blocks of
+ * the same pixels — so the zoom is capped rather than left to run. It was 16.
+ *
+ * The number is also where the frame ceiling lives, and that is not a coincidence
+ * worth hiding. #131 removed all 880 DOM writes a wheel notch used to cost and
+ * **the clock did not move**: the cost is the browser rasterising and compositing
+ * a scaled stage — a 4K `<img>` and 660 SVG elements — which is not work this
+ * codebase does, and is not work any render architecture available here avoids
+ * (`docs/annotations.md`, "The ceiling is raster"). Vector re-rendering of the
+ * annotation chrome is deferred to the drawing-tool orbit, `cf. #342`, where
+ * drawing precision would be the thing paying for it.
+ *
+ * So the cap is honest in both directions: it is the depth past which the image
+ * has nothing left to show, and the depth past which the browser struggles to
+ * show it. Deep zoom is answered with `imageRenderingAt` instead — real pixel
+ * blocks rather than interpolated blur.
+ */
+export const MAX_ZOOM = 8;
+
+/**
+ * Above this, the picture renders as pixel blocks rather than smoothed (#228).
+ *
+ * 4x, half the ceiling. Below it a browser's bilinear smoothing is doing what it
+ * is for — hiding the sampling grid at scales where the grid is not the subject.
+ * At 4x and beyond it is inventing gradients between pixels that a person is
+ * zooming *in order to see*, and an annotator placing a vertex on an edge needs
+ * to know where the edge's pixels actually are. A blurry magnification looks like
+ * a soft image; a blocky one looks like what it is.
+ *
+ * The rule is the **image layer's alone**. Annotation chrome — strokes, grips,
+ * vertices, labels — is drawn by SVG at whatever the compositor can manage and is
+ * untouched by this; sharpening that is `cf. #342`'s orbit, not this constant's.
+ */
+export const PIXELATED_ABOVE_ZOOM = 4;
 
 /** Inside the bounds, and finite. Non-finite resets to native — see the note above. */
 export function clampZoom(zoom: number): number {
   if (!Number.isFinite(zoom)) return 1;
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+/**
+ * The `image-rendering` the asset should be drawn with at this zoom.
+ *
+ * A function and not a comparison written at the call site, because a host
+ * showing the asset anywhere else — a magnifier, a print preview — must get the
+ * same answer as the canvas, and because the threshold is then pinned by a test
+ * that names it rather than by whichever component happened to be rendered.
+ *
+ * Strictly above, so exactly `PIXELATED_ABOVE_ZOOM` still smooths: the constant
+ * reads as "above 4x", and a boundary that behaved as "at 4x" would make the
+ * name a lie for the one zoom a preset button can land on exactly.
+ */
+export function imageRenderingAt(zoom: number): "auto" | "pixelated" {
+  return zoom > PIXELATED_ABOVE_ZOOM ? "pixelated" : "auto";
+}
+
+/**
+ * Whether the zoom is at the ceiling — there is no zooming in from here.
+ *
+ * Published so a host's zoom-in control can be disabled *with the reason*
+ * (`DESIGN.md` principle 9) instead of accepting presses that do nothing. `>=`
+ * rather than `===` because a viewport can be constructed rather than clamped,
+ * and a control that only refuses at exactly the ceiling is a control that
+ * silently works past it.
+ */
+export function atZoomCeiling(zoom: number): boolean {
+  return zoom >= MAX_ZOOM;
+}
+
+/** The floor, the same way. `fitToViewport` can land here on a large enough asset. */
+export function atZoomFloor(zoom: number): boolean {
+  return zoom <= MIN_ZOOM;
 }
 
 /**
