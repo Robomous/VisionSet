@@ -157,7 +157,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("project-screen")).toBeVisible();
   });
 
-  await test.step("declare a schema with all three geometries", async () => {
+  await test.step("declare a schema with all four geometries", async () => {
     // A brand-new project opens on Overview since #210, and its empty state is
     // the honest first thing to see — there is no data to describe yet. The
     // schema is a tab away.
@@ -173,6 +173,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
         ["vehicle", "bbox"],
         ["lane", "polygon"],
         ["daytime", "classification_tag"],
+        // #223. The picker offers it because the API accepts it and the lane
+        // exporters need it — not because anything draws one. Declaring it here
+        // is the schema editor's half of that, against a real `create_version`
+        // that would answer `UnsupportedGeometry` if the kernel disagreed.
+        ["centerline", "polyline"],
       ] as const
     ).entries()) {
       await page.getByTestId("add-class").click();
@@ -383,6 +388,80 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("save").click();
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
+    // 3a — a lane, written the way lanes are actually written (#223).
+    //
+    // **This is the whole point of shipping the geometry without a tool.** There
+    // is no polyline drawing tool (#342), and the workflow the geometry exists
+    // for is *an agent pre-labels lanes and a person reviews them here*. So the
+    // lane arrives over the REST API, with the same credential the app is
+    // holding, and everything after this line is the person's half of that.
+    //
+    // The job comes off the URL and **the asset comes off the page**, which is
+    // the distinction this step was written wrong once: the asset travels as a
+    // query parameter that names where the annotator was *entered*, and
+    // `next-asset` moves the frame without rewriting it. Reading `?asset=` here
+    // addressed frame 1 while standing on frame 3, and every assertion that
+    // followed still passed — the lane really was written, really did render, and
+    // really was on the wrong picture. `data-asset` is what the page says about
+    // itself.
+    const origin = new URL(page.url()).origin;
+    const jobId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
+    const assetId = await page.getByTestId("annotation-page").getAttribute("data-asset");
+    const written = await page.request.post(
+      `${origin}/jobs/${jobId}/annotations`,
+      {
+        headers: { Authorization: `Bearer ${token()}` },
+        data: [
+          {
+            asset_id: assetId,
+            label_class: "centerline",
+            geometry: {
+              type: "polyline",
+              // Ascending Y, which is what a lane looks like and what TuSimple
+              // would require of it at export.
+              points: [
+                [8, 6],
+                [24, 30],
+                [40, 58],
+              ],
+            },
+            attributes: {},
+            provenance: "model",
+            model_ref: "cycle-spec@1",
+            confidence: 0.8,
+          },
+        ],
+      },
+    );
+    expect(written.status()).toBe(201);
+    expect((await written.json()).items[0].geometry.type).toBe("polyline");
+
+    // 3b — the lane is on the page a person is looking at. Loaded afresh rather
+    // than refetched in place, because the assertion worth making is that the
+    // *stored* annotation renders, not that an optimistic update did. The asset
+    // is named explicitly so the entry point and the frame agree.
+    await page.goto(`./jobs/${jobId}?asset=${assetId}`);
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await expect(page.getByTestId("object-total")).toHaveText("2 objects");
+    // Drawn as an open path. `<polyline>` and not `<polygon>` is the whole
+    // difference between a lane and a closed ring, and it is the one thing a unit
+    // test over the document model structurally cannot see.
+    // Scoped to the committed layer's own group rather than to `svg polyline`:
+    // `TransientLayer` draws a `<polyline>` too, for the polygon being dragged.
+    await expect(page.locator("[data-annotation-id] polyline")).toHaveCount(1);
+    await expect(page.locator("[data-annotation-id] polyline")).toHaveAttribute("fill", "none");
+    // Reachable from the object list, which is the only way to reach it: a canvas
+    // press cannot select an open path in 0.1.0 (`geometryContains` refuses).
+    await page.getByTestId("tab-objects").click();
+    await expect(page.getByTestId("object-row-1")).toContainText("centerline");
+
+    // 3c — the tool strip says why there is no lane tool, rather than showing a
+    // gap. Disabled-with-reason: absent and not-yet-available must not look the
+    // same, and only one of them is true here.
+    const laneTool = page.getByTestId("tool-polyline");
+    await expect(laneTool).toHaveAttribute("aria-disabled", "true");
+    await expect(laneTool).toHaveAttribute("aria-label", /0\.2/);
+
     // 3b — the review round-trip, on the frame we are already standing on.
     //
     // **This is the half of the progress machine that had no door** (audit F24):
@@ -499,6 +578,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("dataset-stats")).toContainText("3");
     await expect(page.getByTestId("dataset-screen")).toBeVisible();
 
+    // #223: a lane is counted like any other annotation. `DatasetStats.per_class`
+    // is derived per call from what the trunk actually holds, so a geometry the
+    // counter did not know about would simply be absent — and absent reads as "no
+    // lanes were labelled", which is the failure mode worth an assertion.
+    await expect(page.getByTestId("class-count-centerline")).toContainText("1");
+
     await page.getByTestId("publish-release").click();
     await page.getByTestId("release-tag").fill(TAG);
     await page.getByTestId("publish-submit").click();
@@ -515,6 +600,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   await test.step("export through the dummy format and download the archive", async () => {
     await page.getByTestId(`export-${TAG}`).click();
     await page.getByTestId("export-format").click();
+
+    // #223's five lane plugins, discovered by the *running server* through the
+    // real entry-point group rather than by an import in a test — and each
+    // declaring itself lossy, which is the one thing the picker shows about a
+    // format before you choose it. A lane format that arrived silently unmarked
+    // would let somebody export a release believing nothing was dropped.
+    for (const lane of [/tusimple/, /culane/, /openlane-2d/]) {
+      await expect(page.getByRole("option", { name: lane })).toContainText("(lossy)");
+    }
+
     await page.getByRole("option", { name: /dummy/ }).click();
 
     // **Three requests behind one click, since #328.** The launch answers 202 with

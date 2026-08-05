@@ -24,6 +24,14 @@
  *    canvas tool. The demo's schema declares both, so both omissions are visible
  *    rather than theoretical.
  *
+ *    The two answers are `null` for different reasons, and the product strip in
+ *    `@visionset/ui-core` distinguishes them: a tag has nothing to draw and never
+ *    will, while `polyline` has a geometry and no tool *yet* (#342), so there it
+ *    is a disabled button carrying the reason. This showcase keeps the plain
+ *    omission on purpose — it demonstrates that the engine ships headless, and
+ *    "what a product does about a missing tool" is a product decision it is not
+ *    the job of a demo to make.
+ *
  * ## The icons are hand-drawn, and that is a deferral rather than a preference
  *
  * `DESIGN.md` pins lucide-react (MousePointer2 / Square / Spline) and #128 is the
