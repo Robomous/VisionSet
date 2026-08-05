@@ -45,6 +45,7 @@ from visionset.kernel.domain import (
     IngestState,
     LabelClass,
     PolygonGeometry,
+    PolylineGeometry,
     Project,
     Release,
     ReleaseVerification,
@@ -194,12 +195,15 @@ JOB = AnnotationJob(
 
 BBOX = BboxGeometry(x=1.5, y=2.5, width=30.0, height=40.0)
 POLYGON = PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)])
+# Y-ascending on purpose: it is the one sample a lane exporter can consume, and
+# TuSimple refuses a lane whose points are not sorted by ascending Y.
+POLYLINE = PolylineGeometry(points=[(2.0, 4.0), (12.0, 40.0), (30.0, 96.0)])
 CLASSIFICATION = ClassificationGeometry()
 
 # Every geometry variant gets its own sample rather than one standing for the
-# union: they are three components on the wire, and a projection that dropped
+# union: they are four components on the wire, and a projection that dropped
 # `points` would still round-trip through the bbox model.
-GEOMETRIES = (BBOX, POLYGON, CLASSIFICATION)
+GEOMETRIES = (BBOX, POLYGON, POLYLINE, CLASSIFICATION)
 
 ANNOTATION = Annotation(
     asset_id=ASSET.id,

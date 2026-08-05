@@ -44,7 +44,8 @@
               "mapping": {
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
-                "polygon": "#/components/schemas/PolygonBody"
+                "polygon": "#/components/schemas/PolygonBody",
+                "polyline": "#/components/schemas/PolylineBody"
               },
               "propertyName": "type"
             },
@@ -54,6 +55,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolygonBody"
+              },
+              {
+                "$ref": "#/components/schemas/PolylineBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -146,7 +150,8 @@
               "mapping": {
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
-                "polygon": "#/components/schemas/PolygonBody"
+                "polygon": "#/components/schemas/PolygonBody",
+                "polyline": "#/components/schemas/PolylineBody"
               },
               "propertyName": "type"
             },
@@ -156,6 +161,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolygonBody"
+              },
+              {
+                "$ref": "#/components/schemas/PolylineBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -284,7 +292,8 @@
               "mapping": {
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
-                "polygon": "#/components/schemas/PolygonBody"
+                "polygon": "#/components/schemas/PolygonBody",
+                "polyline": "#/components/schemas/PolylineBody"
               },
               "propertyName": "type"
             },
@@ -294,6 +303,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolygonBody"
+              },
+              {
+                "$ref": "#/components/schemas/PolylineBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -2102,6 +2114,40 @@
           "points"
         ],
         "title": "PolygonBody",
+        "type": "object"
+      },
+      "PolylineBody": {
+        "additionalProperties": false,
+        "description": "An open path of at least two points, in order. Nothing joins the ends.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "polyline",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "points"
+        ],
+        "title": "PolylineBody",
         "type": "object"
       },
       "ProgressCounts": {

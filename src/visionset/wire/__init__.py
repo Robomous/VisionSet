@@ -74,6 +74,7 @@ from visionset.kernel.domain import (
     IngestJob,
     LabelClass,
     PolygonGeometry,
+    PolylineGeometry,
     Project,
     Release,
     ReleaseVerification,
@@ -390,7 +391,7 @@ def geometry(value: Geometry) -> dict[str, Any]:
                 "width": value.width,
                 "height": value.height,
             }
-        case PolygonGeometry():
+        case PolygonGeometry() | PolylineGeometry():
             return {"type": value.type.value, "points": [list(p) for p in value.points]}
         case ClassificationGeometry():
             return {"type": value.type.value}

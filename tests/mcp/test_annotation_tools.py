@@ -12,7 +12,15 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from tests.mcp._flow import BBOX, call, error, open_batch, payload
+from tests.mcp._flow import (
+    BBOX,
+    CENTERLINE,
+    SCHEMA_CLASSES,
+    call,
+    error,
+    open_batch,
+    payload,
+)
 
 
 def _label(asset_id: str, **overrides: Any) -> dict[str, Any]:
@@ -28,9 +36,13 @@ def _label(asset_id: str, **overrides: Any) -> dict[str, Any]:
 
 
 def _job_with_assets(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, count: int = 2
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    count: int = 2,
+    classes: list[dict[str, Any]] | None = None,
 ) -> tuple[str, list[str]]:
-    _, _, job_id = open_batch(monkeypatch, tmp_path, count=count)
+    _, _, job_id = open_batch(monkeypatch, tmp_path, count=count, classes=classes)
     payload(call("start_job", job_id=job_id))
     assets = payload(call("next_pending_assets", job_id=job_id, count=count))["items"]
     return job_id, [a["id"] for a in assets]
@@ -98,6 +110,67 @@ def test_the_geometry_must_match_the_one_its_class_is_bound_to(
         )
     )
     assert refusal["index"] == 0
+
+
+def test_an_agent_can_write_a_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#223's whole point, over the surface the story is about.
+
+    The lane workflow is *agent pre-labels, human reviews*, so the polyline has to
+    be writable by a tool call and nothing else. Nothing about the tool changed to
+    allow it: `add_annotations` takes the domain's own `Geometry`, so widening the
+    union widened the tool's `$defs` and its validator in one move.
+    """
+    job_id, assets = _job_with_assets(monkeypatch, tmp_path, classes=[*SCHEMA_CLASSES, CENTERLINE])
+
+    written = payload(
+        call(
+            "add_annotations",
+            job_id=job_id,
+            annotations=[
+                _label(
+                    assets[0],
+                    label_class="centerline",
+                    geometry={"type": "polyline", "points": [[1, 2], [5, 9], [9, 20]]},
+                    attributes={},
+                )
+            ],
+        )
+    )
+
+    (stored,) = written["items"]
+    assert stored["geometry"]["type"] == "polyline"
+    assert stored["geometry"]["points"] == [[1.0, 2.0], [5.0, 9.0], [9.0, 20.0]]
+
+
+def test_a_one_point_polyline_is_a_malformed_request_not_a_domain_refusal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Which of the two failure shapes a bad lane gets, asserted rather than assumed.
+
+    `min_length=2` lives on `PolylineGeometry`, which the tool takes directly, so
+    the *input validator* rejects it and the result is `isError` carrying the
+    field path — not the domain envelope an `add_annotations` refusal uses. That
+    is the documented split (`docs/mcp.md`): a malformed request and a refused one
+    are different answers, and an agent branches on them differently. Pinned
+    because the obvious expectation is the other one.
+    """
+    job_id, assets = _job_with_assets(monkeypatch, tmp_path, classes=[*SCHEMA_CLASSES, CENTERLINE])
+    result = call(
+        "add_annotations",
+        job_id=job_id,
+        annotations=[
+            _label(
+                assets[0],
+                label_class="centerline",
+                geometry={"type": "polyline", "points": [[0, 0]]},
+                attributes={},
+            )
+        ],
+    )
+
+    assert result.is_error
+    text = "".join(getattr(item, "text", "") for item in result.content)
+    assert "too_short" in text
 
 
 def test_an_attribute_the_class_does_not_declare_is_refused(

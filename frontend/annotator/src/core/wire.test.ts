@@ -121,11 +121,13 @@ describe("the divergences this file exists to keep closed", () => {
     expect(() => parseAnnotation(flattened)).toThrow(/does not declare/);
   });
 
-  it.each(["polyline", "keypoints", "mask", "cuboid_3d", "polyline_3d"])(
+  it.each(["keypoints", "mask", "cuboid_3d", "polyline_3d"])(
     "refuses %s as declared-but-unimplemented rather than as unknown",
     (type) => {
       // The distinction is the point: the remedy for one is to wait for a
       // variant, and for the other to fix the caller. #48 inherits this answer.
+      // `polyline` was in this list until #223 shipped its variant, which is the
+      // remedy arriving — four names are still waiting on one.
       expect(() => parseGeometry({ type })).toThrow(WireFormatError);
       expect(() => parseGeometry({ type })).toThrow(/no implementation/);
       expect(() => parseGeometry({ type })).toThrow(/UNSUPPORTED_GEOMETRY/);

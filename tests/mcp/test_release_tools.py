@@ -153,11 +153,36 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
     assert payload(call("list_formats")) == {
         "items": [
             {
+                # #223. Every lane format is lossy — a lane file has fields for a
+                # lane, and none for an annotation's attributes, confidence or id.
+                # Only TuSimple degrades the geometry; the other four write the
+                # vertices they were given. See `visionset/formats/lanes`.
+                "name": "bdd100k-lane",
+                "lossy": True,
+                "geometries": ["polyline"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+            },
+            {
                 # #63. Lossless: boxes and polygons are native, and everything
                 # COCO has no field for rides in a `visionset` object.
                 "name": "coco",
                 "lossy": False,
                 "geometries": ["bbox", "polygon"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+            },
+            {
+                "name": "culane",
+                "lossy": True,
+                "geometries": ["polyline"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+            },
+            {
+                "name": "curvelanes",
+                "lossy": True,
+                "geometries": ["polyline"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
             },
@@ -169,6 +194,24 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "geometries": sorted(one.value for one in GeometryType),
                 "degraded_geometries": [],
                 "modalities": ["image", "point_cloud", "video"],
+            },
+            {
+                "name": "openlane-2d",
+                "lossy": True,
+                "geometries": ["polyline"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+            },
+            {
+                # #223. The one lane format that does not write the vertices it
+                # was given: TuSimple's file *is* the X where a lane crosses each
+                # of a fixed set of rows, so a lane is resampled rather than
+                # copied. Carried, but reduced — #158's third state.
+                "name": "tusimple",
+                "lossy": True,
+                "geometries": [],
+                "degraded_geometries": ["polyline"],
+                "modalities": ["image"],
             },
             {
                 # #64. Lossy because a VOC `<object>` has a fixed set of children
@@ -190,7 +233,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
         ],
-        "total": 4,
+        "total": 9,
     }
 
 

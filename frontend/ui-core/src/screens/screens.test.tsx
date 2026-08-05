@@ -320,18 +320,21 @@ describe("the schema editor", () => {
     expect(within(dialog).getByTestId("orphan-close")).not.toBeNull();
   });
 
-  it("offers only the three geometries an annotation can carry", async () => {
+  it("offers only the geometries an annotation can carry", async () => {
     projectWithSchema();
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
 
     await userEvent.click(screen.getByTestId("class-geometry-0"));
-    for (const geometry of ["bbox", "polygon", "classification_tag"]) {
+    // `polyline` is offered from #223 even though no tool draws one: the API
+    // accepts it, the exporters need it, and the tool strip is where a person
+    // learns there is nothing to draw with. Offering it is not offering a refusal.
+    for (const geometry of ["bbox", "polygon", "polyline", "classification_tag"]) {
       expect(screen.getAllByText(geometry).length).toBeGreaterThan(0);
     }
-    // `GeometryType` has eight members; five are refused at write time with
+    // `GeometryType` has eight members; four are refused at write time with
     // `UnsupportedGeometry`, so offering them would be offering a refusal.
-    for (const geometry of ["mask", "polyline", "keypoints", "cuboid_3d", "polyline_3d"]) {
+    for (const geometry of ["mask", "keypoints", "cuboid_3d", "polyline_3d"]) {
       expect(screen.queryByRole("option", { name: geometry })).toBeNull();
     }
   });

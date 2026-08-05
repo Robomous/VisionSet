@@ -84,6 +84,7 @@ from visionset.kernel.domain import (
     MembershipChange,
     Partition,
     PolygonGeometry,
+    PolylineGeometry,
     Project,
     ProjectStats,
     Release,
@@ -1031,6 +1032,22 @@ class PolygonBody(BaseModel):
         return cls(type=GeometryType.POLYGON, points=list(geometry.points))
 
 
+class PolylineBody(BaseModel):
+    """An open path of at least two points, in order. Nothing joins the ends."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.POLYLINE]
+    points: list[tuple[float, float]]
+
+    def to_domain(self) -> PolylineGeometry:
+        return PolylineGeometry(points=self.points)
+
+    @classmethod
+    def of(cls, geometry: PolylineGeometry) -> Self:
+        return cls(type=GeometryType.POLYLINE, points=list(geometry.points))
+
+
 class ClassificationBody(BaseModel):
     """A whole-asset tag: a class with no coordinates."""
 
@@ -1046,16 +1063,20 @@ class ClassificationBody(BaseModel):
         return cls(type=GeometryType.CLASSIFICATION_TAG)
 
 
-GeometryBody = Annotated[BboxBody | PolygonBody | ClassificationBody, Field(discriminator="type")]
+GeometryBody = Annotated[
+    BboxBody | PolygonBody | PolylineBody | ClassificationBody, Field(discriminator="type")
+]
 
 
-def geometry_of(geometry: Geometry) -> BboxBody | PolygonBody | ClassificationBody:
+def geometry_of(geometry: Geometry) -> BboxBody | PolygonBody | PolylineBody | ClassificationBody:
     """The wire form of a stored geometry, matched on the same discriminator."""
     match geometry:
         case BboxGeometry():
             return BboxBody.of(geometry)
         case PolygonGeometry():
             return PolygonBody.of(geometry)
+        case PolylineGeometry():
+            return PolylineBody.of(geometry)
         case ClassificationGeometry():
             return ClassificationBody.of(geometry)
 

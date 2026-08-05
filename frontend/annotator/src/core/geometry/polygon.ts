@@ -57,7 +57,12 @@
  * matches what a user sees.
  */
 
-import type { BboxGeometry, PolygonGeometry, Point } from "../types";
+import type {
+  BboxGeometry,
+  PolygonGeometry,
+  PolylineGeometry,
+  Point,
+} from "../types";
 import { clamp } from "./clamp";
 import { clampPoint, closestPointOnSegment, type Bounds } from "./primitives";
 
@@ -109,7 +114,7 @@ export function polygonContains(polygon: PolygonGeometry, point: Point): boolean
  * throwing would make the one honest caller — a move, which then translates
  * nothing — into a special case.
  */
-export function polygonBbox(polygon: PolygonGeometry): BboxGeometry {
+export function polygonBbox(polygon: PolygonGeometry | PolylineGeometry): BboxGeometry {
   if (polygon.points.length === 0) {
     return { type: "bbox", x: 0, y: 0, width: 0, height: 0 };
   }

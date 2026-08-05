@@ -51,6 +51,7 @@ import type {
   LabelClass,
   Point,
   PolygonGeometry,
+  PolylineGeometry,
 } from "../../core/types";
 
 /** A shape whose class the schema declares, ready to draw. */
@@ -58,7 +59,7 @@ export interface PaintedAnnotation {
   readonly id: string;
   readonly labelClass: string;
   /** Never a `classification_tag` — a tag has no coordinates. */
-  readonly geometry: BboxGeometry | PolygonGeometry;
+  readonly geometry: BboxGeometry | PolygonGeometry | PolylineGeometry;
   readonly selected: boolean;
   /** Under the pointer, or held by the drag in flight. */
   readonly hot: boolean;

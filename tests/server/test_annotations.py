@@ -16,6 +16,9 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
 from tests.server._flow import (
+    CENTERLINE,
+    LANE,
+    SIGN,
     a_box,
     asset_ids,
     batch_from_ingest,
@@ -38,8 +41,14 @@ def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
 
 @pytest.fixture()
 def working(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> tuple[str, str]:
-    """A started job over a three-asset batch. Returns ``(batch_id, job_id)``."""
-    return open_job(client, runner, tmp_path, images=3)
+    """A started job over a three-asset batch. Returns ``(batch_id, job_id)``.
+
+    The schema is named here rather than taken as the default because this suite
+    is the one that writes every geometry: `centerline` is #223's polyline class,
+    and a route suite whose schema cannot express a lane cannot notice one being
+    refused.
+    """
+    return open_job(client, runner, tmp_path, images=3, classes=[SIGN, LANE, CENTERLINE])
 
 
 @pytest.fixture()
@@ -118,6 +127,64 @@ def test_a_polygon_lands_under_the_class_that_declares_one(
 
     assert response.status_code == 201
     assert response.json()["items"][0]["geometry"]["type"] == "polygon"
+
+
+def test_a_polyline_lands_under_the_class_that_declares_one(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    """#223: a lane written over REST, judged by the gates that already existed.
+
+    Nothing new gates a polyline — the batch must be `in_annotation` and the
+    asset's progress must allow a write — so the assertion worth making is that
+    the *ordinary* path carries it, points and all, with no special case.
+    """
+    _, job_id = working
+
+    response = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            a_box(
+                assets[0],
+                label_class="centerline",
+                geometry={"type": "polyline", "points": [[0.0, 0.0], [4.0, 8.0], [9.0, 20.0]]},
+                attributes={},
+            )
+        ],
+    )
+
+    assert response.status_code == 201
+    written = response.json()["items"][0]["geometry"]
+    assert written["type"] == "polyline"
+    # The order of the points is the value, so it must survive the round trip.
+    assert written["points"] == [[0.0, 0.0], [4.0, 8.0], [9.0, 20.0]]
+
+
+def test_a_polyline_may_not_be_written_under_a_polygon_class(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    """The per-class geometry rule, which #223 did not touch and must not have.
+
+    `lane` declares `polygon`; a polyline under it is refused by
+    `AnnotationService` exactly as any other mismatch is. Worth pinning because
+    the two geometries share a payload shape — `points` alone would parse under
+    either — so only the discriminator tells them apart.
+    """
+    _, job_id = working
+
+    response = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            a_box(
+                assets[0],
+                label_class="lane",
+                geometry={"type": "polyline", "points": [[0.0, 0.0], [4.0, 8.0]]},
+                attributes={},
+            )
+        ],
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "DISALLOWED_GEOMETRY"
 
 
 # --- reading ------------------------------------------------------------------
@@ -357,6 +424,10 @@ def test_a_model_annotation_with_no_model_ref_is_422_not_500(
         {"confidence": 2.0},
         {"geometry": {"type": "bbox", "x": 0.0, "y": 0.0, "width": 0.0, "height": 1.0}},
         {"geometry": {"type": "polygon", "points": [[0.0, 0.0], [1.0, 1.0]]}},
+        # One point is under the polyline minimum, and two identical ones are a
+        # path with no length — the analogue of the zero-area box above.
+        {"geometry": {"type": "polyline", "points": [[0.0, 0.0]]}},
+        {"geometry": {"type": "polyline", "points": [[3.0, 3.0], [3.0, 3.0]]}},
     ],
 )
 def test_a_value_the_domain_cannot_hold_is_422_not_500(

@@ -220,7 +220,7 @@ describe("built from the wire, and back again", () => {
     expect(out).toEqual(fixture.annotations);
   });
 
-  it("carries all three geometry variants through the document", () => {
+  it("carries every carryable geometry variant through the document", () => {
     const seen = new Set(
       annotationsInDrawOrder(documentFromWire(wire)).map((a) => a.geometry.type),
     );
@@ -228,8 +228,8 @@ describe("built from the wire, and back again", () => {
   });
 
   it("holds annotations whose class declares a different geometry", () => {
-    // The fixture's four annotations all say `label_class: "sign"`, whose class
-    // declares `bbox`, while three carry a polygon or a tag. That is valid data
+    // The fixture's annotations all say `label_class: "sign"`, whose class
+    // declares `bbox`, while most carry something else. That is valid data
     // the kernel produced — so a document enforcing class↔geometry agreement
     // could not load its own round-trip fixture. This is that argument, executed.
     const document = documentFromWire(wire);
