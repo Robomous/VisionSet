@@ -45,8 +45,22 @@ ran".
 
 The script sets **`CI=1`** for the Playwright steps itself. It is load-bearing:
 `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so without it a stale
-vite server left on port 5273 answers instead of the build under test, and the failures
-that follow read as genuine code bugs in unrelated scenarios.
+vite server left on this worktree's e2e port answers instead of the build under test, and
+the failures that follow read as genuine code bugs in unrelated scenarios.
+
+**The browser suites bind one port per worktree.** Several checkouts run their gates at
+once here — that is exactly what `refactor-protocol`'s worktree rule produces — and three
+fixed ports made those suites single-occupancy: the second run to reach the browser group
+found 5273 held and died with `Port 5273 is already in use`, which reads as a broken dev
+server rather than as contention (#346). So the number is derived from the worktree's own
+absolute path. `frontend/app/e2e-ports.ts` hashes that path into one of 2048 slots and
+gives each suite a port from a band of its own — **16384–18431** for the e2e suite,
+**18432–20479** for the cycle server, **20480–22527** for the benchmark. The **main
+checkout is exempt, and so is CI**, whose clone is a main checkout too: both keep 5273,
+8123 and 5373, so nothing about a single-checkout workflow changes. Every run prints the
+three numbers it resolved on stderr before it starts, and a port that is already taken is
+a refusal naming the worktree it came from rather than four words from vite. Override one
+suite with `VISIONSET_E2E_PORT`, `VISIONSET_CYCLE_PORT` or `VISIONSET_BENCH_PORT`.
 
 One caveat no exit code will tell you: several gates read `git ls-files`, which is the
 **index** rather than the working tree. A new file you have not `git add`ed is invisible to
