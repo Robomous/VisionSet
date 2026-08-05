@@ -345,7 +345,17 @@ function pressOnShape(turn: Turn<InteractionState, Extract<InteractionEvent, { t
     return { state: IDLE, effects: [{ kind: "select", selection: selectAlso(context.selection, id) }] };
   }
   const annotation = annotationById(context.document, id);
-  if (annotation === undefined || annotation.geometry.type === "classification_tag") {
+  if (
+    annotation === undefined ||
+    annotation.geometry.type === "classification_tag" ||
+    // A polyline selects but does not drag: there is no polyline tool in 0.1.0,
+    // so moving one would be the only way to change a lane and there would be no
+    // way to draw the lane it changed. `geometryContains` already refuses to put
+    // the pointer on one, so this row is unreachable from a press today — it is
+    // written down because a panel-driven selection can reach `moving` the day a
+    // press does. See #342.
+    annotation.geometry.type === "polyline"
+  ) {
     return { state: IDLE, effects: [{ kind: "select", selection: selectOnly(id) }] };
   }
   return {

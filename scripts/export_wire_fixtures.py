@@ -97,6 +97,10 @@ def _schema() -> AnnotationSchema:
             # No colour, no attributes. A renderer must choose its own colour for
             # this one, and the parser must accept the keys being absent.
             LabelClass(name="lane", geometry=GeometryType.POLYGON),
+            # #223's geometry. It is the one a class can declare with no drawing
+            # tool behind it, which is a fact about the annotator rather than
+            # about the wire — so it appears here exactly like the other three.
+            LabelClass(name="centerline", geometry=GeometryType.POLYLINE, color="#eb5a47"),
             # An attribute with every optional at its default: not required, no
             # options, no default. `select` is the only kind that may carry
             # options, so this is the other side of `populated`'s attribute.
@@ -113,7 +117,7 @@ def _schema() -> AnnotationSchema:
 def build_fixture() -> dict[str, Any]:
     """The payload, as a pure function of the models. Imported by the gate."""
     annotations = [
-        # One per implemented geometry: three components on the wire, and a
+        # One per implemented geometry: four components on the wire, and a
         # mirror that dropped `points` would still round-trip through the bbox.
         Annotation(
             id=_annotation_id(geometry.type.value),

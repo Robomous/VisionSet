@@ -53,6 +53,9 @@ SCHEMA_CLASSES: list[dict[str, Any]] = [
 ]
 """The smallest schema that is not trivial: one class, one optional attribute."""
 
+#: #223's lane class, for the suites that write one. Not in ``SCHEMA_CLASSES``.
+CENTERLINE: dict[str, Any] = {"name": "centerline", "geometry": "polyline"}
+
 BBOX: dict[str, Any] = {"type": "bbox", "x": 1.0, "y": 2.0, "width": 8.0, "height": 6.0}
 """A box that fits inside the fixtures' 64x48 images. ``type`` is always spelled out."""
 
@@ -149,21 +152,43 @@ def project(monkeypatch: Any, tmp_path: Path, *, name: str = "road-signs") -> st
     return name
 
 
-def schema(monkeypatch: Any, tmp_path: Path, *, name: str = "road-signs") -> str:
-    """A project with schema version 1."""
+def schema(
+    monkeypatch: Any,
+    tmp_path: Path,
+    *,
+    name: str = "road-signs",
+    classes: list[dict[str, Any]] | None = None,
+) -> str:
+    """A project with schema version 1.
+
+    ``classes`` is threaded rather than defaulted wider on purpose: eight tests
+    elsewhere read the class list ``SCHEMA_CLASSES`` produces, so a suite that
+    needs another geometry names one instead of changing what everyone gets.
+    """
     named = project(monkeypatch, tmp_path, name=name)
-    payload(call("create_schema_version", project=named, classes=SCHEMA_CLASSES))
+    payload(
+        call(
+            "create_schema_version",
+            project=named,
+            classes=SCHEMA_CLASSES if classes is None else classes,
+        )
+    )
     return named
 
 
 def ingested(
-    monkeypatch: Any, tmp_path: Path, *, count: int = 2, name: str = "road-signs"
+    monkeypatch: Any,
+    tmp_path: Path,
+    *,
+    count: int = 2,
+    name: str = "road-signs",
+    classes: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
     """A project with a schema and one batch of freshly ingested stills.
 
     Returns ``(project_name, batch_id)``.
     """
-    named = schema(monkeypatch, tmp_path, name=name)
+    named = schema(monkeypatch, tmp_path, name=name, classes=classes)
     incoming = tmp_path / "incoming"
     write_images(incoming, count=count)
     result = payload(call("ingest", project=named, path=str(incoming)))
@@ -171,10 +196,15 @@ def ingested(
 
 
 def open_batch(
-    monkeypatch: Any, tmp_path: Path, *, count: int = 2, name: str = "road-signs"
+    monkeypatch: Any,
+    tmp_path: Path,
+    *,
+    count: int = 2,
+    name: str = "road-signs",
+    classes: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str, str]:
     """A batch approved and started, with its single job. Returns ``(project, batch, job)``."""
-    named, batch_id = ingested(monkeypatch, tmp_path, count=count, name=name)
+    named, batch_id = ingested(monkeypatch, tmp_path, count=count, name=name, classes=classes)
     payload(call("approve_batch", batch_id=batch_id))
     started = payload(call("start_batch", batch_id=batch_id))
     return named, batch_id, str(started["jobs"][0]["id"])

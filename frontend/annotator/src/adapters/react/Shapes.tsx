@@ -58,7 +58,12 @@ import type { JSX } from "react";
 
 import { BBOX_HANDLES, bboxHandlePositions } from "../../core/geometry/bbox";
 import { polygonBbox } from "../../core/geometry/polygon";
-import type { BboxGeometry, Point, PolygonGeometry } from "../../core/types";
+import type {
+  BboxGeometry,
+  Point,
+  PolygonGeometry,
+  PolylineGeometry,
+} from "../../core/types";
 import { screenPx } from "./paint";
 import type { PaintedAnnotation } from "./paint";
 
@@ -298,6 +303,34 @@ export function ShapeLabel({ shape }: { readonly shape: PaintedAnnotation }): JS
 }
 
 /**
+ * An open path. `<polyline>` and not `<polygon>`, and it is never filled.
+ *
+ * A fill on an open path is not undefined — SVG closes it implicitly to paint the
+ * interior — so a lane drawn with `fill` would show a translucent wedge between
+ * its ends that no annotation contains. `fill="none"` is therefore load-bearing
+ * rather than stylistic, and it is why `hot` moves the *stroke* here where it
+ * moves the fill on a closed shape.
+ */
+export function PolylineShape({ geometry, color, hot, selected }: {
+  readonly geometry: PolylineGeometry;
+  readonly color: string;
+  readonly hot: boolean;
+  readonly selected: boolean;
+}): JSX.Element {
+  return (
+    <polyline
+      points={pointsAttribute(geometry.points)}
+      fill="none"
+      stroke={color}
+      strokeOpacity={hot ? 1 : HOT_FILL_OPACITY}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ strokeWidth: strokeOf(selected) }}
+    />
+  );
+}
+
+/**
  * One committed annotation: its shape, its label, and its grips when selected.
  *
  * Grips and vertices are drawn only for a selected shape, which mirrors
@@ -315,6 +348,13 @@ export function AnnotationShape({ shape, zoom }: ShapeProps): JSX.Element {
           hot={shape.hot}
           selected={shape.selected}
         />
+      ) : shape.geometry.type === "polyline" ? (
+        <PolylineShape
+          geometry={shape.geometry}
+          color={shape.color}
+          hot={shape.hot}
+          selected={shape.selected}
+        />
       ) : (
         <PolygonShape
           geometry={shape.geometry}
@@ -327,7 +367,8 @@ export function AnnotationShape({ shape, zoom }: ShapeProps): JSX.Element {
       {shape.selected && shape.geometry.type === "bbox" && (
         <Grips geometry={shape.geometry} color={shape.color} zoom={zoom} hotHandle={null} />
       )}
-      {shape.selected && shape.geometry.type === "polygon" && (
+      {shape.selected &&
+        (shape.geometry.type === "polygon" || shape.geometry.type === "polyline") && (
         <Vertices
           points={shape.geometry.points}
           color={shape.color}

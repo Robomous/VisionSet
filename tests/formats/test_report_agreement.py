@@ -29,9 +29,10 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from tests.formats.test_yolo import Fixture, _box
+from tests.formats.test_yolo import CLASSES, Fixture, _box
 
 from visionset.formats.coco import ANNOTATIONS_DIRNAME as COCO_ANNOTATIONS_DIRNAME
+from visionset.formats.lanes import LABELS_DIRNAME as LANE_LABELS_DIRNAME
 from visionset.formats.registry import exporters
 from visionset.formats.voc import ANNOTATIONS_DIRNAME as VOC_ANNOTATIONS_DIRNAME
 from visionset.formats.yolo import DATA_FILENAME, LABELS_DIRNAME
@@ -40,7 +41,10 @@ from visionset.kernel.domain import (
     ClassExportStatus,
     ClassificationGeometry,
     ExportCompatibility,
+    GeometryType,
+    LabelClass,
     PolygonGeometry,
+    PolylineGeometry,
 )
 from visionset.kernel.ports import Exporter
 
@@ -168,7 +172,7 @@ def test_every_installed_exporter_is_accounted_for() -> None:
     new exporter either gets a counter and is compared against its own output, or
     is declared non-writing on purpose. Silence is not an option.
     """
-    assert set(_installed()) == set(COUNTERS) | NON_WRITING
+    assert set(_installed()) == set(COUNTERS) | set(LANE_COUNTERS) | NON_WRITING
 
 
 def test_a_non_writing_exporter_really_writes_nothing(tmp_path: Path, labelled: Fixture) -> None:
@@ -305,3 +309,183 @@ def test_coco_is_unchanged_because_it_reduces_nothing(tmp_path: Path, labelled: 
     assert (report.excluded_annotations, report.degraded_annotations) == (1, 0)
     assert report.degraded == ()
     assert [one.label_class for one in report.excluded] == ["weather"]
+
+
+# --- the lane family (#223) ---------------------------------------------------
+#
+# Five more installed exporters, and none of them can be counted the way the
+# three above are. A YOLO row starts with a class index, a VOC `<object>` has a
+# `<name>` and a COCO instance has a `category_id` — so "what did this format
+# write, per class" is a question their artifacts answer. A lane file does not:
+# TuSimple and CurveLanes and CULane record no class at all, and BDD100K and
+# OpenLane record their *own* category derived from style and colour. That is a
+# property of single-purpose formats, not an oversight.
+#
+# So they are compared at the granularity their output supports — every lane on
+# disk against every lane the report did not call dropped — which keeps #158's
+# guarantee (the report is checked against the bytes) without inventing a class
+# attribution the files do not carry.
+
+
+def _polyline(points: list[tuple[float, float]] | None = None) -> Annotation:
+    """One lane. Y-ascending, because TuSimple refuses anything else."""
+    return Annotation(
+        asset_id=uuid4(),
+        label_class="centerline",
+        schema_version=1,
+        geometry=PolylineGeometry(points=points or [(6.0, 4.0), (18.0, 22.0), (30.0, 44.0)]),
+        provenance="human",
+    )
+
+
+#: The same shape as ``DRAWING``, plus three lanes. Kept separate rather than
+#: folded in, because the three reproduction tests above assert exact counters
+#: taken from #158's body and widening their release would silently rewrite the
+#: reproduction they exist to preserve.
+LANE_DRAWING: dict[int, list[Annotation]] = {
+    0: [_box(x=8, y=6, width=20, height=22), _polyline()],
+    1: [
+        _polyline([(2.0, 2.0), (10.0, 20.0), (16.0, 46.0)]),
+        _polyline([(40.0, 3.0), (48.0, 25.0), (56.0, 45.0)]),
+    ],
+    2: [_box(x=1, y=1, width=8, height=8), _tag()],
+}
+
+LANE_CLASSES = (*CLASSES, LabelClass(name="centerline", geometry=GeometryType.POLYLINE))
+
+
+def _tusimple_lanes(root: Path) -> int:
+    total = 0
+    for path in sorted(root.glob("label_data_*.json")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                total += len(json.loads(line)["lanes"])
+    return total
+
+
+def _curvelanes_lanes(root: Path) -> int:
+    return sum(
+        len(json.loads(path.read_text(encoding="utf-8"))["Lines"])
+        for path in sorted((root / LANE_LABELS_DIRNAME).rglob("*.lines.json"))
+    )
+
+
+def _bdd100k_lanes(root: Path) -> int:
+    return sum(
+        len(json.loads(path.read_text(encoding="utf-8"))["labels"])
+        for path in sorted((root / LANE_LABELS_DIRNAME).rglob("*.json"))
+    )
+
+
+def _culane_lanes(root: Path) -> int:
+    return sum(
+        len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
+        for path in sorted((root / LANE_LABELS_DIRNAME).rglob("*.lines.txt"))
+    )
+
+
+def _openlane_lanes(root: Path) -> int:
+    return sum(
+        len(json.loads(path.read_text(encoding="utf-8"))["lane_lines"])
+        for path in sorted((root / LANE_LABELS_DIRNAME).rglob("*.json"))
+    )
+
+
+#: How to count the lanes each lane format wrote, keyed by ``format_name``.
+LANE_COUNTERS: dict[str, Callable[[Path], int]] = {
+    "tusimple": _tusimple_lanes,
+    "curvelanes": _curvelanes_lanes,
+    "bdd100k-lane": _bdd100k_lanes,
+    "culane": _culane_lanes,
+    "openlane-2d": _openlane_lanes,
+}
+
+
+@pytest.fixture
+def laned(tmp_path: Path) -> Fixture:
+    fixture = Fixture(tmp_path, classes=LANE_CLASSES)
+    fixture.label(LANE_DRAWING)
+    return fixture
+
+
+@pytest.mark.parametrize("format_name", sorted(LANE_COUNTERS))
+def test_a_lane_format_writes_exactly_the_lanes_it_did_not_call_dropped(
+    tmp_path: Path, laned: Fixture, format_name: str
+) -> None:
+    """Report versus artifact for the class-blind formats.
+
+    The three lanes in ``LANE_DRAWING`` are the only thing any of these can hold,
+    so this is also the assertion that a lane format does **not** quietly write a
+    box or a tag it declared dropped.
+    """
+    release_id = laned.publish()
+    dest = tmp_path / f"out-{format_name}"
+    report = _export(laned, release_id, _installed()[format_name], dest)
+    written = LANE_COUNTERS[format_name](dest)
+    laned.close()
+
+    kept = sum(
+        one.annotations for one in report.classes if one.status is not ClassExportStatus.DROPPED
+    )
+    assert written == kept == 3
+    assert report.excluded_annotations == 3  # two boxes and a tag
+    assert sorted(one.label_class for one in report.excluded) == ["sign", "weather"]
+
+
+def test_tusimple_calls_the_lane_it_resamples_degraded_and_the_others_do_not(
+    tmp_path: Path, laned: Fixture
+) -> None:
+    """The one geometry declaration that differs across the five, asserted as such.
+
+    TuSimple writes X-at-each-row and not the vertices it was given, so its lanes
+    are ``DEGRADED``; the other four write the vertices, so theirs are
+    ``SUPPORTED``. Every one of the five is still ``lossy`` — which is a different
+    question, and the reason both fields exist.
+    """
+    release_id = laned.publish()
+    reports = {
+        name: _export(laned, release_id, _installed()[name], tmp_path / f"out-{name}")
+        for name in sorted(LANE_COUNTERS)
+    }
+    laned.close()
+
+    for name, report in reports.items():
+        (lane,) = [one for one in report.classes if one.label_class == "centerline"]
+        expected = ClassExportStatus.DEGRADED if name == "tusimple" else ClassExportStatus.SUPPORTED
+        assert lane.status is expected, f"{name} declares centerline {lane.status.value}"
+        assert not report.compatible  # a box and a tag are still dropped
+        assert _installed()[name].lossy
+
+
+@pytest.mark.parametrize("format_name", ["yolo", "coco", "voc"])
+def test_the_three_general_formats_declare_polyline_truthfully(
+    tmp_path: Path, laned: Fixture, format_name: str
+) -> None:
+    """#223 asked what YOLO, COCO and VOC can genuinely do with an open path.
+
+    The answer, verified against the bytes rather than assumed: **nothing**, and
+    all three already said so. YOLO and VOC are box formats and reduce a *polygon*
+    to its bounds, which is defensible because a polygon encloses an area a box
+    can approximate; an open path encloses nothing, so a box drawn round it is an
+    invention rather than a reduction. COCO's ``segmentation`` is a closed ring
+    and it has no open-path primitive at all.
+
+    So ``polyline`` is in neither ``supported_geometries`` nor
+    ``degraded_geometries`` for the three, the report calls the class dropped, and
+    the label files contain no trace of it. Nothing changed in those exporters —
+    this test is the verification the issue asked for.
+    """
+    release_id = laned.publish()
+    dest = tmp_path / f"out-{format_name}"
+    report = _export(laned, release_id, _installed()[format_name], dest)
+    written = COUNTERS[format_name](dest)
+    laned.close()
+
+    plugin = _installed()[format_name]
+    assert GeometryType.POLYLINE not in plugin.supported_geometries
+    assert GeometryType.POLYLINE not in plugin.degraded_geometries
+
+    (lane,) = [one for one in report.classes if one.label_class == "centerline"]
+    assert lane.status is ClassExportStatus.DROPPED
+    assert lane.annotations == 3
+    assert written["centerline"] == 0

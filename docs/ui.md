@@ -582,10 +582,16 @@ Three other decisions the editor inherits rather than invents:
   schema-less on purpose, so that code becomes an empty draft rather than an error
   surface.
 
-The geometry picker offers `bbox`, `polygon` and `classification_tag` — the three an
-`Annotation` can carry. `GeometryType` declares eight; the kernel refuses the rest
+The geometry picker offers `bbox`, `polygon`, `polyline` and `classification_tag` — the
+four an `Annotation` can carry. `GeometryType` declares eight; the kernel refuses the rest
 at write time with `UnsupportedGeometry`, and offering a choice the API will refuse
 is worse than not offering it.
+
+`polyline` is offered even though no tool draws one (#223). That is deliberate: the class is
+real, the API accepts annotations of it, and the lane exporters need it — lanes are written
+by an agent or a script and reviewed here. Where it matters is the annotator's tool strip,
+which says a polyline class has no drawing tool rather than showing a gap; the schema editor
+is not the place to explain the annotator.
 
 A class **description** is not editable, because `LabelClassBody` does not carry
 one. Left out rather than stored where it would not survive a round trip.

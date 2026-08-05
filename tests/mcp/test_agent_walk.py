@@ -159,44 +159,39 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
     assert ok(call("list_releases", project="road-signs"))["total"] == 1
     assert ok(call("verify_release", project="road-signs", tag="v1.0"))["ok"] is True
 
-    assert ok(call("list_formats"))["items"] == [
-        {
-            # #63. Lossless: boxes and polygons are native, and everything
-            # COCO has no field for rides in a `visionset` object.
-            "name": "coco",
-            "lossy": False,
-            "geometries": ["bbox", "polygon"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-        },
-        {
-            "name": "dummy",
-            "lossy": False,
-            # #65: what the format can carry. `dummy` declares everything,
-            # which is what makes it the format that never refuses.
-            "geometries": sorted(one.value for one in GeometryType),
-            "degraded_geometries": [],
-            "modalities": ["image", "point_cloud", "video"],
-        },
-        {
-            # #64. Lossy because a VOC `<object>` has a fixed set of children
-            # its consumers index by tag name.
-            "name": "voc",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": ["polygon"],
-            "modalities": ["image"],
-        },
-        {
-            # #62. An agent picking a format sees what each can write, so it can
-            # tell "carries everything" from "carries boxes" without exporting.
-            "name": "yolo",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": ["polygon"],
-            "modalities": ["image"],
-        },
-    ]
+    # The roster in full is pinned by `test_release_tools.py`; duplicating nine
+    # literal rows here would mean two lists to edit per new format and would say
+    # nothing this walk is about. What the walk asserts is the capability: an
+    # agent picking a format can tell "carries everything" from "carries boxes"
+    # from "resamples what I give it", without exporting anything first.
+    formats = {one["name"]: one for one in ok(call("list_formats"))["items"]}
+    assert set(formats) == {
+        "bdd100k-lane",
+        "coco",
+        "culane",
+        "curvelanes",
+        "dummy",
+        "openlane-2d",
+        "tusimple",
+        "voc",
+        "yolo",
+    }
+    # #63. Lossless: boxes and polygons are native, and everything COCO has no
+    # field for rides in a `visionset` object.
+    assert formats["coco"]["lossy"] is False
+    assert formats["coco"]["geometries"] == ["bbox", "polygon"]
+    # #62. A box format says so, and names the polygon it reduces rather than
+    # dropping it silently.
+    assert formats["yolo"]["geometries"] == ["bbox"]
+    assert formats["yolo"]["degraded_geometries"] == ["polygon"]
+    # #65: `dummy` declares every geometry, which is what makes it the format
+    # that never refuses.
+    assert formats["dummy"]["geometries"] == sorted(one.value for one in GeometryType)
+    # #223. The lane family, and the one of the five that reduces: TuSimple's
+    # file *is* the X where a lane crosses each of a fixed set of rows.
+    assert formats["tusimple"]["degraded_geometries"] == ["polyline"]
+    assert formats["curvelanes"]["geometries"] == ["polyline"]
+
     exported = ok(
         call(
             "export_release",

@@ -34,8 +34,20 @@ import {
 } from "../primitives/Select";
 import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries";
 
-/** The three an `Annotation` can carry. The other five are refused at write time. */
-const GEOMETRIES: readonly GeometryType[] = ["bbox", "polygon", "classification_tag"];
+/**
+ * The four an `Annotation` can carry. The other four are refused at write time.
+ *
+ * `polyline` is here from #223 and has no drawing tool yet: lanes are written
+ * through the SDK, the API and MCP, and reviewed in the annotator. Offering the
+ * class is still right — the geometry is real, the API accepts it, and the
+ * exporters need it — and the tool strip says so where it matters (#342).
+ */
+const GEOMETRIES: readonly GeometryType[] = [
+  "bbox",
+  "polygon",
+  "polyline",
+  "classification_tag",
+];
 
 /** `Attribute.kind`, from the wire enum. */
 const KINDS = ["string", "number", "boolean", "select"] as const;

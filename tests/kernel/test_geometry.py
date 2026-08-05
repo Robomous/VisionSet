@@ -12,6 +12,7 @@ from visionset.kernel.domain import (
     GeometryType,
     LabelClass,
     PolygonGeometry,
+    PolylineGeometry,
 )
 
 geometry_adapter: TypeAdapter[Geometry] = TypeAdapter(Geometry)
@@ -19,6 +20,7 @@ geometry_adapter: TypeAdapter[Geometry] = TypeAdapter(Geometry)
 VARIANTS = [
     BboxGeometry(x=1.0, y=2.0, width=10.0, height=20.0),
     PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]),
+    PolylineGeometry(points=[(0.0, 0.0), (10.0, 5.0), (20.0, 30.0)]),
     ClassificationGeometry(),
 ]
 
@@ -59,6 +61,11 @@ def test_discriminator_routes_to_the_right_variant() -> None:
     )
     assert isinstance(polygon, PolygonGeometry)
 
+    polyline = geometry_adapter.validate_python(
+        {"type": "polyline", "points": [[0.0, 0.0], [10.0, 0.0]]}
+    )
+    assert isinstance(polyline, PolylineGeometry)
+
     assert isinstance(
         geometry_adapter.validate_python({"type": "classification_tag"}),
         ClassificationGeometry,
@@ -89,8 +96,60 @@ def test_polygon_accepts_three_points_without_checking_self_intersection() -> No
     assert len(PolygonGeometry(points=bowtie).points) == 4
 
 
+def test_polyline_needs_at_least_two_points() -> None:
+    for bad in [[], [(0.0, 0.0)]]:
+        with pytest.raises(ValidationError, match="at least 2 items"):
+            geometry_adapter.validate_python({"type": "polyline", "points": bad})
+
+
+def test_polyline_refuses_a_path_with_no_length() -> None:
+    # The analogue of the zero-area box: every point the same point describes
+    # nothing. It is the ONLY degeneracy refused — see the model's docstring.
+    with pytest.raises(ValidationError, match="no length"):
+        geometry_adapter.validate_python({"type": "polyline", "points": [[5.0, 5.0], [5.0, 5.0]]})
+
+
+def test_polyline_keeps_duplicate_points_inside_a_path_that_has_length() -> None:
+    # Real digitizers and honest resampling both emit these, and they cost a
+    # renderer nothing. Only the all-identical case is refused.
+    doubled = [(0.0, 0.0), (5.0, 5.0), (5.0, 5.0), (10.0, 10.0)]
+    assert len(PolylineGeometry(points=doubled).points) == 4
+
+
+def test_a_polyline_is_not_the_polygon_with_the_same_points() -> None:
+    # The ends stay apart: nothing joins the last point to the first, so the two
+    # are different values even where the vertex list is identical.
+    points = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
+    assert PolylineGeometry(points=points) != PolygonGeometry(points=points)
+    assert PolylineGeometry(points=points).type != PolygonGeometry(points=points).type
+
+
+def test_a_polyline_repeating_its_first_point_is_still_a_polyline() -> None:
+    # A closed path is a legal polyline. The domain does not reinterpret it as a
+    # polygon, because the caller said which one they meant.
+    closed = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 0.0)]
+    assert PolylineGeometry(points=closed).type is GeometryType.POLYLINE
+
+
+def test_polyline_point_order_is_part_of_the_value() -> None:
+    # Reversing a lane is a different annotation of the same pixels, so the two
+    # must not compare equal. Nothing sorts the points on the way in.
+    forward = [(0.0, 0.0), (10.0, 5.0), (20.0, 30.0)]
+    assert PolylineGeometry(points=forward) != PolylineGeometry(points=list(reversed(forward)))
+
+
+def test_the_domain_does_not_impose_one_format_s_ordering_rule() -> None:
+    # TuSimple wants points sorted by ascending Y. That is enforced by the lanes
+    # exporter, never here: a horizontal path is a perfectly good polyline, and a
+    # domain that refused it would be encoding what a road is.
+    horizontal = [(0.0, 50.0), (100.0, 50.0)]
+    descending = [(0.0, 90.0), (10.0, 10.0)]
+    assert PolylineGeometry(points=horizontal).points[0] == (0.0, 50.0)
+    assert PolylineGeometry(points=descending).points[0] == (0.0, 90.0)
+
+
 def test_unimplemented_and_unknown_geometry_tags_are_rejected() -> None:
-    for tag in ["mask", "polyline", "keypoints", "cuboid_3d", "polyline_3d", "hexagon"]:
+    for tag in ["mask", "keypoints", "cuboid_3d", "polyline_3d", "hexagon"]:
         with pytest.raises(ValidationError, match="union_tag_invalid"):
             geometry_adapter.validate_python({"type": tag})
 
@@ -135,6 +194,11 @@ def test_implemented_geometries_names_exactly_the_variants_of_the_union() -> Non
     # Derived from the union rather than listed beside it, so appending a variant
     # widens it with no second edit. SchemaService refuses a class outside this set.
     from_the_union = {g.type for g in VARIANTS}
-    expected = {GeometryType.BBOX, GeometryType.POLYGON, GeometryType.CLASSIFICATION_TAG}
+    expected = {
+        GeometryType.BBOX,
+        GeometryType.POLYGON,
+        GeometryType.POLYLINE,
+        GeometryType.CLASSIFICATION_TAG,
+    }
     assert IMPLEMENTED_GEOMETRIES == from_the_union == expected
     assert set(GeometryType) > IMPLEMENTED_GEOMETRIES  # the rest is roadmap

@@ -243,10 +243,11 @@ uv run python scripts/export_wire_fixtures.py
 
 **Two vocabularies, one union — and the editor keeps both.** `GeometryType` names eight
 geometries because that is what a `LabelClass` declares (see [schemas](schemas.md)); `Geometry`
-has three variants because that is what an annotation can carry. So `parseGeometry` tells a
-`polyline` apart from a typo: the first is a declared geometry with no model, refused in the
+has four variants because that is what an annotation can carry. So `parseGeometry` tells a
+`mask` apart from a typo: the first is a declared geometry with no model, refused in the
 kernel's own words (`UNSUPPORTED_GEOMETRY`), and the remedy is to wait for a variant rather than
-to fix the caller.
+to fix the caller. `polyline` was the example here until #223 shipped its variant — the remedy
+arriving, which is exactly what the split predicted would happen.
 
 The parser is strict about unknown keys as well as missing ones. That is not fussiness: the editor
 hands back what it was given, so a key it silently dropped would be a field the kernel wrote and
@@ -451,12 +452,14 @@ than half of them describe things this build does not do.
 | --- | --- | --- |
 | `polygon-tool.spec.ts` | 233 | **Ported**, all seven scenarios — one of them inverted, see below |
 | `annotation-redesign.spec.ts` | 129 | **One of six ported.** The other five are v1's routing and chrome — a batch list, an `Annotate` link, a sidebar, an image picker, a back button. The demo has no router and no backend; those describe a product surface M5 builds, not a behaviour that moved |
-| `polyline-tool.spec.ts` | 257 | **Out of scope.** `polyline` is a nameable `GeometryType` with no `Geometry` variant — `parseGeometry` refuses it as `UNSUPPORTED_GEOMETRY`, *declared with no implementation*. It becomes live the day a `PolylineGeometry` joins the union |
-| `lane-export.spec.ts` | 206 | **Out of scope**, same reason, plus two lane-export formats that do not exist here |
+| `polyline-tool.spec.ts` | 257 | **Out of scope at #48**, because `polyline` had no `Geometry` variant. #223 shipped one, and this spec is still out of scope for a different and narrower reason: it drives a *drawing tool*, and 0.1.0 has none — lanes are written by an agent or a script and reviewed in the annotator. It becomes portable with the 0.2 drawing tool |
+| `lane-export.spec.ts` | 206 | **Superseded rather than ported.** #223 landed the lane formats as `visionset.formats` plugins, and they are tested where the other exporters are: `tests/formats/test_lanes.py` ports v1's 53 unit tests, and `test_report_agreement.py` checks each one's report against the bytes it wrote. v1's spec drove per-item HTTP export endpoints that have no counterpart here |
 
-The demo's fifth class, `centerline`, is that state made visible: it is declared
+The demo's fifth class, `centerline`, is still that state made visible — it is declared
 `polyline`, `toolFor` answers `select` for it, and a scenario asserts that activating it
-draws nothing. That is the closest honest port of the polyline spec's premise.
+draws nothing. What changed with #223 is the *reason*: it used to be a class no annotation
+could carry, and it is now a class with no drawing tool. The scenario is unchanged and still
+passes, which is the useful part — the affordance was honest either way.
 
 ### The one place the port asserts the opposite of v1
 

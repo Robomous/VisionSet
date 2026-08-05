@@ -24,10 +24,11 @@
  *    half-drawn shape is allowed to be belongs to the document model, not to the
  *    parser of stored annotations.
  *
- * 3. **A declared-but-unimplemented geometry gets its own message.** `polyline`
- *    is a real `GeometryType` with no model, not a typo, and the refusal says so
- *    — because someone reading it needs to know the answer is "not yet" rather
- *    than "you misspelled it".
+ * 3. **A declared-but-unimplemented geometry gets its own message.** `mask` is a
+ *    real `GeometryType` with no model, not a typo, and the refusal says so —
+ *    because someone reading it needs to know the answer is "not yet" rather than
+ *    "you misspelled it". `polyline` was the example here until #223 implemented
+ *    it; four names still have no model.
  *
  * #40 added the schema and the asset, and with them a fourth rule:
  *
@@ -157,6 +158,8 @@ const ASSET_KEYS = ["id", "width", "height"] as const;
 
 const BBOX_KEYS = ["type", "x", "y", "width", "height"] as const;
 const POLYGON_KEYS = ["type", "points"] as const;
+// A polyline carries the same two keys; the discriminator is the difference.
+const POLYLINE_KEYS = ["type", "points"] as const;
 const CLASSIFICATION_KEYS = ["type"] as const;
 
 const PROVENANCES: readonly Provenance[] = ["human", "model", "import"];
@@ -308,14 +311,24 @@ export function parseGeometry(value: unknown): Geometry {
         width: requireNumber(value["width"], "geometry.width"),
         height: requireNumber(value["height"], "geometry.height"),
       };
-    case "polygon": {
-      requireExactKeys(value, POLYGON_KEYS, "polygon geometry");
+    case "polygon":
+    case "polyline": {
+      requireExactKeys(
+        value,
+        type === "polygon" ? POLYGON_KEYS : POLYLINE_KEYS,
+        `${type} geometry`,
+      );
       const points = value["points"];
       if (!Array.isArray(points)) {
         throw new WireFormatError("geometry.points must be an array");
       }
+      // The two share a branch because they share a payload. What they do NOT
+      // share is a minimum: the kernel refuses a polygon under three points and
+      // a polyline under two, and neither bound is restated here — the wire is
+      // what the API sent, and re-deriving a domain rule in the parser is how a
+      // mirror starts refusing things the kernel accepts.
       return {
-        type: "polygon",
+        type,
         points: points.map((point, index) =>
           requirePoint(point, `geometry.points[${index}]`),
         ),
@@ -416,10 +429,10 @@ export function parseAttribute(value: unknown): Attribute {
 /**
  * One labelable class.
  *
- * `geometry` is validated against the **eight**, not the three: declaring
- * `polyline` is legal in a schema and refused at the annotation. Narrowing here
- * would make a whole class list unloadable because of one class nobody was going
- * to draw with.
+ * `geometry` is validated against the **eight**, not the four: declaring `mask`
+ * is legal in a schema and refused at the annotation. Narrowing here would make a
+ * whole class list unloadable because of one class nobody was going to draw
+ * with.
  */
 export function parseLabelClass(value: unknown): LabelClass {
   if (!isRecord(value)) {

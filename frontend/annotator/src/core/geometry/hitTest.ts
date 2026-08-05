@@ -212,6 +212,13 @@ export function geometryContains(
   tolerance: number,
 ): boolean {
   if (geometry.type === "classification_tag") return false;
+  // A polyline is rendered and reviewable, and is deliberately NOT grabbable on
+  // the canvas in 0.1.0. Hitting an open path is its own geometry problem —
+  // distance to a segment, with a tolerance that has to hold at every zoom — and
+  // it is only worth solving beside the tool that lets you edit the result.
+  // Selecting a lane goes through the object list instead, which is a real
+  // affordance rather than a gap. See #342.
+  if (geometry.type === "polyline") return false;
   if (geometry.type === "bbox") {
     if (bboxContains(geometry, point)) return true;
     return nearestEdge(bboxCorners(geometry), point, tolerance) !== null;
