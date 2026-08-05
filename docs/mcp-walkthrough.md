@@ -32,7 +32,7 @@ example proves the transport.
 | 2 | `create_schema_version`, `get_schema` | the contract, before any work is judged against it |
 | 3 | `ingest` | a folder becomes assets in a draft batch |
 | 4 | `approve_batch`, `start_batch` | membership frozen, schema pinned, jobs cut, work opened |
-| 5 | `start_job`, `next_pending_assets`, `get_asset_image`, `add_annotations`, `set_asset_progress` | the loop |
+| 5 | `next_pending_assets`, `get_asset_image`, `add_annotations`, `set_asset_progress` | the loop |
 | 6 | `complete_job`, `complete_batch`, `promote_batch`, `dataset_stats` | the finished work reaches the trunk |
 | 7 | `publish_release`, `verify_release`, `list_formats`, `export_release` | a frozen artifact, on disk |
 | 8 | `publish_release` again | a refusal, on purpose |
@@ -117,9 +117,12 @@ is one-way — there is no route back to `draft` — since the jobs are already 
 This is the step that makes an agent an annotator rather than an operator.
 
 ```
-start_job job_id=...                     ->  {"state": "in_progress"}
 next_pending_assets job_id=... count=10  ->  {"items": [...], "total": 2}
 ```
+
+Nothing starts the job. Since #109 there is no tool for it: the first write does it and reports
+`job_started`. The transcripts below are from before that, when `start_job` existed and two runs
+forgot it — which is the evidence that retired it.
 
 `next_pending` returns only assets nobody has settled, in the batch's own order, and it **shrinks as
 work lands**. That is the loop's termination condition: keep calling until `total` is 0. There is no
@@ -314,7 +317,12 @@ every label and then tried to complete a job still `pending`. They were right to
 writing is gated on the *batch* being `in_annotation`, not on the job, so nothing forces `start_job`
 until the very end of the loop. Both recovered in two calls, because the kernel's own sentence names
 `in_progress` as the only state reachable from there. That refusal was doing real work, which is why
-the answer was a description rather than a redesign.
+the answer here was a description rather than a redesign.
+
+**Superseded.** The description held the line for one milestone and then #109 removed the failure
+mode instead of warning about it: `start_job` is retired and every write starts a `pending` job,
+reporting `job_started`. What is above is the measurement that made the case — kept as the evidence,
+not as the current behaviour.
 
 ## What the runs could not settle
 
@@ -348,7 +356,7 @@ byte-identical, because MCP is a client like any other.
 | --- | --- |
 | `ingest` answers `ingest_job_id`, not `job_id`, and says the annotation jobs come from `approve_batch` | an agent took `job_id` to `get_job` and was refused |
 | `get_job` says which id it takes, and that it is not the one `ingest` returned | the other half of the same confusion |
-| `start_job` and `complete_job` each name the other — one the consequence, one the remedy | two runs labelled everything, then could not complete |
+| `start_job` and `complete_job` each name the other — one the consequence, one the remedy (**since replaced by #109's auto-start**) | two runs labelled everything, then could not complete |
 
 The last one is stated in **both** directions on purpose: an agent reads whichever description it
 reaches first, and the two runs that hit it reached them in opposite orders.
@@ -370,10 +378,10 @@ Three things were deliberately **not** changed:
 - [#108](https://github.com/Robomous/VisionSet/issues/108) — `confirm` is satisfiable from the tool
   description, so a destructive tool self-authorises in one call. If this surface wants a real gate
   it belongs in the server's configuration, out of the agent's reach. Post-beta.
-- [#109](https://github.com/Robomous/VisionSet/issues/109) — whether `start_job` earns its place
-  here at all, given that writes are gated on the batch. The evidence is two wasted calls in twelve
-  runs, which is friction rather than a case for surgery; the data is on the issue for whoever
-  revisits it.
+- [#109](https://github.com/Robomous/VisionSet/issues/109) — whether `start_job` earned its place
+  at all, given that writes are gated on the batch. **Settled: it did not.** The tool is gone and
+  every write starts a `pending` job, reporting `job_started`. See
+  [mcp.md](mcp.md#there-is-no-start_job-the-first-write-starts-it).
 
 The limits in [mcp.md](mcp.md) were not re-litigated and none of them caused a failure: ingest and
 export stayed synchronous, paths stayed local, no run wanted a token, and every discriminated union

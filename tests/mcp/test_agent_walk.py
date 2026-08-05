@@ -79,7 +79,10 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
     #    annotator rather than an operator.
     for job in started["jobs"]:
         job_id = job["id"]
-        assert ok(call("start_job", job_id=job_id))["state"] == "in_progress"
+        # Nothing starts the job: there is no tool for it (#109). It is still
+        # `pending` here, and the first write below is what moves it — which is
+        # the whole point, since looking at a job is not working on it.
+        assert ok(call("get_job", job_id=job_id))["state"] == "pending"
         pending = ok(call("next_pending_assets", job_id=job_id, count=10))
         assert pending["total"] == 2
 
@@ -116,6 +119,10 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
                         ],
                     )
                 )
+                # The first write took the job to `in_progress` and said so, so
+                # the agent learns the state moved without having asked for it.
+                assert written["job_started"] is True
+                assert ok(call("get_job", job_id=job_id))["state"] == "in_progress"
                 assert written["items"][0]["geometry"]["width"] == pytest.approx(
                     40.0 * frame["scale"]
                 )
@@ -123,7 +130,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
                 # the real image, which is the whole reason `scale` is published.
                 assert written["items"][0]["geometry"]["x"] < frame["width"]
             else:
-                ok(
+                skipped = ok(
                     call(
                         "set_asset_progress",
                         job_id=job_id,
@@ -131,9 +138,14 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
                         progress="skipped",
                     )
                 )
+                # Already `in_progress` from the write above, so this one reports
+                # no start. The fact is published either way; only the value moves.
+                assert skipped["job_started"] is False
 
         assert ok(call("next_pending_assets", job_id=job_id, count=10))["total"] == 0
-        assert ok(call("complete_job", job_id=job_id))["state"] == "completed"
+        closed = ok(call("complete_job", job_id=job_id))
+        assert closed["state"] == "completed"
+        assert closed["job_started"] is False
 
     # 6. Close the batch and move the finished work into the trunk. The two
     #    skipped assets stay behind, which is what a skip is for.

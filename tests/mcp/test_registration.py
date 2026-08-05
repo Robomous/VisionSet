@@ -44,7 +44,6 @@ SHIPPED = {
     "add_batch_assets",
     "remove_batch_assets",
     "get_job",
-    "start_job",
     "complete_job",
     "next_pending_assets",
     "set_asset_progress",

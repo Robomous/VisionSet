@@ -43,7 +43,6 @@ def _job_with_assets(
     classes: list[dict[str, Any]] | None = None,
 ) -> tuple[str, list[str]]:
     _, _, job_id = open_batch(monkeypatch, tmp_path, count=count, classes=classes)
-    payload(call("start_job", job_id=job_id))
     assets = payload(call("next_pending_assets", job_id=job_id, count=count))["items"]
     return job_id, [a["id"] for a in assets]
 
@@ -253,7 +252,7 @@ def test_deleting_takes_no_confirmation_and_moves_the_asset_back(
     written = payload(call("add_annotations", job_id=job_id, annotations=[_label(assets[0])]))
     assert payload(
         call("delete_annotations", job_id=job_id, annotation_ids=[written["items"][0]["id"]])
-    ) == {"deleted": 1}
+    ) == {"deleted": 1, "job_started": False}
     assert payload(call("get_job", job_id=job_id))["progress"]["unannotated"] == 2
 
 
@@ -267,7 +266,7 @@ def test_a_repeated_id_counts_once_and_an_unknown_one_blames_its_own_position(
     first, second = (a["id"] for a in written["items"])
     assert payload(
         call("delete_annotations", job_id=job_id, annotation_ids=[first, first, second])
-    ) == {"deleted": 2}
+    ) == {"deleted": 2, "job_started": False}
 
     written = payload(call("add_annotations", job_id=job_id, annotations=[_label(assets[0])]))
     stranger = str(uuid4())
