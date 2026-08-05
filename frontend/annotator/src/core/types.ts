@@ -24,10 +24,11 @@
  *
  * Two vocabularies, one union — the kernel's own split, kept: `GeometryType`
  * names eight geometries, because that is what a `LabelClass` declares and what
- * the API publishes; `Geometry` has three variants, because that is what an
- * annotation can actually carry. Naming `polyline` or `keypoints` is legal in a
+ * the API publishes; `Geometry` has four variants, because that is what an
+ * annotation can actually carry. Naming `mask` or `keypoints` is legal in a
  * schema and refused at the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`)
- * and by `parseGeometry` here. See `docs/schemas.md`.
+ * and by `parseGeometry` here. `polyline` moved across that line in #223, which
+ * cost this list one entry and the union one variant. See `docs/schemas.md`.
  *
  * #40 answered the question this docstring used to leave open — how a locally
  * drawn annotation carries identity when `AnnotationCreate` has no `id` field.
@@ -53,7 +54,7 @@ export const GEOMETRY_TYPES = [
   "polyline_3d",
 ] as const;
 
-/** The vocabulary a `LabelClass` declares. Eight names; three have a model. */
+/** The vocabulary a `LabelClass` declares. Eight names; four have a model. */
 export type GeometryType = (typeof GEOMETRY_TYPES)[number];
 
 /**
@@ -67,6 +68,7 @@ export const IMPLEMENTED_GEOMETRY_TYPES = [
   "bbox",
   "classification_tag",
   "polygon",
+  "polyline",
 ] as const satisfies readonly GeometryType[];
 
 /**
@@ -105,13 +107,30 @@ export interface PolygonGeometry {
   readonly points: readonly Point[];
 }
 
+/**
+ * An open path of at least two points, in order. Nothing joins the ends.
+ *
+ * Structurally identical to `PolygonGeometry`, and deliberately a separate type
+ * rather than a flag on it: the closing edge is the whole difference, and a
+ * renderer that took a boolean would eventually read it as `false` by accident
+ * and draw a lane closed.
+ */
+export interface PolylineGeometry {
+  readonly type: "polyline";
+  readonly points: readonly Point[];
+}
+
 /** A whole-asset tag: a class with no coordinates. */
 export interface ClassificationGeometry {
   readonly type: "classification_tag";
 }
 
 /** Every shape an annotation can carry, discriminated on `type`. */
-export type Geometry = BboxGeometry | PolygonGeometry | ClassificationGeometry;
+export type Geometry =
+  | BboxGeometry
+  | PolygonGeometry
+  | PolylineGeometry
+  | ClassificationGeometry;
 
 /** One stored annotation, in the asset's own pixel frame. Mirrors `AnnotationOut`. */
 export interface Annotation {
@@ -195,9 +214,9 @@ export interface Attribute {
  * choosing its own palette when it is null is a rendering decision, not a
  * document one.
  *
- * `geometry` is a `GeometryType`, all eight, not just the carryable three. A
- * schema may legally declare `polyline`; an annotation may not carry one. Keeping
- * the wide type here is what lets a class list load intact and the refusal happen
+ * `geometry` is a `GeometryType`, all eight, not just the carryable four. A
+ * schema may legally declare `mask`; an annotation may not carry one. Keeping the
+ * wide type here is what lets a class list load intact and the refusal happen
  * where a user can be told about it.
  */
 export interface LabelClass {

@@ -15,14 +15,20 @@
  * afterwards. That is not a missing screen — there is no route, because there is
  * no service method, because a version is immutable.
  *
- * ## The three geometries, and the five the picker does not offer
+ * ## The four geometries, and the four the picker does not offer
  *
- * `GeometryType` has eight members and an `Annotation` can carry three. The
+ * `GeometryType` has eight members and an `Annotation` can carry four. The
  * kernel refuses the rest at `create_version` with `UnsupportedGeometry`, and
  * `IMPLEMENTED_GEOMETRIES` is read off the `Geometry` union so a new variant
- * widens it with no second edit. The picker offers the three, because offering a
+ * widens it with no second edit. The picker offers the four, because offering a
  * choice the API will refuse is a worse experience than not offering it — and the
  * two are kept in step by the API's refusal, not by this list being right.
+ *
+ * #223 moved `polyline` across that line, and it is the one geometry a class can
+ * declare with **no drawing tool behind it**: lane annotations are written by the
+ * SDK, the API and MCP and reviewed here. That is a statement about the annotator,
+ * not about the schema, so it does not belong in this picker — the tool strip is
+ * where a person finds out, and it says so rather than showing a gap (#342).
  *
  * ## The history is read-only, and that is honest rather than a limitation
  *
@@ -320,7 +326,7 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
         <PastVersion declared={past} />
       ) : draft.length === 0 ? (
         <Alert title="No classes yet">
-          A class is a label plus the one geometry it is drawn with — picking a class picks a tool.
+          A class is a label plus the one geometry it carries — picking a class picks a tool.
         </Alert>
       ) : (
         // 240px and then everything else. `minmax(0, 1fr)` rather than `1fr`, so a
