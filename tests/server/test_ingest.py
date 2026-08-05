@@ -347,11 +347,12 @@ def test_a_resume_that_is_allowed_answers_202_and_says_where_to_poll(
 
         gated.run()
 
-        # Two attempts are now in flight for one row, which is what resuming a job
-        # whose first run is still queued *means*. One worker runs them in order,
-        # the loser finds the job settled and `IngestRunner.submit` swallows and
-        # logs its `InvalidTransition` — so an ERROR line here is the design
-        # working, not a failure. What matters is that the loser left no mark:
+        # Two background jobs now point at one ingest row, which is what resuming
+        # a job whose first run is still queued *means*. The dispatcher runs them
+        # in order; the loser finds the ingest job settled, and its
+        # `InvalidTransition` fails that background job rather than escaping — so
+        # a failed second job here is the design working, not a defect. What
+        # matters is that the loser left no mark on the *ingest* row:
         # `resumable` refuses before the run touches the row, so `error` stays
         # null and the row is not the place a second caller's refusal shows up.
         settled = client.get(f"/ingest-jobs/{job['id']}").json()

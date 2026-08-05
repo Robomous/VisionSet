@@ -809,7 +809,7 @@ def _walk_to(client: TestClient, batch_id: str, state: str) -> None:
 
 
 @pytest.fixture()
-def spare(client: TestClient, tmp_path: Path, runner: RecordingRunner, project: str) -> str:
+def spare(client: TestClient, tmp_path: Path, runner: InlineDispatcher, project: str) -> str:
     """An asset of the same project that no batch under test holds."""
     source = client.post(
         f"/projects/{project}/sources/images", files=[png_part(tmp_path, "spare.png", seed=99)]
