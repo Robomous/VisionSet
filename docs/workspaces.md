@@ -181,8 +181,9 @@ Precedence, first match wins:
 | 3 | the nearest directory at or above the working directory holding a `visionset.db` | **yes** |
 | 4 | the working directory | — |
 
-A server started by import string has no argv, so it reaches only 2, 3 and 4. When `visionset ui`
-started it, it reaches only 2: that command resolves through all four branches, opens the result,
+A server started by import string has no argv, so it reaches only 2, 3 and 4. When
+`visionset server` started it, it reaches only 2: that command resolves through all four branches,
+opens the result,
 and then *states* it in `VISIONSET_WORKSPACE` — one decision, made once, at the surface a person is
 standing at. It has to travel that way rather than as an argument, because `create_app()` takes no
 parameters and `--reload` runs the application in a separate process.
@@ -197,8 +198,8 @@ client that spawns `visionset` directly sets `VISIONSET_WORKSPACE` in the server
 handle in `create_app()` and keeps it for the process's life, because it is one long-lived reader
 of many requests. The CLI and the MCP server open and close per command and per *tool call*: there
 is then no module-level state to tear down between tests, and — since SQLite has one writer — a
-stdio server that held the file between calls would keep `visionset ui` and a second agent out of
-a workspace nobody is using. `close()` checkpoints the WAL, so neither leaves a `visionset.db-wal`
+stdio server that held the file between calls would keep `visionset server` and a second agent out
+of a workspace nobody is using. `close()` checkpoints the WAL, so neither leaves a `visionset.db-wal`
 behind.
 
 **Only case 3 walks, and that asymmetry is the whole rule.** A flag and an environment variable are

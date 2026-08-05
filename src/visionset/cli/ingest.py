@@ -17,7 +17,7 @@ there is no ``--resume``, because re-running does the right thing and needs no
 new vocabulary.
 
 **The run is synchronous, and nothing polls it.** The kernel writes progress to
-the job row for a *second process* to read (that is what ``visionset ui`` and
+the job row for a *second process* to read (that is what ``visionset server`` and
 ``GET /ingest-jobs/{id}`` are for); a CLI that queued the work would have no
 worker to run it. So this blocks, says so on stderr first, and prints the batch
 id when it is done.

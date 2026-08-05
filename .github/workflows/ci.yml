@@ -269,7 +269,7 @@ jobs:
 
       # The config's own webServer builds the engine, the design system and the
       # bundle, copies it into the package data, creates a throwaway workspace and
-      # starts `visionset ui`. One command, so a failure in any of those steps is
+      # starts `visionset server`. One command, so a failure in any of those steps is
       # reported at this step rather than inside a server log.
       - name: Drive the whole cycle
         run: pnpm --filter @visionset/app cycle

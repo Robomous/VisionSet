@@ -46,7 +46,7 @@ fi
 # `--reload-dir` is not tidiness. uvicorn's default watch list is the working
 # directory, which here is the whole bind-mounted repository: `node_modules/` and
 # `workspace-data/` among the rest — so every SQLite write during an ingest would
-# restart the server mid-run. `visionset ui` scopes its own `reload_dirs` to the
+# restart the server mid-run. `visionset server` scopes its own `reload_dirs` to the
 # package for exactly this reason; raw uvicorn does not inherit that, so the scope
 # is stated here instead.
 exec uvicorn visionset.server.main:app \

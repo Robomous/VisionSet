@@ -7,7 +7,7 @@ export default defineConfig(({ command }) => ({
   server: {
     // The dev proxy, and the reason the server has no CORS middleware.
     //
-    // In production there is no cross-origin problem to solve: `visionset ui`
+    // In production there is no cross-origin problem to solve: `visionset server`
     // serves the API at the root and the bundle at `/app`, so the app asks for
     // `/projects` on its own origin. In development vite owns the origin and the
     // API is somewhere else, and the two ways to bridge that are not equal —

@@ -20,7 +20,7 @@ panel and the annotation page. `@visionset/app` is a router, a rail and nothing 
 | Playwright (browser cycle) | — | **1**, against a real server |
 | Python | 1923 | **1932** |
 
-The exit criterion — *"with `visionset ui` running, a user completes the entire cycle
+The exit criterion — *"with `visionset server` running, a user completes the entire cycle
 in the browser"* — is not asserted, it is **driven**: `pnpm --filter @visionset/app
 cycle` walks token → project → schema → ingest → approve → annotate → finish →
 complete → promote → publish → verify → export → download against the built bundle
@@ -668,7 +668,7 @@ stops using it here, and a reload signs you back in.
 Refusals are told apart by what to do next, not by status: a 401 says the token was
 refused (mistyped, revoked, or minted for a different workspace — the API answers
 one identical 401 for all four cases and a client must not pretend otherwise), and a
-`NETWORK_ERROR` says the server is not answering and names `visionset ui`.
+`NETWORK_ERROR` says the server is not answering and names `visionset server`.
 
 ### Where it is kept, and why
 
@@ -735,7 +735,7 @@ polling a state somebody adds later.
 `ApiProvider` takes `baseUrl` and the app decides it — a library that reads
 `import.meta.env` is a library that can only be built one way.
 
-- **Production**: `""`. `visionset ui` serves the API at the root and the bundle at
+- **Production**: `""`. `visionset server` serves the API at the root and the bundle at
   `/app`, so a relative request already lands on it.
 - **Development**: `"/api"`, proxied by vite to `http://127.0.0.1:8000` (override with
   `VISIONSET_API`).
@@ -780,7 +780,7 @@ The rules:
 ## The browser cycle
 
 `pnpm --filter @visionset/app cycle` runs the whole product against a real server:
-`visionset ui` serving the built bundle out of `_static/`, the real API, the real
+`visionset server` serving the built bundle out of `_static/`, the real API, the real
 kernel, and no mocks anywhere. Token → project → schema → ingest → approve →
 annotate → finish → complete → promote → publish → verify → export → download.
 

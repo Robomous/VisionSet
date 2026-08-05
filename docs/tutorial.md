@@ -106,7 +106,7 @@ decision rather than a removal, so a batch always describes what was actually lo
 Now open the app:
 
 ```bash
-visionset ui
+visionset server
 ```
 
 The API is at `http://127.0.0.1:8000` and the browser app at `http://127.0.0.1:8000/app`.

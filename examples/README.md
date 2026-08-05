@@ -83,7 +83,7 @@ uv run python examples/http_end_to_end.py ./scratch  # or wherever you like
 ```
 
 Same destination rules as above. It creates a workspace, mints one token, then starts
-`visionset ui` on an unused loopback port and does everything else through `urllib` — four
+`visionset server` on an unused loopback port and does everything else through `urllib` — four
 images uploaded as multipart, an ingest launched with 202 and polled to completion, two jobs
 annotated, a release published and verified, an archive downloaded, and one request sent
 without the token to prove it is refused.
@@ -93,7 +93,7 @@ the release manifest, whose bytes hash to the release's own `manifest_hash`, and
 archive. Serve it again yourself and keep going:
 
 ```bash
-visionset ui --workspace examples/workspace-data/http-e2e/ws
+visionset server --workspace examples/workspace-data/http-e2e/ws
 curl -s -H "Authorization: Bearer $(visionset token create --name scratch \
   --workspace examples/workspace-data/http-e2e/ws)" localhost:8000/projects
 ```

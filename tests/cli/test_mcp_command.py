@@ -113,7 +113,7 @@ def test_the_working_directory_is_walked_upward_when_nobody_said(
 def test_the_flag_pointed_below_a_workspace_does_not_walk_up_to_it(
     tmp_path: Path, spawn: Spawn
 ) -> None:
-    # This branch's own walk-negative, the sibling of `visionset ui`'s and of the
+    # This branch's own walk-negative, the sibling of `visionset server`'s and of the
     # kernel's. A stated directory is somebody saying which workspace, and trading
     # it for its parent is how an agent is pointed at the wrong one.
     root = _workspace(tmp_path)
