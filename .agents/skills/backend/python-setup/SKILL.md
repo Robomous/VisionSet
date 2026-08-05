@@ -72,6 +72,11 @@ uv run ruff check --fix <path>
   `warn_return_any`, …). Every kernel function is fully annotated; no bare `Any`.
 - Outside the kernel, follow the local style — annotate new public functions.
 - Domain invariants belong in the pydantic v2 models, not in ad-hoc `assert`s at call sites.
+- **A method named after a builtin shadows it for every annotation declared after it.** A class
+  with `def list(...)` makes a later `-> list[Batch]` resolve to *the method*, and mypy reports
+  `"..." is not valid as a type` — which reads as a mystery until you notice the name. Declare
+  annotated members above such a method, put helpers that need the builtin at module level, or
+  rename. The same applies to `dict`, `set` and `type`. — 2026-08 run, T9
 
 ## Versioning
 

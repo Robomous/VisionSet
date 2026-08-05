@@ -64,3 +64,9 @@ Never hand-edit a `version` field. The repo-root `VERSION` file is the source of
 ## Before you say it works
 
 `pnpm -r build && pnpm -r test && pnpm -r lint` from the root. Report failures verbatim.
+
+**A green build is not a green typecheck.** Each package builds through
+`tsconfig.build.json`, which *excludes test files*, while `lint` runs the full
+`tsconfig.json` over everything. So `pnpm -r build` can pass while a type error sits in a test
+or a test helper — which is where fixtures live, and fixtures are what a new required wire field
+breaks. Run `lint` before calling TypeScript green. — 2026-08 run, T8

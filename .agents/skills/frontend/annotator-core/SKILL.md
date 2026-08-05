@@ -47,6 +47,27 @@ The document refuses only its own invariants — duplicate id, unknown id, forei
 rules (class↔geometry agreement, required attributes, bounds) stay the kernel's; the tools refuse at
 draw time, where a user can be told.
 
+## A new wire field is not additive here
+
+`parseAnnotation` checks the key set **exactly** — a payload carrying a field the mirror does not
+declare is *refused*, not ignored. That is deliberate (it is what makes the mirror a contract
+rather than a suggestion), and the consequence is that adding a field to a kernel wire model is a
+breaking change to this client until every mirror moves with it, **in the same commit**:
+
+| Where | What moves |
+| --- | --- |
+| `src/visionset/server/models.py` | the field on `AnnotationOut` (and `visionset/wire/`, MCP, CLI projections) |
+| `frontend/annotator/src/core/types.ts` | the field on `Annotation` |
+| `frontend/annotator/src/core/wire.ts` | `ANNOTATION_KEY_SET` **and** the `parseAnnotation` body |
+| `frontend/ui-core/src/annotator/jobQueries.ts` | `WireAnnotation`, which is a second mirror on purpose |
+
+Then regenerate the fixture (`uv run python scripts/export_wire_fixtures.py`) and give any
+in-core factory a value — `draftAnnotation` mints `null`, because the engine takes a document,
+not a workflow, and must not claim provenance the service overwrites.
+
+A field the *service* stamps stays off `AnnotationCreate`/`AnnotationUpdate`: a field a client
+could set and never observe is a lie in the schema. — 2026-08 run, T8
+
 ## The rules the machine enforces
 
 `src/core/**` must not import React and must not reach the DOM. Three gates, the frontend mirror
