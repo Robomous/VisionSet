@@ -40,7 +40,6 @@ from typing import Final
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
     CORRECTABLE_STATES,
-    DELETABLE_STATES,
     EDITABLE_STATES,
     PROMOTABLE_STATES,
     REPINNABLE_STATES,
@@ -57,6 +56,19 @@ from visionset.kernel.domain.task import (
 )
 
 
+# **There is deliberately no `delete` member** (#331). `BatchService.delete` exists
+# and `DELETABLE_STATES` is still its rule, but no route, MCP tool or control
+# reaches it — and a declaration is a promise rather than decoration. Under the
+# `ui-capabilities` contract a conforming client renders what the wire declares, so
+# an action named here obliges every client to offer it; naming one nothing can
+# perform makes the wire the source of a control that cannot work. Withdrawing the
+# name was chosen over routing it because nothing has asked for the route. It comes
+# back when the route does, in the same change.
+#
+# The reasoning lives here rather than in the docstring because FastAPI copies a
+# docstring verbatim into `openapi.json` as the schema's `description`, where an
+# internal rationale is noise and RST markup renders as literal backticks. The
+# docstring stays the one short sentence a client should read.
 class BatchAction(StrEnum):
     """What can be asked of a batch. Declaration order is display order."""
 
@@ -67,7 +79,6 @@ class BatchAction(StrEnum):
     PROMOTE = "promote"
     CREATE_CORRECTION = "create_correction"
     EDIT_MEMBERSHIP = "edit_membership"
-    DELETE = "delete"
 
 
 class JobAction(StrEnum):
@@ -131,9 +142,8 @@ BATCH_GATES: Final[Mapping[BatchAction, frozenset[BatchState]]] = {
     BatchAction.PROMOTE: PROMOTABLE_STATES,
     BatchAction.CREATE_CORRECTION: CORRECTABLE_STATES,
     BatchAction.EDIT_MEMBERSHIP: EDITABLE_STATES,
-    BatchAction.DELETE: DELETABLE_STATES,
 }
-"""The five batch actions that change no state, and so appear in no table row.
+"""The four batch actions that change no state, and so appear in no table row.
 
 ``create_correction`` is the odd one even here, and worth naming: every other
 action in this file is something done **to** the resource declaring it, while
@@ -147,6 +157,12 @@ Each is the named set its own service gate consults, referenced rather than
 restated — which is the whole point of those sets being named. Promotion is the
 clearest case: it moves assets into the trunk and leaves the batch exactly where
 it was, so ``BATCH_TRANSITIONS`` has nothing to say about it.
+
+``DELETABLE_STATES`` is the one such set with **no entry here**, and its absence
+is the deliberate half of #331 rather than an omission: the set is real and
+``BatchService.delete`` enforces it, but nothing outside the SDK can reach that
+method, so declaring it would promise a control no client could honour. See
+``BatchAction``.
 """
 
 

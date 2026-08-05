@@ -27,9 +27,9 @@ type AssetAction = components["schemas"]["AssetAction"];
 
 /** `kernel/domain/capabilities.py::batch_actions`, per state. */
 const BATCH_ACTIONS: Record<BatchState, readonly BatchAction[]> = {
-  draft: ["approve", "edit_membership", "delete"],
-  approved: ["start", "repin", "delete"],
-  in_annotation: ["complete", "repin", "delete"],
+  draft: ["approve", "edit_membership"],
+  approved: ["start", "repin"],
+  in_annotation: ["complete", "repin"],
   completed: ["promote", "create_correction"],
 };
 
