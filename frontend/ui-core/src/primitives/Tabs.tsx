@@ -13,15 +13,14 @@
  * heavier weight, and an inactive tab wearing nothing at all until it is hovered.
  * Chrome is what distinguishes a control from text, and a tab is not a control.
  *
- * ## The accent is allowed here, and the old docstring was wrong about why not
+ * ## The rule is the action colour, and #323 settled the argument by removing it
  *
- * The previous note argued the active tab must not be orange because "orange is
- * reserved for things the user *acts* on", and cited the rail's active item as the
- * precedent. The rail's active item is `bg-primary` — `DESIGN.md` reserves the
- * accent for "primary buttons, active tools and **navigation**", and an active
- * section is navigation. A 2px rule is also not a surface fill, which is the one
- * accent rule this could have broken. `DESIGN.md`'s `## Tabs` section now says so
- * outright, so the doc and this file cannot drift apart again.
+ * Two earlier docstrings argued over whether the active tab may be orange. The
+ * question is moot now: `primary` is a near-black, the brand is `brand`, and the
+ * rule here is `border-primary` — the same near-black as a filled button, which is
+ * what makes "this is the section you are in" look like the rest of the interface
+ * rather than like an advertisement. `DESIGN.md`'s `## Tabs` section says so, so
+ * the doc and this file cannot drift apart again.
  *
  * ## `segmented` survives, for the one place it is the right answer
  *
@@ -100,7 +99,11 @@ export const tabsTriggerVariants = cva(
         underline:
           "-mb-px rounded-t-md border-b-2 border-transparent px-3 py-2 " +
           "hover:bg-muted focus-visible:bg-muted " +
-          "data-[state=active]:border-primary data-[state=active]:font-semibold",
+          // No weight bump on top of the base `font-medium` (#323): the rule is
+          // near-black now and the inactive labels are `muted-foreground`, so
+          // colour already carries the distinction. A second signal on top of
+          // that reflows the row's metrics for nothing.
+          "data-[state=active]:border-primary",
         // Two equal halves inside a `muted` card — the side panel's switch (#126).
         segmented:
           "flex-1 rounded-md px-3 py-1 " +

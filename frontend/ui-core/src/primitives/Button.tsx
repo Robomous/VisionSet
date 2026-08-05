@@ -18,18 +18,36 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 
 import { cn } from "../lib/cn";
 
+/**
+ * The fill a disabled control wears (#323).
+ *
+ * `opacity-50` was the old answer and it was the wrong one on a coral button: it
+ * produced a *pale coral*, which reads as a weaker version of the brand rather
+ * than as an unavailable control. An explicit neutral skin says the same thing in
+ * one colour, and drops the border rather than tinting it — a faint outline
+ * around a grey block is the shape of a button nobody can press.
+ *
+ * `pointer-events-none` is what keeps every `hover:` above from firing here.
+ */
+const DISABLED_FILLED =
+  "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground";
+
 export const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium " +
-    "transition-colors disabled:pointer-events-none disabled:opacity-50 " +
+    "transition-colors disabled:pointer-events-none " +
     "[&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        primary: "bg-primary text-primary-foreground hover:bg-primary-hover",
-        secondary: "border border-border bg-background text-foreground hover:bg-muted",
-        ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
-        destructive: "bg-destructive text-destructive-foreground hover:opacity-90",
-        link: "text-primary underline-offset-4 hover:underline",
+        primary: `bg-primary text-primary-foreground hover:bg-primary-hover ${DISABLED_FILLED}`,
+        secondary: `border border-input bg-card text-foreground hover:bg-muted ${DISABLED_FILLED}`,
+        ghost:
+          "text-muted-foreground hover:bg-muted hover:text-foreground " +
+          // No fill: a ghost has none to grey out, and giving it one on the way
+          // out would make it appear rather than recede.
+          "disabled:text-disabled-foreground",
+        destructive: `bg-destructive text-destructive-foreground hover:opacity-90 ${DISABLED_FILLED}`,
+        link: "text-foreground underline underline-offset-4 hover:text-primary disabled:text-disabled-foreground",
       },
       size: {
         sm: "h-8 px-3 text-meta",

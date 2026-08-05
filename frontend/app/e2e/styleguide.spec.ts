@@ -18,12 +18,18 @@
 
 import { expect, test } from "@playwright/test";
 
-/** `--color-primary`, the one value everything else is calibrated against. */
-const PRIMARY = "rgb(235, 90, 71)";
+/** `--color-primary`, the near-black everything else is calibrated against. */
+const PRIMARY = "rgb(30, 33, 48)";
+/** `--color-brand` — Robomous coral, and it belongs to two elements (#323). */
+const BRAND = "rgb(232, 93, 68)";
 /** `--color-foreground`. */
-const INK = "rgb(37, 41, 73)";
+const INK = "rgb(27, 29, 40)";
 /** `--color-muted` — the hover and focus fill. */
-const MUTED = "rgb(246, 248, 250)";
+const MUTED = "rgb(243, 244, 246)";
+/** `--color-background` — the page, which is no longer the same white as a card. */
+const PAGE = "rgb(250, 250, 251)";
+/** `--color-ring` — the action colour at 35%, not the action colour. */
+const RING = "rgba(30, 33, 48, 0.35)";
 /** What a computed colour reads as when nothing painted: no fill, no border. */
 const NOTHING = "rgba(0, 0, 0, 0)";
 
@@ -40,11 +46,31 @@ test("the token utilities reach the browser as the contract's values", async ({ 
   await expect(page.getByRole("heading", { level: 1 })).toHaveCSS("color", INK);
 });
 
+/**
+ * #323's actual claim, and the only place a browser can check it.
+ *
+ * The palette's whole argument is that the brand is *not* what a button is made
+ * of. `tokens.test.ts` can assert the two hexes differ; only a rendered page can
+ * assert that the button and the progress bar ended up wearing the right one of
+ * them. A revert that pointed `--color-primary` back at the coral would satisfy
+ * every unit test in the repository and fail here.
+ */
+test("the brand is on the progress bar and nowhere near the primary button", async ({ page }) => {
+  const filled = page.getByTestId("button-primary");
+  await expect(filled).toHaveCSS("background-color", PRIMARY);
+  await expect(filled).not.toHaveCSS("background-color", BRAND);
+
+  // Radix's indicator is the fill inside the track; the track itself is `muted`.
+  const bar = page.getByRole("progressbar").first();
+  await expect(bar).toHaveCSS("background-color", MUTED);
+  await expect(bar.locator("> *").first()).toHaveCSS("background-color", BRAND);
+});
+
 test("the base layer applies, so a screen inherits the scale without asking", async ({ page }) => {
   // 14px and 1.6 are the rhythm every measurement in DESIGN.md was taken against,
   // and they come from `@layer base` rather than from a class on each page.
   await expect(page.locator("body")).toHaveCSS("font-size", "14px");
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(page.locator("body")).toHaveCSS("background-color", PAGE);
 });
 
 /**
@@ -124,7 +150,7 @@ test("focus is visible on a tab that has no fill to draw it against", async ({ p
   // so it never depended on the chip the underline variant dropped. The variant
   // adds the fill the ring encloses, which is what "still clearly visible" means
   // once the tab is otherwise bare.
-  await expect(focused).toHaveCSS("outline-color", PRIMARY);
+  await expect(focused).toHaveCSS("outline-color", RING);
   await expect(focused).toHaveCSS("outline-width", "2px");
   await expect(focused).toHaveCSS("background-color", MUTED);
 });

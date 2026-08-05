@@ -245,7 +245,12 @@ function Lifecycle({
   }
   if (declares(batch, BATCH_ACTION.approve)) {
     return (
-      <Button variant="primary" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
+      // `secondary`, like every other lifecycle action in this column (promote,
+      // correct, complete). A table row's action belongs to one row, not to the
+      // view — and a table holding a draft beside a queued batch used to render
+      // several filled buttons down the same column, under a page header whose
+      // "Annotate" is the actual forward action (#323).
+      <Button variant="secondary" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
         <Layers className="size-4" aria-hidden="true" />
         Approve
       </Button>
@@ -255,7 +260,7 @@ function Lifecycle({
     return (
       <div className="flex flex-col items-end gap-1">
         <Button
-          variant="primary"
+          variant="secondary"
           size="sm"
           data-testid={`start-${batch.name}`}
           disabled={start.isPending}
