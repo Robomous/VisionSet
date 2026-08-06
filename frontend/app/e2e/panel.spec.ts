@@ -110,42 +110,60 @@ test("a panel delete is the keyboard's delete, and undo brings it back", async (
   await expectCounts(page, 1, 1);
 });
 
-test("the Labels tab activates a class and toggles a tag, exactly as the digits do", async ({
+test("the tag strip toggles a whole-asset tag, and the demo's own checkbox agrees", async ({
   page,
 }) => {
   await frameOf(page);
-  await page.getByTestId("tab-labels").click();
 
-  await page.getByTestId("label-lane").click();
-  await expect(page.getByTestId("label-lane")).toHaveAttribute("data-active", "true");
-  // One active class, two views of it: the demo's own palette agrees.
-  await expect(page.getByTestId("class-lane")).toHaveAttribute("data-active", "true");
-
-  // A tag is a command, not an active class — `classAction`'s split.
-  await page.getByTestId("label-daytime").click();
-  await expect(page.getByTestId("label-daytime")).toHaveAttribute("data-active", "true");
+  // A tag is a command, not an active class — `classAction`'s split, and since
+  // #368 the strip is the only surface that offers one: it is not a shape, so no
+  // tool and no canvas gesture reaches it.
+  await page.getByTestId("tag-chip-daytime").click();
+  await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "true");
+  // One document, two views of it: the demo's own checkbox reads the same store.
   await expect(page.getByTestId("tag-daytime")).toBeChecked();
-  await expect(page.getByTestId("label-lane")).toHaveAttribute("data-active", "true");
+  // …and it is an annotation like any other, so it shows up in the list.
+  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+
+  await page.getByTestId("tag-chip-daytime").click();
+  await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "false");
+  await expect(page.getByTestId("tag-daytime")).not.toBeChecked();
 });
 
-test("reassigning a class offers only the geometry's own, and lands as one history entry", async ({
+test("reassigning a class refuses the wrong geometry and says why, in one history entry", async ({
   page,
 }) => {
   const frame = await frameOf(page);
   await drawBbox(page, frame, { x: 300, y: 200 }, { x: 520, y: 340 });
 
-  await expect(page.getByTestId("editing-card")).toBeVisible();
-  await expect(page.getByTestId("editing-geometry")).toHaveText("bbox");
+  await page.getByTestId("object-reclass-0").click();
 
-  await page.getByTestId("reclass-select").click();
-  await expect(page.getByRole("option", { name: "pedestrian" })).toBeVisible();
   // `lane` is a polygon and `centerline` a polyline: both are writes the API
-  // refuses for a bbox, so neither is offered.
-  await expect(page.getByRole("option", { name: "lane" })).toHaveCount(0);
-  await expect(page.getByRole("option", { name: "centerline" })).toHaveCount(0);
+  // refuses for a bbox. They are listed anyway, disabled and carrying the reason —
+  // a short list with no explanation reads as a schema missing its classes.
+  await expect(page.getByTestId("reclass-0-lane")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("reclass-0-lane")).toContainText("needs a polygon");
+  await expect(page.getByTestId("reclass-0-centerline")).toHaveAttribute("aria-disabled", "true");
 
-  await page.getByRole("option", { name: "pedestrian" }).click();
-  await page.getByTestId("reclass-apply").click();
+  await page.getByTestId("reclass-0-pedestrian").click();
   await expect(page.getByTestId("object-row-0")).toContainText("1. pedestrian");
   await expect(page.getByTestId("undo")).toContainText("edit pedestrian");
+});
+
+test("the object filter narrows the list without renumbering it", async ({ page }) => {
+  const frame = await frameOf(page);
+  await drawBbox(page, frame, { x: 300, y: 200 }, { x: 460, y: 320 });
+  await drawBbox(page, frame, { x: 600, y: 200 }, { x: 760, y: 320 });
+
+  await page.getByTestId("object-reclass-1").click();
+  await page.getByTestId("reclass-1-pedestrian").click();
+  await expect(page.getByTestId("object-row-1")).toContainText("2. pedestrian");
+
+  await page.getByTestId("object-filter").fill("pedestrian");
+  await expect(page.getByTestId("object-row-0")).toHaveCount(0);
+  // Still "2.": the number is the object's identity on the canvas, so filtering
+  // must not renumber it out from under the picture.
+  await expect(page.getByTestId("object-row-1")).toContainText("2. pedestrian");
+  // The count stays the whole document's.
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
 });

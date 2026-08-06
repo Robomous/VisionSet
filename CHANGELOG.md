@@ -83,6 +83,36 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The annotation workspace is reorganized around where each control belongs** (#368). The top
+  bar was one undifferentiated row of thirteen controls in which a navigation arrow, the save
+  state and the button that ends the job all looked alike; the side panel was two tabs, and the
+  Labels tab did two unrelated jobs under one heading. Both are re-cut.
+
+  The **top bar** is three zones — where you are, what you are drawing, what happens next. The
+  drawing class moves into the middle of it as a combobox with typeahead, recently-used first and
+  a `Create class "…"` row when nothing matches; `c` opens it and the digits still work. Exactly
+  **one** workflow primary is rendered, from the wire's own `allowed_actions`; Skip stays a
+  visible secondary and the rest move to an overflow. The Save *button* is gone and `⌘/Ctrl + S`
+  now exists — it never had a binding, so removing the button without adding one would have left
+  save-on-navigate as the only way to store work in place. Zoom and a new fullscreen control move
+  to a floating widget on the stage; undo and redo become visible tool-strip buttons.
+
+  The **side panel** is one Annotations view. Class *selection* left it for the top bar, so the
+  Labels tab is gone and the panel can no longer arm a drawing class at all; the one capability
+  that tab uniquely held — toggling the asset's classification tags — stays, as a chip strip
+  above the object list, rendered when the pinned schema declares a tag class. An always-present
+  filter narrows the list without renumbering it, because the number is the object's identity on
+  the canvas. Class reassignment moves from a card under the selection to a per-row menu, and it
+  now lists **every** class with the geometry-incompatible ones disabled and carrying the reason
+  (`needs a polygon`) rather than filtered out — a short list with no explanation reads as a
+  schema missing its classes.
+
+  Behind it, one ratified principle: **the annotation workspace is self-sufficient — no flow may
+  force navigation out of the editor, and no exit may lose work.** Back and grid save first.
+
+  The `Tabs` `segmented` variant is retired with the switch that was its only caller, and with it
+  the `variant` prop, the context that carried it and the `data-variant` attribute.
+
 - **The annotator's zoom has a named ceiling, honest pixels at depth, and controls that say when
   they stop** (#228). The maximum is **8x**, where one asset pixel is already an eight-pixel
   block and further magnification produces larger blocks of the same data; it was 16. Above
