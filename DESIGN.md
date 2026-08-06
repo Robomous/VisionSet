@@ -479,11 +479,14 @@ The page the reference design shows (#56), with measurements verified in v1's so
   reabsorbed control carries the exact inverse of its button's breakpoint, so it exists in
   exactly one place at any width.
 
-  **Hotkey chips are on the buttons**, and every chord they name is a row in
-  `core/input/bindings.ts` — `mod+s`, `x`, and `enter`. `enter` is the one key with two
-  meanings: it is the polygon ring close, and with nothing being drawn the React adapter
-  reads it as *finish the frame*. The two never overlap, so a chip that says `↵` is true
-  in both.
+  **Hotkey chips go on the ghost and outline controls and on nothing else** — `⌘S` on
+  Save and stay, `X` on Skip, both rows in `core/input/bindings.ts`. A chip is a muted
+  box on a bordered ground, which is a *lighter-than-the-surface* treatment: on the one
+  filled control it inverts into a dark box inside a dark button and reads as a smudge
+  rather than as a key, so the flow verb carries none (#385). Its chord is not the loser
+  — `enter` is the one key with two meanings, the polygon ring close while a shape is in
+  progress and *finish the frame* otherwise, and both are in the shortcut sheet, which
+  derives its rows from the live registry rather than from a hand-written table.
 
   The frame microtext replaces the dot-with-a-tooltip: the word is on the bar beside the
   save state, because **status is never colour alone** and a tooltip is a place a word
