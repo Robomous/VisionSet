@@ -154,15 +154,45 @@ describe("the footer row", () => {
     expect(screen.getByTestId("combobox-footer").textContent).toBe('Create "durian"');
   });
 
-  it("is an option, so the arrows reach it", async () => {
+  it("is an option, so the arrows walk past the matches onto it", async () => {
     // The whole reason it is a `role="option"` in the listbox rather than a
-    // button underneath: it exists for the state where nothing matched, which is
-    // exactly when a keyboard user has nowhere else to go.
+    // button underneath. **Driven with a query that still matches something**,
+    // deliberately: with an empty list the footer is row 0 and Enter reaches it
+    // whether or not the arrow keys count it, so a no-match scenario cannot tell
+    // a reachable footer from an unreachable one. Here it is row 1, and only a
+    // row count that includes it gets there.
     const create = vi.fn();
-    render(<Harness footer={(query) => (query === "" ? null : { label: "Create", onSelect: create })} />);
+    const onSelect = vi.fn();
+    render(
+      <Harness
+        onSelect={onSelect}
+        footer={(query) => (query === "" ? null : { label: "Create", onSelect: create })}
+      />,
+    );
     await openIt();
-    await userEvent.type(screen.getByTestId("combobox-input"), "durian");
+    await userEvent.type(screen.getByTestId("combobox-input"), "apri");
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+
     await userEvent.keyboard("{ArrowDown}{Enter}");
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("wraps back to the first match from the footer", async () => {
+    // The other half of the same claim: if the footer were outside the row count
+    // the wrap would be over the items alone and this would select "apricot".
+    const create = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <Harness
+        onSelect={onSelect}
+        footer={(query) => (query === "" ? null : { label: "Create", onSelect: create })}
+      />,
+    );
+    await openIt();
+    await userEvent.type(screen.getByTestId("combobox-input"), "apri");
+    await userEvent.keyboard("{ArrowUp}{Enter}");
 
     expect(create).toHaveBeenCalledTimes(1);
   });
