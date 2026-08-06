@@ -244,3 +244,57 @@ export function triangleOf(cx: number, cy: number, size = 70): readonly (readonl
     [cx + size, cy + size],
   ];
 }
+
+/**
+ * Save the work now, the way the product offers it since #368.
+ *
+ * The Save *button* is gone from the bar and `⌘S` is the chord that replaced it.
+ * A helper rather than the chord written out at every call site, because the two
+ * are one decision: if the shortcut ever moves, the specs move with it in one
+ * place instead of twenty.
+ *
+ * The canvas has to hold the focus first — the annotator reads the keyboard off
+ * its own root, so a chord pressed while a toolbar button has the ring reaches
+ * nothing. That is the same reason `focusCanvas` exists for every other chord.
+ */
+export async function saveNow(page: Page): Promise<void> {
+  await focusCanvas(page);
+  await page.keyboard.press("ControlOrMeta+s");
+}
+
+/**
+ * Assert there is nothing to save — the replacement for the old
+ * `expect(save).toBeDisabled()`.
+ *
+ * Read off the **save state** rather than off the overflow menu's item: the
+ * indicator is what a person actually sees, it is on screen at all times, and
+ * asserting through a menu would make every one of these scenarios open and
+ * close a popup to learn something the bar is already saying.
+ */
+export async function expectNothingToSave(page: Page): Promise<void> {
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+}
+
+/**
+ * Assert the frame's progress, which is a **dot** on the bar since #368.
+ *
+ * The word moved out of the visible text and into the accessible name, because
+ * the badge that used to carry it competed with the workflow actions for the
+ * bar's right-hand side. `data-progress` is the machine-readable half; the
+ * accessible name is what a person gets, and `DESIGN.md`'s "status is never
+ * colour alone" is why both exist.
+ */
+export async function expectProgress(page: Page, progress: string): Promise<void> {
+  await expect(page.getByTestId("asset-progress")).toHaveAttribute("data-progress", progress);
+}
+
+/**
+ * Open the bar's overflow menu, where the actions that are not about *this* frame
+ * now live (#368) — return-to-annotator, an explicit Save, the shortcut sheet.
+ *
+ * Radix closes the menu on select, so a scenario pressing two of these opens it
+ * twice. That is the product's behaviour and not a harness quirk.
+ */
+export async function openOverflow(page: Page): Promise<void> {
+  await page.getByTestId("more-actions").click();
+}

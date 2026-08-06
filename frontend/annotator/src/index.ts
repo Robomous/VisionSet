@@ -177,6 +177,7 @@ export {
   FOCUS_CLASS_FIELD,
   READ_ONLY_KINDS,
   RESET_ZOOM,
+  SAVE,
   TOGGLE_HELP,
   chordOf,
   classAction,

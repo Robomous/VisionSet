@@ -77,6 +77,7 @@ import {
   MAX_ZOOM,
   MIN_ZOOM,
   FOCUS_CLASS_FIELD,
+  SAVE,
   TOGGLE_HELP,
   atZoomCeiling,
   atZoomFloor,
@@ -571,6 +572,12 @@ function Workspace({
     if (name === FOCUS_CLASS_FIELD) {
       if (readOnly) return false;
       setClassFieldOpen(true);
+      return true;
+    }
+    // `mod+s`. Claimed even where it does nothing — a read-only view still has to
+    // stop the browser's Save Page dialog opening over the canvas.
+    if (name === SAVE) {
+      if (!readOnly) attempt();
       return true;
     }
     return false;

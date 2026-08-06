@@ -41,6 +41,7 @@ import {
   CLASS_HOTKEY_DIGITS,
   FOCUS_CLASS_FIELD,
   RESET_ZOOM,
+  SAVE,
   TOGGLE_HELP,
   type Action,
   type ActionKind,
@@ -82,11 +83,12 @@ const PHRASES: Readonly<Record<ActionKind, (action: Action) => string>> = {
   host: (action) => (action.kind === "host" ? hostPhrase(action.name) : ""),
 };
 
-/** The three names the default table writes; anything else speaks for itself. */
+/** The four names the default table writes; anything else speaks for itself. */
 function hostPhrase(name: string): string {
   if (name === RESET_ZOOM) return "Fit the asset to the window";
   if (name === TOGGLE_HELP) return "Show or hide this sheet";
   if (name === FOCUS_CLASS_FIELD) return "Jump to the class picker";
+  if (name === SAVE) return "Save now";
   return name;
 }
 

@@ -154,3 +154,21 @@ export const TOGGLE_HELP = "toggle-help";
  * value is for.
  */
 export const FOCUS_CLASS_FIELD = "focus-class-field";
+
+/**
+ * Ask the host to store the work. v1 had no such chord and neither did this
+ * build until #368.
+ *
+ * It arrives with the removal of the Save *button*, and it is the reason that
+ * removal is not a regression: the page saves on navigate and on every settle
+ * already, so what the button offered was "store it now, without going
+ * anywhere" — a real thing to want, and until now only a button could ask for
+ * it.
+ *
+ * A host action rather than anything core can do, obviously: this package has no
+ * HTTP and never will. But it must be *claimed* here whatever the host does with
+ * it, because an unclaimed `mod+s` opens the browser's Save Page dialog over a
+ * canvas somebody is drawing on — the sharpest instance of the rule that the
+ * registry is the list of keystrokes taken away from the browser.
+ */
+export const SAVE = "save";

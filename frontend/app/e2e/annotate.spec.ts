@@ -14,6 +14,7 @@
 
 import { expect, test, type Page, type Request } from "@playwright/test";
 import { assetActions, batchActions, jobActions } from "./_wire";
+import { expectNothingToSave, expectProgress, openOverflow, saveNow } from "./_frame";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -324,7 +325,7 @@ test("Save is inert until something changes, then sends exactly the new annotati
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  await expect(page.getByTestId("save")).toBeDisabled();
+  await expectNothingToSave(page);
   await expect(page.getByTestId("save-state")).toContainText("Saved");
 
   // Draw one box: digit 1 is `vehicle`, the pinned schema's first class.
@@ -340,7 +341,7 @@ test("Save is inert until something changes, then sends exactly the new annotati
   await expect(page.getByTestId("save-state")).toContainText("unsaved");
   await expect(page.getByTestId("object-total")).toHaveText("1 object");
 
-  await page.getByTestId("save").click();
+  await saveNow(page);
   await expect.poll(() => sent.filter((r) => r.method() === "POST").length).toBeGreaterThan(0);
 
   const post = sent.find((r) => r.method() === "POST" && r.url().endsWith("/annotations"));
@@ -392,7 +393,7 @@ test("opening a job in an approved batch starts the batch, then the job, and a s
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
   await page.mouse.up();
-  await page.getByTestId("save").click();
+  await saveNow(page);
   await expect(page.getByTestId("save-state")).toContainText("Saved");
 });
 
@@ -470,7 +471,7 @@ test("a save reports its own outcome, not an opening move's refusal", async ({ p
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
   await page.mouse.up();
-  await page.getByTestId("save").click();
+  await saveNow(page);
 
   // The save landed, so the save says so. This is the assertion the cycle suite
   // was making at `cycle.spec.ts:321` when it failed.
@@ -546,7 +547,7 @@ test("an opening refusal stays on the bar without claiming the next save failed"
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
   await page.mouse.up();
-  await page.getByTestId("save").click();
+  await saveNow(page);
 
   await expect(page.getByTestId("save-state")).toContainText("Saved");
   // …and the opening failure did not disappear either. It is a fact about this
@@ -566,13 +567,13 @@ test("Accept is offered only where the kernel's machine allows the move", async 
   //
   // The gate is the wire's `allowed_actions` now, which the kernel derives from
   // that same table, so this cannot be got wrong again by reading the table twice.
-  await expect(page.getByTestId("accept")).toBeDisabled();
+  await expect(page.getByTestId("accept")).toHaveCount(0);
 
   await page.getByTestId("next-asset").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
   // Asset 2 is `review_pending`, which is the one state `accepted` is reachable
   // from — the reviewer's half of the machine.
-  await expect(page.getByTestId("accept")).toBeEnabled();
+  await expect(page.getByTestId("accept")).toBeVisible();
 });
 
 test("the zoom buttons drive the same stage mod+0 resets", async ({ page }) => {
@@ -818,7 +819,7 @@ test("a skipped asset says so, and the page offers the kernel's one way out", as
   await openJob(page, sent, progressStore({ "asset-1": "skipped", "asset-2": "annotated" }));
 
   // 1. It says so — visibly, not by the absence of something.
-  await expect(page.getByTestId("asset-progress")).toHaveText("skipped");
+  await expectProgress(page, "skipped");
 
   // 2. …and the way back is offered where the decision was made, in place of Skip.
   await expect(page.getByTestId("skip")).toHaveCount(0);
@@ -837,9 +838,9 @@ test("a skipped asset says so, and the page offers the kernel's one way out", as
   // 4. …and the page reflects what actually changed: Skip is offered again, and
   //    `Accept` stays disabled because `unannotated` is not where that move is
   //    legal. The gate is the kernel's and is not loosened to paper over this.
-  await expect(page.getByTestId("asset-progress")).toHaveText("unannotated");
+  await expectProgress(page, "unannotated");
   await expect(page.getByTestId("skip")).toBeVisible();
-  await expect(page.getByTestId("accept")).toBeDisabled();
+  await expect(page.getByTestId("accept")).toHaveCount(0);
 });
 
 test("a skipped asset cannot be drawn on at all, and the page says how to get it back", async ({
@@ -867,11 +868,11 @@ test("a skipped asset cannot be drawn on at all, and the page says how to get it
   // is the guarantee `readOnly` on the canvas exists for: a host that only greyed
   // out the Save would still have a box on the screen and no way to keep it.
   await expect(page.getByTestId("object-total")).toHaveText("0 objects");
-  await expect(page.getByTestId("save")).toBeDisabled();
+  await expectNothingToSave(page);
   expect(sent.filter((r) => r.method() === "POST" && r.url().includes("/annotations"))).toEqual([]);
 
   // And the way back is one click, on the same bar.
-  await expect(page.getByTestId("asset-progress")).toHaveText("skipped");
+  await expectProgress(page, "skipped");
   await expect(page.getByTestId("skipped-notice")).toBeVisible();
   await expect(page.getByTestId("unskip")).toBeEnabled();
 });
@@ -899,9 +900,9 @@ test("a completed batch opens as a viewer, and says so", async ({ page }) => {
 
   // Every control that writes is out, and the palette is gone entirely — a tool
   // palette over a canvas that cannot be drawn on explains nothing.
-  await expect(page.getByTestId("save")).toBeDisabled();
+  await expectNothingToSave(page);
   await expect(page.getByTestId("skip")).toBeDisabled();
-  await expect(page.getByTestId("accept")).toBeDisabled();
+  await expect(page.getByTestId("accept")).toHaveCount(0);
   await expect(page.getByTestId("tool-palette")).toHaveCount(0);
 });
 
@@ -923,7 +924,7 @@ test("a completed batch's canvas cannot be drawn on, however hard it is asked", 
   // convention in the host: pointer input goes straight into the machine, so a
   // greyed-out toolbar would not have stopped this.
   await expect(page.getByTestId("object-total")).toHaveText("0 objects");
-  await expect(page.getByTestId("save")).toBeDisabled();
+  await expectNothingToSave(page);
   expect(sent.filter((r) => r.method() === "POST" && r.url().includes("/annotations"))).toEqual([]);
 });
 
@@ -964,7 +965,7 @@ test("a copied annotation can be pasted onto the next frame", async ({ page }) =
   await expect(page.getByTestId("save-state")).toContainText("unsaved");
 
   // And it is written against **this** frame, not the one it was copied from.
-  await page.getByTestId("save").click();
+  await saveNow(page);
   await expect(page.getByTestId("save-state")).toContainText("Saved");
   const posted = sent.filter((r) => r.method() === "POST" && r.url().endsWith("/annotations"));
   const body = JSON.parse(posted.at(-1)?.postData() ?? "[]") as Record<string, unknown>[];
@@ -996,7 +997,7 @@ test("a viewer may copy but not paste, and the page already says why", async ({ 
   await page.keyboard.press("ControlOrMeta+v");
 
   await expect(page.getByTestId("object-total")).toHaveText("0 objects");
-  await expect(page.getByTestId("save")).toBeDisabled();
+  await expectNothingToSave(page);
   expect(sent.filter((r) => r.method() === "POST" && r.url().includes("/annotations"))).toEqual([]);
   // The explanation was there before the keystroke and is still the only one.
   await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
@@ -1031,7 +1032,11 @@ test("the versioning controls are absent, not disabled", async ({ page }) => {
   // The bar did not lose anything real with them: the controls either side are
   // still there, so this is a removal rather than a header that failed to render.
   await expect(page.getByTestId("open-gallery")).toBeVisible();
-  await expect(page.getByTestId("save")).toBeVisible();
+  // The Save button is gone too (#368), so the witness that the bar rendered is
+  // the save *state*, which stayed — and the overflow, which took its press.
+  await expect(page.getByTestId("save")).toHaveCount(0);
+  await expect(page.getByTestId("save-state")).toBeVisible();
+  await expect(page.getByTestId("more-actions")).toBeVisible();
 });
 
 /**
@@ -1531,7 +1536,7 @@ test("a refused Skip says why, instead of looking like an ignored click", async 
   await expect(said).not.toContainText("ASSET_NOT_WRITABLE");
   await expect(said).toHaveAttribute("title", "ASSET_NOT_WRITABLE");
   // And the page did not pretend the move landed.
-  await expect(page.getByTestId("asset-progress")).toHaveText("unannotated");
+  await expectProgress(page, "unannotated");
 });
 
 test("a refused Un-skip says why too, since it is the same silence backwards", async ({ page }) => {
@@ -1545,7 +1550,7 @@ test("a refused Un-skip says why too, since it is the same silence backwards", a
   await page.getByTestId("unskip").click();
 
   await expect(page.getByTestId("action-refusal")).toContainText(/not open for annotation/i);
-  await expect(page.getByTestId("asset-progress")).toHaveText("skipped");
+  await expectProgress(page, "skipped");
 });
 
 test("a refused Accept says why", async ({ page }) => {
@@ -1627,8 +1632,12 @@ test("a frame goes out for review, comes back, and is accepted the second time",
 
   // 1. An annotated frame offers the way in, and nothing else in the review half.
   await expect(page.getByTestId("submit-for-review")).toBeVisible();
+  await expect(page.getByTestId("accept")).toHaveCount(0);
+  // In the overflow now, and absent from it: an annotated frame has nothing to
+  // send back, so the menu must not offer the reviewer's "no".
+  await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
-  await expect(page.getByTestId("accept")).toBeDisabled();
+  await page.keyboard.press("Escape");
 
   await page.getByTestId("submit-for-review").click();
   // Settling advances, because the person is finished with this frame.
@@ -1638,18 +1647,21 @@ test("a frame goes out for review, comes back, and is accepted the second time",
   //    wearing the state it is looking at — this product has no annotator
   //    identity to assign work to, so "reviewer" is a thing somebody is doing.
   await first();
-  await expect(page.getByTestId("asset-progress")).toHaveText("in review");
-  await expect(page.getByTestId("return-to-annotator")).toBeEnabled();
-  await expect(page.getByTestId("accept")).toBeEnabled();
+  await expectProgress(page, "review_pending");
+  await openOverflow(page);
+  await expect(page.getByTestId("return-to-annotator")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("accept")).toBeVisible();
   await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
   // `review_pending` is not in `WRITABLE_PROGRESS`, so the frame is read-only —
   // and the banner names the control that undoes that, which is on this toolbar.
   await expect(page.getByTestId("readonly-banner")).toContainText(/return it to the annotator/i);
 
   // 3. Sent back. The claim that matters: the annotator can pick it up again.
+  await openOverflow(page);
   await page.getByTestId("return-to-annotator").click();
   await first();
-  await expect(page.getByTestId("asset-progress")).toHaveText("annotated");
+  await expectProgress(page, "annotated");
   await expect(page.getByTestId("readonly-banner")).toHaveCount(0);
   await expect(page.getByTestId("tool-palette")).toBeVisible();
   await expect(page.getByTestId("submit-for-review")).toBeVisible();
@@ -1662,10 +1674,12 @@ test("a frame goes out for review, comes back, and is accepted the second time",
 
   // 5. `accepted` has no exit at all, which is why correcting accepted work needs
   //    a new batch rather than a progress move — and the banner says so.
-  await expect(page.getByTestId("asset-progress")).toHaveText("accepted");
-  await expect(page.getByTestId("accept")).toBeDisabled();
+  await expectProgress(page, "accepted");
+  await expect(page.getByTestId("accept")).toHaveCount(0);
   await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
+  await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("readonly-banner")).toContainText(/correction batch/i);
 });
 
@@ -1677,8 +1691,10 @@ test("an unannotated frame is not offered to a reviewer at all", async ({ page }
   // review until somebody has labelled it, and offering the press would be
   // offering a refusal.
   await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
+  await expect(page.getByTestId("accept")).toHaveCount(0);
+  await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
-  await expect(page.getByTestId("accept")).toBeDisabled();
+  await page.keyboard.press("Escape");
 });
 
 test("a refused review move says why, like every other one", async ({ page }) => {
@@ -1692,7 +1708,7 @@ test("a refused review move says why, like every other one", async ({ page }) =>
   await page.getByTestId("submit-for-review").click();
 
   await expect(page.getByTestId("action-refusal")).toContainText(/already moved on/i);
-  await expect(page.getByTestId("asset-progress")).toHaveText("annotated");
+  await expectProgress(page, "annotated");
 });
 
 test("the job counter never goes backwards when a frame is reviewed", async ({ page }) => {
@@ -1714,10 +1730,10 @@ test("the job counter never goes backwards when a frame is reviewed", async ({ p
   await expect(page.getByTestId("job-progress")).toHaveText("2 / 2 annotated");
 
   await page.getByTestId("prev-asset").click();
-  await expect(page.getByTestId("asset-progress")).toHaveText("in review");
+  await expectProgress(page, "review_pending");
   await page.getByTestId("accept").click();
 
   await page.getByTestId("prev-asset").click();
-  await expect(page.getByTestId("asset-progress")).toHaveText("accepted");
+  await expectProgress(page, "accepted");
   await expect(page.getByTestId("job-progress")).toHaveText("2 / 2 annotated");
 });
