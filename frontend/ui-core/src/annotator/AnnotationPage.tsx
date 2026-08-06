@@ -162,13 +162,15 @@ import {
 } from "./jobQueries";
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { PROGRESS_LABEL } from "../screens/batchState";
-import type { LabelClassBody } from "../screens/queries";
+import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
   batchKeys,
   useActiveSchema,
   useBatchTransition,
   useCreateSchemaVersion,
+  useSchemaComparison,
 } from "../screens/queries";
+import { toast } from "../primitives/Feedback";
 
 /**
  * The frame-level workflow actions, in the order they take the primary slot.
@@ -351,6 +353,51 @@ function JobScreen({
    */
   const [clipboard] = useState<Clipboard>(createClipboard);
 
+  /**
+   * The drawing class, held **here** rather than in `Workspace` (#368).
+   *
+   * The clipboard's argument, applied to the other thing that must outlive a
+   * remount — and the reason is sharper than convenience. `Workspace` unmounts
+   * whenever any of the four queries below goes pending, and **a re-pin makes
+   * `usePinnedSchema`'s query key move**: `["projects", p, "schema", "versions",
+   * version]` names the version, so pointing the batch at a new one is a
+   * different query with no data, this component falls through to
+   * `LoadingState`, and everything `Workspace` was holding is gone.
+   *
+   * That is what made #233's `activateClass(declared.name)` a promise the page
+   * could not keep: the class was armed and then discarded a few hundred
+   * milliseconds later by the very refetch the re-pin caused, so "you are drawing
+   * with it now" was false in exactly the flow it was written for. Nothing said
+   * so, because the field simply read `Select` again.
+   *
+   * Deliberate consequence: the drawing class now also survives moving to the
+   * next frame, where it used to reset. That is the behaviour somebody labelling
+   * one class across a clip wants, and it is the same lifetime the clipboard has
+   * — this scope is the job, and a paste and a drawing class both stop at its
+   * edge, where the asset frame and the pinned schema are somebody else's.
+   */
+  const [activeClass, setActiveClass] = useState<string | null>(null);
+  /**
+   * Classes used in this job, most recent first — the class field's ordering.
+   *
+   * Component state rather than derived from the document: what a person reached
+   * for is a fact about *them*, and a document read would rank by whatever is on
+   * screen, so deleting the last car would demote `car` to the bottom of the list
+   * a second after they used it.
+   */
+  const [recentClasses, setRecentClasses] = useState<readonly string[]>([]);
+
+  /**
+   * Every route to a drawing class goes through here, so the recency list cannot
+   * miss one — the field, the tool strip, a digit hotkey and the canvas's own
+   * `activate-class` all land on this callback.
+   */
+  const activateClass = useCallback((labelClass: string | null): void => {
+    setActiveClass(labelClass);
+    if (labelClass === null) return;
+    setRecentClasses((seen) => [labelClass, ...seen.filter((name) => name !== labelClass)]);
+  }, []);
+
   const index = chosen ?? assetPositionOf(assets.data, initialAssetId);
   const asset = assets.data?.[index];
   const annotations = useAssetAnnotations(jobId, asset?.id);
@@ -407,6 +454,9 @@ function JobScreen({
       loaded={annotations.data}
       counts={progress.data ?? null}
       clipboard={clipboard}
+      activeClass={activeClass}
+      recentClasses={recentClasses}
+      onActivateClass={activateClass}
       onNavigate={setChosen}
       {...(onOpenGallery === undefined
         ? {}
@@ -461,6 +511,10 @@ interface WorkspaceProps {
   } | null;
   /** Held by `JobScreen`, so `mod+c` here and `mod+v` on the next frame is one clipboard. */
   readonly clipboard: Clipboard;
+  /** Also `JobScreen`'s, and for a sharper reason — see the note where it is declared. */
+  readonly activeClass: string | null;
+  readonly recentClasses: readonly string[];
+  readonly onActivateClass: (labelClass: string | null) => void;
   readonly onNavigate: (index: number) => void;
   readonly onOpenGallery?: () => void;
 }
@@ -501,6 +555,9 @@ function Workspace({
   loaded,
   counts,
   clipboard,
+  activeClass,
+  recentClasses,
+  onActivateClass: activateClass,
   onNavigate,
   onOpenGallery,
 }: WorkspaceProps): JSX.Element {
@@ -517,21 +574,22 @@ function Workspace({
   );
 
   const snapshot = useAnnotatorSnapshot(store);
-  const [activeClass, setActiveClass] = useState<string | null>(null);
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [view, setView] = useState<Viewport | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [addingClass, setAddingClass] = useState(false);
-  const [classFieldOpen, setClassFieldOpen] = useState(false);
   /**
-   * Classes used on this frame, most recent first — the class field's ordering.
+   * What the create row was typed with, carried into the dialog's name field.
    *
-   * Component state rather than derived from the document: what a person reached
-   * for is a fact about *them*, and a document read would rank by whatever is on
-   * screen, so deleting the last car would demote `car` to the bottom of the list
-   * a second after they used it.
+   * Held here rather than passed at the call, because the dialog is mounted once
+   * at the bottom of this component and the row that opens it is elsewhere on the
+   * bar. Empty for every other door into the dialog — the tool strip's `+` and
+   * the empty-schema button both mean "I want a class", not a particular one.
    */
-  const [recentClasses, setRecentClasses] = useState<readonly string[]>([]);
+  const [newClassName, setNewClassName] = useState("");
+  const [classFieldOpen, setClassFieldOpen] = useState(false);
+  /** Whether the pin badge's popover is open — and therefore whether it fetches. */
+  const [pinOpen, setPinOpen] = useState(false);
   const viewRef = useRef<AnnotatorView | null>(null);
   /**
    * The stage, for fullscreen. The *stage*, never the document: taking the whole
@@ -539,17 +597,6 @@ function Workspace({
    * strip and the zoom widget floating over an otherwise unreachable app.
    */
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
-
-  /**
-   * Every route to a drawing class goes through here, so the recency list cannot
-   * miss one — the field, the tool strip, a digit hotkey and the canvas's own
-   * `activate-class` all land on this callback.
-   */
-  const activateClass = useCallback((labelClass: string | null): void => {
-    setActiveClass(labelClass);
-    if (labelClass === null) return;
-    setRecentClasses((seen) => [labelClass, ...seen.filter((name) => name !== labelClass)]);
-  }, []);
 
   /**
    * The one capability the canvas hands out rather than owning (#189).
@@ -592,13 +639,16 @@ function Workspace({
   // #233's chain. The *active* schema, not this batch's pin: the next version is
   // composed on what the project declares now, and the pin is what moves onto it.
   //
-  // **Only while the dialog is open**, and that is a rule rather than a saving.
-  // This page is judged against the pinned version, and `e2e/annotate.spec.ts`
-  // asserts that opening a job makes no request to `/schema` at all — a page that
-  // read the active version would offer classes the API then refuses. The dialog
-  // is the one place the active version is the right question, so it is the one
-  // place that asks.
-  const activeSchema = useActiveSchema(projectId, addingClass);
+  // **Only while a surface that needs it is open**, and that is a rule rather
+  // than a saving. This page is judged against the pinned version, and
+  // `e2e/annotate.spec.ts` asserts that opening a job makes no request to
+  // `/schema` at all — a page that read the active version would offer classes
+  // the API then refuses. Two surfaces are entitled to ask: the dialog composes
+  // the next version on the active classes, and the pin badge's popover exists to
+  // say how far behind the pin is. One hook, enabled by either, because two
+  // observers of one query key is one request and two spellings of "when may we
+  // ask" that could drift.
+  const activeSchema = useActiveSchema(projectId, addingClass || pinOpen);
   const createVersion = useCreateSchemaVersion(projectId);
   const repin = useRepinBatch(batchId);
   const setProgress = useSetAssetProgress(jobId);
@@ -732,8 +782,8 @@ function Workspace({
   const canRepin = declares({ allowed_actions: batchActions }, BATCH_ACTION.repin);
 
   const addClass = useCallback(
-    async (declared: LabelClassBody, note: string): Promise<void> => {
-      if (activeSchema.data === undefined) return;
+    async (added: readonly LabelClassBody[], note: string): Promise<void> => {
+      if (activeSchema.data === undefined || added.length === 0) return;
       createVersion.reset();
       repin.reset();
       try {
@@ -750,10 +800,30 @@ function Workspace({
           // chain used to publish and *then* discover the pin would not move.
           repin: canRepin ? () => repin.mutateAsync() : null,
           activeClasses: activeSchema.data.classes,
-          declared,
+          added,
           note,
         });
-        activateClass(declared.name);
+        /**
+         * The **last** class written becomes the drawing class.
+         *
+         * Last rather than first, because a session is written in the order
+         * somebody thought of them and the one they are about to draw is the one
+         * they just described. It survives what follows: `activeClass` lives
+         * outside the store, so the rebuild the schema refetch triggers does not
+         * clear it — the user is drawing with the class they just made before the
+         * canvas has finished settling.
+         *
+         * And it is *said*, because on a busy canvas an armed class is a swatch
+         * in the top bar and nothing else moved. A session of three publishes one
+         * version and arms one class, which is two facts nobody watched happen.
+         */
+        const armed = added[added.length - 1]?.name;
+        if (armed !== undefined) activateClass(armed);
+        toast.success(
+          added.length === 1
+            ? `Added “${armed}” — drawing with it now`
+            : `Added ${added.length} classes — drawing with “${armed}”`,
+        );
         setAddingClass(false);
       } catch {
         // Held on the mutations themselves; the dialog reads whichever refused.
@@ -986,11 +1056,19 @@ function Workspace({
               #229 made the pin movable: "why can I not use the class I just made"
               is answerable only if the screen says which contract it is judged
               against. Null exactly while a batch is a draft, which an annotator
-              cannot reach. */}
+              cannot reach.
+
+              Since #368 it also *answers* that question rather than only raising
+              it — see `PinBadge`. */}
           {schemaVersion !== null && (
-            <Badge variant="outline" data-testid="pinned-schema" title="The schema version this batch pinned">
-              v{schemaVersion}
-            </Badge>
+            <PinBadge
+              projectId={projectId}
+              pinned={schemaVersion}
+              open={pinOpen}
+              onOpenChange={setPinOpen}
+              active={activeSchema.data ?? null}
+              activeFailed={activeSchema.isError}
+            />
           )}
 
           <div className="flex items-center gap-1" data-testid="asset-navigator">
@@ -1063,16 +1141,23 @@ function Workspace({
             open={classFieldOpen}
             onOpenChange={setClassFieldOpen}
             recent={recentClasses}
-            {...(onOpenGallery === undefined
-              ? {}
-              : // The create row opens the dialog **empty**, not prefilled with
-                // what was typed. `AddClassDialog` has no prop to seed its name
-                // field and it belongs to WS4, which reworks that dialog into a
-                // session — so adding one here would be a prop WS4 immediately
-                // rewrites. The row still earns its place: it is the answer to
-                // "the class I need is not in this list", which without it is a
-                // dead end.
-                { onAddClass: () => setAddingClass(true) })}
+            // The create row carries what was typed into the dialog's name field
+            // (#368). `ClassField` has handed the name over since WS2 and the page
+            // dropped it, because `AddClassDialog` had nowhere to put it until the
+            // session rework gave it one — typing a name, being told it does not
+            // exist, and then typing it again is the smallest way to make a
+            // shortcut feel like a detour.
+            //
+            // Unconditional, unlike WS2's first cut, which spread it in only when
+            // `onOpenGallery` was supplied. Nothing about knowing where the
+            // gallery is bears on whether a class can be created — the tool
+            // strip's own `+` was never gated on it — so the row was absent for
+            // exactly the callers whose `+` still worked, and WS4's prefill would
+            // have been unreachable behind it.
+            onAddClass={(typed: string) => {
+              setNewClassName(typed);
+              setAddingClass(true);
+            }}
           />
         )}
 
@@ -1358,7 +1443,13 @@ function Workspace({
               tool={toolFor(store.document, activeClass)}
               onActivateClass={activateClass}
               onToggleHelp={() => setHelpOpen((open) => !open)}
-              onAddClass={() => setAddingClass(true)}
+              // Empty, unlike the class field's create row: `+` means "I want a
+              // class", not a particular one, and carrying the previous
+              // opening's name into it would be a prefill nobody asked for.
+              onAddClass={() => {
+                setNewClassName("");
+                setAddingClass(true);
+              }}
               // The chords have worked since #46; this is the first time the
               // page says so. `canUndo`/`canRedo` come off the snapshot, so the
               // buttons and the keyboard read one command log.
@@ -1418,13 +1509,203 @@ function Workspace({
         // mutations the dialog reads, so there is nothing left to reject — but
         // `void` on a promise is the pattern F7 is about, and a `catch` that can
         // never fire is cheaper than a reader having to prove that.
-        onSubmit={(declared, note) => {
-          void addClass(declared, note).catch(() => {});
+        initialName={newClassName}
+        onSubmit={(added, note) => {
+          void addClass(added, note).catch(() => {});
         }}
       />
 
       <ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} registry={registry} />
     </div>
+  );
+}
+
+/**
+ * The pin, and what it is behind — a badge that answers instead of only stating
+ * (#368).
+ *
+ * ## The question it exists for
+ *
+ * `v3` on the bar has said *which contract this batch is judged against* since
+ * #229 made the pin movable. What it could not say is the thing everybody
+ * actually asks next: **is that the current one, and if not, what am I missing?**
+ * Somebody who added a class from another job, or who is looking at a batch
+ * approved a week ago, has no route from the badge to the answer — and the two
+ * places that hold it (the project's active version, and the diff between them)
+ * are both a navigation away from the editor, which principle 10 forbids as an
+ * answer.
+ *
+ * ## Nothing is fetched until it is opened
+ *
+ * Both reads are the caller's and both are gated on `open`: `useActiveSchema` by
+ * its `enabled`, and the comparison by being handed `null` bounds, which is how
+ * `useSchemaComparison` disables itself. That is not a saving — it is the rule
+ * `e2e/annotate.spec.ts` pins, that opening a job makes no request to `/schema`
+ * at all. A page that read the active version on arrival would be one refactor
+ * away from offering classes this batch's pin does not declare.
+ *
+ * Decision 7 calls the same shape *diffs stay fetched on demand*, one surface
+ * over.
+ *
+ * ## A disclosure, not a Popover
+ *
+ * `Combobox` declined Radix's Popover for a reason that applies here verbatim: it
+ * owns focus on open and restores it on close, and the annotator reads the
+ * keyboard off its own root — so a press that landed anywhere but back on the
+ * canvas would leave every chord dead until the user clicked twice. What this
+ * needs is a button, a panel, an outside press and Escape.
+ */
+function PinBadge({
+  projectId,
+  pinned,
+  open,
+  onOpenChange,
+  active,
+  activeFailed,
+}: {
+  readonly projectId: string;
+  readonly pinned: number;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  /** The project's active version, or `null` until the opening has fetched it. */
+  readonly active: SchemaVersion | null;
+  readonly activeFailed: boolean;
+}): JSX.Element {
+  const root = useRef<HTMLDivElement | null>(null);
+  const behind = active !== null && active.version > pinned;
+  // Bounds only while the panel is open *and* there is a gap: `useSchemaComparison`
+  // reads `null` as "do not ask", so this is the whole of "on demand".
+  const comparison = useSchemaComparison(
+    projectId,
+    open && behind ? pinned : null,
+    open && behind && active !== null ? active.version : null,
+  );
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const dismiss = (event: MouseEvent): void => {
+      if (root.current?.contains(event.target as Node) === true) return;
+      onOpenChange(false);
+    };
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") onOpenChange(false);
+    };
+    document.addEventListener("mousedown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open, onOpenChange]);
+
+  return (
+    <div ref={root} className="relative">
+      <button
+        type="button"
+        data-testid="pinned-schema"
+        aria-expanded={open}
+        aria-label={`Schema v${pinned}, pinned by this batch`}
+        className="rounded-full border border-border px-2 py-0.5 font-mono text-meta text-muted-foreground hover:bg-muted hover:text-foreground"
+        onClick={() => onOpenChange(!open)}
+      >
+        v{pinned}
+        {/* The dot is a *tell*, not the answer — it appears only once the panel
+            has been opened and learned there is a gap, because a badge that
+            fetched on arrival to decide whether to show a dot would be the very
+            request this whole surface is arranged not to make. */}
+        {behind && <span className="ml-1 inline-block size-1.5 rounded-full bg-primary align-middle" aria-hidden="true" />}
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-8 z-50 flex w-80 flex-col gap-2 rounded-md border border-border bg-card p-3 shadow-lg"
+          data-testid="pin-popover"
+        >
+          <p className="text-body">
+            This batch is judged against{" "}
+            <span className="font-mono font-medium">v{pinned}</span>, the version it pinned when
+            it was approved.
+          </p>
+
+          {activeFailed ? (
+            <p className="text-meta text-muted-foreground" data-testid="pin-active-error">
+              Could not load the project’s current version.
+            </p>
+          ) : active === null ? (
+            <p className="text-meta text-muted-foreground" data-testid="pin-active-pending">
+              Checking the project’s current version…
+            </p>
+          ) : !behind ? (
+            <p className="text-meta text-muted-foreground" data-testid="pin-current">
+              That is the project’s current version, so every class the project declares is
+              available here.
+            </p>
+          ) : (
+            <>
+              <p className="text-meta text-muted-foreground" data-testid="pin-behind">
+                The project has moved on to{" "}
+                <span className="font-mono">v{active.version}</span>. Classes published since
+                are not available on this batch — adding one from here re-pins it.
+              </p>
+              <PinDiff from={pinned} to={active.version} diff={comparison.data} failed={comparison.isError} />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the pin is missing, in the API's own words.
+ *
+ * The kernel classifies a change (`domain/schema_diff.py`) and `detail` is the
+ * string its own refusals are built from, so a sentence here and a sentence in a
+ * 409 are the same sentence. `SchemaEditor`'s `VersionDiff` renders the same
+ * payload for the ledger; this one is the short form — no badges, because the
+ * annotator does not act on additive-versus-destructive, it just wants to know
+ * what it cannot draw.
+ */
+function PinDiff({
+  from,
+  to,
+  diff,
+  failed,
+}: {
+  readonly from: number;
+  readonly to: number;
+  readonly diff: SchemaDiff | undefined;
+  readonly failed: boolean;
+}): JSX.Element {
+  if (failed) {
+    return (
+      <p className="text-meta text-muted-foreground" data-testid="pin-diff-error">
+        Could not load what changed between v{from} and v{to}.
+      </p>
+    );
+  }
+  if (diff === undefined) {
+    return (
+      <p className="text-meta text-muted-foreground" data-testid="pin-diff-pending">
+        Comparing v{from} with v{to}…
+      </p>
+    );
+  }
+  if (diff.changes.length === 0) {
+    return (
+      <p className="text-meta text-muted-foreground" data-testid="pin-diff-empty">
+        Nothing changed between them.
+      </p>
+    );
+  }
+  return (
+    <ul className="flex list-disc flex-col gap-1 pl-4" data-testid="pin-diff">
+      {diff.changes.map((change, index) => (
+        <li key={index} className="text-meta text-muted-foreground">
+          {change.detail}
+        </li>
+      ))}
+    </ul>
   );
 }
 

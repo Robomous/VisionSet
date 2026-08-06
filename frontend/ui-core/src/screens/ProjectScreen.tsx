@@ -69,6 +69,8 @@
  */
 
 import {
+  ChevronDown,
+  ChevronRight,
   Database,
   Layers,
   LayoutDashboard,
@@ -110,6 +112,7 @@ import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
 import { OverviewPanel } from "./OverviewPanel";
 import { SchemaEditor } from "./SchemaEditor";
+import { groupByProvenance } from "./schemaHistory";
 import {
   useActiveSchema,
   useBatches,
@@ -706,8 +709,8 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
         <h2 className="text-section font-semibold tracking-tight">Version history</h2>
         <p className="text-meta text-muted-foreground">
           Every schema version this project has declared. They are 1..N, never updated and
-          never deleted — a restore is a new version with the old classes. Use the version
-          picker above to read one, with what it changed.
+          never deleted — a restore is a new version with the old classes. Versions published
+          while annotating are grouped; expand a group to read them one by one.
         </p>
       </header>
       <div>
@@ -723,6 +726,12 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
             // The highest version is the active one — derived, never a stored flag,
             // which is why this is computed here rather than read off a field.
             const active = Math.max(...page.items.map((entry) => entry.version));
+            // Newest first, then grouped: the sort is what makes "consecutive"
+            // mean anything, and `groupByProvenance` works on whatever order it
+            // is handed. See `schemaHistory.ts` for the three decisions inside it.
+            const rows = groupByProvenance(
+              [...page.items].sort((a, b) => b.version - a.version),
+            );
             return (
               <Table>
                 <TableHeader>
@@ -734,28 +743,17 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...page.items]
-                    .sort((a, b) => b.version - a.version)
-                    .map((entry) => (
-                      <TableRow key={entry.version} data-testid={`version-${entry.version}`}>
-                        <TableCell className="flex items-center gap-2">
-                          v{entry.version}
-                          {entry.version === active && <Badge variant="accent">active</Badge>}
-                        </TableCell>
-                        {/* Both are null for a version published before #230, and
-                            nothing backfills either — an em dash is the honest
-                            rendering of a moment nobody recorded. */}
-                        <TableCell className="text-muted-foreground">
-                          {entry.created_at == null ? "—" : formatWhen(entry.created_at)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {entry.description == null || entry.description === ""
-                            ? "—"
-                            : entry.description}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{summarise(entry)}</TableCell>
-                      </TableRow>
-                    ))}
+                  {rows.map((row) =>
+                    row.kind === "version" ? (
+                      <VersionRow key={row.version.version} entry={row.version} active={active} />
+                    ) : (
+                      <AnnotationRun
+                        key={`run-${row.versions[0]?.version ?? 0}`}
+                        versions={row.versions}
+                        active={active}
+                      />
+                    ),
+                  )}
                 </TableBody>
               </Table>
             );
@@ -763,6 +761,117 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
         </Async>
       </div>
     </div>
+  );
+}
+
+/** One published version. The ledger's unit, and what a run expands into. */
+function VersionRow({
+  entry,
+  active,
+  nested = false,
+}: {
+  readonly entry: SchemaVersion;
+  readonly active: number;
+  /** Inside an expanded run: indented, so the grouping survives being opened. */
+  readonly nested?: boolean;
+}): JSX.Element {
+  return (
+    <TableRow data-testid={`version-${entry.version}`} {...(nested ? { "data-nested": "true" } : {})}>
+      <TableCell className={`flex items-center gap-2${nested ? " pl-8" : ""}`}>
+        v{entry.version}
+        {entry.version === active && <Badge variant="accent">active</Badge>}
+      </TableCell>
+      {/* Both are null for a version published before #230, and nothing backfills
+          either — an em dash is the honest rendering of a moment nobody recorded. */}
+      <TableCell className="text-muted-foreground">
+        {entry.created_at == null ? "—" : formatWhen(entry.created_at)}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {entry.description == null || entry.description === "" ? "—" : entry.description}
+      </TableCell>
+      <TableCell className="text-muted-foreground">{summarise(entry)}</TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * A run of versions published while somebody was annotating (#368, decision 7).
+ *
+ * ## Why the ledger needed this
+ *
+ * Since #233 the annotator publishes versions, and WS4 lets one sitting publish
+ * several. Left flat, the two *curated* milestones a person opens this table to
+ * read end up beneath nine rows of `Added class "cone" from the annotation view`
+ * — every one of them true, and collectively the reason nobody scrolls to the
+ * one that matters. Collapsing them is not hiding: the run says how many, when,
+ * and what the schema looked like at the end of it, and one press has them all.
+ *
+ * ## Collapsed by default, and never for a milestone
+ *
+ * `provenance` is what tells the two apart, and only `annotation` groups —
+ * `curated` and a null from before WS1's migration always render individually.
+ * That is the conservative direction: a fact nobody recorded must not be read as
+ * "incidental".
+ *
+ * ## The summary cells describe the *end* of the run
+ *
+ * `Classes` is the newest version's contract, because that is what the run left
+ * behind and what the next version was composed on. `Published` is the newest
+ * one's moment for the same reason — a range would be two dates for a row whose
+ * whole point is being one line.
+ */
+function AnnotationRun({
+  versions,
+  active,
+}: {
+  readonly versions: readonly SchemaVersion[];
+  readonly active: number;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  // Handed in newest-first, so the first is the newest and the last is where the
+  // run started. Read by position rather than re-sorted: re-deriving the order
+  // here would be a second opinion about the one the caller established.
+  const newest = versions[0];
+  const oldest = versions[versions.length - 1];
+  if (newest === undefined || oldest === undefined) return <></>;
+
+  return (
+    <>
+      <TableRow data-testid={`version-run-${oldest.version}-${newest.version}`}>
+        <TableCell>
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded text-left hover:text-foreground"
+            aria-expanded={open}
+            data-testid={`version-run-toggle-${oldest.version}`}
+            onClick={() => setOpen((shown) => !shown)}
+          >
+            {open ? (
+              <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
+            )}
+            v{oldest.version}–v{newest.version}
+            {newest.version === active && <Badge variant="accent">active</Badge>}
+          </button>
+        </TableCell>
+        <TableCell className="text-muted-foreground">
+          {newest.created_at == null ? "—" : formatWhen(newest.created_at)}
+        </TableCell>
+        <TableCell className="text-muted-foreground">
+          {versions.length} versions published while annotating
+        </TableCell>
+        <TableCell className="text-muted-foreground">{summarise(newest)}</TableCell>
+      </TableRow>
+      {/* Every version of the run, in the same shape as an ungrouped one — so a
+          `data-testid` a test or a link already knows still resolves once the
+          group is open, and the row a person finds by expanding reads exactly
+          like the row they would have found in a flat table. */}
+      {open &&
+        versions.map((entry) => (
+          <VersionRow key={entry.version} entry={entry} active={active} nested />
+        ))}
+    </>
   );
 }
 

@@ -44,9 +44,29 @@
  * The last row is the one worth naming to the user, because the remedy is not
  * "try again with a flag" — it is that somebody else narrowed the schema past this
  * batch's pin, and the Schema tab is where that gets looked at.
+ *
+ * ## One dialog session is one published version (#368)
+ *
+ * `Create and add another` accumulates. Somebody who opens this because the road
+ * survey needs `cone`, `barrier` and `crossing` writes three classes and presses
+ * once, and the project's history gains **one** version rather than three — with
+ * three re-pins, three refetches, and three chances for the middle one to refuse.
+ *
+ * The alternative — publish each class as it is written — was the shape #233
+ * shipped, and it is what makes decision 7's grouping necessary in the first
+ * place: a version per class turns a ledger into a transcript. Accumulating does
+ * not remove the need for grouping (two sessions in a morning are still two
+ * versions) but it stops one sitting from being nine of them.
+ *
+ * The accumulated classes are held **here** and nowhere else, which is what makes
+ * "cancel discards them" true by construction: there is no draft on the server to
+ * clean up, and the only state that can be lost is state nothing else can see.
+ * Cancelling with classes pending therefore *asks*, because that is the one press
+ * in this dialog that destroys work somebody typed.
  */
 
-import { useState, type JSX } from "react";
+import { Plus, X } from "lucide-react";
+import { useEffect, useState, type JSX } from "react";
 
 import { asApiError } from "../data/errors";
 import { classColor } from "../palette";
@@ -69,15 +89,55 @@ function blank(): LabelClassBody {
 }
 
 /**
- * The auto-filled version description (#230).
+ * The auto-filled version description (#230, pluralised by #368).
  *
  * Pre-written rather than left empty because a version published from here is the
  * one somebody is *least* likely to describe — they are mid-annotation and think
  * of this as adding a label, not as publishing a contract. Editable, so it is a
  * default and not a decision made for them.
+ *
+ * It takes the whole session rather than one name, because a session publishes
+ * one version and a version has one description: naming only the last class would
+ * make the ledger's `Why` column a lie about the other two. Every name is listed
+ * rather than counted — a history reader wants to know *which* classes arrived,
+ * and a session is realistically two to five.
+ *
+ * `JSON.stringify` per name, so a class called `zebra "x"` — legal, since
+ * `normalize_name` only refuses a blank — cannot produce a sentence that reads as
+ * truncated.
  */
-export function defaultNote(name: string): string {
-  return `Added class ${JSON.stringify(name)} from the annotation view`;
+export function defaultNote(names: readonly string[]): string {
+  const quoted = names.map((name) => JSON.stringify(name));
+  // Singular for none as well as for one: the empty case is the placeholder the
+  // note field shows before a name is typed, and "Added classes …" over an empty
+  // form promises a session nobody has started.
+  const noun = quoted.length > 1 ? "classes" : "class";
+  // "a, b and c" — no serial comma, which is what `DESIGN.md`'s copy rules use
+  // everywhere else. An empty session is the placeholder case: the dialog shows
+  // this before a name has been typed.
+  const listed =
+    quoted.length === 0
+      ? '"…"'
+      : quoted.length === 1
+        ? quoted[0]
+        : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+  return `Added ${noun} ${listed} from the annotation view`;
+}
+
+/**
+ * The same names, for a sentence a person reads rather than a stored description.
+ *
+ * Curly quotes and no escaping, because this one is prose: `defaultNote` is
+ * written into the ledger and has to survive a name containing a quote, while
+ * this is a clause inside a paragraph and `\"` in the middle of one would read as
+ * a bug. Falls back to a noun phrase, since it is rendered before anything is
+ * typed.
+ */
+function namesInProse(names: readonly string[]): string {
+  if (names.length === 0) return "this class";
+  const quoted = names.map((name) => `“${name}”`);
+  if (quoted.length === 1) return quoted[0] ?? "this class";
+  return `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
 }
 
 /**
@@ -115,11 +175,19 @@ export async function runAddClass(steps: {
   readonly repin: (() => Promise<unknown>) | null;
   /** The **active** version's classes. Never the batch's pin — versions are linear. */
   readonly activeClasses: readonly LabelClassBody[];
-  readonly declared: LabelClassBody;
+  /**
+   * The session's classes, in the order they were written — one press, one version.
+   *
+   * A list rather than a single class since #368. The chain does not change shape
+   * for it: `create_version` takes the whole contract either way, so publishing
+   * three new classes is the same one request as publishing one, and the *saving*
+   * is the two re-pins and two refetches that do not happen.
+   */
+  readonly added: readonly LabelClassBody[];
   readonly note: string;
 }): Promise<void> {
   await steps.save();
-  await steps.publish([...steps.activeClasses, steps.declared], steps.note);
+  await steps.publish([...steps.activeClasses, ...steps.added], steps.note);
   await steps.repin?.();
 }
 
@@ -147,7 +215,22 @@ export interface AddClassDialogProps {
   readonly pending: boolean;
   /** The refusal to render, or `null`. Owned by the caller: it runs the chain. */
   readonly error: unknown;
-  readonly onSubmit: (declared: LabelClassBody, note: string) => void;
+  /**
+   * The name to open with, from the create row that opened this (#368).
+   *
+   * `ClassField`'s no-match row has always handed over what was typed —
+   * `Create class "crossing"` — and until WS4 the page dropped it, because there
+   * was nothing here to seed. Typing a name, being told it does not exist, and
+   * then having to type it again is the smallest possible way to make a
+   * shortcut feel like a detour.
+   *
+   * Read on open rather than held as a controlled value: it is a starting point,
+   * not a binding, and a prop that kept overwriting the field would make the
+   * name uneditable.
+   */
+  readonly initialName?: string;
+  /** Every class of the session, and the one description they publish under. */
+  readonly onSubmit: (added: readonly LabelClassBody[], note: string) => void;
 }
 
 export function AddClassDialog({
@@ -158,41 +241,165 @@ export function AddClassDialog({
   canRepin,
   pending,
   error,
+  initialName,
   onSubmit,
 }: AddClassDialogProps): JSX.Element {
   const [declared, setDeclared] = useState<LabelClassBody>(blank);
+  /** Written, not yet published. One press turns the whole list into one version. */
+  const [session, setSession] = useState<readonly LabelClassBody[]>([]);
   const [note, setNote] = useState("");
   const [touched, setTouched] = useState(false);
+  /** Cancel was pressed with classes pending, and is asking before it discards them. */
+  const [discarding, setDiscarding] = useState(false);
 
   const name = declared.name.trim();
   const failure = error === null || error === undefined ? null : asApiError(error);
   // Case-insensitively, because `create_version` refuses a collision that way —
-  // mirroring the API's rule rather than inventing a second one.
-  const taken =
-    active?.classes.some((entry) => entry.name.toLowerCase() === name.toLowerCase()) ?? false;
+  // mirroring the API's rule rather than inventing a second one. The session is
+  // checked alongside the active version, because two classes in one press go
+  // into one contract and `create_version` judges that contract as a whole: a
+  // collision inside the session is refused by exactly the same rule, and
+  // discovering it from a 409 after the save would be the worst place to learn it.
+  const collides = (candidate: string): boolean =>
+    (active?.classes.some((entry) => entry.name.toLowerCase() === candidate.toLowerCase()) ??
+      false) || session.some((entry) => entry.name.toLowerCase() === candidate.toLowerCase());
+  const taken = name !== "" && collides(name);
+
+  /**
+   * What pressing the primary publishes: the session, plus whatever is in the
+   * form.
+   *
+   * The form counts without being added first, deliberately — somebody who wrote
+   * one class and pressed the primary is done, and making them press
+   * `Create and add another` first would be a ceremony that exists only because
+   * the implementation has two places to look.
+   */
+  const readyForm = name !== "" && !taken;
+  const publishing: readonly LabelClassBody[] = readyForm
+    ? [...session, { ...declared, name }]
+    : session;
+  const description = touched ? note : defaultNote(publishing.map((entry) => entry.name));
 
   function reset(): void {
     setDeclared(blank());
+    setSession([]);
     setNote("");
     setTouched(false);
+    setDiscarding(false);
+  }
+
+  /** Seed the name from the create row that opened this, once per opening. */
+  useEffect(() => {
+    if (!open) return;
+    setDeclared({ ...blank(), name: initialName ?? "" });
+    // `initialName` deliberately out of the deps: it is read *at* the opening, and
+    // a caller whose value changes while the dialog is up must not overwrite what
+    // somebody has since typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  /** Bank the form and clear it, so the next class starts from nothing. */
+  function addAnother(): void {
+    if (!readyForm) return;
+    setSession((banked) => [...banked, { ...declared, name }]);
+    setDeclared(blank());
+  }
+
+  /**
+   * Closing, and the one press in here that can destroy typing.
+   *
+   * Everything the session holds lives in this component — there is no draft on
+   * the server — so cancelling loses exactly what somebody wrote and nothing
+   * else. That is why it asks, and why nothing else in this dialog does.
+   */
+  function requestClose(): void {
+    if (session.length > 0) {
+      setDiscarding(true);
+      return;
+    }
+    reset();
+    onOpenChange(false);
   }
 
   return (
     <Dialog
       open={open}
+      // Escape and the overlay come through here too, which is the whole reason
+      // the ask lives in `requestClose` rather than on the Cancel button: a
+      // guard only the button honours is a guard Escape walks straight past.
       onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
+        if (next) {
+          onOpenChange(true);
+          return;
+        }
+        requestClose();
       }}
     >
-      <DialogContent data-testid="add-class-dialog">
-        <DialogTitle>Add a label class</DialogTitle>
+      <DialogContent
+        data-testid="add-class-dialog"
+        // ⌘Enter banks the class and clears the form — the chord for "and
+        // another", so a session is typed without the hand leaving the keyboard.
+        // On the content rather than on the name field, because the geometry
+        // picker and the attribute rows are part of writing a class too.
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+          event.preventDefault();
+          addAnother();
+        }}
+      >
+        <DialogTitle>{session.length === 0 ? "Add a label class" : "Add label classes"}</DialogTitle>
         <DialogDescription>
-          This publishes the next schema version and moves this batch onto it, so the class
-          is usable here straight away. Unsaved work is saved first.
+          {/* One version per press, said before the first `and another` rather
+              than after it: the whole reason to accumulate is that a session is
+              cheaper than a version each, and somebody who does not know that
+              will publish three times out of caution. */}
+          Everything you add here publishes as one schema version and moves this batch onto
+          it, so the classes are usable here straight away. Unsaved work is saved first.
         </DialogDescription>
 
         <div className="flex flex-col gap-4">
+          {/*
+            What is banked and not yet published. Absent until there is something
+            to show, because a permanent empty list would be a promise of a
+            feature on a dialog most people use once.
+          */}
+          {session.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5" data-testid="session-classes" aria-label="Classes to publish">
+              {session.map((entry) => (
+                <li
+                  key={entry.name}
+                  data-testid={`session-class-${entry.name}`}
+                  className="flex items-center gap-1.5 rounded-full border border-border bg-muted py-0.5 pl-2 pr-1 text-meta"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-2 shrink-0 rounded-full"
+                    style={{
+                      background: classColor(
+                        { ...entry, color: entry.color ?? null, attributes: [] },
+                        entry.name,
+                      ),
+                    }}
+                  />
+                  {entry.name}
+                  <span className="text-muted-foreground">{entry.geometry}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${entry.name}`}
+                    data-testid={`session-remove-${entry.name}`}
+                    disabled={pending}
+                    className="rounded-full p-0.5 text-muted-foreground hover:bg-card hover:text-foreground disabled:cursor-not-allowed"
+                    onClick={() =>
+                      setSession((banked) => banked.filter((held) => held.name !== entry.name))
+                    }
+                  >
+                    <X className="size-3" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <ClassFields
             declared={declared}
             slot="new"
@@ -221,7 +428,7 @@ export function AddClassDialog({
             <Input
               id="add-class-note"
               data-testid="add-class-note"
-              value={touched ? note : defaultNote(name === "" ? "…" : name)}
+              value={description}
               onChange={(event) => {
                 setTouched(true);
                 setNote(event.target.value);
@@ -241,16 +448,27 @@ export function AddClassDialog({
           */}
           {!canRepin && (
             <Alert title="This batch will stay on its current version" data-testid="no-repin-notice">
-              A completed batch keeps the schema version it was approved against, so “{name || "this class"}”
-              will not be available to draw with here. The version is still published to the
-              project, and a correction batch approved from now on will pin to it.
+              {/* The subject is the whole session, not the form field: by the time
+                  somebody presses, the field is often empty and the classes are
+                  banked — a notice saying “this class” would then name nothing at
+                  all. The mechanism is unchanged; only what it points at is. */}
+              A completed batch keeps the schema version it was approved against, so{" "}
+              {namesInProse(publishing.map((entry) => entry.name))} will not be available to
+              draw with here. The version is still published to the project, and a correction
+              batch approved from now on will pin to it.
             </Alert>
           )}
 
           {taken && (
             <Alert variant="destructive" title="That name is taken">
-              Version {active?.version} already declares a class called “{name}”. Class names
-              are unique within a version, ignoring case.
+              {/* Which of the two rules refused it, because the remedies differ:
+                  a collision with the published version is a class that already
+                  exists to pick, and one inside the session is a name typed
+                  twice. */}
+              {session.some((entry) => entry.name.toLowerCase() === name.toLowerCase())
+                ? `You have already added a class called “${name}” to this version.`
+                : `Version ${active?.version} already declares a class called “${name}”.`}{" "}
+              Class names are unique within a version, ignoring case.
             </Alert>
           )}
 
@@ -270,36 +488,97 @@ export function AddClassDialog({
               )}
             </Alert>
           )}
+
+          {/*
+            The ask, inline rather than as a second Dialog over this one.
+            A nested modal would take the focus off the classes it is asking
+            about, and Radix's own guidance is that stacking dialogs is a last
+            resort — the question is about *this* form, so it belongs in it.
+          */}
+          {discarding && (
+            <Alert variant="destructive" title="Discard the classes you added?" data-testid="discard-session">
+              {session.length} class{session.length === 1 ? "" : "es"} {session.length === 1 ? "is" : "are"}{" "}
+              written and not published. Closing now loses {session.length === 1 ? "it" : "them"} — nothing
+              has been sent yet.
+            </Alert>
+          )}
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            data-testid="add-class-submit"
-            // Disabled only for states a label cannot explain: a nameless class, a
-            // duplicate, a schema that has not loaded, and a request in flight.
-            // `DESIGN.md`'s rule is that a button answers or explains — the first
-            // two explain themselves beside the field they are about.
-            disabled={pending || name === "" || taken || active === null}
-            onClick={() =>
-              onSubmit(
-                { ...declared, name },
-                touched ? note : defaultNote(name),
-              )
-            }
-          >
-            {/*
-              The label is the explicit choice. Two different acts deserve two
-              different words, and the second one is the whole of F23's remedy:
-              the user reads what will happen on the button they are about to
-              press, instead of learning it from a refusal on a step they did not
-              ask for.
-            */}
-            {pending ? "Publishing…" : canRepin ? "Add class" : "Publish without re-pinning"}
-          </Button>
+          {discarding ? (
+            <>
+              <Button variant="secondary" data-testid="keep-editing" onClick={() => setDiscarding(false)}>
+                Keep editing
+              </Button>
+              <Button
+                variant="destructive"
+                data-testid="discard-confirm"
+                onClick={() => {
+                  reset();
+                  onOpenChange(false);
+                }}
+              >
+                Discard
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="secondary" data-testid="add-class-cancel" onClick={requestClose} disabled={pending}>
+                Cancel
+              </Button>
+              {/*
+                The session's own button, and the reason it is not the primary:
+                it does not publish anything. Same disabled rule as the primary's
+                first two clauses, because a nameless or colliding class cannot be
+                banked either — but *not* gated on `active`, which only matters at
+                publish time.
+              */}
+              <Button
+                variant="secondary"
+                data-testid="add-another"
+                disabled={pending || !readyForm}
+                onClick={addAnother}
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                Create and add another
+                <kbd className="ml-1 rounded border border-border px-1 font-mono text-meta text-muted-foreground">
+                  ⌘↵
+                </kbd>
+              </Button>
+              <Button
+                variant="primary"
+                data-testid="add-class-submit"
+                // Disabled only for states a label cannot explain: nothing to
+                // publish, a duplicate in the form, a schema that has not loaded,
+                // and a request in flight. `DESIGN.md`'s rule is that a button
+                // answers or explains — the first two explain themselves beside
+                // the field they are about.
+                //
+                // `publishing.length === 0` rather than `name === ""`: with
+                // classes banked the form is *meant* to be empty, and gating on
+                // it would make a session unpublishable at exactly the moment it
+                // is ready.
+                disabled={pending || publishing.length === 0 || taken || active === null}
+                onClick={() => onSubmit(publishing, description)}
+              >
+                {/*
+                  The label is the explicit choice. Two different acts deserve two
+                  different words, and the second one is the whole of F23's remedy:
+                  the user reads what will happen on the button they are about to
+                  press, instead of learning it from a refusal on a step they did not
+                  ask for. The count is there because one press now covers several
+                  classes and a bare "Add class" would under-report what it does.
+                */}
+                {pending
+                  ? "Publishing…"
+                  : canRepin
+                    ? publishing.length > 1
+                      ? `Add ${publishing.length} classes`
+                      : "Add class"
+                    : "Publish without re-pinning"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

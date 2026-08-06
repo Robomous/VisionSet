@@ -474,6 +474,47 @@ The page the reference design shows (#56), with measurements verified in v1's so
   renders a dashed `No classes — create one` instead of an empty list. **It shows the
   drawing class and never follows the selection** — re-classing an existing annotation is
   the side panel's row menu, a different question about a different object.
+
+  **The drawing class's lifetime is the job**, not the frame: it survives moving to the
+  next asset, because somebody labelling one class across a clip picks it once, and it
+  survives a re-pin, which is what makes "you are drawing with the class you just made"
+  a promise the page can keep. It stops at the job's edge, the same scope the clipboard
+  has (#123) and for the same reason — a paste and a drawing class both belong to one
+  pinned schema.
+- **Pinned version badge** (#229, made an answer by #368): `v{n}` in the left zone names
+  the version *this batch is judged against* — not the project's active one, since #229
+  made the pin movable. Pressing it opens a small panel that says whether that is still
+  the current version and, when it is not, **what arrived since**, in the kernel's own
+  words for the change. Nothing about the active version is fetched until it is opened:
+  the editor is judged against the pin, and a page that read the active version on
+  arrival would be one refactor from offering classes the API then refuses. A hand-built
+  disclosure rather than a Popover, for the `Combobox`'s reason — the annotator reads the
+  keyboard off its own root, so focus has to come back to the canvas.
+- **Add-a-class dialog** (#233, made a session by #368): **one sitting is one published
+  schema version.** `Create and add another` (⌘↵) banks the class and clears the form;
+  the primary publishes everything banked plus whatever is still in the form, so nobody
+  has to press *and another* before finishing. The banked classes show as chips that can
+  be taken back out, the auto-written description names them all, and the primary says
+  how many it will publish (`Add 3 classes`). Opened from the class field's create row it
+  starts on the name that was typed; opened from the tool strip's `+` it starts empty,
+  because that press means "I want a class", not a particular one. When it lands, the
+  **last** class written becomes the drawing class and a toast says so — a session
+  publishes one version and arms one class, neither of which anybody watched happen.
+  Cancelling with classes banked **asks**, and it asks on Escape and the overlay too:
+  everything a session holds lives in the browser, so closing loses exactly what was
+  typed and nothing else. It is the only question this dialog asks. What did not change:
+  the save-then-publish-then-repin order, the `canRepin` preflight that says *before* the
+  press when a completed batch will keep its version, and the refusal that names the
+  Schema tab when somebody else narrowed the schema past the pin.
+- **Version history grouping** (#368): the project's Schema tab ends in a ledger of every
+  version. Since the annotator publishes versions too, a flat table buries the curated
+  milestones somebody opened it to read under a run of `Added class "cone" from the
+  annotation view`. So **consecutive versions whose `provenance` is `annotation` collapse
+  into one expandable row** — `v3–v5`, how many, when the run ended, and the contract it
+  left behind — while `curated` and a null from before the field existed always render
+  individually. A run of one is not a run: collapsing a single version saves no space and
+  makes the commonest case the least readable. Expanding gives back exactly the rows a
+  flat table would have had, indented.
 - **Tool strip**: floating at the canvas's left edge — 48px (`w-12`) column, `muted`
   surface, `border`, 12px radius, 8px padding; 36px icon buttons; **active tool = primary
   variant** (the near-black), inactive = ghost; a `h-px w-6` divider; help at the bottom.
