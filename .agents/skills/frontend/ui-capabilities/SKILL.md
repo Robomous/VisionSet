@@ -24,6 +24,14 @@ description: Rules for how the VisionSet frontend decides which actions to offer
 - **A declaration is a cached answer, so invalidate it.** Every mutation that could change what a resource may be asked to do must invalidate that resource's own query — not only its counts or its data. `allowed_actions` goes stale exactly like a number does, and a stale declaration is the cache-side twin of the hand-mirror: the client is again showing something the kernel no longer agrees with. It shipped as a Finish-job button disabled over a job that was finished, because the job's declaration still described a moment when every asset was `unannotated`. — 2026-08 run, T3
 - The app-level error boundary and `unhandledrejection` handler are load-bearing; never remove or bypass them.
 
+## Query keys and component lifetime
+
+**A query key that names a value the page itself can change is an unmount trigger.** When the mutation moves the key, the query it belongs to goes pending, whatever renders a loading state above it takes over, and every component below unmounts — losing its local state silently, with no error and no refusal.
+
+It shipped: #233's *"you are now drawing with the class you just made"* had never worked. The armed class lived in asset-scoped state; the add-a-class chain ends in a repin; `usePinnedSchema`'s key names the version. The repin moved the key, the screen fell through to its loading state, and the class died with the unmount — the field simply read `Select` again a moment later. Found and fixed in #379, cf. #368.
+
+State that must survive a mutation belongs at a scope whose query keys that mutation cannot move — the clipboard and the drawing class both live at job scope for this reason. When reviewing a mutation, ask which keys it invalidates or **renames**, and what component state lives below them. Invalidation alone is safe; renaming is not.
+
 ## Scope limits (do not overreach)
 
 - This skill governs *gating and feedback*, not visual design.
