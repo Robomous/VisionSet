@@ -436,26 +436,58 @@ The page the reference design shows (#56), with measurements verified in v1's so
 
   | Zone | Contents |
   | --- | --- |
-  | Left | back · pinned `v{n}` badge · asset navigator `‹ hash n/m ›` with a **progress dot** · grid jump · save-state indicator |
+  | Left | back · pinned `v{n}` badge · asset navigator `‹ hash n/m ›` · grid jump · the frame microtext `● annotated · Saved` |
   | Centre | the **class field** — swatch, name, hotkey chip; opens on click or on `c` |
-  | Right | `n / m annotated` · **Skip**/**Un-skip** (secondary) · **one** workflow primary · **Finish job** · overflow `⋯` |
+  | Right | `n / m annotated` · **Save and stay** (ghost, ⌘S) · the review move (outline) · **Skip**/**Un-skip** (outline, `X`) · **Finish job** · **Save and next** (filled, `↵`) · overflow `⋯` |
 
-  **There is no Save button.** ⌘S saves, navigating saves, settling saves, and the
-  save-state indicator says which of those is happening — what was removed is a control
-  that duplicated an automatic behaviour, not the behaviour. The overflow carries one
-  explicit *Save now* for whoever does not know the chord.
+  **The filled slot is the flow verb** (#383). After finishing a frame the right move is
+  *this one is done, show me the next* — and until #383 that had no button at all: the
+  navigator's `›` is chrome rather than a verb, so **Skip** was the most prominent thing
+  to press on a frame somebody had just annotated. **Skip and Save and next are
+  siblings** — two ways to resolve this frame, skipped or annotated, both advancing — and
+  neither ever collapses into the overflow.
 
-  **Exactly one workflow primary**, chosen from the frame's own `allowed_actions`:
-  `submit_for_review`, else `accept`. The two are mutually exclusive by construction —
-  the kernel offers the first only from `annotated` and the second only from
-  `review_pending`. **`complete` is deliberately not in that list**: it is the *job's*
-  action, and it co-declares with `submit_for_review` on the commonest path there is (an
-  annotated frame in a job whose every frame is settled), so ranking them against each
-  other would hide Finish job exactly where most jobs end. It keeps its own control,
-  disabled with a reason.
+  `Save and next` is `go(1)`: the same save-first advance the navigator has always used,
+  so there is one save pipeline and one place principle 10 is enforced. It reads **`Next`
+  when no save will happen** — an untouched frame, or one that cannot be written to at
+  all — because the button never promises a save it will not perform.
 
-  The progress dot replaces the badge that carried the word: the colour is the glance and
-  the accessible name is the answer, because **status is never colour alone**.
+  **On the last frame `Finish job` takes the filled slot** and `Save and next` is not
+  rendered: there is nothing to advance to, and finishing is what the job is for.
+  Everywhere else Finish job keeps its outline treatment and stays visible, disabled with
+  a reason. The filled slot is therefore contended by nothing — which frame you are on is
+  this page's own arithmetic, not a declaration anything else can co-claim.
+
+  **The review move is an outline control**, chosen from the frame's own
+  `allowed_actions`: `submit_for_review`, else `accept`. The two are mutually exclusive by
+  construction — the kernel offers the first only from `annotated` and the second only
+  from `review_pending`. **`complete` is deliberately not in that list**: it is the
+  *job's* action, and it co-declares with `submit_for_review` on the commonest path there
+  is (an annotated frame in a job whose every frame is settled), so ranking them against
+  each other would hide Finish job exactly where most jobs end. Submitting carries a
+  tooltip saying what it means, because this product has **no annotator identity**
+  (cf. #282) — a submitted frame is marked for a review pass, not routed to a person.
+
+  **Save is a ghost button again** (#383). #368 removed it on the grounds that it
+  duplicated an automatic behaviour — ⌘S saves, navigating saves, settling saves — and
+  dogfooding showed what that missed: the chord is invisible, and the overflow put the one
+  press meaning *store this now, without going anywhere* two clicks from the work. Ghost
+  is the honest weight for a control most people never need.
+
+  **Reabsorption order when the bar runs out of room**: `Save and stay` first, the review
+  move second, into the overflow; the Skip/Save-and-next pair never collapses. Each
+  reabsorbed control carries the exact inverse of its button's breakpoint, so it exists in
+  exactly one place at any width.
+
+  **Hotkey chips are on the buttons**, and every chord they name is a row in
+  `core/input/bindings.ts` — `mod+s`, `x`, and `enter`. `enter` is the one key with two
+  meanings: it is the polygon ring close, and with nothing being drawn the React adapter
+  reads it as *finish the frame*. The two never overlap, so a chip that says `↵` is true
+  in both.
+
+  The frame microtext replaces the dot-with-a-tooltip: the word is on the bar beside the
+  save state, because **status is never colour alone** and a tooltip is a place a word
+  goes to not be read.
 
   The reference draws three more controls between the navigator and the save state —
   version select (GitBranch), create-branch (GitBranchPlus) and **Merge** (GitMerge).

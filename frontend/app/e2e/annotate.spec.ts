@@ -319,6 +319,135 @@ test("the page loads the job's assets, its pinned schema and its progress", asyn
   expect(await content?.headerValue("authorization")).toBe("Bearer a-token");
 });
 
+/**
+ * The flow verb's whole claim: it **saves first, then advances** (#383).
+ *
+ * This is the assertion jsdom structurally cannot make. Making a document dirty
+ * means drawing, drawing means a canvas with a real size, and jsdom's
+ * `getBoundingClientRect` returns all zeros — the finding that kept #47's
+ * transform out of component tests and that keeps every ordering claim on this
+ * page in a browser. A component test clicking the button over a clean document
+ * would pass with the commit deleted.
+ *
+ * The order is read off the request log rather than off the screen, because
+ * "the boxes are still there on frame 2" is what a *lost* save also looks like
+ * until the next reload.
+ */
+test("Save and next stores the frame before it moves off it", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByTestId("save-state")).toContainText("unsaved");
+  // The label is the promise, and here it is one the press will keep.
+  await expect(page.getByTestId("save-and-next")).toContainText("Save and next");
+
+  await page.getByTestId("save-and-next").click();
+
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  const post = sent.find((r) => r.method() === "POST" && r.url().endsWith("/annotations"));
+  expect(post).toBeDefined();
+  const body = JSON.parse(post?.postData() ?? "[]") as Record<string, unknown>[];
+  expect(body).toHaveLength(1);
+  // Written against the frame it was drawn on, which is the half an advance-then-
+  // save would get wrong while still looking identical on screen.
+  expect(body[0]["asset_id"]).toBe("asset-1");
+  await expectNothingToSave(page);
+});
+
+/**
+ * Decision 2's degradation, in the browser because that is where the label's
+ * *other* half lives — the same button reads `Save and next` a drag later.
+ */
+test("the flow verb reads Next on an untouched frame and Save and next once it carries work", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  await expect(page.getByTestId("save-and-next")).toHaveText(/^Next/);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.getByTestId("save-and-next")).toContainText("Save and next");
+});
+
+/**
+ * `enter` is two meanings that never overlap, and this is the one the table does
+ * not hold: with nothing being drawn, the ring close is dead and the adapter
+ * reads the press as the flow verb (#383).
+ *
+ * Both halves in one scenario on purpose — a test of the substitution alone would
+ * pass over an implementation that had stopped closing polygons.
+ */
+test("Enter closes a ring while one is open, and finishes the frame when none is", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  const at = (fx: number, fy: number): { x: number; y: number } => ({
+    x: box.x + box.width * fx,
+    y: box.y + box.height * fy,
+  });
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("2");
+  for (const [fx, fy] of [
+    [0.3, 0.3],
+    [0.5, 0.3],
+    [0.4, 0.5],
+  ] as const) {
+    const point = at(fx, fy);
+    await page.mouse.click(point.x, point.y);
+  }
+
+  // Still on frame 1: the ring took the press.
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+  await expect(page.getByTestId("asset-position")).toContainText("1/2");
+
+  // Nothing in progress now, so the same key means the button beside it.
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+});
+
+/**
+ * The end of the job, where the filled slot changes hands (decision 3).
+ *
+ * The claim is about `bg-primary` rather than about a marker attribute, because
+ * "exactly one filled control" is a statement about what the bar looks like — a
+ * `data-` flag nobody styles from would pass over two coral buttons.
+ */
+test("the last frame hands the filled slot to Finish job, and offers no next", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
+
+  await expect(page.getByTestId("save-and-next")).toBeVisible();
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+
+  await expect(page.getByTestId("save-and-next")).toHaveCount(0);
+  const filled = page.locator("header button.bg-primary");
+  await expect(filled).toHaveCount(1);
+  await expect(filled).toHaveAttribute("data-testid", "finish-job");
+});
+
 test("Save is inert until something changes, then sends exactly the new annotation", async ({
   page,
 }) => {
