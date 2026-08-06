@@ -29,13 +29,20 @@ function version(n: number, provenance: SchemaProvenance | null): SchemaVersion 
   } as unknown as SchemaVersion;
 }
 
-/** `v3–v1` for a run, `v2` for a single — the whole shape in one string. */
+/**
+ * `[v3+v2]` for a run, `v1` for a single — the whole shape in one string.
+ *
+ * The **brackets are load-bearing**, and the mutation pass is what proved it:
+ * without them a run of one renders as `v2`, exactly like an ungrouped version,
+ * so lowering `RUN_MINIMUM` to 1 turned no assertion red. A shape that cannot
+ * spell the difference between two kinds of row is not describing the shape.
+ */
 function shape(versions: readonly SchemaVersion[]): string {
   return groupByProvenance(versions)
     .map((row) =>
       row.kind === "version"
         ? `v${row.version.version}`
-        : row.versions.map((entry) => `v${entry.version}`).join("+"),
+        : `[${row.versions.map((entry) => `v${entry.version}`).join("+")}]`,
     )
     .join(" ");
 }
@@ -44,7 +51,7 @@ describe("what collapses and what does not", () => {
   it("collapses a run of consecutive annotation versions into one row", () => {
     // Newest first, the order the ledger renders in.
     expect(shape([version(4, "curated"), version(3, "annotation"), version(2, "annotation"), version(1, "curated")]))
-      .toBe("v4 v3+v2 v1");
+      .toBe("v4 [v3+v2] v1");
   });
 
   it("leaves a lone annotation version as its own row", () => {
@@ -57,7 +64,7 @@ describe("what collapses and what does not", () => {
 
   it("collapses at exactly two, which is the threshold the rule names", () => {
     expect(RUN_MINIMUM).toBe(2);
-    expect(shape([version(2, "annotation"), version(1, "annotation")])).toBe("v2+v1");
+    expect(shape([version(2, "annotation"), version(1, "annotation")])).toBe("[v2+v1]");
   });
 
   it("never collapses curated versions, however many are consecutive", () => {
@@ -86,15 +93,11 @@ describe("the boundaries a loop like this gets wrong", () => {
   it("closes a run that reaches the end of the list", () => {
     // The tail has nothing after it to trigger the flush. Without the flush past
     // the loop, v2 and v1 are dropped from the ledger entirely.
-    expect(shape([version(3, "curated"), version(2, "annotation"), version(1, "annotation")])).toBe(
-      "v3 v2+v1",
-    );
+    expect(shape([version(3, "curated"), version(2, "annotation"), version(1, "annotation")])).toBe("v3 [v2+v1]");
   });
 
   it("closes a run that starts the list", () => {
-    expect(shape([version(3, "annotation"), version(2, "annotation"), version(1, "curated")])).toBe(
-      "v3+v2 v1",
-    );
+    expect(shape([version(3, "annotation"), version(2, "annotation"), version(1, "curated")])).toBe("[v3+v2] v1");
   });
 
   it("keeps two runs apart when one curated version separates them", () => {
@@ -106,13 +109,11 @@ describe("the boundaries a loop like this gets wrong", () => {
         version(2, "annotation"),
         version(1, "annotation"),
       ]),
-    ).toBe("v5+v4 v3 v2+v1");
+    ).toBe("[v5+v4] v3 [v2+v1]");
   });
 
   it("collapses a history that is nothing but one long run", () => {
-    expect(shape([version(3, "annotation"), version(2, "annotation"), version(1, "annotation")])).toBe(
-      "v3+v2+v1",
-    );
+    expect(shape([version(3, "annotation"), version(2, "annotation"), version(1, "annotation")])).toBe("[v3+v2+v1]");
   });
 
   it("answers an empty history with no rows", () => {
