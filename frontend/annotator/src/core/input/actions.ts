@@ -137,3 +137,20 @@ export const RESET_ZOOM = "reset-zoom";
 
 /** Show or hide the shortcut sheet. v1's `?`. */
 export const TOGGLE_HELP = "toggle-help";
+
+/**
+ * Put the cursor in the host's class picker, if it has one.
+ *
+ * The third name core writes and the third it cannot execute — there is no field
+ * in this package, and there must not be: a chrome-free engine is the whole of
+ * `annotator-core`. It is here for the reason the other two are, which is that
+ * **the registry is also the list of keystrokes the annotator takes away from
+ * the browser**. An unclaimed `c` would reach whatever the page around the canvas
+ * does with a bare letter.
+ *
+ * Not `activate-class` under another name: that kind carries a class and picks
+ * one immediately, while this asks the host to *offer* the choice. A host with no
+ * picker answers `false` and the chord falls through, which is what that return
+ * value is for.
+ */
+export const FOCUS_CLASS_FIELD = "focus-class-field";

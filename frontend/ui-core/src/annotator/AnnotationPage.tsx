@@ -76,6 +76,7 @@ import {
   AnnotatorCanvas,
   MAX_ZOOM,
   MIN_ZOOM,
+  FOCUS_CLASS_FIELD,
   TOGGLE_HELP,
   atZoomCeiling,
   atZoomFloor,
@@ -97,13 +98,10 @@ import {
   CheckCheck,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
+  CircleHelp,
   Grid3x3,
-  Maximize2,
-  Minus,
   MonitorSmartphone,
-  Plus,
-  Save,
+  MoreHorizontal,
   SkipForward,
   TriangleAlert,
   Undo2,
@@ -126,11 +124,22 @@ import { refusalProse } from "../data/refusals";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../primitives/Menu";
 import { Eye } from "lucide-react";
 import { AnnotatorPanel } from "./AnnotatorPanel";
+import { ClassField } from "./ClassField";
 import { ShortcutSheet } from "./ShortcutSheet";
 import { ToolPalette } from "./ToolPalette";
+import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
 import type { WireAnnotation } from "./jobQueries";
@@ -159,6 +168,29 @@ import {
   useBatchTransition,
   useCreateSchemaVersion,
 } from "../screens/queries";
+
+/**
+ * The frame-level workflow actions, in the order they take the primary slot.
+ *
+ * Module scope and exported so a test can sweep it against the wire's own
+ * declarations rather than against a copy. Each row names an action the wire
+ * declares — this is a *presentation* order over `allowed_actions`, never a
+ * second opinion about legality.
+ */
+export const WORKFLOW_PRIMARIES: readonly {
+  readonly action: AssetAction;
+  readonly label: string;
+  readonly testId: string;
+  readonly progress: "review_pending" | "accepted";
+}[] = [
+  {
+    action: ASSET_ACTION.submitForReview,
+    label: "Submit for review",
+    testId: "submit-for-review",
+    progress: "review_pending",
+  },
+  { action: ASSET_ACTION.accept, label: "Accept", testId: "accept", progress: "accepted" },
+];
 
 /** One notch, matching what a wheel step feels like on the same stage. */
 const ZOOM_STEP = 1.25;
@@ -489,7 +521,34 @@ function Workspace({
   const [view, setView] = useState<Viewport | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [addingClass, setAddingClass] = useState(false);
+  const [classFieldOpen, setClassFieldOpen] = useState(false);
+  /**
+   * Classes used on this frame, most recent first — the class field's ordering.
+   *
+   * Component state rather than derived from the document: what a person reached
+   * for is a fact about *them*, and a document read would rank by whatever is on
+   * screen, so deleting the last car would demote `car` to the bottom of the list
+   * a second after they used it.
+   */
+  const [recentClasses, setRecentClasses] = useState<readonly string[]>([]);
   const viewRef = useRef<AnnotatorView | null>(null);
+  /**
+   * The stage, for fullscreen. The *stage*, never the document: taking the whole
+   * page fullscreen would take the browser chrome with it and leave the tool
+   * strip and the zoom widget floating over an otherwise unreachable app.
+   */
+  const [stage, setStage] = useState<HTMLDivElement | null>(null);
+
+  /**
+   * Every route to a drawing class goes through here, so the recency list cannot
+   * miss one — the field, the tool strip, a digit hotkey and the canvas's own
+   * `activate-class` all land on this callback.
+   */
+  const activateClass = useCallback((labelClass: string | null): void => {
+    setActiveClass(labelClass);
+    if (labelClass === null) return;
+    setRecentClasses((seen) => [labelClass, ...seen.filter((name) => name !== labelClass)]);
+  }, []);
 
   /**
    * The one capability the canvas hands out rather than owning (#189).
@@ -502,9 +561,19 @@ function Workspace({
    * `false` for anything else, which is what that return value is for.
    */
   function hostAction(name: string): boolean {
-    if (name !== TOGGLE_HELP) return false;
-    setHelpOpen((open) => !open);
-    return true;
+    if (name === TOGGLE_HELP) {
+      setHelpOpen((open) => !open);
+      return true;
+    }
+    // `c` (#368). Refused while read-only for the reason the palette is hidden
+    // there: picking a drawing class on a canvas that cannot be drawn on offers a
+    // choice with no consequence.
+    if (name === FOCUS_CLASS_FIELD) {
+      if (readOnly) return false;
+      setClassFieldOpen(true);
+      return true;
+    }
+    return false;
   }
 
   // The map the canvas itself resolves against, so the sheet cannot list a chord
@@ -677,14 +746,14 @@ function Workspace({
           declared,
           note,
         });
-        setActiveClass(declared.name);
+        activateClass(declared.name);
         setAddingClass(false);
       } catch {
         // Held on the mutations themselves; the dialog reads whichever refused.
         // Rethrowing would reach no handler and surface as an unhandled rejection.
       }
     },
-    [activeSchema.data, canRepin, commit, createVersion, repin],
+    [activateClass, activeSchema.data, canRepin, commit, createVersion, repin],
   );
 
   /**
@@ -761,6 +830,7 @@ function Workspace({
 
   const drawn = annotationsInDrawOrder(snapshot.document).length;
 
+
   /**
    * Whether this is an editor or a viewer — the one derivation the whole page
    * turns on (audit finding F2).
@@ -807,6 +877,35 @@ function Workspace({
     (setProgress.isError ? setProgress.error : null) ??
     (finishJob.isError ? finishJob.error : null);
 
+  /**
+   * The one workflow action this frame's own state puts forward (#368).
+   *
+   * The bar used to render five buttons — Save, Skip, Submit for review, Return
+   * to annotator, Accept, Finish job — most of them disabled most of the time,
+   * and a person had to read all six to find the one that would do anything. One
+   * primary says what to do next; the rest are a secondary and an overflow.
+   *
+   * **Asset actions only, and that is a decision rather than the brief's
+   * priority.** `submit_for_review` and the job's `complete` co-declare on the
+   * commonest path there is — an `annotated` frame in a job whose every frame is
+   * settled — because `SETTLED_PROGRESS` includes `annotated`. A priority that
+   * ranked them against each other would have hidden **Finish job** behind
+   * Submit for review on exactly the frame most jobs end on, so finishing a job
+   * would have needed a walk to a skipped or accepted frame first. So `complete`
+   * keeps its own control (below) and this slot is about the *frame*.
+   *
+   * The two that remain are mutually exclusive by construction:
+   * `submit_for_review` is offered from `annotated` and `accept` only from
+   * `review_pending`, so the order below can never actually arbitrate. It is
+   * written as a list anyway because that is what makes the claim checkable —
+   * `test_asset_actions` sweeps the whole progress square, and a third reviewer
+   * action landing in one of those states would fail the test that pins this
+   * list rather than silently changing what the bar offers.
+   */
+  const workflowPrimary = WORKFLOW_PRIMARIES.find((candidate) =>
+    declares(asset, candidate.action),
+  );
+
   const progressWord = PROGRESS_LABEL[asset.progress ?? "unannotated"] ?? asset.progress ?? "";
   /**
    * Why a frame in an open batch cannot be drawn on, when the batch is not the
@@ -840,97 +939,150 @@ function Workspace({
     // harness reading the URL addresses the wrong frame while every assertion it
     // makes still passes. #223's cycle step is where that was found.
     <div className="flex h-screen flex-col" data-testid="annotation-page" data-asset={asset.id}>
+      {/*
+        Three zones (#368): **where you are**, **what you are drawing**, **what
+        happens next**. The bar was one undifferentiated row of thirteen controls
+        in which a navigation arrow, the save state and the button that ends the
+        job all looked alike, and the two that mattered were the hardest to find.
+
+        The zones are `flex-1` / content / `flex-1` rather than `ml-auto`, so the
+        class field is centred on the *bar* and not on whatever is left over —
+        the left zone grows with the asset id and the right with the state, and a
+        centre that drifted between frames is the one thing a person aims a mouse
+        at without looking.
+      */}
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-card px-2">
-        <Button variant="ghost" size="icon" aria-label="Back to the batch" data-testid="back" onClick={onOpenGallery} disabled={onOpenGallery === undefined}>
-          <ArrowLeft className="size-4" />
-        </Button>
-
-        {/* The batch's pin, not the project's active version. Named here because
-            #229 made the pin movable: "why can I not use the class I just made"
-            is answerable only if the screen says which contract it is judged
-            against. Null exactly while a batch is a draft, which an annotator
-            cannot reach. */}
-        {schemaVersion !== null && (
-          <Badge variant="outline" data-testid="pinned-schema" title="The schema version this batch pinned">
-            v{schemaVersion}
-          </Badge>
-        )}
-
-        <div className="flex items-center gap-1" data-testid="asset-navigator">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Previous asset"
-            data-testid="prev-asset"
-            disabled={assetIndex === 0}
-            onClick={() => go(-1)}
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <span className="font-mono text-meta text-muted-foreground" data-testid="asset-position">
-            {asset.content_hash.slice(0, 8)} {assetIndex + 1}/{assetCount}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Next asset"
-            data-testid="next-asset"
-            disabled={assetIndex >= assetCount - 1}
-            onClick={() => go(1)}
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
-
-        <Button variant="ghost" size="icon" aria-label="Open the gallery" data-testid="open-gallery" onClick={onOpenGallery} disabled={onOpenGallery === undefined}>
-          <Grid3x3 className="size-4" />
-        </Button>
-
-        {/* The version dropdown and Merge that `DESIGN.md` draws are #127, and
-            they used to sit here disabled. They are gone: the slots return with
-            the model behind them. */}
-
-        <div className="ml-auto flex items-center gap-2">
+        {/* --- where you are ------------------------------------------- */}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {/*
-            The asset's own state, always on the bar (#187). Before this, `skipped`
-            was visible only as the absence of things — a counter that would not
-            move and an `Accept` that stayed disabled — which reads as the page
-            being broken rather than as a decision somebody made.
+            Principle 10: no exit may lose work. Both routes out of the editor go
+            through `attempt`, which is the same save-first path `go()` gives the
+            navigator — a refused save keeps you here with the refusal on screen
+            rather than silently discarding an afternoon of boxes.
+
+            No confirmation dialog, deliberately: asking "you have unsaved
+            changes, continue?" on every exit trains a person to click through
+            it, and the answer is always "save them" — so it saves them.
           */}
-          <AssetProgressState progress={asset.progress ?? "unannotated"} />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Back to the batch"
+            data-testid="back"
+            onClick={() => attempt(onOpenGallery)}
+            disabled={onOpenGallery === undefined}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+
+          {/* The batch's pin, not the project's active version. Named here because
+              #229 made the pin movable: "why can I not use the class I just made"
+              is answerable only if the screen says which contract it is judged
+              against. Null exactly while a batch is a draft, which an annotator
+              cannot reach. */}
+          {schemaVersion !== null && (
+            <Badge variant="outline" data-testid="pinned-schema" title="The schema version this batch pinned">
+              v{schemaVersion}
+            </Badge>
+          )}
+
+          <div className="flex items-center gap-1" data-testid="asset-navigator">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Previous asset"
+              data-testid="prev-asset"
+              disabled={assetIndex === 0}
+              onClick={() => go(-1)}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="font-mono text-meta text-muted-foreground" data-testid="asset-position">
+              {asset.content_hash.slice(0, 8)} {assetIndex + 1}/{assetCount}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Next asset"
+              data-testid="next-asset"
+              disabled={assetIndex >= assetCount - 1}
+              onClick={() => go(1)}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+            {/*
+              The frame's own state as a dot rather than as the badge it was.
+              `DESIGN.md`: status is never colour alone, so the dot carries an
+              accessible name and a tooltip saying the word — the colour is the
+              glance and the label is the answer.
+            */}
+            <AssetProgressDot progress={asset.progress ?? "unannotated"} />
+          </div>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Open the gallery"
+            data-testid="open-gallery"
+            onClick={() => attempt(onOpenGallery)}
+            disabled={onOpenGallery === undefined}
+          >
+            <Grid3x3 className="size-4" />
+          </Button>
 
           {/*
-            A refused opening move (#299) — the batch or job start this page
-            fires on open. Without it, a batch that could not be opened looks
-            fully functional until the first Save answers a code.
-
-            It has its own slot because it used to share the save's, as a
-            fallback, and never cleared: a save that fully succeeded rendered the
-            opening refusal for the life of the mount (#319). A report somebody
-            else can fill is not a report, and the two failures are not the same
-            question — "this batch would not open" outlives any one save, while
-            "this save did not land" is about the press just made.
+            The Save *button* is gone and the save *state* is not (#368). ⌘S
+            still saves, navigating still saves, and this says which of the three
+            it is doing — so what was removed is a control that duplicated an
+            automatic behaviour, not the behaviour.
           */}
           <OpeningRefusal error={openingRefusal} />
           <SaveState dirty={dirty} pending={save.isPending} error={save.isError ? save.error : null} />
+        </div>
 
+        {/* --- what you are drawing ------------------------------------ */}
+        {/*
+          The centre, and the only zone that is about the *next* shape rather than
+          about the ones already made. Hidden while read-only for the tool
+          palette's reason: a drawing class over a canvas that cannot be drawn on
+          offers a choice with no consequence, and the banner below carries the
+          reason once.
+        */}
+        {!readOnly && (
+          <ClassField
+            schema={store.document.schema}
+            activeClass={activeClass}
+            onActivateClass={activateClass}
+            open={classFieldOpen}
+            onOpenChange={setClassFieldOpen}
+            recent={recentClasses}
+            {...(onOpenGallery === undefined
+              ? {}
+              : // The create row opens the dialog **empty**, not prefilled with
+                // what was typed. `AddClassDialog` has no prop to seed its name
+                // field and it belongs to WS4, which reworks that dialog into a
+                // session — so adding one here would be a prop WS4 immediately
+                // rewrites. The row still earns its place: it is the answer to
+                // "the class I need is not in this list", which without it is a
+                // dead end.
+                { onAddClass: () => setAddingClass(true) })}
+          />
+        )}
+
+        {/* --- what happens next --------------------------------------- */}
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
           {/*
-            Read-only cannot become dirty — no primary press reaches the machine
-            and no keystroke but a host action runs — so `!dirty` already hides
-            the press. The capability is stated anyway, because "cannot be dirty"
-            is an argument and `disabled` should be a fact.
+            **Past `unannotated`**, not the `annotated` count — the same rule the
+            gallery's own bar states, and for the reason it states: a readout that
+            counted only `annotated` goes *backwards* when a frame is accepted,
+            which is the one thing a progress readout must never do.
           */}
-          <Button
-            variant="primary"
-            size="sm"
-            data-testid="save"
-            disabled={readOnly || !dirty || save.isPending}
-            {...(readOnly && withheld !== null ? { title: withheld } : {})}
-            onClick={() => attempt()}
-          >
-            <Save className="size-4" />
-            Save
-          </Button>
+          <span className="text-meta text-muted-foreground" data-testid="job-progress">
+            {counts === null
+              ? "—"
+              : `${Math.max(0, counts.total - counts.unannotated)} / ${counts.total} annotated`}
+          </span>
+
           {/*
             One slot, two moves, because they are the same decision read forwards
             and backwards. Offering `Skip` on an already-skipped asset would be
@@ -962,100 +1114,37 @@ function Workspace({
               Skip
             </Button>
           )}
+
           {/*
-            The review half of the progress machine, which had **no spelling
-            anywhere in the product** until now (audit F24).
-
-            `annotated -> review_pending -> accepted | annotated` are three legal
-            kernel edges, and the browser offered none of them: the "In review"
-            segment in the gallery could only ever be populated through the API or
-            MCP, and `accepted` — the one state that says a human checked the work
-            — was unreachable by any sequence of clicks. Not a missing feature so
-            much as a machine with a whole side nobody had built a door onto.
-
-            Which of the three appears is the frame's own declaration, so the
-            annotator and the reviewer are the same screen wearing the state it is
-            looking at. That is deliberate: this product has no annotator identity
-            to assign work to (#282), so "reviewer" is a thing somebody is doing
-            rather than somebody they are.
+            The one primary, and only when the frame declares it. Rendered rather
+            than disabled-with-reason because there is nothing to explain: the
+            states that withhold both of these are the states where the *other*
+            controls on this bar are the whole answer, and a permanently greyed
+            "Accept" on every unannotated frame is the noise this zone exists to
+            remove. See `WORKFLOW_PRIMARIES` for why `complete` is not in the list.
           */}
-          {declares(asset, ASSET_ACTION.submitForReview) && (
+          {workflowPrimary !== undefined && (
             <Button
-              variant="secondary"
+              variant="primary"
               size="sm"
-              data-testid="submit-for-review"
+              data-testid={workflowPrimary.testId}
               disabled={setProgress.isPending}
-              onClick={() => settle("review_pending")}
+              onClick={() => settle(workflowPrimary.progress)}
             >
-              <ClipboardCheck className="size-4" />
-              Submit for review
+              <CheckCheck className="size-4" />
+              {workflowPrimary.label}
             </Button>
           )}
-
-          {/*
-            Sending it back, which is the reviewer's "no". Named for the act
-            rather than for the edge it rides — `capabilities.py` makes the same
-            call: "back to annotated" describes the table, "return to annotator"
-            describes what is being done.
-          */}
-          {declares(asset, ASSET_ACTION.returnToAnnotator) && (
-            <Button
-              variant="secondary"
-              size="sm"
-              data-testid="return-to-annotator"
-              disabled={setProgress.isPending}
-              onClick={() => settle("annotated")}
-            >
-              <Undo2 className="size-4" />
-              Return to annotator
-            </Button>
-          )}
-
-          {/*
-            The reviewer's "yes", and the one state with no exit at all. Enabled
-            only where the kernel's machine allows the move — `accepted` is
-            reachable from `review_pending` alone, which is why this used to be
-            offered on an `annotated` frame and silently refused.
-          */}
-          <Button
-            variant="secondary"
-            size="sm"
-            data-testid="accept"
-            disabled={!declares(asset, ASSET_ACTION.accept) || setProgress.isPending}
-            {...(withheld === null ? {} : { title: withheld })}
-            onClick={() => settle("accepted")}
-          >
-            <CheckCheck className="size-4" />
-            Accept
-          </Button>
-
-          {/*
-            **Past `unannotated`**, not the `annotated` count — the same rule the
-            gallery's own bar states, and for the reason it states: a readout that
-            counted only `annotated` goes *backwards* when a frame is accepted,
-            which is the one thing a progress readout must never do.
-
-            It never bit before because nothing in the product could produce
-            `accepted` or `review_pending` (F24) — every settled frame was either
-            `annotated` or `skipped`, and `skipped` made it go backwards too,
-            silently, in a batch where somebody skipped after labelling. Adding
-            the review moves is what made it visible: the real-server cycle run
-            walked one frame to `accepted` and the counter dropped from 3 to 2.
-
-            `annotatedShare` is not reused here because it lives in `screens/` and
-            wants a `ProgressCounts`; the arithmetic is one subtraction and the
-            rule is written down in both places.
-          */}
-          <span className="text-meta text-muted-foreground" data-testid="job-progress">
-            {counts === null
-              ? "—"
-              : `${Math.max(0, counts.total - counts.unannotated)} / ${counts.total} annotated`}
-          </span>
 
           {/*
             Offered only when every asset is settled, because that is exactly when
             `JobService.complete` stops refusing. `unannotated` is the one count
             that blocks it — `annotated`, `skipped` and `accepted` are all settled.
+
+            Its own control rather than the primary slot: it is the *job's* action,
+            it co-declares with `submit_for_review` on the frame most jobs end on,
+            and ranking the two against each other would have made finishing a job
+            require walking to a different frame first.
           */}
           <Button
             variant="secondary"
@@ -1068,48 +1157,53 @@ function Workspace({
             {jobState === "completed" ? "Finished" : "Finish job"}
           </Button>
 
-          <span className="h-5 w-px bg-border" />
-
           {/*
-            Both bounds are disabled *with the reason* (#228, `DESIGN.md`
-            principle 9). They used to be plain buttons that stayed enabled at
-            the ends of the range and did nothing when pressed — the readout
-            simply refused to move, which reads as a broken control rather than
-            as a limit somebody chose.
-
-            The bounds come from `@visionset/annotator` rather than from a number
-            here: `clampZoom` is the one thing that decides them, so a control
-            re-deriving `>= 8` would be a second spelling free to disagree with
-            the stage it is driving.
+            Everything that was on the bar and is not a decision about this frame.
+            `Return to annotator` is here rather than beside Accept because it is
+            the reviewer's *less* common answer and the bar has one primary; the
+            help sheet and the fullscreen-era controls follow it because they are
+            about the session rather than about the work.
           */}
-          <ZoomButton
-            testId="zoom-out"
-            label="Zoom out"
-            atBound={view !== null && atZoomFloor(view.zoom)}
-            reason={`Minimum zoom — ${Math.round(MIN_ZOOM * 100)}% of the asset`}
-            onClick={() => viewRef.current?.zoomBy(1 / ZOOM_STEP)}
-          >
-            <Minus className="size-4" />
-          </ZoomButton>
-          {/* The stage's own scale, capped by it — so the ceiling reads exactly
-              `800%` and never an internal number the clamp already refused. */}
-          <span className="w-12 text-center font-mono text-meta text-muted-foreground" data-testid="zoom-readout">
-            {view === null ? "—" : `${Math.round(view.zoom * 100)}%`}
-          </span>
-          <ZoomButton
-            testId="zoom-in"
-            label="Zoom in"
-            atBound={view !== null && atZoomCeiling(view.zoom)}
-            reason={`Maximum zoom — ${MAX_ZOOM}× image pixels`}
-            onClick={() => viewRef.current?.zoomBy(ZOOM_STEP)}
-          >
-            <Plus className="size-4" />
-          </ZoomButton>
-          {/* The same implementation `mod+0` reaches, which is why that chord stays
-              intercepted rather than forwarded to the host. */}
-          <Button variant="ghost" size="icon" aria-label="Fit to window" data-testid="fit" onClick={() => viewRef.current?.fit()}>
-            <Maximize2 className="size-4" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="More actions" data-testid="more-actions">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {/*
+                Sending it back, which is the reviewer's "no". Named for the act
+                rather than for the edge it rides — `capabilities.py` makes the
+                same call: "back to annotated" describes the table, "return to
+                annotator" describes what is being done.
+              */}
+              {declares(asset, ASSET_ACTION.returnToAnnotator) && (
+                <DropdownMenuItem
+                  data-testid="return-to-annotator"
+                  onSelect={() => settle("annotated")}
+                >
+                  <Undo2 className="size-4" />
+                  Return to annotator
+                </DropdownMenuItem>
+              )}
+              {/* Save is no longer a button on the bar, so the overflow carries
+                  the one press that still means "store this now" — for the person
+                  who does not know ⌘S and would otherwise have to navigate. */}
+              <DropdownMenuItem
+                data-testid="menu-save"
+                disabled={readOnly || !dirty || save.isPending}
+                onSelect={() => attempt()}
+              >
+                <Check className="size-4" />
+                Save now
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem data-testid="menu-shortcuts" onSelect={() => setHelpOpen(true)}>
+                <CircleHelp className="size-4" />
+                Keyboard shortcuts
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -1208,6 +1302,7 @@ function Workspace({
 
       <div className="flex min-h-0 flex-1 gap-3 p-3">
         <div
+          ref={setStage}
           className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-stage"
           data-testid="canvas-stage"
         >
@@ -1220,7 +1315,7 @@ function Workspace({
                 // greyed-out toolbar does not stop a drag from drawing a box.
                 readOnly={readOnly}
                 activeClass={readOnly ? null : activeClass}
-                onActivateClass={setActiveClass}
+                onActivateClass={activateClass}
                 onViewChange={setView}
                 hiddenIds={hiddenIds}
                 viewRef={viewRef}
@@ -1254,15 +1349,42 @@ function Workspace({
             <ToolPalette
               schema={store.document.schema}
               tool={toolFor(store.document, activeClass)}
-              onActivateClass={setActiveClass}
+              onActivateClass={activateClass}
               onToggleHelp={() => setHelpOpen((open) => !open)}
               onAddClass={() => setAddingClass(true)}
+              // The chords have worked since #46; this is the first time the
+              // page says so. `canUndo`/`canRedo` come off the snapshot, so the
+              // buttons and the keyboard read one command log.
+              history={{
+                canUndo: snapshot.canUndo,
+                canRedo: snapshot.canRedo,
+                onUndo: () => store.undo(),
+                onRedo: () => store.redo(),
+              }}
             />
           )}
 
           <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-meta text-muted-foreground" data-testid="object-total">
             {drawn} object{drawn === 1 ? "" : "s"}
           </span>
+
+          {/*
+            Zoom lives on the picture it scales (#368). The bounds still come from
+            `@visionset/annotator` rather than from a number here: `clampZoom` is
+            the one thing that decides them, so a control re-deriving `>= 8` would
+            be a second spelling free to disagree with the stage it is driving.
+          */}
+          <ZoomWidget
+            zoom={view?.zoom ?? null}
+            atFloor={view !== null && atZoomFloor(view.zoom)}
+            atCeiling={view !== null && atZoomCeiling(view.zoom)}
+            floorReason={`Minimum zoom — ${Math.round(MIN_ZOOM * 100)}% of the asset`}
+            ceilingReason={`Maximum zoom — ${MAX_ZOOM}× image pixels`}
+            onZoomIn={() => viewRef.current?.zoomBy(ZOOM_STEP)}
+            onZoomOut={() => viewRef.current?.zoomBy(1 / ZOOM_STEP)}
+            onFit={() => viewRef.current?.fit()}
+            fullscreenTarget={stage}
+          />
         </div>
 
         <AnnotatorPanel
@@ -1300,75 +1422,44 @@ function Workspace({
 }
 
 /**
- * A zoom control that says why it stopped working (#228).
+ * The frame's own progress, as a dot (#187, restyled by #368).
  *
- * `ToolPalette`'s `PaletteButton` is the pattern and the two share its one
- * load-bearing detail: **`aria-disabled`, never the native `disabled` attribute**.
- * A disabled `<button>` receives no pointer events, so Radix's trigger never
- * opens and a disabled-with-reason control whose reason cannot be read is just a
- * dead button. This keeps the hover and refuses the press.
+ * It was a `Badge` with the word in it, sitting in the bar's right-hand cluster
+ * where it competed with the actions. As a dot beside the asset navigator it is
+ * where the rest of "which frame am I on" already is, and it costs a fifth of
+ * the width.
  *
- * The tooltip is always there — the ordinary label away from a bound, the reason
- * at one. A tooltip that only appears at the limit would make the limit the one
- * state with no hover affordance to discover it by.
+ * **Status is never colour alone** (`DESIGN.md`), so the word travels with it in
+ * the accessible name and the tooltip — the colour is the glance, the label is
+ * the answer. The words come from `batchState.ts`'s `PROGRESS_LABEL`: this page
+ * kept a second copy of that map until #292, and two spellings of the same five
+ * states were free to drift.
  */
-function ZoomButton({
-  testId,
-  label,
-  atBound,
-  reason,
-  onClick,
-  children,
-}: {
-  readonly testId: string;
-  readonly label: string;
-  readonly atBound: boolean;
-  readonly reason: string;
-  readonly onClick: () => void;
-  readonly children: JSX.Element;
-}): JSX.Element {
+function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Element {
+  const word = PROGRESS_LABEL[progress] ?? progress;
+  const tone =
+    progress === "skipped"
+      ? "bg-destructive"
+      : progress === "accepted"
+        ? "bg-success"
+        : progress === "unannotated"
+          ? "bg-muted-foreground/40"
+          : "bg-muted-foreground";
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={atBound ? reason : label}
-          aria-disabled={atBound || undefined}
-          data-testid={testId}
-          data-at-bound={atBound ? "true" : "false"}
-          className={atBound ? "cursor-not-allowed opacity-40" : undefined}
-          onClick={() => {
-            if (atBound) return;
-            onClick();
-          }}
+        <span
+          className="ml-1 flex size-4 items-center justify-center"
+          data-testid="asset-progress"
+          data-progress={progress}
+          role="img"
+          aria-label={`This frame is ${word.toLowerCase()}`}
         >
-          {children}
-        </Button>
+          <span className={`size-2 rounded-full ${tone}`} />
+        </span>
       </TooltipTrigger>
-      <TooltipContent side="bottom">{atBound ? reason : label}</TooltipContent>
+      <TooltipContent side="bottom">{word}</TooltipContent>
     </Tooltip>
-  );
-}
-
-/**
- * The asset's own progress, spelled for a person (#187).
- *
- * `skipped` is the one value that changes what the rest of the bar means, so it is
- * the one that gets a colour: everything else is a neutral statement of fact.
- * The words come from `batchState.ts`'s `PROGRESS_LABEL` — this page kept a
- * second copy of that map until #292, and two spellings of the same five states
- * were free to drift. The gallery's casing wins, because it was the majority
- * spelling and the house style for state badges.
- */
-function AssetProgressState({ progress }: { readonly progress: string }): JSX.Element {
-  return (
-    <Badge
-      variant={progress === "skipped" ? "destructive" : "neutral"}
-      data-testid="asset-progress"
-    >
-      {PROGRESS_LABEL[progress] ?? progress}
-    </Badge>
   );
 }
 

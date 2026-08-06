@@ -115,7 +115,7 @@
 
 import { isTaggableClass } from "../interaction/tags";
 import type { AnnotationSchema } from "../types";
-import { RESET_ZOOM, TOGGLE_HELP } from "./actions";
+import { FOCUS_CLASS_FIELD, RESET_ZOOM, TOGGLE_HELP } from "./actions";
 import type { Action } from "./actions";
 import { chordOf } from "./keys";
 import type { Keystroke } from "./keys";
@@ -159,6 +159,11 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { chord: "mod+v", action: { kind: "paste" } },
   { chord: "mod+0", action: { kind: "host", name: RESET_ZOOM } },
   { chord: "?", action: { kind: "host", name: TOGGLE_HELP } },
+  // `c` and not `mod+c`, which is copy (#123). A bare letter is safe here for the
+  // reason `v` is: the canvas is not a text field, and the one field this chord
+  // opens takes the focus with it — so the next `c` is typed into the filter
+  // rather than reaching this table at all.
+  { chord: "c", action: { kind: "host", name: FOCUS_CLASS_FIELD } },
   { chord: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 
