@@ -422,7 +422,19 @@ describe("the flow verb", () => {
     );
   });
 
-  it("advances on ↵, which is the chord its own chip names", async () => {
+  it("carries no hotkey chip, unlike its two neighbours on the bar", async () => {
+    // #385: `Chip` is a muted box on a bordered ground — right on the ghost and
+    // the outline controls, a smudge on the only filled one. The chord is
+    // unchanged, which is what the next test asserts; this is about the pixels.
+    assetCount = 2;
+    await open();
+
+    expect(screen.getByTestId("save-and-next").querySelector("kbd")).toBeNull();
+    expect(screen.getByTestId("save-and-stay").querySelector("kbd")?.textContent).toContain("S");
+    expect(screen.getByTestId("skip").querySelector("kbd")?.textContent).toBe("X");
+  });
+
+  it("still advances on ↵, which the shortcut sheet is now the only place to read", async () => {
     assetCount = 2;
     await open();
     expect(screen.getByTestId("annotation-page").getAttribute("data-asset")).toBe(ASSET);
