@@ -230,8 +230,15 @@ const ZOOM_STEP = 1.25;
  * Visual only — every chord it names is bound in `core/input/bindings.ts`, which
  * is the one place a keystroke means anything. A chip is a reminder that the
  * chord exists, and it is honest exactly because it names something that layer
- * already claims: `x` and `mod+s` are rows in the default table, and `↵` is the
- * ring close the adapter reads as *finish the frame* when nothing is being drawn.
+ * already claims: `x` and `mod+s` are both rows in the default table.
+ *
+ * **It belongs on the bar's ghost and outline controls and on nothing else**
+ * (#385). The colours are a muted box on a bordered ground, which is a
+ * *lighter-than-the-surface* treatment — on the one filled control it inverts
+ * into a dark box inside a dark button and reads as a smudge rather than as a
+ * key. A filled-surface variant was considered and declined: two skins for one
+ * reminder is more design than a hint is worth, and the shortcut sheet already
+ * carries every chord, derived from the live registry.
  */
 function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
   return (
@@ -1408,6 +1415,15 @@ function Workspace({
             **`Next` when there is nothing to save**, per decision 2, so the button
             never promises a save it will not perform. Absent entirely on the last
             frame, where `Finish job` above takes the filled slot.
+
+            **No hotkey chip, unlike its two neighbours** (#385). `Chip` is a
+            muted box on a bordered ground, which is right on the ghost and the
+            outline controls and wrong on the only filled one: on near-black it
+            reads as a smudge beside the chevron rather than as a key, and on the
+            short `Next` label it is the widest thing in the button. The chord is
+            unchanged and still listed in the shortcut sheet, which derives its
+            rows from the live registry — so `↵` stays discoverable in the one
+            place that cannot go stale.
           */}
           {!lastFrame && (
             <Button
@@ -1419,7 +1435,6 @@ function Workspace({
             >
               {flowLabel}
               <ChevronRight className="size-4" />
-              <Chip>↵</Chip>
             </Button>
           )}
 
