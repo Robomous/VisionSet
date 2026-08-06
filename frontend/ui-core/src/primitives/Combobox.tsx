@@ -118,14 +118,14 @@ export function Combobox<T>({
   // decision: a picker that reopened mid-list would put the highlight somewhere
   // the person did not leave it, because the list itself may have changed.
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setActive(0);
-      // After paint, or the field does not exist yet to be focused.
-      const raf = requestAnimationFrame(() => fieldRef.current?.focus());
-      return () => cancelAnimationFrame(raf);
-    }
-    return undefined;
+    if (!open) return;
+    setQuery("");
+    setActive(0);
+    // Directly, not behind a frame: this effect runs after the open render has
+    // committed, so the field is already in the tree. Deferring it to a
+    // `requestAnimationFrame` was the first draft and it cost the field the
+    // focus in any environment that does not paint — which is every test.
+    fieldRef.current?.focus();
   }, [open]);
 
   // Typing shortens the list, so the ring has to come back inside it. Clamped

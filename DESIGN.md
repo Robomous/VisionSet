@@ -151,6 +151,12 @@ scarce is what lets the two places it survives actually mean something.
    interface refuses to answer. #160 is the same bug from the other side: a control that
    rendered `disabled` because a callback was missing made the annotator unreachable, and
    nothing on screen said so.
+10. **The annotation workspace is self-sufficient.** No flow may force navigation out of
+   the editor, and no exit may lose work. Back and the grid jump save first, the way the
+   asset navigator already did; a class the schema lacks is created from the class field
+   without leaving the page. Ratified 2026-08-05 (#368) and **immovable**: this is the one
+   screen somebody sits in for an hour, and every trip out of it is a trip back through a
+   list, a tab and a scroll position to the frame they were looking at.
 
 ## Colors
 
@@ -423,13 +429,33 @@ filtered out.
 
 The page the reference design shows (#56), with measurements verified in v1's source:
 
-- **Top bar** (`AnnotationToolHeader` in v1): one 44px (`h-11`) row on `card` with a
-  `border-b`, 32px (`h-8`) controls, `h-5 w-px` divider between groups. Left to right:
-  back · project name + date in muted text with `·` separators at 40% opacity · asset
-  navigator `‹ filename n/m ›` · grid jump · class field · save-state indicator
-  ("Saving…" pulsing meta text / "Saved" green check, shown ~3s / error in destructive
-  with an underlined Retry) · **Save** (primary, Save icon) · **Accept** (CheckCheck) ·
-  `n / m annotated` · zoom out / percent / zoom in · fullscreen (Maximize2) · help.
+- **Top bar**: one 44px (`h-11`) row on `card` with a `border-b`, 32px (`h-8`) controls,
+  in **three zones** since #368 — *where you are*, *what you are drawing*, *what happens
+  next*. The zones are `flex-1` / content / `flex-1`, so the class field is centred on the
+  bar rather than on whatever is left over and does not drift between frames.
+
+  | Zone | Contents |
+  | --- | --- |
+  | Left | back · pinned `v{n}` badge · asset navigator `‹ hash n/m ›` with a **progress dot** · grid jump · save-state indicator |
+  | Centre | the **class field** — swatch, name, hotkey chip; opens on click or on `c` |
+  | Right | `n / m annotated` · **Skip**/**Un-skip** (secondary) · **one** workflow primary · **Finish job** · overflow `⋯` |
+
+  **There is no Save button.** ⌘S saves, navigating saves, settling saves, and the
+  save-state indicator says which of those is happening — what was removed is a control
+  that duplicated an automatic behaviour, not the behaviour. The overflow carries one
+  explicit *Save now* for whoever does not know the chord.
+
+  **Exactly one workflow primary**, chosen from the frame's own `allowed_actions`:
+  `submit_for_review`, else `accept`. The two are mutually exclusive by construction —
+  the kernel offers the first only from `annotated` and the second only from
+  `review_pending`. **`complete` is deliberately not in that list**: it is the *job's*
+  action, and it co-declares with `submit_for_review` on the commonest path there is (an
+  annotated frame in a job whose every frame is settled), so ranking them against each
+  other would hide Finish job exactly where most jobs end. It keeps its own control,
+  disabled with a reason.
+
+  The progress dot replaces the badge that carried the word: the colour is the glance and
+  the accessible name is the answer, because **status is never colour alone**.
 
   The reference draws three more controls between the navigator and the save state —
   version select (GitBranch), create-branch (GitBranchPlus) and **Merge** (GitMerge).
@@ -438,11 +464,27 @@ The page the reference design shows (#56), with measurements verified in v1's so
   until 2026-08-05 to hold the design's shape, which principle 9 forbids — the only
   honest tooltip for them is "this feature does not exist", and that is not an
   explanation of what would enable the button. They return with the model, not before.
+- **Class field** (#368): the centre of the top bar, and where class selection lives —
+  it replaced the side panel's Labels tab, which put the most-used control on the page
+  furthest from the eye. A `Combobox`: swatch · name · hotkey chip at rest; typeahead
+  filtering on open; rows carry swatch · name · geometry · hotkey, **recently used in
+  this job first** and then the schema's authored order. `c` opens it, digits 1–9 still
+  activate directly, and the derived tool follows the class as it always has. When
+  nothing matches what was typed the last row is `Create class "<text>"`; an empty schema
+  renders a dashed `No classes — create one` instead of an empty list. **It shows the
+  drawing class and never follows the selection** — re-classing an existing annotation is
+  the side panel's row menu, a different question about a different object.
 - **Tool strip**: floating at the canvas's left edge — 48px (`w-12`) column, `muted`
   surface, `border`, 12px radius, 8px padding; 36px icon buttons; **active tool = primary
   variant** (the near-black), inactive = ghost; a `h-px w-6` divider; help at the bottom.
   Tooltips open right with the shortcut ("Select (V)", "Box (B)", "Polygon (P)").
   Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow.
+  Below a second divider, **undo and redo** (#368): the chords have worked since #46 and
+  had no representation on screen at all, so the annotator's headline capability over v1
+  was invisible to anybody who did not already know it. Disabled *with the reason*
+  (`Nothing to undo`) rather than hidden, because an empty history is a state a person is
+  in constantly — every freshly opened frame — and a control that vanished and reappeared
+  as they worked would be worse than one that explains itself.
 - **Side panel** (#126): 288px (`w-72`) column, `muted` surface, `border`, 12px radius;
   two tabs (Objects | Labels) in a 2-col tab list — the **`segmented`** variant, named
   at the call site, and the only surface that uses it (#182): two equal halves at 288px
@@ -451,7 +493,14 @@ The page the reference design shows (#56), with measurements verified in v1's so
   px-1.5 py-1`, meta-size text `N. class`; **selected = `border-primary` +
   `bg-primary/10`**; hidden = 50% opacity; per-row eye and trash as 24px ghost icon
   buttons. Header row: object count in muted meta text + all-visibility toggle.
-- **Zoom**: **5%–800%**, percent readout between the −/+ buttons, showing the capped value
+- **Zoom widget**: floating **bottom-right of the stage** since #368, opposite the tool
+  strip and sharing its chrome — `− / readout / + / fit / fullscreen`. It was in the top
+  bar, which said something false about it: a workflow action changes the work, zoom
+  changes only how the work is being looked at. Fullscreen is requested on the **stage**
+  element rather than on the document, so the tool strip and the widget go with it, and
+  it is **absent rather than disabled** where the browser has no Fullscreen API — unlike
+  a capability the wire withholds, there is no state a person could change to get it.
+  **5%–800%**, percent readout between the −/+ buttons, showing the capped value
   exactly at each end. The floor is not v1's 30%: an 8K frame does not *fit* a laptop pane
   above about 18%, so a 30% floor makes "zoom out until you can see the whole thing"
   unreachable (`MIN_ZOOM`, since #49). The ceiling is 8x, where one asset pixel is an
