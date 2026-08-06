@@ -163,7 +163,13 @@ export function AnnotatorPanel({
   function reassign(annotation: Annotation, labelClass: string): void {
     // Same class is the identity, and an identity command still drops a staged
     // preview — the `remove` guard's reason, one row over.
-    if (readOnly || labelClass === annotation.label_class) return;
+    //
+    // Deliberately **no** `readOnly` check here: this function is only handed to a
+    // row when the document can be written, so one would be unreachable — and an
+    // unreachable guard is worse than none, because it makes the reachable one
+    // untestable. Removing the real enforcement would then turn no test red, since
+    // the second copy silently keeps the behaviour correct.
+    if (labelClass === annotation.label_class) return;
     store.execute(replaceAnnotationCommand({ ...annotation, label_class: labelClass }));
   }
 
@@ -270,8 +276,11 @@ function TagStrip({
   readonly tagClasses: readonly LabelClass[];
   readonly tagged: ReadonlySet<string>;
 }): JSX.Element {
+  // No `readOnly` early return: the chips carry `disabled`, so a press cannot
+  // arrive here in the first place, and a second guard behind it would keep the
+  // behaviour correct with the first one deleted — which is a test that cannot
+  // fail. One enforcement, and it is the one the person can see.
   function press(declared: LabelClass): void {
-    if (readOnly) return;
     const command = toggleTagCommand(store.document, declared.name, randomUuid);
     // `null` is a refusal — an undeclared or non-taggable class — and it is
     // asymmetric by design: untag never refuses. Neither arm can fire here, since
