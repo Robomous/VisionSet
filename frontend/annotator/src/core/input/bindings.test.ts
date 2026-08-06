@@ -26,7 +26,7 @@ import {
   pressOf,
   wideSchema,
 } from "./_palette";
-import { FOCUS_CLASS_FIELD, RESET_ZOOM, SAVE, TOGGLE_HELP } from "./actions";
+import { FOCUS_CLASS_FIELD, RESET_ZOOM, SAVE, SKIP_FRAME, TOGGLE_HELP } from "./actions";
 import type { Action } from "./actions";
 import {
   CLASS_HOTKEY_DIGITS,
@@ -83,6 +83,10 @@ const DISPATCH: readonly DispatchRow[] = [
   },
   { chord: "c", key: "c", action: { kind: "host", name: FOCUS_CLASS_FIELD } },
   { chord: "mod+s", key: "s", held: MOD, action: { kind: "host", name: SAVE } },
+  // #383. `enter` is deliberately absent from this pair: the flow verb's chord is
+  // the ring close above, substituted by the adapter when nothing is being drawn,
+  // so a second `enter` row here would shadow the commit.
+  { chord: "x", key: "x", action: { kind: "host", name: SKIP_FRAME } },
   { chord: "v", key: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 

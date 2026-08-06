@@ -42,6 +42,8 @@ import {
   FOCUS_CLASS_FIELD,
   RESET_ZOOM,
   SAVE,
+  SAVE_AND_NEXT,
+  SKIP_FRAME,
   TOGGLE_HELP,
   type Action,
   type ActionKind,
@@ -64,7 +66,12 @@ const PHRASES: Readonly<Record<ActionKind, (action: Action) => string>> = {
       : action.event.type === "cancel"
         ? "Cancel the gesture in progress"
         : action.event.type === "commit"
-          ? "Finish the shape being drawn"
+          ? // Both meanings of `enter`, because the sheet reads the registry and
+            // the registry holds only one of them: the adapter substitutes
+            // `save-and-next` when nothing is being drawn (#383). A row that
+            // named the ring close alone would be right about the table and
+            // wrong about the key.
+            "Finish the shape being drawn — or, with nothing in progress, save and go to the next frame"
           : "Take back the last polygon point",
   undo: () => "Undo",
   redo: () => "Redo",
@@ -83,13 +90,28 @@ const PHRASES: Readonly<Record<ActionKind, (action: Action) => string>> = {
   host: (action) => (action.kind === "host" ? hostPhrase(action.name) : ""),
 };
 
-/** The four names the default table writes; anything else speaks for itself. */
+/** The names the default table writes; anything else speaks for itself. */
 function hostPhrase(name: string): string {
   if (name === RESET_ZOOM) return "Fit the asset to the window";
   if (name === TOGGLE_HELP) return "Show or hide this sheet";
   if (name === FOCUS_CLASS_FIELD) return "Jump to the class picker";
-  if (name === SAVE) return "Save now";
+  if (name === SAVE) return "Save now, and stay on this frame";
+  if (name === SAVE_AND_NEXT) return "Save and go to the next frame";
+  if (name === SKIP_FRAME) return "Skip this frame and go to the next";
   return name;
+}
+
+/**
+ * Which key `mod` is on this machine — `⌘` or `Ctrl`.
+ *
+ * Exported because the top bar shows the same chord on a button (#383), and two
+ * spellings of "is this a Mac" is how one of them ends up saying Ctrl on a
+ * MacBook. `navigator.platform` is deprecated and is still the only thing every
+ * engine agrees on; the guard is for the server and for a test with no DOM.
+ */
+export function modKey(): string {
+  const apple = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  return apple ? "⌘" : "Ctrl";
 }
 
 /**
@@ -127,7 +149,7 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
   const classes = rows.filter((row) => digits.has(row.chord));
 
   const apple = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-  const mod = apple ? "⌘" : "Ctrl";
+  const mod = modKey();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

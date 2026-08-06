@@ -276,13 +276,14 @@ export async function expectNothingToSave(page: Page): Promise<void> {
 }
 
 /**
- * Assert the frame's progress, which is a **dot** on the bar since #368.
+ * Assert the frame's progress, which is a dot **and its word** on the bar since
+ * #383.
  *
- * The word moved out of the visible text and into the accessible name, because
- * the badge that used to carry it competed with the workflow actions for the
- * bar's right-hand side. `data-progress` is the machine-readable half; the
- * accessible name is what a person gets, and `DESIGN.md`'s "status is never
- * colour alone" is why both exist.
+ * The badge that used to carry the word competed with the workflow actions for
+ * the bar's right-hand side, so #368 made it a dot with the word in a tooltip —
+ * and a tooltip is a place a word goes to not be read. It is prose again now,
+ * beside the save state, and `data-progress` is still the machine-readable half.
+ * `DESIGN.md`'s "status is never colour alone" is why both exist.
  */
 export async function expectProgress(page: Page, progress: string): Promise<void> {
   await expect(page.getByTestId("asset-progress")).toHaveAttribute("data-progress", progress);

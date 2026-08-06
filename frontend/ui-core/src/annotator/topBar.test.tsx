@@ -22,7 +22,7 @@ import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
-import { AnnotationPage, WORKFLOW_PRIMARIES } from "./AnnotationPage";
+import { AnnotationPage, REVIEW_ACTIONS } from "./AnnotationPage";
 import { TooltipProvider } from "../primitives/Menu";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
@@ -50,6 +50,31 @@ const sent: { method: string; path: string; body: string }[] = [];
 let progress: Progress = "unannotated";
 /** Whether every frame in the job is settled — what gates the job's `complete`. */
 let jobSettled = false;
+/**
+ * How many frames the job carries.
+ *
+ * One by default, which is also the last frame — so a module that never touches
+ * this is testing the end of a job. #383's right zone is occupied differently
+ * there, which is why several tests below set it to two and stay on the first.
+ */
+let assetCount = 1;
+
+/** Whether the frames arrive carrying a box — what `drawn > 0` reads. */
+let annotated = false;
+
+/** The nth asset's id, distinct enough to read in a failure message. */
+function assetId(index: number): string {
+  return `4444444${index}-4444-4444-8444-444444444444`;
+}
+
+/** Every progress the kernel declares, swept rather than sampled. */
+const PROGRESS_STATES = [
+  "unannotated",
+  "annotated",
+  "skipped",
+  "review_pending",
+  "accepted",
+] as const satisfies readonly Progress[];
 
 function answer(path: string): unknown {
   if (path === `/jobs/${JOB}`) {
@@ -84,24 +109,39 @@ function answer(path: string): unknown {
   }
   if (path.endsWith("/schema/versions/1") || path.endsWith("/schema")) return SCHEMA;
   if (path.endsWith("/assets")) {
+    const items = Array.from({ length: assetCount }, (_unused, index) => ({
+      id: index === 0 ? ASSET : assetId(index),
+      project_id: PROJECT,
+      modality: "image",
+      content_hash: `abcdef0${index}`.padEnd(64, "0"),
+      width: 640,
+      height: 480,
+      format: "png",
+      thumbnail_hash: null,
+      frame_index: null,
+      frame_timestamp: null,
+      source_id: null,
+      ingested_at: null,
+      job_id: JOB,
+      progress,
+      allowed_actions: assetActions(progress, { batchState: "in_annotation" }),
+    }));
+    return { items, total: items.length };
+  }
+  if (path.endsWith("/annotations") && annotated) {
     return {
       items: [
         {
-          id: ASSET,
-          project_id: PROJECT,
-          modality: "image",
-          content_hash: "abcdef01".padEnd(64, "0"),
-          width: 640,
-          height: 480,
-          format: "png",
-          thumbnail_hash: null,
-          frame_index: null,
-          frame_timestamp: null,
-          source_id: null,
-          ingested_at: null,
+          id: "55555555-5555-4555-8555-555555555555",
+          asset_id: ASSET,
+          label_class: "vehicle",
+          schema_version: 1,
+          geometry: { type: "bbox", x: 10, y: 10, width: 40, height: 30 },
+          attributes: {},
+          provenance: "human",
+          model_ref: null,
+          confidence: null,
           job_id: JOB,
-          progress,
-          allowed_actions: assetActions(progress, { batchState: "in_annotation" }),
         },
       ],
       total: 1,
@@ -114,6 +154,8 @@ beforeEach(() => {
   sent.length = 0;
   progress = "unannotated";
   jobSettled = false;
+  assetCount = 1;
+  annotated = false;
   writeToken("a-token");
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
@@ -223,15 +265,15 @@ describe("the class field", () => {
   });
 });
 
-describe("the single workflow primary", () => {
+describe("the single review action", () => {
   it("is nothing at all on a frame with no review move to make", async () => {
     progress = "unannotated";
     await open();
 
-    for (const candidate of WORKFLOW_PRIMARIES) {
+    for (const candidate of REVIEW_ACTIONS) {
       expect(screen.queryByTestId(candidate.testId)).toBeNull();
     }
-    // Skip is a secondary and stays visible — the bar is not empty.
+    // Skip is the other resolution verb and stays visible — the bar is not empty.
     expect(screen.getByTestId("skip")).toBeDefined();
   });
 
@@ -256,30 +298,24 @@ describe("the single workflow primary", () => {
     // by construction — `submit_for_review` is offered from `annotated` and
     // `accept` only from `review_pending` — and this is what would fail if a
     // third reviewer action ever landed in one of those states.
-    for (const state of [
-      "unannotated",
-      "annotated",
-      "skipped",
-      "review_pending",
-      "accepted",
-    ] as const) {
+    for (const state of PROGRESS_STATES) {
       progress = state;
       const view = render(mount(<AnnotationPage jobId={JOB} />));
       await screen.findByTestId("annotation-page");
 
-      const offered = WORKFLOW_PRIMARIES.filter(
+      const offered = REVIEW_ACTIONS.filter(
         (candidate) => screen.queryByTestId(candidate.testId) !== null,
       );
-      expect(offered.length, `${state} offered ${offered.length} primaries`).toBeLessThanOrEqual(1);
+      expect(offered.length, `${state} offered ${offered.length}`).toBeLessThanOrEqual(1);
       view.unmount();
     }
   });
 
-  it("keeps Finish job out of the slot, so it survives a settled annotated frame", async () => {
-    // The stop-and-flag this WS raised, pinned. `submit_for_review` and the job's
-    // `complete` co-declare on the commonest path there is: an annotated frame in
-    // a job whose every frame is settled. Ranking them against each other would
-    // have hidden Finish job exactly where most jobs end.
+  it("keeps Finish job out of the list, so it survives a settled annotated frame", async () => {
+    // WS2's stop-and-flag, pinned. `submit_for_review` and the job's `complete`
+    // co-declare on the commonest path there is: an annotated frame in a job whose
+    // every frame is settled. Ranking them against each other would have hidden
+    // Finish job exactly where most jobs end.
     progress = "annotated";
     jobSettled = true;
     await open();
@@ -287,6 +323,177 @@ describe("the single workflow primary", () => {
     expect(screen.getByTestId("submit-for-review")).toBeDefined();
     expect(screen.getByTestId("finish-job")).toBeDefined();
     expect(screen.getByTestId("finish-job").hasAttribute("disabled")).toBe(false);
+  });
+
+  it("says what submitting means, for a product with no annotator identity", async () => {
+    progress = "annotated";
+    await open();
+
+    await userEvent.hover(screen.getByTestId("submit-for-review"));
+
+    expect(
+      (await screen.findAllByText(/anyone opening the job can accept or return it/i)).length,
+    ).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The filled slot, which is the whole of #383.
+ *
+ * `variant="primary"` is the one weight on the bar, so "exactly one filled
+ * control" is a claim about `bg-primary` rather than about a `data-` attribute
+ * nobody styles from — asserting a marker the design does not read would pass
+ * over a bar with two coral buttons on it.
+ */
+function filled(): HTMLElement[] {
+  // `classList.contains`, never `className.includes`: the substring form also
+  // matches `hover:bg-primary-hover`, which every filled *and* every hovered
+  // control would answer to.
+  return [...document.querySelectorAll<HTMLElement>("header button")].filter((button) =>
+    button.classList.contains("bg-primary"),
+  );
+}
+
+describe("the flow verb", () => {
+  it("is the filled control while a next frame exists", async () => {
+    assetCount = 2;
+    await open();
+
+    expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual([
+      "save-and-next",
+    ]);
+    // Finish job is still on the bar, and still outline — it is the job's action
+    // and this is not the end of the job.
+    expect(screen.getByTestId("finish-job").className).not.toContain("bg-primary");
+  });
+
+  it("hands the filled slot to Finish job on the last frame, and does not render", async () => {
+    assetCount = 1;
+    jobSettled = true;
+    progress = "annotated";
+    await open();
+
+    expect(screen.queryByTestId("save-and-next")).toBeNull();
+    expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["finish-job"]);
+  });
+
+  it("leaves exactly one filled control in every progress, crossed with the last frame", async () => {
+    // The occupancy rule stated as a sweep rather than as prose: the filled slot
+    // is `Save and next` while a next frame exists and `Finish job` when none
+    // does, so it is exclusive by arithmetic and cannot be contended by a
+    // declaration. A review action promoted back to `primary` would fail here.
+    for (const state of PROGRESS_STATES) {
+      for (const count of [1, 2]) {
+        progress = state;
+        assetCount = count;
+        const view = render(mount(<AnnotationPage jobId={JOB} />));
+        await screen.findByTestId("annotation-page");
+
+        const names = filled().map((button) => button.getAttribute("data-testid"));
+        expect(names, `${state}, ${count} frame(s): ${names.join(", ")}`).toEqual([
+          count === 1 ? "finish-job" : "save-and-next",
+        ]);
+        view.unmount();
+      }
+    }
+  });
+
+  it("reads Next on a frame nobody has drawn on, because no save will happen", async () => {
+    assetCount = 2;
+    progress = "unannotated";
+    await open();
+
+    expect(screen.getByTestId("save-and-next").textContent).toContain("Next");
+    expect(screen.getByTestId("save-and-next").textContent).not.toContain("Save and next");
+  });
+
+  it("reads Save and next once the frame carries work", async () => {
+    // Loaded annotations, not drawn ones: jsdom's `getBoundingClientRect` returns
+    // all zeros, so a drag draws nothing — the limitation that keeps the ordering
+    // claim in the browser suite. What the label keys on is `drawn`, and an asset
+    // that arrives with a box has one.
+    assetCount = 2;
+    progress = "annotated";
+    annotated = true;
+    await open();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("save-and-next").textContent).toContain("Save and next"),
+    );
+  });
+
+  it("advances on ↵, which is the chord its own chip names", async () => {
+    assetCount = 2;
+    await open();
+    expect(screen.getByTestId("annotation-page").getAttribute("data-asset")).toBe(ASSET);
+
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("annotation-page").getAttribute("data-asset")).toBe(assetId(1)),
+    );
+  });
+
+  it("does not advance on ↵ while the class field owns the keyboard", async () => {
+    // The guard that matters most, because the combobox is one Enter away from
+    // the canvas at all times: the field lives outside the annotator's focus
+    // root, so the press never reaches the binding table at all.
+    assetCount = 2;
+    await open();
+    await userEvent.click(screen.getByTestId("class-field-trigger"));
+    await userEvent.type(await screen.findByTestId("class-field-input"), "veh");
+
+    await userEvent.keyboard("{Enter}");
+
+    expect(screen.getByTestId("annotation-page").getAttribute("data-asset")).toBe(ASSET);
+  });
+
+  it("skips on X, gated by the wire and not by this page's reading of it", async () => {
+    assetCount = 2;
+    await open();
+    screen.getByTestId("annotator-root").focus();
+
+    await userEvent.keyboard("x");
+
+    await waitFor(() =>
+      expect(sent.some((request) => request.path.endsWith("/progress"))).toBe(true),
+    );
+    expect(sent.find((request) => request.path.endsWith("/progress"))?.body).toContain("skipped");
+  });
+
+  it("does not skip on X from a frame the wire will not let go", async () => {
+    // `accepted` declares nothing at all, so the chord has to answer nothing —
+    // the same `declares` the button is disabled by.
+    progress = "accepted";
+    assetCount = 2;
+    await open();
+    screen.getByTestId("annotator-root").focus();
+
+    await userEvent.keyboard("x");
+
+    expect(sent.some((request) => request.path.endsWith("/progress"))).toBe(false);
+  });
+});
+
+describe("the frame's state, in prose", () => {
+  it("says the word beside the dot rather than keeping it in a tooltip", async () => {
+    progress = "annotated";
+    await open();
+
+    const state = screen.getByTestId("asset-progress");
+    expect(state.getAttribute("data-progress")).toBe("annotated");
+    // `PROGRESS_LABEL`'s own wording, which is what makes the microtext read
+    // `● annotated · Saved` rather than a second spelling of the five states.
+    expect(state.textContent).toContain("annotated");
+  });
+
+  it("sits beside the save state, so the two read as one sentence", async () => {
+    await open();
+
+    const state = screen.getByTestId("asset-progress");
+    expect(state.parentElement?.textContent).toContain("·");
+    expect(state.parentElement?.textContent).toContain("Saved");
   });
 });
 

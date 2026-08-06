@@ -139,6 +139,7 @@ import type { Tool } from "../../core/interaction/tool";
 import {
   READ_ONLY_KINDS,
   RESET_ZOOM,
+  SAVE_AND_NEXT,
   defaultRegistry,
   keystrokeOf,
   modifiersOf,
@@ -147,7 +148,7 @@ import {
   resolve,
   runAction,
 } from "../../core/input";
-import type { Binding, InputHost } from "../../core/input";
+import type { Action, Binding, InputHost } from "../../core/input";
 import { createClipboard } from "../../core/interaction/clipboard";
 import type { Clipboard } from "../../core/interaction/clipboard";
 import type { IdFactory } from "../../core/ids";
@@ -541,11 +542,39 @@ export function AnnotatorCanvas({
       altKey: event.altKey,
     });
     if (keystroke === null) return;
-    const action = resolve(registry, keystroke);
+    const resolved = resolve(registry, keystroke);
     // (4) A chord this table does not claim belongs to the browser — and this has
     // to be asked before anything runs, or `mod+z` with an empty history would
     // fall through to the browser's own undo inside a text field.
-    if (action === null) return;
+    if (resolved === null) return;
+
+    /**
+     * `enter` means **finish**, and what it finishes depends on whether anything
+     * is in progress (#383).
+     *
+     * The chord is `send commit` in `DEFAULT_BINDINGS` — v1's ring close, and the
+     * one close a keyboard can always reach. #383's flow verb wants the same key
+     * for the frame, and the two never collide: outside `drawing-polygon` the
+     * machine has no row for a commit, so today the press is silently swallowed.
+     * This is that dead press given the meaning the bar already shows on its
+     * primary button.
+     *
+     * A substitution here rather than a second row in the table, because the fold
+     * is last-wins — a `host` row for `enter` would shadow the commit and take the
+     * ring close with it — and because the deciding fact is the interaction state,
+     * which is the adapter's. It is a substitution rather than a fall-through
+     * *after* the dispatch so that the read-only branch and `runAction` both see
+     * one action: `host` is in `READ_ONLY_KINDS`, so ↵ still advances a frame
+     * nobody may edit, which is exactly what the button beside it does.
+     *
+     * `interactionNow`, not the render's `interaction`: a press landing in the
+     * same frame as a pointer event must read the state that event left behind.
+     */
+    const finishing = resolved.kind === "send" && resolved.event.type === "commit";
+    const action: Action =
+      finishing && interactionNow.current.type === "idle"
+        ? { kind: "host", name: SAVE_AND_NEXT }
+        : resolved;
 
     // (3) The guard, with Escape surviving it. v1 ran Escape *before* its `inInput`
     // check, deliberately, so Escape blurs a field; that ordering is easy to lose
