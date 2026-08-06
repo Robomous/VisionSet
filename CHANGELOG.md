@@ -107,6 +107,31 @@ nothing was being distributed. This is the first version that is.
   (`needs a polygon`) rather than filtered out — a short list with no explanation reads as a
   schema missing its classes.
 
+  **Adding a class mid-job is a session**, and one session is one published schema version.
+  `Create and add another` (`⌘/Ctrl + ↵`) banks a class and clears the form; the primary
+  publishes everything banked in one go, under one auto-written description naming them all.
+  Cancelling with classes banked asks first — and asks on Escape too, since everything a session
+  holds lives in the browser. The create row in the class field now carries the name that was
+  typed into the dialog instead of dropping it. When it lands, the last class written becomes the
+  drawing class and a toast says so.
+
+  Related, and a promise the page could not previously keep: **the drawing class now survives the
+  re-pin that follows publishing, and moving to the next frame.** It was held in a component
+  keyed on the asset, and re-pinning changes the pinned-schema query key — so the class somebody
+  had just created was armed and silently discarded a moment later by the refetch the re-pin
+  caused. Its lifetime is now the job, the same scope the clipboard has.
+
+  The **pinned `v{n}` badge** answers the question it raises. Pressing it says whether the batch's
+  version is still the project's current one and, when it is not, what arrived since — fetched
+  only on opening, because the editor is judged against the pin and a page that read the active
+  version on arrival would offer classes the API then refuses.
+
+  The project's **version history groups the versions the annotator published**: consecutive
+  versions whose provenance is `annotation` collapse into one expandable row, so the curated
+  milestones somebody opened the table to read are not buried under a run of `Added class "cone"
+  from the annotation view`. Curated versions, and versions from before provenance existed, always
+  render on their own; a run of one is not a run.
+
   Behind it, one ratified principle: **the annotation workspace is self-sufficient — no flow may
   force navigation out of the editor, and no exit may lose work.** Back and grid save first.
 
