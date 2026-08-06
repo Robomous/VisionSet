@@ -38,6 +38,8 @@ import { expect, test, type Download, type Page, type TestInfo } from "@playwrig
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
+import { saveNow } from "../e2e/_frame";
+
 const CYCLE_DIR = process.env["VISIONSET_CYCLE_DIR"] ?? "";
 
 /** Written by `scripts/cycle_server.sh`, which minted it once. */
@@ -385,14 +387,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     // 1 — a box.
     await drawBox(page);
-    await page.getByTestId("save").click();
+    await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
     await page.getByTestId("next-asset").click();
 
     // 2 — a polygon, closed with Enter.
     await expect(page.getByTestId("asset-position")).toContainText("2/3");
     await drawPolygon(page);
-    await page.getByTestId("save").click();
+    await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
     await page.getByTestId("next-asset").click();
 
@@ -402,7 +404,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("label-daytime").click();
     await expect(page.getByTestId("label-daytime")).toHaveAttribute("data-active", "true");
     await expect(page.getByTestId("object-total")).toHaveText("1 object");
-    await page.getByTestId("save").click();
+    await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
     // 3a — a lane, written the way lanes are actually written (#223).
@@ -490,12 +492,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // job and still promotes — `SETTLED_PROGRESS` and `PROMOTABLE_PROGRESS` both
     // include it, and a suite of stubs cannot check that.
     await page.getByTestId("submit-for-review").click();
-    await expect(page.getByTestId("asset-progress")).toHaveText("in review");
+    await expect(page.getByTestId("asset-progress")).toHaveAttribute("data-progress", "review_pending");
     // A frame out for review is not writable, and the banner names the way back.
     await expect(page.getByTestId("readonly-banner")).toContainText(/return it to the annotator/i);
 
     await page.getByTestId("accept").click();
-    await expect(page.getByTestId("asset-progress")).toHaveText("accepted");
+    await expect(page.getByTestId("asset-progress")).toHaveAttribute("data-progress", "accepted");
 
     // The chain nothing in the browser closed before #59 found it: a batch cannot
     // complete while a job is outstanding, and a job cannot while an asset is
@@ -689,7 +691,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // And something of the correction's own, so the frame stays settled and the
     // trunk has an addition to show as well as a removal.
     await drawPolygon(page);
-    await page.getByTestId("save").click();
+    await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
     await page.getByTestId("finish-job").click();

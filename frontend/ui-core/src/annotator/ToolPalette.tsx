@@ -73,7 +73,16 @@ import {
   type AnnotationSchema,
   type Tool,
 } from "@visionset/annotator";
-import { CircleHelp, MousePointer2, Plus, Spline, Square, Waypoints } from "lucide-react";
+import {
+  CircleHelp,
+  MousePointer2,
+  Plus,
+  Redo2,
+  Spline,
+  Square,
+  Undo2,
+  Waypoints,
+} from "lucide-react";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
 import { Button } from "../primitives/Button";
@@ -165,6 +174,23 @@ export interface ToolPaletteProps {
    * that cannot honour a control renders no control rather than a dead one.
    */
   readonly onAddClass?: () => void;
+  /**
+   * The command log's two steps, made visible (#368).
+   *
+   * `mod+z` and `mod+shift+z` have worked since #46 and are unchanged; what was
+   * missing is any way to *find out* that they do. Undo is the annotator's
+   * headline capability over v1, and it had no representation on screen at all —
+   * a person who did not already know the chord had no route to it.
+   *
+   * Optional as a pair: a host with no store to step (the showcase) renders
+   * neither, rather than two dead buttons.
+   */
+  readonly history?: {
+    readonly canUndo: boolean;
+    readonly canRedo: boolean;
+    readonly onUndo: () => void;
+    readonly onRedo: () => void;
+  };
 }
 
 export function ToolPalette({
@@ -173,6 +199,7 @@ export function ToolPalette({
   onActivateClass,
   onToggleHelp,
   onAddClass,
+  history,
 }: ToolPaletteProps): JSX.Element {
   /**
    * The canvas keeps the focus.
@@ -227,6 +254,39 @@ export function ToolPalette({
         </PaletteButton>
       )}
 
+      {history !== undefined && (
+        <>
+          <div className="my-1 h-px w-6 bg-border" />
+          {/*
+            Disabled *with the reason*, which is principle 9's treatment and the
+            right one here: an empty history is a real state a person reaches
+            constantly — every freshly opened frame is in it — and a control that
+            simply vanished when there was nothing to undo would make the button
+            appear and disappear as they worked.
+          */}
+          <PaletteButton
+            testId="tool-undo"
+            label={history.canUndo ? "Undo (\u2318Z)" : "Nothing to undo"}
+            active={false}
+            disabled={!history.canUndo}
+            onMouseDown={keepFocus}
+            onClick={history.onUndo}
+          >
+            <Undo2 className="size-4" />
+          </PaletteButton>
+          <PaletteButton
+            testId="tool-redo"
+            label={history.canRedo ? "Redo (\u21e7\u2318Z)" : "Nothing to redo"}
+            active={false}
+            disabled={!history.canRedo}
+            onMouseDown={keepFocus}
+            onClick={history.onRedo}
+          >
+            <Redo2 className="size-4" />
+          </PaletteButton>
+        </>
+      )}
+
       <div className="my-1 h-px w-6 bg-border" />
 
       <PaletteButton
@@ -277,7 +337,12 @@ function PaletteButton({
           data-active={active ? "true" : "false"}
           className={disabled ? "cursor-not-allowed opacity-40" : undefined}
           onMouseDown={onMouseDown}
-          onClick={onClick}
+          onClick={() => {
+            // The press is refused here rather than by the native attribute, which
+            // `aria-disabled` deliberately does not do — see the comment above.
+            if (disabled) return;
+            onClick();
+          }}
         >
           {children}
         </Button>

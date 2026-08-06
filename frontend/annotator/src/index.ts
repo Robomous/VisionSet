@@ -174,8 +174,10 @@ export {
 export {
   CLASS_HOTKEY_DIGITS,
   DEFAULT_BINDINGS,
+  FOCUS_CLASS_FIELD,
   READ_ONLY_KINDS,
   RESET_ZOOM,
+  SAVE,
   TOGGLE_HELP,
   chordOf,
   classAction,

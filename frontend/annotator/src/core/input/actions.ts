@@ -137,3 +137,38 @@ export const RESET_ZOOM = "reset-zoom";
 
 /** Show or hide the shortcut sheet. v1's `?`. */
 export const TOGGLE_HELP = "toggle-help";
+
+/**
+ * Put the cursor in the host's class picker, if it has one.
+ *
+ * The third name core writes and the third it cannot execute — there is no field
+ * in this package, and there must not be: a chrome-free engine is the whole of
+ * `annotator-core`. It is here for the reason the other two are, which is that
+ * **the registry is also the list of keystrokes the annotator takes away from
+ * the browser**. An unclaimed `c` would reach whatever the page around the canvas
+ * does with a bare letter.
+ *
+ * Not `activate-class` under another name: that kind carries a class and picks
+ * one immediately, while this asks the host to *offer* the choice. A host with no
+ * picker answers `false` and the chord falls through, which is what that return
+ * value is for.
+ */
+export const FOCUS_CLASS_FIELD = "focus-class-field";
+
+/**
+ * Ask the host to store the work. v1 had no such chord and neither did this
+ * build until #368.
+ *
+ * It arrives with the removal of the Save *button*, and it is the reason that
+ * removal is not a regression: the page saves on navigate and on every settle
+ * already, so what the button offered was "store it now, without going
+ * anywhere" — a real thing to want, and until now only a button could ask for
+ * it.
+ *
+ * A host action rather than anything core can do, obviously: this package has no
+ * HTTP and never will. But it must be *claimed* here whatever the host does with
+ * it, because an unclaimed `mod+s` opens the browser's Save Page dialog over a
+ * canvas somebody is drawing on — the sharpest instance of the rule that the
+ * registry is the list of keystrokes taken away from the browser.
+ */
+export const SAVE = "save";

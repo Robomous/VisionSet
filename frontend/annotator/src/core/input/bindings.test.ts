@@ -26,7 +26,7 @@ import {
   pressOf,
   wideSchema,
 } from "./_palette";
-import { RESET_ZOOM, TOGGLE_HELP } from "./actions";
+import { FOCUS_CLASS_FIELD, RESET_ZOOM, SAVE, TOGGLE_HELP } from "./actions";
 import type { Action } from "./actions";
 import {
   CLASS_HOTKEY_DIGITS,
@@ -81,6 +81,8 @@ const DISPATCH: readonly DispatchRow[] = [
     held: { shiftKey: true },
     action: { kind: "host", name: TOGGLE_HELP },
   },
+  { chord: "c", key: "c", action: { kind: "host", name: FOCUS_CLASS_FIELD } },
+  { chord: "mod+s", key: "s", held: MOD, action: { kind: "host", name: SAVE } },
   { chord: "v", key: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 

@@ -53,6 +53,7 @@ export {
   CardTitle,
 } from "./primitives/Card.js";
 export { FieldError, FieldHint, Input, Label, Textarea } from "./primitives/Input.js";
+export { Combobox, type ComboboxFooter, type ComboboxProps } from "./primitives/Combobox.js";
 export {
   Alert,
   Badge,
@@ -282,7 +283,9 @@ export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";
 export { parentLabel } from "./patterns/parentLabel.js";
 
 // The floating tool palette (#198). Reports the derived tool; never stores one.
+export { ClassField, classChoices, type ClassFieldProps } from "./annotator/ClassField.js";
 export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
+export { ZoomWidget, type ZoomWidgetProps } from "./annotator/ZoomWidget.js";
 export {
   AddClassDialog,
   runAddClass,
