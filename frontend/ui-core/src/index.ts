@@ -79,16 +79,9 @@ export {
   SheetTrigger,
   type SheetContentProps,
 } from "./primitives/Dialog.js";
-export {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  tabsListVariants,
-  tabsTriggerVariants,
-  type TabsListProps,
-  type TabsVariant,
-} from "./primitives/Tabs.js";
+// One shape since #368 retired `segmented`, so there is no variant to export and
+// no `cva` behind it — see the argument in `Tabs.tsx`.
+export { Tabs, TabsContent, TabsList, TabsTrigger } from "./primitives/Tabs.js";
 export {
   Select,
   SelectContent,

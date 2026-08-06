@@ -1394,13 +1394,13 @@ function Workspace({
           />
         </div>
 
+        {/* No `activeClass` here since #368: the panel is about what is on this
+            asset, and arming the drawing class is the top bar's job. */}
         <AnnotatorPanel
           store={store}
           readOnly={readOnly}
           hiddenIds={hiddenIds}
           onHiddenChange={setHiddenIds}
-          activeClass={activeClass}
-          onActivateClass={setActiveClass}
         />
       </div>
 

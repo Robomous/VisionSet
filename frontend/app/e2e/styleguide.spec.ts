@@ -127,17 +127,6 @@ test("the active tab wears the accent rule and an inactive one wears no chrome",
   await expect(open).toHaveCSS("border-bottom-color", NOTHING);
 });
 
-test("the segmented variant still ships, for the 288px panel it exists for", async ({ page }) => {
-  const panel = page.getByTestId("tabs-segmented");
-  // Raised onto `card` inside a `muted` list — the shape a two-way switch wants,
-  // and the one the page's section bar no longer uses.
-  await expect(panel.getByRole("tab", { name: "Objects" })).toHaveCSS(
-    "background-color",
-    "rgb(255, 255, 255)",
-  );
-  await expect(panel.getByRole("tab", { name: "Labels" })).toHaveCSS("background-color", NOTHING);
-});
-
 test("focus is visible on a tab that has no fill to draw it against", async ({ page }) => {
   // Arrive by keyboard, because `:focus-visible` is the point — and from the last
   // focusable before the bar, so this is one press rather than a hunt.
@@ -174,20 +163,17 @@ test("the class palette draws the schema's colour and the derived hue side by si
 /**
  * #188: one rule owns the space between a tab bar and its content.
  *
- * `TabsContent`'s `mt-3` is that rule, and a consumer adds no gap of its own — so
- * both specimens sit at the same distance whatever variant they wear. Measured
- * here as well as on the two real screens, because the styleguide is where a
- * variant is looked at in isolation and a regression would be seen first.
+ * `TabsContent`'s `mt-3` is that rule, and a consumer adds no gap of its own.
+ * Measured here as well as on the real screen, because the styleguide is where the
+ * bar is looked at in isolation and a regression would be seen first.
  */
-test("both tab variants sit one rhythm step above their content", async ({ page }) => {
+test("the tab bar sits one rhythm step above its content", async ({ page }) => {
   await page.goto("/styleguide");
 
-  for (const specimen of ["tabs-underline", "tabs-segmented"]) {
-    const scope = page.getByTestId(specimen);
-    const list = await scope.locator('[role="tablist"]').boundingBox();
-    const panel = await scope.locator('[role="tabpanel"][data-state="active"]').boundingBox();
-    expect(list, specimen).not.toBeNull();
-    expect(panel, specimen).not.toBeNull();
-    expect(panel!.y - (list!.y + list!.height), specimen).toBeCloseTo(12, 0);
-  }
+  const scope = page.getByTestId("tabs-underline");
+  const list = await scope.locator('[role="tablist"]').boundingBox();
+  const panel = await scope.locator('[role="tabpanel"][data-state="active"]').boundingBox();
+  expect(list).not.toBeNull();
+  expect(panel).not.toBeNull();
+  expect(panel!.y - (list!.y + list!.height)).toBeCloseTo(12, 0);
 });
