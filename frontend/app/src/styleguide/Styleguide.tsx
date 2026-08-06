@@ -260,7 +260,7 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Cards, tabs and tables"
-          description="The screens are made of these. A tab bar underlines; a 288px panel switches."
+          description="The screens are made of these. A tab bar underlines — there is no second shape."
         >
           <Tabs defaultValue="batches" data-testid="tabs-underline">
             <TabsList>
@@ -306,24 +306,9 @@ export function Styleguide(): JSX.Element {
             </TabsContent>
           </Tabs>
 
-          {/* The second variant, at the width it exists for: the annotation page's
-              288px side panel (#126), where two equal halves are a switch and not a
-              row of page sections. Shown here so every variant that ships has a
-              specimen (#182). */}
-          <div className="w-72 rounded-lg border border-border bg-muted p-2">
-            <Tabs defaultValue="objects" data-testid="tabs-segmented">
-              <TabsList variant="segmented" className="w-full">
-                <TabsTrigger value="objects">Objects</TabsTrigger>
-                <TabsTrigger value="labels">Labels</TabsTrigger>
-              </TabsList>
-              <TabsContent value="objects" className="text-meta text-muted-foreground">
-                3 objects — rows carry the class colour, an eye and a trash.
-              </TabsContent>
-              <TabsContent value="labels" className="text-meta text-muted-foreground">
-                The schema's palette, each row showing the digit it answers to.
-              </TabsContent>
-            </Tabs>
-          </div>
+          {/* There is no second specimen: #368 retired the `segmented` variant
+              along with the Objects | Labels switch that was its only caller, so
+              every shape that ships has one specimen and that is this one (#182). */}
         </Section>
 
         {/* Below the tabs section on purpose: `styleguide.spec.ts` reaches the

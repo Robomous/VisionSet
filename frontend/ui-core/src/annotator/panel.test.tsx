@@ -31,6 +31,12 @@ const SCHEMA = {
   ],
 };
 
+/** The same schema with its one tag class removed — the strip's absent case. */
+const UNTAGGABLE_SCHEMA = {
+  ...SCHEMA,
+  classes: SCHEMA.classes.filter((declared) => declared.geometry !== "classification_tag"),
+};
+
 function annotation(
   id: string,
   labelClass: string,
@@ -55,9 +61,9 @@ function annotation(
   };
 }
 
-function storeWith(annotations: readonly unknown[]): AnnotatorStore {
+function storeWith(annotations: readonly unknown[], schema: unknown = SCHEMA): AnnotatorStore {
   return new AnnotatorStore(
-    documentFromWire({ asset: { id: "asset-1", width: 100, height: 100 }, schema: SCHEMA, annotations }),
+    documentFromWire({ asset: { id: "asset-1", width: 100, height: 100 }, schema, annotations }),
   );
 }
 
@@ -66,36 +72,37 @@ function mount(
   overrides: Partial<Parameters<typeof AnnotatorPanel>[0]> = {},
 ): JSX.Element {
   return (
-    <AnnotatorPanel
-      store={store}
-      hiddenIds={new Set()}
-      onHiddenChange={vi.fn()}
-      activeClass={null}
-      onActivateClass={vi.fn()}
-      {...overrides}
-    />
+    <AnnotatorPanel store={store} hiddenIds={new Set()} onHiddenChange={vi.fn()} {...overrides} />
   );
 }
 
-describe("the panel's tab bar", () => {
-  it("keeps the segmented switch the page's sections gave up (#182)", () => {
-    render(mount(storeWith([])));
+describe("the one view the panel is now", () => {
+  it("has no tabs at all, and no way to arm a drawing class", () => {
+    // #368: class selection is the top bar's. A panel that could still arm one
+    // would be a second road to a setting with one owner, so the assertion is
+    // about absence — the tab bar, and the rows that used to activate a class.
+    render(mount(storeWith([annotation("a", "vehicle", "bbox")])));
 
-    // `DESIGN.md` pins this panel as a 2-col tab list, and #182 moved everything
-    // else to the underline bar. Two equal halves at 288px are a switch, and this
-    // is the assertion that stops the default sweeping the exception along with it.
-    expect(screen.getByRole("tablist").dataset.variant).toBe("segmented");
-    expect(screen.getByTestId("tab-objects").getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("tab-labels").getAttribute("aria-selected")).toBe("false");
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByTestId("label-vehicle")).toBeNull();
+    expect(screen.queryByTestId("label-select")).toBeNull();
+  });
+
+  it("names itself and counts what is drawn", () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox"), annotation("b", "lane", "polygon")]);
+    render(mount(store));
+
+    expect(screen.getByTestId("annotator-panel").getAttribute("aria-label")).toBe("Annotations");
+    expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
   });
 });
 
-describe("the Objects tab", () => {
+describe("the object list", () => {
   it("numbers the annotations in draw order and names each one's class", () => {
     const store = storeWith([annotation("a", "vehicle", "bbox"), annotation("b", "lane", "polygon")]);
     render(mount(store));
 
-    expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
     expect(screen.getByTestId("object-row-0").textContent).toContain("1. vehicle");
     expect(screen.getByTestId("object-row-1").textContent).toContain("2. lane");
   });
@@ -172,106 +179,150 @@ describe("the Objects tab", () => {
   });
 });
 
-describe("the editing card", () => {
-  it("appears only for exactly one selected object", async () => {
+describe("the filter", () => {
+  it("is there before there is anything to filter", () => {
+    // Always rendered: a control that appears once a list is long enough is a
+    // control nobody finds.
+    render(mount(storeWith([])));
+    expect(screen.getByTestId("object-filter")).not.toBeNull();
+    expect(screen.getByTestId("objects-empty").textContent).toBe("Nothing drawn yet.");
+  });
+
+  it("keeps the rows whose class matches, anywhere in the name", async () => {
+    const store = storeWith([
+      annotation("a", "vehicle", "bbox"),
+      annotation("b", "lane", "polygon"),
+      annotation("c", "centerline", "polyline"),
+    ]);
+    render(mount(store));
+
+    // `line` is the tail of one class and the middle of another — a `startsWith`
+    // rule would keep neither, and the top bar's own picker matches anywhere too.
+    await userEvent.type(screen.getByTestId("object-filter"), "line");
+    expect(screen.queryByTestId("object-row-0")).toBeNull();
+    expect(screen.getByTestId("object-row-2").textContent).toContain("3. centerline");
+  });
+
+  it("keeps each object's number, because the number is its identity on the canvas", async () => {
     const store = storeWith([annotation("a", "vehicle", "bbox"), annotation("b", "lane", "polygon")]);
     render(mount(store));
-    expect(screen.queryByTestId("editing-card")).toBeNull();
 
-    store.select(selectOnly("a"));
-    expect(await screen.findByTestId("editing-card")).not.toBeNull();
-    expect(screen.getByTestId("editing-geometry").textContent).toBe("bbox");
+    await userEvent.type(screen.getByTestId("object-filter"), "lane");
+    // Still "2.", not renumbered to "1." — the panel and the picture must not
+    // disagree about which shape is which.
+    expect(screen.getByTestId("object-row-1").textContent).toContain("2. lane");
+    expect(screen.queryByTestId("object-row-0")).toBeNull();
+    // And the count is still the whole document, not the visible slice.
+    expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
   });
 
-  it("offers only classes that share the geometry, because the kernel judges per class", async () => {
+  it("says a filter matched nothing, rather than saying nothing is drawn", async () => {
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
     render(mount(store));
-    store.select(selectOnly("a"));
-    await screen.findByTestId("editing-card");
 
-    await userEvent.click(screen.getByTestId("reclass-select"));
-    // Both bbox classes…
-    expect(screen.queryByRole("option", { name: "pedestrian" })).not.toBeNull();
-    // …and neither the polygon class nor the tag: a cross-geometry reassignment is
-    // a write the API refuses with `DisallowedGeometry`, so offering it would be
-    // offering a refusal.
-    expect(screen.queryByRole("option", { name: "lane" })).toBeNull();
-    expect(screen.queryByRole("option", { name: "daytime" })).toBeNull();
-  });
-
-  it("applies behind a button, so a picker does not fill the history", async () => {
-    const store = storeWith([annotation("a", "vehicle", "bbox")]);
-    render(mount(store));
-    store.select(selectOnly("a"));
-    await screen.findByTestId("editing-card");
-
-    await userEvent.click(screen.getByTestId("reclass-select"));
-    await userEvent.click(screen.getByRole("option", { name: "pedestrian" }));
-    // Chosen, not applied.
-    expect(store.document.annotations.get("a")?.label_class).toBe("vehicle");
-    expect(store.canUndo).toBe(false);
-
-    await userEvent.click(screen.getByTestId("reclass-apply"));
-    expect(store.document.annotations.get("a")?.label_class).toBe("pedestrian");
-    expect(store.canUndo).toBe(true);
+    await userEvent.type(screen.getByTestId("object-filter"), "zzz");
+    expect(screen.getByTestId("objects-empty").textContent).toBe("No object matches that filter.");
   });
 });
 
-describe("the Labels tab", () => {
-  async function open(): Promise<void> {
-    await userEvent.click(screen.getByTestId("tab-labels"));
-  }
-
-  it("shows the digit each class answers to, from the same table the keyboard reads", async () => {
-    const store = storeWith([]);
-    render(mount(store));
-    await open();
-
-    // `hotkeyForClass`, so the panel and the input layer cannot disagree about
-    // which number a class is.
-    expect(within(screen.getByTestId("label-vehicle")).getByText("1")).not.toBeNull();
-    // Digit N is palette row N in *authored* order, with no filtering — `daytime` is
-    // the fourth class, so it is 4 even though it is the first tag.
-    expect(within(screen.getByTestId("label-daytime")).getByText("4")).not.toBeNull();
+describe("the classification-tag strip", () => {
+  it("is absent when the pinned schema declares no tag class", () => {
+    render(mount(storeWith([], UNTAGGABLE_SCHEMA)));
+    expect(screen.queryByTestId("tag-strip")).toBeNull();
   });
 
-  it("activates a drawable class, exactly as its digit does", async () => {
-    const activate = vi.fn();
-    const store = storeWith([]);
-    render(mount(store, { onActivateClass: activate }));
-    await open();
-
-    await userEvent.click(screen.getByTestId("label-lane"));
-    expect(activate).toHaveBeenCalledWith("lane");
-    expect(store.canUndo).toBe(false);
+  it("shows the digit each tag answers to, from the same table the keyboard reads", () => {
+    render(mount(storeWith([])));
+    // `hotkeyForClass`, so the chip and the input layer cannot disagree. Digit N is
+    // palette row N in *authored* order with no filtering — `daytime` is the fourth
+    // class, so it is 4 even though it is the first tag.
+    expect(within(screen.getByTestId("tag-chip-daytime")).getByText("4")).not.toBeNull();
   });
 
-  it("toggles a tag class instead, and shows its checked state", async () => {
-    const activate = vi.fn();
+  it("toggles a tag through the store, and a second press clears it", async () => {
     const store = storeWith([]);
-    const { rerender } = render(mount(store, { onActivateClass: activate }));
-    await open();
+    const { rerender } = render(mount(store));
 
-    await userEvent.click(screen.getByTestId("label-daytime"));
-    // `classAction`'s split: a tag is a command, not an active class.
-    expect(activate).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("tag-chip-daytime"));
     expect(store.document.annotations.size).toBe(1);
 
-    rerender(mount(store, { onActivateClass: activate }));
-    await open();
-    expect(screen.getByTestId("label-daytime").dataset["active"]).toBe("true");
+    rerender(mount(store));
+    expect(screen.getByTestId("tag-chip-daytime").dataset["active"]).toBe("true");
+    expect(screen.getByTestId("tag-chip-daytime").getAttribute("aria-pressed")).toBe("true");
 
-    // And a second press clears it — one tag per class, which the annotator holds
-    // structurally because the kernel enforces no uniqueness (#121).
-    await userEvent.click(screen.getByTestId("label-daytime"));
+    // One tag per class, which the annotator holds structurally because the kernel
+    // enforces no uniqueness (#121).
+    await userEvent.click(screen.getByTestId("tag-chip-daytime"));
     expect(store.document.annotations.size).toBe(0);
   });
 
-  it("marks select mode when no class is active", async () => {
-    const store = storeWith([]);
-    render(mount(store, { activeClass: null }));
-    await open();
-    expect(screen.getByTestId("label-select").dataset["active"]).toBe("true");
+  it("offers only tag classes, so a drawable class cannot be tagged from here", () => {
+    render(mount(storeWith([])));
+    expect(screen.getByTestId("tag-chip-daytime")).not.toBeNull();
+    expect(screen.queryByTestId("tag-chip-vehicle")).toBeNull();
+    expect(screen.queryByTestId("tag-chip-lane")).toBeNull();
+  });
+});
+
+describe("reassigning a class from a row", () => {
+  async function openMenu(index: number): Promise<void> {
+    await userEvent.click(screen.getByTestId(`object-reclass-${index}`));
+  }
+
+  it("applies on selection and lands as one undoable history entry", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store));
+
+    await openMenu(0);
+    await userEvent.click(screen.getByTestId("reclass-0-pedestrian"));
+
+    expect(store.document.annotations.get("a")?.label_class).toBe("pedestrian");
+    expect(store.canUndo).toBe(true);
+    expect(store.getSnapshot().undoLabel).toBe("edit pedestrian");
+
+    store.undo();
+    expect(store.document.annotations.get("a")?.label_class).toBe("vehicle");
+  });
+
+  it("lists every class, disabling the ones whose geometry this object is not", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store));
+    await openMenu(0);
+
+    // The other bbox class is offered…
+    expect(screen.getByTestId("reclass-0-pedestrian").getAttribute("aria-disabled")).not.toBe(
+      "true",
+    );
+    // …and the polygon, polyline and tag classes are present and refused, rather
+    // than filtered out. A short list with no explanation reads as a schema that is
+    // missing classes; the reason is what makes it actionable.
+    for (const name of ["lane", "centerline", "daytime"]) {
+      expect(screen.getByTestId(`reclass-0-${name}`).getAttribute("aria-disabled")).toBe("true");
+    }
+    expect(screen.getByTestId("reclass-0-lane").textContent).toContain("needs a polygon");
+    expect(screen.getByTestId("reclass-0-centerline").textContent).toContain("needs a polyline");
+  });
+
+  it("will not reassign to a class the kernel would refuse", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store));
+    await openMenu(0);
+
+    // `DisallowedGeometry` is the kernel's, and the menu must not be the surface
+    // that discovers it: pressing a disabled item changes nothing at all.
+    await userEvent.click(screen.getByTestId("reclass-0-lane"));
+    expect(store.document.annotations.get("a")?.label_class).toBe("vehicle");
+    expect(store.canUndo).toBe(false);
+  });
+
+  it("reassigns a polygon among polygon classes, so the rule is per geometry and not per row", async () => {
+    const store = storeWith([annotation("a", "lane", "polygon")]);
+    render(mount(store));
+    await openMenu(0);
+
+    // The control for the bbox case above: `vehicle` is the one refused here.
+    expect(screen.getByTestId("reclass-0-vehicle").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("reclass-0-lane").getAttribute("aria-disabled")).not.toBe("true");
   });
 });
 
@@ -286,6 +337,7 @@ describe("the Labels tab", () => {
  * Visibility stays live on purpose and is the one thing that must **not** be
  * gated: hiding is a *view* decision the core document has no field for, which is
  * the same reason `visibility.ts` gives for why it must never travel to the API.
+ * The filter is view state of the same kind.
  */
 describe("what the panel offers when the document cannot be written", () => {
   it("draws no delete on an object row", async () => {
@@ -300,35 +352,23 @@ describe("what the panel offers when the document cannot be written", () => {
     expect(store.getSnapshot().undoLabel).toBeNull();
   });
 
-  it("offers no class reassignment, because reassigning is a write", async () => {
+  it("offers no class reassignment, because reassigning is a write", () => {
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
-    store.select(selectOnly("a"));
     render(mount(store, { readOnly: true }));
 
-    // The card is gone rather than disabled: every control on it exists to change
-    // the class, so a disabled one is an empty promise with a dropdown.
-    expect(screen.queryByTestId("editing-card")).toBeNull();
+    // The control is gone rather than disabled: every item on the menu exists to
+    // change the class, so a disabled one is an empty promise with a dropdown.
+    expect(screen.queryByTestId("object-reclass-0")).toBeNull();
   });
 
   it("will not toggle a tag, which is the panel's quietest document change", async () => {
     const store = storeWith([]);
     render(mount(store, { readOnly: true }));
 
-    await userEvent.click(screen.getByTestId("tab-labels"));
-    const tag = screen.getByTestId("label-daytime");
-    expect(tag).toHaveProperty("disabled", true);
-    await userEvent.click(tag);
+    const chip = screen.getByTestId("tag-chip-daytime");
+    expect(chip).toHaveProperty("disabled", true);
+    await userEvent.click(chip);
     expect(store.getSnapshot().document.annotations.size).toBe(0);
-  });
-
-  it("will not arm a drawing tool either, since the canvas would not honour it", async () => {
-    const store = storeWith([]);
-    const onActivateClass = vi.fn();
-    render(mount(store, { readOnly: true, onActivateClass }));
-
-    await userEvent.click(screen.getByTestId("tab-labels"));
-    await userEvent.click(screen.getByTestId("label-vehicle"));
-    expect(onActivateClass).not.toHaveBeenCalled();
   });
 
   it("still hides and shows, because that is a view decision and never a document one", async () => {
@@ -340,16 +380,22 @@ describe("what the panel offers when the document cannot be written", () => {
     expect(onHiddenChange).toHaveBeenCalledOnce();
   });
 
-  it("offers all of it when the document can be written", async () => {
+  it("still filters, for the same reason", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store, { readOnly: true }));
+
+    await userEvent.type(screen.getByTestId("object-filter"), "zzz");
+    expect(screen.getByTestId("objects-empty")).not.toBeNull();
+  });
+
+  it("offers all of it when the document can be written", () => {
     // The control: every assertion above is about `readOnly` and not about the
     // fixture happening to render nothing.
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
-    store.select(selectOnly("a"));
     render(mount(store));
 
     expect(screen.getByTestId("object-delete-0")).toHaveProperty("disabled", false);
-    expect(screen.queryByTestId("editing-card")).not.toBeNull();
-    await userEvent.click(screen.getByTestId("tab-labels"));
-    expect(screen.getByTestId("label-daytime")).toHaveProperty("disabled", false);
+    expect(screen.queryByTestId("object-reclass-0")).not.toBeNull();
+    expect(screen.getByTestId("tag-chip-daytime")).toHaveProperty("disabled", false);
   });
 });

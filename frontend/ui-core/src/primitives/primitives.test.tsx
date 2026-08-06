@@ -137,16 +137,15 @@ describe("Card and Table", () => {
  * is the part a screen reader and the keyboard both read: the roles, `aria-selected`,
  * Radix's `data-state`, and that only the open panel is in the tree at all.
  *
- * The one thing here that is about *appearance* is the variant cascade, and it is
- * asserted through `data-variant` for the same reason: dropping the context in
- * `TabsList` would leave a segmented list full of underlined triggers, which is a
- * regression no role can see.
+ * There is nothing here about the variant cascade any more: #368 retired
+ * `segmented` along with the panel that was its only caller, so `TabsList` has one
+ * shape and no context to hand down.
  */
 describe("Tabs", () => {
-  function bar(variant?: "underline" | "segmented"): JSX.Element {
+  function bar(): JSX.Element {
     return (
       <Tabs defaultValue="schema">
-        <TabsList {...(variant === undefined ? {} : { variant })} aria-label="Sections">
+        <TabsList aria-label="Sections">
           <TabsTrigger value="schema">Schema</TabsTrigger>
           <TabsTrigger value="batches">Batches</TabsTrigger>
         </TabsList>
@@ -193,18 +192,6 @@ describe("Tabs", () => {
     await userEvent.keyboard("{ArrowRight}");
     expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Batches" }));
     expect(screen.getByRole("tab", { name: "Batches" }).getAttribute("aria-selected")).toBe("true");
-  });
-
-  it("hands every trigger the list's variant, so a bar cannot be half of each", () => {
-    const { rerender } = render(bar("segmented"));
-    expect(screen.getByRole("tablist").dataset.variant).toBe("segmented");
-    for (const tab of screen.getAllByRole("tab")) expect(tab.dataset.variant).toBe("segmented");
-
-    // The default is the page's tab bar: the narrow panel is the exception and
-    // names itself, not the other way round.
-    rerender(bar());
-    expect(screen.getByRole("tablist").dataset.variant).toBe("underline");
-    for (const tab of screen.getAllByRole("tab")) expect(tab.dataset.variant).toBe("underline");
   });
 });
 

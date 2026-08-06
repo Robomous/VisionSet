@@ -1345,6 +1345,10 @@ test("what is drawn on the surround stays legible against it", async ({ page }) 
  * than the other because it makes the primitive self-sufficient — a `Tabs` that
  * is not a flex column at all still spaces correctly, and a consumer cannot
  * forget something it never had to know.
+ *
+ * The panel that reported #188 no longer has tabs (#368), so what is left to
+ * measure is the project view — the same doubling is possible wherever a `Tabs`
+ * sits in a gapped flex column, and the styleguide holds the specimen's own copy.
  */
 
 /** The measured distance between the tab bar and the panel below it, in pixels. */
@@ -1358,16 +1362,6 @@ async function tabGap(page: Page, root: string): Promise<number> {
   return panel.y - (list.y + list.height);
 }
 
-test("the annotator panel's tabs sit one rhythm step above their content", async ({ page }) => {
-  const sent: Request[] = [];
-  await openJob(page, sent);
-
-  // `mt-3` — 0.75rem at the 14px base, so 12px. Measured rather than asserted
-  // against a class string, because the defect was two rules adding up and a
-  // class assertion would have seen both of them and been satisfied.
-  expect(await tabGap(page, "annotator-panel")).toBeCloseTo(12, 0);
-});
-
 test("the project view's tabs use the same one rule", async ({ page }) => {
   const sent: Request[] = [];
   await serveApi(page, sent);
@@ -1375,10 +1369,8 @@ test("the project view's tabs use the same one rule", async ({ page }) => {
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
 
-  // Checked at the same time as the panel, per the issue: the same doubling is
-  // possible wherever a `Tabs` sits in a gapped flex column. This one was already
-  // right, and asserting it is what stops a later layout tidy-up from adding a
-  // gap here and rediscovering #188 on a different screen.
+  // This one was already right, and asserting it is what stops a later layout
+  // tidy-up from adding a gap here and rediscovering #188 on a different screen.
   await expect(page.getByTestId("project-tabs")).toBeVisible();
   expect(await tabGap(page, "project-tabs")).toBeCloseTo(12, 0);
 });
@@ -1470,16 +1462,17 @@ test("the palette reports the tool whatever moved the class", async ({ page }) =
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  // The tool is derived and never stored, so the digit row and the Labels tab
-  // must light the same button the palette's own press does. A palette holding
-  // its own idea of the tool is the pair v1 spent two mechanisms keeping in step.
+  // The tool is derived and never stored, so the digit row and the top bar's class
+  // field must light the same button the palette's own press does. A palette
+  // holding its own idea of the tool is the pair v1 spent two mechanisms keeping
+  // in step.
   await page.getByTestId("annotator-root").focus();
   await page.keyboard.press("2");
   await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "true");
   await expect(page.getByTestId("tool-select")).toHaveAttribute("data-active", "false");
 
-  await page.getByTestId("tab-labels").click();
-  await page.getByTestId("label-vehicle").click();
+  await page.getByTestId("class-field-trigger").click();
+  await page.getByTestId("class-field-option-vehicle").click();
   await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
   await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "false");
 });

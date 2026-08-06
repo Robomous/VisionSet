@@ -300,29 +300,29 @@ from being rediscovered one screen at a time.
 
 ## Tabs
 
-Two shapes, one component (`primitives/Tabs.tsx`), chosen by a `variant` on `TabsList`
-which every trigger under it inherits. **#182**: they used to be one shape, a segmented
-control, and on the project view that put three pressed-looking buttons directly under
-the page's real buttons.
+**One shape** (`primitives/Tabs.tsx`) — page sections, GitHub's repository nav. A row on a
+full-width `border` hairline; the active tab carries a **2px `primary` rule sitting on
+that hairline** plus `foreground` text; an inactive tab carries no border, no fill and no
+shadow, and gets a `muted` background on hover or focus. The inactive tab keeps the same
+2px border at `transparent`, so selecting one does not shift the row.
 
-- **`underline` (the default)** — page sections, GitHub's repository nav. A row on a
-  full-width `border` hairline; the active tab carries a **2px `primary` rule sitting on
-  that hairline** plus `font-semibold` and `foreground` text; an inactive tab carries no
-  border, no fill and no shadow, and gets a `muted` background on hover or focus. The
-  inactive tab keeps the same 2px border at `transparent`, so selecting one does not
-  shift the row.
-- **`segmented`** — a narrow panel's two-way switch: `muted` list, `border`, 12px radius,
-  4px padding, equal-width triggers, the active one raised onto `card` with `shadow-sm`.
-  Used by the annotation side panel and nowhere else so far.
+There used to be two, chosen by a `variant` on `TabsList` which every trigger inherited.
+**#182** made this one the default: the original was a segmented control, and on the
+project view that put three pressed-looking buttons directly under the page's real
+buttons. **#368** removed the other — `segmented`, the annotation panel's
+**Objects | Labels** switch — along with the switch itself, when class selection moved to
+the top bar and the panel became one Annotations view. With one caller gone there was no
+second shape, so the `variant` prop, the context that carried it and the `data-variant`
+attribute went too: three pieces of machinery describing a choice nobody has.
 
 **The space between a tab bar and its content belongs to `TabsContent`, and to nothing
-else.** It is `mt-3` (12px), one declaration, for both variants — and a consumer must
-not add a gap of its own. `AnnotatorPanel` wrapped this margin in a `flex flex-col
-gap-3` and the two added, floating the tabs 24px above the panel they switch (**#188**).
-The primitive owns it rather than the consumers because that is the direction nobody can
-forget: a `Tabs` which is not a flex column at all still spaces correctly. Asserted by
-measurement — the styleguide's two specimens and both real screens — rather than by a
-class string, since a class assertion would have seen both rules and been satisfied.
+else.** It is `mt-3` (12px), one declaration — and a consumer must not add a gap of its
+own. `AnnotatorPanel` wrapped this margin in a `flex flex-col gap-3` and the two added,
+floating the tabs 24px above the panel they switch (**#188**). The primitive owns it
+rather than the consumers because that is the direction nobody can forget: a `Tabs` which
+is not a flex column at all still spaces correctly. Asserted by measurement — the
+styleguide specimen and the project view — rather than by a class string, since a class
+assertion would have seen both rules and been satisfied.
 
 **The active underline is `primary`**, the same near-black as a filled button, so the
 section you are in looks like the rest of the interface rather than like an advertisement.
@@ -332,9 +332,9 @@ colour and the rule already carry it, and a second signal reflows the row's metr
 nothing. (Two earlier `Tabs.tsx` docstrings argued over whether this rule could be orange.
 #323 settled it by removing the orange: `primary` is not the brand any more.)
 
-Focus is **not** styled per variant: `styles.css`'s base layer gives every
+Focus is **not** styled here at all: `styles.css`'s base layer gives every
 `:focus-visible` element a 2px `ring` outline, and an outline is painted outside the box,
-so it never depended on the segmented chip's fill. The underline variant adds
+so it never depended on the segmented chip's fill. The trigger adds
 `focus-visible:bg-muted` only so the ring encloses a fill rather than the page.
 
 ## Project surfaces
@@ -485,14 +485,32 @@ The page the reference design shows (#56), with measurements verified in v1's so
   (`Nothing to undo`) rather than hidden, because an empty history is a state a person is
   in constantly — every freshly opened frame — and a control that vanished and reappeared
   as they worked would be worse than one that explains itself.
-- **Side panel** (#126): 288px (`w-72`) column, `muted` surface, `border`, 12px radius;
-  two tabs (Objects | Labels) in a 2-col tab list — the **`segmented`** variant, named
-  at the call site, and the only surface that uses it (#182): two equal halves at 288px
-  are a switch, and an underline's hairline would cut the panel in two rather than run
-  under a page. Object rows: `rounded-md border
-  px-1.5 py-1`, meta-size text `N. class`; **selected = `border-primary` +
-  `bg-primary/10`**; hidden = 50% opacity; per-row eye and trash as 24px ghost icon
-  buttons. Header row: object count in muted meta text + all-visibility toggle.
+- **Side panel** (#126, reshaped by #368): 288px (`w-72`) column, `muted` surface,
+  `border`, 12px radius. **One view, no tabs** — it used to be Objects | Labels, and the
+  Labels tab did two unrelated jobs under one heading: it armed the drawing class and it
+  toggled the asset's classification tags. The first moved to the top bar's class field,
+  where the eye already is; the second stays, because a tag is a fact about this frame.
+  So the panel is about one subject, what is on this asset, and it can no longer set the
+  drawing class at all — `activeClass` is gone from its props, not merely unused.
+  Top to bottom: **header** (the word `Annotations`, the object count in muted meta text,
+  the all-visibility toggle); the **tag chip strip**, rendered only when the pinned schema
+  declares a `classification_tag` class — rounded-full chips carrying swatch, name and
+  either the hotkey digit or a check; the **filter**, a 32px input that is *always*
+  rendered, because a control that appears once a list is long enough is a control nobody
+  finds; then the **object rows**: `rounded-md border px-1.5 py-1`, meta-size text
+  `N. class`; **selected = `border-primary` + `bg-primary/10`**; hidden = 50% opacity;
+  per-row tag, eye and trash as 24px ghost icon buttons.
+  **The number is draw order and filtering does not renumber it** — it is the object's
+  identity on the canvas, and a panel that renumbered as somebody typed would disagree
+  with the picture about which shape is "3".
+  The per-row **tag icon** opens class reassignment: every class the schema declares, with
+  the ones whose geometry does not match this annotation disabled and **carrying the
+  reason** (`needs a polygon`). Listed-and-refused rather than filtered out, which is what
+  shipped before: a short list with no explanation reads as a schema missing its classes,
+  and the rule — the kernel judges geometry per class — is invisible exactly when somebody
+  is hunting for the class that is not there. Applied on selection, not behind an Apply: a
+  menu commits on Enter or a click, so there is no per-keystroke state to keep out of the
+  undo history.
 - **Zoom widget**: floating **bottom-right of the stage** since #368, opposite the tool
   strip and sharing its chrome — `− / readout / + / fit / fullscreen`. It was in the top
   bar, which said something false about it: a workflow action changes the work, zoom

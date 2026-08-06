@@ -398,11 +398,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("save-state")).toContainText("Saved");
     await page.getByTestId("next-asset").click();
 
-    // 3 — a whole-asset tag, from the Labels tab. Never the canvas.
+    // 3 — a whole-asset tag, from the panel's chip strip. Never the canvas: a tag
+    // is not a shape, so no tool and no gesture reaches one.
     await expect(page.getByTestId("asset-position")).toContainText("3/3");
-    await page.getByTestId("tab-labels").click();
-    await page.getByTestId("label-daytime").click();
-    await expect(page.getByTestId("label-daytime")).toHaveAttribute("data-active", "true");
+    await page.getByTestId("tag-chip-daytime").click();
+    await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "true");
     await expect(page.getByTestId("object-total")).toHaveText("1 object");
     await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
@@ -471,7 +471,6 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.locator("[data-annotation-id] polyline")).toHaveAttribute("fill", "none");
     // Reachable from the object list, which is the only way to reach it: a canvas
     // press cannot select an open path in 0.1.0 (`geometryContains` refuses).
-    await page.getByTestId("tab-objects").click();
     await expect(page.getByTestId("object-row-1")).toContainText("centerline");
 
     // 3c — the tool strip says why there is no lane tool, rather than showing a
@@ -683,7 +682,6 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // The parent's box, drawn, selectable and deletable — on a job that has
     // written nothing of its own.
     await expect(page.getByTestId("object-total")).toHaveText("1 object");
-    await page.getByTestId("tab-objects").click();
     await expect(page.getByTestId("object-row-0")).toContainText("vehicle");
 
     await page.getByTestId("object-delete-0").click();
@@ -881,18 +879,18 @@ async function openProject(
 /**
  * Pick a class and **wait until it is active**.
  *
- * Through the Labels tab rather than the digit, and the difference is not
- * cosmetic: a hotkey's effect reaches the machine through the host's own state, so
- * a press and a drag issued back to back can both be seen while the old class is
- * still current. The panel reflects the class with `data-active`, which turns that
- * into something to wait on — and it is also how a person picks a class.
+ * Through the top bar's class field rather than the digit, and the difference is
+ * not cosmetic: a hotkey's effect reaches the machine through the host's own state,
+ * so a press and a drag issued back to back can both be seen while the old class is
+ * still current. The field prints the class it is holding, which turns that into
+ * something to wait on — and it is also how a person picks a class.
  *
  * The cycle lost a run to exactly this before the wait existed.
  */
 async function activate(page: Page, name: string): Promise<void> {
-  await page.getByTestId("tab-labels").click();
-  await page.getByTestId(`label-${name}`).click();
-  await expect(page.getByTestId(`label-${name}`)).toHaveAttribute("data-active", "true");
+  await page.getByTestId("class-field-trigger").click();
+  await page.getByTestId(`class-field-option-${name}`).click();
+  await expect(page.getByTestId("class-field-name")).toHaveText(name);
 }
 
 async function drawBox(page: Page): Promise<void> {

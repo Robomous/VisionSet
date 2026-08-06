@@ -1,5 +1,5 @@
 /**
- * The annotation page's right-hand panel: **Objects** and **Labels**.
+ * The annotation page's right-hand panel: **Annotations**, one view.
  *
  * ## Why it is here and not in `@visionset/annotator`
  *
@@ -16,12 +16,31 @@
  * `hiddenIds` prop and this panel drives it. The split is: the annotator gained an
  * ability, `ui-core` gained the UI.
  *
- * ## One `Selection`, two views of it
+ * ## There are no tabs, and the panel no longer picks a class
  *
- * The panel reads and writes the same store the canvas does. Clicking a row calls
- * `store.select`; clicking a shape on the canvas updates the same selection and the
- * row highlights. There is no second source of truth and no synchronisation, which
- * is what makes the round trip a *property* rather than a feature.
+ * It used to be **Objects | Labels**. The Labels tab was the schema's palette, and
+ * it did two unrelated jobs under one heading: it armed the drawing class, and it
+ * toggled the asset's classification tags. #368 split them by where they belong.
+ * Arming the drawing class is the most-used control on the page, so it moved to the
+ * top bar (`ClassField`) where the eye already is; tagging the *asset* is a fact
+ * about this frame, so it stays here, as a chip strip over the list.
+ *
+ * What that leaves is one view about one subject — what is on this asset — which is
+ * why `activeClass` and `onActivateClass` are gone from the props entirely rather
+ * than kept and ignored. A panel that could still arm a class would be a second
+ * road to a setting with one owner.
+ *
+ * ## The order of the parts, and the one that is not obvious
+ *
+ * Header, tags, filter, list. The chip strip sits above the list because the tags
+ * describe the whole asset and the list describes the things drawn on it — decision
+ * 2's own wording. The filter sits *below* the chips and immediately above the rows
+ * it filters, because a control's position is the cheapest statement of what it acts
+ * on; between the chips and the list it would read as filtering both.
+ *
+ * It renders even with nothing drawn. A control that appears once a list is long
+ * enough is a control nobody finds, and the panel's width is fixed, so there is no
+ * layout to protect by hiding it.
  *
  * ## Every write goes through a command
  *
@@ -30,16 +49,25 @@
  * why: an identity command still goes through `store.execute`, which drops a staged
  * preview, so a delete of nothing must not be executed at all.
  *
- * Class reassignment uses `replaceAnnotationCommand` and offers **only classes that
- * share the annotation's geometry**, because the kernel judges geometry per class
- * (#7, `DisallowedGeometry`) — a cross-geometry reassignment is a write the API
- * refuses, so offering it would be offering a refusal.
+ * Class reassignment uses `replaceAnnotationCommand`, so it lands in the history and
+ * undo takes it back like anything else. It is offered per row rather than for the
+ * selection, and it lists **every** class the schema declares, with the ones whose
+ * geometry does not match this annotation's **disabled and carrying the reason**.
+ * That is a deliberate reversal of what shipped before, which filtered them out: a
+ * short list with no explanation looks like the schema is missing classes, and the
+ * rule — the kernel judges geometry per class (#7, `DisallowedGeometry`) — is
+ * invisible exactly when somebody is hunting for the class that is not there.
+ *
+ * Applied on selection rather than behind an **Apply**, which the card this replaces
+ * needed and a menu does not: a Radix menu highlights on arrow and commits only on
+ * Enter or a click, so there is no per-keystroke state to keep out of the history.
  *
  * ## No new core state and no new events
  *
  * Everything below is a command or a projection that already existed. Visibility is
  * the one piece of new state and it lives *beside* the store, exactly where the
- * adapter's own `skipId` and `hotId` live.
+ * adapter's own `skipId` and `hotId` live; the filter is view state of the same
+ * kind, held here and travelling nowhere.
  */
 
 import {
@@ -55,24 +83,22 @@ import {
   toggleTagCommand,
   useAnnotatorSnapshot,
   type Annotation,
+  type AnnotationSchema,
   type AnnotatorStore,
   type LabelClass,
 } from "@visionset/annotator";
-import { Check, Eye, EyeOff, Trash2 } from "lucide-react";
-import { useMemo, useState, type JSX } from "react";
+import { Check, Eye, EyeOff, Tag, Trash2 } from "lucide-react";
+import { useState, type JSX } from "react";
 
 import { classColor } from "../palette";
-import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
-import { Label } from "../primitives/Input";
+import { Input } from "../primitives/Input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../primitives/Select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../primitives/Menu";
 import { cn } from "../lib/cn";
 
 export interface AnnotatorPanelProps {
@@ -80,9 +106,6 @@ export interface AnnotatorPanelProps {
   /** Held by the page, because the canvas needs the same set. */
   readonly hiddenIds: ReadonlySet<string>;
   readonly onHiddenChange: (hidden: ReadonlySet<string>) => void;
-  /** The class a drawing gesture will carry. `null` is select mode. */
-  readonly activeClass: string | null;
-  readonly onActivateClass: (labelClass: string | null) => void;
   /**
    * The document is displayed and cannot be changed.
    *
@@ -99,72 +122,26 @@ export function AnnotatorPanel({
   store,
   hiddenIds,
   onHiddenChange,
-  activeClass,
-  onActivateClass,
   readOnly = false,
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
+  const [filter, setFilter] = useState("");
+
   const drawn = annotationsInDrawOrder(snapshot.document);
+  const schema = snapshot.document.schema;
+  const tagClasses = schema.classes.filter(isTaggableClass);
 
-  // No `gap-*` on the root: `TabsContent` owns the space between a tab bar and its
-  // content (#188), and a flex gap here would add to it — which is exactly what
-  // this panel used to do, floating the tabs 24px above the content they switch.
-  return (
-    <Tabs defaultValue="objects" className="flex w-72 flex-col" data-testid="annotator-panel">
-      {/* The one place the segmented control is still the right shape (#182): two
-          equal halves inside a 288px card is a switch, and there is no full-width
-          run to hang an underline's hairline on that would not cut the panel in
-          two. `DESIGN.md`'s side-panel line names the variant. */}
-      <TabsList variant="segmented" className="w-full">
-        <TabsTrigger value="objects" data-testid="tab-objects">
-          Objects
-        </TabsTrigger>
-        <TabsTrigger value="labels" data-testid="tab-labels">
-          Labels
-        </TabsTrigger>
-      </TabsList>
+  const query = filter.trim().toLowerCase();
+  // Numbered by **draw order**, never by position in the filtered list: the number
+  // is the object's identity on the canvas, and renumbering it as somebody types
+  // would make the panel and the picture disagree about which one is "3".
+  const rows = drawn
+    .map((annotation, index) => ({ annotation, index }))
+    .filter((row) => row.annotation.label_class.toLowerCase().includes(query));
 
-      <TabsContent value="objects">
-        <ObjectsTab
-          store={store}
-          readOnly={readOnly}
-          drawn={drawn}
-          selection={snapshot.selection}
-          hiddenIds={hiddenIds}
-          onHiddenChange={onHiddenChange}
-        />
-      </TabsContent>
-
-      <TabsContent value="labels">
-        <LabelsTab
-          store={store}
-          readOnly={readOnly}
-          activeClass={activeClass}
-          onActivateClass={onActivateClass}
-        />
-      </TabsContent>
-    </Tabs>
-  );
-}
-
-function ObjectsTab({
-  store,
-  readOnly,
-  drawn,
-  selection,
-  hiddenIds,
-  onHiddenChange,
-}: {
-  readonly store: AnnotatorStore;
-  readonly readOnly: boolean;
-  readonly drawn: readonly Annotation[];
-  readonly selection: ReadonlySet<string>;
-  readonly hiddenIds: ReadonlySet<string>;
-  readonly onHiddenChange: (hidden: ReadonlySet<string>) => void;
-}): JSX.Element {
   const allHidden = drawn.length > 0 && drawn.every((one) => hiddenIds.has(one.id));
 
-  function toggle(id: string): void {
+  function toggleHidden(id: string): void {
     const next = new Set(hiddenIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -183,48 +160,170 @@ function ObjectsTab({
     store.execute(removeAnnotationsCommand([id]));
   }
 
+  function reassign(annotation: Annotation, labelClass: string): void {
+    // Same class is the identity, and an identity command still drops a staged
+    // preview — the `remove` guard's reason, one row over.
+    //
+    // Deliberately **no** `readOnly` check here: this function is only handed to a
+    // row when the document can be written, so one would be unreachable — and an
+    // unreachable guard is worse than none, because it makes the reachable one
+    // untestable. Removing the real enforcement would then turn no test red, since
+    // the second copy silently keeps the behaviour correct.
+    if (labelClass === annotation.label_class) return;
+    store.execute(replaceAnnotationCommand({ ...annotation, label_class: labelClass }));
+  }
+
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted p-2">
+    <section
+      className="flex w-72 flex-col gap-2 rounded-lg border border-border bg-muted p-2"
+      data-testid="annotator-panel"
+      aria-label="Annotations"
+    >
       <div className="flex items-center justify-between px-1">
-        <span className="text-meta text-muted-foreground" data-testid="object-count">
-          {drawn.length} object{drawn.length === 1 ? "" : "s"}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6"
-          aria-label={allHidden ? "Show all objects" : "Hide all objects"}
-          data-testid="toggle-all-visibility"
-          disabled={drawn.length === 0}
-          onClick={() => onHiddenChange(allHidden ? new Set() : new Set(drawn.map((o) => o.id)))}
-        >
-          {allHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-        </Button>
+        <span className="text-body font-medium">Annotations</span>
+        <div className="flex items-center gap-2">
+          <span className="text-meta text-muted-foreground" data-testid="object-count">
+            {drawn.length} object{drawn.length === 1 ? "" : "s"}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            aria-label={allHidden ? "Show all objects" : "Hide all objects"}
+            data-testid="toggle-all-visibility"
+            disabled={drawn.length === 0}
+            onClick={() => onHiddenChange(allHidden ? new Set() : new Set(drawn.map((o) => o.id)))}
+          >
+            {allHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </Button>
+        </div>
       </div>
 
-      {drawn.length === 0 ? (
-        <p className="px-1 py-4 text-center text-meta text-muted-foreground">
-          Nothing drawn yet.
+      {/* Only when the pinned schema declares one — decision 2. A strip with no
+          chips is a heading over nothing, and most schemas declare no tags at all. */}
+      {tagClasses.length > 0 && (
+        <TagStrip
+          store={store}
+          readOnly={readOnly}
+          schema={schema}
+          tagClasses={tagClasses}
+          tagged={taggedClassNames(snapshot.document)}
+        />
+      )}
+
+      <Input
+        value={filter}
+        onChange={(event) => setFilter(event.target.value)}
+        placeholder="Filter objects…"
+        aria-label="Filter objects"
+        data-testid="object-filter"
+        className="h-8"
+      />
+
+      {rows.length === 0 ? (
+        <p
+          className="px-1 py-4 text-center text-meta text-muted-foreground"
+          data-testid="objects-empty"
+        >
+          {drawn.length === 0 ? "Nothing drawn yet." : "No object matches that filter."}
         </p>
       ) : (
         <ul className="flex flex-col gap-1">
-          {drawn.map((annotation, index) => (
+          {rows.map(({ annotation, index }) => (
             <ObjectRow
               key={annotation.id}
               annotation={annotation}
               index={index}
-              declared={classNamed(store.document, annotation.label_class)}
-              selected={selection.has(annotation.id)}
+              declared={classNamed(snapshot.document, annotation.label_class)}
+              classes={schema.classes}
+              selected={snapshot.selection.has(annotation.id)}
               hidden={hiddenIds.has(annotation.id)}
               onSelect={() => store.select(selectOnly(annotation.id))}
-              onToggleVisible={() => toggle(annotation.id)}
-              {...(readOnly ? {} : { onRemove: () => remove(annotation.id) })}
+              onToggleVisible={() => toggleHidden(annotation.id)}
+              {...(readOnly
+                ? {}
+                : {
+                    onRemove: () => remove(annotation.id),
+                    onReassign: (labelClass: string) => reassign(annotation, labelClass),
+                  })}
             />
           ))}
         </ul>
       )}
+    </section>
+  );
+}
 
-      {!readOnly && <EditingCard store={store} selection={selection} />}
+/**
+ * The asset's classification tags, as chips.
+ *
+ * This is the Labels tab's one capability that had nowhere else to go: a tag is not
+ * a shape and cannot be drawn, so no tool and no canvas gesture reaches it. The
+ * digit is shown because the keyboard binding is still the fastest way to set one
+ * and this is the only surface left that can name it — `hotkeyForClass`, so the chip
+ * and the input layer cannot disagree about which number a class answers to.
+ */
+function TagStrip({
+  store,
+  readOnly,
+  schema,
+  tagClasses,
+  tagged,
+}: {
+  readonly store: AnnotatorStore;
+  readonly readOnly: boolean;
+  readonly schema: AnnotationSchema;
+  readonly tagClasses: readonly LabelClass[];
+  readonly tagged: ReadonlySet<string>;
+}): JSX.Element {
+  // No `readOnly` early return: the chips carry `disabled`, so a press cannot
+  // arrive here in the first place, and a second guard behind it would keep the
+  // behaviour correct with the first one deleted — which is a test that cannot
+  // fail. One enforcement, and it is the one the person can see.
+  function press(declared: LabelClass): void {
+    const command = toggleTagCommand(store.document, declared.name, randomUuid);
+    // `null` is a refusal — an undeclared or non-taggable class — and it is
+    // asymmetric by design: untag never refuses. Neither arm can fire here, since
+    // the strip is built by filtering the schema's own tag classes.
+    if (command !== null) store.execute(command);
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1 px-1" data-testid="tag-strip">
+      {tagClasses.map((declared) => {
+        const on = tagged.has(declared.name);
+        return (
+          <button
+            key={declared.name}
+            type="button"
+            data-testid={`tag-chip-${declared.name}`}
+            data-active={on ? "true" : "false"}
+            aria-pressed={on}
+            disabled={readOnly}
+            onClick={() => press(declared)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-meta",
+              on
+                ? "border-primary bg-primary/10 text-foreground"
+                : "border-border bg-card text-muted-foreground",
+            )}
+          >
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: classColor(declared, declared.name) }}
+            />
+            <span className="truncate">{declared.name}</span>
+            {on ? (
+              <Check className="size-3 text-primary" aria-hidden="true" />
+            ) : (
+              <kbd className="rounded-sm border border-border px-1 font-mono text-meta">
+                {hotkeyForClass(schema, declared.name) ?? "—"}
+              </kbd>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -233,21 +332,26 @@ function ObjectRow({
   annotation,
   index,
   declared,
+  classes,
   selected,
   hidden,
   onSelect,
   onToggleVisible,
   onRemove,
+  onReassign,
 }: {
   readonly annotation: Annotation;
   readonly index: number;
   readonly declared: LabelClass | undefined;
+  readonly classes: readonly LabelClass[];
   readonly selected: boolean;
   readonly hidden: boolean;
   readonly onSelect: () => void;
   readonly onToggleVisible: () => void;
   /** Absent in read-only: there is no delete to offer, so no button is drawn. */
   readonly onRemove?: () => void;
+  /** Absent in read-only for the same reason — every item on it is a write. */
+  readonly onReassign?: (labelClass: string) => void;
 }): JSX.Element {
   return (
     <li
@@ -277,6 +381,14 @@ function ObjectRow({
           {index + 1}. {annotation.label_class}
         </span>
       </button>
+      {onReassign !== undefined && (
+        <ReassignMenu
+          index={index}
+          annotation={annotation}
+          classes={classes}
+          onReassign={onReassign}
+        />
+      )}
       <Button
         variant="ghost"
         size="icon"
@@ -303,171 +415,65 @@ function ObjectRow({
 }
 
 /**
- * What the selected object is, and the one thing about it that can be changed here.
+ * Every class the schema declares, and why the ones that cannot be picked cannot.
  *
- * Behind an **Apply** rather than applied on change, because a class reassignment is
- * a command that lands in the undo history: a picker that wrote on every keystroke
- * of a keyboard-driven `Select` would fill the history with states nobody chose.
+ * The disabled items are the point. A menu listing only the compatible classes
+ * answers "which class do you want" while silently withholding the answer to "where
+ * is `lane`" — and `lane` is missing for a reason the person can act on, which is to
+ * draw a polygon instead. So the row is there, greyed, naming the geometry it needs.
  */
-function EditingCard({
-  store,
-  selection,
+function ReassignMenu({
+  index,
+  annotation,
+  classes,
+  onReassign,
 }: {
-  readonly store: AnnotatorStore;
-  readonly selection: ReadonlySet<string>;
-}): JSX.Element | null {
-  const [pending, setPending] = useState<string | null>(null);
-
-  const selected = useMemo(() => {
-    if (selection.size !== 1) return null;
-    const [id] = [...selection];
-    return store.document.annotations.get(id) ?? null;
-  }, [selection, store.document]);
-
-  if (selected === null) return null;
-
-  const geometry = selected.geometry.type;
-  // Only classes that share the geometry. The kernel judges geometry **per class**
-  // (`DisallowedGeometry`), so a cross-geometry reassignment is a write the API
-  // refuses — offering it would be offering a refusal.
-  const compatible = store.document.schema.classes.filter(
-    (declared) => declared.geometry === geometry,
-  );
-  const choice = pending ?? selected.label_class;
-
-  function apply(): void {
-    if (selected === null || choice === selected.label_class) return;
-    store.execute(replaceAnnotationCommand({ ...selected, label_class: choice }));
-    setPending(null);
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-md border border-border bg-card p-2" data-testid="editing-card">
-      <div className="flex items-center justify-between">
-        <span className="text-meta font-medium">Selected</span>
-        <Badge data-testid="editing-geometry">{geometry}</Badge>
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="reclass" className="text-meta">
-          Class
-        </Label>
-        <Select value={choice} onValueChange={setPending}>
-          <SelectTrigger id="reclass" data-testid="reclass-select">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {compatible.map((declared) => (
-              <SelectItem key={declared.name} value={declared.name}>
-                {declared.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <Button
-        variant="primary"
-        size="sm"
-        data-testid="reclass-apply"
-        disabled={choice === selected.label_class}
-        onClick={apply}
-      >
-        Apply
-      </Button>
-    </div>
-  );
-}
-
-/**
- * The schema's palette, and clicking a row does exactly what its digit does.
- *
- * `classAction`'s split, spelled once more because this is the *other* road to it:
- * a drawable class becomes active, a `classification_tag` toggles. The digit shown
- * is `hotkeyForClass`, so the panel and the keyboard cannot disagree about which
- * number a class answers to.
- */
-function LabelsTab({
-  store,
-  readOnly,
-  activeClass,
-  onActivateClass,
-}: {
-  readonly store: AnnotatorStore;
-  readonly readOnly: boolean;
-  readonly activeClass: string | null;
-  readonly onActivateClass: (labelClass: string | null) => void;
+  readonly index: number;
+  readonly annotation: Annotation;
+  readonly classes: readonly LabelClass[];
+  readonly onReassign: (labelClass: string) => void;
 }): JSX.Element {
-  const snapshot = useAnnotatorSnapshot(store);
-  const schema = snapshot.document.schema;
-  const tagged = taggedClassNames(snapshot.document);
-
-  function press(declared: LabelClass): void {
-    // Read-only: a tag is a document change and activating a class arms a
-    // drawing tool the canvas will not honour. Both are inert, and the rows
-    // render disabled below so nothing invites the press in the first place.
-    if (readOnly) return;
-    if (isTaggableClass(declared)) {
-      const command = toggleTagCommand(snapshot.document, declared.name, randomUuid);
-      // `null` is a refusal — an undeclared or non-taggable class — and it is
-      // asymmetric by design: untag never refuses. Nothing to report here.
-      if (command !== null) store.execute(command);
-      return;
-    }
-    onActivateClass(declared.name);
-  }
-
+  const geometry = annotation.geometry.type;
   return (
-    <ul className="flex flex-col gap-1 rounded-lg border border-border bg-muted p-2">
-      <li>
-        <button
-          type="button"
-          data-testid="label-select"
-          data-active={activeClass === null ? "true" : "false"}
-          disabled={readOnly}
-          onClick={() => onActivateClass(null)}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-md border px-1.5 py-1 text-left text-meta",
-            activeClass === null ? "border-primary bg-primary/10" : "border-transparent bg-card",
-          )}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={`Reassign object ${index + 1}`}
+          data-testid={`object-reclass-${index}`}
         >
-          <kbd className="rounded-sm border border-border bg-muted px-1 text-meta">V</kbd>
-          select
-        </button>
-      </li>
-      {schema.classes.map((declared) => {
-        const taggable = isTaggableClass(declared);
-        const on = taggable ? tagged.has(declared.name) : activeClass === declared.name;
-        return (
-          <li key={declared.name}>
-            <button
-              type="button"
-              data-testid={`label-${declared.name}`}
-              data-active={on ? "true" : "false"}
-              disabled={readOnly}
-              onClick={() => press(declared)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md border px-1.5 py-1 text-left text-meta",
-                on ? "border-primary bg-primary/10" : "border-transparent bg-card",
-              )}
+          <Tag className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-w-64">
+        {classes.map((declared) => {
+          const fits = declared.geometry === geometry;
+          const current = declared.name === annotation.label_class;
+          return (
+            <DropdownMenuItem
+              key={declared.name}
+              disabled={!fits}
+              data-testid={`reclass-${index}-${declared.name}`}
+              onSelect={() => onReassign(declared.name)}
             >
-              <kbd className="rounded-sm border border-border bg-muted px-1 text-meta">
-                {hotkeyForClass(schema, declared.name) ?? "—"}
-              </kbd>
               <span
                 aria-hidden="true"
                 className="size-2.5 shrink-0 rounded-sm"
                 style={{ background: classColor(declared, declared.name) }}
               />
-              <span className="flex-1 truncate">{declared.name}</span>
-              {taggable && on && (
-                <Check className="size-3.5 text-primary" aria-label="tagged" />
+              <span className="min-w-0 flex-1 truncate">{declared.name}</span>
+              {current && <Check className="size-3.5 shrink-0" aria-label="current class" />}
+              {!fits && (
+                <span className="shrink-0 text-meta text-muted-foreground">
+                  needs a {declared.geometry}
+                </span>
               )}
-              {!taggable && (
-                <span className="text-meta text-muted-foreground">{declared.geometry}</span>
-              )}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
