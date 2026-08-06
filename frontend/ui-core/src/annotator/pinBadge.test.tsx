@@ -15,7 +15,7 @@
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -185,6 +185,33 @@ describe("what it fetches, and when", () => {
     await waitFor(() => {
       expect(asked.some((path) => path.endsWith("/schema/compare"))).toBe(true);
     });
+  });
+
+  it("stops asking once it is closed again", async () => {
+    // The `open &&` on the comparison's bounds is *not* redundant behind the
+    // active-version gate, and this is the only state where the difference shows:
+    // after one opening the active version is cached, so `behind` stays true, and
+    // a comparison left enabled would keep refetching over a closed popover. A
+    // disabled query ignores an invalidation; an enabled one answers it.
+    const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <ApiProvider baseUrl={API} queryClient={queries}>
+        <TooltipProvider>
+          <AnnotationPage jobId={JOB} />
+        </TooltipProvider>
+      </ApiProvider>,
+    );
+
+    await userEvent.click(await screen.findByTestId("pinned-schema"));
+    await screen.findByTestId("pin-diff");
+    await userEvent.keyboard("{Escape}");
+
+    const before = asked.filter((path) => path.endsWith("/schema/compare")).length;
+    await act(async () => {
+      await queries.invalidateQueries();
+    });
+
+    expect(asked.filter((path) => path.endsWith("/schema/compare"))).toHaveLength(before);
   });
 
   it("does not compare when the pin is already the current version", async () => {
