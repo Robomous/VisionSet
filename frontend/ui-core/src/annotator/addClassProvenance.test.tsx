@@ -22,6 +22,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
+import { Toaster } from "../primitives/Feedback";
 import { TooltipProvider } from "../primitives/Menu";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
@@ -45,6 +46,40 @@ const SCHEMA = {
 /** Every request this page makes, answered; the POST is captured, not answered blind. */
 const posted: { path: string; body: string }[] = [];
 
+/**
+ * What the publish left behind, and what the re-pin then points at.
+ *
+ * The fixture walks the real chain rather than answering every POST with the
+ * same body: a stub that returned a schema to `/repin` fails `unwrap`, which
+ * `addClass` catches — so the arming and the toast would never happen and the
+ * test would be asserting against a chain that half-refused.
+ */
+let publishedSchema: { version: number; classes: readonly { name: string }[] } | null = null;
+
+function batch(): unknown {
+  return {
+    id: BATCH,
+    project_id: PROJECT,
+    name: "drive-01",
+    state: "in_annotation",
+    // The pin moves onto the published version, which is what the re-pin is for
+    // — and what makes the new class reach the annotator's own schema.
+    schema_version: publishedSchema?.version ?? 1,
+    asset_count: 1,
+    allowed_actions: batchActions("in_annotation"),
+    promoted_asset_count: 0,
+    parent_batch_id: null,
+    progress: {
+      unannotated: 1,
+      annotated: 0,
+      skipped: 0,
+      review_pending: 0,
+      accepted: 0,
+      total: 1,
+    },
+  };
+}
+
 function answer(path: string): unknown {
   if (path === `/jobs/${JOB}`) {
     return {
@@ -55,26 +90,9 @@ function answer(path: string): unknown {
       allowed_actions: jobActions("in_progress", { settled: false }),
     };
   }
-  if (path === `/batches/${BATCH}`) {
-    return {
-      id: BATCH,
-      project_id: PROJECT,
-      name: "drive-01",
-      state: "in_annotation",
-      schema_version: 1,
-      asset_count: 1,
-      allowed_actions: batchActions("in_annotation"),
-      promoted_asset_count: 0,
-      parent_batch_id: null,
-      progress: {
-        unannotated: 1,
-        annotated: 0,
-        skipped: 0,
-        review_pending: 0,
-        accepted: 0,
-        total: 1,
-      },
-    };
+  if (path === `/batches/${BATCH}`) return batch();
+  if (path.endsWith("/schema/versions/2") && publishedSchema !== null) {
+    return { ...SCHEMA, ...publishedSchema, provenance: "annotation" };
   }
   if (path.endsWith("/schema/versions/1") || path.endsWith("/schema")) return SCHEMA;
   if (path.endsWith("/assets")) {
@@ -106,6 +124,7 @@ function answer(path: string): unknown {
 
 beforeEach(() => {
   posted.length = 0;
+  publishedSchema = null;
   writeToken("a-token");
   // A viewport at least the annotator's floor, or no store and no palette mount
   // at all — see `viewportFloor.test.tsx` for why that gate exists.
@@ -118,10 +137,22 @@ beforeEach(() => {
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (request.method === "POST") {
-      posted.push({ path, body: await request.clone().text() });
-      // The published version, echoed back the way the API would.
-      return new Response(JSON.stringify({ ...SCHEMA, version: 2, provenance: "annotation" }), {
-        status: 201,
+      const body = await request.clone().text();
+      posted.push({ path, body });
+      if (path.endsWith("/schema/versions")) {
+        // The published version, echoed back the way the API would — carrying the
+        // classes it was actually sent, so a later read of the pin sees them.
+        publishedSchema = { version: 2, classes: JSON.parse(body).classes };
+        return new Response(
+          JSON.stringify({ ...SCHEMA, ...publishedSchema, provenance: "annotation" }),
+          { status: 201, headers: { "content-type": "application/json" } },
+        );
+      }
+      // Everything else — the re-pin, the batch and job starts — answers with the
+      // resource, because `unwrap` validates the shape and a schema returned to
+      // `/repin` would be a refusal `addClass` silently swallows.
+      return new Response(JSON.stringify(batch()), {
+        status: 200,
         headers: { "content-type": "application/json" },
       });
     }
@@ -143,7 +174,11 @@ function mount(node: ReactNode): JSX.Element {
       baseUrl={API}
       queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
+      {/* The page announces the published session, so the toaster has to be in
+          the tree — a `toast()` with nowhere to land renders nothing and fails
+          silently, which is the same shape as the feature not working. */}
       <TooltipProvider>{node}</TooltipProvider>
+      <Toaster />
     </ApiProvider>
   );
 }
@@ -161,5 +196,104 @@ it("publishes a class added mid-job with provenance 'annotation'", async () => {
     // Read off the request rather than off the mutation's input: what the server
     // is told is the only thing a version history can later read back.
     expect(JSON.parse(publish!.body).provenance).toBe("annotation");
+  });
+});
+
+/**
+ * A whole session, over the wire (#368).
+ *
+ * `addClassDialog.test.tsx` proves the dialog hands the page a list, and
+ * `addClass.test.ts` proves the chain publishes it once. Neither can see the
+ * *request*, which is the only place the claim "one sitting is one version"
+ * is actually settled — so this asserts on the body that leaves.
+ */
+it("publishes a whole session as one version, in the order they were written", async () => {
+  render(mount(<AnnotationPage jobId={JOB} />));
+
+  await userEvent.click(await screen.findByTestId("tool-add-class"));
+  await userEvent.type(await screen.findByTestId("class-name-new"), "cone");
+  await userEvent.click(screen.getByTestId("add-another"));
+  await userEvent.type(screen.getByTestId("class-name-new"), "barrier");
+  await userEvent.click(screen.getByTestId("add-class-submit"));
+
+  await waitFor(() => {
+    const published = posted.filter((request) => request.path.endsWith("/schema/versions"));
+    // One, not two: three of these would be three chances for the middle one to
+    // refuse, and three rows for the ledger to collapse.
+    expect(published).toHaveLength(1);
+    const body = JSON.parse(published[0]!.body);
+    // Composed on the **active** version's classes, then the session's, in order.
+    expect(body.classes.map((entry: { name: string }) => entry.name)).toEqual([
+      "sign",
+      "cone",
+      "barrier",
+    ]);
+    expect(body.description).toBe(
+      'Added classes "cone" and "barrier" from the annotation view',
+    );
+  });
+});
+
+/**
+ * The name the create row typed, carried into the dialog (#368).
+ *
+ * `ClassField` has handed it over since WS2 and the page dropped it, because the
+ * dialog had nowhere to put it. The claim only exists where the two are wired
+ * together, which is here.
+ */
+it("opens the dialog on the name the class field's create row was typed with", async () => {
+  render(mount(<AnnotationPage jobId={JOB} />));
+
+  await userEvent.click(await screen.findByTestId("class-field-trigger"));
+  await userEvent.type(screen.getByTestId("class-field-input"), "crossing");
+  await userEvent.click(screen.getByTestId("class-field-create"));
+
+  expect(await screen.findByTestId("class-name-new")).toHaveProperty("value", "crossing");
+});
+
+it("opens empty from the tool strip, where nobody named a class", async () => {
+  // `+` means "I want a class", not a particular one — and carrying the previous
+  // opening's name into it would be a prefill nobody asked for.
+  render(mount(<AnnotationPage jobId={JOB} />));
+
+  await userEvent.click(await screen.findByTestId("class-field-trigger"));
+  await userEvent.type(screen.getByTestId("class-field-input"), "crossing");
+  await userEvent.click(screen.getByTestId("class-field-create"));
+  await screen.findByTestId("add-class-dialog");
+  await userEvent.click(screen.getByTestId("add-class-cancel"));
+
+  await userEvent.click(screen.getByTestId("tool-add-class"));
+
+  expect(await screen.findByTestId("class-name-new")).toHaveProperty("value", "");
+});
+
+/**
+ * The last class of the session becomes the drawing class, and it is said.
+ *
+ * Last rather than first, because a session is written in the order somebody
+ * thought of them and the one they are about to draw is the one they just
+ * described. It is announced because on a busy canvas an armed class is a swatch
+ * in the top bar and nothing else moved — a session of two publishes one version
+ * and arms one class, neither of which anybody watched happen.
+ */
+it("arms the last class written and names it", async () => {
+  render(mount(<AnnotationPage jobId={JOB} />));
+
+  await userEvent.click(await screen.findByTestId("tool-add-class"));
+  await userEvent.type(await screen.findByTestId("class-name-new"), "cone");
+  await userEvent.click(screen.getByTestId("add-another"));
+  await userEvent.type(screen.getByTestId("class-name-new"), "barrier");
+  await userEvent.click(screen.getByTestId("add-class-submit"));
+
+  // Named first, because the announcement is the part that is true the instant
+  // the chain resolves — the field can only show the class once the re-pin has
+  // landed and the pinned schema has been refetched.
+  await screen.findByText(/Added 2 classes/);
+  expect(screen.getByText(/Added 2 classes/).textContent).toContain("barrier");
+
+  // The top bar's field is where an armed class is visible, and it reads the
+  // same `activeClass` the canvas draws with.
+  await waitFor(() => {
+    expect(screen.getByTestId("class-field-name").textContent).toBe("barrier");
   });
 });

@@ -1161,6 +1161,140 @@ describe("version history", () => {
     );
     expect(within(history).getByTestId("version-1").textContent).toContain("—");
   });
+
+  /**
+   * Grouping the ledger by provenance (#368, decision 7).
+   *
+   * The rule itself is `schemaHistory.test.ts` — pure, and where the boundaries
+   * are. This is the half that only exists on screen: that a run renders as one
+   * collapsed row, that the milestones around it do not, and that expanding
+   * gives back exactly the rows a flat table would have had.
+   */
+  describe("versions published while annotating", () => {
+    /** Four versions: two curated milestones with a two-version run between them. */
+    function withRun(): void {
+      on("GET", /^\/projects\/[^/]+$/, {
+        status: 200,
+        body: { id: PROJECT, name: "highway", description: null },
+      });
+      on("GET", /^\/projects\/[^/]+\/schema$/, {
+        status: 200,
+        body: { project_id: PROJECT, version: 4, classes: CLASSES },
+      });
+      on("GET", /schema\/versions$/, {
+        status: 200,
+        body: {
+          items: [
+            { project_id: PROJECT, version: 1, classes: CLASSES, provenance: "curated" },
+            {
+              project_id: PROJECT,
+              version: 2,
+              classes: CLASSES,
+              provenance: "annotation",
+              description: 'Added class "cone" from the annotation view',
+            },
+            {
+              project_id: PROJECT,
+              version: 3,
+              classes: CLASSES,
+              provenance: "annotation",
+              description: 'Added class "barrier" from the annotation view',
+            },
+            {
+              project_id: PROJECT,
+              version: 4,
+              classes: CLASSES,
+              provenance: "curated",
+              description: "split vehicle into car and truck",
+            },
+          ],
+          total: 4,
+        },
+      });
+    }
+
+    it("collapses the run and leaves the milestones alone", async () => {
+      withRun();
+      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+      const history = await screen.findByTestId("version-history");
+      await within(history).findByTestId("version-4");
+
+      // The two curated versions are rows of their own; the run between them is
+      // one. Without that, the milestone somebody opened this table to read sits
+      // under however many classes were added mid-job that week.
+      expect(within(history).getByTestId("version-run-2-3")).toBeTruthy();
+      expect(within(history).getByTestId("version-1")).toBeTruthy();
+      // Collapsed means *absent*, not hidden: a row still in the DOM is a row a
+      // test can read and a screen reader announces.
+      expect(within(history).queryByTestId("version-2")).toBeNull();
+      expect(within(history).queryByTestId("version-3")).toBeNull();
+    });
+
+    it("says how many it stands for, and what the schema looked like after them", async () => {
+      withRun();
+      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+      const history = await screen.findByTestId("version-history");
+      const run = await within(history).findByTestId("version-run-2-3");
+
+      expect(run.textContent).toContain("2 versions published while annotating");
+      // The *newest* of the run: that is the contract it left behind, and what
+      // the next version was composed on.
+      expect(run.textContent).toContain("lane (polygon)");
+    });
+
+    it("gives back every row when it is expanded", async () => {
+      withRun();
+      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+      const history = await screen.findByTestId("version-history");
+      await within(history).findByTestId("version-run-2-3");
+
+      await userEvent.click(within(history).getByTestId("version-run-toggle-2"));
+
+      // Same testids and the same cells as an ungrouped version, so what a person
+      // finds by expanding reads exactly like what they would have found flat.
+      expect(within(history).getByTestId("version-3").textContent).toContain(
+        'Added class "barrier" from the annotation view',
+      );
+      expect(within(history).getByTestId("version-2").textContent).toContain(
+        'Added class "cone" from the annotation view',
+      );
+    });
+
+    it("groups nothing in a history that recorded no provenance", async () => {
+      // Every version published before WS1's migration answers null, and nothing
+      // backfills them. "Nobody said" must not be read as "incidental" — so a
+      // project untouched since then reads exactly as it did before this rule.
+      on("GET", /^\/projects\/[^/]+$/, {
+        status: 200,
+        body: { id: PROJECT, name: "highway", description: null },
+      });
+      on("GET", /^\/projects\/[^/]+\/schema$/, {
+        status: 200,
+        body: { project_id: PROJECT, version: 2, classes: CLASSES },
+      });
+      on("GET", /schema\/versions$/, {
+        status: 200,
+        body: {
+          items: [
+            { project_id: PROJECT, version: 1, classes: CLASSES },
+            { project_id: PROJECT, version: 2, classes: CLASSES },
+          ],
+          total: 2,
+        },
+      });
+      render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+
+      const history = await screen.findByTestId("version-history");
+      await within(history).findByTestId("version-1");
+      expect(within(history).getByTestId("version-2")).toBeTruthy();
+      // And therefore no disclosure at all — the ledger stays read-only, which
+      // the sibling test above asserts by counting buttons.
+      expect(within(history).queryAllByRole("button")).toHaveLength(0);
+    });
+  });
 });
 
 describe("the project header", () => {

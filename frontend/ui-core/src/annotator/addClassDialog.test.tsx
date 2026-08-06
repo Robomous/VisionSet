@@ -97,7 +97,7 @@ describe("what it submits", () => {
     await userEvent.click(screen.getByTestId("add-class-submit"));
 
     expect(submit).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "crossing", geometry: "bbox" }),
+      [expect.objectContaining({ name: "crossing", geometry: "bbox" })],
       'Added class "crossing" from the annotation view',
     );
   });
@@ -122,7 +122,7 @@ describe("what it submits", () => {
     await userEvent.click(screen.getByTestId("add-class-submit"));
 
     expect(submit).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "crossing" }),
+      [expect.objectContaining({ name: "crossing" })],
       expect.anything(),
     );
   });
@@ -225,5 +225,237 @@ describe("what it promises when the batch will not take the pin", () => {
     await userEvent.click(screen.getByTestId("add-class-submit"));
 
     expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("names every class of the session, since by then the form is empty", async () => {
+    // The notice interpolated the *form field*, which is right for one class and
+    // names nothing at all once the classes are banked and the field has been
+    // cleared for the next one. The mechanism — `canRepin`, the two sentences —
+    // is untouched; only what it points at is.
+    render(mount({ canRepin: false }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.type(screen.getByTestId("class-name-new"), "barrier");
+    await userEvent.click(screen.getByTestId("add-another"));
+
+    const notice = screen.getByTestId("no-repin-notice");
+    expect(notice.textContent).toContain("cone");
+    expect(notice.textContent).toContain("barrier");
+  });
+});
+
+/**
+ * One dialog session is one published version (#368).
+ *
+ * The point is not the request — `create_version` takes the whole contract
+ * whether it holds one new class or three — it is the re-pins and refetches that
+ * do not happen, and the ledger rows that are not written. `addClass.test.ts`
+ * asserts the chain runs once; this is what a person does to get there.
+ */
+describe("adding several classes in one sitting", () => {
+  it("banks a class and clears the form for the next one", async () => {
+    render(mount());
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+
+    expect(screen.getByTestId("session-class-cone")).toBeTruthy();
+    // Cleared, not left holding the class that was just banked — otherwise the
+    // next `and another` would bank it twice and the primary would publish a
+    // duplicate the API refuses.
+    expect(screen.getByTestId("class-name-new")).toHaveProperty("value", "");
+  });
+
+  it("publishes the banked classes and the form's own, in one press", async () => {
+    const submit = vi.fn();
+    render(mount({ onSubmit: submit }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.type(screen.getByTestId("class-name-new"), "barrier");
+    await userEvent.click(screen.getByTestId("add-class-submit"));
+
+    // The form counts without being banked first: somebody who wrote the last
+    // class and pressed the primary is done, and making them press `and another`
+    // first would be a ceremony the implementation needs and the person does not.
+    expect(submit).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ name: "cone" }),
+        expect.objectContaining({ name: "barrier" }),
+      ],
+      'Added classes "cone" and "barrier" from the annotation view',
+    );
+  });
+
+  it("publishes the banked classes when the form is empty", async () => {
+    const submit = vi.fn();
+    render(mount({ onSubmit: submit }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.click(screen.getByTestId("add-class-submit"));
+
+    expect(submit).toHaveBeenCalledWith([expect.objectContaining({ name: "cone" })], expect.anything());
+  });
+
+  it("says how many the press will publish", async () => {
+    render(mount());
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.type(screen.getByTestId("class-name-new"), "barrier");
+
+    expect(screen.getByTestId("add-class-submit").textContent).toContain("Add 2 classes");
+  });
+
+  it("banks on ⌘Enter, so a session is typed without leaving the keyboard", async () => {
+    render(mount());
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+
+    expect(screen.getByTestId("session-class-cone")).toBeTruthy();
+  });
+
+  it("lets a banked class be taken back out", async () => {
+    render(mount());
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.click(screen.getByTestId("session-remove-cone"));
+
+    expect(screen.queryByTestId("session-class-cone")).toBeNull();
+    // And with nothing left to publish, the primary goes back to refusing.
+    expect(screen.getByTestId("add-class-submit")).toHaveProperty("disabled", true);
+  });
+
+  it("refuses a name already banked in this session, and says which rule refused", async () => {
+    // The session and the published version go into *one* contract, so
+    // `create_version` judges them together — a collision inside the session is
+    // refused by the same rule, and a 409 after the save is the worst place to
+    // learn it. The two remedies differ, which is why the sentence does.
+    render(mount());
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.type(screen.getByTestId("class-name-new"), "CONE");
+
+    expect(screen.getByTestId("add-another")).toHaveProperty("disabled", true);
+    expect(screen.getByText(/already added a class called/)).toBeTruthy();
+  });
+
+  it("will not bank a nameless class", async () => {
+    render(mount());
+
+    expect(screen.getByTestId("add-another")).toHaveProperty("disabled", true);
+  });
+});
+
+/**
+ * Cancelling with classes pending — the one press in here that destroys typing.
+ *
+ * Everything a session holds lives in the component. There is no draft on the
+ * server, so nothing else can see it and nothing can restore it, which is exactly
+ * why closing has to ask. Nothing else in this dialog does.
+ */
+describe("closing with classes pending", () => {
+  it("asks before it discards them", async () => {
+    const onOpenChange = vi.fn();
+    render(mount({ onOpenChange }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.click(screen.getByTestId("add-class-cancel"));
+
+    expect(screen.getByTestId("discard-session")).toBeTruthy();
+    // Still open: an ask that closed anyway would be a notice, not a question.
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it("goes back to the form when the answer is no", async () => {
+    render(mount());
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.click(screen.getByTestId("add-class-cancel"));
+    await userEvent.click(screen.getByTestId("keep-editing"));
+
+    expect(screen.queryByTestId("discard-session")).toBeNull();
+    expect(screen.getByTestId("session-class-cone")).toBeTruthy();
+  });
+
+  it("closes when the answer is yes", async () => {
+    const onOpenChange = vi.fn();
+    render(mount({ onOpenChange }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.click(screen.getByTestId("add-class-cancel"));
+    await userEvent.click(screen.getByTestId("discard-confirm"));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("asks on Escape too, which is the route a button guard walks past", async () => {
+    // The guard lives in the close handler rather than on Cancel for exactly
+    // this: Radix routes Escape and the overlay through `onOpenChange`, so a
+    // check the button owned would protect one of the three ways out.
+    const onOpenChange = vi.fn();
+    render(mount({ onOpenChange }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.getByTestId("discard-session")).toBeTruthy();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it("closes without asking when there is nothing banked", async () => {
+    // The form's own contents are not "work somebody accumulated" — they are one
+    // half-typed class, and asking about those would train a person to click
+    // through the question that matters.
+    const onOpenChange = vi.fn();
+    render(mount({ onOpenChange }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-class-cancel"));
+
+    expect(screen.queryByTestId("discard-session")).toBeNull();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
+/**
+ * The name the create row typed (#368).
+ *
+ * `ClassField`'s no-match row has handed the typed name over since WS2, and the
+ * page dropped it because this dialog had nowhere to put it. Typing a name,
+ * being told it does not exist, and typing it again is the smallest possible way
+ * to make a shortcut feel like a detour.
+ */
+describe("the name it opens with", () => {
+  it("starts from what the create row was typed with", () => {
+    render(mount({ initialName: "crossing" }));
+
+    expect(screen.getByTestId("class-name-new")).toHaveProperty("value", "crossing");
+  });
+
+  it("is still editable, because a prefill is a starting point and not a binding", async () => {
+    const submit = vi.fn();
+    render(mount({ initialName: "crossing", onSubmit: submit }));
+
+    await userEvent.clear(screen.getByTestId("class-name-new"));
+    await userEvent.type(screen.getByTestId("class-name-new"), "cone");
+    await userEvent.click(screen.getByTestId("add-class-submit"));
+
+    expect(submit).toHaveBeenCalledWith([expect.objectContaining({ name: "cone" })], expect.anything());
+  });
+
+  it("opens empty when nobody typed anything", () => {
+    render(mount());
+
+    expect(screen.getByTestId("class-name-new")).toHaveProperty("value", "");
   });
 });

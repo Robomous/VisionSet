@@ -385,6 +385,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // judged against, since #229 made the pin movable.
     await expect(page.getByTestId("pinned-schema")).toHaveText("v1");
 
+    // And it answers the question it raises (#368). Nothing about the project's
+    // active version is fetched until this is pressed — the rule
+    // `annotate.spec.ts` pins from the other side — so the popover is the only
+    // place in the editor where that read is legitimate. Here the pin *is* the
+    // active version, because nothing has published since approval.
+    await page.getByTestId("pinned-schema").click();
+    await expect(page.getByTestId("pin-current")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("pin-popover")).toHaveCount(0);
+
     // 1 — a box.
     await drawBox(page);
     await saveNow(page);
