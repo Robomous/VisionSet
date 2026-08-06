@@ -78,6 +78,8 @@ import {
   MIN_ZOOM,
   FOCUS_CLASS_FIELD,
   SAVE,
+  SAVE_AND_NEXT,
+  SKIP_FRAME,
   TOGGLE_HELP,
   atZoomCeiling,
   atZoomFloor,
@@ -107,7 +109,15 @@ import {
   TriangleAlert,
   Undo2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -138,7 +148,7 @@ import {
 import { Eye } from "lucide-react";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { ClassField } from "./ClassField";
-import { ShortcutSheet } from "./ShortcutSheet";
+import { ShortcutSheet, modKey } from "./ShortcutSheet";
 import { ToolPalette } from "./ToolPalette";
 import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
@@ -173,30 +183,63 @@ import {
 import { toast } from "../primitives/Feedback";
 
 /**
- * The frame-level workflow actions, in the order they take the primary slot.
+ * The frame-level *review* actions, in the order they take their slot.
  *
  * Module scope and exported so a test can sweep it against the wire's own
  * declarations rather than against a copy. Each row names an action the wire
  * declares — this is a *presentation* order over `allowed_actions`, never a
  * second opinion about legality.
+ *
+ * They were the bar's filled primary until #383 and are an **outline** control
+ * now: the filled slot belongs to the flow verb, because the thing a person does
+ * on nine frames out of ten is finish this one and go to the next, and submitting
+ * for review is the tenth. The list itself is unchanged — what moved is which
+ * variant it wears and what sits to its right.
  */
-export const WORKFLOW_PRIMARIES: readonly {
+export const REVIEW_ACTIONS: readonly {
   readonly action: AssetAction;
   readonly label: string;
   readonly testId: string;
   readonly progress: "review_pending" | "accepted";
+  /** What the move means, for a product with no annotator identity (cf. #282). */
+  readonly tooltip: string;
 }[] = [
   {
     action: ASSET_ACTION.submitForReview,
     label: "Submit for review",
     testId: "submit-for-review",
     progress: "review_pending",
+    tooltip:
+      "Marks this frame for a review pass — anyone opening the job can accept or return it",
   },
-  { action: ASSET_ACTION.accept, label: "Accept", testId: "accept", progress: "accepted" },
+  {
+    action: ASSET_ACTION.accept,
+    label: "Accept",
+    testId: "accept",
+    progress: "accepted",
+    tooltip: "Takes this frame as final — accepted work is corrected in a new batch, not here",
+  },
 ];
 
 /** One notch, matching what a wheel step feels like on the same stage. */
 const ZOOM_STEP = 1.25;
+
+/**
+ * A hotkey on a button, in the spelling the shortcut sheet uses.
+ *
+ * Visual only — every chord it names is bound in `core/input/bindings.ts`, which
+ * is the one place a keystroke means anything. A chip is a reminder that the
+ * chord exists, and it is honest exactly because it names something that layer
+ * already claims: `x` and `mod+s` are rows in the default table, and `↵` is the
+ * ring close the adapter reads as *finish the frame* when nothing is being drawn.
+ */
+function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
+  return (
+    <kbd className="ml-1 rounded-sm border border-border bg-muted px-1 font-mono text-meta text-muted-foreground">
+      {children}
+    </kbd>
+  );
+}
 
 export interface AnnotationPageProps {
   readonly jobId: string;
@@ -627,6 +670,21 @@ function Workspace({
       if (!readOnly) attempt();
       return true;
     }
+    // `↵` (#383) — the chord the flow verb shows on its own button, and the same
+    // `go(1)` it calls, so there is one save-first advance and not a keyboard
+    // copy of one. The last frame answers nothing, which is what `go` does with a
+    // move it cannot make; the button is not rendered there either.
+    if (name === SAVE_AND_NEXT) {
+      go(1);
+      return true;
+    }
+    // `x` (#383). Gated on the wire's own declaration rather than on this page's
+    // reading of the progress — the same `declares` the button is disabled by, so
+    // the chord cannot reach a move the button would refuse.
+    if (name === SKIP_FRAME) {
+      if (declares(asset, ASSET_ACTION.skip) && !setProgress.isPending) settle("skipped");
+      return true;
+    }
     return false;
   }
 
@@ -955,12 +1013,12 @@ function Workspace({
     (finishJob.isError ? finishJob.error : null);
 
   /**
-   * The one workflow action this frame's own state puts forward (#368).
+   * The one review action this frame's own state puts forward (#368, restyled by
+   * #383).
    *
    * The bar used to render five buttons — Save, Skip, Submit for review, Return
    * to annotator, Accept, Finish job — most of them disabled most of the time,
-   * and a person had to read all six to find the one that would do anything. One
-   * primary says what to do next; the rest are a secondary and an overflow.
+   * and a person had to read all six to find the one that would do anything.
    *
    * **Asset actions only, and that is a decision rather than the brief's
    * priority.** `submit_for_review` and the job's `complete` co-declare on the
@@ -979,9 +1037,36 @@ function Workspace({
    * action landing in one of those states would fail the test that pins this
    * list rather than silently changing what the bar offers.
    */
-  const workflowPrimary = WORKFLOW_PRIMARIES.find((candidate) =>
+  const reviewAction = REVIEW_ACTIONS.find((candidate) =>
     declares(asset, candidate.action),
   );
+
+  /**
+   * Whether this is the end of the job — the one predicate the right zone's
+   * occupancy turns on (#383).
+   *
+   * Not a wire declaration and it could not be: which frame of a job somebody is
+   * looking at is this page's own state, and no resource has an opinion about it.
+   * That is also why it cannot collide with one — the filled slot is
+   * `Save and next` while a next frame exists and `Finish job` when none does, so
+   * the two are exclusive by arithmetic rather than by a priority anybody has to
+   * maintain. Every other control on the bar is outline or ghost.
+   */
+  const lastFrame = assetIndex >= assetCount - 1;
+
+  /**
+   * Whether pressing the flow verb will actually store anything (#383).
+   *
+   * Decision 2's rule is that the button never promises a save it will not
+   * perform, and its stated key is *no annotations and no unsaved changes* — a
+   * frame nobody has drawn on yet, where the honest word is `Next`.
+   *
+   * `readOnly` is the same rule applied to the case the key does not enumerate:
+   * a settled frame cannot be dirty and cannot be written to by anyone, so
+   * `drawn > 0` would otherwise put `Save and next` on a canvas where no save is
+   * reachable at all.
+   */
+  const flowLabel = !readOnly && (dirty || drawn > 0) ? "Save and next" : "Next";
 
   const progressWord = PROGRESS_LABEL[asset.progress ?? "unannotated"] ?? asset.progress ?? "";
   /**
@@ -1095,13 +1180,6 @@ function Workspace({
             >
               <ChevronRight className="size-4" />
             </Button>
-            {/*
-              The frame's own state as a dot rather than as the badge it was.
-              `DESIGN.md`: status is never colour alone, so the dot carries an
-              accessible name and a tooltip saying the word — the colour is the
-              glance and the label is the answer.
-            */}
-            <AssetProgressDot progress={asset.progress ?? "unannotated"} />
           </div>
 
           <Button
@@ -1116,13 +1194,22 @@ function Workspace({
           </Button>
 
           {/*
-            The Save *button* is gone and the save *state* is not (#368). ⌘S
-            still saves, navigating still saves, and this says which of the three
-            it is doing — so what was removed is a control that duplicated an
-            automatic behaviour, not the behaviour.
+            Where the frame is and whether it is stored, as one microtext
+            (decision 5): `● annotated · Saved`.
+
+            They were two controls a bar apart — a colour-only dot beside the
+            navigator and a save badge here — and reading either meant knowing
+            what a colour or a tick stood for. Together they are the sentence
+            somebody actually wants before they press anything, and the dot's word
+            is now on screen rather than in a tooltip: **status is never colour
+            alone** (`DESIGN.md`), and prose is the strongest form of that.
           */}
           <OpeningRefusal error={openingRefusal} />
-          <SaveState dirty={dirty} pending={save.isPending} error={save.isError ? save.error : null} />
+          <span className="flex items-center gap-1.5 text-meta text-muted-foreground">
+            <AssetProgressDot progress={asset.progress ?? "unannotated"} />
+            <span aria-hidden="true">·</span>
+            <SaveState dirty={dirty} pending={save.isPending} error={save.isError ? save.error : null} />
+          </span>
         </div>
 
         {/* --- what you are drawing ------------------------------------ */}
@@ -1176,10 +1263,80 @@ function Workspace({
           </span>
 
           {/*
+            The explicit save, back on the bar (#383).
+
+            #368 removed it on the grounds that it duplicated an automatic
+            behaviour, and dogfooding showed what that argument missed: ⌘S is
+            invisible, and the overflow put the one press meaning *store this now,
+            without going anywhere* two clicks from the work. It is a **ghost**,
+            which is the honest weight — most people never need it, because
+            navigating and settling both save.
+
+            First to be reabsorbed when the bar runs out of room (decision 4): it
+            is the one control on the right whose job the keyboard and every other
+            exit already do, and the overflow carries it below `xl`.
+          */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden xl:inline-flex"
+            data-testid="save-and-stay"
+            disabled={readOnly || !dirty || save.isPending}
+            onClick={() => attempt()}
+          >
+            <Check className="size-4" />
+            Save and stay
+            <Chip>{modKey()}S</Chip>
+          </Button>
+
+          {/*
+            The review move, when the frame declares one — outline since #383,
+            because the filled slot belongs to the flow verb. Rendered rather than
+            disabled-with-reason because there is nothing to explain: the states
+            that withhold both of these are the states where the *other* controls
+            on this bar are the whole answer, and a permanently greyed "Accept" on
+            every unannotated frame is the noise this zone exists to remove. See
+            `REVIEW_ACTIONS` for why `complete` is not in the list.
+
+            Second to be reabsorbed (decision 4), so it survives one breakpoint
+            longer than the save: it is a decision about the work, and the save is
+            a convenience.
+          */}
+          {reviewAction !== undefined && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="hidden lg:inline-flex"
+                  data-testid={reviewAction.testId}
+                  disabled={setProgress.isPending}
+                  onClick={() => settle(reviewAction.progress)}
+                >
+                  <CheckCheck className="size-4" />
+                  {reviewAction.label}
+                </Button>
+              </TooltipTrigger>
+              {/*
+                Decision 6, and the sentence is careful about what this product
+                does not have: there is no annotator identity (cf. #282), so
+                submitting routes the frame to nobody — it marks a state that the
+                next person to open the job can act on.
+              */}
+              <TooltipContent side="bottom">{reviewAction.tooltip}</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/*
             One slot, two moves, because they are the same decision read forwards
             and backwards. Offering `Skip` on an already-skipped asset would be
             offering a refusal — `ASSET_PROGRESS_TRANSITIONS` gives `skipped` one
             exit and it is not itself.
+
+            Skip and the flow verb are **siblings** (#383): two ways of resolving
+            this frame — skipped or annotated — that both advance. Neither ever
+            collapses into the overflow, which is what stopped Skip inheriting
+            prominence from a bar where nothing else advanced.
           */}
           {skipped ? (
             <Button
@@ -1204,27 +1361,7 @@ function Workspace({
             >
               <SkipForward className="size-4" />
               Skip
-            </Button>
-          )}
-
-          {/*
-            The one primary, and only when the frame declares it. Rendered rather
-            than disabled-with-reason because there is nothing to explain: the
-            states that withhold both of these are the states where the *other*
-            controls on this bar are the whole answer, and a permanently greyed
-            "Accept" on every unannotated frame is the noise this zone exists to
-            remove. See `WORKFLOW_PRIMARIES` for why `complete` is not in the list.
-          */}
-          {workflowPrimary !== undefined && (
-            <Button
-              variant="primary"
-              size="sm"
-              data-testid={workflowPrimary.testId}
-              disabled={setProgress.isPending}
-              onClick={() => settle(workflowPrimary.progress)}
-            >
-              <CheckCheck className="size-4" />
-              {workflowPrimary.label}
+              <Chip>X</Chip>
             </Button>
           )}
 
@@ -1233,13 +1370,16 @@ function Workspace({
             `JobService.complete` stops refusing. `unannotated` is the one count
             that blocks it — `annotated`, `skipped` and `accepted` are all settled.
 
-            Its own control rather than the primary slot: it is the *job's* action,
-            it co-declares with `submit_for_review` on the frame most jobs end on,
-            and ranking the two against each other would have made finishing a job
-            require walking to a different frame first.
+            **On the last frame it is the filled control**, because there is
+            nothing left to advance to and finishing is what the job is for; on
+            every other frame it keeps WS2's outline treatment and stays visible,
+            disabled with a reason. It is not in the review list and never was: it
+            is the *job's* action and it co-declares with `submit_for_review` on
+            the frame most jobs end on, so ranking the two against each other would
+            have made finishing a job require walking to a different frame first.
           */}
           <Button
-            variant="secondary"
+            variant={lastFrame ? "primary" : "secondary"}
             size="sm"
             data-testid="finish-job"
             disabled={!declares({ allowed_actions: jobActions }, JOB_ACTION.complete) || finishJob.isPending}
@@ -1250,11 +1390,48 @@ function Workspace({
           </Button>
 
           {/*
-            Everything that was on the bar and is not a decision about this frame.
+            The flow verb, and the whole of #383 (decision 2).
+
+            After finishing a frame the right move is *this one is done, show me
+            the next* — and until now that had no button at all. The navigator's
+            `›` is chrome rather than a verb, so `Skip` was the most prominent
+            thing to press on a frame somebody had just annotated, which is how
+            work gets skipped by people who meant to keep it.
+
+            It is `go(1)` and deliberately nothing more: the same save-first
+            advance the navigator has always used, so there is one save pipeline
+            and one place principle 10 is enforced. The settle to `annotated` is
+            not sent from here either — `progress_after_annotating` makes that move
+            in the same transaction as the write, which is why an asset with labels
+            on it is already `annotated` by the time this lands.
+
+            **`Next` when there is nothing to save**, per decision 2, so the button
+            never promises a save it will not perform. Absent entirely on the last
+            frame, where `Finish job` above takes the filled slot.
+          */}
+          {!lastFrame && (
+            <Button
+              variant="primary"
+              size="sm"
+              data-testid="save-and-next"
+              disabled={save.isPending}
+              onClick={() => go(1)}
+            >
+              {flowLabel}
+              <ChevronRight className="size-4" />
+              <Chip>↵</Chip>
+            </Button>
+          )}
+
+          {/*
+            Rarities, and whatever the bar could not fit.
+
             `Return to annotator` is here rather than beside Accept because it is
-            the reviewer's *less* common answer and the bar has one primary; the
-            help sheet and the fullscreen-era controls follow it because they are
-            about the session rather than about the work.
+            the reviewer's *less* common answer; the help sheet follows because it
+            is about the session rather than about the work. The two reabsorbed
+            controls sit above them with the inverse of their own breakpoints, so
+            each is in exactly one place at any width — visible on the bar and
+            absent here, or the other way round (decision 4).
           */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1263,6 +1440,30 @@ function Workspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {/* `Save and stay`, reabsorbed — `xl:hidden` is the exact inverse of
+                  the button's `hidden xl:inline-flex`, so the control exists once
+                  at every width. */}
+              <DropdownMenuItem
+                className="xl:hidden"
+                data-testid="menu-save"
+                disabled={readOnly || !dirty || save.isPending}
+                onSelect={() => attempt()}
+              >
+                <Check className="size-4" />
+                Save and stay
+              </DropdownMenuItem>
+              {/* The review move, reabsorbed one breakpoint later. */}
+              {reviewAction !== undefined && (
+                <DropdownMenuItem
+                  className="lg:hidden"
+                  data-testid={`menu-${reviewAction.testId}`}
+                  disabled={setProgress.isPending}
+                  onSelect={() => settle(reviewAction.progress)}
+                >
+                  <CheckCheck className="size-4" />
+                  {reviewAction.label}
+                </DropdownMenuItem>
+              )}
               {/*
                 Sending it back, which is the reviewer's "no". Named for the act
                 rather than for the edge it rides — `capabilities.py` makes the
@@ -1270,26 +1471,21 @@ function Workspace({
                 annotator" describes what is being done.
               */}
               {declares(asset, ASSET_ACTION.returnToAnnotator) && (
-                <DropdownMenuItem
-                  data-testid="return-to-annotator"
-                  onSelect={() => settle("annotated")}
-                >
-                  <Undo2 className="size-4" />
-                  Return to annotator
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem
+                    data-testid="return-to-annotator"
+                    onSelect={() => settle("annotated")}
+                  >
+                    <Undo2 className="size-4" />
+                    Return to annotator
+                  </DropdownMenuItem>
+                  {/* Inside the conditional, not above the row below it: the two
+                      items over it are responsive, so a separator at fixed
+                      position would lead the menu at any width that reabsorbed
+                      nothing. */}
+                  <DropdownMenuSeparator />
+                </>
               )}
-              {/* Save is no longer a button on the bar, so the overflow carries
-                  the one press that still means "store this now" — for the person
-                  who does not know ⌘S and would otherwise have to navigate. */}
-              <DropdownMenuItem
-                data-testid="menu-save"
-                disabled={readOnly || !dirty || save.isPending}
-                onSelect={() => attempt()}
-              >
-                <Check className="size-4" />
-                Save now
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem data-testid="menu-shortcuts" onSelect={() => setHelpOpen(true)}>
                 <CircleHelp className="size-4" />
                 Keyboard shortcuts
@@ -1710,18 +1906,20 @@ function PinDiff({
 }
 
 /**
- * The frame's own progress, as a dot (#187, restyled by #368).
+ * The frame's own progress: a dot **and its word** (#187, restyled by #368, given
+ * its word by #383).
  *
- * It was a `Badge` with the word in it, sitting in the bar's right-hand cluster
- * where it competed with the actions. As a dot beside the asset navigator it is
- * where the rest of "which frame am I on" already is, and it costs a fifth of
- * the width.
+ * It was a `Badge` in the right-hand cluster, then a bare dot beside the
+ * navigator with the word in a tooltip. A tooltip is a place a word goes to not
+ * be read — it needs a hover, it is unreachable on a touch screen, and the whole
+ * reason the dot exists is to be glanced at. So the word is on the bar, in the
+ * microtext the save state shares, and the dot in front of it is now decoration:
+ * the colour is the glance and the prose is the answer, which is the strongest
+ * reading of **status is never colour alone** (`DESIGN.md`).
  *
- * **Status is never colour alone** (`DESIGN.md`), so the word travels with it in
- * the accessible name and the tooltip — the colour is the glance, the label is
- * the answer. The words come from `batchState.ts`'s `PROGRESS_LABEL`: this page
- * kept a second copy of that map until #292, and two spellings of the same five
- * states were free to drift.
+ * The words come from `batchState.ts`'s `PROGRESS_LABEL`: this page kept a second
+ * copy of that map until #292, and two spellings of the same five states were
+ * free to drift.
  */
 function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Element {
   const word = PROGRESS_LABEL[progress] ?? progress;
@@ -1734,20 +1932,10 @@ function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Elem
           ? "bg-muted-foreground/40"
           : "bg-muted-foreground";
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className="ml-1 flex size-4 items-center justify-center"
-          data-testid="asset-progress"
-          data-progress={progress}
-          role="img"
-          aria-label={`This frame is ${word.toLowerCase()}`}
-        >
-          <span className={`size-2 rounded-full ${tone}`} />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{word}</TooltipContent>
-    </Tooltip>
+    <span className="flex items-center gap-1.5" data-testid="asset-progress" data-progress={progress}>
+      <span className={`size-2 shrink-0 rounded-full ${tone}`} aria-hidden="true" />
+      {word}
+    </span>
   );
 }
 

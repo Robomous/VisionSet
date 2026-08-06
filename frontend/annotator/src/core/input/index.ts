@@ -82,6 +82,8 @@ export {
   READ_ONLY_KINDS,
   RESET_ZOOM,
   SAVE,
+  SAVE_AND_NEXT,
+  SKIP_FRAME,
   TOGGLE_HELP,
   type Action,
   type ActionKind,

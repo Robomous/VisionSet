@@ -172,3 +172,36 @@ export const FOCUS_CLASS_FIELD = "focus-class-field";
  * registry is the list of keystrokes taken away from the browser.
  */
 export const SAVE = "save";
+
+/**
+ * Store the work and move to the next frame — the flow verb (#383).
+ *
+ * The fifth name core writes and cannot execute: this package has no HTTP and no
+ * idea what "the next frame" is, both of which are the host's. It is claimed here
+ * for `SAVE`'s reason, that the registry is the list of keystrokes taken away
+ * from the browser.
+ *
+ * **It has no row in `DEFAULT_BINDINGS`, and that is deliberate.** The chord is
+ * `enter`, which is already `send commit` — v1's ring close, and the one close a
+ * keyboard can always reach. The two never overlap, because a commit means
+ * something only while a shape is being drawn, so the adapter reads `enter` as
+ * *finish*: finish the shape when one is in progress, finish the frame otherwise.
+ * That substitution needs the interaction state, which is the adapter's and not
+ * this table's — see `AnnotatorCanvas.handleKeyDown`. Binding the chord here
+ * instead would shadow the commit, because the fold is last-wins.
+ */
+export const SAVE_AND_NEXT = "save-and-next";
+
+/**
+ * Settle this frame as skipped and move on — Save-and-next's sibling (#383).
+ *
+ * `x`, a bare letter, on `c`'s and `v`'s terms: the canvas is not a text field,
+ * and `isTextEntry` hands the chord back to any field that is. It is a host row
+ * for `SAVE`'s reason and one more: a skip is a *progress* move, and progress is
+ * not a concept this package has — a document knows shapes and a schema, never
+ * whether somebody decided against labelling the picture.
+ *
+ * Unlike `SAVE_AND_NEXT` it takes an ordinary row in `DEFAULT_BINDINGS`, because
+ * `x` is unclaimed.
+ */
+export const SKIP_FRAME = "skip-frame";

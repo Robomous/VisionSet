@@ -24,6 +24,14 @@
  * | `mod+0` | `host reset-zoom` | **v1** `Ctrl/⌘+0` → 100%. |
  * | `?` | `host toggle-help` | **v1** `?` → the help modal. |
  * | `v` | `activate-class null` | **v1** `v` → the select tool. |
+ * | `x` | `host skip-frame` | **#383.** The other frame-resolution verb; see below. |
+ *
+ * `enter` is the one chord with **two** meanings, and only one of them is in this
+ * table. #383 gives the host a `save-and-next`, whose chord is `enter` — which is
+ * already the ring close. They never overlap: a commit means something only while
+ * a shape is being drawn. So the substitution happens in the adapter, which is
+ * the only layer holding the interaction state, and this row stays the commit.
+ * A second `enter` row here would shadow it, because the fold is last-wins.
  *
  * Digits `1`–`9` are deliberately **not** here: they come from
  * `classHotkeys(schema)`, and the separation is what lets a test assert this
@@ -115,7 +123,7 @@
 
 import { isTaggableClass } from "../interaction/tags";
 import type { AnnotationSchema } from "../types";
-import { FOCUS_CLASS_FIELD, RESET_ZOOM, SAVE, TOGGLE_HELP } from "./actions";
+import { FOCUS_CLASS_FIELD, RESET_ZOOM, SAVE, SKIP_FRAME, TOGGLE_HELP } from "./actions";
 import type { Action } from "./actions";
 import { chordOf } from "./keys";
 import type { Keystroke } from "./keys";
@@ -165,6 +173,11 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   // rather than reaching this table at all.
   { chord: "c", action: { kind: "host", name: FOCUS_CLASS_FIELD } },
   { chord: "mod+s", action: { kind: "host", name: SAVE } },
+  // `x`, a bare letter on `c`'s and `v`'s terms (#383). Skip and save-and-next are
+  // the two frame-resolution verbs, and the bar shows both chords on the buttons —
+  // so an unbound one would be a chip that lies. This is the half that fits in the
+  // table; its sibling rides `enter`, for the reason above.
+  { chord: "x", action: { kind: "host", name: SKIP_FRAME } },
   { chord: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 

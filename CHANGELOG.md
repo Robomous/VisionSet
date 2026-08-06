@@ -83,6 +83,32 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The annotator's top bar has a verb for finishing a frame** (#383). Dogfooding #368's bar
+  found that the commonest move in the product had no button: after annotating a frame, the
+  thing to do is store it and go to the next one, and the only control that advanced was the
+  navigator's `›` chevron — chrome rather than a verb. So **Skip** inherited prominence by
+  vacuum and became the most obvious thing to press on work somebody had just done.
+
+  **Save and next** is the bar's one filled control now, with `↵` on it, and **Skip** carries
+  `X` beside it: two ways to resolve this frame — annotated or skipped — that both advance, and
+  neither collapses into the overflow. It is the navigator's own save-first advance and not a
+  second pipeline, so a refused save keeps you on the frame with the refusal on screen. It reads
+  **`Next`** when no save will happen, because a button must not promise one it will not
+  perform. On the last frame it is not rendered at all and **Finish job** takes the filled slot,
+  which is the only place the two could have contended.
+
+  The review move (**Submit for review**, else **Accept**) is an outline control rather than the
+  primary, and submitting now says what it means — this product has no annotator identity, so a
+  submitted frame is *marked for a review pass*, not routed to anybody. **Save and stay** comes
+  back onto the bar as a ghost button: #368 removed it because ⌘S and every exit already save,
+  and what that missed is that the chord is invisible. When the bar runs out of room it is the
+  first thing reabsorbed into the overflow, the review move the second.
+
+  `enter` now has two meanings and they never overlap: it is still the polygon ring close, and
+  with nothing being drawn the React adapter reads it as the flow verb. `x` is a new row in the
+  default binding table. Left of the bar, the progress dot gains its word — one microtext
+  reading `● annotated · Saved`, because a tooltip is a place a word goes to not be read.
+
 - **The annotation workspace is reorganized around where each control belongs** (#368). The top
   bar was one undifferentiated row of thirteen controls in which a navigation arrow, the save
   state and the button that ends the job all looked alike; the side panel was two tabs, and the
