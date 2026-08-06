@@ -1188,8 +1188,12 @@ describe("version history", () => {
             { project_id: PROJECT, version: 1, classes: CLASSES, provenance: "curated" },
             {
               project_id: PROJECT,
+              // Deliberately **fewer classes than v3**: with every version
+              // declaring the same contract, a run summarising its oldest member
+              // instead of its newest reads identically and the assertion below
+              // cannot fail. The run's summary is what it *left behind*.
               version: 2,
-              classes: CLASSES,
+              classes: [CLASSES[0]],
               provenance: "annotation",
               description: 'Added class "cone" from the annotation view',
             },
@@ -1242,6 +1246,9 @@ describe("version history", () => {
       // The *newest* of the run: that is the contract it left behind, and what
       // the next version was composed on.
       expect(run.textContent).toContain("lane (polygon)");
+      // And not v2's, which declares one class — the assertion above is only a
+      // claim about *which* version is summarised because the two differ.
+      expect(run.textContent).toContain("vehicle (bbox)");
     });
 
     it("gives back every row when it is expanded", async () => {
