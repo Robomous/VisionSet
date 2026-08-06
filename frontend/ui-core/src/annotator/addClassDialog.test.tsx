@@ -271,9 +271,14 @@ describe("adding several classes in one sitting", () => {
     const submit = vi.fn();
     render(mount({ onSubmit: submit }));
 
+    // **Banked twice**, deliberately: with one banked class a session that
+    // *replaced* rather than accumulated would publish the same two names, so
+    // the shorter version of this test cannot tell accumulation from overwriting.
     await userEvent.type(screen.getByTestId("class-name-new"), "cone");
     await userEvent.click(screen.getByTestId("add-another"));
     await userEvent.type(screen.getByTestId("class-name-new"), "barrier");
+    await userEvent.click(screen.getByTestId("add-another"));
+    await userEvent.type(screen.getByTestId("class-name-new"), "crossing");
     await userEvent.click(screen.getByTestId("add-class-submit"));
 
     // The form counts without being banked first: somebody who wrote the last
@@ -283,8 +288,9 @@ describe("adding several classes in one sitting", () => {
       [
         expect.objectContaining({ name: "cone" }),
         expect.objectContaining({ name: "barrier" }),
+        expect.objectContaining({ name: "crossing" }),
       ],
-      'Added classes "cone" and "barrier" from the annotation view',
+      'Added classes "cone", "barrier" and "crossing" from the annotation view',
     );
   });
 
