@@ -17,8 +17,16 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, WebFetch, WebSearch, Task
 ## Environment
 
 - **Node.js 24**. With nvm on the host: `nvm use 24`.
-- **pnpm** only (never npm, never yarn). Pinned via `packageManager` in the root
-  `package.json` — enable it with `corepack enable`.
+- **pnpm** only (never npm, never yarn, never `npx`). Pinned via `packageManager` in
+  the root `package.json` — enable it with `corepack enable`. To run a binary the
+  workspace already has, `pnpm exec <bin>`; `npx` would *fetch and run* one it does
+  not, which is a resolution no lockfile names and no cool-down covers.
+- **The three-day cool-down applies to every `pnpm add` and `pnpm update`**, through
+  `minimumReleaseAge` in `pnpm-workspace.yaml`. Nothing to type — but a package whose
+  newest release is younger than that is refused outright
+  (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`) rather than silently downgraded, because a
+  bare `pnpm add <pkg>` asks for `latest`. Wait, name an older version, or add a
+  reviewed entry to `minimumReleaseAgeExclude`. See CONTRIBUTING.md.
 - Single **pnpm workspace** rooted at the repo root; members are `frontend/*`
   (`@visionset/annotator`, `@visionset/ui-core`, `@visionset/app`).
 - Run commands **from the repo root**.

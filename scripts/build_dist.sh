@@ -40,9 +40,19 @@ if ! grep -q '"/app/assets/' "$index" && ! grep -q "'/app/assets/" "$index"; the
   exit 1
 fi
 
-echo "==> uv build"
+# Under the cool-down, and this is the sharpest place in the repository for it.
+# `[build-system] requires = ["hatchling"]` is not in uv.lock — build backends are
+# resolved fresh, from PyPI, on every build — and a build backend is *executed*,
+# so a compromised release of one runs arbitrary code with the credentials of
+# whatever is building. Three days of patience costs a release nothing and is the
+# only thing standing between that and here. See scripts/cooldown.sh.
+#
+# Wrapping it here rather than in the three callers is what makes it true for all
+# of them at once: the `wheel` and `30-minute flow` CI jobs and the PyPI publish
+# workflow all reach `uv build` through this script and nothing else does.
+echo "==> uv build (dependency cool-down applied to the build backend)"
 rm -rf dist
-uv build
+bash "$root/scripts/cooldown.sh" uv build
 
 echo
 echo "built:"

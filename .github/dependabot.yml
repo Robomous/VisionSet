@@ -1,15 +1,24 @@
 # Automated dependency updates.
 #
-# Three ecosystems, all at the repository root:
+# Five ecosystems:
 #   uv             — the single `visionset` distribution (pyproject.toml + uv.lock)
 #   npm            — the pnpm workspace (pnpm-lock.yaml at the root, packages in frontend/*)
 #   github-actions — .github/workflows/
+#   docker         — the two dev-stack images (docker/*.Dockerfile)
+#   docker-compose — the services docker/compose.yaml pulls rather than builds
 #
 # `cooldown` is a supply-chain margin: a version must have been published more
 # than three days ago before Dependabot will propose it, so a package that is
 # compromised and yanked shortly after release never reaches a PR here. It
 # applies to *version* updates only — Dependabot security updates stay
 # immediate by design, which is what we want.
+#
+# **Three days is one number with several spellings, and they must agree.** The
+# same rule governs the versions a person or a CI step picks, where Dependabot is
+# not involved at all: `minimumReleaseAge` in pnpm-workspace.yaml covers every
+# `pnpm add`, and scripts/cooldown.sh covers uv, which has no equivalent setting.
+# `tests/scripts/cooldown.test.mjs` holds all three to each other, so moving one
+# and forgetting the others is a red test rather than a quiet inconsistency.
 #
 # `ignore` is for a version this repository cannot take *yet* — a major whose
 # ecosystem has not caught up. Every entry must name the blocker and the
@@ -81,6 +90,56 @@ updates:
       default-days: 3
     groups:
       actions-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    labels: ["dependencies", "ci"]
+
+  # The base images of the two dev-stack builds — `node:24-bookworm-slim` and
+  # `ghcr.io/astral-sh/uv:python3.12-trixie-slim`. Until this entry existed they
+  # were the one class of dependency here with no automation and no cool-down at
+  # all: a tag is re-pointed by its publisher, so `node:24-bookworm-slim` means
+  # different bytes on different days and nothing in the repository recorded
+  # which. Dependabot cannot fix the re-pointing, but it can propose the version
+  # bumps, and the same three days apply.
+  #
+  # Both Dockerfiles pin a major-and-flavour tag rather than a digest, which is
+  # the deliberate trade docker/api.Dockerfile's header argues for (the ffmpeg
+  # version that comes with the distribution is the thing being chosen). A digest
+  # pin would be stricter and would also make every security patch a manual bump.
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 3
+    groups:
+      images-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    labels: ["dependencies", "ci"]
+
+  # The services compose *pulls* rather than builds: nginx, postgres, minio. A
+  # separate ecosystem from the one above because Dependabot reads Dockerfiles and
+  # compose files with different parsers, and an entry for one does not see the
+  # other.
+  - package-ecosystem: "docker-compose"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 3
+    groups:
+      services-minor-patch:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]

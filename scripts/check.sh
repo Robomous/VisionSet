@@ -156,15 +156,21 @@ run_generated() {
 # error. So `check.sh browser` on its own is a complete run, not a half of one.
 #
 # No `require_playwright_browsers` to match `require_node_modules`: Playwright's
-# own error already names `npx playwright install` as the remedy, and a check
-# that restates a message which is already good is a second place to keep
-# current.
+# own error already names the install command as the remedy, and a check that
+# restates a message which is already good is a second place to keep current.
+#
+# `pnpm exec`, never `npx`. pnpm is the only Node package manager this repository
+# uses — the rule the `nodejs-setup` skill states and these two lines were the
+# last exception to. It is not only tidiness: `npx` will *fetch and run* a package
+# that is not installed, which is a resolution nothing here reviewed, no lockfile
+# names and no cool-down applies to. `pnpm exec` runs what the workspace already
+# has and fails if it is not there, which is the answer this script wants anyway.
 browser_e2e() {
-  ( cd "$root/frontend/app" && CI=1 npx playwright test )
+  ( cd "$root/frontend/app" && CI=1 pnpm exec playwright test )
 }
 
 browser_cycle() {
-  ( cd "$root/frontend/app" && CI=1 npx playwright test -c playwright.cycle.config.ts )
+  ( cd "$root/frontend/app" && CI=1 pnpm exec playwright test -c playwright.cycle.config.ts )
 }
 
 run_browser() {

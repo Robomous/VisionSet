@@ -33,8 +33,14 @@ jobs:
         with:
           enable-cache: true
 
+      # `--locked`, not a bare `uv sync`, and it does two jobs. It refuses to
+      # re-resolve, which is what keeps the dependency cool-down honest — a
+      # resolution that happens here would be one nobody applied the rule to (see
+      # scripts/cooldown.sh). And it fails when uv.lock has drifted from
+      # pyproject.toml, so an uncommitted lock is a named red step rather than a
+      # silent re-lock that makes CI test a set no reviewer chose.
       - name: Sync environment
-        run: uv sync
+        run: uv sync --locked
 
       - name: Ruff (lint + format)
         run: |
@@ -97,7 +103,7 @@ jobs:
           enable-cache: true
 
       - name: Sync environment
-        run: uv sync
+        run: uv sync --locked
 
       # `uv run` puts the virtualenv's bin/ on PATH, so `visionset` is the
       # installation under test — which the HTTP leg starts a server with and the
@@ -238,7 +244,7 @@ jobs:
           enable-cache: true
 
       - name: Sync environment
-        run: uv sync
+        run: uv sync --locked
 
       - uses: pnpm/action-setup@v6 # reads packageManager from package.json
 
@@ -393,10 +399,18 @@ jobs:
       # particular not the repository, which is what makes this a test of the
       # artifact. `--no-cache` so a previously built wheel of the same version
       # cannot be served from uv's cache in place of this one.
+      #
+      # The one place in this workflow that genuinely *resolves* a third-party
+      # package from an index — `ultralytics` is named with no version and comes
+      # from PyPI, unlike everything else here, which comes from uv.lock. So it
+      # is the one place the cool-down wrapper is needed rather than decorative.
+      # The local wheel is a path, and a path has no upload date, so the cutoff
+      # cannot touch the artifact under test.
       - name: Install the wheel into a clean environment
         run: |
           uv venv /tmp/flow-venv
-          uv pip install --no-cache --python /tmp/flow-venv dist/*.whl ultralytics
+          bash scripts/cooldown.sh \
+            uv pip install --no-cache --python /tmp/flow-venv dist/*.whl ultralytics
 
       # `cd /tmp` so an accidental relative import cannot reach the checkout: the
       # script is named by absolute path and runs with the repository *not* on
@@ -443,7 +457,7 @@ jobs:
           enable-cache: true
 
       - name: Sync environment with the format groups
-        run: uv sync --group yolo --group coco
+        run: uv sync --locked --group yolo --group coco
 
       - name: The reference readers load the exports
         run: uv run pytest tests/formats/test_yolo_smoke.py tests/formats/test_coco_smoke.py -q
@@ -509,7 +523,7 @@ jobs:
           enable-cache: true
 
       - name: Sync environment
-        run: uv sync
+        run: uv sync --locked
 
       - name: Regenerate openapi.json and fail on drift
         run: |

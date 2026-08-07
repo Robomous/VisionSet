@@ -51,8 +51,13 @@ page will not show you a year from now, attached to the commit they came from.
 publishing a package that looks official:
 
 ```bash
-npm org create visionset      # or: npm login && npm access …
+pnpm login --registry https://registry.npmjs.org   # then create the org in the npm web UI
 ```
+
+pnpm is the only Node package manager this repository uses, and `pnpm login` writes the same
+credential `pnpm publish` would later read. Creating the *organisation* is a registry
+administration action with no client-side equivalent in any package manager — it is done on the
+npmjs.com website, not from a terminal.
 
 Creating the organisation reserves the scope. **No placeholder publishes** — an empty package on
 npm is a thing users find, file issues against, and depend on by accident, and un-publishing it
