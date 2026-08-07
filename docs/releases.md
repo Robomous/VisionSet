@@ -219,7 +219,7 @@ system that were each internally consistent:
   counted it in `excluded_annotations`.
 - The YOLO and VOC exporters read the same declaration as **convert it to something I can
   write**, and emitted the polygon as its axis-aligned bounding box — which is a real capability
-  #62 and #64 deliberately included, documented in both module docstrings.
+  #62 and #414 deliberately included, documented in both module docstrings.
 
 So a user exporting a release of 3 boxes, 2 polygons and 1 tag was told three annotations would
 be lost, consented, and received **four label rows where the API held two exportable boxes**. The
