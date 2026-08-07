@@ -60,4 +60,5 @@ Absent from the listing unless the server was started for them (#108). A `confir
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
+| `delete_batch` | `batch_id`, `confirm`? | Delete a batch and how its work was organised. Destructive; requires `confirm=true`. |
 | `delete_project` | `project`, `confirm`? | Delete a project and everything under it. Destructive; requires `confirm=true`. |

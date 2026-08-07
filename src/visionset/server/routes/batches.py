@@ -12,12 +12,11 @@ comment on the handler.
 membership editing are both here now because the gallery is the caller #29 was
 waiting for. Both are ``draft``-only: approval freezes membership, and that
 refusal is the batch's own (``BATCH_NOT_EDITABLE``), never a rule this module
-restates. A *delete* route is still absent; ``BatchService.delete`` has the
-method and ``DELETABLE_STATES`` the rule, and the API grows a route when
-somebody needs one. Since #331 the wire no longer *declares* the capability
-either: ``BatchAction`` has no ``delete`` member, so the contract stops
-promising a control nothing can perform. Adding the route means adding the
-member back, in the same change.
+restates. **Delete** is here too since #376, and it is the one route that ends a
+batch rather than moving it: ``DELETABLE_STATES`` is everything except
+``completed``, the refusal is ``BATCH_IMMUTABLE`` and no flag lifts it, and
+``BatchAction.DELETE`` is declared again in the same change — which is the
+condition #331 set when it withdrew the member rather than route it.
 
 The lifecycle *is* here, because without it nothing downstream is reachable: an
 annotation may only be written into a batch that is ``in_annotation``, and a
@@ -34,7 +33,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Query
+from fastapi import Query, status
 
 from visionset.kernel.domain import AssetProgress, MembershipChange
 from visionset.kernel.services import BatchService, DatasetService, JobService, ProjectService
@@ -52,6 +51,7 @@ from visionset.server.models import (
     BatchMembershipOut,
     BatchOut,
     BatchPage,
+    ConfirmQuery,
     JobOut,
     JobPage,
     LimitQuery,
@@ -409,3 +409,35 @@ def promote_batch(workspace: WorkspaceDep, batch_id: UUID) -> AssetPage:
     """
     promoted = DatasetService(workspace).promote(batch_id)
     return AssetPage(items=[AssetOut.of(asset) for asset in promoted], total=len(promoted))
+
+
+# Last in the module for the reason ``BatchAction.DELETE`` is last in the enum:
+# every other route here moves a batch further along, and this one ends it.
+@router.delete(
+    "/{batch_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=documented(404, 409),
+)
+def delete_batch(workspace: WorkspaceDep, batch_id: UUID, confirm: ConfirmQuery = False) -> None:
+    """Remove a batch, its task groups, its jobs and their progress.
+
+    **The work survives.** Annotations hang off assets rather than off batches,
+    so deleting the unit of work never deletes the labels; the assets stay in
+    their project and in every other batch that carries them, and no blob is
+    touched. What goes is the batch's own record of *organisation* — how the work
+    was cut into jobs, and how far each asset had got.
+
+    A `completed` batch cannot be deleted at all and answers 409
+    `BATCH_IMMUTABLE`: it is the record of what was labeled, against which pinned
+    schema version, and what was deliberately skipped, which is what promotion
+    and every later correction are read against. **No flag lifts that**, which is
+    also why it is checked before `confirm` — a refusal naming a remedy that does
+    not work is worse than a blunt one.
+
+    Without `confirm=true` this answers 409 `CONFIRMATION_REQUIRED` and destroys
+    nothing.
+    """
+    # Both gates go straight to the service. Pre-checking either here would be a
+    # second copy of a rule the kernel owns, and the kernel's refusal is what
+    # carries the code.
+    BatchService(workspace).delete(batch_id, confirm=confirm)

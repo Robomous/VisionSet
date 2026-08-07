@@ -791,7 +791,15 @@ def test_an_open_batch_refuses_to_be_corrected(
 
 
 def _walk_to(client: TestClient, batch_id: str, state: str) -> None:
-    """Take a batch to `state` through the routes a client would actually call."""
+    """Take a batch to `state` through the routes a client would actually call.
+
+    The progress write is a **PUT**, and was a POST here until #376 needed the
+    `completed` leg to be real: the route is `@router.put`, so the POST answered
+    405, nothing settled, `complete` refused, and every `completed` case in this
+    module was quietly running against an `in_annotation` batch. It went
+    unnoticed because the two assertions that used it — membership editing — are
+    refused in both states, so the wrong state produced the right answer.
+    """
     if state == "draft":
         return
     client.post(f"/batches/{batch_id}/approve")
@@ -803,7 +811,7 @@ def _walk_to(client: TestClient, batch_id: str, state: str) -> None:
     job_id = client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
     client.post(f"/jobs/{job_id}/start")
     for asset_id in asset_ids(client, batch_id):
-        client.post(f"/jobs/{job_id}/assets/{asset_id}/progress", json={"progress": "skipped"})
+        client.put(f"/jobs/{job_id}/assets/{asset_id}/progress", json={"progress": "skipped"})
     client.post(f"/jobs/{job_id}/complete")
     client.post(f"/batches/{batch_id}/complete")
 
@@ -949,3 +957,110 @@ def test_membership_routes_agree_with_what_the_batch_declares(
         assert removed.json()["code"] == "BATCH_NOT_EDITABLE"
         # The refusal names the remedy the kernel offers instead.
         assert "skipped" in added.json()["message"]
+
+
+# --- delete (#376) ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("state", ["draft", "approved", "in_annotation"])
+def test_a_batch_that_has_not_finished_deletes_and_stops_answering(
+    client: TestClient, ingested: str, state: str
+) -> None:
+    """`DELETABLE_STATES` over the wire: everything short of completed goes."""
+    _walk_to(client, ingested, state)
+
+    assert client.delete(f"/batches/{ingested}", params={"confirm": True}).status_code == 204
+    assert client.get(f"/batches/{ingested}").status_code == 404
+
+
+def test_a_completed_batch_is_refused_and_the_flag_does_not_lift_it(
+    client: TestClient, ingested: str
+) -> None:
+    """The one state with no exit, and `confirm` is not a way round it.
+
+    Both spellings are asserted because the state check runs *before* the
+    confirmation one, deliberately: a refusal that named `confirm=true` as the
+    remedy would be naming a flag that does not work.
+    """
+    _walk_to(client, ingested, "completed")
+
+    for query in ({}, {"confirm": True}):
+        refused = client.delete(f"/batches/{ingested}", params=query)
+        assert refused.status_code == 409
+        assert refused.json()["code"] == "BATCH_IMMUTABLE"
+
+    assert client.get(f"/batches/{ingested}").json()["state"] == "completed"
+
+
+def test_deleting_without_confirming_changes_nothing(client: TestClient, ingested: str) -> None:
+    """The gate is a query parameter, so the retry is the identical request plus one."""
+    refused = client.delete(f"/batches/{ingested}")
+
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "CONFIRMATION_REQUIRED"
+    assert client.get(f"/batches/{ingested}").status_code == 200
+
+
+def test_deleting_a_batch_nobody_has_is_a_404(client: TestClient) -> None:
+    missing = uuid4()
+
+    assert client.delete(f"/batches/{missing}", params={"confirm": True}).status_code == 404
+
+
+@pytest.mark.parametrize("state", ["draft", "approved", "in_annotation", "completed"])
+def test_the_delete_route_agrees_with_what_the_batch_declares(
+    client: TestClient, ingested: str, state: str
+) -> None:
+    """The contract closed at the wire, on `edit_membership`'s precedent.
+
+    `tests/kernel/test_capabilities.py` proves `delete` declared ⇔
+    `BatchService.delete` succeeds, over the whole state square, by driving the
+    service. It cannot see whether a *route* stands in front of one — which is
+    the orphan #331 withdrew the member over, in the opposite direction.
+    """
+    _walk_to(client, ingested, state)
+    declared = "delete" in client.get(f"/batches/{ingested}").json()["allowed_actions"]
+    assert declared is (state != "completed")
+
+    removed = client.delete(f"/batches/{ingested}", params={"confirm": True})
+
+    if declared:
+        assert removed.status_code == 204
+    else:
+        assert removed.status_code == 409
+        assert removed.json()["code"] == "BATCH_IMMUTABLE"
+
+
+def test_deleting_a_batch_takes_nothing_out_of_the_trunk(
+    client: TestClient, tmp_path: Path, runner: InlineDispatcher
+) -> None:
+    """The invariant, stated directly rather than argued from two other facts.
+
+    Promotion happens only from `completed`, and `completed` cannot be deleted —
+    so a delete can never reach assets that a promotion put in the dataset. The
+    sharp case is the one asserted here: a *second* batch over assets already in
+    the trunk, deleted while it is open, leaves the trunk exactly as it was. That
+    is the shape a correction batch has, and it is the one where "deleting the
+    unit of work never deletes the work" is doing real load-bearing.
+    """
+    project_id, promoted_batch = annotated_batch(client, runner, tmp_path)
+    client.post(f"/batches/{promoted_batch}/promote")
+    dataset_id = dataset_of(client, project_id)
+    trunk = client.get(f"/datasets/{dataset_id}/assets").json()["total"]
+    assert trunk == 3
+
+    same_assets = asset_ids(client, promoted_batch)
+    second: str = client.post(
+        f"/projects/{project_id}/batches",
+        json={"name": "over the same frames", "asset_ids": same_assets},
+    ).json()["id"]
+    client.post(f"/batches/{second}/approve")
+    client.post(f"/batches/{second}/start")
+
+    assert client.delete(f"/batches/{second}", params={"confirm": True}).status_code == 204
+
+    assert client.get(f"/datasets/{dataset_id}/assets").json()["total"] == trunk
+    # And the labels the first batch produced are still on the assets themselves.
+    job_id = client.get(f"/batches/{promoted_batch}/jobs").json()["items"][0]["id"]
+    kept = client.get(f"/jobs/{job_id}/assets/{same_assets[0]}/annotations")
+    assert kept.json()["total"] == 1

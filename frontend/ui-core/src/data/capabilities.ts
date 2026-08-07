@@ -66,9 +66,11 @@ export const BATCH_ACTION = {
   promote: "promote",
   createCorrection: "create_correction",
   editMembership: "edit_membership",
-  // No `delete` (#331): the kernel withdrew the declaration rather than route it,
-  // because nothing outside the SDK can perform it. `satisfies` is what caught the
-  // stale spelling here the moment the generated union lost the member.
+  // `delete` is back (#376), together with the route, the MCP tool and the two
+  // controls that honour it — the condition #331 set when it withdrew the member
+  // rather than route it. `satisfies` is what caught the stale spelling here the
+  // moment the generated union lost it, and is what would catch it again.
+  delete: "delete",
 } as const satisfies Record<string, BatchAction>;
 
 export const JOB_ACTION = {

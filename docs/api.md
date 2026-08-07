@@ -196,14 +196,17 @@ carry `allowed_actions` — a list of names, closed and published in the spec as
 
 ```
 GET /batches/{id}   →  { "state": "in_annotation",
-                         "allowed_actions": ["complete", "repin"], … }
+                         "allowed_actions": ["complete", "repin", "delete"], … }
 ```
 
-**A capability nothing can perform is withdrawn, not declared.** `BatchService.delete` exists
-and `DELETABLE_STATES` is still its rule, but no route reaches it — so since #331 `BatchAction`
-has no `delete` member at all (cf. [batches.md](batches.md)). The rule above cuts both ways: if
-a client must render what the wire declares, the wire may only declare what some surface can
-actually do.
+**A capability nothing can perform is withdrawn, not declared.** The rule above cuts both ways:
+if a client must render what the wire declares, the wire may only declare what some surface can
+actually do. `BatchAction.DELETE` was withdrawn for exactly that reason in #331 — the rule and
+the service method were real, the route was not — and came back in #376 together with
+`DELETE /batches/{id}`, its MCP tool and its controls, which is the condition the withdrawal
+set. `tests/architecture/test_capability_reachability.py` is what now measures it: every member
+of `BatchAction` is resolved against the published paths and the MCP tool listing, computed from
+the enum rather than from a list somebody maintains.
 
 **A client renders these; it never computes them.** Re-deriving the rules from `state` and
 `progress` is what the browser used to do, and its copy drifted by dropping the batch-state

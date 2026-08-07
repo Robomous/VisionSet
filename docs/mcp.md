@@ -34,8 +34,8 @@ cannot run a console script.
 
 ### Destructive tools are not offered unless you ask
 
-`delete_project` is **absent from the listing** unless the server was started with
-`--allow-destructive` (or, for the module form, `VISIONSET_MCP_ALLOW_DESTRUCTIVE=1`):
+`delete_project` and `delete_batch` are **absent from the listing** unless the server was started
+with `--allow-destructive` (or, for the module form, `VISIONSET_MCP_ALLOW_DESTRUCTIVE=1`):
 
 ```json
 { "command": "visionset", "args": ["mcp", "--allow-destructive"] }
@@ -168,6 +168,7 @@ start it — writing is gated on the *batch*, so nothing in the loop forced the 
 
 | | |
 | --- | --- |
+| `delete_batch` | **Destructive.** Removes a batch, its task groups, its jobs and the per-asset progress on them. The **annotations survive** — labels hang off assets, not off batches — and so do the assets themselves. A `completed` batch is refused whatever `confirm` says. |
 | `delete_project` | **Destructive.** Removes the project, its dataset, its batches, its jobs and its annotations. Requires `confirm: true` as well — the parameter is unchanged; what changed is that the tool is not in the listing unless somebody started the server for it. |
 
 ## `get_asset_image`, and the coordinate frame
@@ -238,7 +239,7 @@ Never merged into one, because they guard different things:
 
 | | guards | on |
 | --- | --- | --- |
-| `confirm` | destroying data | `delete_project` |
+| `confirm` | destroying data | `delete_project`, `delete_batch` |
 | `allow_destructive` | narrowing a contract | `create_schema_version` |
 | `allow_lossy` | emitting an incomplete copy of something that stays intact | `export_release` |
 

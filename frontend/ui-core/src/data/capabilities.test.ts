@@ -106,16 +106,17 @@ describe("the action names the client imports", () => {
 
   it("names every action the wire has, so a new one cannot be reached by a literal", () => {
     // The generated unions are the source; these lists are asserted against them
-    // by `tsc` through `satisfies`. What this adds is the count — an eighth batch
+    // by `tsc` through `satisfies`. What this adds is the count — a ninth batch
     // action arriving on the wire with no constant here is a rename nobody can
     // perform, because the screens would have to spell it as a free string.
-    // `delete` is deliberately absent (#331): the kernel withdrew the declaration
-    // rather than route it, so no state offers it and no client may spell it.
+    // `delete` came back with #376, together with the route, the MCP tool and the
+    // two controls that honour it — the condition #331 set when it withdrew it.
     expect(Object.values(BATCH_ACTION).sort()).toEqual(
       [
         "approve",
         "complete",
         "create_correction",
+        "delete",
         "edit_membership",
         "promote",
         "repin",

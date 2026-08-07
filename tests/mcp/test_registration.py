@@ -67,7 +67,7 @@ deliberate edit in two places. The ship-vs-fold decision is the whole point of
 #35; a set computed from the table would agree with itself no matter what
 landed."""
 
-DESTRUCTIVE = {"delete_project"}
+DESTRUCTIVE = {"delete_batch", "delete_project"}
 """Offered only when the server was started with ``--allow-destructive`` (#108).
 
 Absent from the listing by default rather than present and gated, because
@@ -139,7 +139,7 @@ def test_nothing_in_the_default_listing_destroys_anything() -> None:
     assert [tool.__name__ for tool, hints in TOOLS if hints is DESTROYS] == []
 
 
-def test_delete_project_is_the_only_destructive_tool() -> None:
+def test_the_destructive_set_is_exactly_these_two_and_both_are_marked() -> None:
     assert {tool.__name__ for tool, hints in DESTRUCTIVE_TOOLS} == DESTRUCTIVE
     assert all(hints is DESTROYS for _, hints in DESTRUCTIVE_TOOLS)
 

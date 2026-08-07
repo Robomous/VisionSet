@@ -777,7 +777,8 @@
           "repin",
           "promote",
           "create_correction",
-          "edit_membership"
+          "edit_membership",
+          "delete"
         ],
         "title": "BatchAction",
         "type": "string"
@@ -3296,6 +3297,108 @@
       }
     },
     "/batches/{batch_id}": {
+      "delete": {
+        "description": "Remove a batch, its task groups, its jobs and their progress.\n\n**The work survives.** Annotations hang off assets rather than off batches,\nso deleting the unit of work never deletes the labels; the assets stay in\ntheir project and in every other batch that carries them, and no blob is\ntouched. What goes is the batch's own record of *organisation* \u2014 how the work\nwas cut into jobs, and how far each asset had got.\n\nA `completed` batch cannot be deleted at all and answers 409\n`BATCH_IMMUTABLE`: it is the record of what was labeled, against which pinned\nschema version, and what was deliberately skipped, which is what promotion\nand every later correction are read against. **No flag lifts that**, which is\nalso why it is checked before `confirm` \u2014 a refusal naming a remedy that does\nnot work is worse than a blunt one.\n\nWithout `confirm=true` this answers 409 `CONFIRMATION_REQUIRED` and destroys\nnothing.",
+        "operationId": "delete_batch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required to destroy data. The kernel refuses the request without it.",
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Required to destroy data. The kernel refuses the request without it.",
+              "title": "Confirm",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Batch",
+        "tags": [
+          "batches"
+        ]
+      },
       "get": {
         "description": "The batch, with how far its assets have got.\n\n`progress` counts every asset of every job in the batch, so a draft \u2014 which\nhas no jobs yet \u2014 reports zeros across the board while `asset_count` is\nalready whatever the ingest gathered. `schema_version` is null until approval\npins one, and moves after that only through `repin`.",
         "operationId": "get_batch",

@@ -61,6 +61,7 @@ import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
+import { BatchOverflowMenu } from "./DeleteBatch";
 import { PromoteButton } from "./PromoteButton";
 import {
   ASSET_ACTION,
@@ -170,6 +171,16 @@ export interface GalleryScreenProps {
    * put something into it.
    */
   readonly onOpenDataset?: () => void;
+  /**
+   * Where to go once this batch has been deleted (#376).
+   *
+   * The gallery is the one mount of the delete control whose *subject* is what
+   * goes: the Batches row loses a row and the table is still the answer, while
+   * this screen would be left rendering a 404 over an id nobody can visit again.
+   * The app sends it to the Batches tab, replacing history so Back does not walk
+   * into the gone URL — `ProjectRoute`'s `onDeleted` for the same reason.
+   */
+  readonly onDeleted?: () => void;
 }
 
 export function GalleryScreen({
@@ -180,6 +191,7 @@ export function GalleryScreen({
   onOpenSchema,
   onOpenDataset,
   onOpenBatch,
+  onDeleted,
 }: GalleryScreenProps): JSX.Element {
   const project = useProject(projectId);
   const batch = useBatch(batchId);
@@ -369,6 +381,7 @@ export function GalleryScreen({
         assets={loaded}
         showsProgress={showsProgress}
         {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
+        {...(onDeleted === undefined ? {} : { onDeleted })}
         onApprove={() => setApproving(true)}
         {...(onOpenAsset === undefined
           ? {}
@@ -538,6 +551,7 @@ function BatchHeader({
   onStartAnnotating,
   onOpenDataset,
   onOpenBatch,
+  onDeleted,
 }: {
   readonly batch: Batch | undefined;
   readonly projectId: string;
@@ -555,6 +569,8 @@ function BatchHeader({
   readonly showsProgress: boolean;
   readonly onApprove: () => void;
   readonly onStartAnnotating?: () => void;
+  /** Where to go when this screen's subject stops existing (#376). */
+  readonly onDeleted?: () => void;
 }): JSX.Element {
   const first = assets[0];
   const source = useSource(first?.source_id ?? undefined);
@@ -712,16 +728,25 @@ function BatchHeader({
           {batch !== undefined && batch.state === "in_annotation" && (
             <CompleteBatchButton batch={batch} className="flex flex-col items-end gap-1" />
           )}
+          {/*
+            The overflow, and it holds exactly one thing (#376). Rename, re-sample
+            and per-batch export were all asked for alongside it and **none has an
+            operation behind it** — there is no batch rename, no re-sample and no
+            per-batch export anywhere in the published routes, so a menu item for
+            any of them would always refuse. Delete now has all three halves: the
+            route, the declaration and this control. The same component the
+            Batches row mounts; see `DeleteBatch.tsx`.
+          */}
+          {batch !== undefined && (
+            <BatchOverflowMenu
+              batch={batch}
+              projectId={projectId}
+              {...(onDeleted === undefined ? {} : { onDeleted })}
+            />
+          )}
         </div>
       </div>
 
-      {/*
-        No overflow menu. Rename, re-sample, export and delete were all asked for
-        and **none of them has an operation behind it** — there is no batch rename,
-        no re-sample, no per-batch export and no batch delete anywhere in the
-        published routes. The issue's own rule applies: a menu item that always
-        refuses is worse than an absent one.
-      */}
       {/*
         Not for a draft. `0 of 0 annotated (0%)` under forty-eight visible frames
         is not a progress bar at zero — it is a progress bar for work that has not

@@ -40,6 +40,7 @@ import {
   checkCompareSchemaVersions,
   checkCreateSchemaVersion,
   checkDatasetStats,
+  checkDeleteBatch,
   checkDeleteProject,
   checkExportRelease,
   checkGetBackgroundJob,
@@ -979,6 +980,49 @@ export function useRemoveBatchAssets(batchId: string) {
       // project listing carries per-batch counts too.
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
+      void queries.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+/**
+ * Delete a batch: the unit of work, not the work.
+ *
+ * `confirm: true` is sent unconditionally, exactly as `useDeleteProject` does,
+ * because the dialog in front of this hook **is** the confirmation. The kernel's
+ * `confirm=` guard exists for callers that have no person in front of them — an
+ * SDK script, an agent — and a browser that omitted it would answer 409
+ * `CONFIRMATION_REQUIRED` to somebody who had just pressed a button labelled
+ * Delete. What the browser must never do is re-check the *state* gate: a
+ * `completed` batch is refused by the kernel and no flag lifts it, and the
+ * control is disabled from `allowed_actions` rather than from a rule written
+ * here (`cf. #358`).
+ *
+ * `projectId` is a parameter rather than read off the batch because the batch is
+ * what has just stopped existing — the listing to invalidate has to be named
+ * before the subject is gone.
+ */
+export function useDeleteBatch(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (batchId: string) =>
+      unwrap(
+        await client.DELETE("/batches/{batch_id}", {
+          params: { path: { batch_id: batchId }, query: { confirm: true } },
+        }),
+        checkDeleteBatch,
+      ),
+    onSuccess: (_result, batchId) => {
+      // The batch's own keys are removed rather than invalidated: invalidating
+      // them would refetch a 404 for a resource that is gone on purpose, and any
+      // screen still mounted over it would render an error where the honest
+      // answer is that its subject was deleted. The listings are refetched.
+      queries.removeQueries({ queryKey: batchKeys.batch(batchId) });
+      queries.removeQueries({ queryKey: batchKeys.assets(batchId) });
+      queries.removeQueries({ queryKey: batchKeys.jobs(batchId) });
+      void queries.invalidateQueries({ queryKey: ingestKeys.batches(projectId) });
+      void queries.invalidateQueries({ queryKey: queryKeys.projectStats(projectId) });
       void queries.invalidateQueries({ queryKey: ["projects"] });
     },
   });
