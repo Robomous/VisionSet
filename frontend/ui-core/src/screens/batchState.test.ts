@@ -20,9 +20,13 @@ import {
   inSegment,
   hasJobs,
   mayHaveAnnotations,
+  progressCellClass,
   progressDot,
+  progressDotClass,
   progressLabel,
+  progressTone,
   relativeAge,
+  BATCH_STATE_VARIANT,
   segmentCounts,
   segmentOf,
   SEGMENTS,
@@ -174,6 +178,76 @@ describe("what a card says", () => {
     expect(mayHaveAnnotations("annotated")).toBe(true);
     expect(mayHaveAnnotations("review_pending")).toBe(true);
     expect(mayHaveAnnotations("accepted")).toBe(true);
+  });
+});
+
+describe("the status colour vocabulary (#391)", () => {
+  it("gives every one of the five states a semantic token", () => {
+    // The whole point of the sweep: three surfaces used to answer this question
+    // three different ways, so the answer lives here once and they read it.
+    expect(STATES.map((state) => progressTone(state))).toEqual([
+      "neutral",
+      "success",
+      "warning",
+      "success",
+      "neutral",
+    ]);
+  });
+
+  it("calls a skipped frame neutral, never an error", () => {
+    // Skipping is a settled decision about the frame, not a failure of it. The
+    // annotator painted it `destructive`, which told somebody who had chosen to
+    // pass over a frame that something had gone wrong.
+    expect(progressTone("skipped")).toBe("neutral");
+    expect(progressDotClass("skipped")).not.toContain("destructive");
+    expect(progressCellClass("skipped")).not.toContain("destructive");
+  });
+
+  it("paints the dot from the token and shapes it from the state", () => {
+    // Two channels, and neither is redundant: the tone is the glance, the shape
+    // survives a monochrome screen.
+    expect(progressDotClass("unannotated")).toBe("border-border bg-transparent");
+    expect(progressDotClass("annotated")).toBe("border-success bg-success");
+    expect(progressDotClass("review_pending")).toBe("border-warning bg-transparent");
+    expect(progressDotClass("accepted")).toBe("border-success bg-success");
+    expect(progressDotClass("skipped")).toBe("border-border bg-stage");
+  });
+
+  it("uses the same tokens on the timeline, where a cell has no outline", () => {
+    // A one-pixel-gapped strip cannot draw a ring, so `review_pending` is a
+    // solid `warning` there. The token is the same; only the shape channel is
+    // unavailable.
+    expect(progressCellClass("unannotated")).toBe("bg-muted");
+    expect(progressCellClass("annotated")).toBe("bg-success");
+    expect(progressCellClass("review_pending")).toBe("bg-warning");
+    expect(progressCellClass("accepted")).toBe("bg-success");
+    expect(progressCellClass("skipped")).toBe("bg-stage");
+  });
+
+  it("never spells a colour, only a token", () => {
+    // `design_tokens.test.mjs` scans the tracked sources for the same thing.
+    // This is the unit-level half, so a hex added here fails beside its rule.
+    for (const state of STATES) {
+      expect(progressDotClass(state)).not.toMatch(/#[0-9a-f]|rgb|hsl/i);
+      expect(progressCellClass(state)).not.toMatch(/#[0-9a-f]|rgb|hsl/i);
+    }
+  });
+
+  it("reads a null progress as unannotated, the way the word already does", () => {
+    expect(progressTone(null)).toBe("neutral");
+    expect(progressDotClass(undefined)).toBe(progressDotClass("unannotated"));
+    expect(progressCellClass(null)).toBe(progressCellClass("unannotated"));
+  });
+
+  it("keeps the near-black on the batch that has work in it", () => {
+    // #391 left this row genuinely open and the PR settles it. `warning` is the
+    // attention family, and `review_pending` is what it means product-wide; a
+    // batch somebody is annotating is the *healthy* majority state, so painting
+    // it amber would make a list of ordinary work read as a list of problems.
+    // The near-black is the action colour: it says "the work is here".
+    expect(BATCH_STATE_VARIANT.in_annotation).toBe("accent");
+    expect(BATCH_STATE_VARIANT.completed).toBe("success");
+    expect(BATCH_STATE_VARIANT.draft).toBe("neutral");
   });
 });
 

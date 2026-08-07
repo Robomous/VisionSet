@@ -22,19 +22,49 @@
  * asked for, or a hardcoded hex (gated, correctly). #323 *is* that design-system
  * change: `success` is a published token now, so `completed` takes it.
  *
- * The rest of the old note stands and is the reason nothing else moved. What
- * carries the meaning is the **word**, which is also the accessibility rule —
- * state is never colour alone — so `approved` stays `outline` rather than
- * acquiring a colour for symmetry's sake. `in_annotation` keeps the accent
- * because it is the state with something to do, and on a neutral-first palette
- * that accent is a near-black rather than a second status colour competing with
- * the green.
+ * ## The tone is a token, and the word is not optional (#391)
+ *
+ * The five per-asset states were drawn in **three** private vocabularies: the
+ * gallery card and the timeline shared a monochrome ramp off `primary`, and the
+ * annotator kept a semantic one of its own in which `skipped` was
+ * **`destructive`**. So `accepted` was green on one screen and near-black on
+ * another, and a frame somebody had deliberately passed over was painted in the
+ * colour this product uses for a failure.
+ *
+ * `PROGRESS_TONE` is the one answer now, and `progressDotClass` /
+ * `progressCellClass` are the one drawing of it. The rule underneath is two
+ * channels that stay separable: **the tone says which family a state is in, the
+ * shape says how far along it is**, so the strip still reads in greyscale and a
+ * dot is still a dot to somebody who cannot tell the green from the amber. The
+ * word rides beside every one of them, which is the part neither channel
+ * replaces — `DESIGN.md` and WCAG agree that status is never colour alone.
+ *
+ * `warning` is the attention family and it means exactly one thing here,
+ * `review_pending`: a frame waiting on a person. That is also the argument for
+ * what did **not** move. `in_annotation` keeps the accent: a batch somebody is
+ * annotating is the healthy majority state, and painting the majority state
+ * amber makes a list of ordinary work read as a list of problems. `approved`
+ * stays `outline` rather than acquiring a colour for symmetry's sake.
  */
 
 import type { AssetProgress } from "../annotator/jobQueries.js";
 
+/**
+ * The semantic tokens a status may wear, and the whole list of them.
+ *
+ * A status picks an intent; it never picks a colour. Every family in the product
+ * — batch lifecycle, per-asset progress, an ingest run, a background job —
+ * writes its map against this union, so a sixth colour is a type error rather
+ * than a diff nobody notices. `outline` is on `BadgeTone` alone: it is a chip
+ * treatment (a `card` fill on a hairline) rather than a colour, so nothing can
+ * paint a dot or a timeline cell with it.
+ */
+export type StatusTone = "neutral" | "accent" | "success" | "warning" | "destructive";
+
+export type BadgeTone = StatusTone | "outline";
+
 /** `BatchState`, and how each reads. The order is the machine's own. */
-export const BATCH_STATE_VARIANT: Record<string, "neutral" | "accent" | "outline" | "success"> = {
+export const BATCH_STATE_VARIANT: Record<string, BadgeTone> = {
   draft: "neutral",
   approved: "outline",
   in_annotation: "accent",
@@ -178,13 +208,16 @@ export function segmentCounts(counts: {
 // --- per-asset presentation --------------------------------------------------
 
 /**
- * The exact five states, as a dot and a word.
+ * The exact five states, as a shape, a tone and a word.
  *
- * `filled` vs `hollow` vs `muted` is the shape half; the word is the other half,
- * and neither is optional — `DESIGN.md` and WCAG agree that colour alone is not a
- * status. The two that a four-segment toolbar folds together, `annotated` and
- * `accepted`, are deliberately drawn differently here: this is the only place in
- * the product that can tell somebody an asset has been *reviewed*.
+ * `filled` vs `hollow` vs `muted` vs `ring` is the shape half and
+ * `PROGRESS_TONE` is the colour half; the word is the third, and none of them is
+ * optional. The two that a four-segment toolbar folds together, `annotated` and
+ * `accepted`, share a shape *and* a tone — they are both settled, labelled work
+ * — and the **word** is what tells them apart. That is deliberate: this is the
+ * only place in the product that can say an asset was reviewed rather than
+ * merely labelled, and it says it in prose, which is the channel that survives
+ * every kind of colour blindness and every monochrome screen.
  */
 export type DotStyle = "filled" | "hollow" | "muted" | "ring";
 
@@ -212,6 +245,90 @@ export function progressLabel(progress: AssetProgress | null | undefined): strin
 export function progressDot(progress: AssetProgress | null | undefined): DotStyle {
   if (progress === null || progress === undefined) return "hollow";
   return PROGRESS_DOT[progress] ?? "hollow";
+}
+
+/**
+ * Which semantic family each state belongs to.
+ *
+ * `skipped` is **neutral and not `destructive`**, which is the one reading this
+ * sweep reversed rather than unified: skipping is a settled decision about a
+ * frame, the same kind of act as annotating it, and the error colour said the
+ * opposite to everybody who chose it. `unannotated` is neutral because nothing
+ * has happened yet — a fresh batch is not a batch in trouble.
+ */
+export const PROGRESS_TONE: Record<string, StatusTone> = {
+  unannotated: "neutral",
+  annotated: "success",
+  review_pending: "warning",
+  accepted: "success",
+  skipped: "neutral",
+};
+
+export function progressTone(progress: AssetProgress | null | undefined): StatusTone {
+  if (progress === null || progress === undefined) return "neutral";
+  return PROGRESS_TONE[progress] ?? "neutral";
+}
+
+/**
+ * A tone's border and its fill, as whole utility names.
+ *
+ * Whole names rather than a `border-${tone}` template, because Tailwind scans
+ * source *text*: a class assembled at runtime is a class the build never saw and
+ * therefore a rule that is never emitted. The failure is silent and looks like a
+ * styling mistake, which is why these are written out.
+ */
+const TONE_BORDER: Record<StatusTone, string> = {
+  neutral: "border-border",
+  accent: "border-primary",
+  success: "border-success",
+  warning: "border-warning",
+  destructive: "border-destructive",
+};
+
+const TONE_FILL: Record<StatusTone, string> = {
+  neutral: "bg-muted-foreground",
+  accent: "bg-primary",
+  success: "bg-success",
+  warning: "bg-warning",
+  destructive: "bg-destructive",
+};
+
+/**
+ * The dot, as the classes that draw it — border and fill, no geometry.
+ *
+ * The caller owns the size and the radius, because a dot on the annotator's
+ * 44px bar and a dot on a gallery card are the same *status* at two scales. What
+ * they may not own is the colour: that is what three private vocabularies were.
+ *
+ * The shape decides outline-versus-solid and the tone decides which colour, so
+ * neither channel needs a table of its own. `muted` and `hollow` are drawn in
+ * surface colours rather than in `neutral`'s ink: they are the two states with
+ * nothing to announce, and a grey dot as loud as a green one is a dot competing
+ * for a glance it does not deserve.
+ */
+export function progressDotClass(progress: AssetProgress | null | undefined): string {
+  const shape = progressDot(progress);
+  if (shape === "muted") return "border-border bg-stage";
+  if (shape === "hollow") return "border-border bg-transparent";
+  const tone = progressTone(progress);
+  return shape === "ring" ? `${TONE_BORDER[tone]} bg-transparent` : `${TONE_BORDER[tone]} ${TONE_FILL[tone]}`;
+}
+
+/**
+ * A timeline cell's fill, from the same tones.
+ *
+ * The strip is a row of solid blocks a pixel apart, so the shape channel is not
+ * available to it at all — a ring inside a 4px-tall cell is not a ring, it is a
+ * smudge. `review_pending` is therefore a solid `warning` here where the card
+ * draws it as a warning ring. The **token is the same**, and that is the claim:
+ * a colour on the strip and a dot on a card can no longer come to mean different
+ * things, which is what the monochrome ramp had already started to do.
+ */
+export function progressCellClass(progress: AssetProgress | null | undefined): string {
+  const shape = progressDot(progress);
+  if (shape === "muted") return "bg-stage";
+  if (shape === "hollow") return "bg-muted";
+  return TONE_FILL[progressTone(progress)];
 }
 
 /**

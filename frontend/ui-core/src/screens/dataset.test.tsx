@@ -28,6 +28,7 @@ const FORMAT_REST = { geometries: [], modalities: [], degraded_geometries: [] } 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";
 const RELEASE = "33333333-3333-4333-8333-333333333333";
+const EXPORT_JOB = "44444444-4444-4444-8444-444444444444";
 
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
@@ -389,6 +390,84 @@ describe("export, and the third gate word", () => {
         sent.filter((r) => r.url.includes("allow_lossy=true")).length,
       ).toBeGreaterThan(0),
     );
+  });
+
+  /**
+   * The export job's own state, which had no rendering at all (#391).
+   *
+   * `succeeded`/`failed`/`cancelled` existed only as a polling predicate, so the
+   * one long-running operation in this product answered "is it done?" with a
+   * button label and nothing else. A prose refusal covers the two failures; what
+   * was missing is the status itself, in the same vocabulary every other state
+   * on the page uses.
+   */
+  function backgroundJob(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: EXPORT_JOB,
+      type: "export",
+      state: "running",
+      attempt: 1,
+      cancel_requested: false,
+      created_at: "2026-08-06T09:00:00Z",
+      started_at: "2026-08-06T09:00:01Z",
+      finished_at: null,
+      error: null,
+      failures: [],
+      processed: 3,
+      total: 12,
+      result: {},
+      ...overrides,
+    };
+  }
+
+  async function exportWith(state: string): Promise<HTMLElement> {
+    baseline();
+    // The launch is answered with a whole `BackgroundJobOut`, because
+    // `checkExportRelease` validates it — a stub missing a required field makes
+    // `onSuccess` never fire, and the symptom is a badge that does not render
+    // rather than an error anybody can read (#317's lesson, one screen over).
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export")
+        ? { status: 200, body: backgroundJob({ state: "queued" }) }
+        : undefined,
+    );
+    // Anchored, so the artifact download under `/artifact` is not answered with
+    // a job document.
+    on("GET", /\/background-jobs\/[^/]+$/, { status: 200, body: backgroundJob({ state }) });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-format"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+    await userEvent.click(screen.getByTestId("export-submit"));
+
+    return await screen.findByTestId("export-job-state");
+  }
+
+  it("says the export is running, in the colour work-in-flight wears (#391)", async () => {
+    const badge = await exportWith("running");
+    expect(badge.textContent).toContain("Exporting");
+    expect(badge.className).toContain("text-primary");
+  });
+
+  it("says a finished export is done, in the success token (#391)", async () => {
+    const badge = await exportWith("succeeded");
+    expect(badge.textContent).toContain("Done");
+    expect(badge.className).toContain("text-success");
+  });
+
+  it("says a failed export failed, and the prose stays beside it (#391)", async () => {
+    const badge = await exportWith("failed");
+    expect(badge.textContent).toContain("Failed");
+    expect(badge.className).toContain("text-destructive");
+    // The badge is the glance; the sentence is still the answer.
+    expect(screen.getByTestId("export-job-error")).not.toBeNull();
+  });
+
+  it("calls a cancelled export cancelled, neutrally — nothing failed (#391)", async () => {
+    const badge = await exportWith("cancelled");
+    expect(badge.textContent).toContain("Cancelled");
+    expect(badge.className).not.toContain("text-destructive");
   });
 });
 

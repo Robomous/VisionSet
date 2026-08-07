@@ -48,6 +48,7 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
 import { Alert, Badge } from "../primitives/Badge";
+import type { BadgeTone } from "./batchState";
 import { Button } from "../primitives/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../primitives/Card";
 import {
@@ -752,6 +753,34 @@ function isSettled(job: BackgroundJob): boolean {
   return job.state === "succeeded" || job.state === "failed" || job.state === "cancelled";
 }
 
+/**
+ * `BackgroundJobState`, in a person's words and in a token (#391).
+ *
+ * These five states existed **only as a polling predicate** — `isSettled` above
+ * — so the one genuinely long-running operation in this product answered "how is
+ * it going?" with a button label and nothing else, and answered "did it work?"
+ * with a download that either happened or did not. A failure had prose; a
+ * success had no rendering at all.
+ *
+ * `cancelled` is **neutral, not `destructive`**: somebody asked for it. It is the
+ * same call `skipped` gets one file over — a decision is not an error.
+ */
+const JOB_STATE_LABEL: Record<string, string> = {
+  queued: "Queued",
+  running: "Exporting",
+  succeeded: "Done",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+const JOB_STATE_VARIANT: Record<string, BadgeTone> = {
+  queued: "neutral",
+  running: "accent",
+  succeeded: "success",
+  failed: "destructive",
+  cancelled: "neutral",
+};
+
 
 function ExportDialog({
   releaseId,
@@ -774,6 +803,10 @@ function ExportDialog({
   // to keep polling.
   const [jobId, setJobId] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // The last state this dialog saw, held because a succeeded job clears `jobId`
+  // the moment its archive is saved — so the badge would announce the outcome
+  // and remove it in the same tick. Cleared by `run`, not by the poll.
+  const [outcome, setOutcome] = useState<string | null>(null);
   const job = useBackgroundJob(jobId);
 
   const installed = formats.data?.items ?? [];
@@ -790,6 +823,7 @@ function ExportDialog({
 
   function run(allowLossy: boolean): void {
     setSaved(false);
+    setOutcome(null);
     exportRelease.mutate(
       { format, ...(allowLossy ? { allowLossy: true } : {}) },
       { onSuccess: (queued) => setJobId(queued.id) },
@@ -807,6 +841,7 @@ function ExportDialog({
   useEffect(() => {
     if (saved || jobId === null || job.data?.state !== "succeeded") return;
     setSaved(true);
+    setOutcome("succeeded");
     artifact.mutate(jobId, {
       onSuccess: (blob) => {
         saveBlob(blob, `${tag}-${format}.zip`);
@@ -814,6 +849,10 @@ function ExportDialog({
       },
     });
   }, [saved, jobId, job.data?.state, artifact, tag, format]);
+
+  // The badge's subject: the live job while there is one, the outcome once the
+  // archive has been handed over and the poll has stopped.
+  const shownState = job.data?.state ?? outcome;
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -847,6 +886,22 @@ function ExportDialog({
               </FieldHint>
             )}
           </div>
+
+          {/* The status itself, which had no rendering before #391. The word is
+              on the badge rather than only in its colour, and the sentences
+              below stay: a badge is the glance, prose is the answer. */}
+          {shownState !== null && (
+            <p className="flex items-center gap-2 text-meta text-muted-foreground">
+              <Badge variant={JOB_STATE_VARIANT[shownState] ?? "neutral"} data-testid="export-job-state">
+                {JOB_STATE_LABEL[shownState] ?? shownState}
+              </Badge>
+              {job.data?.total !== null && job.data?.total !== undefined && (
+                <span>
+                  {job.data.processed} of {job.data.total}
+                </span>
+              )}
+            </p>
+          )}
 
           {needsConsent && (
             <Alert variant="destructive" title={LOSSY} data-testid="lossy-consent">
