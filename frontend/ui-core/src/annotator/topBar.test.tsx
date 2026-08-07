@@ -585,13 +585,18 @@ describe("principle 10 — no exit loses work", () => {
     await waitFor(() => expect(onOpenGallery).toHaveBeenCalled());
   });
 
-  it("routes the grid button at the gallery too", async () => {
+  it("keeps the grid button inside the editor (#390)", async () => {
+    // It used to call `onOpenGallery` — the arrow's own exit — so the only way to
+    // look at your own frames was to stop looking at the one you were on. The
+    // overlay's own claims live in `frameGallery.test.tsx`; what belongs here is
+    // that the two controls on this bar no longer share a destination.
     const onOpenGallery = vi.fn();
     await open(onOpenGallery);
 
     await userEvent.click(screen.getByTestId("open-gallery"));
 
-    await waitFor(() => expect(onOpenGallery).toHaveBeenCalled());
+    expect(await screen.findByTestId("frame-gallery")).not.toBeNull();
+    expect(onOpenGallery).not.toHaveBeenCalled();
   });
 
   it("has no Save button left on the bar, and still says whether it is saved", async () => {
