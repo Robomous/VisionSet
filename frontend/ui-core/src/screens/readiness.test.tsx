@@ -1,12 +1,18 @@
 /**
- * `useProjectReadiness`, the journey's one answer (#288).
+ * `useProjectReadiness`, the two facts the first-run surfaces are built on
+ * (#288, narrowed by #388).
  *
  * Two claims carry the file. **`SCHEMA_NOT_FOUND` is an answer** — a project
  * starts schema-less on purpose, so that 404 is `hasSchema: false` while any
  * other failure is no answer at all — and **the hook costs nothing on the
- * project screen**: it composes the three queries the header already runs, so
+ * project screen**: it composes the two queries the header already runs, so
  * mounting it beside a consumer of those queries adds zero requests. The second
  * claim is invisible in any rendering; only the request log shows it.
+ *
+ * That second claim got *stronger* with #388 rather than merely surviving it.
+ * The hook used to read the batch list, the dataset and its releases as well,
+ * to order a four-station onboarding checklist. The checklist is retired, and
+ * with it the ordering — so the trunk two-hop is gone and the count is two.
  */
 
 import { QueryClient } from "@tanstack/react-query";
@@ -15,11 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { useActiveSchema, useBatches, useProjectReadiness, useProjectStats } from "./queries";
-import { batchActions, datasetOf, releaseOf } from "../testing/wire.fixtures.js";
-import type { components as capComponents } from "../generated/api.js";
-
-type BatchState = capComponents["schemas"]["BatchState"];
+import { useActiveSchema, useProjectReadiness, useProjectStats } from "./queries";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -81,21 +83,16 @@ function Readiness({ projectId }: { readonly projectId: string }): JSX.Element {
   if (readiness === null) return <p data-testid="readiness-null">no answer yet</p>;
   return (
     <dl data-testid="readiness">
-      <dd data-testid="current-step">{readiness.currentStep}</dd>
       <dd data-testid="has-schema">{String(readiness.hasSchema)}</dd>
       <dd data-testid="has-assets">{String(readiness.hasAssets)}</dd>
-      <dd data-testid="has-annotations">{String(readiness.hasAnnotations)}</dd>
-      <dd data-testid="annotated-pct">{String(readiness.annotatedPct)}</dd>
-      <dd data-testid="in-annotation">{String(readiness.hasBatchInAnnotation)}</dd>
     </dl>
   );
 }
 
-/** A stand-in for the project header: the three queries it already runs. */
+/** A stand-in for the project header: the two queries it already runs. */
 function Header({ projectId }: { readonly projectId: string }): JSX.Element {
   useActiveSchema(projectId);
   useProjectStats(projectId);
-  useBatches(projectId);
   return <span data-testid="header" />;
 }
 
@@ -113,64 +110,14 @@ function statsOf(over: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
-function batchOf(state: string): Record<string, unknown> {
-  return {
-    id: "55555555-5555-4555-8555-555555555555",
-    project_id: PROJECT,
-    name: "drive-01",
-    state,
-    schema_version: state === "draft" ? null : 1,
-    asset_count: 48,
-    progress: {
-      unannotated: 48,
-      annotated: 0,
-      skipped: 0,
-      review_pending: 0,
-      accepted: 0,
-      total: 48,
-    },
-    allowed_actions: batchActions(state as BatchState),
-    promoted_asset_count: 0,
-    parent_batch_id: null,
-  };
-}
-
-function serve(options: {
-  schema?: Answer;
-  stats?: Record<string, unknown>;
-  batches?: readonly Record<string, unknown>[];
-  /** Release tags this project has published. The journey's exit. */
-  releases?: readonly string[];
-}): void {
-  // The two-hop read the journey's last step needs: project -> dataset ->
-  // releases. Stubbed here rather than left to fall through to the 500, because
-  // the hook waits on it and a missing stub would make every readiness answer
-  // `null` — which reads as "still loading" and is indistinguishable from a
-  // hook that stopped working.
-  on("GET", /\/projects\/[^/]+\/dataset$/, {
-    status: 200,
-    body: datasetOf(PROJECT, DATASET),
-  });
-  on("GET", /\/releases$/, {
-    status: 200,
-    body: {
-      items: (options.releases ?? []).map((tag) => releaseOf(DATASET, tag)),
-      total: options.releases?.length ?? 0,
-    },
-  });
+function serve(options: { schema?: Answer; stats?: Record<string, unknown> }): void {
   on(
     "GET",
     /^\/projects\/[^/]+\/schema$/,
     options.schema ?? { status: 200, body: { project_id: PROJECT, version: 1, classes: [] } },
   );
   on("GET", /\/stats$/, { status: 200, body: options.stats ?? statsOf() });
-  on("GET", /\/batches$/, {
-    status: 200,
-    body: { items: options.batches ?? [], total: options.batches?.length ?? 0 },
-  });
 }
-
-const DATASET = "22222222-2222-4222-8222-222222222222";
 
 const SCHEMALESS: Answer = {
   status: 404,
@@ -178,90 +125,51 @@ const SCHEMALESS: Answer = {
 };
 
 describe("useProjectReadiness", () => {
-  it("answers labels for a schema-less project, reading the 404 as an answer", async () => {
+  it("reads the schema-less 404 as an answer rather than as a failure", async () => {
     serve({ schema: SCHEMALESS });
     render(mount(<Readiness projectId={PROJECT} />));
 
-    expect((await screen.findByTestId("current-step")).textContent).toBe("labels");
-    expect(screen.getByTestId("has-schema").textContent).toBe("false");
-  });
-
-  it("answers images once a schema exists and nothing has been ingested", async () => {
-    serve({});
-    render(mount(<Readiness projectId={PROJECT} />));
-
-    expect((await screen.findByTestId("current-step")).textContent).toBe("images");
-    expect(screen.getByTestId("has-schema").textContent).toBe("true");
+    expect((await screen.findByTestId("has-schema")).textContent).toBe("false");
     expect(screen.getByTestId("has-assets").textContent).toBe("false");
   });
 
-  it("answers annotate while nothing is annotated", async () => {
+  it("answers both true once the project has classes and images", async () => {
     serve({ stats: statsOf({ asset_count: 48 }) });
     render(mount(<Readiness projectId={PROJECT} />));
 
-    expect((await screen.findByTestId("current-step")).textContent).toBe("annotate");
-    expect(screen.getByTestId("has-annotations").textContent).toBe("false");
+    expect((await screen.findByTestId("has-schema")).textContent).toBe("true");
+    expect(screen.getByTestId("has-assets").textContent).toBe("true");
   });
 
-  it("answers annotate while a batch is unfinished, whatever the percentage says", async () => {
-    // 62% annotated and still mid-journey: an open batch is open work, and a
-    // checklist that said "export" over it would be pointing past the job.
-    serve({
-      stats: statsOf({
-        asset_count: 48,
-        annotated_asset_count: 30,
-        annotation_count: 120,
-        annotated_pct: 62,
-      }),
-      batches: [batchOf("in_annotation")],
-    });
+  it("separates the two facts: images with no schema is a state, not a contradiction", async () => {
+    // The order is not enforced anywhere — ingesting first and declaring classes
+    // first are both legitimate — so the hook has to be able to report the second
+    // order, and #388's third invitation is the surface that reads it.
+    serve({ schema: SCHEMALESS, stats: statsOf({ asset_count: 48 }) });
     render(mount(<Readiness projectId={PROJECT} />));
 
-    expect((await screen.findByTestId("current-step")).textContent).toBe("annotate");
-    expect(screen.getByTestId("in-annotation").textContent).toBe("true");
-  });
-
-  it("answers export once work exists and every batch is settled", async () => {
-    serve({
-      stats: statsOf({
-        asset_count: 48,
-        annotated_asset_count: 48,
-        annotation_count: 200,
-        annotated_pct: 100,
-      }),
-      batches: [batchOf("completed")],
-    });
-    render(mount(<Readiness projectId={PROJECT} />));
-
-    expect((await screen.findByTestId("current-step")).textContent).toBe("export");
-    expect(screen.getByTestId("in-annotation").textContent).toBe("false");
+    expect((await screen.findByTestId("has-schema")).textContent).toBe("false");
+    expect(screen.getByTestId("has-assets").textContent).toBe("true");
   });
 
   it("has no answer at all while the schema failed for a real reason", async () => {
     // Only the schema-less 404 is an answer. Anything else means the hook does
     // not know — and a readiness computed from half an answer would confidently
-    // say "labels" about a project that has plenty.
+    // invite a project with fifty classes to define its first one.
     serve({ schema: { status: 500, body: { code: "BOOM", message: "no" } } });
     render(mount(<Readiness projectId={PROJECT} />));
 
     await waitFor(() => expect(sent.filter((r) => r.url.endsWith("/schema")).length).toBe(1));
-    await waitFor(() => expect(sent.filter((r) => r.url.endsWith("/batches")).length).toBe(1));
+    await waitFor(() => expect(sent.filter((r) => r.url.endsWith("/stats")).length).toBe(1));
     expect(screen.getByTestId("readiness-null")).not.toBeNull();
     expect(screen.queryByTestId("readiness")).toBeNull();
   });
 
   it("asks for each thing exactly once, however many readers want it", async () => {
-    // **The claim changed and is stated rather than quietly relaxed.** This used
-    // to assert *three* requests and "not one beyond what the header runs",
-    // because the hook composed only the header's own queries. It reads the
-    // dataset and its releases now — the two-hop the journey's last step needs —
-    // so the honest number is five.
-    //
-    // What has not changed is the property that mattered: composition, not
-    // duplication. Two components asking the same question share one request,
-    // which is why the Overview's dashboard — which reads the dataset and the
-    // releases for its own cards — makes this hook free on the one screen that
-    // renders the checklist.
+    // Composition, not duplication: two components asking the same question share
+    // one request, which is what makes this hook free beside a header that runs
+    // both queries anyway. **Two, and not one beyond what the header runs** — the
+    // count is the claim, so the assertion is the total and not a subset.
     serve({ stats: statsOf({ asset_count: 48 }) });
     render(
       mount(
@@ -274,14 +182,18 @@ describe("useProjectReadiness", () => {
       ),
     );
 
-    await screen.findAllByTestId("current-step");
+    await screen.findAllByTestId("has-schema");
     const paths = sent.map((request) => new URL(request.url).pathname);
-    for (const one of ["/schema", "/stats", "/batches", "/dataset", "/releases"]) {
+    for (const one of ["/schema", "/stats"]) {
       expect(paths.filter((path) => path.endsWith(one)), one).toHaveLength(1);
     }
-    expect(paths).toHaveLength(5);
-    // And never the version list: that query belongs to the history section,
-    // which fetches it when the Schema tab opens and not before.
+    expect(paths).toHaveLength(2);
+    // Never the version list: that query belongs to the history section, which
+    // fetches it when the Schema tab opens and not before. And never the trunk —
+    // the dataset and its releases went with the checklist that needed them.
     expect(paths.some((path) => path.endsWith("/schema/versions"))).toBe(false);
+    expect(paths.some((path) => path.endsWith("/dataset") || path.endsWith("/releases"))).toBe(
+      false,
+    );
   });
 });

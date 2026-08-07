@@ -182,11 +182,30 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("declare a schema with all four geometries", async () => {
-    // A brand-new project opens on Overview since #210, and its empty state is
-    // the honest first thing to see — there is no data to describe yet. The
-    // schema is a tab away.
+    /*
+     * A brand-new project opens on Overview since #210, and since #388 it opens
+     * on **one** invitation chosen from its real state — no schema and no
+     * images, so the invitation is the classes one and it is the page's only
+     * filled button. This is the first-run path a person actually walks, so the
+     * run walks it: the CTA, not the tab bar.
+     *
+     * The header's Ingest is asserted outlined here rather than in a unit test
+     * because "exactly one filled button on the page" is a claim about the whole
+     * composed screen, and the header lives outside the panel that owns the
+     * invitation.
+     */
     await expect(page.getByTestId("overview-empty")).toBeVisible();
-    await page.getByTestId("tab-schema").click();
+    await expect(page.getByTestId("first-run")).toHaveAttribute(
+      "data-invitation",
+      "classes-first",
+    );
+    await expect(page.locator("button.bg-primary")).toHaveCount(1);
+    await expect(page.getByTestId("go-ingest")).not.toHaveClass(/bg-primary/);
+    // And the retired checklist is gone rather than merely dismissed.
+    await expect(page.getByTestId("journey-checklist")).toHaveCount(0);
+
+    await page.getByTestId("first-run-cta").click();
+    await expect(page.getByTestId("tab-schema")).toHaveAttribute("data-state", "active");
 
     // A project starts schema-less on purpose, so the editor opens on an empty
     // draft rather than an error.
