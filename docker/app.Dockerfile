@@ -3,7 +3,7 @@
 #
 # Dev only. The frontend's release artifact is the compiled bundle inside the Python
 # wheel (`pnpm bundle:static`), which this file has nothing to do with.
-FROM node:24-bookworm-slim
+FROM node:25-bookworm-slim
 
 # pnpm comes from corepack, pinned by the root package.json's `packageManager`
 # field — so the version is decided by the repository, not by this file, and the
