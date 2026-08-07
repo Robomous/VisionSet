@@ -12,8 +12,9 @@ reason: "what is in this project and how far along is it" is one question.
 nothing an agent can observe going wrong, and a tool that exists only so a model
 can fix a typo in a name it chose is list-padding.
 
-``delete_project`` **is** here, and it is the only tool in the whole surface that
-destroys data. It carries ``confirm``.
+``delete_project`` **is** here, and it is the widest of the two tools in this
+surface that destroy data (``delete_batch`` is the other). It carries ``confirm``,
+and like its sibling it is registered only under ``--allow-destructive``.
 """
 
 from __future__ import annotations

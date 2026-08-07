@@ -248,6 +248,10 @@ function Gallery(): JSX.Element {
       // route the batch table's rows use — a batch is a batch, whichever screen
       // named it.
       onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
+      // This screen's whole subject has just stopped existing (#376), so its own
+      // URL is a 404 waiting to happen — the Batches tab is where to land, and
+      // `replace` so Back does not walk into the gone batch.
+      onDeleted={() => void navigate(PARENT.batches(projectId), { replace: true })}
     />
   );
 }

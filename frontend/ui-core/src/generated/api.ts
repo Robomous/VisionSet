@@ -154,7 +154,27 @@ export interface paths {
         get: operations["get_batch"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Batch
+         * @description Remove a batch, its task groups, its jobs and their progress.
+         *
+         *     **The work survives.** Annotations hang off assets rather than off batches,
+         *     so deleting the unit of work never deletes the labels; the assets stay in
+         *     their project and in every other batch that carries them, and no blob is
+         *     touched. What goes is the batch's own record of *organisation* — how the work
+         *     was cut into jobs, and how far each asset had got.
+         *
+         *     A `completed` batch cannot be deleted at all and answers 409
+         *     `BATCH_IMMUTABLE`: it is the record of what was labeled, against which pinned
+         *     schema version, and what was deliberately skipped, which is what promotion
+         *     and every later correction are read against. **No flag lifts that**, which is
+         *     also why it is checked before `confirm` — a refusal naming a remedy that does
+         *     not work is worse than a blunt one.
+         *
+         *     Without `confirm=true` this answers 409 `CONFIRMATION_REQUIRED` and destroys
+         *     nothing.
+         */
+        delete: operations["delete_batch"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2044,7 +2064,7 @@ export interface components {
          * @description What can be asked of a batch. Declaration order is display order.
          * @enum {string}
          */
-        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership";
+        BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "edit_membership" | "delete";
         /**
          * BatchApprove
          * @description How to cut the batch into jobs. One job for the whole batch by default.
@@ -3348,6 +3368,83 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_batch: {
+        parameters: {
+            query?: {
+                /** @description Required to destroy data. The kernel refuses the request without it. */
+                confirm?: boolean;
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

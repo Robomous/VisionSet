@@ -94,8 +94,8 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (batches.list_batch_assets, READS),
     (batches.create_batch, WRITES),
     # WRITES, not DESTROYS: removing membership destroys nothing — the asset
-    # stays in its project and in every other batch. `delete_project` is
-    # still the only DESTROYS.
+    # stays in its project and in every other batch. The two DESTROYS live in
+    # `DESTRUCTIVE_TOOLS` and are not registered by default at all.
     (batches.add_batch_assets, WRITES),
     (batches.remove_batch_assets, WRITES),
     (jobs.get_job, READS),
@@ -129,6 +129,7 @@ Nothing here is destructive. See :data:`DESTRUCTIVE_TOOLS`.
 """
 
 DESTRUCTIVE_TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
+    (batches.delete_batch, DESTROYS),
     (projects.delete_project, DESTROYS),
 )
 """Tools that destroy something, registered **only on request**.
@@ -184,10 +185,11 @@ def destructive_tools_allowed() -> bool:
 def registered_tools() -> tuple[tuple[Callable[..., Any], ToolAnnotations], ...]:
     """The table this process will register, in the order an agent meets them.
 
-    Destructive tools go **last** rather than in cycle position. They are not part
-    of the cycle — nothing downstream of ``delete_project`` exists — and a listing
-    whose ordering doubles as the workflow should not put a dead end in the middle
-    of it.
+    Destructive tools go **last** rather than in cycle position. Neither is part
+    of the cycle — each ends its subject rather than moving it along — and a
+    listing whose ordering doubles as the workflow should not put a dead end in
+    the middle of it. ``BatchAction`` orders its own ``delete`` last for the same
+    reason, one surface over.
     """
     if not destructive_tools_allowed():
         return TOOLS

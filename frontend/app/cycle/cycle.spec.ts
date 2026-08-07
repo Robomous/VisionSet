@@ -632,6 +632,52 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     );
   });
 
+  await test.step("delete a batch, and watch the trunk not move", async () => {
+    /*
+     * **#376, against the real kernel** — the half a stubbed run cannot make.
+     *
+     * Two claims, and both are about the server's own answer rather than about
+     * this client's rendering. First: what the overflow offers is
+     * `allowed_actions` as the kernel computed it, so the completed parent shows
+     * the item **disabled with its reason** while a draft shows it live. Second,
+     * and the one worth a real database: deleting a batch over frames that are
+     * already in the trunk takes **nothing** out of it — annotations hang off
+     * assets, so the unit of work goes and the work stays.
+     *
+     * The subject is a second correction, cut and then thrown away, so the walk
+     * below still has the first one to carry on with.
+     */
+    await expect(page.getByTestId("batch-overflow-cycle-batch")).toBeVisible();
+    await page.getByTestId("batch-overflow-cycle-batch").click();
+    const withheld = page.getByTestId("delete-batch-cycle-batch");
+    await expect(withheld).toBeVisible();
+    await expect(withheld).toHaveAttribute("data-disabled", "");
+    await expect(page.getByTestId("delete-withheld-cycle-batch")).toContainText(
+      "correction batch",
+    );
+    await page.keyboard.press("Escape");
+
+    await page.getByTestId("correct-cycle-batch").click();
+    await page.getByTestId("correction-name").fill("doomed");
+    await page.getByTestId("correction-submit").click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
+
+    // From the gallery, which is the mount whose subject stops existing — so it
+    // must land on the Batches tab rather than on its own dead URL.
+    await page.getByTestId("batch-overflow-doomed").click();
+    await page.getByTestId("delete-batch-doomed").click();
+    await expect(page.getByTestId("delete-batch-dialog")).toContainText("The annotations stay.");
+    await page.getByTestId("delete-batch-submit").click();
+
+    await expect(page.getByTestId("batches-table")).toBeVisible();
+    await expect(page.getByTestId("batch-doomed")).toHaveCount(0);
+    // The parent, its promotion and the trunk are all exactly where they were.
+    await expect(page.getByTestId("state-cycle-batch")).toHaveText("completed");
+    await expect(page.getByTestId("promoted-count-cycle-batch")).toHaveText(
+      /3 of 3 in the dataset/,
+    );
+  });
+
   await test.step("publish a release", async () => {
     // **A tab, reached in one press.** It was behind the header's overflow menu,
     // which is where a destination goes when the navigation has no room for it —
@@ -829,26 +875,31 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     expect(badRequests).toEqual([]);
 
     /*
-     * **The one aborted API call, pinned rather than tolerated.**
+     * **The aborted API calls, pinned rather than filtered away.**
      *
-     * `DELETE /jobs/{id}/annotations` answers `204 No Content`, and Chromium
-     * reports the request as `net::ERR_ABORTED` — there is no body for the
-     * renderer to read, so the network stack tears the stream down and files it
-     * as cancelled. Measured, not assumed: the deletion is committed (the
+     * Both entries answer `204 No Content`, and Chromium reports every such
+     * request as `net::ERR_ABORTED` — there is no body for the renderer to read,
+     * so the network stack tears the stream down and files it as cancelled.
+     * Measured, not assumed, for the first one: the deletion is committed (the
      * `vehicle` class disappeared from the trunk two steps up), `save-state`
      * read `Saved`, and the POST that follows it in `useSaveAnnotations` only
      * fires after the DELETE's `await` resolves. It is bookkeeping, not a
      * failure.
      *
-     * It had no coverage before this walk because nothing in the browser had
-     * ever deleted an annotation — the correction story is the first thing that
-     * does, and it is the repo's only `204` fetch.
+     * `DELETE /batches/{id}` is #376's route and the second `204` this client
+     * sends; the step that calls it asserts the batch is gone from the table and
+     * the trunk did not move, which is what "committed" means there. The
+     * annotation delete had no coverage before this walk at all, because nothing
+     * in the browser had ever deleted an annotation.
      *
-     * Asserted as an exact list rather than filtered away: a *second* aborted
-     * call, or one on another route, is the shape of a request the app really
-     * did abandon, and that is worth failing on.
+     * Asserted as an exact list, in walk order: a *third* aborted call, or one on
+     * another route, is the shape of a request the app really did abandon, and
+     * that is worth failing on.
      */
-    expect(abortedApiCalls).toEqual([expect.stringMatching(/^DELETE .*\/annotations$/)]);
+    expect(abortedApiCalls).toEqual([
+      expect.stringMatching(/^DELETE .*\/batches\/[0-9a-f-]+$/),
+      expect.stringMatching(/^DELETE .*\/annotations$/),
+    ]);
     // And the icon is genuinely served under the mount, rather than absent and
     // unnoticed: `vite preview` would answer 200 with `index.html` here, which is
     // #49's trap and the reason this is checked against the real server.

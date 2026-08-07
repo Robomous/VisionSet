@@ -483,6 +483,31 @@ it means typing tuples of UUIDs. Its `kind` is always sent explicitly — a
 discriminated union's tag emitted by default reads as optional in the schema while
 pydantic needs it in the dict to pick a variant.
 
+#### Deleting a batch, behind `⋯` and at two anchors
+
+The one control on either of these screens that ends a batch rather than moving it
+along, and the only irreversible one — so it lives in an overflow menu, where the
+things you go looking for live, rather than beside the thing you press next. It is
+mounted twice, on the Batches row and in the gallery header, from **one component**
+(`screens/DeleteBatch.tsx`): a second spelling of which states may be deleted, of
+the blast radius, or of the confirmation would be the hand-mirror one layer up
+from the one `capabilities.ts` removes.
+
+Availability is `delete` in the batch's own `allowed_actions`, so a `completed`
+batch renders the item **disabled with the reason** — there is an operation behind
+it and a state that would enable it, which is the distinction #354 drew when it
+removed a control instead. The sentence is `withheldBecause`'s, shared with every
+other withheld control on these screens.
+
+What the dialog says is the **verified** blast radius. The batch, its jobs and the
+per-frame progress go; the frames and their annotations stay, because
+`annotation.asset_id` is a label's only parent and a batch's cascade cannot reach
+one. Both numbers it quotes come off `BatchOut`, which is already loaded at both
+mounts — a count of *jobs* would need a second request the Batches row never makes,
+and a dialog that said "3 jobs" on one screen and nothing on the other would be two
+dialogs. From the gallery it navigates to the Batches tab, replacing history: the
+screen's whole subject has stopped existing.
+
 ### The ingest flow, and the order the domain forces
 
 The issue asks for an fps parameter "with original-fps display from the probe".

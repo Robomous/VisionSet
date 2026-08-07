@@ -19,6 +19,14 @@ description say so — the asset stays in its project and in every other batch. 
 agent that reads "delete" and reaches for it to clean up a project would be doing
 something no tool here can do.
 
+``delete_batch`` is the module's one destructive tool (#376) and is registered
+**only** under ``--allow-destructive``, with ``delete_project``, for #108's
+measured reason: when the caller is a model, ``confirm`` is a parameter it reads
+in the same listing it chooses from, so the gate has to sit somewhere the agent
+cannot reach. It destroys the *organisation* of work and never the work — the
+distinction the description leads with, because it is the one an agent is most
+likely to get backwards.
+
 ``list_batch_jobs`` folds into ``get_batch``: a batch's jobs are how it is worked,
 so an agent asking about a batch is about to ask about its jobs.
 
@@ -386,3 +394,43 @@ def promote_batch(batch_id: BatchRef) -> dict[str, Any]:
             identifier(batch_id, what="batch_id"), actor=_ACTOR
         )
     return wire.page([wire.asset(a) for a in promoted])
+
+
+def delete_batch(
+    batch_id: BatchRef,
+    confirm: Annotated[
+        bool,
+        Field(
+            description=(
+                "Must be true to actually delete. False returns a refusal and changes nothing."
+            )
+        ),
+    ] = False,
+) -> dict[str, Any]:
+    """Delete a batch and how its work was organised. Destructive; requires `confirm=true`.
+
+    **The annotations survive.** Labels hang off assets rather than off batches,
+    so this never deletes work; the assets stay in the project and in every other
+    batch that carries them, and no image content is touched. What goes is the
+    batch itself, its task groups, its jobs, and the per-asset progress on
+    them — how the work was cut up and how far each frame had got.
+
+    A `completed` batch cannot be deleted at all, and `confirm=true` does not
+    change that. It is the record of what was labeled, against which pinned
+    schema version, and what was deliberately skipped, which is what promotion
+    and any later correction are read against. To revisit finished work, create a
+    correction batch instead.
+
+    Called without `confirm=true` it changes nothing and tells you so.
+    """
+    # The receipt is read **before** the delete, and it is the ordinary batch
+    # payload rather than a fourth hand-written spelling of one: the jobs it
+    # names are exactly what went. Read after, there would be nothing to read;
+    # invented, it would be a shape nothing else in this surface produces. It
+    # describes the batch as it was at the moment it was destroyed, including
+    # `allowed_actions`, which is what a record of a past state is.
+    with opened_workspace() as workspace:
+        resolved = identifier(batch_id, what="batch_id")
+        doomed = _batch_payload(workspace, resolved)
+        BatchService(workspace).delete(resolved, confirm=confirm)
+    return {"deleted": doomed}
