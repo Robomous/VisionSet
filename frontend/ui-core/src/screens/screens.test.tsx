@@ -128,14 +128,36 @@ describe("the project list", () => {
     expect(screen.queryByTestId("projects-table")).toBeNull();
   });
 
+  it("lands inside the project it just created, not back on the list", async () => {
+    on("GET", /^\/projects$/, { status: 200, body: { items: [], total: 0 } });
+    on("POST", /^\/projects$/, {
+      status: 201,
+      body: { id: PROJECT, name: "highway", description: null },
+    });
+    const opened = vi.fn();
+
+    render(mount(<ProjectsScreen onOpenProject={opened} />));
+    await userEvent.click(await screen.findByTestId("new-project"));
+    await userEvent.type(screen.getByTestId("project-name"), "highway");
+    await userEvent.click(screen.getByTestId("create-submit"));
+
+    // Every project is created in order to do something with it, so the list is
+    // never the destination. The id comes back on the 201 — nothing is fetched
+    // to find it — and it travels out through the callback the row already uses,
+    // which is what keeps the routing in the app (#387).
+    await waitFor(() => expect(opened).toHaveBeenCalledWith(PROJECT));
+    expect(screen.queryByTestId("create-project-dialog")).toBeNull();
+  });
+
   it("renders a refusal with its code, because that is what a client branches on", async () => {
     on("GET", /^\/projects$/, { status: 200, body: { items: [], total: 0 } });
     on("POST", /^\/projects$/, {
       status: 409,
       body: { code: "PROJECT_NAME_TAKEN", message: "A project called highway already exists." },
     });
+    const opened = vi.fn();
 
-    render(mount(<ProjectsScreen onOpenProject={vi.fn()} />));
+    render(mount(<ProjectsScreen onOpenProject={opened} />));
     await userEvent.click(await screen.findByTestId("new-project"));
     await userEvent.type(screen.getByTestId("project-name"), "highway");
     await userEvent.click(screen.getByTestId("create-submit"));
@@ -143,6 +165,11 @@ describe("the project list", () => {
     const error = await screen.findByTestId("create-error");
     expect(error.textContent).toContain("PROJECT_NAME_TAKEN");
     expect(error.textContent).toContain("already exists");
+    // The failure path is untouched by #387: the dialog stays open with what was
+    // typed still in it, and nothing navigates anywhere.
+    expect(screen.queryByTestId("create-project-dialog")).not.toBeNull();
+    expect(screen.getByTestId("project-name")).toHaveProperty("value", "highway");
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it("sends confirm=true on a delete, because the API will not act without it", async () => {
