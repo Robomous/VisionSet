@@ -51,12 +51,9 @@
  *
  * Class reassignment uses `replaceAnnotationCommand`, so it lands in the history and
  * undo takes it back like anything else. It is offered per row rather than for the
- * selection, and it lists **every** class the schema declares, with the ones whose
- * geometry does not match this annotation's **disabled and carrying the reason**.
- * That is a deliberate reversal of what shipped before, which filtered them out: a
- * short list with no explanation looks like the schema is missing classes, and the
- * rule — the kernel judges geometry per class (#7, `DisallowedGeometry`) — is
- * invisible exactly when somebody is hunting for the class that is not there.
+ * selection, which is the one thing about it this file still decides — everything
+ * else lives in `ReassignMenu.tsx`, because #380 gave the same picker a second
+ * anchor on the canvas and a rule with two spellings is a rule that drifts.
  *
  * Applied on selection rather than behind an **Apply**, which the card this replaces
  * needed and a menu does not: a Radix menu highlights on arrow and commits only on
@@ -93,12 +90,8 @@ import { useState, type JSX } from "react";
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { Input } from "../primitives/Input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../primitives/Menu";
+import { DropdownMenu, DropdownMenuTrigger } from "../primitives/Menu";
+import { ReassignMenu } from "./ReassignMenu";
 import { cn } from "../lib/cn";
 
 export interface AnnotatorPanelProps {
@@ -235,7 +228,7 @@ export function AnnotatorPanel({
               annotation={annotation}
               index={index}
               declared={classNamed(snapshot.document, annotation.label_class)}
-              classes={schema.classes}
+              schema={schema}
               selected={snapshot.selection.has(annotation.id)}
               hidden={hiddenIds.has(annotation.id)}
               onSelect={() => store.select(selectOnly(annotation.id))}
@@ -332,7 +325,7 @@ function ObjectRow({
   annotation,
   index,
   declared,
-  classes,
+  schema,
   selected,
   hidden,
   onSelect,
@@ -343,7 +336,8 @@ function ObjectRow({
   readonly annotation: Annotation;
   readonly index: number;
   readonly declared: LabelClass | undefined;
-  readonly classes: readonly LabelClass[];
+  /** The pinned schema — the reassignment menu reads its classes and hotkeys. */
+  readonly schema: AnnotationSchema;
   readonly selected: boolean;
   readonly hidden: boolean;
   readonly onSelect: () => void;
@@ -382,10 +376,10 @@ function ObjectRow({
         </span>
       </button>
       {onReassign !== undefined && (
-        <ReassignMenu
+        <RowReassign
           index={index}
           annotation={annotation}
-          classes={classes}
+          schema={schema}
           onReassign={onReassign}
         />
       )}
@@ -415,27 +409,30 @@ function ObjectRow({
 }
 
 /**
- * Every class the schema declares, and why the ones that cannot be picked cannot.
+ * The row's anchor for `ReassignMenu` — and nothing else (#380).
  *
- * The disabled items are the point. A menu listing only the compatible classes
- * answers "which class do you want" while silently withholding the answer to "where
- * is `lane`" — and `lane` is missing for a reason the person can act on, which is to
- * draw a polygon instead. So the row is there, greyed, naming the geometry it needs.
+ * Everything this menu decides moved into `ReassignMenu.tsx` when the canvas grew
+ * a second anchor for it: the class list, the disabled-with-reason rendering, the
+ * hotkey and the apply. What is left here is a trigger and a row number, which are
+ * the only two things a list legitimately has that a shape does not.
+ *
+ * Open is held rather than left to Radix, because a hotkey is not an item
+ * selection: nothing would dismiss the menu after a digit reassigns.
  */
-function ReassignMenu({
+function RowReassign({
   index,
   annotation,
-  classes,
+  schema,
   onReassign,
 }: {
   readonly index: number;
   readonly annotation: Annotation;
-  readonly classes: readonly LabelClass[];
+  readonly schema: AnnotationSchema;
   readonly onReassign: (labelClass: string) => void;
 }): JSX.Element {
-  const geometry = annotation.geometry.type;
+  const [open, setOpen] = useState(false);
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -447,33 +444,13 @@ function ReassignMenu({
           <Tag className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-w-64">
-        {classes.map((declared) => {
-          const fits = declared.geometry === geometry;
-          const current = declared.name === annotation.label_class;
-          return (
-            <DropdownMenuItem
-              key={declared.name}
-              disabled={!fits}
-              data-testid={`reclass-${index}-${declared.name}`}
-              onSelect={() => onReassign(declared.name)}
-            >
-              <span
-                aria-hidden="true"
-                className="size-2.5 shrink-0 rounded-sm"
-                style={{ background: classColor(declared, declared.name) }}
-              />
-              <span className="min-w-0 flex-1 truncate">{declared.name}</span>
-              {current && <Check className="size-3.5 shrink-0" aria-label="current class" />}
-              {!fits && (
-                <span className="shrink-0 text-meta text-muted-foreground">
-                  needs a {declared.geometry}
-                </span>
-              )}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
+      <ReassignMenu
+        annotation={annotation}
+        schema={schema}
+        idPrefix={`reclass-${index}`}
+        onReassign={onReassign}
+        onClose={() => setOpen(false)}
+      />
     </DropdownMenu>
   );
 }

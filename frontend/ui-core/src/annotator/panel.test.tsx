@@ -315,6 +315,29 @@ describe("reassigning a class from a row", () => {
     expect(store.canUndo).toBe(false);
   });
 
+  it("carries the class hotkeys, because the menu is the canvas picker's (#380)", async () => {
+    // The row menu and the canvas one are the same component, so what #380 added
+    // for the canvas is on the panel too. This is the assertion that fails if a
+    // second spelling is ever forked out of `ReassignMenu.tsx`.
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store));
+    await openMenu(0);
+
+    expect(screen.getByTestId("reclass-0-pedestrian").textContent).toContain("2");
+  });
+
+  it("reassigns on a class hotkey, at this anchor as at the other one", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store));
+    await openMenu(0);
+
+    await userEvent.keyboard("2");
+    expect(store.document.annotations.get("a")?.label_class).toBe("pedestrian");
+    // A digit is not an item press, so the menu has to close itself — held open
+    // by the row rather than by Radix for exactly this.
+    expect(screen.queryByTestId("reclass-0-pedestrian")).toBeNull();
+  });
+
   it("reassigns a polygon among polygon classes, so the rule is per geometry and not per row", async () => {
     const store = storeWith([annotation("a", "lane", "polygon")]);
     render(mount(store));

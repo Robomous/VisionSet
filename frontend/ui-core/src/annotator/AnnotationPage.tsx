@@ -87,6 +87,7 @@ import {
   defaultRegistry,
   annotationsInDrawOrder,
   documentFromWire,
+  selectOnly,
   toolFor,
   useAnnotatorSnapshot,
   type AnnotatorStore,
@@ -147,6 +148,7 @@ import {
 } from "../primitives/Menu";
 import { Eye } from "lucide-react";
 import { AnnotatorPanel } from "./AnnotatorPanel";
+import { CanvasReassign } from "./CanvasReassign";
 import { ClassField } from "./ClassField";
 import { ShortcutSheet, modKey } from "./ShortcutSheet";
 import { ToolPalette } from "./ToolPalette";
@@ -644,6 +646,15 @@ function Workspace({
   const [view, setView] = useState<Viewport | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  /**
+   * Which shape's class picker is open, if any (#380).
+   *
+   * An id rather than a boolean, so the state cannot outlive its subject — see
+   * `CanvasReassign`. Held here rather than inside that component because the
+   * *canvas* opens it too: a right-click is reported by the adapter, and the
+   * component that draws the trigger is not the one the report arrives at.
+   */
+  const [reclassing, setReclassing] = useState<string | null>(null);
   const [addingClass, setAddingClass] = useState(false);
   /**
    * What the create row was typed with, carried into the dialog's name field.
@@ -1678,9 +1689,35 @@ function Workspace({
                 // its own and lose it on every navigation (#123).
                 clipboard={clipboard}
                 onHostAction={hostAction}
+                // A right-click on a shape: select it, then open its class
+                // picker over it (#380). Selecting is what makes the picker's
+                // subject unambiguous — it anchors to the selection, and a menu
+                // about a shape nobody had selected would be a third rule about
+                // what "the selected object" means.
+                //
+                // Handed over in read-only too, deliberately: `CanvasReassign`
+                // renders nothing there, and a guard here as well would keep the
+                // behaviour correct with that one deleted.
+                onAnnotationMenu={(annotationId) => {
+                  store.select(selectOnly(annotationId));
+                  setReclassing(annotationId);
+                }}
               />
             )}
           </AssetImage>
+
+          {/*
+            The reassignment picker's canvas anchor (#380) — a sibling of the
+            canvas for `ToolPalette`'s reason, since the stage is `relative` and
+            the annotator ships no chrome.
+          */}
+          <CanvasReassign
+            store={store}
+            view={view}
+            readOnly={readOnly}
+            openFor={reclassing}
+            onOpenChange={setReclassing}
+          />
 
           {/*
             The strip is a sibling of the canvas, not a child of it, and the stage

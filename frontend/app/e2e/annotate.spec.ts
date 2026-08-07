@@ -26,6 +26,10 @@ const SCHEMA = {
   classes: [
     { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
     { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
+    // A second **bbox** class, so a reassignment has somewhere to land (#380).
+    // It adds no tool — the palette is per geometry — and one hotkey row, which
+    // the shortcut-sheet scenario below counts.
+    { name: "pedestrian", geometry: "bbox", color: "#22c55e", attributes: [] },
   ],
 };
 
@@ -1361,12 +1365,13 @@ test("the sheet lists the engine's own bindings, and the schema's class hotkeys"
     await expect(sheet.locator(`[data-chord="${chord}"]`)).toHaveCount(1);
   }
 
-  // …and the class hotkeys are the *pinned schema's* two classes, in authored
-  // order, with no third digit invented.
+  // …and the class hotkeys are the *pinned schema's* own classes, in authored
+  // order, with no fourth digit invented.
   const classes = sheet.getByTestId("shortcut-class-rows");
-  await expect(classes.locator("[data-chord]")).toHaveCount(2);
+  await expect(classes.locator("[data-chord]")).toHaveCount(3);
   await expect(classes.locator('[data-chord="1"]')).toContainText("vehicle");
   await expect(classes.locator('[data-chord="2"]')).toContainText("lane");
+  await expect(classes.locator('[data-chord="3"]')).toContainText("pedestrian");
 
   // #123 claimed `mod+c` and `mod+v`, so they are ordinary rows now — they used
   // to be listed under "left to the browser", and what the sheet states in that
@@ -1932,4 +1937,107 @@ test("choosing a frame from the gallery saves first, then switches (#390)", asyn
     .toBe(1);
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
   await expect(page.getByTestId("frame-gallery")).toHaveCount(0);
+});
+
+/**
+ * The reassignment picker's canvas anchor (#380).
+ *
+ * The panel's own half of this is `panel.spec.ts`, against the showcase. What is
+ * here is the part jsdom structurally cannot make a claim about: a right-click has
+ * to travel through the pane's rect, the viewport transform and the hit test before
+ * anybody knows which shape it landed on, and `getBoundingClientRect` answers all
+ * zeros in jsdom — so the transform, which is the risky part, is exactly what a
+ * unit test would prove nothing about. Everything the *menu* decides is asserted in
+ * `canvasReassign.test.tsx` against a real store.
+ */
+
+/** One box, drawn and left selected — what a drag leaves behind. */
+async function drawSelectedBox(
+  page: Page,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const box = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+  return box;
+}
+
+test("right-clicking a shape opens its class picker, and the class lands through the command", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  const box = await drawSelectedBox(page);
+
+  await page.mouse.click(box.x + box.width * 0.45, box.y + box.height * 0.45, { button: "right" });
+
+  // The pinned schema, judged against this shape's geometry: the other bbox class
+  // is offered, and the polygon class is present and refused rather than filtered
+  // out — the panel's rule, because it is the panel's component.
+  await expect(page.getByTestId("canvas-reclass-lane")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("canvas-reclass-lane")).toContainText("needs a polygon");
+
+  await page.getByTestId("canvas-reclass-pedestrian").click();
+
+  await expect(page.getByTestId("object-row-0")).toContainText("1. pedestrian");
+  // Through `replaceAnnotationCommand`, so it is one entry in the history and the
+  // frame is dirty exactly as a drawn box makes it.
+  await expect(page.getByTestId("save-state")).toContainText("unsaved");
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");
+});
+
+test("the picker's button rides the shape, above the corner its resize grip owns", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  const box = await drawSelectedBox(page);
+
+  const trigger = (await page.getByTestId("canvas-reclass").boundingBox())!;
+  const corner = { x: box.x + box.width * 0.6, y: box.y + box.height * 0.3 };
+
+  // Clear of the corner on both axes: to the right of it, and above it. A button
+  // centred on the corner would sit on the grip and make the shape unresizable.
+  expect(trigger.x).toBeGreaterThan(corner.x);
+  expect(trigger.y + trigger.height).toBeLessThanOrEqual(corner.y + 1);
+  // …and near it, which is what "anchored to the shape" means: a button that
+  // merely floated somewhere on the stage would pass the two assertions above.
+  expect(trigger.x - corner.x).toBeLessThan(24);
+  expect(corner.y - (trigger.y + trigger.height)).toBeLessThan(24);
+});
+
+test("a right-click on empty canvas opens nothing, because the hit test is real", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  const box = await drawSelectedBox(page);
+
+  // Well outside the box that was just drawn. Without the hit test this would
+  // open the picker anyway — the shape is still selected, so the trigger is on
+  // screen and only the *press* is being judged here.
+  await page.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.9, { button: "right" });
+
+  await expect(page.getByTestId("canvas-reclass-pedestrian")).toHaveCount(0);
+  await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");
+});
+
+test("Escape closes the canvas picker and leaves the object alone", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  const box = await drawSelectedBox(page);
+
+  await page.mouse.click(box.x + box.width * 0.45, box.y + box.height * 0.45, { button: "right" });
+  await expect(page.getByTestId("canvas-reclass-pedestrian")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("canvas-reclass-pedestrian")).toHaveCount(0);
+  await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");
 });
