@@ -201,17 +201,18 @@ describe("what the picker does", () => {
     expect(onOpenChange).toHaveBeenCalledWith(null);
   });
 
-  it("claims a digit for a class this shape cannot become, and changes nothing with it", async () => {
+  it("changes nothing on a digit for a class this shape cannot become, and stays open", async () => {
     const store = selectedBox();
-    render(mount(store, { openFor: "a" }));
+    const onOpenChange = vi.fn();
+    render(mount(store, { openFor: "a", onOpenChange }));
 
-    // `lane` is digit 3 and is a polygon class. The keystroke is swallowed rather
-    // than left to Radix's typeahead, which would move the highlight instead —
-    // a key that quietly did something other than what its own row says.
+    // `lane` is digit 3 and is a polygon class — the same refusal its own row
+    // carries, reached by the other door.
     await userEvent.keyboard("3");
 
     expect(store.document.annotations.get("a")?.label_class).toBe("vehicle");
     expect(store.canUndo).toBe(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   it("closes on Escape with the document untouched", async () => {
