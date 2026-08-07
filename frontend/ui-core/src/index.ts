@@ -185,7 +185,11 @@ export {
   type ProjectScreenProps,
   type ProjectTab,
 } from "./screens/ProjectScreen.js";
-export { SchemaEditor, type SchemaEditorProps } from "./screens/SchemaEditor.js";
+export {
+  SchemaEditor,
+  type SchemaDraft,
+  type SchemaEditorProps,
+} from "./screens/SchemaEditor.js";
 export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
 export { BatchesScreen, type BatchesScreenProps } from "./screens/BatchesScreen.js";
 export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.js";
