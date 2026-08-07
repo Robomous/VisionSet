@@ -209,7 +209,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "modalities": ["image"],
         },
         {
-            # #64. Lossy for a different reason from `yolo`'s: a VOC `<object>`
+            # #414. Lossy for a different reason from `yolo`'s: a VOC `<object>`
             # has a fixed set of children its consumers index by tag name, so
             # there is nowhere to put an attribute or a confidence.
             "name": "voc",
