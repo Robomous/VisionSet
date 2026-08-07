@@ -189,7 +189,7 @@ services:
 
   # The front door, and the only port anybody needs: http://localhost:8080
   nginx:
-    image: nginx:1.29-alpine
+    image: nginx:1.31-alpine
     depends_on:
       - api
       - app
