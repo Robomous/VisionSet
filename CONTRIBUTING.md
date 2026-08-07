@@ -274,6 +274,29 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:
 `docs:`, `test:` … with optional scope, e.g. `feat(kernel): …`). Keep commits as logical
 increments; every commit should leave the checks above green.
 
+## Merging
+
+**Every merge is manual, and nothing is queued.** Auto-merge is disabled on this repository on
+purpose, so `gh pr merge --auto` does not queue anything — it fails with `GraphQL: Auto merge is
+not allowed for this repository`. Open the PR, watch the checks, and merge once **every** required
+check is green:
+
+```bash
+gh pr checks <n> --watch
+gh pr merge <n> --squash --delete-branch
+```
+
+Never merge on a partial pass, never merge to "unblock", and never disable or skip a failing check
+to get there.
+
+This applies to Dependabot too. A `dependabot-auto-merge.yml` workflow used to try to queue
+patch and minor updates; it could never succeed, and every dependabot PR it ran on carried a red
+`auto-merge` X beside twelve green required checks. It was deleted rather than rewritten, because
+a workflow that merges on the repository's behalf is the thing the rule above declines to have.
+Dependabot PRs are read and merged like any other — the [three-day
+cool-down](#adding-a-dependency-the-three-day-cool-down) is what makes them cheap to read, not
+automation.
+
 ## Tests
 
 - New kernel behavior ships with tests under `tests/kernel/`.

@@ -63,8 +63,16 @@ All work in the worktree; never the primary checkout. Conventional commits in lo
 
 1. `gh pr create` — body includes: what changed, "Found, not fixed" list, test plan, `Closes #NNN` only for issues actually and fully closed.
    **GitHub reads a closing keyword anywhere in the PR body or a squashed commit message, including inside a sentence that denies it.** "Nothing here closes #281" closed #281. To say an issue is *not* closed, name it without the keyword — `#281 is untouched`, `cf. #281`. — 2026-08 run, T9
-2. `gh pr merge --auto --squash`.
-3. Monitor `gh pr checks --watch`; on failure read logs, fix, push. **After 3 consecutive failures of the same check with no clear fix, stop and report** — never loop indefinitely, never disable or skip a failing check to get green.
+2. Monitor `gh pr checks <n> --watch`; on failure read logs, fix, push. **After 3 consecutive failures of the same check with no clear fix, stop and report** — never loop indefinitely, never disable or skip a failing check to get green.
+3. **Merge by hand, only once every required check is green** — `gh pr merge <n> --squash --delete-branch`.
+
+   **`--auto` is banned, and the danger is the shape of its failure.** Repository auto-merge is
+   disabled deliberately, so `gh pr merge --auto` fails outright with `GraphQL: Auto merge is not
+   allowed for this repository (enablePullRequestAutoMerge)` — *after* the PR exists, which reads
+   as "queued" to anybody who does not check the exit code. A `dependabot-auto-merge.yml` workflow
+   built on it shipped and was retired without ever having succeeded once: it put a red X on every
+   dependabot minor/patch PR, and because it was never a required check, that X was pure noise
+   sitting beside twelve green ones. — #402/#405/#406
 
 ## Cleanup
 
