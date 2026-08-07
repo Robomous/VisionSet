@@ -1,7 +1,7 @@
 # usage: from visionset.formats.voc import VocExporter
 """Pascal VOC: one XML per image, and an ``ImageSets`` index per fold.
 
-The third exporter, and the one CVAT and Roboflow parity is measured against. It
+The third exporter, and the interchange format the wider ecosystem expects. It
 is also the smallest, because #62 and #63 already paid for it: fold assignment,
 content-hash naming, the image-signature sniff and the required-dimensions check
 all live in :mod:`visionset.formats._layout`, and #65 owns the compatibility
