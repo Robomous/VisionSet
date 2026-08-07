@@ -1,2 +1,28 @@
 packages:
   - "frontend/*"
+
+# The dependency cool-down, Node's half. See scripts/cooldown.sh for the rule and
+# the argument; this is the same three days, in the units pnpm wants (minutes).
+#
+# Declarative rather than a wrapper, because pnpm has the setting uv does not:
+# it applies to every `pnpm add` and `pnpm update` on a laptop, in
+# docker/app.Dockerfile — which copies this file, so the image inherits it — and
+# in CI, with nothing to remember and no flag to forget.
+#
+# It is a *resolution*-time rule and is inert under `--frozen-lockfile`, which is
+# what every automated install here uses. That is deliberate: the lockfile is the
+# reviewed artifact, and re-litigating it at install time would only mean CI
+# stopped testing the pinned set.
+#
+# What it feels like when it fires: `pnpm add <pkg>` with no range asks for
+# `latest`, so if the newest release is younger than this, pnpm refuses outright
+# with ERR_PNPM_NO_MATURE_MATCHING_VERSION rather than quietly picking an older
+# one. That is the intended answer — wait, or name an older version explicitly.
+# To take a young version deliberately, add it to `minimumReleaseAgeExclude`
+# below in the same commit, so the exception is reviewable.
+minimumReleaseAge: 4320
+
+# Packages allowed to skip the wait. Empty, and a new entry should say why in the
+# commit that adds it — an exclusion with no stated reason is a cool-down quietly
+# switched off for one package.
+minimumReleaseAgeExclude: []

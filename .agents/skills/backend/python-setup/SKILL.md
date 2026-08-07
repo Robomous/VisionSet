@@ -25,11 +25,24 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, WebFetch, WebSearch, Task
 uv sync                      # create/refresh .venv with the package (editable) + dev group
 uv run python -c "..."       # run anything inside the env
 uv run pytest                # tests
-uv add <pkg>                 # runtime dependency  -> [project].dependencies
-uv add --dev <pkg>           # dev dependency      -> [dependency-groups].dev
+
+# Adding a dependency goes through the cool-down wrapper — see below.
+bash scripts/cooldown.sh uv add <pkg>          # runtime -> [project].dependencies
+bash scripts/cooldown.sh uv add --dev <pkg>    # dev     -> [dependency-groups].dev
 ```
 
 Never edit `uv.lock` by hand; never `pip install` into `.venv`.
+
+**The three-day cool-down.** This repository does not take a package version the ecosystem has not
+had three days to look at. uv has no rolling setting for it — `--exclude-newer` accepts absolute
+dates only — so `scripts/cooldown.sh` computes the cutoff at the moment of the call and exports
+`UV_EXCLUDE_NEWER`. Use it for anything that **resolves**: `uv add`, `uv lock`, `uv pip install`.
+
+Do **not** put it in front of `uv sync`. A cutoff on a plain sync makes uv discard the lockfile and
+re-resolve (`Ignoring existing lockfile due to addition of timestamp cutoff`), which is the opposite
+of what a sync is for; CI uses `uv sync --locked` so it cannot happen there. The cool-down governs
+what gets *into* uv.lock, and the lockfile governs everything after. Full rules and the escape
+hatches are in CONTRIBUTING.md.
 
 ## Checks that must stay green
 
