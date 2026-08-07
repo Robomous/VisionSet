@@ -1426,34 +1426,25 @@ export function useDownloadManifest(releaseId: string) {
   });
 }
 
-// --- the journey (#288) ------------------------------------------------------
+// --- project readiness (#288, narrowed by #388) -------------------------------
 
-/** Where a project is on the road Labels → Images → Annotate → Export. */
-export type JourneyStep = "labels" | "images" | "annotate" | "export" | "done";
-
+/**
+ * The two facts the first-run surfaces are built on.
+ *
+ * It carried five more until #388. They existed to order a four-station
+ * onboarding checklist — `currentStep`, and the `hasReleases` two-hop that
+ * closed it — and the checklist is retired: the Overview reads the project's
+ * real state and renders one invitation for it, which needs to know whether the
+ * project has classes and whether it has images and nothing else. Fields kept
+ * "in case" are how a hook ends up making four requests to answer two questions.
+ */
 export interface ProjectReadiness {
   readonly hasSchema: boolean;
   readonly hasAssets: boolean;
-  readonly hasAnnotations: boolean;
-  /** `ProjectStatsOut.annotated_pct`, verbatim — assets past `unannotated`, in percent. */
-  readonly annotatedPct: number;
-  /** The header's filter (`ProjectScreen`): the one state an annotation may be written into. */
-  readonly hasBatchInAnnotation: boolean;
-  /**
-   * Whether this project has ever published a release — the journey's exit.
-   *
-   * The two-hop read (project → dataset → releases) that v1 left out. It is free
-   * now rather than merely affordable: the Overview dashboard shows the latest
-   * release and the trunk's size, so both requests are already in flight, and
-   * asking the server for a *third* spelling of the same fact would be the drift
-   * shape this whole audit was about.
-   */
-  readonly hasReleases: boolean;
-  readonly currentStep: JourneyStep;
 }
 
 /**
- * The one answer to "where is this project in its journey?".
+ * The one answer to "what does this project have yet?".
  *
  * ## One spelling for "has a schema"
  *
@@ -1468,73 +1459,27 @@ export interface ProjectReadiness {
  *
  * ## Zero new requests on the project screen
  *
- * Composed from `useActiveSchema`, `useProjectStats` and `useBatches`, all three
- * of which the project header already runs — TanStack Query keys them
- * identically, so mounting this beside the header costs nothing. It deliberately
- * does **not** read `useSchemaVersions`: the version list is fetched when the
- * history tab opens and never before, and a readiness probe that changed that
- * would be a probe with a price.
+ * Composed from `useActiveSchema` and `useProjectStats`, both of which the
+ * project header already runs — TanStack Query keys them identically, so
+ * mounting this beside the header costs nothing. It deliberately does **not**
+ * read `useSchemaVersions`: the version list is fetched when the history tab
+ * opens and never before, and a readiness probe that changed that would be a
+ * probe with a price.
  *
- * ## `null` until every source has answered
+ * ## `null` until both sources have answered
  *
- * A checklist drawn from half an answer says something false with confidence.
- * While any source is pending — or failed for a reason that is not the
- * schema-less 404 — there is no readiness, and the caller renders nothing.
- *
- * ## What `currentStep` can and cannot see (v1)
- *
- * `labels` without a schema; `images` without assets; `annotate` while nothing
- * is annotated **or any batch is unfinished** (a state other than `completed` —
- * work is still open even when the percentage says otherwise); `export` after
- * that. `export` leans on `annotated_pct` as a proxy for the journey's end.
- *
- * `"done"` is derivable now: `hasReleases` closes it. The two-hop read the TODO
- * warned about (project → dataset → releases) costs nothing here, because the
- * Overview dashboard already makes both requests to show the trunk's size and the
- * latest release — so this reads what is on screen rather than asking a fourth
- * time. An ingest-in-flight signal is still absent and still out of scope.
+ * An invitation drawn from half an answer says something false with confidence —
+ * "define your first classes" to somebody who has fifty. While either source is
+ * pending, or the schema failed for a reason that is not the schema-less 404,
+ * there is no readiness and the caller decides what to draw without one.
  */
 export function useProjectReadiness(projectId: string): ProjectReadiness | null {
   const schema = useActiveSchema(projectId);
   const stats = useProjectStats(projectId);
-  const batches = useBatches(projectId);
-  const dataset = useProjectDataset(projectId);
-  const releases = useReleases(dataset.data?.id);
 
   const schemaless = schema.isError && asApiError(schema.error).code === "SCHEMA_NOT_FOUND";
-  if (stats.data === undefined || batches.data === undefined) return null;
+  if (stats.data === undefined) return null;
   if (schema.data === undefined && !schemaless) return null;
-  // The releases hook is `enabled` on the dataset id, so it stays pending until
-  // that lands — waiting on it explicitly is what keeps `currentStep` from
-  // reporting `export` for one render on a project that has already finished.
-  if (releases.data === undefined) return null;
 
-  const hasSchema = !schemaless;
-  const hasAssets = stats.data.asset_count > 0;
-  const hasAnnotations = stats.data.annotation_count > 0;
-  const annotatedPct = stats.data.annotated_pct;
-  const hasBatchInAnnotation = batches.data.items.some((one) => one.state === "in_annotation");
-  const unfinishedBatch = batches.data.items.some((one) => one.state !== "completed");
-
-  const hasReleases = releases.data.items.length > 0;
-
-  const currentStep: JourneyStep = !hasSchema
-    ? "labels"
-    : !hasAssets
-      ? "images"
-      : annotatedPct === 0 || unfinishedBatch
-        ? "annotate"
-        : hasReleases
-          ? "done"
-          : "export";
-
-  return {
-    hasSchema,
-    hasAssets,
-    hasAnnotations,
-    annotatedPct,
-    hasBatchInAnnotation,
-    hasReleases,
-    currentStep,
-  };
+  return { hasSchema: !schemaless, hasAssets: stats.data.asset_count > 0 };
 }

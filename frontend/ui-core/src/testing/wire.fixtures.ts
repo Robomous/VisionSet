@@ -79,7 +79,7 @@ export function assetActions(
 
 // --- payloads, not just declarations -----------------------------------------
 //
-// The two the journey's last step needs. They live here for the reason the
+// The trunk pair the Overview's dashboard reads. They live here for the reason the
 // action tables above do: a mock that lies about what the server would send is
 // worse than no mock, and the surest way to make one lie is to write it out by
 // hand in four files. `checks.ts` is what would catch a missing field, and it
