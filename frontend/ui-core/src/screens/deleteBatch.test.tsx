@@ -139,6 +139,37 @@ describe("what the overflow offers", () => {
     );
   });
 
+  it("follows the declaration and not the state word, when the two disagree", async () => {
+    /*
+     * **The one case a mirror cannot pass**, and the reason it is here.
+     *
+     * `batch.state !== "completed"` gives the same answer as the wire for every
+     * state this server has today — which is exactly the shape of the mirror
+     * `batchState.ts` carried until it drifted and shipped two blockers. A test
+     * built only from agreeing fixtures cannot tell the two implementations
+     * apart, so this one hands the component a batch whose declaration and state
+     * word disagree and asserts the *declaration* wins.
+     *
+     * Not a contrived pair, either: it is what a newer server looks like from an
+     * older client, which is the case the contract exists for.
+     */
+    render(
+      mount(
+        <BatchOverflowMenu
+          batch={batch("in_annotation", { allowed_actions: ["complete", "repin"] })}
+          projectId={PROJECT}
+        />,
+      ),
+    );
+
+    const item = await openMenu();
+
+    expect(item.hasAttribute("data-disabled")).toBe(true);
+    await userEvent.click(item);
+    expect(screen.queryByTestId("delete-batch-dialog")).toBeNull();
+    expect(sent).toEqual([]);
+  });
+
   it("does not open the dialog from a disabled item", async () => {
     render(mount(<BatchOverflowMenu batch={batch("completed")} projectId={PROJECT} />));
 
