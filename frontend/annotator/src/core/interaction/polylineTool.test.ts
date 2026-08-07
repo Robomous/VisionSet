@@ -84,13 +84,18 @@ describe("placing vertices", () => {
   });
 
   it("appends near the first vertex, because a path has no ring to close", () => {
-    // The one rule a polygon has here and a path does not, asserted where a
-    // polygon would have refused: this press is inside `closePolygon` of vertex
-    // zero, and it is an ordinary vertex.
+    // **Three points before the press, deliberately.** A polygon's close ring only
+    // fires at `MIN_POLYGON_POINTS`, so a two-point buffer would answer `too-few`
+    // and swallow the press either way — a fixture that stopped there could not
+    // tell "no ring" from "ring not yet armed", and a ring added to this row would
+    // pass it. With three placed, a polygon *would* close here; the path appends.
     const world = drawing();
-    world.send(down(A), down(B), down([A[0] + 2, A[1] + 2]));
-    expect(world.state.type === "drawing-polyline" && world.state.points).toHaveLength(3);
+    world.send(down(A), down(B), down(C), down([A[0] + 2, A[1] + 2]));
+
+    expect(world.state.type).toBe("drawing-polyline");
+    expect(world.state.type === "drawing-polyline" && world.state.points).toHaveLength(4);
     expect(world.store.canUndo).toBe(false);
+    expect(world.minted).toBe(0);
   });
 
   it("swallows a press on the vertex it just placed, so a double-click ends cleanly", () => {
