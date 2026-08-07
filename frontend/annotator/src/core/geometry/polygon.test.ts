@@ -9,11 +9,15 @@ import { describe, expect, it } from "vitest";
 import type { PolygonGeometry, PolylineGeometry, Point } from "../types";
 import {
   MIN_POLYGON_POINTS,
+  MIN_POLYLINE_POINTS,
   insertPolygonVertex,
+  insertPolylineVertex,
   movePolygonVertex,
+  movePolylineVertex,
   polygonBbox,
   polygonContains,
   removePolygonVertex,
+  removePolylineVertex,
   translatePolygon,
   translatePolyline,
 } from "./polygon";
@@ -305,5 +309,61 @@ describe("editing vertices", () => {
     removePolygonVertex(SQUARE, 0);
     translatePolygon(SQUARE, [0, 0], FRAME);
     expect(JSON.stringify(SQUARE)).toBe(before);
+  });
+});
+
+describe("the polyline's own edits (#342)", () => {
+  const LANE: PolylineGeometry = {
+    type: "polyline",
+    points: [
+      [10, 10],
+      [50, 10],
+      [50, 50],
+    ],
+  };
+  const BOUNDS = { width: 100, height: 100 };
+
+  it("moves a vertex and leaves every other one alone", () => {
+    expect(movePolylineVertex(LANE, 1, [60, 20], BOUNDS).points).toEqual([
+      [10, 10],
+      [60, 20],
+      [50, 50],
+    ]);
+  });
+
+  it("inserts on a real segment, at the projection", () => {
+    expect(insertPolylineVertex(LANE, 0, [30, 40]).points).toEqual([
+      [10, 10],
+      [30, 10],
+      [50, 10],
+      [50, 50],
+    ]);
+  });
+
+  it("refuses the segment a path does not have, rather than duplicating its last point", () => {
+    // Index 2 is the closing edge on a polygon and is nothing here. Left to
+    // `requireIndex` alone it would pass — 2 is a valid *vertex* index — and
+    // `(index + 1) % length` would wrap to vertex 0, appending a copy of the last
+    // point. That is a shape nobody drew.
+    expect(() => insertPolylineVertex(LANE, 2, [30, 30])).toThrow(RangeError);
+    expect(insertPolygonVertex({ type: "polygon", points: LANE.points }, 2, [30, 30]).points)
+      .toHaveLength(4);
+  });
+
+  it("removes a vertex down to two, and answers null below", () => {
+    const shorter = removePolylineVertex(LANE, 1);
+    expect(shorter?.points).toEqual([
+      [10, 10],
+      [50, 50],
+    ]);
+    expect(shorter && removePolylineVertex(shorter, 0)).toBeNull();
+    // Two, not three: the one arity difference between the two shapes.
+    expect(MIN_POLYLINE_POINTS).toBe(2);
+    expect(MIN_POLYGON_POINTS).toBe(3);
+  });
+
+  it("keeps the polygon's floor where it was, so neither shape borrowed the other's", () => {
+    const triangle: PolygonGeometry = { type: "polygon", points: LANE.points };
+    expect(removePolygonVertex(triangle, 0)).toBeNull();
   });
 });

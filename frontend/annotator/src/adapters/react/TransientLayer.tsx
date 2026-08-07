@@ -100,7 +100,7 @@ export function TransientLayer({
           cursor={pending.cursor}
           color={drawColor}
           zoom={zoom}
-          closeRing={closeRing}
+          closeRing={pending.closable ? closeRing : null}
         />
       )}
 
@@ -110,8 +110,15 @@ export function TransientLayer({
 }
 
 /**
- * A polygon mid-session: the vertices placed, the rubber band to the cursor, and
- * the ring around vertex zero that says where a click would close it.
+ * A shape mid-session: the vertices placed, the rubber band to the cursor, and —
+ * for a polygon — the ring around vertex zero that says where a click would close
+ * it.
+ *
+ * A **path draws no ring at all**, and that is not a missing decoration: the ring
+ * is a promise about what a press near vertex zero does, and near a path's first
+ * vertex a press places another vertex like any other. Drawing an inert ring there
+ * would be the same lie as an inert cursor, which is what `affordanceAt`'s
+ * `too-few` note is about (#342).
  *
  * The ring is drawn from `Tolerances.closePolygon` and its filled state comes
  * from `polygonCloseAttempt` — the same function `affordanceAt` and the
@@ -124,11 +131,13 @@ function PendingPolygonShape({ points, cursor, color, zoom, closeRing }: {
   readonly cursor: Point | null;
   readonly color: string;
   readonly zoom: number;
-  readonly closeRing: number;
+  /** The ring's radius, or `null` for a shape that does not close (#342). */
+  readonly closeRing: number | null;
 }): JSX.Element {
   const first = points[0];
   const last = points[points.length - 1];
-  const attempt = cursor === null ? "no" : polygonCloseAttempt(points, cursor, closeRing);
+  const attempt =
+    cursor === null || closeRing === null ? "no" : polygonCloseAttempt(points, cursor, closeRing);
   const stroke = screenPx(STROKE_PX, zoom);
   return (
     <g data-testid="pending-polygon">
@@ -152,7 +161,7 @@ function PendingPolygonShape({ points, cursor, color, zoom, closeRing }: {
           strokeDasharray={DASH}
         />
       )}
-      {first !== undefined && (
+      {first !== undefined && closeRing !== null && (
         <circle
           data-testid="close-ring"
           data-close={attempt}

@@ -246,7 +246,8 @@ geometries because that is what a `LabelClass` declares (see [schemas](schemas.m
 has four variants because that is what an annotation can carry. So `parseGeometry` tells a
 `mask` apart from a typo: the first is a declared geometry with no model, refused in the
 kernel's own words (`UNSUPPORTED_GEOMETRY`), and the remedy is to wait for a variant rather than
-to fix the caller. `polyline` was the example here until #223 shipped its variant — the remedy
+to fix the caller. `polyline` was the example here until #223 shipped its variant and #342 its
+tool — the remedy
 arriving, which is exactly what the split predicted would happen.
 
 The parser is strict about unknown keys as well as missing ones. That is not fussiness: the editor
@@ -499,14 +500,15 @@ than half of them describe things this build does not do.
 | --- | --- | --- |
 | `polygon-tool.spec.ts` | 233 | **Ported**, all seven scenarios — one of them inverted, see below |
 | `annotation-redesign.spec.ts` | 129 | **One of six ported.** The other five are v1's routing and chrome — a batch list, an `Annotate` link, a sidebar, an image picker, a back button. The demo has no router and no backend; those describe a product surface M5 builds, not a behaviour that moved |
-| `polyline-tool.spec.ts` | 257 | **Out of scope at #48**, because `polyline` had no `Geometry` variant. #223 shipped one, and this spec is still out of scope for a different and narrower reason: it drives a *drawing tool*, and 0.1.0 has none — lanes are written by an agent or a script and reviewed in the annotator. It becomes portable with the 0.2 drawing tool |
+| `polyline-tool.spec.ts` | 257 | **Ported by #342**, as `e2e/polyline.spec.ts`. It was out of scope at #48 because `polyline` had no `Geometry` variant, and out of scope again after #223 for a narrower reason — it drives a *drawing tool*, and there was none. #342 shipped the tool. Six of its seven scenarios port; the seventh asserts a floating point-count bar this product does not have, and the point count lives on the Annotations panel |
 | `lane-export.spec.ts` | 206 | **Superseded rather than ported.** #223 landed the lane formats as `visionset.formats` plugins, and they are tested where the other exporters are: `tests/formats/test_lanes.py` ports v1's 53 unit tests, and `test_report_agreement.py` checks each one's report against the bytes it wrote. v1's spec drove per-item HTTP export endpoints that have no counterpart here |
 
-The demo's fifth class, `centerline`, is still that state made visible — it is declared
-`polyline`, `toolFor` answers `select` for it, and a scenario asserts that activating it
-draws nothing. What changed with #223 is the *reason*: it used to be a class no annotation
-could carry, and it is now a class with no drawing tool. The scenario is unchanged and still
-passes, which is the useful part — the affordance was honest either way.
+The demo's **sixth** class, `pose`, is that state made visible — it is declared `keypoints`,
+`toolFor` answers `select` for it, and a scenario asserts that activating it draws nothing.
+`centerline` held the role twice and lost it twice: #223 made it a carryable geometry with
+no drawing tool, and #342 gave it the tool. The role moved to a class genuinely still in
+that position rather than being deleted along with the case, because a schema really can be
+in it and the demo exists to show the states.
 
 ### The one place the port asserts the opposite of v1
 
@@ -846,8 +848,9 @@ active class to one that derives the tool asked for. Two consequences, both deli
   classes; with `pedestrian` held the box button is already lit, and re-pointing the class
   at `vehicle` would silently change what the next shape is labelled.
 - The strip lists **one button per distinct drawable geometry**, built from
-  `drawableGeometry`. A `classification_tag` and a `polyline` both answer `null`, and the
-  demo schema declares both — so the two omissions are visible rather than theoretical.
+  `drawableGeometry`. A `classification_tag` and a `keypoints` class both answer `null`,
+  and the demo schema declares both — so the two omissions are visible rather than
+  theoretical. `polyline` was the second of these until #342 gave it a tool.
 
 ### `onViewChange`, and the one place a default is a lie
 
@@ -943,8 +946,8 @@ fall out and both are load-bearing:
   labelled without moving the tool. Choosing *which* class is the Labels tab's job.
 - The strip lists one button per distinct **drawable geometry**, from
   `drawableGeometry` — never one per class, and never a hardcoded list. A
-  `classification_tag` and a `polyline` both answer `null` and neither gets a
-  canvas tool.
+  `classification_tag` and a `keypoints` class both answer `null` and neither gets
+  a canvas tool; `polyline` did until #342.
 
 **Without it the page opened in a mode where dragging did nothing** (#198). The
 page starts with no active class, so `toolFor` answers `select`; the capability was

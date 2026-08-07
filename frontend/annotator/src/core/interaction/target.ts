@@ -11,9 +11,10 @@
  * ## The five ranks
  *
  * 1. **handle** — a resize grip on a *selected* box.
- * 2. **vertex** — a vertex of a *selected* polygon.
+ * 2. **vertex** — a vertex of a *selected* polygon or polyline.
  * 3. **body** — the topmost annotation whose shape contains the point.
- * 4. **edge** — an edge of a *selected* polygon.
+ * 4. **edge** — an edge of a *selected* polygon or polyline. A path has no
+ *    closing edge, so its highest index is one lower than a polygon's.
  * 5. **empty**.
  *
  * Three of those are decisions rather than transcription, and each is the kind
@@ -54,6 +55,7 @@ import type { BboxHandle } from "../geometry/bbox";
 import {
   nearestEdge,
   nearestHandle,
+  nearestPolylineEdge,
   nearestVertex,
   topmostAnnotationAt,
 } from "../geometry/hitTest";
@@ -61,7 +63,8 @@ import type { Tolerances } from "../geometry/tolerance";
 import { annotationsInDrawOrder } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import type { Selection } from "../state/selection";
-import type { Annotation, Point } from "../types";
+import type { Annotation, Geometry, Point } from "../types";
+import type { VertexEditableGeometry } from "./state";
 
 /** Everything resolving a hit needs: the shapes, what is picked, and how near counts. */
 export interface Scene {
@@ -98,6 +101,24 @@ export type Target =
 /** Nothing under the pointer. Shared; the value is immutable. */
 export const NO_TARGET: Target = { kind: "empty" };
 
+/** Is this a shape drawn as a list of vertices a pointer can grab? */
+function hasVertices(geometry: Geometry): geometry is VertexEditableGeometry {
+  return geometry.type === "polygon" || geometry.type === "polyline";
+}
+
+/**
+ * The nearest edge, asking the closed or the open walk as the shape requires.
+ *
+ * One dispatch, here, rather than at the three call sites — and it is what keeps
+ * `nearestInsertion` from ever offering a path's closing edge, which does not
+ * exist: `nearestPolylineEdge` cannot answer `points.length - 1`.
+ */
+function edgeOf(geometry: VertexEditableGeometry, point: Point, tolerance: number) {
+  return geometry.type === "polygon"
+    ? nearestEdge(geometry.points, point, tolerance)
+    : nearestPolylineEdge(geometry.points, point, tolerance);
+}
+
 /**
  * The selected annotations, topmost first — the order the grip ranks walk.
  *
@@ -128,7 +149,7 @@ export function resolveTarget(scene: Scene, point: Point): Target {
   }
 
   for (const annotation of selected) {
-    if (annotation.geometry.type !== "polygon") continue;
+    if (!hasVertices(annotation.geometry)) continue;
     const hit = nearestVertex(annotation.geometry.points, point, scene.tolerances.vertex);
     if (hit !== null) {
       return { kind: "vertex", id: annotation.id, index: hit.index, point: hit.point };
@@ -143,8 +164,8 @@ export function resolveTarget(scene: Scene, point: Point): Target {
   if (body !== null) return { kind: "body", id: body.id };
 
   for (const annotation of selected) {
-    if (annotation.geometry.type !== "polygon") continue;
-    const hit = nearestEdge(annotation.geometry.points, point, scene.tolerances.edge);
+    if (!hasVertices(annotation.geometry)) continue;
+    const hit = edgeOf(annotation.geometry, point, scene.tolerances.edge);
     if (hit !== null) {
       return { kind: "edge", id: annotation.id, index: hit.index, point: hit.point };
     }
@@ -177,8 +198,8 @@ export function nearestInsertion(scene: Scene, point: Point): Insertion | null {
   for (let index = inDrawOrder.length - 1; index >= 0; index -= 1) {
     const annotation = inDrawOrder[index];
     const geometry = annotation.geometry;
-    if (geometry.type !== "polygon") continue;
-    const edge = nearestEdge(geometry.points, point, scene.tolerances.edge);
+    if (!hasVertices(geometry)) continue;
+    const edge = edgeOf(geometry, point, scene.tolerances.edge);
     if (edge === null) continue;
     if (nearestVertex(geometry.points, point, scene.tolerances.vertex) !== null) return null;
     return { id: annotation.id, index: edge.index, point: edge.point };

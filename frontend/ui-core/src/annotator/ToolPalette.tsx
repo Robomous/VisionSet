@@ -32,20 +32,16 @@
  *    tool, because there is nothing to draw: the label is about the whole image
  *    and the Labels tab is where it is toggled.
  *
- * ## `polyline` is the one geometry that is declared, real, and not yet drawable
+ * ## `polyline` is a tool now (#342)
  *
- * `drawableGeometry` answers `null` for it too, but for a different reason and
- * only for now. #223 shipped the geometry end to end — a schema declares it, the
- * API and MCP write it, five lane exporters consume it, and the canvas renders it
- * — and stopped short of an interactive drawing tool, which is #342. The intended
- * workflow is that an agent pre-labels lanes and a person reviews them here.
+ * It spent one release as the strip's worked example of not-yet-drawable — a
+ * disabled button carrying its own reason, because a missing control would have
+ * said "this schema has no lanes", which was false. #342 shipped the tool, so the
+ * button is live and the sentence is gone.
  *
- * So a schema declaring a polyline class gets a **disabled button with the reason
- * on it**, never a gap. A missing control says "this schema has no lanes", which
- * is false and is exactly the ambiguity `ui-capabilities` forbids: absent and
- * not-yet-available look identical, and only one of them is true. The button
- * carries the sentence, so the answer to "where do lanes come from?" is on the
- * strip rather than in a changelog.
+ * `PENDING_TOOLS` stays, empty. The rule it encodes — *declared but not drawable
+ * is disabled-with-reason, never absent* — is the part worth keeping, and `mask`
+ * and `keypoints` are still in that position the day a schema declares one.
  *
  * ## Why this is a second component rather than the showcase's, moved
  *
@@ -91,14 +87,29 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 /**
  * Why a declared geometry has no tool yet, keyed by the geometry.
  *
- * One entry, and the shape is what matters: this is a map rather than an `if`
- * so the day `mask` or `keypoints` lands the same way, the strip says so without
- * anyone remembering that it should.
+ * **Empty since #342**, and kept rather than deleted along with its one entry.
+ * The mechanism is what earns its place: the day `mask` or `keypoints` is declared
+ * in a schema, the strip says so without anyone remembering that it should, and
+ * that is a property worth more than the twelve lines it costs. `polyline` was the
+ * entry, and the reason it is gone is that it has a tool now.
+ *
+ * The record is typed on `string` rather than on the geometry union so an entry
+ * can name a geometry `drawableGeometry` has never heard of, which is the case it
+ * exists for.
  */
-const PENDING_TOOLS: Readonly<Record<string, string>> = {
-  polyline:
-    "Polyline drawing arrives with 0.2 — lanes are written via the SDK or MCP " +
-    "and reviewed here.",
+const PENDING_TOOLS: Readonly<Record<string, string>> = {};
+
+/**
+ * What each drawing tool is called on the strip.
+ *
+ * Total over what `drawableGeometry` can answer, so a fourth geometry gaining a
+ * tool cannot reach the strip unnamed — which is what the ternary this replaced
+ * would have let it do, silently reading "Polygon".
+ */
+const TOOL_LABELS: Readonly<Record<"bbox" | "polygon" | "polyline", string>> = {
+  bbox: "Box",
+  polygon: "Polygon",
+  polyline: "Polyline",
 };
 
 /** A schema's tools, in the order the strip lists them. */
@@ -137,7 +148,7 @@ export function toolChoices(schema: AnnotationSchema): readonly ToolChoice[] {
     if (choices.some((choice) => choice.tool === geometry)) continue;
     choices.push({
       tool: geometry,
-      label: geometry === "bbox" ? "Box" : "Polygon",
+      label: TOOL_LABELS[geometry],
       labelClass: declared.name,
       hotkey: hotkeyForClass(schema, declared.name) ?? "—",
       unavailable: null,
@@ -152,7 +163,7 @@ export function toolChoices(schema: AnnotationSchema): readonly ToolChoice[] {
     if (choices.some((choice) => choice.tool === declared.geometry)) continue;
     choices.push({
       tool: declared.geometry,
-      label: "Polyline",
+      label: declared.geometry,
       // No class to activate, because there is no tool to activate it for.
       labelClass: null,
       hotkey: "—",

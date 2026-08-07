@@ -31,11 +31,13 @@ test("the tool strip lists exactly the tools this schema can reach", async ({ pa
   await expect(page.getByTestId("tool-select")).toBeVisible();
   await expect(page.getByTestId("tool-bbox")).toBeVisible();
   await expect(page.getByTestId("tool-polygon")).toBeVisible();
-  // `daytime` is a tag and `centerline` a polyline: `drawableGeometry` answers
-  // `null` for both, so neither gets a canvas tool. The demo's schema declares
-  // them so that this omission is a visible fact rather than an untested claim.
+  // `centerline` is a polyline and has had a tool since #342.
+  await expect(page.getByTestId("tool-polyline")).toBeVisible();
+  // `daytime` is a tag and `pose` is keypoints: `drawableGeometry` answers `null`
+  // for both, so neither gets a canvas tool. The demo's schema declares them so
+  // that this omission is a visible fact rather than an untested claim.
   await expect(page.getByTestId("tool-classification_tag")).toHaveCount(0);
-  await expect(page.getByTestId("tool-polyline")).toHaveCount(0);
+  await expect(page.getByTestId("tool-keypoints")).toHaveCount(0);
 
   await expect(page.getByTestId("tool-select")).toHaveAttribute("data-active", "true");
 });
@@ -51,11 +53,15 @@ test("a hotkey moves the strip, because the strip reports the derived tool", asy
     // not either — which is the whole reason it reads `toolFor` rather than the
     // class name.
     ["4", "tool-bbox"],
-    ["5", "tool-select"],
+    // `centerline` is a polyline and has had a tool since #342. Digit 6 is `pose`,
+    // which is keypoints — declared, drawable by nothing, so the strip stays on
+    // select and offers no button for it at all.
+    ["5", "tool-polyline"],
+    ["6", "tool-select"],
     ["v", "tool-select"],
   ] as const) {
     await page.keyboard.press(digit);
-    for (const tool of ["tool-select", "tool-bbox", "tool-polygon"] as const) {
+    for (const tool of ["tool-select", "tool-bbox", "tool-polygon", "tool-polyline"] as const) {
       await expect(page.getByTestId(tool)).toHaveAttribute(
         "data-active",
         tool === active ? "true" : "false",

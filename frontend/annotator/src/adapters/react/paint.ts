@@ -207,15 +207,35 @@ export function rubberBand(state: InteractionState): BboxGeometry | null {
   return state.type === "drawing-bbox" ? normalizeBbox(state.start, state.current) : null;
 }
 
-/** A polygon under construction: the vertices placed, and where the rubber band ends. */
+/**
+ * A shape under construction click by click: the vertices placed, and where the
+ * rubber band ends.
+ *
+ * One projection for both sessions (#342), because the painter's job is the same
+ * for both: a chain of placed vertices plus a band to the cursor. `closable` is
+ * the single bit that differs, and it is carried rather than re-derived from the
+ * state type so the renderer never learns which states exist.
+ */
 export interface PendingPolygon {
   readonly points: readonly Point[];
   readonly cursor: Point | null;
   readonly labelClass: string;
+  /**
+   * Whether a press near the first vertex would close this shape.
+   *
+   * `false` for a path, which is the whole of what "open" means at the render
+   * layer: no ring, because there is nothing to promise.
+   */
+  readonly closable: boolean;
 }
 
-/** The polygon being built click by click, or `null`. */
+/** The shape being built click by click, or `null`. */
 export function pendingPolygon(state: InteractionState): PendingPolygon | null {
-  if (state.type !== "drawing-polygon") return null;
-  return { points: state.points, cursor: state.cursor, labelClass: state.labelClass };
+  if (state.type !== "drawing-polygon" && state.type !== "drawing-polyline") return null;
+  return {
+    points: state.points,
+    cursor: state.cursor,
+    labelClass: state.labelClass,
+    closable: state.type === "drawing-polygon",
+  };
 }

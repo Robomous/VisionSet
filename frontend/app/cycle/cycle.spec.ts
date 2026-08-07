@@ -514,16 +514,24 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // `TransientLayer` draws a `<polyline>` too, for the polygon being dragged.
     await expect(page.locator("[data-annotation-id] polyline")).toHaveCount(1);
     await expect(page.locator("[data-annotation-id] polyline")).toHaveAttribute("fill", "none");
-    // Reachable from the object list, which is the only way to reach it: a canvas
-    // press cannot select an open path in 0.1.0 (`geometryContains` refuses).
     await expect(page.getByTestId("object-row-1")).toContainText("centerline");
 
-    // 3c — the tool strip says why there is no lane tool, rather than showing a
-    // gap. Disabled-with-reason: absent and not-yet-available must not look the
-    // same, and only one of them is true here.
+    // 3c — the lane tool is live, and it is live off a schema this server sent.
+    //
+    // The strip carried a **disabled** polyline button here until #342, with the
+    // sentence explaining why lanes could only be written by an agent. That is the
+    // assertion this replaces, and it is worth keeping at this level rather than
+    // only in `e2e/polyline.spec.ts`: the strip is built from `drawableGeometry`
+    // over the *pinned* schema, so what is asserted here is that a real
+    // `SchemaVersionOut` — round-tripped through the API and the generated client —
+    // still yields the tool. The drawing behaviour itself is that spec's, against
+    // the showcase, where a session can be walked without disturbing this one.
     const laneTool = page.getByTestId("tool-polyline");
-    await expect(laneTool).toHaveAttribute("aria-disabled", "true");
-    await expect(laneTool).toHaveAttribute("aria-label", /0\.2/);
+    await expect(laneTool).not.toHaveAttribute("aria-disabled", /.*/);
+    await laneTool.click();
+    await expect(laneTool).toHaveAttribute("data-active", "true");
+    // Back to select, so the rest of the walk starts where it used to.
+    await page.getByTestId("tool-select").click();
 
     // 3b — the review round-trip, on the frame we are already standing on.
     //

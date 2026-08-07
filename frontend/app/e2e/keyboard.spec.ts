@@ -65,17 +65,18 @@ test("the digits activate the schema's classes in authored order", async ({ page
 });
 
 /**
- * `centerline` is declared `polyline` — a nameable `GeometryType` with no `Geometry`
- * variant, which is #73's answer and the reason two of v1's four specs are out of
- * scope here. `toolFor` answers `select` for it, so activating it draws nothing.
+ * `pose` is declared `keypoints` — a nameable `GeometryType` with no `Geometry`
+ * variant, which is #73's answer. `toolFor` answers `select` for it, so activating
+ * it draws nothing.
  *
- * This is the closest honest port of `polyline-tool.spec.ts`'s premise: not the
- * behaviour it asserted, but the state that replaced it.
+ * `centerline` held this role until #342, which gave `polyline` a variant and a
+ * tool; `polyline.spec.ts` is the real port of `polyline-tool.spec.ts` now, and
+ * this scenario keeps the state that spec's premise stood in for.
  */
 test("a class whose geometry has no implementation draws nothing", async ({ page }) => {
   const frame = await frameOf(page);
   await focusCanvas(page);
-  await page.keyboard.press("5");
+  await page.keyboard.press("6");
 
   await page.mouse.move(frame.at(400, 240).x, frame.at(400, 240).y);
   await page.mouse.down();

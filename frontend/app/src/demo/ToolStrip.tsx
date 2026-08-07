@@ -48,6 +48,23 @@ import type { CSSProperties, JSX, MouseEvent, ReactNode } from "react";
 import { COLOR, RADIUS, SHADOW, SPACE, TEXT } from "./theme";
 
 /** A schema's tools, in the order the strip lists them. */
+
+/**
+ * What each drawing tool is called. Total over what `drawableGeometry` answers, so
+ * a fourth geometry gaining a tool cannot reach the strip unnamed — which is what
+ * the ternary this replaced let `polyline` do, silently reading "Polygon" (#342).
+ *
+ * The showcase keeps its own strip on purpose (see `ToolPalette.tsx`), so this is
+ * a second table rather than an import; what it must not be is a second *rule*,
+ * and it is not — `drawableGeometry` is still the only thing deciding which tools
+ * exist.
+ */
+const TOOL_LABELS: Readonly<Record<"bbox" | "polygon" | "polyline", string>> = {
+  bbox: "Box",
+  polygon: "Polygon",
+  polyline: "Polyline",
+};
+
 interface ToolChoice {
   readonly tool: Tool;
   readonly label: string;
@@ -73,7 +90,7 @@ function toolChoices(schema: AnnotationSchema): readonly ToolChoice[] {
     if (choices.some((choice) => choice.tool === geometry)) continue;
     choices.push({
       tool: geometry,
-      label: geometry === "bbox" ? "Box" : "Polygon",
+      label: TOOL_LABELS[geometry],
       labelClass: declared.name,
       hotkey: hotkeyForClass(schema, declared.name) ?? "—",
     });
