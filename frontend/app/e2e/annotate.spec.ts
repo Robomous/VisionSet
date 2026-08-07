@@ -1864,41 +1864,72 @@ test("the job counter never goes backwards when a frame is reviewed", async ({ p
  * Principle 10 (#368): the annotation workspace is self-sufficient — no flow may
  * force navigation out of the editor, and **no exit may lose work**.
  *
- * The two exits that did not honour it were the back arrow and the grid button,
- * which navigated straight out while `prev`/`next` had gone through the
+ * The back arrow navigated straight out while `prev`/`next` had gone through the
  * save-first path since #187. So an afternoon's boxes survived walking forward
  * through the job and were lost by pressing Back — the one gesture somebody makes
  * when they think they have finished.
+ *
+ * The grid button used to be the second half of this loop. It is not an exit any
+ * more (#390): it opens an overlay over the workspace, and the save-first claim
+ * moved to the *tile press* below, where the frame actually changes.
  *
  * Asserted in a browser rather than in jsdom on purpose: the claim only exists
  * over a *dirty* document, making one dirty means drawing, and drawing needs a
  * canvas with a real size. jsdom's `getBoundingClientRect` answers all zeros.
  */
-for (const exit of ["back", "open-gallery"] as const) {
-  test(`${exit} saves the work before it leaves`, async ({ page }) => {
-    const sent: Request[] = [];
-    await openJob(page, sent);
-    await expectNothingToSave(page);
 
-    // One box, unsaved — the state the whole principle is about.
-    const canvas = page.getByTestId("annotator-canvas");
-    const box = (await canvas.boundingBox())!;
-    await page.getByTestId("annotator-root").focus();
-    await page.keyboard.press("1");
-    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
-    await page.mouse.up();
-    await expect(page.getByTestId("save-state")).toContainText("unsaved");
-
-    await page.getByTestId(exit).click();
-
-    // The POST is the whole assertion: the work reached the server on the way
-    // out. Without the guard this leaves nothing behind at all.
-    await expect
-      .poll(() =>
-        sent.filter((r) => r.method() === "POST" && r.url().endsWith("/annotations")).length,
-      )
-      .toBe(1);
-  });
+/** Draw one box and leave it unsaved — the state the whole principle is about. */
+async function drawOneUnsavedBox(page: Page): Promise<void> {
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByTestId("save-state")).toContainText("unsaved");
 }
+
+test("back saves the work before it leaves", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  await expectNothingToSave(page);
+  await drawOneUnsavedBox(page);
+
+  await page.getByTestId("back").click();
+
+  // The POST is the whole assertion: the work reached the server on the way out.
+  // Without the guard this leaves nothing behind at all.
+  await expect
+    .poll(() =>
+      sent.filter((r) => r.method() === "POST" && r.url().endsWith("/annotations")).length,
+    )
+    .toBe(1);
+});
+
+test("choosing a frame from the gallery saves first, then switches (#390)", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  await expectNothingToSave(page);
+  await drawOneUnsavedBox(page);
+
+  // Opening is free: nothing is being left, so nothing is saved yet.
+  await page.getByTestId("open-gallery").click();
+  await expect(page.getByTestId("frame-gallery")).toBeVisible();
+  expect(sent.filter((r) => r.method() === "POST" && r.url().endsWith("/annotations"))).toEqual(
+    [],
+  );
+
+  // The second frame, by its position — the same save-first `attempt(...)` the
+  // navigator's `›` runs, which is the point of routing the tile through it.
+  await page.getByRole("button", { name: /^Frame 2,/ }).click();
+
+  await expect
+    .poll(() =>
+      sent.filter((r) => r.method() === "POST" && r.url().endsWith("/annotations")).length,
+    )
+    .toBe(1);
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  await expect(page.getByTestId("frame-gallery")).toHaveCount(0);
+});

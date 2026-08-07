@@ -154,6 +154,7 @@ import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
+import type { BatchAsset } from "../screens/queries";
 import {
   jobKeys,
   assetPositionOf,
@@ -171,6 +172,7 @@ import {
   useSetAssetProgress,
 } from "./jobQueries";
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
+import { FrameGallery } from "./FrameGallery";
 import { PROGRESS_LABEL, progressDotClass, progressTone } from "../screens/batchState";
 import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
@@ -497,6 +499,10 @@ function JobScreen({
       projectId={batch.data.project_id}
       assetIndex={index}
       assetCount={assets.data.length}
+      // The whole list, for the frame gallery (#390). It is data the page is
+      // already holding for the navigator and the `n/m` counter — the overlay
+      // costs no request.
+      assets={assets.data}
       asset={asset}
       schema={schema.data}
       schemaVersion={batch.data.schema_version ?? null}
@@ -532,6 +538,15 @@ interface WorkspaceProps {
   readonly projectId: string;
   readonly assetIndex: number;
   readonly assetCount: number;
+  /**
+   * Every frame in the job, in the job's own order — what the gallery overlay
+   * draws (#390).
+   *
+   * Beside `assetCount` rather than replacing it: the count is what the bar reads
+   * and it must not start depending on the list's length, which is a different
+   * fact the day a job pages.
+   */
+  readonly assets: readonly BatchAsset[];
   readonly asset: {
     readonly id: string;
     readonly width: number | null;
@@ -598,6 +613,7 @@ function Workspace({
   projectId,
   assetIndex,
   assetCount,
+  assets,
   asset,
   schema,
   schemaVersion,
@@ -627,6 +643,7 @@ function Workspace({
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [view, setView] = useState<Viewport | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [addingClass, setAddingClass] = useState(false);
   /**
    * What the create row was typed with, carried into the dialog's name field.
@@ -939,10 +956,36 @@ function Workspace({
     [commit],
   );
 
-  function go(delta: number): void {
-    const next = Math.min(Math.max(assetIndex + delta, 0), assetCount - 1);
-    if (next === assetIndex) return;
+  /**
+   * Open a frame by its position, saving first.
+   *
+   * Extracted from `go` so the gallery's tiles and the navigator's `‹` / `›` are
+   * literally the same path rather than two spellings of it — principle 10 is
+   * enforced in one place, and a refused save keeps you on the frame with the
+   * refusal on screen whichever control you pressed.
+   */
+  function goTo(next: number): void {
+    if (next === assetIndex || next < 0 || next >= assetCount) return;
     attempt(() => onNavigate(next));
+  }
+
+  function go(delta: number): void {
+    goTo(Math.min(Math.max(assetIndex + delta, 0), assetCount - 1));
+  }
+
+  /**
+   * A tile press: close, then switch.
+   *
+   * Closing **first** is deliberate and is the one place this deviates from the
+   * issue's wording ("switches, then the modal closes"). On the happy path the
+   * two are indistinguishable — the switch remounts the workspace and the overlay
+   * goes with it. They differ only when the save is *refused*, and there the
+   * order decides whether anybody can read the refusal: it renders in the top
+   * bar's save state, which is behind the scrim.
+   */
+  function pickFrame(next: number): void {
+    setGalleryOpen(false);
+    goTo(next);
   }
 
   function settle(
@@ -1189,13 +1232,22 @@ function Workspace({
             </Button>
           </div>
 
+          {/*
+            The frame switcher (#390). It opens an overlay *inside* the editor —
+            no route change, nothing torn down, and no save on the way in because
+            nothing is being left.
+
+            It used to call `onOpenGallery`, the back arrow's own exit, so the
+            only way to look at your own frames was to stop looking at the one you
+            were on. `DESIGN.md` principle 10 forbids exactly that trip; the arrow
+            above still means *up* and keeps its guard.
+          */}
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Open the gallery"
+            aria-label="Show the job's frames"
             data-testid="open-gallery"
-            onClick={() => attempt(onOpenGallery)}
-            disabled={onOpenGallery === undefined}
+            onClick={() => setGalleryOpen(true)}
           >
             <Grid3x3 className="size-4" />
           </Button>
@@ -1727,6 +1779,14 @@ function Workspace({
       />
 
       <ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} registry={registry} />
+      <FrameGallery
+        open={galleryOpen}
+        onOpenChange={setGalleryOpen}
+        projectId={projectId}
+        assets={assets}
+        currentIndex={assetIndex}
+        onPick={pickFrame}
+      />
     </div>
   );
 }

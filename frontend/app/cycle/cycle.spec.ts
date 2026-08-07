@@ -385,9 +385,22 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.getByTestId("asset-position")).toContainText("3/3");
 
-    // And back to the gallery, from the annotator's own grid button — the other
-    // half of #160, which rendered disabled because nothing passed the callback.
+    // The grid button switches frames without leaving (#390): an overlay over the
+    // workspace, the URL unmoved, and Escape returning to exactly the frame that
+    // was on screen.
+    const inTheEditor = page.url();
     await page.getByTestId("open-gallery").click();
+    await expect(page.getByTestId("frame-gallery")).toBeVisible();
+    expect(page.url()).toBe(inTheEditor);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("frame-gallery")).toHaveCount(0);
+    await expect(page.getByTestId("asset-position")).toContainText("3/3");
+
+    // And back to the gallery, from the arrow — the other half of #160, which
+    // rendered disabled because nothing passed the callback. Leaving is still a
+    // thing you can do; it just stopped being the only way to look at your own
+    // frames.
+    await page.getByTestId("back").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
   });

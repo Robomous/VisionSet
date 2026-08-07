@@ -229,15 +229,32 @@ test("the annotator returns to its batch from a cold open, not into an empty his
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches/${BATCH}$`));
 });
 
-test("the annotator's grid button goes to the same place the arrow does", async ({ page }) => {
-  // Two controls, one destination, deliberately: the arrow means *up* and the
-  // grid means *show me the grid*, and they coincide because the annotator's
-  // parent is the grid. `DESIGN.md`'s top bar draws both.
+test("the annotator's grid button stays in the editor and the URL does not move", async ({
+  page,
+}) => {
+  // Two controls, two meanings (#390): the arrow means *up* and goes to the
+  // batch; the grid means *show me the other frames* and opens an overlay over
+  // the workspace. They used to share a destination, which made looking at your
+  // own frames an exit — the trip `DESIGN.md` principle 10 exists to prevent.
+  //
+  // The URL is the assertion, and it is asserted in a browser because that is
+  // where a route change is a real thing rather than a callback nobody called.
   await openCold(page, `/jobs/${JOB}`);
   await expect(page.getByTestId("annotation-page")).toBeVisible();
+  const before = page.url();
 
   await page.getByTestId("open-gallery").click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches/${BATCH}$`));
+
+  await expect(page.getByTestId("frame-gallery")).toBeVisible();
+  expect(page.url()).toBe(before);
+  // The editor is still mounted underneath, which is the other half of "no
+  // navigation": nothing was torn down and nothing has to be rebuilt on the way
+  // back.
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("frame-gallery")).toHaveCount(0);
+  expect(page.url()).toBe(before);
 });
 
 test("the batch gallery says which batch it is showing", async ({ page }) => {
