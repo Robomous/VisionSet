@@ -622,17 +622,20 @@ describe("the gallery", () => {
     await waitFor(() => expect(screen.queryByTestId("state-asset-1")).not.toBeNull());
 
     const expected = [
-      { id: "asset-0", tone: "neutral", word: "unannotated", cell: "bg-muted" },
-      { id: "asset-1", tone: "success", word: "annotated", cell: "bg-success" },
-      { id: "asset-2", tone: "warning", word: "in review", cell: "bg-warning" },
-      { id: "asset-3", tone: "success", word: "accepted", cell: "bg-success" },
-      { id: "asset-4", tone: "neutral", word: "skipped", cell: "bg-stage" },
+      { id: "asset-0", tone: "neutral", word: "unannotated", dot: "bg-transparent", cell: "bg-muted" },
+      { id: "asset-1", tone: "success", word: "annotated", dot: "bg-success", cell: "bg-success" },
+      { id: "asset-2", tone: "warning", word: "in review", dot: "border-warning", cell: "bg-warning" },
+      { id: "asset-3", tone: "success", word: "accepted", dot: "bg-success", cell: "bg-success" },
+      { id: "asset-4", tone: "neutral", word: "skipped", dot: "bg-stage", cell: "bg-stage" },
     ];
 
-    for (const { id, tone, word, cell } of expected) {
+    for (const { id, tone, word, dot, cell } of expected) {
       const state = screen.getByTestId(`state-${id}`);
       expect(state.getAttribute("data-tone")).toBe(tone);
       expect(state.textContent).toContain(word);
+      // The drawn class, not only the declared tone: an attribute that agrees
+      // with a map the dot no longer reads is a test of the map alone.
+      expect(state.innerHTML).toContain(dot);
 
       const strip = screen.getByTestId(`timeline-${id}`);
       expect(strip.className).toContain(cell);
