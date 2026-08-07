@@ -207,6 +207,23 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       }
     }
 
+    /*
+     * The draft survives leaving the tab, in a real DOM (#389).
+     *
+     * jsdom cannot carry this claim on its own: the mechanism is Radix
+     * unmounting inactive `TabsContent`, and "the component really was destroyed
+     * and rebuilt" is a statement about a browser's own reconciliation. Four
+     * unsaved classes is also the largest thing this cycle ever has to lose, and
+     * losing it here would be silent — the run would carry on and publish
+     * version 1 with whatever survived.
+     */
+    await page.getByTestId("tab-overview").click();
+    await expect(page.getByTestId("schema-editor")).toHaveCount(0);
+    await page.getByTestId("tab-schema").click();
+    for (const name of ["vehicle", "lane", "daytime", "centerline"]) {
+      await expect(page.getByTestId("class-list")).toContainText(name);
+    }
+
     await page.getByTestId("save-schema").click();
     // The history nests inside the Schema tab now: it is a view *of* the schema
     // rather than a peer of it, so the published version is checked further down

@@ -15,6 +15,22 @@
  * afterwards. That is not a missing screen — there is no route, because there is
  * no service method, because a version is immutable.
  *
+ * ## The draft belongs to the screen, not to this component (#389)
+ *
+ * `SchemaDraft` is a prop. That is not plumbing for its own sake: this editor
+ * renders inside a Radix `TabsContent`, which unmounts when another tab is shown,
+ * so a draft held in `useState` here was destroyed — silently, every time —
+ * along with everything somebody had typed into it. `ProjectScreen` holds it
+ * above that boundary and says why.
+ *
+ * The other half of the same defect was an effect that re-seeded the draft
+ * whenever the active version changed, with nothing to stop it. **Seeding is
+ * derived here rather than done in an effect**, which is what lets the rule be
+ * stated once where the value is read: a held draft wins while it still describes
+ * this project and either matches the active version or has unsaved work in it.
+ * A version that arrives underneath a dirty draft is neither merged nor
+ * discarded — it is announced, and reloading it is a button.
+ *
  * ## The four geometries, and the four the picker does not offer
  *
  * `GeometryType` has eight members and an `Annotation` can carry four. The
@@ -76,7 +92,7 @@
  */
 
 import { Plus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
+import { useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { asApiError } from "../data/errors";
 import { Alert, Badge } from "../primitives/Badge";
@@ -113,19 +129,61 @@ import {
 const DESTRUCTIVE = "DESTRUCTIVE_SCHEMA_CHANGE";
 const WOULD_ORPHAN = "SCHEMA_CHANGE_WOULD_ORPHAN";
 
+/**
+ * A draft of the next version, and the version it was drafted from.
+ *
+ * **Held by the screen rather than by this component (#389).** Radix unmounts an
+ * inactive `TabsContent` by design — that is what makes each tab own its own
+ * query (`ProjectScreen`'s docstring) — so a draft owned here died on a tab
+ * switch, silently and every time. State that outlives the editor is the only
+ * shape that survives it, and no effect guard could have reached that one.
+ *
+ * `seed` travels beside `classes` because **dirty is measured against what the
+ * draft started as, not against whatever the server says now**. Without it,
+ * somebody else publishing a version would make an untouched draft read as
+ * unsaved changes and offer to republish the version it was already showing.
+ *
+ * `projectId` travels for the same reason `seed` does: the route is
+ * `/projects/:projectId`, so moving between two projects re-renders the screen
+ * rather than remounting it, and a draft that outlives its tab also outlives the
+ * project it describes unless it says which one that is.
+ */
+export interface SchemaDraft {
+  readonly projectId: string;
+  /** The classes as edited. */
+  readonly classes: readonly LabelClassBody[];
+  /** The classes this draft was seeded from. */
+  readonly seed: readonly LabelClassBody[];
+  /** The version `seed` came from; `null` for a project with no schema yet. */
+  readonly basedOn: number | null;
+  /** The version message. Typed work too, so it is held here and not below. */
+  readonly note: string;
+}
+
 export interface SchemaEditorProps {
   readonly projectId: string;
   /** The active version, or `null` for a project that has never had one. */
   readonly active: SchemaVersion | null;
+  /** The held draft, or `null` to seed one from `active`. */
+  readonly draft: SchemaDraft | null;
+  readonly onDraftChange: (draft: SchemaDraft | null) => void;
 }
 
-export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Element {
-  const [draft, setDraft] = useState<readonly LabelClassBody[]>(active?.classes ?? []);
+/** The comparison `dirty` has always used — deep, and cheap at a schema's size. */
+function same(a: readonly LabelClassBody[], b: readonly LabelClassBody[]): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function SchemaEditor({
+  projectId,
+  active,
+  draft,
+  onDraftChange,
+}: SchemaEditorProps): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   const [selected, setSelected] = useState(0);
   const [filter, setFilter] = useState("");
   const [removing, setRemoving] = useState<number | null>(null);
-  const [note, setNote] = useState("");
   // Which version the tab is showing. `null` is the active one — the editor —
   // and a number is a past version, read-only.
   //
@@ -142,26 +200,47 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
   // this tab after that one costs no request.
   const stats = useProjectStats(projectId);
 
-  // Reseed when the active version changes underneath — after a successful save,
-  // and after a refetch that found somebody else's version. Keyed on the version
-  // number rather than on the array, which is a new object on every fetch.
+  // Seeding is **derived, not an effect**, and that is what closes the second
+  // half of #389. An effect that re-seeds has to be told when not to — and the
+  // one that shipped was never told, so a version published underneath replaced
+  // whatever had been typed. Deriving states the rule once, in the place the
+  // value is read: a held draft is shown while it is still about this project
+  // and either still describes the active version or has something in it worth
+  // keeping. Anything else is seeded fresh from `active`.
   const version = active?.version ?? null;
-  useEffect(() => {
-    setDraft(active?.classes ?? []);
-    // A published version's message belongs to that version, so the box empties
-    // rather than carrying the last one into the next save.
-    setNote("");
-    // And the tab returns to the editor: after a save the version somebody was
-    // reading is no longer the newest, and staying put would silently show a
-    // past version as though nothing had happened.
-    setViewing(null);
-  }, [version, active?.classes]);
+  const held = draft !== null && draft.projectId === projectId ? draft : null;
+  const showing: SchemaDraft =
+    held !== null && (held.basedOn === version || !same(held.classes, held.seed))
+      ? held
+      : {
+          projectId,
+          classes: active?.classes ?? [],
+          seed: active?.classes ?? [],
+          basedOn: version,
+          // A published version's message belongs to that version, so a re-seed
+          // empties the box rather than carrying the last one into the next save.
+          note: "",
+        };
 
+  const classes = showing.classes;
+  const note = showing.note;
   const failure = publish.isError ? asApiError(publish.error) : null;
-  const dirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(active?.classes ?? []),
-    [draft, active?.classes],
-  );
+  const dirty = !same(classes, showing.seed);
+  /**
+   * The version that arrived while this draft was being written, or `null`.
+   *
+   * Only ever non-null over a *dirty* draft — a clean one is re-seeded above and
+   * has nothing to warn about. Neither merged nor discarded: the editor says so
+   * and offers the reload, because silently keeping a draft cut against v3 while
+   * the server is on v4 is how somebody meets a `DESTRUCTIVE_SCHEMA_CHANGE` they
+   * have no way to account for.
+   */
+  const moved = showing.basedOn === version ? null : version;
+
+  /** Every edit writes the whole draft, so `seed` and `basedOn` travel with it. */
+  function edit(next: readonly LabelClassBody[]): void {
+    onDraftChange({ ...showing, classes: next });
+  }
 
   // Filtering is a *view* of the draft and never a change to it, so every edit
   // still addresses a real index. The pair travels together for that reason: a
@@ -169,12 +248,12 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
   // through the filtered index is how a filter silently edits the wrong class.
   const shown = useMemo(
     () =>
-      draft
+      classes
         .map((declared, index) => ({ declared, index }))
         .filter(({ declared }) =>
           declared.name.toLowerCase().includes(filter.trim().toLowerCase()),
         ),
-    [draft, filter],
+    [classes, filter],
   );
 
   // The version being read, or `undefined` while the tab is on the editor. The
@@ -185,7 +264,7 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
       ? undefined
       : history.data?.items.find((entry) => entry.version === viewing);
 
-  const current = draft[selected];
+  const current = classes[selected];
   const counts = stats.data?.classes ?? [];
   const countOf = (name: string): number =>
     counts.find((entry) => entry.label_class === name)?.annotations ?? 0;
@@ -202,7 +281,7 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
     // refuses a blank, so this mirrors the API rather than inventing a second rule —
     // and it *selects* the offending class, because a message about a field nobody
     // is looking at is barely better than a grey button.
-    const blank = draft.findIndex((declared) => declared.name.trim() === "");
+    const blank = classes.findIndex((declared) => declared.name.trim() === "");
     if (blank !== -1) {
       setSelected(blank);
       setFilter("");
@@ -211,7 +290,7 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
     }
     publish.mutate(
       {
-        classes: draft,
+        classes,
         ...(allowDestructive ? { allowDestructive: true } : {}),
         ...(note.trim() === "" ? {} : { description: note }),
         // This screen is where somebody sits down and decides what the project
@@ -220,27 +299,43 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
         // the *surface*, not the size of the change (#368).
         provenance: "curated",
       },
-      { onSuccess: () => setConfirming(false) },
+      {
+        onSuccess: (created) => {
+          setConfirming(false);
+          // The tab returns to the editor: after a save the version somebody was
+          // reading is no longer the newest, and staying put would silently show
+          // a past version as though nothing had happened.
+          setViewing(null);
+          // Re-based on what was published rather than reset to `null`, so the
+          // just-added class does not blink out and back while the refetch flies,
+          // and so this move — the one version change that is this editor's own —
+          // is never mistaken for somebody else's (`moved`).
+          onDraftChange({
+            projectId,
+            classes: created.classes,
+            seed: created.classes,
+            basedOn: created.version,
+            note: "",
+          });
+        },
+      },
     );
   }
 
   function addClass(): void {
-    setDraft((classes) => [
-      ...classes,
-      { name: "", geometry: "bbox", color: null, attributes: [] },
-    ]);
+    edit([...classes, { name: "", geometry: "bbox", color: null, attributes: [] }]);
     // Selected, and the filter cleared — a new class has an empty name, so any
     // filter at all would hide the row that was just created.
-    setSelected(draft.length);
+    setSelected(classes.length);
     setFilter("");
   }
 
   function removeClass(index: number): void {
-    setDraft((classes) => classes.filter((_, i) => i !== index));
+    edit(classes.filter((_, i) => i !== index));
     // Land on the neighbour rather than on nothing: deleting the last class in a
     // list should leave the one above selected, not an empty panel.
     setSelected((chosen) =>
-      Math.max(0, chosen > index ? chosen - 1 : Math.min(chosen, draft.length - 2)),
+      Math.max(0, chosen > index ? chosen - 1 : Math.min(chosen, classes.length - 2)),
     );
     setRemoving(null);
   }
@@ -292,7 +387,7 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
             data-testid="version-note"
             className="w-56"
             value={note}
-            onChange={(event) => setNote(event.target.value)}
+            onChange={(event) => onDraftChange({ ...showing, note: event.target.value })}
           />
           <Button variant="secondary" data-testid="add-class" onClick={addClass}>
             <Plus className="size-4" aria-hidden="true" />
@@ -313,6 +408,28 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
         )}
       </div>
 
+      {/* One line of prose beside the ambient status line, in the same register
+          as it: a version arriving underneath is news, not a failure and not a
+          question, so it is neither an `Alert` nor a dialog. The reload is the
+          one thing a person might want and cannot otherwise reach — reverting to
+          the new active version means discarding what they typed, which is
+          exactly the choice this was destroying by making it for them (#389). */}
+      {past === undefined && moved !== null && (
+        <p className="text-meta text-muted-foreground" data-testid="schema-moved">
+          Version {moved} was published while you were editing. Your changes are still
+          here, and saving publishes v{moved + 1}.{" "}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 align-baseline text-meta"
+            data-testid="schema-reload"
+            onClick={() => onDraftChange(null)}
+          >
+            Discard mine and load v{moved}
+          </Button>
+        </p>
+      )}
+
       <VersionNavigator
         projectId={projectId}
         versions={history.data?.items ?? []}
@@ -329,7 +446,7 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
 
       {past !== undefined ? (
         <PastVersion declared={past} />
-      ) : draft.length === 0 ? (
+      ) : classes.length === 0 ? (
         <Alert title="No classes yet">
           A class is a label plus the one geometry it carries — picking a class picks a tool.
         </Alert>
@@ -349,7 +466,7 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {draft.map((declared, index) => (
+                {classes.map((declared, index) => (
                   <SelectItem key={index} value={String(index)}>
                     {declared.name === "" ? "New class" : declared.name}
                   </SelectItem>
@@ -405,9 +522,7 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
               declared={current}
               index={selected}
               annotations={countOf(current.name)}
-              onChange={(next) =>
-                setDraft((classes) => classes.map((c, i) => (i === selected ? next : c)))
-              }
+              onChange={(next) => edit(classes.map((c, i) => (i === selected ? next : c)))}
               onRemove={() => setRemoving(selected)}
             />
           )}
@@ -415,8 +530,8 @@ export function SchemaEditor({ projectId, active }: SchemaEditorProps): JSX.Elem
       )}
 
       <RemoveClassDialog
-        declared={removing === null ? undefined : draft[removing]}
-        annotations={removing === null ? 0 : countOf(draft[removing]?.name ?? "")}
+        declared={removing === null ? undefined : classes[removing]}
+        annotations={removing === null ? 0 : countOf(classes[removing]?.name ?? "")}
         onCancel={() => setRemoving(null)}
         onConfirm={() => removing !== null && removeClass(removing)}
       />

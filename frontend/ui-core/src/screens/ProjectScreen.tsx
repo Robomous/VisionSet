@@ -111,7 +111,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
 import { OverviewPanel } from "./OverviewPanel";
-import { SchemaEditor } from "./SchemaEditor";
+import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
 import { groupByProvenance } from "./schemaHistory";
 import {
   useActiveSchema,
@@ -247,6 +247,24 @@ export function ProjectScreen({
   const schema = useActiveSchema(projectId);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  /*
+   * The schema draft lives **here**, above the tabs, and that placement is the
+   * fix rather than an implementation detail (#389).
+   *
+   * Radix unmounts inactive content — the property the section above is built on
+   * — so a draft owned by the editor died every time somebody looked at another
+   * tab, silently, taking whatever had been typed with it. No guard inside the
+   * editor could have reached that: the component was gone.
+   *
+   * `forceMount` was the alternative and was rejected. It would keep the editor
+   * alive at the cost of the query-follows-the-tab property this screen states
+   * two paragraphs above — the version list and the per-class counts would load
+   * for every project view, whether or not anybody opened Schema.
+   *
+   * The draft names the project it belongs to, because this component is
+   * *re-rendered* rather than remounted when the route's `:projectId` changes.
+   */
+  const [schemaDraft, setSchemaDraft] = useState<SchemaDraft | null>(null);
 
   // Batches are offered only when the host can open one. A table whose every row
   // is a dead link is #160's bug with a tab in front of it, and a host that cannot
@@ -332,7 +350,11 @@ export function ProjectScreen({
         </TabsContent>
 
         <TabsContent value="schema">
-          <SchemaSection projectId={projectId} />
+          <SchemaSection
+            projectId={projectId}
+            draft={schemaDraft}
+            onDraftChange={setSchemaDraft}
+          />
         </TabsContent>
 
         {onOpenBatch !== undefined && (
@@ -659,7 +681,16 @@ function ProjectHeader({
  * query to `Async`, which is why it is a component rather than the editor rendered
  * directly: `SCHEMA_NOT_FOUND` is an empty draft and everything else is a failure.
  */
-function SchemaSection({ projectId }: { readonly projectId: string }): JSX.Element {
+function SchemaSection({
+  projectId,
+  draft,
+  onDraftChange,
+}: {
+  readonly projectId: string;
+  /** Held by `ProjectScreen`, which outlives this tab. See its comment. */
+  readonly draft: SchemaDraft | null;
+  readonly onDraftChange: (draft: SchemaDraft | null) => void;
+}): JSX.Element {
   const schema = useActiveSchema(projectId);
   const failure = schema.isError ? asApiError(schema.error) : null;
   const schemaless = failure?.code === SCHEMA_NOT_FOUND;
@@ -676,7 +707,12 @@ function SchemaSection({ projectId }: { readonly projectId: string }): JSX.Eleme
   }
   return (
     <div className="flex flex-col gap-8">
-      <SchemaEditor projectId={projectId} active={schemaless ? null : (schema.data ?? null)} />
+      <SchemaEditor
+        projectId={projectId}
+        active={schemaless ? null : (schema.data ?? null)}
+        draft={draft}
+        onDraftChange={onDraftChange}
+      />
       {/*
         The ledger, below the editor rather than beside it in the tab bar.
         Version history is a *view of* the schema, not a peer of it — a fourth
