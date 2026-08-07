@@ -225,6 +225,16 @@ export {
   type Capable,
   type JobAction,
 } from "./data/capabilities.js";
+
+// Which family of work a geometry belongs to — presentation only, total over the
+// generated union by `satisfies`. The kernel takes no category concept (#375).
+export {
+  GEOMETRY_CATEGORIES,
+  GEOMETRY_CATEGORY,
+  groupGeometries,
+  type GeometryCategory,
+  type GeometryGroup,
+} from "./data/geometryCategory.js";
 export {
   groupRefusals,
   refusalProse,

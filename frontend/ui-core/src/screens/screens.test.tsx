@@ -367,6 +367,56 @@ describe("the schema editor", () => {
   });
 
   /**
+   * #375: a flat list of every name the product can address says nothing about
+   * which ones belong to the work somebody is doing, and it only grows.
+   *
+   * The grouping is presentation and this is the surface it exists for. What is
+   * asserted is the pairing — a heading, and the right members under it — because
+   * a test that only counted the headings would pass with both of them empty and
+   * every geometry in the wrong one.
+   */
+  it("groups the geometries it offers under their category", async () => {
+    projectWithSchema();
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+
+    await userEvent.click(screen.getByTestId("class-geometry-0"));
+
+    const basic = screen.getByTestId("geometry-category-Basic Computer Vision");
+    const robotics = screen.getByTestId("geometry-category-Robotics and AD");
+    // Radix labels a group by its `SelectLabel`, so the members under a heading
+    // are that group's — read from the DOM rather than from the map, which is
+    // what makes this a check on the rendering and not on the table.
+    const membersOf = (label: HTMLElement): string[] =>
+      [...(label.parentElement?.querySelectorAll('[role="option"]') ?? [])].map(
+        (option) => option.textContent ?? "",
+      );
+
+    expect(membersOf(basic)).toEqual(["bbox", "polygon", "classification_tag"]);
+    expect(membersOf(robotics)).toEqual(["polyline"]);
+    // Order of the sections is the map's declaration order, and it is the order
+    // somebody reads down the list in.
+    expect(basic.compareDocumentPosition(robotics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  /**
+   * The regression pin. Grouping is a change to how options are *arranged*; if it
+   * changed what selecting one does, it would have silently rewritten the schema
+   * editor's only real interaction.
+   */
+  it("still writes the picked geometry onto the class", async () => {
+    projectWithSchema();
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+
+    await userEvent.click(screen.getByTestId("class-geometry-0"));
+    // Across a group boundary deliberately: `polyline` is the only member of the
+    // second category, so picking it proves a grouped option is still an option.
+    await userEvent.click(screen.getByRole("option", { name: "polyline" }));
+    expect(screen.getByTestId("class-geometry-0").textContent).toContain("polyline");
+  });
+
+  /**
    * #162: the colour control has to show the colour the class is actually drawn in.
    *
    * The swatch was bound to the **stored** colour, which is `null` for a derived

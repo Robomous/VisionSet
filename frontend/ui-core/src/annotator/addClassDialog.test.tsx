@@ -131,8 +131,50 @@ describe("what it submits", () => {
     render(mount());
 
     // The shared `ClassFields` is what makes this the same picker the Schema tab
-    // offers — three geometries, and the five an annotation cannot carry absent.
+    // offers — four geometries, and the four an annotation cannot carry absent.
     expect(screen.getByTestId("class-geometry-new")).toBeTruthy();
+  });
+
+  /**
+   * #375's second surface. Both pickers already shared `ClassFields`, so grouping
+   * arrived here without a second call site — and this is the test that says so,
+   * because "they share a component" is a fact about today's code and the claim
+   * worth pinning is about what a person sees.
+   */
+  it("groups the geometries under their category, the same as the Schema tab", async () => {
+    render(mount());
+
+    await userEvent.click(screen.getByTestId("class-geometry-new"));
+
+    const basic = screen.getByTestId("geometry-category-Basic Computer Vision");
+    const robotics = screen.getByTestId("geometry-category-Robotics and AD");
+    const membersOf = (label: HTMLElement): string[] =>
+      [...(label.parentElement?.querySelectorAll('[role="option"]') ?? [])].map(
+        (option) => option.textContent ?? "",
+      );
+
+    expect(membersOf(basic)).toEqual(["bbox", "polygon", "classification_tag"]);
+    expect(membersOf(robotics)).toEqual(["polyline"]);
+  });
+
+  /**
+   * The regression pin for the annotator's half: a class's geometry is what
+   * `toolFor` reads to decide which tool a hotkey arms, so a picker that grouped
+   * its options and stopped writing one would break drawing rather than layout.
+   */
+  it("still writes the picked geometry onto the class it will publish", async () => {
+    const onSubmit = vi.fn();
+    render(mount({ onSubmit }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "centre-line");
+    await userEvent.click(screen.getByTestId("class-geometry-new"));
+    await userEvent.click(screen.getByRole("option", { name: "polyline" }));
+    await userEvent.click(screen.getByTestId("add-class-submit"));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      [expect.objectContaining({ name: "centre-line", geometry: "polyline" })],
+      expect.anything(),
+    );
   });
 });
 
