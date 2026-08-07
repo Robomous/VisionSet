@@ -28,6 +28,40 @@ Dev only; the release artifact is always the pip package, and these images are n
 it on the host stays faster, because a bind mount has to poll for file changes rather than being
 told about them.
 
+## Adding a dependency: the three-day cool-down
+
+**This repository does not install a package version the ecosystem has not had three days to look
+at.** A compromised release is most dangerous in the hours between publication and yanking, and
+patience is the cheapest defence there is. The rule is the same everywhere; only the spelling
+differs, because pnpm has a setting for it and uv does not.
+
+| Adding to | Type | The rule reaches you through |
+| --- | --- | --- |
+| the pnpm workspace | `pnpm add <pkg>` | `minimumReleaseAge` in `pnpm-workspace.yaml` — automatic, nothing to type |
+| the Python distribution | `bash scripts/cooldown.sh uv add <pkg>` | the wrapper; a bare `uv add` waits for nothing |
+| a build backend | — | `scripts/build_dist.sh` already wraps `uv build` |
+| GitHub Actions, Docker images | Dependabot | `cooldown.default-days` in `.github/dependabot.yml` |
+
+Three days is **one number with four spellings**, and `tests/scripts/cooldown.test.mjs` holds them
+to each other — `scripts/cooldown.sh` is the source, and moving it without moving the rest is a red
+test rather than a quiet inconsistency.
+
+**It is a resolution-time rule, and it is inert on every install path.** `pnpm install
+--frozen-lockfile` and `uv sync --locked` install exactly what the lockfile names, cool-down or no
+— that is the point, not a gap. The lockfile is the reviewed artifact; the cool-down polices what
+gets into it. This is also why CI uses `--locked` rather than a bare `uv sync`: a plain `uv sync`
+under a cutoff *discards the lockfile and re-resolves*, which would mean CI silently testing a set
+nobody chose.
+
+**When it fires.** `pnpm add <pkg>` with no version asks for `latest`, so a too-new release is
+refused outright (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`) rather than silently downgraded. Wait, or
+name an older version. To take a young version deliberately, add it to `minimumReleaseAgeExclude`
+in the same commit — an exception in the diff is one somebody can review. On the Python side, run
+the bare command or set `VISIONSET_COOLDOWN_DAYS=0` for a single invocation.
+
+**Security fixes are never delayed.** Dependabot's security updates bypass its own cool-down by
+design, and nothing here re-imposes one on them.
+
 ## Checks that must stay green
 
 **Run them with `bash scripts/check.sh`** (or `pnpm check` — the same script). It is the
