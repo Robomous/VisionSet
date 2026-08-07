@@ -122,6 +122,20 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # Node 25 is the odd-numbered *current* line; 24 is the active LTS, and
+      # this repository is on 24 in eight places — `docker/app.Dockerfile` plus
+      # seven `node-version: 24` pins across ci.yml and publish-pypi.yml. Taking
+      # a major here alone would put the dev container on a different major than
+      # every job that tests the code and the job that publishes it, and CI could
+      # not tell: the `dev image` job builds `docker/api.Dockerfile` only, so
+      # nothing in the required checks ever builds this image. That is what made
+      # #403 green while proving nothing about node 25.
+      #
+      # Remove this the day the next even-numbered line enters LTS, and take it
+      # in one PR that moves all eight pins together.
+      - dependency-name: "node"
+        versions: [">= 25"]
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(deps)"
