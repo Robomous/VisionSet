@@ -46,7 +46,7 @@ import { Check, Eye, PlayCircle, SkipForward, Trash2, Undo2, X } from "lucide-re
 
 import { Async } from "../data/Async";
 import { readStep, writePref } from "../data/prefs";
-import { useAssetAnnotations } from "../annotator/jobQueries";
+import { useAssetAnnotations, type AssetProgress } from "../annotator/jobQueries";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
@@ -78,13 +78,15 @@ import {
   inSegment,
   hasJobs,
   mayHaveAnnotations,
+  progressCellClass,
   progressDot,
+  progressDotClass,
   progressLabel,
+  progressTone,
   relativeAge,
   segmentCounts,
   SEGMENT_LABEL,
   SEGMENTS,
-  type DotStyle,
   type Segment,
 } from "./batchState";
 import {
@@ -866,7 +868,7 @@ function Timeline({
             data-testid={`timeline-${asset.id}`}
             aria-label={`Frame ${asset.frame_index ?? "?"}, ${progressLabel(asset.progress)}`}
             onClick={() => onPick(asset.id)}
-            className={cellClass(progressDot(asset.progress), asset.id === highlighted)}
+            className={cellClass(asset.progress, asset.id === highlighted)}
           />
         ))}
       </div>
@@ -878,23 +880,22 @@ function Timeline({
 }
 
 /**
- * A timeline cell's fill, from the same four dot styles the cards use.
+ * A timeline cell, from the same vocabulary the cards use.
  *
  * One vocabulary for both, so a colour on the strip and a dot on a card cannot
- * come to mean different things. So the strip is a monochrome ramp off `primary`
- * — settled work is the solid action colour, partial work is it at 40%, and the
- * rest are neutral surfaces. The distinction a person needs at a glance is *done
- * vs not*, and the exact state is one hover away in the label. #323 made this
- * read better rather than worse: a ramp of one near-black is a quantity, where a
- * ramp of a brand colour looked like four different meanings.
+ * come to mean different things — and since #391 that vocabulary is *semantic*
+ * rather than a monochrome ramp off `primary`. The ramp was a quantity: it said
+ * how far along a frame was and could not say what kind of state it was in, so
+ * `accepted` and `annotated` were the same near-black as each other and
+ * `review_pending` was that near-black at 40%, which reads as "less annotated"
+ * rather than as "waiting on somebody".
+ *
+ * The colour lives in `batchState.ts`; what stays here is the geometry and the
+ * highlight ring, which are the strip's own.
  */
-function cellClass(dot: DotStyle, isHighlighted: boolean): string {
-  const base = "h-full min-w-0 flex-1 ";
+function cellClass(progress: AssetProgress | null | undefined, isHighlighted: boolean): string {
   const ring = isHighlighted ? " ring-2 ring-ring" : "";
-  if (dot === "filled") return `${base}bg-primary${ring}`;
-  if (dot === "ring") return `${base}bg-primary/40${ring}`;
-  if (dot === "muted") return `${base}bg-stage${ring}`;
-  return `${base}bg-muted${ring}`;
+  return `h-full min-w-0 flex-1 ${progressCellClass(progress)}${ring}`;
 }
 
 // --- one card ----------------------------------------------------------------
@@ -1055,6 +1056,7 @@ function Tile({
  */
 function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
   const dot = progressDot(asset.progress);
+  const tone = progressTone(asset.progress);
   const counted = useAssetAnnotations(
     asset.job_id ?? "",
     asset.job_id !== null && mayHaveAnnotations(asset.progress) ? asset.id : undefined,
@@ -1069,20 +1071,12 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
     <span
       className="flex items-center gap-1 truncate text-meta text-muted-foreground"
       data-testid={`state-${asset.id}`}
+      data-tone={tone}
     >
       <span
         aria-hidden="true"
         data-dot={dot}
-        className={
-          "inline-block size-2 shrink-0 rounded-full border " +
-          (dot === "filled"
-            ? "border-primary bg-primary"
-            : dot === "ring"
-              ? "border-primary bg-transparent"
-              : dot === "muted"
-                ? "border-border bg-stage"
-                : "border-border bg-transparent")
-        }
+        className={`inline-block size-2 shrink-0 rounded-full border ${progressDotClass(asset.progress)}`}
       />
       {word}
     </span>

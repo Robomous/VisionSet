@@ -500,6 +500,40 @@ describe("the frame's state, in prose", () => {
     expect(state.textContent).toContain("annotated");
   });
 
+  it("takes its colour from the shared vocabulary, and skipped is not an error (#391)", async () => {
+    // This dot kept a third private colour map: `skipped` was `destructive`, so
+    // a frame somebody had deliberately passed over was drawn in the colour this
+    // product uses for a failure. Skipping is a settled decision; it is neutral.
+    progress = "skipped";
+    await open();
+
+    const state = screen.getByTestId("asset-progress");
+    expect(state.textContent).toContain("skipped");
+    expect(state.getAttribute("data-tone")).toBe("neutral");
+    expect(state.innerHTML).not.toContain("destructive");
+  });
+
+  it("draws an accepted frame with the success token the gallery uses (#391)", async () => {
+    progress = "accepted";
+    await open();
+
+    const state = screen.getByTestId("asset-progress");
+    expect(state.textContent).toContain("accepted");
+    expect(state.getAttribute("data-tone")).toBe("success");
+    expect(state.innerHTML).toContain("bg-success");
+  });
+
+  it("draws a frame awaiting review with the warning token (#391)", async () => {
+    progress = "review_pending";
+    await open();
+
+    const state = screen.getByTestId("asset-progress");
+    // `PROGRESS_LABEL`'s wording, not the wire's `review_pending`.
+    expect(state.textContent).toContain("in review");
+    expect(state.getAttribute("data-tone")).toBe("warning");
+    expect(state.innerHTML).toContain("border-warning");
+  });
+
   it("sits beside the save state, so the two read as one sentence", async () => {
     await open();
 

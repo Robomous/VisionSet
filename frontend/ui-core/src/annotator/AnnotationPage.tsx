@@ -153,7 +153,7 @@ import { ToolPalette } from "./ToolPalette";
 import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
-import type { WireAnnotation } from "./jobQueries";
+import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import {
   jobKeys,
   assetPositionOf,
@@ -171,7 +171,7 @@ import {
   useSetAssetProgress,
 } from "./jobQueries";
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
-import { PROGRESS_LABEL } from "../screens/batchState";
+import { PROGRESS_LABEL, progressDotClass, progressTone } from "../screens/batchState";
 import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
   batchKeys,
@@ -1935,20 +1935,29 @@ function PinDiff({
  * The words come from `batchState.ts`'s `PROGRESS_LABEL`: this page kept a second
  * copy of that map until #292, and two spellings of the same five states were
  * free to drift.
+ *
+ * **And the colour came from a third private map until #391.** The words were
+ * unified and the colours were not, so `accepted` was green here and near-black
+ * in the gallery — and, worse, `skipped` was **`destructive`**, which told
+ * somebody who had deliberately passed over a frame that something had gone
+ * wrong with it. Both halves read `batchState.ts` now; what stays local is the
+ * dot's size, because a 44px bar and a gallery card are the same status at two
+ * scales.
  */
 function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Element {
+  const state = progress as AssetProgress;
   const word = PROGRESS_LABEL[progress] ?? progress;
-  const tone =
-    progress === "skipped"
-      ? "bg-destructive"
-      : progress === "accepted"
-        ? "bg-success"
-        : progress === "unannotated"
-          ? "bg-muted-foreground/40"
-          : "bg-muted-foreground";
   return (
-    <span className="flex items-center gap-1.5" data-testid="asset-progress" data-progress={progress}>
-      <span className={`size-2 shrink-0 rounded-full ${tone}`} aria-hidden="true" />
+    <span
+      className="flex items-center gap-1.5"
+      data-testid="asset-progress"
+      data-progress={progress}
+      data-tone={progressTone(state)}
+    >
+      <span
+        className={`size-2 shrink-0 rounded-full border ${progressDotClass(state)}`}
+        aria-hidden="true"
+      />
       {word}
     </span>
   );

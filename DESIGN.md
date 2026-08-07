@@ -218,6 +218,42 @@ The known exceptions, all legitimate: a modal `Dialog`'s confirm button (it over
 page, so it is its own view), and the steps of the ingest stepper (only the active step
 renders).
 
+### Status colour
+
+**A status picks an intent, never a colour**, and the intent comes from the three semantic
+tokens above plus neutral. One mapping, product-wide (#391) — before it, the same five
+per-asset states were drawn in three private vocabularies, so `accepted` was green in the
+annotator and near-black in the gallery, and a *skipped* frame was painted `destructive`.
+
+| Family | Token |
+|---|---|
+| Done, settled, succeeded — `annotated`, `accepted`, batch `completed`, ingest `completed`, export `succeeded` | `success` |
+| Waiting on a person — `review_pending` | `warning` |
+| Failed — ingest `failed`, export `failed`, a corrupt file, a refusal | `destructive` |
+| Nothing has happened, or a decision was taken and nothing is wrong — `unannotated`, `skipped`, batch `draft`, export `queued`/`cancelled` | neutral |
+| Work is in flight — batch `in_annotation`, ingest `running`, export `running` | `primary` (the near-black action colour) |
+
+Three rules follow from it, and each was a real defect before it was a rule:
+
+1. **`destructive` is for errors only.** A `skipped` frame and a `cancelled` export are
+   *decisions*; painting them red tells somebody who chose an outcome that it went wrong.
+2. **`warning` means one thing: something is waiting on a person.** It is not "in
+   progress" — work in flight is the healthy majority state, and colouring the majority
+   state amber makes a list of ordinary work read as a list of problems.
+3. **"Finished" has one colour.** A completed batch and a completed ingest run are the same
+   fact about two nouns; they read `outline` and `success` respectively until #391.
+
+**The word always rides with the colour.** Colour alone is never a status — the badge
+carries its label, the dot carries the word beside it, and where a dot has no room the
+accessible name and the tooltip carry it (`● annotated · Saved`). A second non-colour
+channel exists on the per-asset dot as well: `filled` / `ring` / `hollow` / `muted` says how
+far along a frame is, so the vocabulary survives a monochrome screen.
+
+The single spelling for the per-asset states is `frontend/ui-core/src/screens/batchState.ts`
+(`PROGRESS_TONE`, `progressDotClass`, `progressCellClass`). Every other family writes its
+own small map beside its own labels, typed against the shared `BadgeTone` union — so a
+sixth colour is a compile error rather than a diff nobody notices.
+
 ### Success and the exception that no longer exists
 
 `success` (`#2e7d5b`) is a real token as of #323. v1's documented exception — a hardcoded

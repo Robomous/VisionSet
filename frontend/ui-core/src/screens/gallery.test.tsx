@@ -604,6 +604,45 @@ describe("the gallery", () => {
     expect(screen.queryByTestId("state-asset-0")).not.toBeNull();
   });
 
+  it("paints the card dot and the timeline cell from the same semantic tokens (#391)", async () => {
+    // The gallery's dots were a monochrome ramp off `primary` while the
+    // annotator's were semantic, so `accepted` was green on one screen and
+    // near-black on the other. Both read `batchState.ts` now.
+    //
+    // Token *and* word on every row: the annotation count is what would replace
+    // the word on an `annotated` card, and it never arrives here because nothing
+    // stubs `/annotations`.
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", progress: { ...NO_PROGRESS, total: 5, annotated: 5 } }),
+    });
+    on("GET", /\/assets$/, { status: 200, body: mixed() });
+
+    render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));
+    await waitFor(() => expect(screen.queryByTestId("state-asset-1")).not.toBeNull());
+
+    const expected = [
+      { id: "asset-0", tone: "neutral", word: "unannotated", dot: "bg-transparent", cell: "bg-muted" },
+      { id: "asset-1", tone: "success", word: "annotated", dot: "bg-success", cell: "bg-success" },
+      { id: "asset-2", tone: "warning", word: "in review", dot: "border-warning", cell: "bg-warning" },
+      { id: "asset-3", tone: "success", word: "accepted", dot: "bg-success", cell: "bg-success" },
+      { id: "asset-4", tone: "neutral", word: "skipped", dot: "bg-stage", cell: "bg-stage" },
+    ];
+
+    for (const { id, tone, word, dot, cell } of expected) {
+      const state = screen.getByTestId(`state-${id}`);
+      expect(state.getAttribute("data-tone")).toBe(tone);
+      expect(state.textContent).toContain(word);
+      // The drawn class, not only the declared tone: an attribute that agrees
+      // with a map the dot no longer reads is a test of the map alone.
+      expect(state.innerHTML).toContain(dot);
+
+      const strip = screen.getByTestId(`timeline-${id}`);
+      expect(strip.className).toContain(cell);
+      expect(strip.getAttribute("aria-label")).toContain(word);
+    }
+  });
+
   it("keeps the empty state for a batch with nothing in it", async () => {
     on("GET", /\/assets$/, { status: 200, body: assets(0, 0, 0) });
     render(mount(<GalleryScreen projectId={PROJECT} batchId={BATCH} />));

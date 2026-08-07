@@ -692,6 +692,30 @@ describe("watching a run", () => {
     expect(screen.queryByTestId("resume-ingest")).toBeNull();
   });
 
+  it("calls a finished run done in the colour a finished batch uses (#391)", async () => {
+    // "Finished" had two colours: a completed batch was `success` and a
+    // completed ingest run was `outline`, which is the treatment this product
+    // uses for a decision nobody has acted on yet.
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
+    await launch();
+
+    const badge = await screen.findByTestId("run-state");
+    await waitFor(() => expect(badge.textContent).toBe("Done"));
+    expect(badge.className).toContain("text-success");
+  });
+
+  it("keeps a failed run in the error colour, and the word with it (#391)", async () => {
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({ state: "failed", error: "ffmpeg is not installed", processed: 0 }),
+    });
+    await launch();
+
+    const badge = await screen.findByTestId("run-state");
+    await waitFor(() => expect(badge.textContent).toBe("Failed"));
+    expect(badge.className).toContain("text-destructive");
+  });
+
   /**
    * A refused resume, which is a different fact from the run's own error (F9).
    *
