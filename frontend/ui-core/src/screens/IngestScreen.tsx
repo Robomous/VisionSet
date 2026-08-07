@@ -137,6 +137,7 @@ import { formatBytes, formatCount } from "../lib/format";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { Alert, Badge } from "../primitives/Badge";
+import type { BadgeTone } from "./batchState";
 import { Button } from "../primitives/Button";
 import { Card, CardContent } from "../primitives/Card";
 import { Progress } from "../primitives/Feedback";
@@ -180,6 +181,33 @@ const RUN_STATE_LABEL: Record<string, string> = {
 
 function runStateLabel(state: string): string {
   return RUN_STATE_LABEL[state] ?? state;
+}
+
+/**
+ * The same states, as tokens (#391).
+ *
+ * **A finished run is `success`, because a finished batch is** — this read
+ * `outline` before, so "finished" had two colours in one product depending on
+ * which noun you had finished. `outline` is the treatment for a decision nobody
+ * has acted on yet (`approved`), which is the opposite of done.
+ *
+ * `pending` and `running` keep the near-black: work in flight is the healthy
+ * state, and `warning` means one thing product-wide — something waiting on a
+ * person. Nobody is waiting on a person here; they are waiting on ffmpeg.
+ *
+ * Beside the labels rather than in `batchState.ts` because this vocabulary has
+ * exactly one rendering site and never had a second spelling. What is shared is
+ * the *type*: a colour outside `BadgeTone` fails to compile.
+ */
+const RUN_STATE_VARIANT: Record<string, BadgeTone> = {
+  pending: "accent",
+  running: "accent",
+  completed: "success",
+  failed: "destructive",
+};
+
+function runStateVariant(state: string): BadgeTone {
+  return RUN_STATE_VARIANT[state] ?? "neutral";
 }
 
 /** `IngestFailureKind`, likewise: what is wrong with the file, said plainly. */
@@ -591,16 +619,7 @@ export function IngestScreen({
           hint="Watch the frames land in a batch."
           aside={
             activeStep === 3 && job.data !== undefined ? (
-              <Badge
-                variant={
-                  job.data.state === "failed"
-                    ? "destructive"
-                    : job.data.state === "completed"
-                      ? "outline"
-                      : "accent"
-                }
-                data-testid="run-state"
-              >
+              <Badge variant={runStateVariant(job.data.state)} data-testid="run-state">
                 {runStateLabel(job.data.state)}
               </Badge>
             ) : undefined
