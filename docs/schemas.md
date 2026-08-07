@@ -183,6 +183,21 @@ reviews them. What does not exist yet is an interactive tool for *drawing* a lan
 0.2. A polyline class is therefore a perfectly ordinary class that an agent or a script
 fills in and a person checks, which is the workflow it was added for.
 
+### The categories a picker groups them by
+
+The eight fall into two families, and the grouping is **presentation only** — the kernel has
+no category concept and takes none (#375). "Basic Computer Vision" holds the geometries an
+ordinary image task produces: `bbox`, `polygon`, `mask`, `keypoints` and
+`classification_tag`. "Robotics and AD" holds the ones that describe a scene the camera
+alone does not give you — `polyline` for lanes today, and the reserved `cuboid_3d` and
+`polyline_3d`.
+
+The map lives in `frontend/ui-core/src/data/geometryCategory.ts`, declared total over the
+generated `GeometryType` union so a ninth member fails the frontend build until somebody
+categorises it. Nothing on the wire carries a category, and an exporter's capability
+declaration never names one: `supported_geometries` is per geometry, because a lane exporter
+supports `polyline` and has said nothing at all about `cuboid_3d`.
+
 `allowed_geometries` is the flip side, derived the same way: the set of geometries a
 version's classes are bound to. It is what an annotation's `geometry.type` is
 membership-tested against — the union's discriminator values *are* `GeometryType` members,

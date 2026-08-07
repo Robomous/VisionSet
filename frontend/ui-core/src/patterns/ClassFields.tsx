@@ -22,13 +22,16 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { JSX } from "react";
 
+import { groupGeometries } from "../data/geometryCategory";
 import { classColor, hexColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { FieldHint, Input, Label } from "../primitives/Input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
@@ -41,13 +44,21 @@ import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/que
  * through the SDK, the API and MCP, and reviewed in the annotator. Offering the
  * class is still right — the geometry is real, the API accepts it, and the
  * exporters need it — and the tool strip says so where it matters (#342).
+ *
+ * `satisfies` rather than an annotation (#375), so the elements keep their
+ * literal types and a member deleted from the generated union fails here. What
+ * that does **not** close is the cross-language mirror: the offerable set is the
+ * kernel's `IMPLEMENTED_GEOMETRIES`, derived off the `Geometry` union, and the
+ * wire does not publish it — so implementing `mask` still means editing this
+ * line by hand. Deriving it needs the API to declare the set; that is a wire
+ * change and #375 is presentation-only.
  */
-const GEOMETRIES: readonly GeometryType[] = [
+const GEOMETRIES = [
   "bbox",
   "polygon",
   "polyline",
   "classification_tag",
-];
+] as const satisfies readonly GeometryType[];
 
 /** `Attribute.kind`, from the wire enum. */
 const KINDS = ["string", "number", "boolean", "select"] as const;
@@ -95,10 +106,22 @@ export function ClassFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {GEOMETRIES.map((geometry) => (
-                <SelectItem key={geometry} value={geometry}>
-                  {geometry}
-                </SelectItem>
+              {/* Grouped, not flat (#375): a flat list of every name the product
+                  can address says nothing about which ones belong to the work
+                  somebody is actually doing, and the list only grows. The
+                  headings are presentation — `SelectLabel` is Radix's own
+                  non-selectable label, so the keyboard walks past them. */}
+              {groupGeometries(GEOMETRIES).map((group) => (
+                <SelectGroup key={group.category}>
+                  <SelectLabel data-testid={`geometry-category-${group.category}`}>
+                    {group.category}
+                  </SelectLabel>
+                  {group.geometries.map((geometry) => (
+                    <SelectItem key={geometry} value={geometry}>
+                      {geometry}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
             </SelectContent>
           </Select>

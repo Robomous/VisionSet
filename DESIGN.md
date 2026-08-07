@@ -222,6 +222,14 @@ The known exceptions, all legitimate: a modal `Dialog`'s confirm button (it over
 page, so it is its own view), and the steps of the ingest stepper (only the active step
 renders).
 
+**The rule is a count, so it is tested as one — in both directions.** A test asserting that
+*the* CTA is present, or that a sibling is `secondary`, passes just as happily with two
+filled buttons on the page; that is the defect #388 was filed for. The enforcement pattern
+is a document-wide sweep — collect every `button.bg-primary` and assert the whole set — which
+catches the zero-filled case as well: an invitation whose destination does not exist, beside
+a header that stood back for it, leaves the view answering "what do I do next?" with nothing.
+Both failures are the same rule violated, counted from opposite sides.
+
 ### Status colour
 
 **A status picks an intent, never a colour**, and the intent comes from the three semantic
@@ -474,6 +482,14 @@ Presentational contracts, all in `ui-core`, all data-only — no fetching, no ro
 floods a card or a row — that is the accent rule (principle 3) applied to a colour the
 *kernel* chose. The single derivation lives in `frontend/ui-core/src/palette.ts`
 (`classColor`, schema colour first, else a name hash); a second path is what #162 was.
+
+**A geometry picker groups its options by category, and the category is presentation only**
+(#375, 2026-08-07) — the kernel takes no category concept, because "Robotics and AD" is a
+market segment and the domain does not hold one. The single map is
+`frontend/ui-core/src/data/geometryCategory.ts`, declared total over the generated
+`GeometryType` union so an uncategorised geometry fails the build rather than falling
+quietly out of a list; headings are non-selectable `SelectLabel`s and a category with
+nothing under it renders none.
 
 ### Lists and filtering
 

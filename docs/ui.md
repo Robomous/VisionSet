@@ -664,6 +664,13 @@ that gap: a lane class now gets a real tool on the annotator's strip. The picker
 change, which is the point — the schema editor offers what an `Annotation` can carry, and
 whether a tool exists for it is the annotator's business to state, not this screen's.
 
+The options are **grouped by category** rather than listed flat (#375): `bbox`, `polygon`
+and `classification_tag` under *Basic Computer Vision*, `polyline` under *Robotics and AD*.
+The headings are `SelectLabel`s — presentation, not selectable, walked past by the keyboard
+— and a category with nothing offered under it renders no heading at all. The same grouping
+appears in the annotator's add-a-class dialog without a second call site, because both
+render `patterns/ClassFields.tsx`.
+
 A class **description** is not editable, because `LabelClassBody` does not carry
 one. Left out rather than stored where it would not survive a round trip.
 
