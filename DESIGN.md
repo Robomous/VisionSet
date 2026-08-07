@@ -412,6 +412,25 @@ Actions are right-aligned: one **primary CTA**, one **secondary**, and an overfl
 page the primary is **Annotate**, because principle 8 asks what the user came to do and the
 answer is never "rename this".
 
+### The first run
+
+**The Overview's first-run region is driven by the project's state, and renders exactly one
+invitation.** No classes and no images invites the classes (with the other order named
+beneath it as prose, because both are legitimate); classes and no images invites the ingest;
+images and no classes invites the classes again and says annotation opens from the first
+approved batch; a project with both gets no invitation and is the dashboard. **It guides and
+never gates** — Ingest and Schema stay independently reachable throughout, and where the
+invitation holds the page's one filled button the header steps its own Ingest back to
+`secondary`.
+
+**The four-station onboarding checklist is retired (2026-08-07, #388), reversing #289.** It
+was not made smarter or better-sequenced: a project three seconds old showed three
+invitations at once — a filled header Ingest, a checklist whose active step said *labels*,
+and an outlined Ingest in the empty state — so whichever a person followed, the page was
+also telling them to do something else. Dismissibility was the answer to "onboarding a
+person has read is noise"; it is not an answer to a contradiction met before there is
+anything to dismiss. The road is the tab bar.
+
 ### Numbers
 
 - Stat values use **tabular figures** (`font-variant-numeric: tabular-nums`), so a number

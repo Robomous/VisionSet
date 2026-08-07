@@ -21,9 +21,12 @@
  * one — which is `DESIGN.md` principle 6's own counter-example, written about
  * this page.
  *
- * The three-second-old project is still answered. Overview's empty state invites
- * the first **ingest**, which is genuinely the next thing to do; an empty schema
- * form is a question about an ontology for data nobody has yet.
+ * The three-second-old project is still answered, and since #388 it is answered
+ * with exactly one invitation chosen from the project's real state rather than
+ * with three that disagreed. While that invitation holds the page's filled
+ * button, the header steps its own Ingest back to `secondary` — the same
+ * `panelOwnsTheAction` bargain the Schema tab already had, for the same
+ * one-filled-button-per-view reason.
  *
  * ## The tab is in the URL, and `ui-core` still imports no router
  *
@@ -110,7 +113,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/Tabs";
 import { BatchesScreen } from "./BatchesScreen";
 import { DatasetScreen } from "./DatasetScreen";
-import { OverviewPanel } from "./OverviewPanel";
+import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
 import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
 import { groupByProvenance } from "./schemaHistory";
 import {
@@ -118,6 +121,7 @@ import {
   useBatches,
   useDeleteProject,
   useProject,
+  useProjectReadiness,
   useProjectStats,
   useRenameProject,
   useSchemaVersions,
@@ -279,6 +283,23 @@ export function ProjectScreen({
   const asked = tab === "versions" ? "schema" : tab;
   const current = available.find((one) => one === asked) ?? DEFAULT_TAB;
 
+  // Costs no request: `useProjectReadiness` composes the schema and stats queries
+  // the header above already runs, and TanStack keys them identically. Read here
+  // rather than reported upward from the panel, because the header is drawn
+  // outside the tabs and a child telling its parent how to render is a render
+  // cycle waiting to happen.
+  const readiness = useProjectReadiness(projectId);
+  // `onTabChange` is in the condition because it is what decides whether the
+  // invitation has a button at all: an uncontrolled Radix root cannot be moved
+  // from inside the panel, so the panel is handed no `onOpenSchema` and renders
+  // prose. Standing the header back for an invitation that cannot act would
+  // leave the page with no filled button anywhere.
+  const overviewOwnsTheAction =
+    current === "overview" &&
+    onTabChange !== undefined &&
+    readiness !== null &&
+    invitationOwnsTheAction(firstRunInvitation(readiness));
+
   return (
     <div className="flex flex-col gap-6" data-testid="project-screen">
       {onBack !== undefined && <BackLink onClick={onBack} label="Projects" />}
@@ -292,7 +313,7 @@ export function ProjectScreen({
             // The schema tab owns a filled "Save version" of its own, and it is
             // that view's forward action. Telling the header lets it step back,
             // so the page still shows exactly one filled button (#323).
-            panelOwnsTheAction={current === "schema"}
+            panelOwnsTheAction={current === "schema" || overviewOwnsTheAction}
             {...(onTabChange === undefined ? {} : { onOpenDataset: () => onTabChange("dataset") })}
             onRename={() => setRenaming(true)}
             onDelete={() => setDeleting(true)}
@@ -332,9 +353,11 @@ export function ProjectScreen({
           {/* The declared classes travel down so a distribution bar shows the
               colour the schema authored rather than only the derived hue. The
               query is shared with the Schema tab, so this costs no request. */}
-          {/* The checklist's tab links exist only when the host controls the
-              tabs: an uncontrolled Radix root cannot be moved from here, and a
-              link that silently does nothing is worse than plain text. */}
+          {/* The first-run invitation's destinations exist only when the host
+              controls the tabs: an uncontrolled Radix root cannot be moved from
+              here, and a link that silently does nothing is worse than plain
+              text. `overviewOwnsTheAction` reads the same condition, so the
+              header does not stand back for a button that is not there. */}
           <OverviewPanel
             projectId={projectId}
             {...(schema.data === undefined ? {} : { classes: schema.data.classes })}

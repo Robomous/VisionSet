@@ -8,20 +8,16 @@
  * be got wrong: assets but no annotations is *not* empty.
  */
 
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { QueryClient } from "@tanstack/react-query";
 import type { JSX, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { clearPrefs } from "../data/prefs";
 import { IMBALANCE_MIN_CLASSES, IMBALANCE_SHARE, imbalanceNote } from "./imbalance";
-import { journeySteps, OverviewPanel } from "./OverviewPanel";
-import { batchActions, datasetOf, releaseOf } from "../testing/wire.fixtures.js";
-import type { components as capComponents } from "../generated/api.js";
-
-type BatchState = capComponents["schemas"]["BatchState"];
+import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
+import { datasetOf, releaseOf } from "../testing/wire.fixtures.js";
 
 const API = "http://visionset.test";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -104,10 +100,6 @@ function json(body: unknown): Promise<Response> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  // `writePref` keeps an in-memory mirror beside storage, so clearing the store
-  // alone leaves a dismissal leaking into the next test.
-  globalThis.sessionStorage.clear();
-  clearPrefs();
 });
 
 function on(method: string, pattern: RegExp, answer: Answer): void {
@@ -149,11 +141,12 @@ function statsOf(over: Record<string, unknown> = {}): Record<string, unknown> {
 const DATASET = "22222222-2222-4222-8222-222222222222";
 
 /**
- * The two-hop the journey's last step reads: project -> dataset -> releases.
+ * The two-hop the pipeline row reads: project -> dataset -> releases.
  *
- * Installed for every fixture rather than per test, because `useProjectReadiness`
- * waits on it — a missing stub makes readiness `null`, which renders as nothing
- * at all and is indistinguishable from a hook that stopped working.
+ * Installed for every fixture rather than per test. `useProjectReadiness` stopped
+ * waiting on it with #388 — the checklist that needed a release signal is gone —
+ * but the dashboard's trunk and release cards still ask, and an unstubbed pair
+ * falls through to the 500 the harness answers with.
  */
 function serveTrunk(releases: readonly string[] = []): void {
   on("GET", /\/projects\/[^/]+\/dataset$/, { status: 200, body: datasetOf(PROJECT, DATASET) });
@@ -161,28 +154,6 @@ function serveTrunk(releases: readonly string[] = []): void {
     status: 200,
     body: { items: releases.map((tag) => releaseOf(DATASET, tag)), total: releases.length },
   });
-}
-
-function batchOf(state: string): Record<string, unknown> {
-  return {
-    id: "55555555-5555-4555-8555-555555555555",
-    project_id: PROJECT,
-    name: "drive-01",
-    state,
-    schema_version: state === "draft" ? null : 1,
-    asset_count: 48,
-    progress: {
-      unannotated: 48,
-      annotated: 0,
-      skipped: 0,
-      review_pending: 0,
-      accepted: 0,
-      total: 48,
-    },
-    allowed_actions: batchActions(state as BatchState),
-    promoted_asset_count: 0,
-    parent_batch_id: null,
-  };
 }
 
 function serve(stats: Record<string, unknown>, assets: unknown = { items: [], total: 0 }): void {
@@ -363,23 +334,27 @@ describe("the Overview panel", () => {
   });
 });
 
-// --- the journey checklist (#289) ---------------------------------------------
+// --- the first-run invitation (#388) ------------------------------------------
 
-describe("journeySteps", () => {
-  it("marks everything before the current step complete and everything after upcoming", () => {
-    expect(journeySteps("annotate")?.map((step) => step.state)).toEqual([
-      "complete",
-      "complete",
-      "active",
-      "upcoming",
-    ]);
+describe("firstRunInvitation", () => {
+  // The whole state table, swept — four combinations and four answers, so the
+  // rule is checked rather than described. `null` is the fourth answer and it is
+  // the one the page depends on most: a project with both halves is a dashboard,
+  // and an invitation over it would be onboarding somebody who is already here.
+  it("answers exactly one invitation per state, and none once both halves exist", () => {
+    expect(firstRunInvitation({ hasSchema: false, hasAssets: false })).toBe("classes-first");
+    expect(firstRunInvitation({ hasSchema: true, hasAssets: false })).toBe("ingest");
+    expect(firstRunInvitation({ hasSchema: false, hasAssets: true })).toBe("classes-after-ingest");
+    expect(firstRunInvitation({ hasSchema: true, hasAssets: true })).toBeNull();
   });
 
-  it("retires the whole checklist once the journey is done", () => {
-    // `"done"` is not derivable from live data yet (`useProjectReadiness` v1
-    // leaves it to a release signal), which is exactly why the retirement rule
-    // is a pure function: this is the only place it can be exercised.
-    expect(journeySteps("done")).toBeNull();
+  it("hands the filled button to the invitation only where the header has none to lose", () => {
+    // The `ingest` invitation is the exception: the header's Ingest is the same
+    // label and the same handler, so the filled one stays up there (#323).
+    expect(invitationOwnsTheAction("classes-first")).toBe(true);
+    expect(invitationOwnsTheAction("classes-after-ingest")).toBe(true);
+    expect(invitationOwnsTheAction("ingest")).toBe(false);
+    expect(invitationOwnsTheAction(null)).toBe(false);
   });
 });
 
@@ -406,8 +381,19 @@ function readinessOf(options: {
   on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
 }
 
-describe("the journey checklist", () => {
+/**
+ * How many filled buttons the rendered tree carries.
+ *
+ * `bg-primary` is the one utility the `primary` variant owns (`buttonVariants`),
+ * so counting it is counting filled buttons — and principle 8's whole claim is a
+ * count. A test that only asserted "the CTA is there" would pass just as
+ * happily with two of them, which is the exact defect #388 was filed about.
+ */
+function filledButtons(): readonly HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("button.bg-primary")];
+}
 
+describe("the first-run invitation", () => {
   const empty = statsOf({
     asset_count: 0,
     annotated_asset_count: 0,
@@ -416,127 +402,120 @@ describe("the journey checklist", () => {
     classes: [],
   });
 
-  it("opens a schema-less project on step one, above the empty state", async () => {
+  it("invites a schema-less, empty project to define classes, and nothing else", async () => {
     readinessOf({ schema: false, stats: empty });
-    render(mount(<OverviewPanel projectId={PROJECT} />));
-
-    const checklist = await screen.findByTestId("journey-checklist");
-    expect(checklist).not.toBeNull();
-    // The empty state and the checklist coexist: the invitation says what to
-    // do with data, the checklist says labels come first.
-    expect(screen.getByTestId("overview-empty")).not.toBeNull();
-    expect(screen.getByTestId("journey-labels").dataset.state).toBe("active");
-    expect(screen.getByTestId("journey-images").dataset.state).toBe("upcoming");
-  });
-
-  it("moves to step two once labels exist and nothing is ingested", async () => {
-    readinessOf({ stats: empty });
-    render(mount(<OverviewPanel projectId={PROJECT} />));
-
-    await screen.findByTestId("journey-checklist");
-    expect(screen.getByTestId("journey-labels").dataset.state).toBe("complete");
-    expect(screen.getByTestId("journey-images").dataset.state).toBe("active");
-  });
-
-  it("moves to annotate while ingested work is untouched", async () => {
-    readinessOf({ stats: statsOf({ asset_count: 48, annotated_pct: 0, annotation_count: 0 }) });
-    render(mount(<OverviewPanel projectId={PROJECT} />));
-
-    await screen.findByTestId("journey-checklist");
-    expect(screen.getByTestId("journey-annotate").dataset.state).toBe("active");
-    expect(screen.getByTestId("journey-export").dataset.state).toBe("upcoming");
-  });
-
-  it("moves to export once every batch is settled and work is annotated", async () => {
-    readinessOf({ stats: statsOf(), batches: [batchOf("completed")] });
-    render(mount(<OverviewPanel projectId={PROJECT} />));
-
-    await screen.findByTestId("journey-checklist");
-    expect(screen.getByTestId("journey-export").dataset.state).toBe("active");
-    expect(screen.getByTestId("journey-annotate").dataset.state).toBe("complete");
-  });
-
-  it("wires each reachable step to its host callback", async () => {
-    readinessOf({ stats: statsOf({ asset_count: 48, annotated_pct: 0, annotation_count: 0 }) });
     const schema = vi.fn();
-    const batches = vi.fn();
-    render(
-      mount(
-        <OverviewPanel projectId={PROJECT} onOpenSchema={schema} onOpenBatches={batches} />,
-      ),
-    );
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={schema} onIngest={vi.fn()} />));
 
-    await screen.findByTestId("journey-checklist");
-    // The active step links; so does a completed one — going back is legal.
-    await userEvent.click(within(screen.getByTestId("journey-annotate")).getByRole("button"));
-    expect(batches).toHaveBeenCalledOnce();
-    await userEvent.click(within(screen.getByTestId("journey-labels")).getByRole("button"));
+    const region = await screen.findByTestId("first-run");
+    expect(region.dataset.invitation).toBe("classes-first");
+    // One filled button on the page, and it is this one.
+    expect(filledButtons()).toEqual([screen.getByTestId("first-run-cta")]);
+    // And the ingest empty state's own button is gone: three voices became one.
+    expect(screen.queryByTestId("overview-ingest")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("first-run-cta"));
     expect(schema).toHaveBeenCalledOnce();
-    // An upcoming step is plain text: pointing three steps ahead is how somebody
-    // lands on a screen that refuses everything.
-    expect(within(screen.getByTestId("journey-export")).queryByRole("button")).toBeNull();
   });
 
-  it("renders no checklist at all while readiness has no answer", async () => {
-    // Only stats and assets are stubbed; the schema and batch queries fail for a
-    // real (non-404) reason, so the journey must not guess.
-    serve(statsOf());
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+  it("names the other order as prose with a link, never as a second filled button", async () => {
+    // It guides, it never gates. Both orders are legitimate, so the page says so
+    // — and says it without splitting its own hierarchy.
+    readinessOf({ schema: false, stats: empty });
+    const ingest = vi.fn();
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={ingest} />));
 
-    await screen.findByTestId("overview-stats");
-    expect(screen.queryByTestId("journey-checklist")).toBeNull();
+    const alt = await screen.findByTestId("first-run-alt");
+    expect(alt.className).not.toContain("bg-primary");
+    expect(screen.getByTestId("first-run").textContent).toContain("both orders work");
+    expect(filledButtons()).toHaveLength(1);
+
+    await userEvent.click(alt);
+    expect(ingest).toHaveBeenCalledOnce();
   });
-});
 
-/**
- * The checklist retiring itself — the `information-architecture` rule that
- * onboarding is not navigation.
- *
- * Two exits, and they are different facts. One is that the journey is *finished*:
- * `hasReleases` makes `done` derivable, and `journeySteps` answers `null` for it.
- * The other is that somebody has *read it*: a strip you cannot dismiss is a strip
- * you learn to look past.
- */
-describe("when the journey stops being worth showing", () => {
-  it("retires itself once the project has published a release", async () => {
-    readinessOf({
-      stats: statsOf({ asset_count: 48, annotated_pct: 100, annotation_count: 96 }),
-      batches: [batchOf("completed")],
-      releases: ["v1"],
-    });
+  it("invites an ingest once classes exist and nothing is ingested", async () => {
+    readinessOf({ stats: empty });
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />));
 
-    render(mount(<OverviewPanel projectId={PROJECT} />));
+    const region = await screen.findByTestId("first-run");
+    expect(region.dataset.invitation).toBe("ingest");
+    expect(screen.getByTestId("overview-ingest")).not.toBeNull();
+    // Zero filled buttons *here*, because the page's one lives in the header
+    // this panel does not render (#323). `ProjectScreen`'s own tests carry the
+    // other half of that claim.
+    expect(filledButtons()).toHaveLength(0);
+    expect(screen.queryByTestId("first-run-cta")).toBeNull();
+  });
+
+  it("invites classes over a project that ingested first, and says where annotation opens", async () => {
+    readinessOf({ schema: false, stats: statsOf({ asset_count: 48 }) });
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />));
+
+    const region = await screen.findByTestId("first-run");
+    expect(region.dataset.invitation).toBe("classes-after-ingest");
+    // The state the counts are real for: the invitation sits above the dashboard
+    // rather than replacing it, because there *is* something to describe.
+    expect(screen.getByTestId("overview-stats")).not.toBeNull();
+    expect(screen.queryByTestId("overview-empty")).toBeNull();
+    expect(region.textContent).toContain("48 images are in");
+    // The gate is stated, not re-derived — approval is what pins a version.
+    expect(region.textContent).toContain("first approved batch");
+    expect(filledButtons()).toEqual([screen.getByTestId("first-run-cta")]);
+  });
+
+  it("says one image rather than 1 images", async () => {
+    readinessOf({ schema: false, stats: statsOf({ asset_count: 1 }) });
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} />));
+
+    expect((await screen.findByTestId("first-run")).textContent).toContain("1 image is in");
+  });
+
+  it("invites nothing once the project has both classes and images", async () => {
+    readinessOf({ stats: statsOf({ asset_count: 48 }) });
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} onIngest={vi.fn()} />));
 
     // The dashboard is there, so this is not "nothing rendered".
     await screen.findByTestId("overview-pipeline");
-    expect(screen.queryByTestId("journey-checklist")).toBeNull();
+    expect(screen.queryByTestId("first-run")).toBeNull();
+    expect(filledButtons()).toHaveLength(0);
   });
 
-  it("still shows it while there is no release yet", async () => {
-    readinessOf({
-      stats: statsOf({ asset_count: 48, annotated_pct: 100, annotation_count: 96 }),
-      batches: [batchOf("completed")],
-    });
+  it("is retired outright: no checklist, no dismissal, on any state", async () => {
+    // #289's four-station strip and its per-project dismissal are gone rather
+    // than hidden. Asserted on the state that used to render step one, which is
+    // where a survivor would show up first.
+    readinessOf({ schema: false, stats: empty });
+    render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} />));
 
-    render(mount(<OverviewPanel projectId={PROJECT} />));
-
-    await screen.findByTestId("journey-checklist");
-    expect(screen.getByTestId("journey-export").dataset.state).toBe("active");
+    await screen.findByTestId("first-run");
+    expect(screen.queryByTestId("journey")).toBeNull();
+    expect(screen.queryByTestId("journey-checklist")).toBeNull();
+    expect(screen.queryByTestId("journey-dismiss")).toBeNull();
+    expect(document.body.textContent).not.toContain("Export your dataset");
   });
 
-  it("stays dismissed, and only for the project it was dismissed on", async () => {
-    readinessOf({ stats: statsOf({ asset_count: 48 }) });
-    const { unmount } = render(mount(<OverviewPanel projectId={PROJECT} />));
+  it("falls back to the ingest invitation when readiness has no answer", async () => {
+    // Only stats and assets are stubbed, so the schema query fails for a real
+    // (non-404) reason and readiness stays `null`. "Nothing ingested yet" is
+    // true whatever the schema turns out to be; a classes invitation would be a
+    // guess about the one fact the page could not obtain.
+    serve(empty);
+    render(mount(<OverviewPanel projectId={PROJECT} onIngest={vi.fn()} />));
 
-    await userEvent.click(await screen.findByTestId("journey-dismiss"));
-    expect(screen.queryByTestId("journey-checklist")).toBeNull();
-    unmount();
+    const region = await screen.findByTestId("first-run");
+    expect(region.dataset.invitation).toBe("ingest");
+  });
 
-    // Persisted: a remount is a reload, and onboarding that came back would be
-    // onboarding nobody can get rid of.
-    render(mount(<OverviewPanel projectId={PROJECT} />));
-    await screen.findByTestId("overview-pipeline");
-    expect(screen.queryByTestId("journey-checklist")).toBeNull();
+  it("guesses nothing over a project that has images and no readable schema", async () => {
+    // The other half of the same rule. With assets present there is no
+    // invitation that is true without the schema fact, so the page renders its
+    // dashboard and stays quiet.
+    serve(statsOf({ asset_count: 48 }));
+    render(mount(<OverviewPanel projectId={PROJECT} onIngest={vi.fn()} />));
+
+    await screen.findByTestId("overview-stats");
+    expect(screen.queryByTestId("first-run")).toBeNull();
   });
 });
 

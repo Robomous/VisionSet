@@ -170,10 +170,12 @@ describe("the batch table", () => {
 describe("the labels foreshadowing banner (#290)", () => {
   /** The readiness sources beside the screen's own batches query. */
   function withSchema(exists: boolean): void {
-    // `SchemaForeshadow` reads `useProjectReadiness`, which reaches the dataset
-    // and its releases for the journey's last step — so both have to be answered
-    // or readiness stays `null` and the banner never renders, which looks
-    // exactly like the banner being wrong.
+    // `SchemaForeshadow` reads `useProjectReadiness`, which needs the schema and
+    // the project's counts to answer at all — an unanswered source leaves
+    // readiness `null` and the banner never renders, which looks exactly like
+    // the banner being wrong. The dataset and its releases are stubbed too: the
+    // hook stopped reading them with #388, and they are kept because this
+    // screen's own cards still ask.
     on("GET", /^\/projects\/[^/]+\/dataset$/, {
       status: 200,
       body: datasetOf(PROJECT, "22222222-2222-4222-8222-222222222222"),

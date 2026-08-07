@@ -22,6 +22,16 @@
  * again would be answering a question they did not ask. It renders as populated,
  * with an honest zero.
  *
+ * ## One invitation at minute zero (#388)
+ *
+ * A project three seconds old used to show three competing invitations — a
+ * filled header Ingest, a checklist whose active step said *labels*, and an
+ * outlined Ingest in the empty state. Whichever a person followed, the page was
+ * also telling them to do something else. The checklist is retired and the
+ * first-run region is now driven by the project's real state: `firstRunInvitation`
+ * answers with exactly one, or with none once the project has both classes and
+ * images. Nothing is gated — both tabs stay reachable throughout.
+ *
  * ## Skeletons reserve the final layout
  *
  * The stat grid and both panels are drawn at their real sizes while loading, so
@@ -30,15 +40,13 @@
  * a cursor already on its way somewhere.
  */
 
-import { ImageIcon, TriangleAlert, Upload, X } from "lucide-react";
-import { useState, type JSX } from "react";
+import { ImageIcon, Tags, TriangleAlert, Upload } from "lucide-react";
+import type { JSX } from "react";
 
 import { classColor } from "../palette";
-import { readPref, writePref } from "../data/prefs";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { Button } from "../primitives/Button";
-import { Checklist, type ChecklistItemState } from "../patterns/Checklist";
 import { Skeleton } from "../primitives/Feedback";
 import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
 import { AssetThumbnail } from "./AssetThumbnail";
@@ -53,8 +61,8 @@ import {
   useProjectStats,
   useReleases,
   type ClassCount,
-  type JourneyStep,
   type LabelClassBody,
+  type ProjectReadiness,
 } from "./queries";
 
 /** How many tiles the samples grid asks for. Six is two rows of three. */
@@ -66,9 +74,9 @@ export interface OverviewPanelProps {
   readonly classes?: readonly LabelClassBody[];
   readonly onIngest?: () => void;
   readonly onBrowseDataset?: () => void;
-  /** The journey checklist's first step — the schema tab, as the host spells it. */
+  /** The schema tab, as the host spells it — the first-run invitation's destination. */
   readonly onOpenSchema?: () => void;
-  /** And its third — the batches tab. */
+  /** The batches tab, for the pipeline row. */
   readonly onOpenBatches?: () => void;
 }
 
@@ -82,15 +90,7 @@ export function OverviewPanel({
 }: OverviewPanelProps): JSX.Element {
   const stats = useProjectStats(projectId);
   const samples = useProjectAssets(projectId, SAMPLE_LIMIT);
-  const journey = (
-    <Journey
-      projectId={projectId}
-      {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
-      {...(onIngest === undefined ? {} : { onIngest })}
-      {...(onOpenBatches === undefined ? {} : { onOpenBatches })}
-      {...(onBrowseDataset === undefined ? {} : { onBrowseDataset })}
-    />
-  );
+  const readiness = useProjectReadiness(projectId);
 
   if (stats.isPending) return <OverviewSkeleton />;
   if (stats.isError) {
@@ -109,42 +109,48 @@ export function OverviewPanel({
   // here has the fields the contract declares, and reading them defensively would
   // only hide the next thing that goes wrong.
   const counted = stats.data;
+
+  /*
+   * Readiness is `null` while the schema query has not answered, and stays null
+   * when it failed for a reason that is not the schema-less 404. There is one
+   * invitation that is true without knowing anything about the schema — a
+   * project with nothing ingested has nothing ingested — so that is the fallback
+   * for an empty project. A project that *has* images gets no invitation rather
+   * than a guessed one: "define your first classes" to somebody who has fifty is
+   * worse than saying nothing.
+   */
+  const invitation: FirstRunInvitation | null =
+    readiness === null
+      ? counted.asset_count === 0
+        ? "ingest"
+        : null
+      : firstRunInvitation(readiness);
+
+  const firstRun =
+    invitation === null ? null : (
+      <FirstRun
+        invitation={invitation}
+        assetCount={counted.asset_count}
+        {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+        {...(onIngest === undefined ? {} : { onIngest })}
+      />
+    );
+
   if (counted.asset_count === 0) {
+    // Nothing to describe, so the invitation is the whole page rather than a
+    // strip above one. The testid still means what it always meant — this
+    // project has no assets — which is what two browser suites assert on.
     return (
-      // The checklist renders here too — a project with nothing ingested is
-      // exactly the reader the journey exists for, and its active step (labels
-      // or images) is the answer the empty state alone cannot give.
-      <div className="flex flex-col gap-6">
-        {journey}
-        {/* Wrapped rather than given a testid: `EmptyState` is shared and takes a
-            fixed set of props, and widening a primitive's API for a test hook is
-            the wrong direction. */}
-        <div data-testid="overview-empty">
-          <EmptyState
-            icon={<ImageIcon className="size-8" />}
-            title="Nothing ingested yet"
-            // An invitation, not an apology — `DESIGN.md`'s copy rule.
-            description="Ingest images or a video to see counts, class distribution and samples here."
-            action={
-              onIngest === undefined ? undefined : (
-                // `secondary`: the project header's "Ingest" is on screen right
-                // above this one, same label and same handler, so a filled button
-                // here rendered the identical action twice (#323).
-                <Button variant="secondary" data-testid="overview-ingest" onClick={onIngest}>
-                  <Upload className="size-4" aria-hidden="true" />
-                  Ingest
-                </Button>
-              )
-            }
-          />
-        </div>
+      <div className="flex flex-col gap-6" data-testid="overview-empty">
+        {firstRun}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6" data-testid="overview-panel">
-      {journey}
+      {/* Only state 3 reaches here with one: images are in, classes are not. */}
+      {firstRun}
 
       {/*
         The dashboard row: where the project is, as four pointers at the four
@@ -271,128 +277,151 @@ function Pipeline({
   );
 }
 
-/** The journey's four stations, in walking order. `done` is not one — it is the exit. */
-const JOURNEY: readonly { readonly key: Exclude<JourneyStep, "done">; readonly label: string }[] = [
-  { key: "labels", label: "Define your labels" },
-  { key: "images", label: "Add your images" },
-  { key: "annotate", label: "Annotate" },
-  { key: "export", label: "Export your dataset" },
-];
+/**
+ * Which invitation this project's state asks for, or `null` once it asks for
+ * none.
+ *
+ * Three names for three states rather than a pair of booleans read at every
+ * call site. `classes-first` and `classes-after-ingest` lead to the same place
+ * and say different things, because "you have nothing yet" and "your images are
+ * in, name what you will draw" are sentences for different readers — and only
+ * the second one can honestly mention the batch gate.
+ */
+export type FirstRunInvitation = "classes-first" | "ingest" | "classes-after-ingest";
 
 /**
- * Each station's state, given where the project is — or `null` when the journey
- * is over and the checklist retires itself.
+ * The state-driven Overview's one rule (#388).
  *
- * Exported as a pure function on `imbalanceNote`'s precedent: the retirement
- * rule is worth checking without a browser, and `"done"` is not yet derivable
- * from live data (`useProjectReadiness`'s v1 leaves it to a release signal), so
- * the component alone cannot exercise it.
+ * Exactly one invitation renders, and none at all once the project has both
+ * halves — `DESIGN.md` principle 8 applied at minute zero rather than only once
+ * a project has data. It replaces the four-station onboarding checklist (#289),
+ * whose active step said *labels* while the header and the empty state both said
+ * *ingest*: two hierarchies are none, and the reader who met all three was the
+ * one who had nothing to dismiss yet.
+ *
+ * **It guides and never gates.** Ingest and Schema stay independently reachable
+ * throughout — both orders are legitimate — which is why the alternative path in
+ * state 1 is one line of prose and not a second filled button.
+ *
+ * A pure function on `imbalanceNote`'s precedent: the state table is the thing
+ * worth pinning, and pinning it should not need a DOM.
  */
-export function journeySteps(
-  current: JourneyStep,
-): readonly {
-  readonly key: Exclude<JourneyStep, "done">;
-  readonly label: string;
-  readonly state: ChecklistItemState;
-}[] | null {
-  if (current === "done") return null;
-  const at = JOURNEY.findIndex((step) => step.key === current);
-  return JOURNEY.map((step, index) => ({
-    ...step,
-    state: index < at ? "complete" : index === at ? "active" : "upcoming",
-  }));
+export function firstRunInvitation({
+  hasSchema,
+  hasAssets,
+}: ProjectReadiness): FirstRunInvitation | null {
+  if (hasSchema) return hasAssets ? null : "ingest";
+  return hasAssets ? "classes-after-ingest" : "classes-first";
 }
 
 /**
- * The first-run checklist: the pipeline as a visible sequence (#289).
+ * Whether the invitation carries the page's one filled button.
  *
- * Driven by `useProjectReadiness`, which composes queries this screen's host
- * already runs — so the strip costs no request. While readiness has no answer
- * (something still loading, or failed for a real reason) nothing renders: a
- * checklist drawn from half an answer says something false with confidence.
- *
- * Each step's link is the host's callback, absent when the host has nowhere to
- * send anybody — the no-dead-link rule every screen here follows.
+ * One spelling, read twice: here to pick the variant, and by `ProjectScreen` to
+ * step the header's Ingest back to `secondary` for as long as it holds. The
+ * `ingest` invitation is the deliberate exception — the header's Ingest is the
+ * same label and the same handler, so the filled one stays up there (#323) and
+ * this one stays outlined. Either way the page shows exactly one filled button.
  */
-function Journey({
-  projectId,
+export function invitationOwnsTheAction(invitation: FirstRunInvitation | null): boolean {
+  return invitation === "classes-first" || invitation === "classes-after-ingest";
+}
+
+/**
+ * The one invitation, drawn.
+ *
+ * Every branch is an `EmptyState`: icon, a headline naming the space, one line
+ * of body, and a verb-first action — `DESIGN.md`'s shape for exactly this
+ * moment. Copy is an invitation rather than an apology, sentence case, and names
+ * the space and the verb.
+ *
+ * Each action is absent, never disabled, when the host has nowhere to send
+ * anybody — the no-dead-link rule every screen in this package follows.
+ */
+function FirstRun({
+  invitation,
+  assetCount,
   onOpenSchema,
   onIngest,
-  onOpenBatches,
-  onBrowseDataset,
 }: {
-  readonly projectId: string;
+  readonly invitation: FirstRunInvitation;
+  readonly assetCount: number;
   readonly onOpenSchema?: () => void;
   readonly onIngest?: () => void;
-  readonly onOpenBatches?: () => void;
-  readonly onBrowseDataset?: () => void;
-}): JSX.Element | null {
-  const readiness = useProjectReadiness(projectId);
-  // Read once per mount rather than on every render: `readPref` touches storage,
-  // and the answer cannot change while this component is alive except through
-  // the setter below.
-  const [dismissed, setDismissed] = useState(() => readPref(dismissKey(projectId)) === "1");
+}): JSX.Element {
+  if (invitation === "ingest") {
+    return (
+      // Kept verbatim from the empty state that shipped before #388. What
+      // changed is that it is now the only voice on the page rather than one of
+      // three, and the filled Ingest above it is no longer competing with a
+      // checklist step pointing somewhere else.
+      <div data-testid="first-run" data-invitation={invitation}>
+        <EmptyState
+          icon={<ImageIcon className="size-8" />}
+          title="Nothing ingested yet"
+          description="Ingest images or a video to see counts, class distribution and samples here."
+          action={
+            onIngest === undefined ? undefined : (
+              // `secondary`: the project header's "Ingest" is on screen right
+              // above this one, same label and same handler, so a filled button
+              // here rendered the identical action twice (#323).
+              <Button variant="secondary" data-testid="overview-ingest" onClick={onIngest}>
+                <Upload className="size-4" aria-hidden="true" />
+                Ingest
+              </Button>
+            )
+          }
+        />
+      </div>
+    );
+  }
 
-  if (readiness === null) return null;
-  // **It retires itself, twice over.** Once because the journey is finished —
-  // `done` is derivable now that `hasReleases` exists, and a checklist that
-  // stayed after the last box was ticked would be furniture. Once because
-  // somebody said so: onboarding a person has read is noise, and a strip they
-  // cannot dismiss is a strip they learn to look past.
-  if (dismissed) return null;
-  const steps = journeySteps(readiness.currentStep);
-  if (steps === null) return null;
-
-  const go: Record<Exclude<JourneyStep, "done">, (() => void) | undefined> = {
-    labels: onOpenSchema,
-    images: onIngest,
-    annotate: onOpenBatches,
-    export: onBrowseDataset,
-  };
+  const first = invitation === "classes-first";
   return (
-    <div className="relative" data-testid="journey">
-      <Checklist
-        aria-label="Project journey"
-        data-testid="journey-checklist"
-        items={steps.map((step) => ({
-          label: step.label,
-          state: step.state,
-          testId: `journey-${step.key}`,
-          ...(go[step.key] === undefined ? {} : { onGo: go[step.key] }),
-        }))}
+    <div data-testid="first-run" data-invitation={invitation}>
+      <EmptyState
+        icon={<Tags className="size-8" />}
+        title={first ? "Define your first classes" : "Define your classes"}
+        description={
+          first
+            ? "A class is what you will draw — a box, a polygon, a tag. Name a few and this project is ready for images."
+            : // The batch gate is stated, not re-derived: approval is what pins a
+              // schema version, and `SchemaNotFound` is the refusal that already
+              // speaks for itself on the batches surface.
+              `${formatCount(assetCount)} ${assetCount === 1 ? "image is" : "images are"} in. Name the classes you will draw — annotation opens from the first approved batch.`
+        }
+        action={
+          <div className="flex flex-col items-center gap-2">
+            {onOpenSchema !== undefined && (
+              <Button variant="primary" data-testid="first-run-cta" onClick={onOpenSchema}>
+                <Tags className="size-4" aria-hidden="true" />
+                Define classes
+              </Button>
+            )}
+            {/* Prose with a link in it, never a second button: both orders are
+                valid and the page must say so without splitting its own
+                hierarchy. Only offered where ingesting is the road not taken —
+                a project that already has images has taken it. */}
+            {first && onIngest !== undefined && (
+              <p className="text-meta text-muted-foreground">
+                Or{" "}
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-meta"
+                  data-testid="first-run-alt"
+                  onClick={onIngest}
+                >
+                  ingest images first
+                </Button>{" "}
+                — both orders work.
+              </p>
+            )}
+          </div>
+        }
       />
-      {/*
-        Dismissal is per project and persisted, because "I have read this" is a
-        fact about a person and a project rather than about a tab. It gates
-        nothing — the checklist never did — so losing it costs a reminder and no
-        capability, which is why there is no confirmation and no way back in the
-        UI. Clearing the stored preference brings it back.
-      */}
-      <button
-        type="button"
-        aria-label="Dismiss the project journey"
-        data-testid="journey-dismiss"
-        onClick={() => {
-          writePref(dismissKey(projectId), "1");
-          setDismissed(true);
-        }}
-        className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
-      >
-        <X className="size-4" aria-hidden="true" />
-      </button>
     </div>
   );
-}
-
-/**
- * Where a project's dismissal is remembered.
- *
- * Keyed by project, not globally: somebody who has finished one project has not
- * therefore learned the pipeline for the next, and a global flag would hide the
- * onboarding from the one reader it exists for.
- */
-function dismissKey(projectId: string): string {
-  return `journey.dismissed.${projectId}`;
 }
 
 /**

@@ -1351,6 +1351,8 @@ describe("the project header", () => {
     stats?: boolean;
     batchState?: string;
     lastIngest?: unknown;
+    /** `asset_count`, which is half of what the Overview's invitation reads. */
+    assets?: number;
   }): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
@@ -1368,7 +1370,11 @@ describe("the project header", () => {
       body:
         options.stats === false
           ? { code: "BOOM", message: "no" }
-          : { ...STATS, last_ingest_at: options.lastIngest ?? null },
+          : {
+              ...STATS,
+              asset_count: options.assets ?? STATS.asset_count,
+              last_ingest_at: options.lastIngest ?? null,
+            },
     });
     on("GET", /\/batches$/, {
       status: 200,
@@ -1535,6 +1541,79 @@ describe("the project header", () => {
 
     await screen.findByTestId("go-ingest");
     expect(screen.queryByTestId("go-annotate")).toBeNull();
+  });
+
+  /*
+   * The header's half of the one-filled-button rule (#388).
+   *
+   * `headerFor` stubs no assets endpoint and no dataset, which is exactly the
+   * state a three-second-old project is in — so these run against the same
+   * fixtures the rest of the header suite does, with only the schema moving.
+   *
+   * The count is the claim, so each of these asserts the *total* number of
+   * filled buttons in the document rather than the variant of one of them: a
+   * test that only checked "Ingest is secondary" would pass with two filled
+   * buttons elsewhere, which is the defect that was filed.
+   */
+  function filled(): readonly HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>("button.bg-primary")];
+  }
+
+  it("steps Ingest back while the Overview's invitation owns the filled button", async () => {
+    headerFor({ schema: false, assets: 0 });
+    render(
+      mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />),
+    );
+
+    const cta = await screen.findByTestId("first-run-cta");
+    expect(filled()).toEqual([cta]);
+    expect(screen.getByTestId("go-ingest").className).not.toContain("bg-primary");
+  });
+
+  it("does not stand back for an invitation that has nowhere to send anybody", async () => {
+    // With no `onTabChange` the tabs are uncontrolled, so the panel is handed no
+    // way into Schema and renders the invitation as prose. A header that stepped
+    // back for that would leave the page with no filled button at all — which is
+    // the same failure as two, counted the other way.
+    headerFor({ schema: false, assets: 0 });
+    render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
+
+    await screen.findByTestId("first-run");
+    expect(screen.queryByTestId("first-run-cta")).toBeNull();
+    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+  });
+
+  it("keeps the filled Ingest when the invitation is the ingest one", async () => {
+    // The invitation and the header say the same thing with the same handler, so
+    // the loud one stays in the header and the panel's stays outlined (#323).
+    headerFor({ assets: 0 });
+    render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
+
+    await screen.findByTestId("overview-ingest");
+    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+  });
+
+  it("keeps the filled Ingest once the project has both classes and images", async () => {
+    headerFor({});
+    render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
+
+    await screen.findByTestId("overview-stats");
+    expect(screen.queryByTestId("first-run")).toBeNull();
+    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+  });
+
+  it("hands the filled button back the moment another tab is showing", async () => {
+    // The invitation is the *Overview's*. Radix unmounts inactive content, so a
+    // header still standing back on the Batches tab would be a page with no
+    // forward action at all.
+    headerFor({ schema: false, assets: 0 });
+    render(
+      mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />),
+    );
+
+    await screen.findByTestId("go-ingest");
+    expect(screen.queryByTestId("first-run")).toBeNull();
+    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
   });
 
   it("moves Rename into the overflow, so only two buttons show", async () => {
