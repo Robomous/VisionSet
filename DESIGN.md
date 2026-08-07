@@ -632,7 +632,17 @@ The page the reference design shows (#56), with measurements verified in v1's so
   and the rule — the kernel judges geometry per class — is invisible exactly when somebody
   is hunting for the class that is not there. Applied on selection, not behind an Apply: a
   menu commits on Enter or a click, so there is no per-keystroke state to keep out of the
-  undo history.
+  undo history. Each item that *can* be picked shows its **class hotkey**, and pressing
+  that digit while the menu is open reassigns; a disabled item spends the same slot on
+  the reason instead, because a key chip on a row that refuses the key is a lie.
+- **Class picker, second anchor** (#380): the same menu, on the shape. With exactly one
+  shape selected a 24px tag button rides **above its top-right corner** — above rather
+  than on it, because that corner belongs to the resize grip — and a **right-click on the
+  shape** opens it there too, selecting the shape on the way. Same component, so the class
+  list, the disabled-with-reason rendering, the hotkeys and the apply are one spelling and
+  cannot drift between the two anchors; the panel row keeps its own. It is **absent**, not
+  disabled, when the frame is read-only, when nothing or more than one thing is selected,
+  and for a classification tag, which the canvas draws nowhere.
 - **Frame gallery** (#390): the grid button opens the job's frames as a thumbnail
   overlay over the workspace — the `ThumbnailGrid` pattern, square tiles with the
   photo-icon fallback, each carrying its frame number and its status dot in the

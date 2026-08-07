@@ -126,6 +126,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { topmostAnnotationAt } from "../../core/geometry/hitTest";
 import { assetTolerances } from "../../core/geometry/tolerance";
 import { affordanceAt } from "../../core/interaction/affordance";
 import { transition } from "../../core/interaction/machine";
@@ -152,6 +153,7 @@ import type { Action, Binding, InputHost } from "../../core/input";
 import { createClipboard } from "../../core/interaction/clipboard";
 import type { Clipboard } from "../../core/interaction/clipboard";
 import type { IdFactory } from "../../core/ids";
+import { annotationsInDrawOrder } from "../../core/state/document";
 import type { AnnotationDocument } from "../../core/state/document";
 import type { Selection } from "../../core/state/selection";
 import type { AnnotatorStore } from "../../core/state/store";
@@ -265,6 +267,33 @@ export interface AnnotatorCanvasProps {
    * "next asset". `reset-zoom` never arrives: the zoom is the adapter's.
    */
   readonly onHostAction?: (name: string) => boolean;
+  /**
+   * A context-menu request that landed on a shape: which shape (#380).
+   *
+   * A **report, not an action.** What a right-click on an annotation should open
+   * is entirely the host's business — this component owns no menus and no chrome
+   * — but *which* annotation is under a client position is not something a host
+   * can answer without re-deriving the transform and the hit test that already
+   * live here. So the adapter answers the question it is uniquely able to answer
+   * and hands over an id.
+   *
+   * It rides the browser's own `contextmenu` rather than a secondary
+   * `pointer-down`, and that is deliberate on both sides. A secondary press is a
+   * pan, and consuming it here would take the gesture away from the two
+   * interaction-table rows that still have no browser spelling (`cf. #129`);
+   * `contextmenu` arrives after the press has already started its pan, so a
+   * click-with-no-travel pans by zero and nothing about the existing grammar
+   * moves.
+   *
+   * Hidden annotations do not answer, for `visibility.ts`'s reason: a shape you
+   * cannot see must not swallow a press, and a menu is a press.
+   *
+   * **`readOnly` does not gate this.** The rule this component enforces is that
+   * input may not change the document, and reporting a hit changes nothing; a
+   * host that offers writes on the back of it enforces its own mode, once, where
+   * the person can see it.
+   */
+  readonly onAnnotationMenu?: (annotationId: string) => void;
   /** Folded after the defaults and the class hotkeys, so a row here wins. */
   readonly bindings?: readonly Binding[];
   /**
@@ -352,6 +381,7 @@ export function AnnotatorCanvas({
   onViewChange,
   hiddenIds,
   onHostAction,
+  onAnnotationMenu,
   bindings,
   clipboard: hostClipboard,
   mint = randomUuid,
@@ -686,6 +716,23 @@ export function AnnotatorCanvas({
     dispatch({ type: "pointer-cancel" });
   }
 
+  function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
+    // A secondary-button drag pans; without this it also opens the browser's menu.
+    event.preventDefault();
+    if (onAnnotationMenu === undefined) return;
+    const point = imagePoint(event);
+    if (point === null) return;
+    // The same document the machine is given — hidden shapes filtered out — and
+    // the same body tolerance `resolveTarget` answers a press with, so what a
+    // right-click hits and what a left-click would have selected are one rule.
+    const hit = topmostAnnotationAt(
+      annotationsInDrawOrder(withoutHidden(store.document, hiddenNow.current)),
+      point,
+      assetTolerances(viewNow.current.zoom).shape,
+    );
+    if (hit !== null) onAnnotationMenu(hit.id);
+  }
+
   function handleDoubleClick(event: ReactMouseEvent<HTMLDivElement>): void {
     const point = imagePoint(event);
     if (point === null) return;
@@ -771,8 +818,7 @@ export function AnnotatorCanvas({
         // margin rather than vanish at the boundary.
         onPointerLeave={() => setHover(null)}
         onDoubleClick={handleDoubleClick}
-        // A secondary-button drag pans; without this it also opens a menu.
-        onContextMenu={(event) => event.preventDefault()}
+        onContextMenu={handleContextMenu}
       >
         <div
           style={{
