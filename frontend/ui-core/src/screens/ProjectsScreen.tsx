@@ -128,7 +128,11 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
         )}
       </Async>
 
-      <CreateProjectDialog open={creating} onClose={() => setCreating(false)} />
+      <CreateProjectDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={onOpenProject}
+      />
       <DeleteProjectDialog project={doomed} onClose={() => setDoomed(null)} />
     </div>
   );
@@ -137,9 +141,19 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
 function CreateProjectDialog({
   open,
   onClose,
+  onCreated,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
+  /**
+   * Where a successful create lands (#387).
+   *
+   * `onOpenProject`, handed straight through — the same callback a table row
+   * uses, so the routing stays in the app and this file still imports no router.
+   * A project is made in order to do something with it, so the list it was made
+   * from is never the destination.
+   */
+  readonly onCreated: (projectId: string) => void;
 }): JSX.Element {
   const create = useCreateProject();
   const [name, setName] = useState("");
@@ -152,10 +166,14 @@ function CreateProjectDialog({
       // and a blank string would be a description that renders as nothing.
       { name: name.trim(), description: description.trim() === "" ? null : description.trim() },
       {
-        onSuccess: () => {
+        // `POST /projects` answers with the created `ProjectOut`, so the id is
+        // already here and nothing is fetched to find it. Only on success: a
+        // refusal leaves the dialog open with what was typed still in it.
+        onSuccess: (created) => {
           setName("");
           setDescription("");
           onClose();
+          onCreated(created.id);
         },
       },
     );
