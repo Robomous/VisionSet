@@ -171,9 +171,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("project-name").fill(PROJECT);
     await page.getByTestId("project-description").fill("Driven by #59");
     await page.getByTestId("create-submit").click();
-    await expect(page.getByTestId(`project-${PROJECT}`)).toBeVisible();
-    await page.getByTestId(`open-${PROJECT}`).click();
+    // Straight into it (#387): a project is made in order to do something with
+    // it, so the list it was made from is never the destination. The route is
+    // asserted as well as the screen, because "the callback fired" and "the app
+    // turned it into a URL" are two claims and only the second survives a
+    // reload.
     await expect(page.getByTestId("project-screen")).toBeVisible();
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}(\?|$)/);
+    await expect(page.getByTestId("project-title")).toHaveText(PROJECT);
   });
 
   await test.step("declare a schema with all four geometries", async () => {
