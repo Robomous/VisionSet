@@ -253,21 +253,26 @@ same table and named sets this service enforces with — never a second copy of 
 
 | State | Declares | From |
 | --- | --- | --- |
-| `draft` | `approve`, `edit_membership` | `BATCH_TRANSITIONS`, `EDITABLE_STATES` |
-| `approved` | `start`, `repin` | `BATCH_TRANSITIONS`, `REPINNABLE_STATES` |
-| `in_annotation` | `complete`, `repin` | as above |
+| `draft` | `approve`, `edit_membership`, `delete` | `BATCH_TRANSITIONS`, `EDITABLE_STATES`, `DELETABLE_STATES` |
+| `approved` | `start`, `repin`, `delete` | `BATCH_TRANSITIONS`, `REPINNABLE_STATES`, `DELETABLE_STATES` |
+| `in_annotation` | `complete`, `repin`, `delete` | as above |
 | `completed` | `promote`, `create_correction` | `PROMOTABLE_STATES`, `CORRECTABLE_STATES` |
 
-Four of the seven change no state at all and so appear in no row of `BATCH_TRANSITIONS` — which
+Five of the eight change no state at all and so appear in no row of `BATCH_TRANSITIONS` — which
 is why those sets are named rather than written inline. Promotion is the clearest: it moves
 assets into the trunk and leaves the batch exactly where it was.
 
-**There is no `delete` action, and `DELETABLE_STATES` is the one named set with no row here**
-(#331). Deleting a batch is a real capability — `BatchService.delete` below — but no route, MCP
-tool or control reaches it, and `allowed_actions` is a promise a client is entitled to keep: a
-conforming one renders what the wire declares, so declaring an action nothing can perform would
-oblige every client to offer a control that cannot work. The declaration returns when a route
-does, in the same change.
+**`delete` is declared last, and it is the one action that ends the batch rather than moving it
+along.** It was withdrawn in #331, when the rule and `BatchService.delete` were real but nothing
+outside the SDK reached them: `allowed_actions` is a promise a client is entitled to keep, so
+declaring an action nothing can perform obliges every conforming client to offer a control that
+cannot work. #376 brought it back with `DELETE /batches/{id}`, the `delete_batch` MCP tool and
+the two overflow controls, all in one change — which is what the withdrawal asked for. The gate
+is `DELETABLE_STATES` itself, referenced from `BATCH_GATES` rather than restated, so the
+declaration and the refusal can never disagree.
+
+`completed` is therefore the one state that declares no `delete`, and no flag lifts it — see
+`BatchService.delete` below.
 
 `complete` is the one declaration that can still be refused. Completion is *derived* from the
 jobs, and a projection cannot read them, so it is declared wherever the transition table allows
@@ -367,13 +372,20 @@ GET  /batches/{id}/assets?limit=&offset=             → 200 BatchAssetPage
 POST   /projects/{id}/batches  { "name": …, "asset_ids": […] }  → 201 BatchOut
 POST   /batches/{id}/assets    { "asset_ids": […] }             → 200 BatchMembershipOut
 DELETE /batches/{id}/assets?id=&id=                             → 200 BatchMembershipOut
+DELETE /batches/{id}?confirm=true                               → 204
 ```
 
 **A batch is born from an ingest in the ordinary case**, and that has not changed: an ingest run
 puts what it gathered into a batch (`batch_name` for a new one, `batch_id` to join an existing
 draft — see [ingest.md](ingest.md)). What the gallery needed and the API did not have was curating
-one by hand, so creation landed with #312 and membership editing with #281. A *delete* route is
-still absent; `BatchService.delete` has the method.
+one by hand, so creation landed with #312 and membership editing with #281, and **deleting a
+batch landed with #376** — the last of the three, and the one that had to wait for somebody to
+ask for it.
+
+`DELETE /batches/{id}` takes the same `?confirm=true` gate every other destructive route takes,
+and answers 409 `BATCH_IMMUTABLE` for a `completed` batch whether or not the flag is there. The
+state check runs first, deliberately: a refusal naming `confirm=true` as the remedy would be
+naming a flag that does not work.
 
 ### Editing membership
 

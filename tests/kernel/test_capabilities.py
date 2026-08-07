@@ -37,6 +37,7 @@ from visionset.kernel import (
     BatchImmutable,
     BatchNotComplete,
     BatchNotEditable,
+    BatchNotFound,
     BatchNotInAnnotation,
     InvalidTransition,
     JobNotComplete,
@@ -47,6 +48,7 @@ from visionset.kernel.domain import (
     BATCH_GATES,
     BATCH_MOVES,
     BATCH_TRANSITIONS,
+    DELETABLE_STATES,
     JOB_MOVES,
     JOB_TRANSITIONS,
     UNNAMED_EDGES,
@@ -317,6 +319,14 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
         assert fixture.spare in grown.batch.asset_ids
         assert grown.changed == (fixture.spare,)
 
+    def delete() -> None:
+        # The one action whose effect is the subject's absence, so the assertion
+        # is a refusal: `get` on a deleted batch is `BatchNotFound`, which is
+        # outside `STATE_REFUSALS` and so cannot be confused with a decline.
+        fixture.batches.delete(batch_id, confirm=True)
+        with pytest.raises(BatchNotFound):
+            fixture.batches.get(batch_id)
+
     def create_correction() -> None:
         # The one action here whose effect is on a *different* batch, so the
         # assertion is about the child rather than about the subject: a new draft
@@ -335,6 +345,7 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
         BatchAction.PROMOTE: promote,
         BatchAction.CREATE_CORRECTION: create_correction,
         BatchAction.EDIT_MEMBERSHIP: edit_membership,
+        BatchAction.DELETE: delete,
     }[action]
 
 
@@ -602,6 +613,10 @@ def test_declaration_order_is_stable(tmp_path: Path) -> None:
     assert batch_actions(BatchState.DRAFT) == [
         BatchAction.APPROVE,
         BatchAction.EDIT_MEMBERSHIP,
+        # Last, and deliberately: the only batch action that ends the resource
+        # rather than moving it along, so a listing whose order doubles as the
+        # workflow does not put a dead end in the middle of it.
+        BatchAction.DELETE,
     ]
     assert asset_actions(ANNOTATED, batch_state=BatchState.IN_ANNOTATION) == [
         AssetAction.ANNOTATE,
@@ -610,21 +625,22 @@ def test_declaration_order_is_stable(tmp_path: Path) -> None:
     ]
 
 
-def test_no_state_declares_delete_because_nothing_can_perform_it() -> None:
-    """#331: the capability was withdrawn rather than routed.
+def test_delete_is_declared_from_the_kernels_own_gate_and_not_from_a_copy() -> None:
+    """#376: the declaration returned with the route, and it reads one set.
 
-    `BatchService.delete` and `DELETABLE_STATES` both survive — the rule is
-    unchanged and `test_batch_service.py` still holds it to every state. What was
-    withdrawn is the *declaration*, because no route, MCP tool or control reaches
-    the method, and under the `ui-capabilities` contract a client renders what the
-    wire declares. An action nothing can perform obliges every conforming client
-    to offer a control that cannot work.
+    #331 withdrew the member because nothing outside the SDK could perform it,
+    and said it comes back "in the same change" as the route. This is the
+    replacement for that absence assertion, and it makes the stronger claim: not
+    that `delete` is declared, but that it is declared **exactly** where
+    `BatchService.delete` permits it — computed from `DELETABLE_STATES` rather
+    than from a list of states retyped here.
 
-    Asserted directly rather than left to the parametrized matrix above: that one
-    derives its cases from `BatchAction` itself, so it can only ever check the
-    members that exist. Proving a member is *absent* takes naming it.
+    A second frozenset beside the first is the hand-mirror the whole capabilities
+    module exists to remove, and it is the failure this repo has paid for twice
+    (`cf. #358`). Reading the set is what makes that impossible rather than
+    merely discouraged: a change to `DELETABLE_STATES` moves both sides at once,
+    and a `BATCH_GATES` entry that stopped pointing at it turns this red.
     """
-    assert "delete" not in {action.value for action in BatchAction}
-    assert all(
-        "delete" not in {action.value for action in batch_actions(state)} for state in BatchState
-    )
+    assert BATCH_GATES[BatchAction.DELETE] is DELETABLE_STATES
+    for state in BatchState:
+        assert (BatchAction.DELETE in batch_actions(state)) is (state in DELETABLE_STATES)

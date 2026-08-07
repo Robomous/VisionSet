@@ -20,17 +20,18 @@ type BatchState = "draft" | "approved" | "in_annotation" | "completed";
 type JobState = "pending" | "in_progress" | "completed";
 type Progress = "unannotated" | "annotated" | "skipped" | "review_pending" | "accepted";
 
-// No `delete` in any row (#331): the kernel withdrew the declaration rather than
-// route it, so a stub offering it would be a stand-in for a server that does not
-// exist. Note these are `string[]` and not the generated `BatchAction` union —
+// `delete` in every row but `completed` (#376), which is `DELETABLE_STATES`.
+// Note these are `string[]` and not the generated `BatchAction` union —
 // deliberately, since this file stubs the wire rather than consuming it, but the
-// cost is that `tsc` cannot catch a withdrawn member here the way it does in
-// `ui-core`'s `wire.fixtures.ts`. It surfaced instead as every gallery spec
-// timing out, because `checks.ts` rejects the payload inside a hook.
+// cost is that `tsc` cannot catch a drifted member here the way it does in
+// `ui-core`'s `wire.fixtures.ts`. When #331 withdrew the member it surfaced
+// instead as every gallery spec timing out, because `checks.ts` rejects the
+// payload inside a hook. `tests/scripts/wire_rosters.test.mjs` is what now holds
+// this table and that one to each other.
 const BATCH_ACTIONS: Record<BatchState, readonly string[]> = {
-  draft: ["approve", "edit_membership"],
-  approved: ["start", "repin"],
-  in_annotation: ["complete", "repin"],
+  draft: ["approve", "edit_membership", "delete"],
+  approved: ["start", "repin", "delete"],
+  in_annotation: ["complete", "repin", "delete"],
   completed: ["promote", "create_correction"],
 };
 

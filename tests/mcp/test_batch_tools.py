@@ -10,6 +10,7 @@ from tests.mcp._flow import (
     BBOX,
     SCHEMA_CLASSES,
     call,
+    call_destructive,
     error,
     ingested,
     open_batch,
@@ -338,3 +339,63 @@ def test_the_batch_declares_the_capability_the_tools_enforce(
     payload(call("approve_batch", batch_id=batch_id))
 
     assert "edit_membership" not in payload(call("get_batch", batch_id=batch_id))["allowed_actions"]
+
+
+# --- delete (#376), behind the destructive gate -------------------------------
+
+
+def test_deleting_a_batch_reports_what_went_and_then_it_is_gone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The receipt is the batch as it was, read before the delete, jobs and all."""
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=2)
+
+    gone = payload(call_destructive("delete_batch", batch_id=batch_id, confirm=True))["deleted"]
+    assert gone["id"] == batch_id
+    assert gone["state"] == "in_annotation"
+    assert [job["id"] for job in gone["jobs"]] == [job_id]
+
+    assert error(call("get_batch", batch_id=batch_id))["message"] != ""
+
+
+def test_deleting_without_confirming_changes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The refusal names the flag, and the batch is still there to be asked about."""
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+
+    envelope = error(call_destructive("delete_batch", batch_id=batch_id))
+    assert envelope["retry_with"] == "confirm"
+
+    assert payload(call("get_batch", batch_id=batch_id))["state"] == "draft"
+
+
+def test_a_completed_batch_refuses_and_names_no_flag_that_would_work(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The state gate runs before the confirmation one, so `confirm` is not the remedy."""
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=1)
+    waiting = payload(call("next_pending_assets", job_id=job_id))["items"]
+    payload(
+        call("set_asset_progress", job_id=job_id, asset_id=waiting[0]["id"], progress="skipped")
+    )
+    payload(call("complete_job", job_id=job_id))
+    payload(call("complete_batch", batch_id=batch_id))
+
+    envelope = error(call_destructive("delete_batch", batch_id=batch_id, confirm=True))
+    assert envelope["retry_with"] is None
+    assert "completed" in envelope["message"]
+
+    assert payload(call("get_batch", batch_id=batch_id))["state"] == "completed"
+
+
+def test_the_tool_is_absent_from_the_default_listing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#108: a tool an agent is never shown cannot be called with a flag."""
+    _, batch_id = ingested(monkeypatch, tmp_path, count=1)
+
+    refused = call("delete_batch", batch_id=batch_id, confirm=True)
+
+    assert refused.is_error
+    assert payload(call("get_batch", batch_id=batch_id))["state"] == "draft"

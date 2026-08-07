@@ -40,6 +40,7 @@ from typing import Final
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
     CORRECTABLE_STATES,
+    DELETABLE_STATES,
     EDITABLE_STATES,
     PROMOTABLE_STATES,
     REPINNABLE_STATES,
@@ -56,14 +57,18 @@ from visionset.kernel.domain.task import (
 )
 
 
-# **There is deliberately no `delete` member** (#331). `BatchService.delete` exists
-# and `DELETABLE_STATES` is still its rule, but no route, MCP tool or control
-# reaches it — and a declaration is a promise rather than decoration. Under the
-# `ui-capabilities` contract a conforming client renders what the wire declares, so
-# an action named here obliges every client to offer it; naming one nothing can
-# perform makes the wire the source of a control that cannot work. Withdrawing the
-# name was chosen over routing it because nothing has asked for the route. It comes
-# back when the route does, in the same change.
+# `delete` is **back** (#376), on the terms #331 set when it withdrew the member:
+# a declaration is a promise rather than decoration, so the name returns in the
+# same change as the route, the MCP tool and the control that honour it. What made
+# it wrong before was not the action but the orphan — under the `ui-capabilities`
+# contract a conforming client renders what the wire declares, so an action named
+# here obliges every client to offer it, and naming one nothing could perform made
+# the wire the source of a control that could not work.
+#
+# It is declared **last**, which is a display decision and the one `registered_tools`
+# makes for the same reason: this is the only batch action that ends the resource
+# rather than moving it along, and a listing whose order doubles as the workflow
+# should not put a dead end in the middle of it.
 #
 # The reasoning lives here rather than in the docstring because FastAPI copies a
 # docstring verbatim into `openapi.json` as the schema's `description`, where an
@@ -79,6 +84,7 @@ class BatchAction(StrEnum):
     PROMOTE = "promote"
     CREATE_CORRECTION = "create_correction"
     EDIT_MEMBERSHIP = "edit_membership"
+    DELETE = "delete"
 
 
 class JobAction(StrEnum):
@@ -142,8 +148,9 @@ BATCH_GATES: Final[Mapping[BatchAction, frozenset[BatchState]]] = {
     BatchAction.PROMOTE: PROMOTABLE_STATES,
     BatchAction.CREATE_CORRECTION: CORRECTABLE_STATES,
     BatchAction.EDIT_MEMBERSHIP: EDITABLE_STATES,
+    BatchAction.DELETE: DELETABLE_STATES,
 }
-"""The four batch actions that change no state, and so appear in no table row.
+"""The five batch actions that change no state, and so appear in no table row.
 
 ``create_correction`` is the odd one even here, and worth naming: every other
 action in this file is something done **to** the resource declaring it, while
@@ -158,11 +165,14 @@ restated — which is the whole point of those sets being named. Promotion is th
 clearest case: it moves assets into the trunk and leaves the batch exactly where
 it was, so ``BATCH_TRANSITIONS`` has nothing to say about it.
 
-``DELETABLE_STATES`` is the one such set with **no entry here**, and its absence
-is the deliberate half of #331 rather than an omission: the set is real and
-``BatchService.delete`` enforces it, but nothing outside the SDK can reach that
-method, so declaring it would promise a control no client could honour. See
-``BatchAction``.
+``delete`` is the odd one in the other direction, and #376 is why it is here at
+all: it ends the resource rather than changing it, so a client renders it apart
+from the rest — but "may this batch be deleted" is a question about the batch's
+state and about nothing else, which is what this table answers. The entry is
+``DELETABLE_STATES`` itself, the set ``BatchService.delete`` raises
+``BatchImmutable`` against; a second frozenset spelled out beside it is exactly
+the hand-mirror this whole module exists to remove, and this repo has paid for
+that antipattern twice (`cf. #358`).
 """
 
 

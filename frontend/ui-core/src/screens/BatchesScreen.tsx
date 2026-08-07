@@ -44,6 +44,7 @@ import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLif
 import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
+import { BatchOverflowMenu } from "./DeleteBatch";
 import { PromoteButton } from "./PromoteButton";
 import { useBatchTransition, useBatches, type Batch } from "./queries";
 
@@ -155,15 +156,22 @@ export function BatchesScreen({
                     <BatchProgressBar counts={batch.progress} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Lifecycle
-                      batch={{ ...batch, projectId }}
-                      corrections={
-                        page.items.filter((one) => one.parent_batch_id === batch.id).length
-                      }
-                      onApprove={() => setApproving(batch)}
-                      onOpenBatch={onOpenBatch}
-                      {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
-                    />
+                    {/* The forward action, then `⋯`. Deleting is the one thing a
+                        row offers that ends the batch rather than moving it, and
+                        it is the only irreversible one — so it goes where you go
+                        looking for it, not beside what you press next. */}
+                    <div className="flex items-start justify-end gap-1">
+                      <Lifecycle
+                        batch={{ ...batch, projectId }}
+                        corrections={
+                          page.items.filter((one) => one.parent_batch_id === batch.id).length
+                        }
+                        onApprove={() => setApproving(batch)}
+                        onOpenBatch={onOpenBatch}
+                        {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
+                      />
+                      <BatchOverflowMenu batch={batch} projectId={projectId} />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
