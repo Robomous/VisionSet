@@ -152,11 +152,15 @@ scarce is what lets the two places it survives actually mean something.
    rendered `disabled` because a callback was missing made the annotator unreachable, and
    nothing on screen said so.
 10. **The annotation workspace is self-sufficient.** No flow may force navigation out of
-   the editor, and no exit may lose work. Back and the grid jump save first, the way the
-   asset navigator already did; a class the schema lacks is created from the class field
-   without leaving the page. Ratified 2026-08-05 (#368) and **immovable**: this is the one
-   screen somebody sits in for an hour, and every trip out of it is a trip back through a
-   list, a tab and a scroll position to the frame they were looking at.
+   the editor, and no exit may lose work. Back saves first, the way the asset navigator
+   already did; a class the schema lacks is created from the class field without leaving
+   the page; **looking at the job's other frames is an overlay, not an exit** (#390 — the
+   grid button opens a gallery over the workspace and the URL does not move). Ratified
+   2026-08-05 (#368) and **immovable**: this is the one screen somebody sits in for an
+   hour, and every trip out of it is a trip back through a list, a tab and a scroll
+   position to the frame they were looking at. The grid jump was listed here as a
+   sanctioned *exit* until #390; that was the principle's own example failing it, since
+   choosing the next frame is a flow **inside** annotating rather than a reason to leave.
 
 ## Colors
 
@@ -321,10 +325,16 @@ from being rediscovered one screen at a time.
 - **The browser's Back button stays correct, and is never the only way out.** Nothing
   here replaces it; a `replace` navigation is still right where a change is a view of
   the same resource rather than a place (#171's tabs).
-- **Two controls may share one destination when they mean different things.** The
-  annotation page's arrow means *up* and its grid button means *show me the grid*;
-  they coincide because the annotator's parent is the grid. That is not redundancy,
-  and the top bar below draws both.
+- **A control that means "show me more of what I am already in" does not navigate.**
+  The annotation page's arrow means *up*: it exits to the batch, saving first, and
+  that is legitimate. Its grid button means *switch frames*, which is the `‹` / `›`
+  navigator with pictures — so it opens a **gallery overlay inside the editor** and
+  the URL does not move (#390). The two used to share a destination on the reasoning
+  that the annotator's parent *is* the grid; the coincidence was real and the
+  conclusion was wrong, because going up and looking at your own frames are
+  different intentions and only one of them is a reason to leave. The overlay is a
+  switcher and nothing else: no batch actions, no selection, no route change. The
+  batch view stays the home of batch operations.
 - **Not everything selectable is a place.** A tab is in the query string (#171)
   because somebody links to it and returns to it; the schema version somebody is
   glancing at (#232) is component state, because it is a lens on the tab they are
@@ -472,7 +482,7 @@ The page the reference design shows (#56), with measurements verified in v1's so
 
   | Zone | Contents |
   | --- | --- |
-  | Left | back · pinned `v{n}` badge · asset navigator `‹ hash n/m ›` · grid jump · the frame microtext `● annotated · Saved` |
+  | Left | back · pinned `v{n}` badge · asset navigator `‹ hash n/m ›` · frame gallery · the frame microtext `● annotated · Saved` |
   | Centre | the **class field** — swatch, name, hotkey chip; opens on click or on `c` |
   | Right | `n / m annotated` · **Save and stay** (ghost, ⌘S) · the review move (outline) · **Skip**/**Un-skip** (outline, `X`) · **Finish job** · **Save and next** (filled, `↵`) · overflow `⋯` |
 
@@ -623,6 +633,19 @@ The page the reference design shows (#56), with measurements verified in v1's so
   is hunting for the class that is not there. Applied on selection, not behind an Apply: a
   menu commits on Enter or a click, so there is no per-keystroke state to keep out of the
   undo history.
+- **Frame gallery** (#390): the grid button opens the job's frames as a thumbnail
+  overlay over the workspace — the `ThumbnailGrid` pattern, square tiles with the
+  photo-icon fallback, each carrying its frame number and its status dot in the
+  status tokens above, with the **word** in the tile's accessible name and tooltip
+  because a tile has no room for prose. The current frame is marked (`border-primary`
+  + `bg-primary/10`) and takes the focus on open, which is also what scrolls it into
+  view. Above the grid, the batch view's own four-segment filter
+  (`All / Unannotated / In review / Done`), counted over *this job's* frames.
+  **One press opens a frame** — no select-then-open — through the same save-first
+  path `‹` / `›` use, so a refused save keeps the work and the frame. Escape or the
+  scrim returns to exactly the frame, zoom, pan and armed class that were there.
+  **No batch actions of any kind**: no approve, no promote, no selection, no bulk
+  bar. It is a switcher.
 - **Zoom widget**: floating **bottom-right of the stage** since #368, opposite the tool
   strip and sharing its chrome — `− / readout / + / fit / fullscreen`. It was in the top
   bar, which said something false about it: a workflow action changes the work, zoom
