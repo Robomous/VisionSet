@@ -138,7 +138,12 @@ function heldHandle(scene: Scene, id: string, handle: BboxHandle): Target {
 /** The vertex a vertex drag is holding. */
 function heldVertex(scene: Scene, id: string, index: number): Target {
   const annotation = annotationById(scene.document, id);
-  if (annotation === undefined || annotation.geometry.type !== "polygon") return NO_TARGET;
+  if (
+    annotation === undefined ||
+    (annotation.geometry.type !== "polygon" && annotation.geometry.type !== "polyline")
+  ) {
+    return NO_TARGET;
+  }
   const point = annotation.geometry.points[index];
   if (point === undefined) return NO_TARGET;
   return { kind: "vertex", id, index, point };
@@ -233,6 +238,12 @@ export function affordanceAt(
       return { cursor: "crosshair", hot: NO_TARGET };
     case "drawing-polygon":
       return drawingPolygon(state, scene, point);
+    case "drawing-polyline":
+      // `crosshair` throughout, and there is no `pointer` case to earn: a path has
+      // no close ring, so every press mid-session means the same thing — another
+      // vertex. The polygon's two-gestures-a-millimetre-apart problem, which is
+      // what bought `pointer` its place in the vocabulary, simply does not arise.
+      return { cursor: "crosshair", hot: NO_TARGET };
     case "moving":
       return { cursor: "move", hot: heldBody(scene, state.id) };
     case "moving-vertex":

@@ -338,11 +338,11 @@ describe("activate-class", () => {
 
   it("activates a class no annotation can carry, leaving the palette to explain", () => {
     const context = contextOver(paletteStore(), recordingHost(null));
-    expect(runAction({ kind: "activate-class", labelClass: "rail" }, context)).toEqual({
+    expect(runAction({ kind: "activate-class", labelClass: "pose" }, context)).toEqual({
       changed: true,
       events: [],
     });
-    expect(context.host.activeClass).toBe("rail");
+    expect(context.host.activeClass).toBe("pose");
   });
 });
 

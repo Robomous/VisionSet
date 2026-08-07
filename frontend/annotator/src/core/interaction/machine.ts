@@ -1,5 +1,5 @@
 /**
- * The table: what each of the seven states does with each of the eight events,
+ * The table: what each of the eight states does with each of the eight events,
  * and what it asks the store for.
  *
  * `transition(state, event, context)` is a two-key lookup into `TRANSITIONS`
@@ -78,6 +78,7 @@
  * | `pressing-empty` | idle; selection untouched | same | same |
  * | `drawing-bbox` | idle; the rubber band goes | same | same |
  * | `drawing-polygon` | idle; **every** pending point dropped | **stays** | idle; dropped |
+ * | `drawing-polyline` | same as `drawing-polygon` | **stays** | idle; dropped |
  * | `moving` / `resizing` / `moving-vertex` | idle + `discard` | same | same |
  *
  * Two rows are decisions.
@@ -158,11 +159,16 @@
 import { isDrawnBox, moveBbox, normalizeBbox, resizeBbox } from "../geometry/bbox";
 import {
   MIN_POLYGON_POINTS,
+  MIN_POLYLINE_POINTS,
   insertPolygonVertex,
+  insertPolylineVertex,
   movePolygonVertex,
+  movePolylineVertex,
   polygonBbox,
   removePolygonVertex,
+  removePolylineVertex,
   translatePolygon,
+  translatePolyline,
 } from "../geometry/polygon";
 import { polygonCloseAttempt } from "../geometry/hitTest";
 import { clampPoint, distance } from "../geometry/primitives";
@@ -179,7 +185,12 @@ import type { Effect } from "./effects";
 import { isToggleModifier } from "./events";
 import type { InteractionEvent, InteractionEventType } from "./events";
 import { IDLE } from "./state";
-import type { InteractionState, InteractionStateType, MovableGeometry } from "./state";
+import type {
+  InteractionState,
+  InteractionStateType,
+  MovableGeometry,
+  VertexEditableGeometry,
+} from "./state";
 import { nearestInsertion, resolveTarget } from "./target";
 import type { Scene } from "./target";
 import type { Tool } from "./tool";
@@ -261,13 +272,17 @@ function geometryEquals(a: Geometry, b: Geometry): boolean {
   if (a.type === "bbox" && b.type === "bbox") {
     return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
   }
-  if (a.type === "polygon" && b.type === "polygon") {
-    return (
-      a.points.length === b.points.length &&
-      a.points.every((point, at) => point[0] === b.points[at][0] && point[1] === b.points[at][1])
-    );
-  }
+  // Both point lists, compared by one helper. The `polyline` arm is not symmetry:
+  // without it this function falls through to `return true`, so **every polyline
+  // drag would stage nothing** — `stageOrDiscard` would discard on every move — and
+  // it would read as the shape refusing to be dragged rather than as a bug here.
+  if (a.type === "polygon" && b.type === "polygon") return samePoints(a.points, b.points);
+  if (a.type === "polyline" && b.type === "polyline") return samePoints(a.points, b.points);
   return true;
+}
+
+function samePoints(a: readonly Point[], b: readonly Point[]): boolean {
+  return a.length === b.length && a.every((point, at) => point[0] === b[at][0] && point[1] === b[at][1]);
 }
 
 /**
@@ -283,6 +298,17 @@ function stillThere(
   if (annotation === undefined) return null;
   if (annotation.geometry.type !== startGeometry.type) return null;
   return annotation;
+}
+
+/** The rigid move each geometry answers to, dispatched once rather than at the row. */
+function movedShape(
+  startGeometry: MovableGeometry,
+  origin: Point,
+  bounds: AnnotationDocument["asset"],
+): Geometry {
+  if (startGeometry.type === "bbox") return moveBbox(startGeometry, origin, bounds);
+  if (startGeometry.type === "polygon") return translatePolygon(startGeometry, origin, bounds);
+  return translatePolyline(startGeometry, origin, bounds);
 }
 
 /** Where a `moving` gesture has pushed the shape's top-left corner. */
@@ -345,17 +371,11 @@ function pressOnShape(turn: Turn<InteractionState, Extract<InteractionEvent, { t
     return { state: IDLE, effects: [{ kind: "select", selection: selectAlso(context.selection, id) }] };
   }
   const annotation = annotationById(context.document, id);
-  if (
-    annotation === undefined ||
-    annotation.geometry.type === "classification_tag" ||
-    // A polyline selects but does not drag: there is no polyline tool in 0.1.0,
-    // so moving one would be the only way to change a lane and there would be no
-    // way to draw the lane it changed. `geometryContains` already refuses to put
-    // the pointer on one, so this row is unreachable from a press today — it is
-    // written down because a panel-driven selection can reach `moving` the day a
-    // press does. See #342.
-    annotation.geometry.type === "polyline"
-  ) {
+  // A tag is the one geometry left that selects and does not drag: it has no
+  // coordinates, so there is nothing for a move to move. `polyline` was here until
+  // #342 gave it a tool — the refusal existed because a lane you could drag and not
+  // draw would be the only way to change one, which is no longer the case.
+  if (annotation === undefined || annotation.geometry.type === "classification_tag") {
     return { state: IDLE, effects: [{ kind: "select", selection: selectOnly(id) }] };
   }
   return {
@@ -393,10 +413,22 @@ function pressOnShape(turn: Turn<InteractionState, Extract<InteractionEvent, { t
  */
 function deleteVertex(context: InteractionContext, id: string, index: number): Transition {
   const annotation = annotationById(context.document, id);
-  if (annotation === undefined || annotation.geometry.type !== "polygon") return idle();
-  const next = removePolygonVertex(annotation.geometry, index);
+  if (annotation === undefined || !hasVertices(annotation.geometry)) return idle();
+  // Each shape reads its own floor — three for a polygon, two for a path — and both
+  // answer `null` the same way, so #44's "nothing happens" is inherited rather than
+  // re-decided. A lane at two points is the same surprise a triangle was.
+  const geometry = annotation.geometry;
+  const next =
+    geometry.type === "polygon"
+      ? removePolygonVertex(geometry, index)
+      : removePolylineVertex(geometry, index);
   if (next === null) return idle();
   return idle({ kind: "replace", annotation: { ...annotation, geometry: next } });
+}
+
+/** Is this a shape whose vertices a pointer can take hold of? */
+function hasVertices(geometry: Geometry): geometry is VertexEditableGeometry {
+  return geometry.type === "polygon" || geometry.type === "polyline";
 }
 
 const IDLE_ROW: Row<"idle"> = {
@@ -425,6 +457,17 @@ const IDLE_ROW: Row<"idle"> = {
           effects: cleared,
         };
       }
+      if (context.tool === "polyline") {
+        return {
+          state: {
+            type: "drawing-polyline",
+            labelClass: context.labelClass,
+            points: [at],
+            cursor: at,
+          },
+          effects: cleared,
+        };
+      }
       return {
         state: { type: "drawing-polygon", labelClass: context.labelClass, points: [at], cursor: at },
         effects: cleared,
@@ -445,7 +488,7 @@ const IDLE_ROW: Row<"idle"> = {
         return deleteVertex(context, target.id, target.index);
       }
       const annotation = annotationById(context.document, target.id);
-      if (annotation === undefined || annotation.geometry.type !== "polygon") return stay(turn);
+      if (annotation === undefined || !hasVertices(annotation.geometry)) return stay(turn);
       return {
         state: {
           type: "moving-vertex",
@@ -470,8 +513,15 @@ const IDLE_ROW: Row<"idle"> = {
     const insertion = nearestInsertion(sceneOf(context), event.point);
     if (insertion === null) return stay(turn);
     const annotation = annotationById(context.document, insertion.id);
-    if (annotation === undefined || annotation.geometry.type !== "polygon") return stay(turn);
-    const next = insertPolygonVertex(annotation.geometry, insertion.index, insertion.point);
+    if (annotation === undefined || !hasVertices(annotation.geometry)) return stay(turn);
+    const geometry = annotation.geometry;
+    // `nearestInsertion` never answers the closing-edge index for a path, so
+    // `insertPolylineVertex`'s own refusal is unreachable from here — and it is
+    // still there, because that function is exported from the package root.
+    const next =
+      geometry.type === "polygon"
+        ? insertPolygonVertex(geometry, insertion.index, insertion.point)
+        : insertPolylineVertex(geometry, insertion.index, insertion.point);
     return {
       state: IDLE,
       effects: [
@@ -634,16 +684,108 @@ function takeBackPoint(
   return { state: { ...state, points: state.points.slice(0, -1) }, effects: NO_EFFECTS };
 }
 
+/**
+ * A path session ends, if it has enough points to be a path (#342).
+ *
+ * `closeSession`'s twin, and the arity gate is the whole of the difference:
+ * `MIN_POLYLINE_POINTS` is two. Below it the session **stays alive** for
+ * `closeSession`'s reason — nothing has been written, and dropping a user's placed
+ * vertex because they reached for the wrong key is a punishment for a typo. Escape
+ * is how a session is abandoned.
+ *
+ * Named `endSession` rather than `closeSession`, because a path is not closed. That
+ * is not decoration: the word is the reason there is no ring here, and a reader who
+ * sees "close" on an open shape will eventually go looking for the ring.
+ */
+function endSession(turn: Turn<Extract<InteractionState, { type: "drawing-polyline" }>>): Transition {
+  if (turn.state.points.length < MIN_POLYLINE_POINTS) return stay(turn);
+  // **The points go in the order they were placed, and nothing sorts them.** The
+  // order of a lane's points *is* the value — TuSimple's ascending-Y rule is
+  // enforced at export, in `visionset.formats.lanes`, precisely so that the drawing
+  // end never has to guess which way a lane runs. A tool that normalised here would
+  // silently reverse half the lanes somebody drew.
+  return finishDrawing(turn.context, turn.state.labelClass, {
+    type: "polyline",
+    points: turn.state.points,
+  });
+}
+
+/** The vertex a press would be re-placing, if it landed on the one just placed. */
+function repeatsLastPathVertex(
+  state: Extract<InteractionState, { type: "drawing-polyline" }>,
+  at: Point,
+  tolerance: number,
+): boolean {
+  const last = state.points[state.points.length - 1];
+  return last !== undefined && distance(at, last) <= tolerance;
+}
+
+/**
+ * `DRAWING_POLYGON_ROW` with the ring removed, which is #342's whole description of
+ * the tool — and the two rules that survive the removal are the interesting part.
+ *
+ * **There is no close attempt**, so a press near the first vertex is an ordinary
+ * vertex. That is what an open path means: there is no "you are back where you
+ * started" signal, which is also why ending is a deliberate gesture rather than a
+ * place you can arrive at.
+ *
+ * **The duplicate rule stays, and it is still load-bearing.** An adapter delivers a
+ * `pointer-down` for each click of a double-click before the `double-click` itself
+ * arrives, so without it every double-click end would stack a duplicate vertex onto
+ * the one the first click just placed — `machine.ts`'s header states this for the
+ * polygon and it is not a fact about polygons.
+ *
+ * **`pointer-cancel` is absent**, the same asymmetry `drawing-polygon` has: a
+ * click-by-click session is not a drag, and losing twelve placed vertices to an
+ * alt-tab would be indefensible.
+ */
+const DRAWING_POLYLINE_ROW: Row<"drawing-polyline"> = {
+  "pointer-down": (turn) => {
+    const { context, event, state } = turn;
+
+    if (event.button !== "primary") {
+      if (event.button !== "secondary") return stay(turn);
+      return takeBackPathPoint(turn);
+    }
+
+    const at = inFrame(context, event.point);
+
+    if (repeatsLastPathVertex(state, at, context.tolerances.vertex)) {
+      return { state: { ...state, cursor: at }, effects: NO_EFFECTS };
+    }
+
+    return {
+      state: { ...state, points: [...state.points, at], cursor: at },
+      effects: NO_EFFECTS,
+    };
+  },
+  "pointer-move": (turn) => ({
+    state: { ...turn.state, cursor: inFrame(turn.context, turn.event.point) },
+    effects: NO_EFFECTS,
+  }),
+  "double-click": (turn) => endSession(turn),
+  commit: (turn) => endSession(turn),
+  cancel: () => idle(),
+  "take-back-point": (turn) => takeBackPathPoint(turn),
+  "tool-changed": () => idle(),
+};
+
+/** `takeBackPoint` for a path — same rule, and the last one returns to `idle`. */
+function takeBackPathPoint(
+  turn: Turn<Extract<InteractionState, { type: "drawing-polyline" }>, InteractionEvent>,
+): Transition {
+  const { state } = turn;
+  if (state.points.length <= 1) return idle();
+  return { state: { ...state, points: state.points.slice(0, -1) }, effects: NO_EFFECTS };
+}
+
 const MOVING_ROW: Row<"moving"> = {
   "pointer-move": (turn) => {
     const { context, event, state } = turn;
     const current = stillThere(context, state.id, state.startGeometry);
     if (current === null) return abandonDrag();
     const origin = draggedOrigin(state.startGeometry, state.startPoint, event.point);
-    const next =
-      state.startGeometry.type === "bbox"
-        ? moveBbox(state.startGeometry, origin, context.document.asset)
-        : translatePolygon(state.startGeometry, origin, context.document.asset);
+    const next = movedShape(state.startGeometry, origin, context.document.asset);
     return { state, effects: stageOrDiscard(current, next) };
   },
   "pointer-up": (turn) => {
@@ -688,12 +830,20 @@ const MOVING_VERTEX_ROW: Row<"moving-vertex"> = {
     if (current === null || state.vertexIndex >= state.startGeometry.points.length) {
       return abandonDrag();
     }
-    const next = movePolygonVertex(
-      state.startGeometry,
-      state.vertexIndex,
-      event.point,
-      context.document.asset,
-    );
+    const next =
+      state.startGeometry.type === "polygon"
+        ? movePolygonVertex(
+            state.startGeometry,
+            state.vertexIndex,
+            event.point,
+            context.document.asset,
+          )
+        : movePolylineVertex(
+            state.startGeometry,
+            state.vertexIndex,
+            event.point,
+            context.document.asset,
+          );
     return { state, effects: stageOrDiscard(current, next) };
   },
   "pointer-up": (turn) => {
@@ -717,6 +867,7 @@ export const TRANSITIONS: { readonly [K in InteractionStateType]: Row<K> } = {
   "pressing-empty": PRESSING_EMPTY_ROW,
   "drawing-bbox": DRAWING_BBOX_ROW,
   "drawing-polygon": DRAWING_POLYGON_ROW,
+  "drawing-polyline": DRAWING_POLYLINE_ROW,
   moving: MOVING_ROW,
   resizing: RESIZING_ROW,
   "moving-vertex": MOVING_VERTEX_ROW,

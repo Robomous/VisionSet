@@ -73,14 +73,20 @@ function isSilent(state: InteractionStateType, event: string): boolean {
 }
 
 /**
- * The one state where a lost pointer is **not** a cancel.
+ * The states where a lost pointer is **not** a cancel.
  *
- * A `pointer-cancel` means a drag was interrupted; a click-by-click polygon
- * session is not a drag, and discarding twelve placed vertices because a window
+ * A `pointer-cancel` means a drag was interrupted; a click-by-click polygon or
+ * polyline session is not a drag, and discarding twelve placed vertices because a window
  * lost focus would be indefensible. Written as a set rather than as an `if` so a
  * later state joining the exception has to be added here, in front of a reader.
  */
-const KEEPS_ITS_WORK_ON_A_LOST_POINTER = new Set<InteractionStateType>(["drawing-polygon"]);
+const KEEPS_ITS_WORK_ON_A_LOST_POINTER = new Set<InteractionStateType>([
+  "drawing-polygon",
+  // #342, and it joined here because this set is a set: the polyline row has the
+  // same asymmetry for the same reason, and a path session is if anything the
+  // longer of the two to lose.
+  "drawing-polyline",
+]);
 
 describe("the table is the whole of what happens", () => {
   it("has a route into every state the table names", () => {
