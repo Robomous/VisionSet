@@ -1,5 +1,5 @@
 /**
- * What the pointer is in the middle of: seven states, reconciled against v1's
+ * What the pointer is in the middle of: eight states, reconciled against v1's
  * nine and addressed by id rather than by array index.
  *
  * v1 modelled this well and then kept it inside a 1413-line React component,
@@ -19,7 +19,8 @@
  * | `moving-polygon-vertex {index, vertexIndex}` | `moving-vertex` | `vertexIndex` stays. |
  * | `resizing-bbox {index, handle, startBbox}` | `resizing` | v1 got this one right. |
  * | `moving-keypoint` | — | `keypoints` has no `Geometry` variant. |
- * | `moving-polyline`, `moving-polyline-vertex` | — | Nor does `polyline`. |
+ * | `moving-polyline` | `moving` | Folded, with #342. |
+ * | `moving-polyline-vertex` | `moving-vertex` | Folded, with #342. |
  * | `panning-canvas {intent, …}` | `pressing-empty` | Split; the pan half left core. |
  *
  * ## `idle` is a variant, not `null`
@@ -100,12 +101,22 @@
  */
 
 import type { BboxHandle } from "../geometry/bbox";
-import type { BboxGeometry, Point, PolygonGeometry } from "../types";
+import type { BboxGeometry, Point, PolygonGeometry, PolylineGeometry } from "../types";
 
-/** Every shape a drag can be moving. A tag has no coordinates to move. */
-export type MovableGeometry = BboxGeometry | PolygonGeometry;
+/**
+ * Every shape a drag can be moving. A tag has no coordinates to move.
+ *
+ * `polyline` joined with #342. It was out until then not because a path is hard to
+ * translate — `translatePolyline` has existed since #123 — but because a lane you
+ * could drag and not draw would have been the only way to change one, with no way
+ * to make the one you changed.
+ */
+export type MovableGeometry = BboxGeometry | PolygonGeometry | PolylineGeometry;
 
-/** What the pointer is in the middle of. Seven variants; `idle` is one of them. */
+/** A shape whose vertices can be dragged one at a time. */
+export type VertexEditableGeometry = PolygonGeometry | PolylineGeometry;
+
+/** What the pointer is in the middle of. Eight variants; `idle` is one of them. */
 export type InteractionState =
   /** Nothing in flight. The state a cancel of any kind reaches. */
   | { readonly type: "idle" }
@@ -148,7 +159,29 @@ export type InteractionState =
       readonly points: readonly Point[];
       readonly cursor: Point | null;
     }
-  /** A whole shape being dragged. Both geometries, one variant. */
+  /**
+   * A path being built click by click (#342). `drawing-polygon` without the ring.
+   *
+   * Its own variant rather than a `closed: boolean` on that one, because the two
+   * differ in what a press *means*: a press near the first vertex closes a polygon
+   * and is an ordinary vertex on a path. A shared state would put that branch in
+   * every reader — the transition table, the affordance layer and the painter —
+   * which is the shape `machine.ts`'s table exists to avoid. The cost is one row;
+   * the alternative was three conditionals that must agree.
+   *
+   * **`points` is never empty**, exactly as `drawing-polygon`'s is not, and for one
+   * of the same two reasons: the take-back gesture returns to `idle` on the last
+   * one. The other reason does not apply — there is no close ring measured from
+   * `points[0]` — but the invariant is worth keeping identical so a reader needs
+   * one rule rather than two.
+   */
+  | {
+      readonly type: "drawing-polyline";
+      readonly labelClass: string;
+      readonly points: readonly Point[];
+      readonly cursor: Point | null;
+    }
+  /** A whole shape being dragged. All three geometries, one variant. */
   | {
       readonly type: "moving";
       readonly id: string;
@@ -167,7 +200,7 @@ export type InteractionState =
       readonly type: "moving-vertex";
       readonly id: string;
       readonly vertexIndex: number;
-      readonly startGeometry: PolygonGeometry;
+      readonly startGeometry: VertexEditableGeometry;
     };
 
 /** Every state's discriminant, read off the union by `machine.ts`'s table. */

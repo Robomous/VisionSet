@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { BOX_ID, POLY_ID, box, polygon, sceneDocument } from "../../core/interaction/_scene";
+import { BOX_ID, PATH_ID, POLY_ID, box, polygon, sceneDocument } from "../../core/interaction/_scene";
 import { everyStateType, worldIn } from "../../core/interaction/_scene";
 import { ASSET, SCHEMA, annotation } from "../../core/state/_sample";
 import { createDocument } from "../../core/state/document";
@@ -75,22 +75,22 @@ describe("a class draws in the schema's colour, or in one derived from its name"
 describe("the committed draw list", () => {
   it("keeps the document's own draw order, which is what a click resolves against", () => {
     const painted = paintDocument(sceneDocument(), EMPTY_SELECTION, null, null);
-    expect(painted.map((shape) => shape.id)).toEqual([BOX_ID, POLY_ID]);
+    expect(painted.map((shape) => shape.id)).toEqual([BOX_ID, POLY_ID, PATH_ID]);
   });
 
   it("marks the selected shapes and nothing else", () => {
     const painted = paintDocument(sceneDocument(), selectionOf([POLY_ID]), null, null);
-    expect(painted.map((shape) => shape.selected)).toEqual([false, true]);
+    expect(painted.map((shape) => shape.selected)).toEqual([false, true, false]);
   });
 
   it("marks exactly the hot one", () => {
     const painted = paintDocument(sceneDocument(), EMPTY_SELECTION, null, BOX_ID);
-    expect(painted.map((shape) => shape.hot)).toEqual([true, false]);
+    expect(painted.map((shape) => shape.hot)).toEqual([true, false, false]);
   });
 
   it("omits what a drag is holding, so the shape is not drawn twice", () => {
     const painted = paintDocument(sceneDocument(), EMPTY_SELECTION, BOX_ID, null);
-    expect(painted.map((shape) => shape.id)).toEqual([POLY_ID]);
+    expect(painted.map((shape) => shape.id)).toEqual([POLY_ID, PATH_ID]);
   });
 
   it("omits classification tags, which have no coordinates to draw", () => {
@@ -191,7 +191,7 @@ describe("the rubber band", () => {
   });
 });
 
-describe("the polygon under construction", () => {
+describe("the shape under construction", () => {
   it("carries the vertices placed so far and the class they will land under", () => {
     const world = worldIn("drawing-polygon");
     // The cursor starts *on* the opening vertex rather than null: the machine
@@ -202,6 +202,21 @@ describe("the polygon under construction", () => {
       points: [[200, 200]],
       cursor: [200, 200],
       labelClass: "lane",
+      closable: true,
+    });
+  });
+
+  it("carries a path the same way, and says it does not close (#342)", () => {
+    // One projection for both sessions: the painter's job is identical — a chain
+    // of placed vertices plus a band to the cursor — and `closable` is the single
+    // bit that differs. Carried rather than re-derived from the state type, so the
+    // renderer never learns which states exist.
+    const world = worldIn("drawing-polyline");
+    expect(pendingPolygon(world.state)).toEqual({
+      points: [[200, 200]],
+      cursor: [200, 200],
+      labelClass: "path",
+      closable: false,
     });
   });
 
@@ -213,7 +228,7 @@ describe("the polygon under construction", () => {
 
   it("is null in every other state", () => {
     for (const type of everyStateType()) {
-      if (type === "drawing-polygon") continue;
+      if (type === "drawing-polygon" || type === "drawing-polyline") continue;
       expect(pendingPolygon(worldIn(type).state)).toBeNull();
     }
   });

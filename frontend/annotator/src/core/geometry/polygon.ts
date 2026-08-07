@@ -69,14 +69,27 @@ import { clampPoint, closestPointOnSegment, type Bounds } from "./primitives";
 /** The fewest points a polygon may carry. Below it there is no polygon left. */
 export const MIN_POLYGON_POINTS = 3;
 
-/** The index a polygon edit was given, checked against the points it actually has. */
-function requireIndex(polygon: PolygonGeometry, index: number): void {
-  if (!Number.isInteger(index) || index < 0 || index >= polygon.points.length) {
+/**
+ * The fewest points a polyline may carry (#342).
+ *
+ * **Two, not three**, and it is the one arity difference between the two shapes: a
+ * polygon needs three to enclose anything, a path needs two to go anywhere. Every
+ * edit below reads its own floor from one of these constants rather than testing
+ * `type`, so the two cannot come to disagree about which shape they are guarding.
+ */
+export const MIN_POLYLINE_POINTS = 2;
+
+/** The index a point-list edit was given, checked against the points it actually has. */
+function requireIndex(shape: PointList, index: number): void {
+  if (!Number.isInteger(index) || index < 0 || index >= shape.points.length) {
     throw new RangeError(
-      `polygon vertex ${index} is out of range — this polygon has ${polygon.points.length}`,
+      `${shape.type} vertex ${index} is out of range — this ${shape.type} has ${shape.points.length}`,
     );
   }
 }
+
+/** The two geometries that are a list of points, and the reason this module has twins. */
+type PointList = PolygonGeometry | PolylineGeometry;
 
 /**
  * Is the point inside the polygon?
@@ -192,12 +205,35 @@ export function movePolygonVertex(
   point: Point,
   bounds: Bounds,
 ): PolygonGeometry {
-  requireIndex(polygon, index);
+  return { type: "polygon", points: movedVertex(polygon, index, point, bounds) };
+}
+
+/**
+ * The same edit on an open path (#342).
+ *
+ * Identical in every respect — a vertex is a vertex — which is why it shares
+ * `movedVertex` rather than repeating four lines. `translatePolygon`/
+ * `translatePolyline` set the pattern: two doors so each call site narrows to the
+ * geometry it holds, one implementation so the clamp has one spelling.
+ */
+export function movePolylineVertex(
+  polyline: PolylineGeometry,
+  index: number,
+  point: Point,
+  bounds: Bounds,
+): PolylineGeometry {
+  return { type: "polyline", points: movedVertex(polyline, index, point, bounds) };
+}
+
+function movedVertex(
+  shape: PointList,
+  index: number,
+  point: Point,
+  bounds: Bounds,
+): readonly Point[] {
+  requireIndex(shape, index);
   const moved = clampPoint(point, bounds);
-  return {
-    type: "polygon",
-    points: polygon.points.map((vertex, at) => (at === index ? moved : vertex)),
-  };
+  return shape.points.map((vertex, at) => (at === index ? moved : vertex));
 }
 
 /**
@@ -214,15 +250,40 @@ export function insertPolygonVertex(
   index: number,
   point: Point,
 ): PolygonGeometry {
-  requireIndex(polygon, index);
-  const points = polygon.points;
+  return { type: "polygon", points: insertedVertex(polygon, index, point) };
+}
+
+/**
+ * A vertex inserted into an open path, after vertex `index` (#342).
+ *
+ * The one place the two shapes genuinely differ, and it is the closing edge:
+ * a polygon has one and a polyline does not, so `index` here must name a **real**
+ * segment — `points.length - 1` is the last vertex, not the start of an edge back
+ * to the first, and `requireIndex` alone would let it through. Inserting there
+ * would duplicate the final point rather than extend the path, which is a shape
+ * nobody drew.
+ */
+export function insertPolylineVertex(
+  polyline: PolylineGeometry,
+  index: number,
+  point: Point,
+): PolylineGeometry {
+  if (index >= polyline.points.length - 1) {
+    throw new RangeError(
+      `polyline edge ${index} is out of range — an open path of ${polyline.points.length} ` +
+        `points has ${Math.max(0, polyline.points.length - 1)} edges`,
+    );
+  }
+  return { type: "polyline", points: insertedVertex(polyline, index, point) };
+}
+
+function insertedVertex(shape: PointList, index: number, point: Point): readonly Point[] {
+  requireIndex(shape, index);
+  const points = shape.points;
   const from = points[index];
   const to = points[(index + 1) % points.length];
   const inserted = closestPointOnSegment(point, from, to);
-  return {
-    type: "polygon",
-    points: [...points.slice(0, index + 1), inserted, ...points.slice(index + 1)],
-  };
+  return [...points.slice(0, index + 1), inserted, ...points.slice(index + 1)];
 }
 
 /**
@@ -237,10 +298,31 @@ export function removePolygonVertex(
   polygon: PolygonGeometry,
   index: number,
 ): PolygonGeometry | null {
-  requireIndex(polygon, index);
-  if (polygon.points.length <= MIN_POLYGON_POINTS) return null;
-  return {
-    type: "polygon",
-    points: polygon.points.filter((_, at) => at !== index),
-  };
+  const points = withoutVertex(polygon, index, MIN_POLYGON_POINTS);
+  return points === null ? null : { type: "polygon", points };
+}
+
+/**
+ * Vertex `index` dropped from an open path, or `null` at `MIN_POLYLINE_POINTS`
+ * (#342).
+ *
+ * The floor is two rather than three, and everything else is the polygon's: the
+ * `null` says "this shape cannot survive the edit" and the tool decides what that
+ * means. `machine.ts` answers *nothing happens* for both, which is #44's call
+ * inherited rather than re-made — a gesture that escalates from "remove this
+ * vertex" to "remove the whole lane" at an invisible boundary is the same surprise
+ * whichever shape it happens to.
+ */
+export function removePolylineVertex(
+  polyline: PolylineGeometry,
+  index: number,
+): PolylineGeometry | null {
+  const points = withoutVertex(polyline, index, MIN_POLYLINE_POINTS);
+  return points === null ? null : { type: "polyline", points };
+}
+
+function withoutVertex(shape: PointList, index: number, floor: number): readonly Point[] | null {
+  requireIndex(shape, index);
+  if (shape.points.length <= floor) return null;
+  return shape.points.filter((_, at) => at !== index);
 }

@@ -17,8 +17,9 @@
  * ## This is where v1 had the least to port
  *
  * v1's only hit-testing *function* was `findNearestEdgeIndex`, which `nearestEdge`
- * is — closed-only, since `polyline` is not a geometry an annotation can carry
- * (#73). Everything else was the browser's: a resize grip was a real SVG `<circle>`
+ * and `nearestPolylineEdge` are — v1 had the open branch too, dropped by #73 when
+ * `polyline` was out of scope and restored by #342. Everything else was the
+ * browser's: a resize grip was a real SVG `<circle>`
  * with its own `onPointerDown`, and picking a shape was `<polygon>`'s own hit
  * testing plus React event bubbling. A headless engine has neither, so
  * `nearestHandle`, `geometryContains` and `topmostAnnotationAt` are new.
@@ -144,7 +145,7 @@ export function polygonCloseAttempt(
 
 /**
  * The edge nearest `point` within `tolerance`, or `null`. v1's
- * `findNearestEdgeIndex`, with the polyline branch dropped.
+ * `findNearestEdgeIndex`, closed. `nearestPolylineEdge` is its open twin.
  *
  * The list is treated as closed, so a point near the implicit closing edge answers
  * `points.length - 1`. An edge whose ends coincide contributes a finite distance to
@@ -156,8 +157,42 @@ export function nearestEdge(
   point: Point,
   tolerance: number,
 ): EdgeHit | null {
+  return nearestEdgeIn(points, point, tolerance, true);
+}
+
+/**
+ * The same, for an **open** path: no closing edge (#342).
+ *
+ * The one thing #342 said had to be solved beside the tool that edits the result,
+ * and it turned out to be one boolean rather than a new algorithm — the segment
+ * walk was already right, and only the wrap-around was wrong for a path. Two doors
+ * over one implementation, `polygon.ts`'s pattern, because the closed/open answer
+ * belongs to the caller's geometry and not to a flag it has to remember.
+ *
+ * An `n`-point path has `n - 1` edges, so the highest index this can answer is
+ * `n - 2` — where the closed version's is `n - 1`. That difference is what
+ * `insertPolylineVertex` refuses on the other side.
+ *
+ * A single-point path has no edge at all and answers `null`; `geometryContains`
+ * measures the distance to that point directly, so such a shape is still reachable.
+ */
+export function nearestPolylineEdge(
+  points: readonly Point[],
+  point: Point,
+  tolerance: number,
+): EdgeHit | null {
+  return nearestEdgeIn(points, point, tolerance, false);
+}
+
+function nearestEdgeIn(
+  points: readonly Point[],
+  point: Point,
+  tolerance: number,
+  closed: boolean,
+): EdgeHit | null {
+  const edges = closed ? points.length : points.length - 1;
   let best: EdgeHit | null = null;
-  for (let index = 0; index < points.length; index += 1) {
+  for (let index = 0; index < edges; index += 1) {
     const from = points[index];
     const to = points[(index + 1) % points.length];
     const on = closestPointOnSegment(point, from, to);
@@ -212,16 +247,21 @@ export function geometryContains(
   tolerance: number,
 ): boolean {
   if (geometry.type === "classification_tag") return false;
-  // A polyline is rendered and reviewable, and is deliberately NOT grabbable on
-  // the canvas in 0.1.0. Hitting an open path is its own geometry problem —
-  // distance to a segment, with a tolerance that has to hold at every zoom — and
-  // it is only worth solving beside the tool that lets you edit the result.
-  // Selecting a lane goes through the object list instead, which is a real
-  // affordance rather than a gap. See #342.
-  if (geometry.type === "polyline") return false;
   if (geometry.type === "bbox") {
     if (bboxContains(geometry, point)) return true;
     return nearestEdge(bboxCorners(geometry), point, tolerance) !== null;
+  }
+  // An open path has **no inside** — that is the whole of what makes it open, and
+  // it is why a lane is reached by its outline where a polygon is reached by its
+  // area. The tolerance is the same `Tolerances.shape` every other shape gets, so
+  // the band is the same width on screen at every zoom; #342 asked for a tolerance
+  // in screen pixels and this is that one, rather than a fourth constant answering
+  // a question nobody else is answering (`machine.ts`'s rule).
+  if (geometry.type === "polyline") {
+    if (geometry.points.length === 1) {
+      return distance(point, geometry.points[0]) <= tolerance;
+    }
+    return nearestPolylineEdge(geometry.points, point, tolerance) !== null;
   }
   if (polygonContains(geometry, point)) return true;
   if (geometry.points.length === 1) {

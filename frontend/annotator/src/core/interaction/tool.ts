@@ -50,9 +50,10 @@
  * 3. **A `classification_tag` class.** Whole-asset tags have no coordinates;
  *    v1's classification never entered its canvas machine either, and #45 is a
  *    panel — `tags.ts`, beside this file, is that panel's engine.
- * 4. **A class declaring `polyline`, `keypoints`, `mask`, `cuboid_3d` or
- *    `polyline_3d`.** Legal in a schema, refused at the annotation — the
- *    eight-names/three-variants split `types.ts` keeps.
+ * 4. **A class declaring `keypoints`, `mask`, `cuboid_3d` or `polyline_3d`.**
+ *    Legal in a schema, refused at the annotation — the eight-names/four-variants
+ *    split `types.ts` keeps. `polyline` was in this list until #342 gave it a tool;
+ *    the ones left are the ones with no `Geometry` variant to carry.
  *
  * `drawableGeometry` is exported separately so a class palette can distinguish
  * 3 and 4 from 1 and 2 and say "this class cannot be drawn here" rather than
@@ -66,8 +67,8 @@ import { classNamed } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import type { LabelClass } from "../types";
 
-/** The three modes the canvas has. Two draw; one edits what is already there. */
-export type Tool = "select" | "bbox" | "polygon";
+/** The four modes the canvas has. Three draw; one edits what is already there. */
+export type Tool = "select" | "bbox" | "polygon" | "polyline";
 
 /**
  * The geometry this class draws, or `null` when it draws nothing.
@@ -75,9 +76,12 @@ export type Tool = "select" | "bbox" | "polygon";
  * `null` covers both a tag (no coordinates) and a geometry the wire declares but
  * no annotation may carry.
  */
-export function drawableGeometry(labelClass: LabelClass): "bbox" | "polygon" | null {
+export function drawableGeometry(
+  labelClass: LabelClass,
+): "bbox" | "polygon" | "polyline" | null {
   if (labelClass.geometry === "bbox") return "bbox";
   if (labelClass.geometry === "polygon") return "polygon";
+  if (labelClass.geometry === "polyline") return "polyline";
   return null;
 }
 

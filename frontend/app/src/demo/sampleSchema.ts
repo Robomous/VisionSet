@@ -1,5 +1,5 @@
 /**
- * The demo's schema: five classes chosen so that pressing 1–5 walks every branch
+ * The demo's schema: six classes chosen so that pressing 1–6 walks every branch
  * the engine has.
  *
  * The **order is the fixture**, the way `core/input/_palette.ts` says of its own:
@@ -12,13 +12,19 @@
  * | 2 | `lane` (polygon) | the polygon tool, and a real tool change from 1 |
  * | 3 | `daytime` (tag) | `toggle-tag` — a panel row, never the canvas |
  * | 4 | `pedestrian` (bbox) | a **second** bbox class: 1 → 4 must not abandon a half-drawn box |
- * | 5 | `centerline` (polyline) | a geometry no annotation can carry — `select`, and nothing drawable |
+ * | 5 | `centerline` (polyline) | the polyline tool (#342) |
+ * | 6 | `pose` (keypoints) | a geometry no annotation can carry — `select`, and nothing drawable |
  *
- * The fifth is the one that looks like a mistake and is not. `polyline` is a
- * legal `GeometryType` for a `LabelClass` and is not one of the three an
- * `Annotation` can carry; `toolFor` answers `select` for it, and `drawableGeometry`
- * answers `null`. Keeping it here is what makes the demo show that state rather
- * than pretend it cannot happen.
+ * The sixth is the one that looks like a mistake and is not. `keypoints` is a legal
+ * `GeometryType` for a `LabelClass` and is not one of the four an `Annotation` can
+ * carry; `toolFor` answers `select` for it, and `drawableGeometry` answers `null`.
+ * Keeping it here is what makes the demo show that state rather than pretend it
+ * cannot happen.
+ *
+ * `centerline` held that role until #342 gave `polyline` a tool. The role moved
+ * rather than being deleted with the case — the same move `core/input/_palette.ts`
+ * made, one package over, and for the same reason: it is a real state a schema can
+ * be in, and the demo exists to show the states.
  *
  * Written as a plain object and parsed by `documentFromWire`, not built with
  * `createDocument`: this is the shape `GET /projects/{id}/schema` returns, so the
@@ -37,5 +43,6 @@ export const SAMPLE_SCHEMA = {
     // the branch `LabelClass.color`'s own docstring blesses.
     { name: "pedestrian", geometry: "bbox", color: null, attributes: [] },
     { name: "centerline", geometry: "polyline", color: "#c084fc", attributes: [] },
+    { name: "pose", geometry: "keypoints", color: "#facc15", attributes: [] },
   ],
 } as const;

@@ -7,12 +7,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { Annotation, BboxGeometry, Geometry, Point } from "../types";
+import type { Annotation, BboxGeometry, Geometry, Point, PolylineGeometry } from "../types";
 import { BBOX_HANDLES } from "./bbox";
 import {
   geometryContains,
   nearestEdge,
   nearestHandle,
+  nearestPolylineEdge,
   nearestVertex,
   polygonCloseAttempt,
   topmostAnnotationAt,
@@ -270,5 +271,72 @@ describe("what a press near a half-drawn polygon's first vertex means", () => {
 
   it("answers no for an empty buffer instead of indexing into it", () => {
     expect(polygonCloseAttempt([], [0, 0], 10)).toBe("no");
+  });
+});
+
+describe("nearestPolylineEdge", () => {
+  /** A path with two segments: right, then down. Its closing edge does not exist. */
+  const PATH: readonly Point[] = [
+    [0, 0],
+    [100, 0],
+    [100, 100],
+  ];
+
+  it("answers the segment a point is nearest, indexed by its start vertex", () => {
+    expect(nearestPolylineEdge(PATH, [50, 3], 10)).toEqual({
+      index: 0,
+      point: [50, 0],
+      distance: 3,
+    });
+    expect(nearestPolylineEdge(PATH, [97, 50], 10)?.index).toBe(1);
+  });
+
+  it("never answers the closing edge, because an open path has none", () => {
+    // Dead centre of the segment `nearestEdge` would call edge 2 — the one running
+    // back from [100,100] to [0,0]. Closed, it is a hit; open, there is nothing
+    // there. This is the whole difference between the two walks.
+    const onThePhantomEdge: Point = [50, 50];
+    expect(nearestEdge(PATH, onThePhantomEdge, 10)?.index).toBe(2);
+    expect(nearestPolylineEdge(PATH, onThePhantomEdge, 10)).toBeNull();
+  });
+
+  it("has n-1 edges, so its highest index is one below a polygon's", () => {
+    const indexes = new Set<number>();
+    for (let x = 0; x <= 100; x += 5) {
+      indexes.add(nearestPolylineEdge(PATH, [x, 0], 60)?.index ?? -1);
+      indexes.add(nearestPolylineEdge(PATH, [100, x], 60)?.index ?? -1);
+    }
+    expect([...indexes].sort()).toEqual([0, 1]);
+  });
+
+  it("answers null for a single point, which has no segment at all", () => {
+    expect(nearestPolylineEdge([[10, 10]], [10, 10], 50)).toBeNull();
+  });
+});
+
+describe("geometryContains, for an open path", () => {
+  const LANE: PolylineGeometry = {
+    type: "polyline",
+    points: [
+      [0, 0],
+      [100, 0],
+      [100, 100],
+    ],
+  };
+
+  it("is under a point within tolerance of a segment", () => {
+    expect(geometryContains(LANE, [50, 4], 5)).toBe(true);
+    expect(geometryContains(LANE, [50, 6], 5)).toBe(false);
+  });
+
+  it("has no inside: the region a closed twin would enclose is empty", () => {
+    // Well inside the triangle those two segments plus a closing one would make.
+    expect(geometryContains(LANE, [60, 20], 5)).toBe(false);
+  });
+
+  it("is reachable when it carries a single point, like a degenerate polygon", () => {
+    const dot: PolylineGeometry = { type: "polyline", points: [[40, 40]] };
+    expect(geometryContains(dot, [42, 41], 5)).toBe(true);
+    expect(geometryContains(dot, [60, 60], 5)).toBe(false);
   });
 });

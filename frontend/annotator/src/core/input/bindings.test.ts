@@ -192,12 +192,15 @@ describe("classHotkeys", () => {
       { chord: "3", action: { kind: "toggle-tag", labelClass: "weather" } },
       { chord: "4", action: { kind: "activate-class", labelClass: "rail" } },
       { chord: "5", action: { kind: "activate-class", labelClass: "stop" } },
+      // A class no annotation can carry still gets its digit: arming it is legal,
+      // and the palette is where "this cannot be drawn here" is said (`tool.ts`).
+      { chord: "6", action: { kind: "activate-class", labelClass: "pose" } },
     ]);
   });
 
   it("does not filter, so a tag class occupies its own row rather than shifting the rest", () => {
     const bound = classHotkeys(PALETTE_SCHEMA);
-    expect(bound.map((binding) => binding.chord)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(bound.map((binding) => binding.chord)).toEqual(["1", "2", "3", "4", "5", "6"]);
     expect(bound).toHaveLength(PALETTE.length);
   });
 

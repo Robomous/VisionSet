@@ -367,31 +367,32 @@ disabled-with-reason cannot serve — the reason would be "this feature does not
 exist", which says nothing about what would enable the control — so they were
 removed. They return with the model behind them.
 
-#### The tool strip, and the one geometry with no tool behind it
+#### The tool strip, and the geometries with no tool behind them
 
 The strip lists `select` plus one button per distinct **drawable** geometry the
 schema declares, built from `drawableGeometry`. A `classification_tag` gets no
 button and never will: there is nothing to draw, because the label is about the
 whole image, and the Labels tab is where it is toggled.
 
-`polyline` is the one that is declared, real, and not yet drawable. #223 shipped
-the geometry end to end — a schema declares it, the API and MCP write it, five lane
-exporters consume it, the canvas renders it — and stopped short of an interactive
-drawing tool, which is **#342**. The intended workflow is that an agent pre-labels
-lanes and a person reviews them here.
+**Three tools since #342**: box, polygon and polyline. `polyline` spent one release
+as this section's worked example of declared-but-not-drawable — #223 shipped the
+geometry end to end and stopped short of the tool — and it is a live button now.
 
-So a schema declaring a polyline class gets a **disabled button carrying the
-reason**, placed after every usable tool, never a gap. A missing control says "this
-schema has no lanes", which is false, and it is exactly the ambiguity
-`ui-capabilities` forbids: absent and not-yet-available look identical and only one
-of them is true.
+The rule that example demonstrated is unchanged, and `PENDING_TOOLS` still holds it
+with nothing in it: **a geometry a schema declares and no tool draws gets a disabled
+button carrying the reason**, placed after every usable tool, never a gap. A missing
+control would say "this schema has no lanes", which is false, and it is exactly the
+ambiguity `ui-capabilities` forbids: absent and not-yet-available look identical and
+only one of them is true. `mask`, `keypoints` and the two 3D geometries are all
+still in that position the day a schema declares one.
 
-The button uses **`aria-disabled`, never the native `disabled` attribute**. A
-disabled `<button>` receives no pointer events, so the tooltip would never open —
-and a disabled-with-reason control whose reason cannot be read is a bare disabled
-control. The press is refused in the handler instead, because activating a lane
-class would leave `toolFor` answering `select` with that class held: a canvas whose
-primary gesture is inert, which is the bug #198 fixed.
+When a button is disabled it uses **`aria-disabled`, never the native `disabled`
+attribute**. A disabled `<button>` receives no pointer events, so the tooltip would
+never open — and a disabled-with-reason control whose reason cannot be read is a
+bare disabled control. The press is refused in the handler instead, because
+activating a class whose tool does not exist would leave `toolFor` answering
+`select` with that class held: a canvas whose primary gesture is inert, which is the
+bug #198 fixed.
 
 Two things follow that are worth stating so they are not "fixed": a lane is **not
 selectable from the canvas** (`geometryContains` refuses an open path — hitting one
@@ -658,11 +659,10 @@ four an `Annotation` can carry. `GeometryType` declares eight; the kernel refuse
 at write time with `UnsupportedGeometry`, and offering a choice the API will refuse
 is worse than not offering it.
 
-`polyline` is offered even though no tool draws one (#223). That is deliberate: the class is
-real, the API accepts annotations of it, and the lane exporters need it — lanes are written
-by an agent or a script and reviewed here. Where it matters is the annotator's tool strip,
-which says a polyline class has no drawing tool rather than showing a gap; the schema editor
-is not the place to explain the annotator.
+`polyline` was offered here for a release before anything drew one (#223), and #342 closed
+that gap: a lane class now gets a real tool on the annotator's strip. The picker did not
+change, which is the point — the schema editor offers what an `Annotation` can carry, and
+whether a tool exists for it is the annotator's business to state, not this screen's.
 
 A class **description** is not editable, because `LabelClassBody` does not carry
 one. Left out rather than stored where it would not survive a round trip.

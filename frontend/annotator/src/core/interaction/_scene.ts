@@ -70,6 +70,15 @@ export const POLY_BODY: Point = [350, 340];
 /** The polygon's first vertex, exactly. */
 export const POLY_VERTEX: Point = [300, 300];
 
+/** The path in the scene: class `path`, which draws polylines (#342). */
+export const PATH_ID = "path";
+
+/** On the path's first segment, away from both its vertices. */
+export const PATH_BODY: Point = [560, 300];
+
+/** The path's first vertex, exactly. */
+export const PATH_VERTEX: Point = [500, 300];
+
 /** Under no annotation, and not within any tolerance of one. */
 export const EMPTY_POINT: Point = [20, 440];
 
@@ -98,9 +107,31 @@ export function polygon(): Annotation {
   };
 }
 
-/** The scene's document: the box first, so the polygon is on top of it. */
+/**
+ * A `path` polyline: three points running right and then down, at 500,300.
+ *
+ * Deliberately **not closed and not convex**, so a test that only ever asked
+ * `polygonContains` would answer wrongly about it — an open path has no inside,
+ * and this shape's "inside" would be a region nothing should ever hit.
+ */
+export function path(): Annotation {
+  return {
+    ...annotation(PATH_ID),
+    label_class: "path",
+    geometry: {
+      type: "polyline",
+      points: [
+        [500, 300],
+        [620, 300],
+        [620, 400],
+      ],
+    },
+  };
+}
+
+/** The scene's document: the box first, so the polygon and path are above it. */
 export function sceneDocument(): AnnotationDocument {
-  return createDocument(ASSET, SCHEMA, [box(), polygon()]);
+  return createDocument(ASSET, SCHEMA, [box(), polygon(), path()]);
 }
 
 /** A pointer-down. Primary button and no modifiers unless said otherwise. */
@@ -157,6 +188,7 @@ export const ROUTES: Readonly<Record<InteractionStateType, Route>> = {
   "pressing-empty": { activeClass: null, events: [down(EMPTY_POINT)] },
   "drawing-bbox": { activeClass: "sign", events: [down([200, 200])] },
   "drawing-polygon": { activeClass: "lane", events: [down([200, 200])] },
+  "drawing-polyline": { activeClass: "path", events: [down([200, 200])] },
   moving: { activeClass: null, events: [down(BOX_BODY)] },
   resizing: {
     activeClass: null,
