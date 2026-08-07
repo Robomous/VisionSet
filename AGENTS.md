@@ -36,6 +36,7 @@ re-run.
 | `ui-capabilities` | How the frontend decides what to offer, and how refusals surface | `.agents/skills/frontend/ui-capabilities/SKILL.md` |
 | `information-architecture` | The canonical sitemap: routes, tabs, entry points, back-links | `.agents/skills/frontend/information-architecture/SKILL.md` |
 | `refactor-protocol` | Execution rules for any implementation task: worktree, scope, tests, PR/CI | `.agents/skills/process/refactor-protocol/SKILL.md` |
+| `public-communications` | What may be written to public surfaces: issues, PRs, docs, code comments | `.agents/skills/process/public-communications/SKILL.md` |
 
 ### Auto-invoke
 
@@ -56,6 +57,7 @@ Read the skill **before** writing code in that area.
 | Reading or writing batch state, job state, asset progress, promotion, schema pinning — in any layer | `batch-lifecycle` |
 | Rendering a state-gated action, a mutation hook, or error/success feedback | `ui-capabilities` |
 | Adding, moving, or removing a route, tab, screen, nav entry, or cross-screen link | `information-architecture` |
+| Writing an issue, an issue comment, a PR body, or a doc — before posting | `public-communications` |
 
 ## Project overview
 
