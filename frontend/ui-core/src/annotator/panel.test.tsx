@@ -72,28 +72,38 @@ function mount(
   overrides: Partial<Parameters<typeof AnnotatorPanel>[0]> = {},
 ): JSX.Element {
   return (
-    <AnnotatorPanel store={store} hiddenIds={new Set()} onHiddenChange={vi.fn()} {...overrides} />
+    <AnnotatorPanel
+      store={store}
+      hiddenIds={new Set()}
+      onHiddenChange={vi.fn()}
+      activeClass={null}
+      onActivateClass={vi.fn()}
+      {...overrides}
+    />
   );
 }
 
-describe("the one view the panel is now", () => {
-  it("has no tabs at all, and no way to arm a drawing class", () => {
-    // #368: class selection is the top bar's. A panel that could still arm one
-    // would be a second road to a setting with one owner, so the assertion is
-    // about absence — the tab bar, and the rows that used to activate a class.
+describe("the two regions the panel is now", () => {
+  it("stacks them without tabs, so both subjects are on screen at once", () => {
+    // #368 made this one view by removing the Objects | Labels tabs; #420 brings
+    // class selection back and deliberately does **not** bring the tabs with it.
+    // A tab is a claim that two things are alternatives, and these are the two
+    // halves of one question — what may I draw, and what have I drawn.
     render(mount(storeWith([annotation("a", "vehicle", "bbox")])));
 
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    expect(screen.queryByTestId("label-vehicle")).toBeNull();
-    expect(screen.queryByTestId("label-select")).toBeNull();
+    expect(screen.getByTestId("class-region")).toBeDefined();
+    expect(screen.getByTestId("objects-region")).toBeDefined();
   });
 
   it("names itself and counts what is drawn", () => {
     const store = storeWith([annotation("a", "vehicle", "bbox"), annotation("b", "lane", "polygon")]);
     render(mount(store));
 
-    expect(screen.getByTestId("annotator-panel").getAttribute("aria-label")).toBe("Annotations");
+    expect(screen.getByTestId("annotator-panel").getAttribute("aria-label")).toBe(
+      "Classes and annotations",
+    );
     expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
   });
 });

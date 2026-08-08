@@ -237,16 +237,16 @@ it("publishes a whole session as one version, in the order they were written", a
 /**
  * The name the create row typed, carried into the dialog (#368).
  *
- * `ClassField` has handed it over since WS2 and the page dropped it, because the
- * dialog had nowhere to put it. The claim only exists where the two are wired
- * together, which is here.
+ * The no-match row has handed it over since WS2 and the page dropped it, because
+ * the dialog had nowhere to put it. The claim only exists where the two are
+ * wired together, which is here — the row moved to the panel with #420 and the
+ * hand-over did not change.
  */
-it("opens the dialog on the name the class field's create row was typed with", async () => {
+it("opens the dialog on the name the class list's create row was typed with", async () => {
   render(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("class-field-trigger"));
-  await userEvent.type(screen.getByTestId("class-field-input"), "crossing");
-  await userEvent.click(screen.getByTestId("class-field-create"));
+  await userEvent.type(await screen.findByTestId("class-filter"), "crossing");
+  await userEvent.click(screen.getByTestId("class-create"));
 
   expect(await screen.findByTestId("class-name-new")).toHaveProperty("value", "crossing");
 });
@@ -256,9 +256,8 @@ it("opens empty from the tool strip, where nobody named a class", async () => {
   // opening's name into it would be a prefill nobody asked for.
   render(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("class-field-trigger"));
-  await userEvent.type(screen.getByTestId("class-field-input"), "crossing");
-  await userEvent.click(screen.getByTestId("class-field-create"));
+  await userEvent.type(await screen.findByTestId("class-filter"), "crossing");
+  await userEvent.click(screen.getByTestId("class-create"));
   await screen.findByTestId("add-class-dialog");
   await userEvent.click(screen.getByTestId("add-class-cancel"));
 
@@ -273,7 +272,7 @@ it("opens empty from the tool strip, where nobody named a class", async () => {
  * Last rather than first, because a session is written in the order somebody
  * thought of them and the one they are about to draw is the one they just
  * described. It is announced because on a busy canvas an armed class is a swatch
- * in the top bar and nothing else moved — a session of two publishes one version
+ * in the panel and nothing else moved — a session of two publishes one version
  * and arms one class, neither of which anybody watched happen.
  */
 it("arms the last class written and names it", async () => {
@@ -291,9 +290,9 @@ it("arms the last class written and names it", async () => {
   await screen.findByText(/Added 2 classes/);
   expect(screen.getByText(/Added 2 classes/).textContent).toContain("barrier");
 
-  // The top bar's field is where an armed class is visible, and it reads the
-  // same `activeClass` the canvas draws with.
+  // The panel's list is where an armed class is visible, and it reads the same
+  // `activeClass` the canvas draws with.
   await waitFor(() => {
-    expect(screen.getByTestId("class-field-name").textContent).toBe("barrier");
+    expect(screen.getByTestId("class-row-barrier").getAttribute("data-selected")).toBe("true");
   });
 });

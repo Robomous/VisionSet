@@ -1,5 +1,6 @@
 /**
- * The annotation page's right-hand panel: **Annotations**, one view.
+ * The annotation page's right-hand panel: **Classes over Annotations**, two
+ * stacked regions (#420).
  *
  * ## Why it is here and not in `@visionset/annotator`
  *
@@ -16,19 +17,22 @@
  * `hiddenIds` prop and this panel drives it. The split is: the annotator gained an
  * ability, `ui-core` gained the UI.
  *
- * ## There are no tabs, and the panel no longer picks a class
+ * ## Two regions, no tabs, and no splitter
  *
- * It used to be **Objects | Labels**. The Labels tab was the schema's palette, and
- * it did two unrelated jobs under one heading: it armed the drawing class, and it
- * toggled the asset's classification tags. #368 split them by where they belong.
- * Arming the drawing class is the most-used control on the page, so it moved to the
- * top bar (`ClassField`) where the eye already is; tagging the *asset* is a fact
- * about this frame, so it stays here, as a chip strip over the list.
+ * It was **Objects | Labels** tabs until #368, which split them by where they
+ * belong: arming the drawing class went to the top bar, and tagging the *asset* —
+ * a fact about this frame rather than about the ontology — stayed here as a chip
+ * strip. #420 brings class selection back, and the part worth stating is that it
+ * does **not** bring the tabs back with it. A tab is a claim that two things are
+ * alternatives; classes and objects are the two halves of one question — what may
+ * I draw, and what have I drawn — so they are stacked and both are on screen.
  *
- * What that leaves is one view about one subject — what is on this asset — which is
- * why `activeClass` and `onActivateClass` are gone from the props entirely rather
- * than kept and ignored. A panel that could still arm a class would be a second
- * road to a setting with one owner.
+ * The split follows a rule and is not draggable. `ClassRegion` is `shrink-0` and
+ * sizes itself in rows; the objects region is `min-h-0 flex-1` and takes whatever
+ * is left. Two scrollers, each inside its region, so a long ontology and a busy
+ * frame cannot push each other off the panel. A draggable splitter would add a
+ * third piece of per-user state to a surface whose whole point is that it is the
+ * same on every frame.
  *
  * ## The order of the parts, and the one that is not obvious
  *
@@ -85,12 +89,13 @@ import {
   type LabelClass,
 } from "@visionset/annotator";
 import { Check, Eye, EyeOff, Tag, Trash2 } from "lucide-react";
-import { useState, type JSX } from "react";
+import { useState, type JSX, type RefObject } from "react";
 
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { Input } from "../primitives/Input";
 import { DropdownMenu, DropdownMenuTrigger } from "../primitives/Menu";
+import { ClassRegion } from "./ClassRegion";
 import { ReassignMenu } from "./ReassignMenu";
 import { cn } from "../lib/cn";
 
@@ -109,6 +114,31 @@ export interface AnnotatorPanelProps {
    * argument `visibility.ts` makes for why it must never travel to the API.
    */
   readonly readOnly?: boolean;
+  /**
+   * The drawing class, and the one way to change it (#420).
+   *
+   * Back on the panel after #368 sent it to the top bar — but held by the page,
+   * exactly as it was, so the canvas, the tool strip, a digit hotkey and this
+   * list all land on one callback. A panel that owned the value would be the
+   * second road to a setting with one owner that #368's docstring warned about;
+   * a panel that renders somebody else's value is a view of it.
+   */
+  readonly activeClass: string | null;
+  readonly onActivateClass: (labelClass: string) => void;
+  /** Focus target for `c`. See `ClassRegion`. */
+  readonly classFilterRef?: RefObject<HTMLInputElement | null>;
+  /** Open the add-a-class dialog, or absent where there is nowhere to add one. */
+  readonly onAddClass?: (name: string) => void;
+  /**
+   * Why no class can be armed on this frame, or absent when one can.
+   *
+   * Separate from `readOnly` and not derived from it, because the two answer
+   * different questions: `readOnly` says the *document* cannot be written, and
+   * this says *why* in the words the page already computed for its banner. The
+   * classes list renders either way — which classes exist stays true on a
+   * settled frame — and every row is disabled carrying this sentence.
+   */
+  readonly classRefusal?: string;
 }
 
 export function AnnotatorPanel({
@@ -116,6 +146,11 @@ export function AnnotatorPanel({
   hiddenIds,
   onHiddenChange,
   readOnly = false,
+  activeClass,
+  onActivateClass,
+  classFilterRef,
+  onAddClass,
+  classRefusal,
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const [filter, setFilter] = useState("");
@@ -168,10 +203,31 @@ export function AnnotatorPanel({
 
   return (
     <section
-      className="flex w-72 flex-col gap-2 rounded-lg border border-border bg-muted p-2"
+      className="flex w-72 min-h-0 flex-col gap-2 rounded-lg border border-border bg-muted p-2"
       data-testid="annotator-panel"
-      aria-label="Annotations"
+      aria-label="Classes and annotations"
     >
+      {/* Upper region: the ontology. `shrink-0`, and it sizes itself in rows —
+          see `ClassRegion` for the rule and for why it is computed from the
+          schema's count rather than from the filtered one. */}
+      <ClassRegion
+        schema={schema}
+        activeClass={activeClass}
+        onActivateClass={onActivateClass}
+        {...(classFilterRef === undefined ? {} : { filterRef: classFilterRef })}
+        {...(onAddClass === undefined ? {} : { onAddClass })}
+        {...(classRefusal === undefined ? {} : { refusal: classRefusal })}
+      />
+
+      {/* The split. A rule, not a handle — `ClassRegion` decides its own height
+          and everything below takes the rest. */}
+      <div className="h-px shrink-0 bg-border" aria-hidden="true" data-testid="panel-split" />
+
+      {/* Lower region: what is on this asset. `min-h-0` is what lets it be
+          shorter than its content so the list inside can scroll — without it a
+          flex child refuses to go below its content and the panel grows past the
+          viewport instead. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2" data-testid="objects-region">
       <div className="flex items-center justify-between px-1">
         <span className="text-body font-medium">Annotations</span>
         <div className="flex items-center gap-2">
@@ -213,36 +269,39 @@ export function AnnotatorPanel({
         className="h-8"
       />
 
-      {rows.length === 0 ? (
-        <p
-          className="px-1 py-4 text-center text-meta text-muted-foreground"
-          data-testid="objects-empty"
-        >
-          {drawn.length === 0 ? "Nothing drawn yet." : "No object matches that filter."}
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {rows.map(({ annotation, index }) => (
-            <ObjectRow
-              key={annotation.id}
-              annotation={annotation}
-              index={index}
-              declared={classNamed(snapshot.document, annotation.label_class)}
-              schema={schema}
-              selected={snapshot.selection.has(annotation.id)}
-              hidden={hiddenIds.has(annotation.id)}
-              onSelect={() => store.select(selectOnly(annotation.id))}
-              onToggleVisible={() => toggleHidden(annotation.id)}
-              {...(readOnly
-                ? {}
-                : {
-                    onRemove: () => remove(annotation.id),
-                    onReassign: (labelClass: string) => reassign(annotation, labelClass),
-                  })}
-            />
-          ))}
-        </ul>
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="objects-scroller">
+        {rows.length === 0 ? (
+          <p
+            className="px-1 py-4 text-center text-meta text-muted-foreground"
+            data-testid="objects-empty"
+          >
+            {drawn.length === 0 ? "Nothing drawn yet." : "No object matches that filter."}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {rows.map(({ annotation, index }) => (
+              <ObjectRow
+                key={annotation.id}
+                annotation={annotation}
+                index={index}
+                declared={classNamed(snapshot.document, annotation.label_class)}
+                schema={schema}
+                selected={snapshot.selection.has(annotation.id)}
+                hidden={hiddenIds.has(annotation.id)}
+                onSelect={() => store.select(selectOnly(annotation.id))}
+                onToggleVisible={() => toggleHidden(annotation.id)}
+                {...(readOnly
+                  ? {}
+                  : {
+                      onRemove: () => remove(annotation.id),
+                      onReassign: (labelClass: string) => reassign(annotation, labelClass),
+                    })}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+      </div>
     </section>
   );
 }

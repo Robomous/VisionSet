@@ -126,6 +126,7 @@ export {
 // The data-surface parts (#209). Four rather than six: `EmptyState` is already
 // above and Chip is `Badge`, so neither is respelled here.
 export {
+  CLASS_ROW_PX,
   ClassListRow,
   DistributionBar,
   StatCard,
@@ -267,6 +268,13 @@ export {
 // The annotation page's side panel (#126). Driven entirely by the `AnnotatorStore`
 // the page already holds — no second door to the document.
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
+export {
+  ClassRegion,
+  classListHeight,
+  MAX_CLASS_ROWS,
+  MIN_CLASS_ROWS,
+  type ClassRegionProps,
+} from "./annotator/ClassRegion.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
 
 // Whether the rail starts collapsed (#200). One declaration, guarded storage.
@@ -281,7 +289,6 @@ export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";
 export { parentLabel } from "./patterns/parentLabel.js";
 
 // The floating tool palette (#198). Reports the derived tool; never stores one.
-export { ClassField, classChoices, type ClassFieldProps } from "./annotator/ClassField.js";
 export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
 export { ZoomWidget, type ZoomWidgetProps } from "./annotator/ZoomWidget.js";
 export {

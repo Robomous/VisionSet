@@ -207,49 +207,75 @@ async function open(onOpenGallery?: () => void): Promise<void> {
   await screen.findByTestId("annotation-page");
 }
 
-describe("the class field", () => {
-  it("shows the drawing class at rest, with its hotkey", async () => {
+describe("the class list, now in the panel (#420)", () => {
+  it("arms a class from the panel and marks the row", async () => {
     await open();
-    // `select` is the opening state — `activeClass` is null until somebody picks,
-    // which is `toolFor`'s answer too.
-    expect(screen.getByTestId("class-field-name").textContent).toBe("Select");
+    // Nothing armed on arrival — `activeClass` is null until somebody picks,
+    // which is `toolFor`'s answer too. There is no "Select" row: leaving drawing
+    // mode is the tool strip's `V`, and a second door to it would be a second
+    // rule about what "no drawing class" means.
+    expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("class-field-trigger"));
-    await userEvent.click(await screen.findByTestId("class-field-option-vehicle"));
+    await userEvent.click(screen.getByTestId("class-row-vehicle"));
 
-    expect(screen.getByTestId("class-field-name").textContent).toBe("vehicle");
+    expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
+  });
+
+  it("shows the digit each class answers to, in schema order", async () => {
+    // The badge is on the row so the mapping is read rather than memorised, and
+    // it comes from `hotkeyForClass` — the same derivation the input layer binds
+    // — so the row and the keyboard cannot disagree.
+    await open();
+
+    expect(screen.getByTestId("class-row-vehicle").textContent).toContain("1");
+    expect(screen.getByTestId("class-row-lane-area").textContent).toContain("2");
+  });
+
+  it("does not remap the digits when the list is filtered", async () => {
+    // The whole reason the hotkeys are stated in schema order: a digit whose
+    // meaning depended on what was typed in a filter box would be a keystroke
+    // nobody could predict.
+    await open();
+    await userEvent.type(screen.getByTestId("class-filter"), "lane");
+
+    expect(screen.queryByTestId("class-row-vehicle")).toBeNull();
+    expect(screen.getByTestId("class-row-lane-area").textContent).toContain("2");
   });
 
   it("changes the derived tool when the class picked declares another geometry", async () => {
     // The tool is *derived* from the active class and never stored
     // (`core/interaction/tool.ts`), so this asserts the derivation still runs
-    // through the field — it does not re-derive anything itself.
+    // through the panel — it does not re-derive anything itself.
     await open();
-    await userEvent.click(screen.getByTestId("class-field-trigger"));
-    await userEvent.click(await screen.findByTestId("class-field-option-vehicle"));
+    await userEvent.click(screen.getByTestId("class-row-vehicle"));
     expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("true");
 
-    await userEvent.click(screen.getByTestId("class-field-trigger"));
-    await userEvent.click(await screen.findByTestId("class-field-option-lane-area"));
+    await userEvent.click(screen.getByTestId("class-row-lane-area"));
 
     expect(screen.getByTestId("tool-polygon").getAttribute("data-active")).toBe("true");
     expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("false");
   });
 
-  it("opens on `c`, which is the whole point of the host action", async () => {
+  it("focuses the panel's filter on `c`, which is the whole point of the host action", async () => {
     await open();
     screen.getByTestId("annotator-root").focus();
     await userEvent.keyboard("c");
 
-    expect(await screen.findByTestId("class-field-input")).toBeDefined();
+    expect(document.activeElement).toBe(screen.getByTestId("class-filter"));
+  });
+
+  it("takes the first match on Enter, so typeahead still arms a class", async () => {
+    await open();
+    await userEvent.type(screen.getByTestId("class-filter"), "lane{Enter}");
+
+    expect(screen.getByTestId("class-row-lane-area").getAttribute("data-selected")).toBe("true");
   });
 
   it("offers to create the class nobody declared, once something is typed", async () => {
     await open(() => {});
-    await userEvent.click(screen.getByTestId("class-field-trigger"));
-    await userEvent.type(await screen.findByTestId("class-field-input"), "pedestrian");
+    await userEvent.type(screen.getByTestId("class-filter"), "pedestrian");
 
-    await userEvent.click(screen.getByTestId("class-field-create"));
+    await userEvent.click(screen.getByTestId("class-create"));
 
     expect(screen.getByTestId("add-class-dialog")).toBeDefined();
   });
@@ -258,10 +284,22 @@ describe("the class field", () => {
     // Otherwise the row sits under an exact match and one stray Enter publishes a
     // schema version for a class that is right there.
     await open(() => {});
-    await userEvent.click(screen.getByTestId("class-field-trigger"));
-    await userEvent.type(await screen.findByTestId("class-field-input"), "vehicle");
+    await userEvent.type(screen.getByTestId("class-filter"), "vehicle");
 
-    expect(screen.queryByTestId("class-field-create")).toBeNull();
+    expect(screen.queryByTestId("class-create")).toBeNull();
+  });
+
+  it("renders the classes on a settled frame, refused with a reason (#420)", async () => {
+    // Principle 9, and the change from the top-bar field it replaces: that one
+    // was **not rendered at all** while read-only. Which classes exist stays true
+    // on an accepted frame, so the list is information there — what it owes is
+    // the sentence, on rows nobody can press.
+    progress = "accepted";
+    await open();
+
+    const row = screen.getByTestId("class-row-vehicle");
+    expect(row.hasAttribute("disabled")).toBe(true);
+    expect(row.getAttribute("title")).toMatch(/accepted/i);
   });
 });
 
@@ -373,6 +411,20 @@ describe("the navigation cluster (#416)", () => {
     expect(cluster.contains(screen.getByTestId("asset-position"))).toBe(true);
   });
 
+  it("holds no instrument sub-group any more (#420)", async () => {
+    // The class field held a 192px reservation in the middle of this cluster and
+    // now lives in the side panel. The bar is *navigation only*, which is what
+    // pays for the right zone's two controls being visible at 1440 again.
+    assetCount = 2;
+    await open();
+
+    expect(screen.queryByTestId("class-field-slot")).toBeNull();
+    expect(screen.queryByTestId("class-field-trigger")).toBeNull();
+    expect(screen.getByTestId("frame-navigation").contains(screen.getByTestId("class-filter"))).toBe(
+      false,
+    );
+  });
+
   it("leaves nothing in the left zone that changes the frame", async () => {
     // The other direction, and the one that would go unnoticed: the identity
     // label is what is left where the navigator used to be, and it is a label.
@@ -390,24 +442,6 @@ describe("the navigation cluster (#416)", () => {
     expect(screen.getByTestId("asset-position").textContent).toBe("1/2");
   });
 
-  it("keeps the class field's slot when there is no class field in it", async () => {
-    // A read-only frame renders no drawing class — and if the slot collapsed with
-    // it, every control to its right would slide half a combobox sideways on
-    // exactly the walk `‹ ›` exist for. The reservation is what holds the cluster
-    // still across frames of different progress.
-    progress = "accepted";
-    assetCount = 2;
-    await open();
-
-    const cluster = screen.getByTestId("frame-navigation");
-    const slot = screen.getByTestId("class-field-slot");
-    expect(screen.queryByTestId("class-field-trigger")).toBeNull();
-    expect(cluster.contains(slot)).toBe(true);
-    // A reservation is a *fixed* width; `w-auto` or nothing at all is the shape
-    // of the bug this guards, and it is invisible in jsdom's zero-size layout —
-    // so the class is the assertion, and the pixels are the browser suite's.
-    expect(slot.className).toMatch(/(^|\s)w-\d+(\s|$)/);
-  });
 });
 
 describe("the flow verb", () => {
@@ -533,16 +567,14 @@ describe("the flow verb", () => {
     );
   });
 
-  it("does not advance on ↵ while the class field owns the keyboard", async () => {
-    // The guard that matters most, because the combobox is one Enter away from
-    // the canvas at all times: the field lives outside the annotator's focus
-    // root, so the press never reaches the binding table at all.
+  it("does not advance on ↵ while the panel's class filter owns the keyboard", async () => {
+    // The guard that matters most, because the filter is one Enter away from the
+    // canvas at all times: it lives outside the annotator's focus root, so the
+    // press never reaches the binding table at all — it arms the first match
+    // instead, which is `ClassRegion`'s own typeahead.
     assetCount = 2;
     await open();
-    await userEvent.click(screen.getByTestId("class-field-trigger"));
-    await userEvent.type(await screen.findByTestId("class-field-input"), "veh");
-
-    await userEvent.keyboard("{Enter}");
+    await userEvent.type(screen.getByTestId("class-filter"), "veh{Enter}");
 
     expect(screen.getByTestId("annotation-page").getAttribute("data-asset")).toBe(ASSET);
   });
@@ -643,8 +675,7 @@ describe("undo and redo on the tool strip", () => {
     await open();
     // Draw nothing; instead move the class, which is not a command — the point is
     // that a *non*-command leaves the history empty, so the buttons are honest.
-    await userEvent.click(screen.getByTestId("class-field-trigger"));
-    await userEvent.click(await screen.findByTestId("class-field-option-vehicle"));
+    await userEvent.click(screen.getByTestId("class-row-vehicle"));
 
     expect(screen.getByTestId("tool-undo").getAttribute("aria-disabled")).toBe("true");
   });
