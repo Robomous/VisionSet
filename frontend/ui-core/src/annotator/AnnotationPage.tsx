@@ -174,7 +174,7 @@ import {
 } from "./jobQueries";
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { FrameGallery } from "./FrameGallery";
-import { PROGRESS_LABEL, progressDotClass, progressTone } from "../screens/batchState";
+import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState";
 import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
   batchKeys,
@@ -581,6 +581,13 @@ interface WorkspaceProps {
     readonly annotated: number;
     readonly total: number;
     readonly unannotated: number;
+    /**
+     * With `unannotated`, the other state that blocks the job's `complete` —
+     * `outstandingWork` sums exactly the two, and the Finish-job tooltip reads
+     * that sum (#427). The full five-field model arrives from the wire; this
+     * type names only what the page consumes.
+     */
+    readonly review_pending: number;
   } | null;
   /** Held by `JobScreen`, so `mod+c` here and `mod+v` on the next frame is one clipboard. */
   readonly clipboard: Clipboard;
@@ -1140,12 +1147,25 @@ function Workspace({
    * Null on a job that is already `completed`: the label reads `Finished`, and a
    * tooltip repeating the word in the button is a tooltip nobody needs. Null too
    * once `complete` is declared, because then it is simply live.
+   *
+   * The sentence names the blocker **with its count** (#427): `outstandingWork`
+   * is `batchState.ts`'s spelling of "how many frames still block completion" —
+   * `unannotated` plus `review_pending`, the same two states whose settling is
+   * what makes the kernel declare `complete` — so the number and the disable
+   * come from one progress read rather than a second derivation here. The
+   * count-less sentence survives only for the moments the counts query has not
+   * answered yet (or disagrees with a declaration mid-invalidation).
    */
+  const unresolved = counts === null ? 0 : outstandingWork(counts);
   const finishWithheld =
     jobState === "completed" || declares({ allowed_actions: jobActions }, JOB_ACTION.complete)
       ? null
       : (withheld ??
-        "Every frame has to be annotated, skipped or accepted before this job can finish.");
+        (unresolved === 0
+          ? "Every frame has to be annotated, skipped or accepted before this job can finish."
+          : unresolved === 1
+            ? "1 frame unresolved — annotate or skip it to finish the job."
+            : `${unresolved} frames unresolved — annotate or skip them to finish the job.`));
 
   /**
    * Whether pressing the flow verb will actually store anything (#383).
@@ -1487,22 +1507,47 @@ function Workspace({
                 of forty-eight was possible before and is not now — which is the
                 same rule that already governs its filled treatment, applied to
                 whether it is on screen at all.
+
+                **The reason is a real tooltip, and the withheld state is
+                `aria-disabled`, never the native attribute** (#427). This was a
+                `title` spread — invisible to the keyboard and to most pointers.
+                `ZoomWidget` earned the pattern: a disabled `<button>` receives
+                no pointer events and cannot take focus, so Radix's trigger
+                never opens and the reason cannot be read (principles 4 and 9).
+                `aria-disabled` keeps the hover and the focus, and the press is
+                refused in the handler. Native `disabled` survives only where
+                there is nothing to explain — a `Finished` job, whose label is
+                the explanation, and the in-flight press.
               */
-              <Button
-                variant="primary"
-                size="sm"
-                className="min-w-36"
-                data-testid="finish-job"
-                disabled={
-                  !declares({ allowed_actions: jobActions }, JOB_ACTION.complete) ||
-                  finishJob.isPending
-                }
-                {...(finishWithheld === null ? {} : { title: finishWithheld })}
-                onClick={() => finishJob.mutate()}
-              >
-                <CheckCheck className="size-4" />
-                {jobState === "completed" ? "Finished" : "Finish job"}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className={
+                      finishWithheld === null ? "min-w-36" : "min-w-36 cursor-not-allowed opacity-40"
+                    }
+                    data-testid="finish-job"
+                    data-withheld={finishWithheld === null ? "false" : "true"}
+                    disabled={jobState === "completed" || finishJob.isPending}
+                    aria-disabled={finishWithheld !== null || undefined}
+                    onClick={() => {
+                      if (finishWithheld === null && !finishJob.isPending) finishJob.mutate();
+                    }}
+                  >
+                    <CheckCheck className="size-4" />
+                    {jobState === "completed" ? "Finished" : "Finish job"}
+                  </Button>
+                </TooltipTrigger>
+                {/* Only while withheld: an enabled Finish job explains itself by
+                    being pressable, and a tooltip repeating the label would be
+                    noise over the one control the frame exists to end on. */}
+                {finishWithheld !== null && (
+                  <TooltipContent side="bottom" data-testid="finish-withheld">
+                    {finishWithheld}
+                  </TooltipContent>
+                )}
+              </Tooltip>
             ) : (
               /*
                 The flow verb, and the whole of #383 (decision 2).
