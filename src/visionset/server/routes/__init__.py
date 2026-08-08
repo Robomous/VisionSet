@@ -29,6 +29,7 @@ from visionset.server.routes import (
     batches,
     datasets,
     formats,
+    inference,
     ingest,
     jobs,
     projects,
@@ -61,6 +62,10 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     releases.project_router,
     releases.router,
     formats.router,
+    # Outside the pipeline order too, and for its own reason: a connection is not
+    # a stage of the data's life but a piece of this workspace's configuration,
+    # which the pipeline reads rather than produces.
+    inference.router,
     # Last, and outside the pipeline order above on purpose: a background job is
     # not a stage of the data's life, it is how some of those stages run. Reading
     # it into the sequence would suggest a place it does not have.
@@ -75,6 +80,7 @@ __all__ = [
     "batches",
     "datasets",
     "formats",
+    "inference",
     "ingest",
     "jobs",
     "projects",

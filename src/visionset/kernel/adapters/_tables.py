@@ -676,3 +676,54 @@ class JobRow(Base):
 #: this one, so an idle queue costs an index seek rather than a scan that grows
 #: with every job the workspace has ever run.
 JOB_QUEUE_ORDER = Index("ix_job_state_created_at", JobRow.state, JobRow.created_at)
+
+
+class InferenceConnectionRow(Base):
+    """A configured place a model can be asked to predict.
+
+    **No foreign key, on ``JobRow``'s terms rather than ``TokenRow``'s.** A
+    connection belongs to the workspace, and the workspace is the file this row
+    lives in — so a ``workspace_id`` would be a column with one value in it. That
+    also keeps the table free of the rebuild rule: a table with no keys is one a
+    later migration can widen with ``ALTER``.
+
+    Nullable per-type parameters rather than a JSON blob: there are three of them
+    across two kinds, they are read individually, and ``InferenceConnection``
+    already refuses the combinations that make no sense. A blob would move a rule
+    the domain enforces into a shape nothing can index or inspect.
+
+    No credential column, and its absence is deliberate rather than pending —
+    where an HTTP connection's secret lives is an open decision (`cf. #421`), and
+    a nullable column added "for later" would answer it by default, in the
+    direction nobody chose.
+    """
+
+    __tablename__ = "inference_connection"
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    #: ``local`` or ``http``. Indexed by nothing: a workspace holds a handful of
+    #: these, and every read is the whole list.
+    connection_type: Mapped[str] = mapped_column(String, nullable=False)
+    model_id: Mapped[str] = mapped_column(String, nullable=False)
+    model_revision: Mapped[str] = mapped_column(String, nullable=False)
+    device: Mapped[str | None] = mapped_column(String, nullable=True)
+    precision: Mapped[str | None] = mapped_column(String, nullable=True)
+    endpoint_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    setup_state: Mapped[str] = mapped_column(String, nullable=False)
+    #: ISO-8601 with offset, never SQLite ``DATETIME``. See the module docstring.
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
+#: Connection names are unique in the workspace, case-insensitively.
+#:
+#: ``TOKEN_NAME_UNIQUE`` without the workspace column, for the reason the row
+#: carries no workspace key: the table *is* the workspace's. ``NOCASE`` so that
+#: ``local`` and ``Local`` cannot name two connections a person then has to tell
+#: apart in a list.
+INFERENCE_CONNECTION_NAME_UNIQUE = Index(
+    "uq_inference_connection_name",
+    InferenceConnectionRow.name.collate("NOCASE"),
+    unique=True,
+)

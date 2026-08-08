@@ -33,12 +33,15 @@ from visionset.kernel.domain import (
     ClassCount,
     ClassExportStatus,
     ClassificationGeometry,
+    ConnectionSetupState,
+    ConnectionType,
     Dataset,
     DatasetStats,
     ExportCompatibility,
     ExportResult,
     GeometryType,
     ImageFormat,
+    InferenceConnection,
     IngestFailure,
     IngestFailureKind,
     IngestJob,
@@ -303,4 +306,16 @@ THUMBNAIL_BACKFILL = ThumbnailBackfill(
     filled=(uuid4(),),
     missing=(uuid4(),),
     unreadable=(INGEST_FAILURE,),
+)
+
+#: An HTTP connection rather than a local one, deliberately: it is the kind whose
+#: per-type parameter is populated *and* whose local parameters are null, so one
+#: sample exercises both halves of the projection's nullable fields.
+INFERENCE_CONNECTION = InferenceConnection(
+    name="remote-detector",
+    connection_type=ConnectionType.HTTP,
+    model_id="some/model",
+    model_revision="abc123",
+    endpoint_url="https://example.invalid/predict",
+    setup_state=ConnectionSetupState.READY,
 )

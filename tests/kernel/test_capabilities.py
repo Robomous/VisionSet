@@ -48,7 +48,9 @@ from visionset.kernel.domain import (
     BATCH_GATES,
     BATCH_MOVES,
     BATCH_TRANSITIONS,
+    CONNECTION_GATES,
     DELETABLE_STATES,
+    EVERY_SETUP_STATE,
     JOB_MOVES,
     JOB_TRANSITIONS,
     UNNAMED_EDGES,
@@ -60,18 +62,23 @@ from visionset.kernel.domain import (
     BatchAction,
     BatchState,
     BboxGeometry,
+    ConnectionAction,
+    ConnectionSetupState,
+    ConnectionType,
     GeometryType,
     JobAction,
     LabelClass,
     Move,
     asset_actions,
     batch_actions,
+    connection_actions,
     job_actions,
 )
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
     DatasetService,
+    InferenceConnectionService,
     JobService,
     ProjectService,
     SchemaService,
@@ -286,6 +293,9 @@ def test_every_action_is_decided_by_exactly_one_source() -> None:
     assert not set(BATCH_MOVES) & set(BATCH_GATES)
     assert set(JOB_MOVES) == set(JobAction)
     assert set(ASSET_MOVES) | {AssetAction.ANNOTATE} == set(AssetAction)
+    # A connection has no moves at all: nothing in this slice changes
+    # `setup_state`, so every one of its actions is decided by a gate.
+    assert set(CONNECTION_GATES) == set(ConnectionAction)
 
 
 # --- enforcement: batches -----------------------------------------------------
@@ -644,3 +654,107 @@ def test_delete_is_declared_from_the_kernels_own_gate_and_not_from_a_copy() -> N
     assert BATCH_GATES[BatchAction.DELETE] is DELETABLE_STATES
     for state in BatchState:
         assert (BatchAction.DELETE in batch_actions(state)) is (state in DELETABLE_STATES)
+
+
+# --- enforcement: inference connections ---------------------------------------
+
+
+def _connection_in(tmp_path: Path, setup_state: ConnectionSetupState) -> tuple[Any, Any]:
+    """A workspace holding one connection born in that state, and its service.
+
+    Walked into by a real `create` call rather than written through the
+    repository, on this module's standing rule: a fixture that puts a row in a
+    state no service can produce proves the matrix against itself. The kind is
+    what chooses the state — a local connection has weights to fetch, an HTTP one
+    does not — so each state is reached by creating the kind that starts there.
+    """
+    workspace = WorkspaceService.init(tmp_path / "ws", name="caps")
+    connections = InferenceConnectionService(workspace)
+    if setup_state is ConnectionSetupState.NOT_SET_UP:
+        made = connections.create(
+            "local-one",
+            connection_type=ConnectionType.LOCAL,
+            model_id="some/model",
+            model_revision="abc123",
+            device="cpu",
+            precision="fp16",
+        )
+    else:
+        made = connections.create(
+            "http-one",
+            connection_type=ConnectionType.HTTP,
+            model_id="some/model",
+            model_revision="abc123",
+            endpoint_url="https://example.invalid/predict",
+        )
+    assert made.setup_state is setup_state
+    return workspace, made
+
+
+def _invoke_connection(
+    connections: InferenceConnectionService, connection_id: UUID, action: ConnectionAction
+) -> Callable[[], None]:
+    """What the SDK caller behind each declared connection action actually does.
+
+    Each closure asserts the effect the action's *name* promises, so a
+    declaration cannot be satisfied by a call that returned and changed nothing.
+    """
+
+    def update() -> None:
+        edited = connections.update(connection_id, model_revision="deadbeef")
+        assert edited.model_revision == "deadbeef"
+
+    def delete() -> None:
+        connections.delete(connection_id)
+        assert all(one.id != connection_id for one in connections.list())
+
+    return {ConnectionAction.UPDATE: update, ConnectionAction.DELETE: delete}[action]
+
+
+@pytest.mark.parametrize("action", list(ConnectionAction), ids=lambda a: a.value)
+@pytest.mark.parametrize("state", list(ConnectionSetupState), ids=lambda s: s.value)
+def test_a_connection_allows_exactly_what_it_declares(
+    tmp_path: Path, state: ConnectionSetupState, action: ConnectionAction
+) -> None:
+    """Every square of `ConnectionSetupState` x `ConnectionAction`, for real.
+
+    Every square currently succeeds, and that is the claim rather than a gap in
+    it: this resource has no state-dependent legality yet, so "declared" and
+    "permitted" agreeing means both are total. The test is written as the same
+    matrix the other three resources get, so the day `delete` starts refusing a
+    connection with a download in flight, the square that stops being legal has
+    somewhere to fail.
+    """
+    workspace, made = _connection_in(tmp_path, state)
+    connections = InferenceConnectionService(workspace)
+    invoke = _invoke_connection(connections, made.id, action)
+
+    assert action in connection_actions(state)
+    invoke()
+    workspace.close()
+
+
+def test_a_connections_declaration_is_read_from_the_kernels_own_gate() -> None:
+    """The declaration reads `CONNECTION_GATES`, never a list beside it.
+
+    `DELETABLE_STATES`' test, one resource over: the entry must *be* the set the
+    kernel keeps, so narrowing an action narrows its declaration in the same
+    edit. Spelling the answer out here instead would be the hand-mirror this
+    module exists to remove.
+    """
+    for action in ConnectionAction:
+        assert CONNECTION_GATES[action] is EVERY_SETUP_STATE
+    for state in ConnectionSetupState:
+        for action in ConnectionAction:
+            assert (action in connection_actions(state)) is (state in CONNECTION_GATES[action])
+
+
+def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> None:
+    """`download_weights` and `test` are absent until something performs them.
+
+    The #376 rule stated as a test: a declared action obliges every client to
+    offer it, so naming one before its surface exists makes the wire the source
+    of a control that cannot work. This fails the moment somebody adds the name
+    without the slice behind it.
+    """
+    assert {a.value for a in ConnectionAction} == {"update", "delete"}

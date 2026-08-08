@@ -1440,6 +1440,283 @@
         "title": "ClassificationBody",
         "type": "object"
       },
+      "ConnectionAction": {
+        "description": "What can be asked of an inference connection. Order is display order.\n\nTwo, and the omissions are the point. ``download_weights`` and ``test`` are\nthe actions this resource will eventually be asked for, and neither is named\nhere yet because neither has anything behind it \u2014 under the\n``ui-capabilities`` contract a declared action obliges every client to offer\nit, so naming one before its surface exists is how a wire becomes the source\nof a control that cannot work. #376 is the precedent: the name returns in the\nsame change as the route that honours it.",
+        "enum": [
+          "update",
+          "delete"
+        ],
+        "title": "ConnectionAction",
+        "type": "string"
+      },
+      "ConnectionCreate": {
+        "description": "What a caller supplies to configure a connection.\n\n``setup_state`` is absent on purpose: it is derived from the kind by the\nservice, because it says what the kind still needs rather than what the\ncaller wants. Accepting it would let a client declare weights present that\nwere never fetched.",
+        "properties": {
+          "connection_type": {
+            "$ref": "#/components/schemas/ConnectionType"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "endpoint_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Url"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "model_revision": {
+            "title": "Model Revision",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          }
+        },
+        "required": [
+          "name",
+          "connection_type",
+          "model_id",
+          "model_revision"
+        ],
+        "title": "ConnectionCreate",
+        "type": "object"
+      },
+      "ConnectionOut": {
+        "description": "One configured place a model can be asked to predict.",
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionAction"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "connection_type": {
+            "$ref": "#/components/schemas/ConnectionType"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "endpoint_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Url"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "model_revision": {
+            "title": "Model Revision",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "setup_state": {
+            "$ref": "#/components/schemas/ConnectionSetupState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "connection_type",
+          "model_id",
+          "model_revision",
+          "device",
+          "precision",
+          "endpoint_url",
+          "setup_state",
+          "allowed_actions",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConnectionOut",
+        "type": "object"
+      },
+      "ConnectionPage": {
+        "description": "A page of inference connections.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ConnectionPage",
+        "type": "object"
+      },
+      "ConnectionSetupState": {
+        "description": "Whether a connection is ready to be asked for a prediction.\n\n``not_set_up`` means something local is still missing \u2014 weights that were\nnever fetched. It is the state a ``local`` connection is born in, and the one\na download clears.\n\nDeliberately **not** a reachability answer. Whether an endpoint responds is a\nquestion with a fresh answer every time it is asked, so it belongs to a test\ncall and its result, never to a stored row that would start lying the moment\nthe network moved.",
+        "enum": [
+          "not_set_up",
+          "ready"
+        ],
+        "title": "ConnectionSetupState",
+        "type": "string"
+      },
+      "ConnectionType": {
+        "description": "Where a connection's model runs.\n\nA ``StrEnum`` rather than a plain ``str`` on ``SourceKind``'s test: nothing\noutside this build writes the value, the kernel branches on it, and the set\ngrows only by a deliberate kernel change \u2014 a hosted connection type arriving\nlater is exactly that change.",
+        "enum": [
+          "local",
+          "http"
+        ],
+        "title": "ConnectionType",
+        "type": "string"
+      },
+      "ConnectionUpdate": {
+        "description": "A partial edit. Every field omitted or null means *leave this alone*.\n\n``connection_type`` is absent because the kind is not editable \u2014 see\n``InferenceConnectionService.update``. A field cannot be *cleared* through\nthis shape, which is the honest consequence of null meaning \"unchanged\": the\nparameters that could be cleared are exactly the ones the kind requires, so\nclearing one would produce a row the domain refuses anyway.",
+        "properties": {
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "endpoint_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Url"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "model_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Revision"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          }
+        },
+        "title": "ConnectionUpdate",
+        "type": "object"
+      },
       "DatasetChangeOut": {
         "description": "One entry in the trunk's append-only log.",
         "properties": {
@@ -5342,6 +5619,434 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/inference/connections": {
+      "get": {
+        "description": "Every configured connection in this workspace, in the order they were made.",
+        "operationId": "list_inference_connections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Inference Connections",
+        "tags": [
+          "inference"
+        ]
+      },
+      "post": {
+        "description": "Configure a connection. Nothing is downloaded and nothing is contacted.",
+        "operationId": "create_inference_connection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Inference Connection",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/inference/connections/{connection_id}": {
+      "delete": {
+        "description": "Remove a connection. Annotations keep the model provenance they recorded.\n\nNo ``confirm`` gate, unlike deleting a project: nothing holds a key to this\nrow, because an annotation copies its model's identity at write time rather\nthan pointing here (`cf. #417`). What is destroyed is a configuration.",
+        "operationId": "delete_inference_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Inference Connection",
+        "tags": [
+          "inference"
+        ]
+      },
+      "get": {
+        "description": "The connection with that id.",
+        "operationId": "get_inference_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Inference Connection",
+        "tags": [
+          "inference"
+        ]
+      },
+      "patch": {
+        "description": "Edit a connection. Omitted fields are left alone; the kind cannot change.",
+        "operationId": "update_inference_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Inference Connection",
+        "tags": [
+          "inference"
+        ]
       }
     },
     "/ingest-jobs/{job_id}": {
