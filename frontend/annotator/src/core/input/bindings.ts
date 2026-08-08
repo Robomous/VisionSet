@@ -123,7 +123,14 @@
 
 import { isTaggableClass } from "../interaction/tags";
 import type { AnnotationSchema } from "../types";
-import { FOCUS_CLASS_FIELD, RESET_ZOOM, SAVE, SKIP_FRAME, TOGGLE_HELP } from "./actions";
+import {
+  FOCUS_CLASS_FIELD,
+  RESET_ZOOM,
+  SAVE,
+  SKIP_FRAME,
+  TOGGLE_HELP,
+  TOGGLE_SUGGEST,
+} from "./actions";
 import type { Action } from "./actions";
 import { chordOf } from "./keys";
 import type { Keystroke } from "./keys";
@@ -178,6 +185,11 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   // so an unbound one would be a chip that lies. This is the half that fits in the
   // table; its sibling rides `enter`, for the reason above.
   { chord: "x", action: { kind: "host", name: SKIP_FRAME } },
+  // `s`, one more bare letter (#424). Not `mod+s`, which is `SAVE` — the two are
+  // different chords and the fold never sees them collide. A host with no model
+  // connection answers `false` and the chord falls through, which is what makes
+  // claiming it safe on a build that cannot serve it.
+  { chord: "s", action: { kind: "host", name: TOGGLE_SUGGEST } },
   { chord: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 

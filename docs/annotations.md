@@ -150,6 +150,13 @@ be constructed, so it never reaches a service to be reported. That is the divisi
 [schemas.md](schemas.md) already draws: per-value validity is pydantic's, validity that needs
 another object is the service's.
 
+An annotation accepted from the editor's suggest tool is written this way and no other: an
+ordinary `add` carrying `provenance="model"`, the `model_ref` the suggestion named, and its
+`confidence`. There is no separate route for it, no relaxed validation, and no link back to the
+connection — the model's identity is **copied** at write time, so deleting the connection later
+leaves the record intact. The gesture is in [ui.md](ui.md); what it proposes is in
+[inference.md](inference.md).
+
 ## `delete` has no `confirm=`
 
 The one exception to the rule in [projects.md](projects.md) and [batches.md](batches.md).
