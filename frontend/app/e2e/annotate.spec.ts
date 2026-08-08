@@ -49,7 +49,7 @@ function asset(
     source_id: null,
     frame_index: index,
     frame_timestamp: null,
-    thumbnail_hash: null,
+    thumbnail_hash: "ab".repeat(32),
     ingested_at: null,
     job_id: JOB,
     progress,
@@ -318,7 +318,7 @@ async function serveApi(
         json: { asset_id: assetId, progress: progress.get(assetId) ?? "unannotated" },
       });
     }
-    if (path.endsWith("/content")) {
+    if (path.endsWith("/content") || path.endsWith("/thumbnail")) {
       return route.fulfill({ contentType: "image/png", body: PIXEL });
     }
     if (path === "/projects") return route.fulfill({ json: { items: [], total: 0 } });
@@ -1469,6 +1469,90 @@ test("a skipped frame in a completed batch still says viewing only, and names th
   // person learns to trust neither.
   await expect(page.getByTestId("skipped-notice")).toHaveCount(0);
   await expect(page.getByTestId("unskip")).toBeDisabled();
+});
+
+/**
+ * #428: the browser's native image drag must be impossible in every mode. A
+ * drag on the asset means whatever the active tool means — draw, move, pan —
+ * and a gesture that lifts a ghost of the picture instead is one the product
+ * never offers. Two `<img>` elements exist product-wide: the canvas image
+ * (inert since the adapter's first commit — `draggable` off, no pointer
+ * events) and `AssetThumbnail`, which the frame-gallery overlay puts inside
+ * the workspace. Both are held here, against real browser drag machinery.
+ */
+
+/** Count native drags anywhere on the page, before any gesture runs. */
+async function armDragCounter(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const counted = window as { __drags?: number };
+    counted.__drags = 0;
+    document.addEventListener(
+      "dragstart",
+      () => {
+        counted.__drags = (counted.__drags ?? 0) + 1;
+      },
+      true,
+    );
+  });
+}
+
+async function nativeDrags(page: Page): Promise<number> {
+  return page.evaluate(() => (window as { __drags?: number }).__drags ?? 0);
+}
+
+test("no drag lifts the picture, and the tool's own gesture survives the attempt", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  await armDragCounter(page);
+
+  // A long, slow drag straight across the image with the select tool — the
+  // exact gesture that picks a picture up in a browser that offers it.
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.5, { steps: 12 });
+  await page.mouse.up();
+  expect(await nativeDrags(page)).toBe(0);
+
+  // The gallery overlay's thumbnails are pictures too, inside the workspace.
+  await page.getByTestId("open-gallery").click();
+  const tile = page.getByTestId("frame-gallery").getByTestId("thumbnail").first();
+  await expect(tile).toBeVisible();
+  const thumb = (await tile.boundingBox())!;
+  await page.mouse.move(thumb.x + thumb.width * 0.3, thumb.y + thumb.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(thumb.x + thumb.width * 2, thumb.y + thumb.height * 0.5, { steps: 12 });
+  await page.mouse.up();
+  expect(await nativeDrags(page)).toBe(0);
+  await page.keyboard.press("Escape");
+
+  // The interaction state came through the attempts untouched: the next
+  // gesture is an ordinary draw and it lands.
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+});
+
+test("the read-only mode is no more draggable than the editor", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, { batch: "completed", job: "completed" });
+  await expect(page.getByTestId("readonly-banner")).toBeVisible();
+  await armDragCounter(page);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.5, { steps: 12 });
+  await page.mouse.up();
+  expect(await nativeDrags(page)).toBe(0);
 });
 
 /**
