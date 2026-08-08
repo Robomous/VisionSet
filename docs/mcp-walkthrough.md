@@ -76,7 +76,7 @@ is the third fold: there is no `list_schema_versions`, because the parent alread
 
 ```
 ingest project="road-signs" path="/abs/incoming"
-->  {"created": 4, "deduplicated": 0, "failed": 0, "batch_id": "...", "failures": []}
+->  {"created": 4, "deduplicated": 0, "failed": 0, "partial": 0, "batch_id": "...", "failures": []}
 ```
 
 One tool, and it **blocks until the run has finished**. The kernel splits registration in two —

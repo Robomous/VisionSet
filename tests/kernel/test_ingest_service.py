@@ -496,11 +496,50 @@ def test_a_truncated_clip_keeps_what_decoded_and_reports_the_break(tmp_path: Pat
     result = fixture.ingest.ingest(source.id)
 
     assert 0 < result.created < clip.frame_count
-    assert [failure.kind for failure in result.failures] == [IngestFailureKind.CORRUPT]
+    assert [failure.kind for failure in result.failures] == [IngestFailureKind.PARTIAL]
     # The clip's filename, not `source.path` — that one is absolute (#317).
     assert result.failures[0].name == "broken.mp4"
     assert source.path not in result.failures[0].name
     assert fixture.ingest.get(result.job_id).state is IngestState.COMPLETED
+    fixture.close()
+
+
+def test_a_truncated_clip_reports_how_much_of_it_arrived(tmp_path: Path) -> None:
+    """#452: the run holds both numbers, so the report states them instead of a sentence.
+
+    `frames_produced` is exact — it is the length of what the loop kept — and matches the
+    assets that landed, which is what makes "the frames are in the batch" checkable rather
+    than reassuring. `frames_expected_estimate` is `duration × extraction_fps` off the probe
+    the source already carries: at 10 fps over the fixture's two seconds, twenty.
+    """
+    fixture = Fixture(tmp_path)
+    clip = write_corrupt_video(tmp_path / "broken.mp4")
+    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=10.0)
+
+    result = fixture.ingest.ingest(source.id)
+
+    reported = result.failures[0]
+    assert reported.frames_produced == result.created
+    assert reported.frames_expected_estimate == clip.frame_count
+    # A partial is not a file the run could not read, and the two counts say so
+    # apart: something arrived, and this is how much of it did not.
+    assert result.partial == 1
+    assert result.failed == 0
+    fixture.close()
+
+
+def test_a_clip_that_reads_to_the_end_reports_nothing_at_all(tmp_path: Path) -> None:
+    """Silence is the ok-state (#452). A clean run has nothing to say about itself."""
+    fixture = Fixture(tmp_path)
+    clip = fixture.clip()
+    source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=10.0)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert result.created == clip.frame_count
+    assert result.failures == ()
+    assert result.partial == 0
+    assert result.failed == 0
     fixture.close()
 
 

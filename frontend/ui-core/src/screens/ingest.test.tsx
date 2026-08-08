@@ -644,8 +644,20 @@ describe("watching a run", () => {
         processed: 3,
         total: 5,
         failures: [
-          { name: "/srv/data/photos/notes.txt", kind: "unsupported", reason: "not an image" },
-          { name: "/srv/data/photos/truncated.jpg", kind: "corrupt", reason: "unexpected end of file" },
+          {
+            name: "/srv/data/photos/notes.txt",
+            kind: "unsupported",
+            reason: "not an image",
+            frames_produced: null,
+            frames_expected_estimate: null,
+          },
+          {
+            name: "/srv/data/photos/truncated.jpg",
+            kind: "corrupt",
+            reason: "unexpected end of file",
+            frames_produced: null,
+            frames_expected_estimate: null,
+          },
         ],
       }),
     });
@@ -668,6 +680,75 @@ describe("watching a run", () => {
     expect(within(failures).getByTestId("failure-0").querySelector("[title]")?.getAttribute("title")).toBe(
       "/srv/data/photos/truncated.jpg",
     );
+  });
+
+  it("says how much of a damaged clip arrived, and what to do about it", async () => {
+    // #452: the run holds "eight of about twenty" and used to spend it on a
+    // sentence about the file being corrupt. The frames are in the batch, so the
+    // report is not a failure row — it says what arrived and what the remedy is.
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({
+        processed: 8,
+        total: null,
+        failures: [
+          {
+            name: "broken.mp4",
+            kind: "partial",
+            reason: "the video is damaged or truncated after 8 frames",
+            frames_produced: 8,
+            frames_expected_estimate: 20,
+          },
+        ],
+      }),
+    });
+    await launch();
+
+    const partial = await screen.findByTestId("partials");
+    expect(partial.textContent).toContain("broken.mp4");
+    expect(partial.textContent).toContain("8");
+    expect(partial.textContent).toContain("20");
+    expect(partial.textContent).toContain("re-ingest");
+    // A partial is not a file the run could not read, and the table that says so
+    // must not claim it.
+    expect(screen.queryByTestId("failures")).toBeNull();
+  });
+
+  it("reports the frames it recovered even when the container named no total", async () => {
+    // The estimate is optional by design — a damaged container's own metadata is
+    // suspect — so the count has to stand on its own without a denominator.
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({
+        processed: 8,
+        total: null,
+        failures: [
+          {
+            name: "broken.mp4",
+            kind: "partial",
+            reason: "the video is damaged or truncated after 8 frames",
+            frames_produced: 8,
+            frames_expected_estimate: null,
+          },
+        ],
+      }),
+    });
+    await launch();
+
+    const partial = await screen.findByTestId("partials");
+    expect(partial.textContent).toContain("8");
+    expect(partial.textContent).not.toContain("claimed");
+  });
+
+  it("says nothing at all about a run in which everything was read", async () => {
+    // Silence is the ok-state. The decision on #452 is explicit that surfacing it
+    // again would only be noise, and the first place that holds is here.
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job({ failures: [] }) });
+    await launch();
+
+    await waitFor(() => expect(screen.getByTestId("run-state").textContent).toBe("Done"));
+    expect(screen.queryByTestId("partials")).toBeNull();
+    expect(screen.queryByTestId("failures")).toBeNull();
   });
 
   it("offers a resume only for a failed run, and says what a resume is", async () => {
@@ -831,8 +912,20 @@ describe("what a settled run offers next", () => {
         processed: 3,
         total: 5,
         failures: [
-          { name: "notes.txt", kind: "unsupported", reason: "not an image" },
-          { name: "truncated.jpg", kind: "corrupt", reason: "unexpected end of file" },
+          {
+            name: "notes.txt",
+            kind: "unsupported",
+            reason: "not an image",
+            frames_produced: null,
+            frames_expected_estimate: null,
+          },
+          {
+            name: "truncated.jpg",
+            kind: "corrupt",
+            reason: "unexpected end of file",
+            frames_produced: null,
+            frames_expected_estimate: null,
+          },
         ],
       }),
     });

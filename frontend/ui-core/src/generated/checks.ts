@@ -159,10 +159,10 @@ export const checkFormatPage: Check<Schemas["FormatPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkFormatOut)], "total": [true, isInteger] } as const);
 
 export const checkIngestFailureKind: Check<Schemas["IngestFailureKind"]> =
-  /*#__PURE__*/ oneOf(["unsupported", "corrupt"] as const);
+  /*#__PURE__*/ oneOf(["unsupported", "corrupt", "partial"] as const);
 
 export const checkIngestFailureOut: Check<Schemas["IngestFailureOut"]> =
-  /*#__PURE__*/ object({ "kind": [true, checkIngestFailureKind], "name": [true, isString], "reason": [true, isString] } as const);
+  /*#__PURE__*/ object({ "frames_expected_estimate": [true, either([isInteger, isNull] as const)], "frames_produced": [true, either([isInteger, isNull] as const)], "kind": [true, checkIngestFailureKind], "name": [true, isString], "reason": [true, isString] } as const);
 
 export const checkIngestState: Check<Schemas["IngestState"]> =
   /*#__PURE__*/ oneOf(["pending", "running", "completed", "failed"] as const);

@@ -22,7 +22,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from tests.fixtures.media import write_image, write_video
+from tests.fixtures.media import write_corrupt_video, write_image, write_video
 from tests.server._api import api_client
 from tests.server._jobs import JOIN_TIMEOUT, InlineDispatcher, ManualDispatcher
 
@@ -72,6 +72,21 @@ def queued_jobs(client: TestClient) -> int:
 
 def registered_clip(client: TestClient, project: str, tmp_path: Path) -> str:
     clip = write_video(tmp_path / "made" / "drive.mp4", size=CLIP_SIZE).path
+    return _uploaded_clip(client, project, clip)
+
+
+def registered_broken_clip(client: TestClient, project: str, tmp_path: Path) -> str:
+    """The same upload, of a clip whose tail is gone.
+
+    Truncated *before* it is posted, so the server registers and probes exactly what a
+    half-finished copy would have left on somebody's disk. The faststart index at the front
+    is what keeps that file describable — see `write_corrupt_video`.
+    """
+    clip = write_corrupt_video(tmp_path / "made" / "broken.mp4", size=CLIP_SIZE).path
+    return _uploaded_clip(client, project, clip)
+
+
+def _uploaded_clip(client: TestClient, project: str, clip: Path) -> str:
     response = client.post(
         f"/projects/{project}/sources/video",
         files={"file": (clip.name, clip.read_bytes(), "video/mp4")},
@@ -235,6 +250,59 @@ def test_an_unreadable_item_is_reported_and_does_not_fail_the_run(
 
     assets = client.get(f"/batches/{polled['batch_id']}/assets").json()
     assert assets["total"] == 1
+
+
+def test_a_partial_extraction_is_reported_with_both_numbers(
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
+) -> None:
+    """#452, on the wire the ingest screen actually polls."""
+    source = registered_broken_clip(client, project, tmp_path)
+
+    job = launch(client, source).json()
+    runner.wait()
+
+    polled = client.get(f"/ingest-jobs/{job['id']}").json()
+    assert polled["state"] == "completed"
+    reported = polled["failures"]
+    assert [f["kind"] for f in reported] == ["partial"]
+    assert reported[0]["name"] == "broken.mp4"
+    # What arrived is what is in the batch, and it is short of the estimate.
+    assets = client.get(f"/batches/{polled['batch_id']}/assets").json()
+    assert reported[0]["frames_produced"] == assets["total"] > 0
+    assert reported[0]["frames_expected_estimate"] == EXPECTED_FRAMES
+    assert reported[0]["frames_produced"] < EXPECTED_FRAMES
+
+
+def test_a_partial_extraction_changes_nothing_about_the_assets_it_produced(
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
+) -> None:
+    """The boundary #452 draws, asserted rather than intended.
+
+    The report is the ingest job's and it stops there. An asset lifted out of a damaged
+    clip is an ordinary asset — same fields, same batch — so nothing downstream can learn
+    where it came from, and nothing downstream has to.
+    """
+    clean = registered_clip(client, project, tmp_path)
+    broken = registered_broken_clip(client, project, tmp_path)
+
+    good = launch(client, clean).json()
+    runner.wait()
+    damaged = launch(client, broken).json()
+    runner.wait()
+
+    good_batch = client.get(f"/ingest-jobs/{good['id']}").json()["batch_id"]
+    damaged_batch = client.get(f"/ingest-jobs/{damaged['id']}").json()["batch_id"]
+
+    def shape(payload: dict[str, Any]) -> set[str]:
+        return set(payload.keys())
+
+    good_assets = client.get(f"/batches/{good_batch}/assets").json()["items"]
+    damaged_assets = client.get(f"/batches/{damaged_batch}/assets").json()["items"]
+    assert damaged_assets
+    assert shape(damaged_assets[0]) == shape(good_assets[0])
+    assert shape(client.get(f"/batches/{damaged_batch}").json()) == shape(
+        client.get(f"/batches/{good_batch}").json()
+    )
 
 
 def test_listing_the_runs_of_a_source(

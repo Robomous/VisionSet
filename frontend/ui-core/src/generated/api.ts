@@ -2839,22 +2839,32 @@ export interface components {
         ImageFormat: "jpeg" | "png";
         /**
          * IngestFailureKind
-         * @description Why one item did not become an asset, split by what to do about it.
+         * @description What became of one item the run could not simply read, split by remedy.
          *
          *     An enum rather than a plain ``str``, on exactly ``SourceKind``'s terms: the
          *     set is closed, no writer outside this build produces a value, and the kernel
          *     branches on it. What makes it worth a type at all is that a report has to be
          *     **grouped**, not read — ``CorruptMedia``'s docstring is explicit that a
-         *     report unable to separate the two would bury real data loss under ordinary
+         *     report unable to separate the kinds would bury real data loss under ordinary
          *     operator noise, and a reason sentence cannot be grouped on.
+         *
+         *     ``PARTIAL`` is the third member and the only one that is not a total loss.
+         *     It was added by #452, and what earned it is that the two below could not say
+         *     the thing an operator most needs to hear about a damaged clip: *some of it is
+         *     in your batch*. A truncated video was filed as ``CORRUPT`` — true of the
+         *     file, and misleading about the run, which had just created assets from it.
          * @enum {string}
          */
-        IngestFailureKind: "unsupported" | "corrupt";
+        IngestFailureKind: "unsupported" | "corrupt" | "partial";
         /**
          * IngestFailureOut
-         * @description One item a run could not read, and why.
+         * @description What became of one item the run could not simply read.
          */
         IngestFailureOut: {
+            /** Frames Expected Estimate */
+            frames_expected_estimate: number | null;
+            /** Frames Produced */
+            frames_produced: number | null;
             kind: components["schemas"]["IngestFailureKind"];
             /** Name */
             name: string;

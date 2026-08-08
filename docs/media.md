@@ -352,8 +352,8 @@ check being what moves the failure that far from the missing binary.
 Which ffmpeg is not incidental, and the image's base is chosen for it. Measured on 5.1, the
 version Debian bookworm ships: `-display_rotation` — how the rotation fixtures make a clip that
 declares a display matrix — does not exist before 6.0, and a truncated clip was reported as
-*unsupported* rather than *corrupt*, collapsing the one distinction `IngestFailureKind` exists to
-make. So the image is built on trixie, whose 7.1 is one major above the 6.1 that CI and an Ubuntu
+*unsupported* rather than as the partial read it is, collapsing the one distinction
+`IngestFailureKind` exists to make. So the image is built on trixie, whose 7.1 is one major above the 6.1 that CI and an Ubuntu
 workstation run, and the `docker` job is what stops a future base-image change reintroducing
 either quietly.
 

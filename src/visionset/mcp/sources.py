@@ -79,6 +79,13 @@ def ingest(
     known; both went into the batch. That is also why re-running this after an
     interrupted call is safe and nearly free.
 
+    A damaged clip is read as far as its bytes go, and what came out is kept. It
+    is counted in `partial` rather than in `failed`, and its `failures` entry
+    carries `frames_produced` beside `frames_expected_estimate` — how much
+    arrived, and roughly how much the container claimed. Those frames are already
+    in the batch; the remedy is to ingest a good copy, which content addressing
+    makes cheap. An ingest that read everything reports none of this.
+
     The `batch_id` it returns is what `approve_batch` takes next. A long video
     can make this call take minutes; there is no progress to poll from here.
 
@@ -126,6 +133,9 @@ def ingest(
         "created": result.created,
         "deduplicated": result.deduplicated,
         "failed": result.failed,
+        # Its own count, not a subset of `failed`: a damaged clip that put frames
+        # in the batch is not a file the run could not use (#452).
+        "partial": result.partial,
         "failures": [wire.ingest_failure(f) for f in result.failures],
     }
 

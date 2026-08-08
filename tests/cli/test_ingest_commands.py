@@ -14,7 +14,7 @@ from uuid import UUID
 
 import pytest
 from tests.cli._flow import ok, payload, run, schemad_project, stills, workspace
-from tests.fixtures.media import require_ffmpeg, write_video
+from tests.fixtures.media import require_ffmpeg, write_corrupt_video, write_video
 
 from visionset.kernel.domain import SourceKind
 from visionset.kernel.services import (
@@ -154,6 +154,38 @@ def test_a_video_registers_at_the_rate_it_was_given(root: Path, tmp_path: Path) 
     assert document["source"]["kind"] == "video"
     assert document["source"]["video"]["extraction_fps"] == 5.0
     assert document["created"] == 10
+
+
+def test_a_damaged_clip_says_how_much_of_it_arrived(root: Path, tmp_path: Path) -> None:
+    """#452 on stderr, where the person who typed the command is looking.
+
+    Not on stdout: that carries the batch id and nothing else, which is what makes
+    `BATCH=$(visionset ingest …)` work — and a damaged clip still fills a batch.
+    """
+    require_ffmpeg()
+    clip = write_corrupt_video(tmp_path / "broken.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
+
+    result = run(root, "ingest", str(clip.path), "-p", "road-signs", "--fps", "5")
+
+    assert result.exit_code == 0, result.output
+    assert "broken.mp4" in result.stderr
+    assert "re-ingest" in result.stderr
+    assert "\n" not in result.stdout.strip()
+
+
+def test_json_carries_the_partial_counts(root: Path, tmp_path: Path) -> None:
+    """Wire parity: the CLI's `--json` and the REST job publish the same numbers."""
+    require_ffmpeg()
+    clip = write_corrupt_video(tmp_path / "broken.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
+
+    document = payload(root, "ingest", str(clip.path), "-p", "road-signs", "--fps", "5")
+
+    assert document["failures"][0]["kind"] == "partial"
+    assert document["failures"][0]["frames_produced"] == document["created"] > 0
+    assert document["failures"][0]["frames_expected_estimate"] == 10
+    # A partial is not a file the run could not read, so it is not in that count.
+    assert document["failed"] == 0
+    assert document["partial"] == 1
 
 
 # --- the preview backfill ----------------------------------------------------
