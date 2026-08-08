@@ -66,6 +66,7 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     # a stage of the data's life but a piece of this workspace's configuration,
     # which the pipeline reads rather than produces.
     inference.router,
+    inference.suggestions,
     # Last, and outside the pipeline order above on purpose: a background job is
     # not a stage of the data's life, it is how some of those stages run. Reading
     # it into the sequence would suggest a place it does not have.

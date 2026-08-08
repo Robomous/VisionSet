@@ -796,6 +796,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inference/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Region
+         * @description Propose a shape for the thing under those points.
+         *
+         *     The server side of the editor's suggest gesture (`cf. #424`). One asset, one
+         *     prompt set, one answer — batch prediction is a separate path and is not this
+         *     one.
+         *
+         *     **Nothing is written and nothing is remembered.** A suggestion is a proposal:
+         *     accepting it is a later, ordinary annotation write carrying `provenance:
+         *     model`, this response's `model_ref`, and its `confidence`. Discarding it
+         *     costs a request that already finished. The only thing that outlives the call
+         *     is a cached image embedding, which is an optimisation rather than a record —
+         *     so the same points sent twice answer the same way, and a restart changes
+         *     nothing but the latency of the first click.
+         *
+         *     **The first click on an asset is the slow one.** A segmenter reads the whole
+         *     image once and then answers any number of clicks from that reading almost for
+         *     free, which is what makes refining by adding points practical. Sending the
+         *     accumulated points — rather than a diff — is what keeps this stateless.
+         *
+         *     **`allowed_geometries` is the caller's schema, not a preference.** The answer
+         *     is produced in one of the kinds named or not at all: a class that admits
+         *     polygons gets the outline, a class that admits only boxes gets its extent,
+         *     and a class that admits neither gets `region: null`. Answering in a kind the
+         *     schema would refuse would produce a suggestion that cannot be accepted.
+         *
+         *     A null `region` is a successful answer with nothing to propose. Refusals are
+         *     reserved for things the caller can act on: an unknown project, asset or
+         *     connection is 404; a connection whose weights are not here yet, or whose kind
+         *     this build cannot run, is 409 and names what to do; a connection whose model
+         *     answers words rather than places is 422.
+         */
+        post: operations["suggest_region"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest-jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -2334,6 +2383,30 @@ export interface components {
             /** Y */
             y: number;
         };
+        /**
+         * BboxGeometry
+         * @description An axis-aligned rectangle: top-left corner plus size.
+         *
+         *     ``width`` and ``height`` must be strictly positive — a zero-area box is as
+         *     meaningless as a negative one, so neither is accepted. ``x`` and ``y`` are
+         *     unconstrained: an annotation may legitimately start outside the asset's
+         *     bounds when an object is clipped by the frame edge.
+         */
+        BboxGeometry: {
+            /** Height */
+            height: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "bbox";
+            /** Width */
+            width: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
         /** Body_register_image_source */
         Body_register_image_source: {
             /**
@@ -2432,6 +2505,21 @@ export interface components {
          * @description A whole-asset tag: a class with no coordinates.
          */
         ClassificationBody: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "classification_tag";
+        };
+        /**
+         * ClassificationGeometry
+         * @description A whole-asset tag: the annotation carries a class but no coordinates.
+         *
+         *     It exists as a variant rather than as ``geometry: None`` so that every
+         *     annotation has a geometry with a discriminator, and so the union stays the
+         *     single place that answers "what shape is this label?".
+         */
+        ClassificationGeometry: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -2912,10 +3000,70 @@ export interface components {
             type: "polygon";
         };
         /**
+         * PolygonGeometry
+         * @description A closed polygon, as at least three ``(x, y)`` vertices.
+         *
+         *     The closing edge is implicit: the last point joins the first, and repeating
+         *     the first point at the end is NOT expected. Self-intersection is not
+         *     validated — M1 accepts any ring of three or more points, and rejecting
+         *     degenerate shapes is left to a later milestone.
+         */
+        PolygonGeometry: {
+            /** Points */
+            points: [
+                number,
+                number
+            ][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "polygon";
+        };
+        /**
          * PolylineBody
          * @description An open path of at least two points, in order. Nothing joins the ends.
          */
         PolylineBody: {
+            /** Points */
+            points: [
+                number,
+                number
+            ][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "polyline";
+        };
+        /**
+         * PolylineGeometry
+         * @description An open path, as at least two ``(x, y)`` vertices in order.
+         *
+         *     The contrast with :class:`PolygonGeometry` is the whole definition: a polygon
+         *     is a *ring* whose closing edge is implicit, and a polyline is a *path* whose
+         *     ends stay apart. Nothing joins the last point to the first, and a caller that
+         *     repeats the first point at the end has drawn a closed path — which is a legal
+         *     polyline, and not the same value as the polygon with those vertices.
+         *
+         *     **The order of the points is the geometry**, not an incidental detail of how
+         *     they were collected. A lane runs from one end to the other, and reversing the
+         *     list is a different annotation of the same pixels. There is nothing to
+         *     validate in that — an ordered sequence is ordered — which is worth saying
+         *     because the ordering rule a lane *format* wants is a different rule: TuSimple
+         *     requires points sorted by ascending Y, and :mod:`visionset.formats.lanes`
+         *     enforces that at the boundary where it applies. Putting it here would make one
+         *     format's invariant a condition of storing a lane at all, and would refuse
+         *     every horizontal path in a domain that has no idea what a road is.
+         *
+         *     Degeneracy is refused in exactly one case, the analogue of the zero-area box
+         *     :class:`BboxGeometry` already declines: a path whose points are all the same
+         *     point has no length and describes nothing. Consecutive duplicates within a
+         *     longer path are left alone — they arrive from real digitizers and from honest
+         *     resampling, and they cost a renderer nothing — and self-intersection is not
+         *     validated here for the same reason it is not validated for a polygon.
+         */
+        PolylineGeometry: {
             /** Points */
             points: [
                 number,
@@ -3270,6 +3418,85 @@ export interface components {
             train: number;
             /** Val */
             val: number;
+        };
+        /**
+         * SuggestPoint
+         * @description One click, in the asset's own pixel coordinates.
+         *
+         *     An object rather than a two-element array because a JSON ``[x, y]`` is a
+         *     shape a generated client types as ``number[]`` and a reader has to guess the
+         *     order of. The domain's own tuples are fine — Python has positional meaning —
+         *     but the wire is read by people.
+         */
+        SuggestPoint: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
+        /**
+         * SuggestRequest
+         * @description Where somebody clicked, on what, through which connection.
+         *
+         *     Everything travels in the body rather than in the path: the call names an
+         *     asset *and* a connection, and neither owns the other. Putting one in the path
+         *     would make it look like the parent of the request, which is how a URL is
+         *     read.
+         */
+        SuggestRequest: {
+            /** Allowed Geometries */
+            allowed_geometries: components["schemas"]["GeometryType"][];
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Detail */
+            detail?: number | null;
+            /** Negative */
+            negative?: components["schemas"]["SuggestPoint"][];
+            /** Positive */
+            positive: components["schemas"]["SuggestPoint"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /**
+         * SuggestedRegion
+         * @description One proposed shape and how sure the model is of it.
+         */
+        SuggestedRegion: {
+            /** Confidence */
+            confidence: number;
+            /** Geometry */
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["ClassificationGeometry"];
+        };
+        /**
+         * SuggestionOut
+         * @description What the model proposes, or an honest nothing.
+         *
+         *     ``region`` is null when there is no suggestion, and that is an ordinary
+         *     answer rather than an error: a click can land on sky, the model can be less
+         *     sure than the caller asked for, and the shape found can be one this class
+         *     cannot hold. A 404 or a 409 for any of those would be telling the caller they
+         *     did something wrong when they did not.
+         *
+         *     ``model_ref`` is echoed on every answer, including the empty one, because it
+         *     is what an accepted suggestion has to carry into its annotation — and a
+         *     caller that had to remember which connection it asked would be keeping a
+         *     second copy of something the response can simply state.
+         */
+        SuggestionOut: {
+            /** Model Ref */
+            model_ref: string;
+            region?: components["schemas"]["SuggestedRegion"] | null;
         };
         /**
          * VideoProvenanceOut
@@ -5422,6 +5649,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BackgroundJobOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    suggest_region: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestionOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

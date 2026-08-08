@@ -1237,6 +1237,44 @@
         "title": "BboxBody",
         "type": "object"
       },
+      "BboxGeometry": {
+        "additionalProperties": false,
+        "description": "An axis-aligned rectangle: top-left corner plus size.\n\n``width`` and ``height`` must be strictly positive \u2014 a zero-area box is as\nmeaningless as a negative one, so neither is accepted. ``x`` and ``y`` are\nunconstrained: an annotation may legitimately start outside the asset's\nbounds when an object is clipped by the frame edge.",
+        "properties": {
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "number"
+          },
+          "type": {
+            "const": "bbox",
+            "default": "bbox",
+            "title": "Type",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "number"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "BboxGeometry",
+        "type": "object"
+      },
       "Body_register_image_source": {
         "properties": {
           "files": {
@@ -1438,6 +1476,20 @@
           "type"
         ],
         "title": "ClassificationBody",
+        "type": "object"
+      },
+      "ClassificationGeometry": {
+        "additionalProperties": false,
+        "description": "A whole-asset tag: the annotation carries a class but no coordinates.\n\nIt exists as a variant rather than as ``geometry: None`` so that every\nannotation has a geometry with a discriminator, and so the union stays the\nsingle place that answers \"what shape is this label?\".",
+        "properties": {
+          "type": {
+            "const": "classification_tag",
+            "default": "classification_tag",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "ClassificationGeometry",
         "type": "object"
       },
       "ConnectionAction": {
@@ -2394,6 +2446,41 @@
         "title": "PolygonBody",
         "type": "object"
       },
+      "PolygonGeometry": {
+        "additionalProperties": false,
+        "description": "A closed polygon, as at least three ``(x, y)`` vertices.\n\nThe closing edge is implicit: the last point joins the first, and repeating\nthe first point at the end is NOT expected. Self-intersection is not\nvalidated \u2014 M1 accepts any ring of three or more points, and rejecting\ndegenerate shapes is left to a later milestone.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 3,
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "polygon",
+            "default": "polygon",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "title": "PolygonGeometry",
+        "type": "object"
+      },
       "PolylineBody": {
         "additionalProperties": false,
         "description": "An open path of at least two points, in order. Nothing joins the ends.",
@@ -2426,6 +2513,41 @@
           "points"
         ],
         "title": "PolylineBody",
+        "type": "object"
+      },
+      "PolylineGeometry": {
+        "additionalProperties": false,
+        "description": "An open path, as at least two ``(x, y)`` vertices in order.\n\nThe contrast with :class:`PolygonGeometry` is the whole definition: a polygon\nis a *ring* whose closing edge is implicit, and a polyline is a *path* whose\nends stay apart. Nothing joins the last point to the first, and a caller that\nrepeats the first point at the end has drawn a closed path \u2014 which is a legal\npolyline, and not the same value as the polygon with those vertices.\n\n**The order of the points is the geometry**, not an incidental detail of how\nthey were collected. A lane runs from one end to the other, and reversing the\nlist is a different annotation of the same pixels. There is nothing to\nvalidate in that \u2014 an ordered sequence is ordered \u2014 which is worth saying\nbecause the ordering rule a lane *format* wants is a different rule: TuSimple\nrequires points sorted by ascending Y, and :mod:`visionset.formats.lanes`\nenforces that at the boundary where it applies. Putting it here would make one\nformat's invariant a condition of storing a lane at all, and would refuse\nevery horizontal path in a domain that has no idea what a road is.\n\nDegeneracy is refused in exactly one case, the analogue of the zero-area box\n:class:`BboxGeometry` already declines: a path whose points are all the same\npoint has no length and describes nothing. Consecutive duplicates within a\nlonger path are left alone \u2014 they arrive from real digitizers and from honest\nresampling, and they cost a renderer nothing \u2014 and self-intersection is not\nvalidated here for the same reason it is not validated for a polygon.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 2,
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "polyline",
+            "default": "polyline",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "title": "PolylineGeometry",
         "type": "object"
       },
       "ProgressCounts": {
@@ -3149,6 +3271,157 @@
           "test"
         ],
         "title": "SplitRecipeBody",
+        "type": "object"
+      },
+      "SuggestPoint": {
+        "description": "One click, in the asset's own pixel coordinates.\n\nAn object rather than a two-element array because a JSON ``[x, y]`` is a\nshape a generated client types as ``number[]`` and a reader has to guess the\norder of. The domain's own tuples are fine \u2014 Python has positional meaning \u2014\nbut the wire is read by people.",
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "SuggestPoint",
+        "type": "object"
+      },
+      "SuggestRequest": {
+        "description": "Where somebody clicked, on what, through which connection.\n\nEverything travels in the body rather than in the path: the call names an\nasset *and* a connection, and neither owns the other. Putting one in the path\nwould make it look like the parent of the request, which is how a URL is\nread.",
+        "properties": {
+          "allowed_geometries": {
+            "items": {
+              "$ref": "#/components/schemas/GeometryType"
+            },
+            "minItems": 1,
+            "title": "Allowed Geometries",
+            "type": "array"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "negative": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestPoint"
+            },
+            "title": "Negative",
+            "type": "array"
+          },
+          "positive": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestPoint"
+            },
+            "minItems": 1,
+            "title": "Positive",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "asset_id",
+          "connection_id",
+          "positive",
+          "allowed_geometries"
+        ],
+        "title": "SuggestRequest",
+        "type": "object"
+      },
+      "SuggestedRegion": {
+        "description": "One proposed shape and how sure the model is of it.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "geometry": {
+            "discriminator": {
+              "mapping": {
+                "bbox": "#/components/schemas/BboxGeometry",
+                "classification_tag": "#/components/schemas/ClassificationGeometry",
+                "polygon": "#/components/schemas/PolygonGeometry",
+                "polyline": "#/components/schemas/PolylineGeometry"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BboxGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/PolygonGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/PolylineGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/ClassificationGeometry"
+              }
+            ],
+            "title": "Geometry"
+          }
+        },
+        "required": [
+          "geometry",
+          "confidence"
+        ],
+        "title": "SuggestedRegion",
+        "type": "object"
+      },
+      "SuggestionOut": {
+        "description": "What the model proposes, or an honest nothing.\n\n``region`` is null when there is no suggestion, and that is an ordinary\nanswer rather than an error: a click can land on sky, the model can be less\nsure than the caller asked for, and the shape found can be one this class\ncannot hold. A 404 or a 409 for any of those would be telling the caller they\ndid something wrong when they did not.\n\n``model_ref`` is echoed on every answer, including the empty one, because it\nis what an accepted suggestion has to carry into its annotation \u2014 and a\ncaller that had to remember which connection it asked would be keeping a\nsecond copy of something the response can simply state.",
+        "properties": {
+          "model_ref": {
+            "title": "Model Ref",
+            "type": "string"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestedRegion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "model_ref"
+        ],
+        "title": "SuggestionOut",
         "type": "object"
       },
       "VideoProvenanceOut": {
@@ -6144,6 +6417,103 @@
           }
         ],
         "summary": "Download Connection Weights",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/inference/suggest": {
+      "post": {
+        "description": "Propose a shape for the thing under those points.\n\nThe server side of the editor's suggest gesture (`cf. #424`). One asset, one\nprompt set, one answer \u2014 batch prediction is a separate path and is not this\none.\n\n**Nothing is written and nothing is remembered.** A suggestion is a proposal:\naccepting it is a later, ordinary annotation write carrying `provenance:\nmodel`, this response's `model_ref`, and its `confidence`. Discarding it\ncosts a request that already finished. The only thing that outlives the call\nis a cached image embedding, which is an optimisation rather than a record \u2014\nso the same points sent twice answer the same way, and a restart changes\nnothing but the latency of the first click.\n\n**The first click on an asset is the slow one.** A segmenter reads the whole\nimage once and then answers any number of clicks from that reading almost for\nfree, which is what makes refining by adding points practical. Sending the\naccumulated points \u2014 rather than a diff \u2014 is what keeps this stateless.\n\n**`allowed_geometries` is the caller's schema, not a preference.** The answer\nis produced in one of the kinds named or not at all: a class that admits\npolygons gets the outline, a class that admits only boxes gets its extent,\nand a class that admits neither gets `region: null`. Answering in a kind the\nschema would refuse would produce a suggestion that cannot be accepted.\n\nA null `region` is a successful answer with nothing to propose. Refusals are\nreserved for things the caller can act on: an unknown project, asset or\nconnection is 404; a connection whose weights are not here yet, or whose kind\nthis build cannot run, is 409 and names what to do; a connection whose model\nanswers words rather than places is 422.",
+        "operationId": "suggest_region",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Suggest Region",
         "tags": [
           "inference"
         ]

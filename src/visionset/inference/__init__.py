@@ -1,4 +1,4 @@
-# usage: from visionset.inference import provider_for, fetch_weights
+# usage: from visionset.inference import provider_for, fetch_weights, suggest
 """The composition root for inference: a connection in, a ``ModelProvider`` out.
 
 **A sibling of ``visionset.formats``, ``visionset.wire`` and ``visionset.jobs``,
@@ -18,106 +18,70 @@ starts a server, runs a worker and imports this module without the optional
 runtime present. ``tests/architecture/test_optional_runtime.py`` proves it in a
 fresh interpreter.
 
-**Resolution is by connection type, and there is no plugin registry.** #418's
+**There is no plugin registry, and resolution happens in two steps.** #418's
 recorded decision is that adapters are instantiated from user-created model
 connections and never from a bundled default, which makes ``InferenceConnection``
 the registry: a row somebody wrote, naming a kind, a model and where it runs. A
 provider discovered by entry point would have nothing to be instantiated *from*,
 and a workspace could acquire the ability to predict through an unrelated ``pip
 install`` — which is exactly what "VisionSet never downloads a model on its own"
-exists to prevent. So the dispatch below is a ``match`` on two members, and it
-grows by a deliberate change when a hosted adapter arrives.
+exists to prevent. ``providers`` does the resolving: the connection's kind says
+*where*, and the model's own config says *which family*, because a local
+connection may hold a detector that answers words or a segmenter that answers
+places and those are not interchangeable.
+
+**What each surface reaches for.** ``fetch_weights`` is the download,
+``suggest`` is one click's worth of interactive segmentation, and ``provider_for``
+is the raw resolution underneath both. A surface serving clicks wants ``suggest``
+and the pool behind it; anything building a provider per call is paying a model
+load per request, which is the latency failure D5 on #424 exists to prevent.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from visionset.inference._extra import EXTRA, INSTALL_COMMAND, MODULES, require
+from visionset.inference.cache import (
+    DEFAULT_EMBEDDING_CAPACITY,
+    DEFAULT_PROVIDER_CAPACITY,
+    BoundedCache,
+)
+from visionset.inference.masks import DEFAULT_DETAIL, narrowed, polygon_from
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
+from visionset.inference.providers import (
+    SEGMENTER_FAMILIES,
+    ProviderPool,
+    family_of,
+    provider_for,
+    resident,
+)
+from visionset.inference.sam_provider import LocalSamProvider
+from visionset.inference.suggestions import suggest
 from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.inference.weights import MODELS_DIRNAME, cache_root, download, fetch_weights
-from visionset.kernel.domain import ConnectionSetupState, ConnectionType, InferenceConnection
-from visionset.kernel.errors import (
-    InferenceConnectionNotRunnable,
-    InferenceConnectionNotSetUp,
-)
-from visionset.kernel.ports import ModelProvider
 
 __all__ = [
+    "DEFAULT_DETAIL",
+    "DEFAULT_EMBEDDING_CAPACITY",
     "DEFAULT_IOU_THRESHOLD",
+    "DEFAULT_PROVIDER_CAPACITY",
     "EXTRA",
     "INSTALL_COMMAND",
     "MODELS_DIRNAME",
     "MODULES",
+    "SEGMENTER_FAMILIES",
+    "BoundedCache",
+    "LocalSamProvider",
     "LocalTransformersProvider",
+    "ProviderPool",
     "cache_root",
     "download",
+    "family_of",
     "fetch_weights",
+    "narrowed",
+    "polygon_from",
     "provider_for",
     "require",
+    "resident",
+    "suggest",
     "suppressed",
 ]
-
-
-def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> ModelProvider:
-    """The thing that will answer for this connection, or the reason nothing can.
-
-    Every refusal here is a ``VisionSetError`` carrying what happened and what to
-    do, never a stack trace and never a ``None`` a caller has to interpret — the
-    error contract, applied at the one place where "can this predict?" is finally
-    answered.
-
-    Building one is cheap and loads no weights: a caller may construct a provider
-    to find out whether it *could* run, which is what makes these refusals worth
-    raising early.
-
-    Raises:
-        InferenceConnectionNotSetUp: a local connection whose weights are not
-            here yet. The message names ``download_weights``, because that is the
-            action that makes the identical call succeed.
-        InferenceConnectionNotRunnable: nothing in this build runs a connection
-            of that kind. An ``http`` connection is well formed and unusable
-            here; the adapter that would speak to an endpoint is a later slice.
-        LocalInferenceUnavailable: the optional runtime is not installed. Raised
-            here rather than at the first ``predict`` so that a caller checking
-            usability gets the install command before it starts a batch.
-    """
-    match connection.connection_type:
-        case ConnectionType.LOCAL:
-            return _local(connection, workspace_root=workspace_root)
-        case ConnectionType.HTTP:
-            raise InferenceConnectionNotRunnable(
-                f"connection {connection.name!r} is an http connection, and this build has no "
-                "adapter that can speak to one; use a local connection, or a later version"
-            )
-
-
-def _local(connection: InferenceConnection, *, workspace_root: Path) -> ModelProvider:
-    """A local provider, once both things it needs are true.
-
-    The order of the two checks is deliberate. The connection's own state comes
-    first, because "your weights are not here" is about something the caller can
-    fix from where they are standing, while a missing extra is about the
-    installation and is the same answer for every connection in the workspace.
-    Reporting the machine's problem over the row's would tell somebody to run an
-    install when what they actually needed was a download.
-    """
-    if connection.setup_state is not ConnectionSetupState.READY:
-        raise InferenceConnectionNotSetUp(
-            f"connection {connection.name!r} has no weights on this machine yet; "
-            "run its download_weights action first"
-        )
-    require()
-    # ``device`` and ``precision`` are non-null on a local connection — the
-    # domain's cross-field rule is what makes that true — so the narrowing here
-    # is for the type checker rather than a possibility being handled.
-    assert connection.device is not None
-    return LocalTransformersProvider(
-        connection.model_id,
-        connection.model_revision,
-        device=connection.device,
-        precision=connection.precision,
-        cache_dir=cache_root(workspace_root),
-        connection_name=connection.name,
-    )
