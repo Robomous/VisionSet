@@ -165,14 +165,26 @@ export function AnnotatorDemo(): JSX.Element {
       >
         {/* #126's panel, composed here so the showcase is where its browser
             scenarios run. It is `ui-core`'s and styled with the design tokens; the
-            debug panels below it stay inline-styled, which `theme.ts` argues. */}
-        <AnnotatorPanel
-          store={store}
-          hiddenIds={hiddenIds}
-          onHiddenChange={setHiddenIds}
-          activeClass={activeClass}
-          onActivateClass={setActiveClass}
-        />
+            debug panels below it stay inline-styled, which `theme.ts` argues.
+
+            `flexShrink: 0` since #420, and it is load-bearing rather than tidy.
+            The panel is two regions now and carries `min-h-0` so its lower half
+            can scroll inside a container of definite height — which is what it
+            gets in the app, where it is a stretched item of a row. This aside is
+            a **scrolling column**, so `min-h-0` also licenses the browser to
+            shrink the panel below its content, and the overflow then lands on top
+            of the debug panels underneath: every scenario in `e2e/panel.spec.ts`
+            failed with `<aside> intercepts pointer events`. Pinning the basis is
+            what tells the column that this child is not the one that gives way. */}
+        <div style={{ flexShrink: 0, display: "flex" }}>
+          <AnnotatorPanel
+            store={store}
+            hiddenIds={hiddenIds}
+            onHiddenChange={setHiddenIds}
+            activeClass={activeClass}
+            onActivateClass={setActiveClass}
+          />
+        </div>
 
         <Panel title="Classes" testId="palette">
           <PaletteRow
