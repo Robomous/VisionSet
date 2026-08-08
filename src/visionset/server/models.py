@@ -1677,3 +1677,71 @@ class ConnectionUpdate(BaseModel):
     device: str | None = None
     precision: str | None = None
     endpoint_url: str | None = None
+
+
+class SuggestPoint(BaseModel):
+    """One click, in the asset's own pixel coordinates.
+
+    An object rather than a two-element array because a JSON ``[x, y]`` is a
+    shape a generated client types as ``number[]`` and a reader has to guess the
+    order of. The domain's own tuples are fine — Python has positional meaning —
+    but the wire is read by people.
+    """
+
+    x: float
+    y: float
+
+
+class SuggestRequest(BaseModel):
+    """Where somebody clicked, on what, through which connection.
+
+    Everything travels in the body rather than in the path: the call names an
+    asset *and* a connection, and neither owns the other. Putting one in the path
+    would make it look like the parent of the request, which is how a URL is
+    read.
+    """
+
+    project_id: UUID
+    asset_id: UUID
+    connection_id: UUID
+    #: At least one point that says *this*. A gesture with only negative points
+    #: is not a refinement of anything.
+    positive: list[SuggestPoint] = Field(min_length=1)
+    #: Points that say *not that* — how somebody carves a hole out of an
+    #: over-eager first answer without starting the gesture over.
+    negative: list[SuggestPoint] = Field(default_factory=list)
+    #: The geometry kinds the active class admits. The server produces one of
+    #: these or nothing at all; it never answers in a kind the schema would go on
+    #: to refuse. Sent by the caller because the class is the caller's state —
+    #: the server would otherwise be guessing which class a click was meant for.
+    allowed_geometries: list[GeometryType] = Field(min_length=1)
+    #: How much detail to keep when an outline becomes a polygon, as a fraction
+    #: of the region's own size. Null takes the server's default, which is what
+    #: every ordinary caller sends.
+    detail: float | None = Field(default=None, gt=0.0, le=1.0)
+
+
+class SuggestedRegion(BaseModel):
+    """One proposed shape and how sure the model is of it."""
+
+    geometry: Geometry
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class SuggestionOut(BaseModel):
+    """What the model proposes, or an honest nothing.
+
+    ``region`` is null when there is no suggestion, and that is an ordinary
+    answer rather than an error: a click can land on sky, the model can be less
+    sure than the caller asked for, and the shape found can be one this class
+    cannot hold. A 404 or a 409 for any of those would be telling the caller they
+    did something wrong when they did not.
+
+    ``model_ref`` is echoed on every answer, including the empty one, because it
+    is what an accepted suggestion has to carry into its annotation — and a
+    caller that had to remember which connection it asked would be keeping a
+    second copy of something the response can simply state.
+    """
+
+    model_ref: str
+    region: SuggestedRegion | None = None

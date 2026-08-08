@@ -245,6 +245,24 @@ export const checkSourcePage: Check<Schemas["SourcePage"]> =
 export const checkSplitAssignmentOut: Check<Schemas["SplitAssignmentOut"]> =
   /*#__PURE__*/ object({ "test": [true, arrayOf(isString)], "train": [true, arrayOf(isString)], "val": [true, arrayOf(isString)] } as const);
 
+export const checkBboxGeometry: Check<Schemas["BboxGeometry"]> =
+  /*#__PURE__*/ object({ "height": [true, isNumber], "type": [true, lit("bbox")], "width": [true, isNumber], "x": [true, isNumber], "y": [true, isNumber] } as const);
+
+export const checkClassificationGeometry: Check<Schemas["ClassificationGeometry"]> =
+  /*#__PURE__*/ object({ "type": [true, lit("classification_tag")] } as const);
+
+export const checkPolygonGeometry: Check<Schemas["PolygonGeometry"]> =
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
+
+export const checkPolylineGeometry: Check<Schemas["PolylineGeometry"]> =
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")] } as const);
+
+export const checkSuggestedRegion: Check<Schemas["SuggestedRegion"]> =
+  /*#__PURE__*/ object({ "confidence": [true, isNumber], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry })] } as const);
+
+export const checkSuggestionOut: Check<Schemas["SuggestionOut"]> =
+  /*#__PURE__*/ object({ "model_ref": [true, isString], "region": [false, either([checkSuggestedRegion, isNull] as const)] } as const);
+
 // One alias per operation. `unwrap` takes these, never a schema check directly, so that
 // `tests/scripts/checks_wiring.test.mjs` can pair every call with its own operationId.
 
@@ -320,6 +338,7 @@ export const checkSetAssetProgress = checkAssetProgressOut;
 export const checkStartBatch = checkBatchOut;
 export const checkStartIngest = checkIngestJobOut;
 export const checkStartJob = checkJobOut;
+export const checkSuggestRegion = checkSuggestionOut;
 export const checkUpdateAnnotations = checkAnnotationPage;
 export const checkUpdateInferenceConnection = checkConnectionOut;
 export const checkVerifyRelease = checkReleaseVerificationOut;

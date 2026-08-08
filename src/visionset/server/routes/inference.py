@@ -22,10 +22,11 @@ from uuid import UUID
 
 from fastapi import Response, status
 
+from visionset.inference import DEFAULT_DETAIL, suggest
 from visionset.inference import require as require_local_inference
 from visionset.jobs.weights import JOB_TYPE as download_job_type
 from visionset.jobs.weights import payload_for as download_payload_for
-from visionset.kernel.domain import BackgroundJobSpec
+from visionset.kernel.domain import BackgroundJobSpec, PointPrompt
 from visionset.kernel.services import InferenceConnectionService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -35,9 +36,19 @@ from visionset.server.models import (
     ConnectionOut,
     ConnectionPage,
     ConnectionUpdate,
+    SuggestedRegion,
+    SuggestionOut,
+    SuggestRequest,
 )
 
 router = protected_router(prefix="/inference/connections", tags=["inference"])
+
+#: A second router because the path is a sibling of ``connections`` rather than a
+#: child of one: a suggestion is made *through* a connection, not *on* it, and
+#: nesting it under ``/inference/connections/{id}/suggest`` would put the asset —
+#: the thing the call is actually about — in the body under a URL claiming the
+#: connection owns it.
+suggestions = protected_router(prefix="/inference", tags=["inference"])
 
 
 @router.get("")
@@ -143,6 +154,61 @@ def download_connection_weights(
     runner.wake()
     response.headers["Location"] = f"/background-jobs/{job.id}"
     return BackgroundJobOut.of(job)
+
+
+@suggestions.post("/suggest", responses=documented(404, 409, 422))
+def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionOut:
+    """Propose a shape for the thing under those points.
+
+    The server side of the editor's suggest gesture (`cf. #424`). One asset, one
+    prompt set, one answer — batch prediction is a separate path and is not this
+    one.
+
+    **Nothing is written and nothing is remembered.** A suggestion is a proposal:
+    accepting it is a later, ordinary annotation write carrying `provenance:
+    model`, this response's `model_ref`, and its `confidence`. Discarding it
+    costs a request that already finished. The only thing that outlives the call
+    is a cached image embedding, which is an optimisation rather than a record —
+    so the same points sent twice answer the same way, and a restart changes
+    nothing but the latency of the first click.
+
+    **The first click on an asset is the slow one.** A segmenter reads the whole
+    image once and then answers any number of clicks from that reading almost for
+    free, which is what makes refining by adding points practical. Sending the
+    accumulated points — rather than a diff — is what keeps this stateless.
+
+    **`allowed_geometries` is the caller's schema, not a preference.** The answer
+    is produced in one of the kinds named or not at all: a class that admits
+    polygons gets the outline, a class that admits only boxes gets its extent,
+    and a class that admits neither gets `region: null`. Answering in a kind the
+    schema would refuse would produce a suggestion that cannot be accepted.
+
+    A null `region` is a successful answer with nothing to propose. Refusals are
+    reserved for things the caller can act on: an unknown project, asset or
+    connection is 404; a connection whose weights are not here yet, or whose kind
+    this build cannot run, is 409 and names what to do; a connection whose model
+    answers words rather than places is 422.
+    """
+    prompt = PointPrompt(
+        positive=tuple((point.x, point.y) for point in body.positive),
+        negative=tuple((point.x, point.y) for point in body.negative),
+    )
+    prediction = suggest(
+        workspace,
+        project_id=body.project_id,
+        asset_id=body.asset_id,
+        connection_id=body.connection_id,
+        prompt=prompt,
+        allowed=tuple(body.allowed_geometries),
+        detail=DEFAULT_DETAIL if body.detail is None else body.detail,
+    )
+    region = next(iter(prediction.regions), None)
+    return SuggestionOut(
+        model_ref=prediction.model_ref,
+        region=None
+        if region is None
+        else SuggestedRegion(geometry=region.geometry, confidence=region.confidence),
+    )
 
 
 @router.delete(

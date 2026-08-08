@@ -124,6 +124,70 @@ Half precision (`fp16`, `float16`, `half` — the spelling is yours) applies on 
 it is not the conservative choice it looks like: `float16` arithmetic outside CUDA's autocast is
 slower than the `float32` it was avoiding.
 
+## Suggesting a shape from a click
+
+A connection whose model answers *places* rather than *words* can propose a shape for whatever
+sits under a point. One call, one asset, one set of points:
+
+```http
+POST /inference/suggest
+{
+  "project_id": "…", "asset_id": "…", "connection_id": "…",
+  "positive": [{"x": 412.0, "y": 233.0}],
+  "negative": [],
+  "allowed_geometries": ["polygon"]
+}
+```
+
+```json
+{
+  "model_ref": "some/segmenter@abc123",
+  "region": {
+    "geometry": {"type": "polygon", "points": [[404.0, 221.0], …]},
+    "confidence": 0.87
+  }
+}
+```
+
+**Points are in the asset's own pixels**, the same frame every geometry in a project uses.
+`positive` says *this*; `negative` says *not that*, which is how an over-eager first answer gets
+carved back without starting over. Refining means sending the accumulated points again, not a
+diff — the call keeps no state about your gesture, so the same points always answer the same way.
+
+**`allowed_geometries` is your schema, not a preference.** The answer comes back in one of the
+kinds you named or not at all: name `polygon` and you get the outline; name only `bbox` and you
+get that outline's extent; name a kind that holds no shape and `region` is `null`. Answering in a
+kind your schema would refuse would hand you a suggestion that cannot be accepted.
+
+**`region: null` is a successful answer with nothing to propose** — a click on empty background,
+a model less sure than you asked for, or a shape too thin to be a polygon. `model_ref` is still
+there, because it is what an accepted suggestion has to carry.
+
+**`detail` controls how much of the outline survives simplification**, as a fraction of the
+region's own size rather than a pixel count, so one setting works on a thing eight pixels across
+and a thing eight hundred across alike. Omit it and the server's default keeps a typical object in
+the 10–40 vertex range. Smaller is more faithful and more vertices.
+
+### Nothing is written, and the first click is the slow one
+
+Asking is not annotating. The response is a proposal: turning it into an annotation is an ordinary
+annotation write that carries `provenance: model`, this response's `model_ref` and its
+`confidence`. Discarding it costs nothing, because nothing was recorded.
+
+A segmenter reads the whole image once and then answers any number of clicks from that reading, so
+the **first** call for an asset pays for the encode and the ones after it do not. That cached
+reading is the only thing the call leaves behind — an optimisation, not a record. It lives in the
+server process, is bounded, and a restart costs you nothing but the latency of the next first
+click.
+
+### When it refuses
+
+The connection is resolved before the asset, deliberately: if you are part-way through setting a
+connection up, you should hear about the connection rather than about an asset that was never the
+problem. A connection whose weights are not here yet is `INFERENCE_CONNECTION_NOT_SET_UP` and
+names `download` as the remedy; one whose model answers words rather than places is
+`UNSUPPORTED_PROMPT`.
+
 ## What a connection is not
 
 It is **not a credential store**, yet. An HTTP connection carries no secret today, and the field
