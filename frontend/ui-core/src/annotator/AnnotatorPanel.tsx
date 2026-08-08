@@ -89,7 +89,7 @@ import {
   type LabelClass,
 } from "@visionset/annotator";
 import { Check, Eye, EyeOff, Tag, Trash2 } from "lucide-react";
-import { useState, type JSX, type RefObject } from "react";
+import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
@@ -129,16 +129,6 @@ export interface AnnotatorPanelProps {
   readonly classFilterRef?: RefObject<HTMLInputElement | null>;
   /** Open the add-a-class dialog, or absent where there is nowhere to add one. */
   readonly onAddClass?: (name: string) => void;
-  /**
-   * Why no class can be armed on this frame, or absent when one can.
-   *
-   * Separate from `readOnly` and not derived from it, because the two answer
-   * different questions: `readOnly` says the *document* cannot be written, and
-   * this says *why* in the words the page already computed for its banner. The
-   * classes list renders either way — which classes exist stays true on a
-   * settled frame — and every row is disabled carrying this sentence.
-   */
-  readonly classRefusal?: string;
 }
 
 export function AnnotatorPanel({
@@ -150,7 +140,6 @@ export function AnnotatorPanel({
   onActivateClass,
   classFilterRef,
   onAddClass,
-  classRefusal,
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const [filter, setFilter] = useState("");
@@ -207,21 +196,31 @@ export function AnnotatorPanel({
       data-testid="annotator-panel"
       aria-label="Classes and annotations"
     >
-      {/* Upper region: the ontology. `shrink-0`, and it sizes itself in rows —
-          see `ClassRegion` for the rule and for why it is computed from the
-          schema's count rather than from the filtered one. */}
-      <ClassRegion
-        schema={schema}
-        activeClass={activeClass}
-        onActivateClass={onActivateClass}
-        {...(classFilterRef === undefined ? {} : { filterRef: classFilterRef })}
-        {...(onAddClass === undefined ? {} : { onAddClass })}
-        {...(classRefusal === undefined ? {} : { refusal: classRefusal })}
-      />
+      {/* Upper region: the ontology — absent, not disabled, in the read-only
+          mode (#426): what may I draw is not a question a viewer can ask, so
+          rendering the list there was information about nothing. The decision
+          supersedes #420's render-as-information direction. The objects region
+          below takes the whole panel by the same rule that always sized it —
+          it is `flex-1` and there is nothing else left.
 
-      {/* The split. A rule, not a handle — `ClassRegion` decides its own height
-          and everything below takes the rest. */}
-      <div className="h-px shrink-0 bg-border" aria-hidden="true" data-testid="panel-split" />
+          `shrink-0`, and it sizes itself in rows — see `ClassRegion` for the
+          rule and for why it is computed from the schema's count rather than
+          from the filtered one. */}
+      {!readOnly && (
+        <>
+          <ClassRegion
+            schema={schema}
+            activeClass={activeClass}
+            onActivateClass={onActivateClass}
+            {...(classFilterRef === undefined ? {} : { filterRef: classFilterRef })}
+            {...(onAddClass === undefined ? {} : { onAddClass })}
+          />
+
+          {/* The split. A rule, not a handle — `ClassRegion` decides its own
+              height and everything below takes the rest. */}
+          <div className="h-px shrink-0 bg-border" aria-hidden="true" data-testid="panel-split" />
+        </>
+      )}
 
       {/* Lower region: what is on this asset. `min-h-0` is what lets it be
           shorter than its content so the list inside can scroll — without it a
@@ -380,18 +379,7 @@ function TagStrip({
   );
 }
 
-function ObjectRow({
-  annotation,
-  index,
-  declared,
-  schema,
-  selected,
-  hidden,
-  onSelect,
-  onToggleVisible,
-  onRemove,
-  onReassign,
-}: {
+interface ObjectRowProps {
   readonly annotation: Annotation;
   readonly index: number;
   readonly declared: LabelClass | undefined;
@@ -405,9 +393,39 @@ function ObjectRow({
   readonly onRemove?: () => void;
   /** Absent in read-only for the same reason — every item on it is a write. */
   readonly onReassign?: (labelClass: string) => void;
-}): JSX.Element {
+}
+
+function ObjectRow({
+  annotation,
+  index,
+  declared,
+  schema,
+  selected,
+  hidden,
+  onSelect,
+  onToggleVisible,
+  onRemove,
+  onReassign,
+}: ObjectRowProps): JSX.Element {
+  const row = useRef<HTMLLIElement | null>(null);
+  /**
+   * Selection is one state, reflected everywhere (#426): a shape picked on the
+   * canvas selects this row too, and a row a filter or a long list has pushed
+   * out of the scroller scrolls into view. Each row watches its own `selected`,
+   * so the rule costs nothing to the rows it does not concern; `nearest` keeps
+   * an already-visible row exactly where it is, which is what makes the same
+   * effect harmless when the selection came from a click on this very row.
+   *
+   * DOM focus deliberately does not move: the keyboard stays where the gesture
+   * happened — the canvas reads its chords off its own root, and a selection
+   * that stole focus would kill them (`PinBadge`'s reason, one surface over).
+   */
+  useEffect(() => {
+    if (selected) row.current?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
   return (
     <li
+      ref={row}
       data-testid={`object-row-${index}`}
       data-selected={selected ? "true" : "false"}
       data-hidden={hidden ? "true" : "false"}

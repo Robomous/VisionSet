@@ -289,17 +289,17 @@ describe("the class list, now in the panel (#420)", () => {
     expect(screen.queryByTestId("class-create")).toBeNull();
   });
 
-  it("renders the classes on a settled frame, refused with a reason (#420)", async () => {
-    // Principle 9, and the change from the top-bar field it replaces: that one
-    // was **not rendered at all** while read-only. Which classes exist stays true
-    // on an accepted frame, so the list is information there — what it owes is
-    // the sentence, on rows nobody can press.
+  it("renders no classes region at all on a settled frame (#426)", async () => {
+    // Decision (a) of #426, superseding #420's render-as-information direction:
+    // an accepted frame opens in the read-only mode, and there the region — its
+    // rows, its filter, its quick-create — is absent, not disabled. The banner
+    // above the stage is the one surface that says why.
     progress = "accepted";
     await open();
 
-    const row = screen.getByTestId("class-row-vehicle");
-    expect(row.hasAttribute("disabled")).toBe(true);
-    expect(row.getAttribute("title")).toMatch(/accepted/i);
+    expect(screen.queryByTestId("class-region")).toBeNull();
+    expect(screen.queryByTestId("class-row-vehicle")).toBeNull();
+    expect(screen.getByTestId("objects-region")).toBeDefined();
   });
 });
 

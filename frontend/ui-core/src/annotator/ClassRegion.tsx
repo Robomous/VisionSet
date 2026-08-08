@@ -87,15 +87,6 @@ export interface ClassRegionProps {
    * carrying the last opening's name into it would be a prefill nobody asked for.
    */
   readonly onAddClass?: (name: string) => void;
-  /**
-   * Why no class can be armed, or absent when one can.
-   *
-   * The list still renders — which classes exist is information, and a frame
-   * being settled does not make it untrue. What changes is that every row is
-   * disabled *and says why*, which is principle 9's whole distinction between a
-   * refusal and a grey box.
-   */
-  readonly refusal?: string;
 }
 
 export function ClassRegion({
@@ -104,7 +95,6 @@ export function ClassRegion({
   onActivateClass,
   filterRef,
   onAddClass,
-  refusal,
 }: ClassRegionProps): JSX.Element {
   const [filter, setFilter] = useState("");
 
@@ -120,16 +110,9 @@ export function ClassRegion({
    * create row would put a schema change one stray Enter away from somebody who
    * was picking a class. An exact match suppresses it too, so the row never sits
    * under the very class it offers to add.
-   *
-   * Null while refusing, with the header's `+`: the create paths are writes the
-   * same way arming is — each ends in a published schema version — so a region
-   * that refuses its rows and still offers to create is a read-only mode with a
-   * hole in it (#423).
    */
   const creatable =
-    onAddClass === undefined || refusal !== undefined || query === "" || shown.length > 0
-      ? null
-      : filter.trim();
+    onAddClass === undefined || query === "" || shown.length > 0 ? null : filter.trim();
 
   /**
    * Enter takes the first match, which is the typeahead the top-bar field had.
@@ -151,7 +134,6 @@ export function ClassRegion({
       if (creatable !== null) onAddClass?.(creatable);
       return;
     }
-    if (refusal !== undefined) return;
     onActivateClass(first.name);
   }
 
@@ -174,10 +156,7 @@ export function ClassRegion({
             className="size-6"
             aria-label="Add a class"
             data-testid="class-add"
-            // Refusing closes this door too, with the rows' own sentence on it —
-            // hiding it would be a control that comes and goes between frames.
-            disabled={onAddClass === undefined || refusal !== undefined}
-            {...(refusal === undefined ? {} : { title: refusal })}
+            disabled={onAddClass === undefined}
             onClick={() => onAddClass?.("")}
           >
             <Plus className="size-4" />
@@ -233,7 +212,6 @@ export function ClassRegion({
                 schema={schema}
                 selected={declared.name === activeClass}
                 onSelect={() => onActivateClass(declared.name)}
-                {...(refusal === undefined ? {} : { refusal })}
               />
             ))
           )}
@@ -259,13 +237,11 @@ function ClassRow({
   schema,
   selected,
   onSelect,
-  refusal,
 }: {
   readonly declared: LabelClass;
   readonly schema: AnnotationSchema;
   readonly selected: boolean;
   readonly onSelect: () => void;
-  readonly refusal?: string;
 }): JSX.Element {
   return (
     <ClassListRow
@@ -280,7 +256,6 @@ function ClassRow({
         hotkey={hotkeyForClass(schema, declared.name)}
         selected={selected}
         onSelect={onSelect}
-        {...(refusal === undefined ? {} : { refusal })}
       />
   );
 }

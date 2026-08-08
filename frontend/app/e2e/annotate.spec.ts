@@ -149,8 +149,9 @@ async function serveApi(
   progress: Map<string, string> = progressStore({ "asset-1": "unannotated", "asset-2": "annotated" }),
   lifecycle: Lifecycle = openedWorld(),
   size?: SchemaSize,
+  seeded: readonly Record<string, unknown>[] = [],
 ): Promise<void> {
-  const stored: Record<string, unknown>[] = [];
+  const stored: Record<string, unknown>[] = [...seeded];
   const batchBody = (): Record<string, unknown> => ({
     id: BATCH,
     project_id: PROJECT,
@@ -322,8 +323,9 @@ async function openJob(
   progress?: Map<string, string>,
   lifecycle?: Lifecycle,
   size?: SchemaSize,
+  seeded?: readonly Record<string, unknown>[],
 ): Promise<void> {
-  await serveApi(page, sent, progress, lifecycle, size);
+  await serveApi(page, sent, progress, lifecycle, size, seeded);
   await page.goto(`/jobs/${JOB}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
@@ -1285,28 +1287,151 @@ test("a completed batch's canvas cannot be drawn on, however hard it is asked", 
 });
 
 /**
- * The doors #422 left open (#423). The classes region renders in the read-only
- * mode — which classes exist stays true there — but its create paths are writes:
- * each one opens the add-a-class dialog, and the dialog publishes a real schema
- * version from a page that has just said it is a viewer.
+ * The doors #422 left open (#423), closed since by absence (#426): the classes
+ * region does not render in the read-only mode at all, so no create path into
+ * the add-a-class dialog exists — the region, its filter, its quick-create and
+ * its hotkey badges are gone, and the objects region takes the whole panel.
  */
-test("a completed batch's viewer leaves no door into the add-a-class dialog", async ({ page }) => {
+test("a completed batch's viewer renders no classes region, and the objects region takes the panel", async ({
+  page,
+}) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, { batch: "completed", job: "completed" });
   await expect(page.getByTestId("readonly-banner")).toBeVisible();
 
-  // The `+` stays on screen — hiding it would be a control that comes and goes —
-  // but it is a refusal, and it says why.
-  const add = page.getByTestId("class-add");
-  await expect(add).toBeDisabled();
-  await expect(add).toHaveAttribute("title", /completed/i);
-
-  // Nothing matches what was typed: the `Create class` row must not appear, and
-  // the Enter fallthrough that would have created it must be dead too.
-  await page.getByTestId("class-filter").fill("a-class-nobody-declared");
-  await expect(page.getByTestId("class-create")).toHaveCount(0);
-  await page.getByTestId("class-filter").press("Enter");
+  await expect(page.getByTestId("class-region")).toHaveCount(0);
+  await expect(page.getByTestId("class-add")).toHaveCount(0);
+  await expect(page.getByTestId("class-filter")).toHaveCount(0);
+  await expect(page.getByTestId("panel-split")).toHaveCount(0);
   await expect(page.getByTestId("add-class-dialog")).toHaveCount(0);
+
+  // `c` reaches nothing: the chord is still claimed, and there is no filter for
+  // it to focus, so the keyboard stays on the canvas root.
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("c");
+  await expect(page.getByTestId("annotator-root")).toBeFocused();
+
+  // The layout half of decision (a): the objects region is handed the whole
+  // panel by the same flex rule that always sized it. Measured, not assumed —
+  // the region's top sits where the classes region used to, at the panel's
+  // padding edge.
+  const panel = (await page.getByTestId("annotator-panel").boundingBox())!;
+  const objects = (await page.getByTestId("objects-region").boundingBox())!;
+  expect(objects.y - panel.y).toBeLessThanOrEqual(12);
+  expect(panel.y + panel.height - (objects.y + objects.height)).toBeLessThanOrEqual(12);
+});
+
+/** A stored `vehicle` box on the given asset, in the wire mirror's exact shape. */
+function storedBox(assetId: string): Record<string, unknown> {
+  return {
+    id: "seeded-1",
+    asset_id: assetId,
+    label_class: "vehicle",
+    schema_version: 3,
+    geometry: { type: "bbox", x: 40, y: 40, width: 44, height: 34 },
+    attributes: {},
+    provenance: "human",
+    model_ref: null,
+    confidence: null,
+    job_id: null,
+  };
+}
+
+/**
+ * Decisions (b) and (c) of #426: read-only selection highlights — stroke and
+ * label — and advertises nothing. No move cursor anywhere, no grips or vertex
+ * dots on the selected shape. The editor is asserted beside it, so the claim is
+ * about the mode and not about the fixture.
+ */
+test("read-only selection shows no move cursor and no handles; the editor shows both", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  // A stored box, seeded at the stub: a completed batch's viewer cannot draw
+  // one, which is the point of the mode.
+  await openJob(page, sent, undefined, { batch: "completed", job: "completed" }, undefined, [
+    storedBox("asset-1"),
+  ]);
+  await expect(page.getByTestId("object-row-0")).toBeVisible();
+
+  // Select on the canvas — the viewer's one pointer gesture (#426 d).
+  const shape = page.locator("[data-annotation-id]").first();
+  const box = (await shape.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "true");
+
+  // (c) Selection did not grow handles…
+  await expect(page.locator("[data-handle]")).toHaveCount(0);
+  await expect(page.locator("[data-vertex]")).toHaveCount(0);
+
+  // (b) …and hovering the body promises nothing: the pane's cursor is the
+  // default arrow, not `move`.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const viewing = await page
+    .getByTestId("annotator-pane")
+    .evaluate((node) => getComputedStyle(node).cursor);
+  expect(viewing).toBe("default");
+});
+
+test("the editor still offers what the viewer withholds — move cursor and grips", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, [storedBox("asset-1")]);
+  await expect(page.getByTestId("object-row-0")).toBeVisible();
+
+  const shape = page.locator("[data-annotation-id]").first();
+  const box = (await shape.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "true");
+
+  await expect(page.locator("[data-handle]").first()).toBeVisible();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const editing = await page
+    .getByTestId("annotator-pane")
+    .evaluate((node) => getComputedStyle(node).cursor);
+  expect(editing).toBe("move");
+});
+
+/**
+ * Decision (d) of #426: selection is one state, reflected everywhere. A shape
+ * picked on the canvas selects its panel row and scrolls it into view — here
+ * with enough objects that the row genuinely starts outside the scroller.
+ */
+test("selecting on the canvas scrolls the object's row into view", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // Draw a column of boxes — enough that the first row scrolls out once the
+  // last is drawn and selected.
+  const canvas = page.getByTestId("annotator-canvas");
+  const frame = (await canvas.boundingBox())!;
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  const drawn = 14;
+  for (let index = 0; index < drawn; index += 1) {
+    const left = frame.x + frame.width * (0.05 + 0.9 * (index / drawn));
+    const top = frame.y + frame.height * 0.1;
+    await page.mouse.move(left, top);
+    await page.mouse.down();
+    await page.mouse.move(left + frame.width * 0.04, top + frame.height * 0.5, { steps: 4 });
+    await page.mouse.up();
+  }
+  await expect(page.getByTestId("object-total")).toHaveText(`${drawn} objects`);
+
+  // Select the *first* box on the canvas while the list sits scrolled to the
+  // bottom (drawing kept appending). Its row must come back into the scroller.
+  await page.keyboard.press("v");
+  const first = page.locator("[data-annotation-id]").first();
+  const target = (await first.boundingBox())!;
+  await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
+
+  const row = page.getByTestId("object-row-0");
+  await expect(row).toHaveAttribute("data-selected", "true");
+  const scroller = (await page.getByTestId("objects-scroller").boundingBox())!;
+  const where = (await row.boundingBox())!;
+  expect(where.y).toBeGreaterThanOrEqual(scroller.y - 1);
+  expect(where.y + where.height).toBeLessThanOrEqual(scroller.y + scroller.height + 1);
 });
 
 /**

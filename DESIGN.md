@@ -774,6 +774,41 @@ The page the reference design shows (#56), with measurements verified in v1's so
   `−`/`+` carry `aria-disabled` and a tooltip naming the limit, never a press that silently
   does nothing. `docs/annotations.md` carries the argument.
 
+### The read-only mode
+
+The workspace opens as a **viewer** whenever the wire withholds `annotate` on the
+frame — a completed batch, or a settled frame inside an open one. The mode is the
+frame's own declaration (`allowed_actions`), never this page's arithmetic; it was
+made a mode at all by audit F2, which found "open it and let the saves fail"
+shipping as the behaviour.
+
+What a viewer is (decision of 2026-08-07, #426):
+
+- **One explanation surface.** The banner under the top bar says `Viewing only.`
+  with the cause, and — when the wire declares `create_correction` — the route
+  onward: `Correct this batch`. It renders on every frame of a closed batch,
+  including skipped ones (#423), where the skipped notice would otherwise promise
+  an Un-skip the wire withholds.
+- **No classes region.** The side panel is the objects region alone, at full
+  height — the region, its filter, its quick-create and its hotkey badges are
+  absent, not disabled, and `C` and the digits do nothing. This supersedes #420's
+  render-classes-as-information direction: *what may I draw* is not a question a
+  viewer can ask.
+- **Selection highlights; it does not advertise.** A selected shape renders the
+  selected treatment — stroke 3, the label — with **no grips and no vertex
+  dots**, and the cursor is the **default arrow everywhere**: no `move`, no
+  resize keywords, because no such gesture exists. The tool strip is not
+  rendered at all, for the same reason it never was.
+- **Selection is one state, reflected everywhere.** A press on a shape selects
+  it — the one pointer gesture a viewer keeps, resolved by the same hit rule the
+  right-click menu uses — and the objects panel's row highlights and scrolls
+  into view. That reflection is both modes' behaviour, not the viewer's alone.
+  DOM focus stays with the canvas, which reads its chords off its own root.
+- **Reads stay live.** Zoom, pan, fullscreen, the frame gallery, `‹` `›`,
+  visibility toggles, the object filter, and copy (`⌘C`) — the road a box takes
+  into a correction batch — all work; paste and every other write is refused at
+  the engine (`readOnly` on the canvas, `READ_ONLY_KINDS` for the keyboard).
+
 ### The canvas surround
 
 The area around the asset is **`stage`** (`#e1e6eb`), never `muted` and never a dark

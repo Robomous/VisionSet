@@ -35,7 +35,7 @@ import {
   sceneDocument,
   worldIn,
 } from "./_scene";
-import { HANDLE_CURSORS, affordanceAt } from "./affordance";
+import { HANDLE_CURSORS, affordanceAt, viewerAffordanceAt, viewerPressTarget } from "./affordance";
 import type { Cursor } from "./affordance";
 import { transition } from "./machine";
 import { IDLE } from "./state";
@@ -437,5 +437,54 @@ describe("the cursor table", () => {
       sw: "nesw-resize",
       w: "ew-resize",
     });
+  });
+});
+
+describe("the viewer's affordance (#426)", () => {
+  // A scene with the box selected, which is the sharpest case: the resolver
+  // would offer its grips, and a viewer must not.
+  function viewerScene(selection: Selection = selectOnly(BOX_ID)): Scene {
+    return { document: sceneDocument(), selection, tolerances: assetTolerances(1) };
+  }
+
+  it("answers default over a selected box's grip, because no resize exists to promise", () => {
+    const grip = bboxHandlePositions(
+      annotationById(sceneDocument(), BOX_ID)!.geometry as never,
+    ).nw;
+    const affordance = viewerAffordanceAt(viewerScene(), grip);
+
+    expect(affordance.cursor).toBe("default");
+    // The grip position still sits on the shape, so the hot target is the body:
+    // the highlight survives, the offer does not.
+    expect(affordance.hot).toEqual({ kind: "body", id: BOX_ID });
+  });
+
+  it("answers default over a body, where the editor's select tool says move", () => {
+    expect(affordanceAt(IDLE, viewerScene(), "select", BOX_BODY).cursor).toBe("move");
+    expect(viewerAffordanceAt(viewerScene(), BOX_BODY).cursor).toBe("default");
+    expect(viewerAffordanceAt(viewerScene(), BOX_BODY).hot).toEqual({ kind: "body", id: BOX_ID });
+  });
+
+  it("answers default and no target over empty canvas", () => {
+    expect(viewerAffordanceAt(viewerScene(), EMPTY_POINT)).toEqual({
+      cursor: "default",
+      hot: NO_TARGET,
+    });
+  });
+
+  it("presses with the same rule it highlights with", () => {
+    // One function under both — the module's cursor-and-press contract restated
+    // for the mode. A point whose hover lights a shape selects that shape; one
+    // whose hover lights nothing clears.
+    expect(viewerPressTarget(viewerScene(), BOX_BODY)).toBe(BOX_ID);
+    expect(viewerAffordanceAt(viewerScene(), BOX_BODY).hot).toEqual({
+      kind: "body",
+      id: viewerPressTarget(viewerScene(), BOX_BODY),
+    });
+    expect(viewerPressTarget(viewerScene(), EMPTY_POINT)).toBeNull();
+  });
+
+  it("hits the topmost shape, which is the right-click menu's own rule", () => {
+    expect(viewerPressTarget(viewerScene(EMPTY_SELECTION), POLY_BODY)).toBe(POLY_ID);
   });
 });

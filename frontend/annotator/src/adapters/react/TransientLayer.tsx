@@ -77,7 +77,9 @@ export function TransientLayer({
         </g>
       )}
 
-      {edited !== null && <AnnotationShape shape={edited} zoom={zoom} />}
+      {/* `handles` unconditionally: this layer only ever draws a shape a
+          gesture is holding, and no gesture exists in the read-only mode. */}
+      {edited !== null && <AnnotationShape shape={edited} zoom={zoom} handles={true} />}
 
       {band !== null && (
         <rect
