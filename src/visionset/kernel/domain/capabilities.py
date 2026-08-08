@@ -46,7 +46,12 @@ from visionset.kernel.domain.batch import (
     REPINNABLE_STATES,
     BatchState,
 )
-from visionset.kernel.domain.inference import EVERY_SETUP_STATE, ConnectionSetupState
+from visionset.kernel.domain.inference import (
+    EVERY_CONNECTION_TYPE,
+    EVERY_SETUP_STATE,
+    ConnectionSetupState,
+    ConnectionType,
+)
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
@@ -112,18 +117,21 @@ class AssetAction(StrEnum):
     RETURN_TO_ANNOTATOR = "return_to_annotator"
 
 
+# ``download_weights`` arrives here in the same change as the route, the command
+# and the job that perform it — #376's condition, and the reason it was absent
+# from the previous slice rather than declared "for later". ``test`` is still
+# absent for exactly that reason: the remote endpoint contract is a later slice,
+# so naming it now would make the wire the source of a control that cannot work.
+#
+# It is declared **first**, which is a display decision. This is the only
+# connection action that moves the resource forward — it is what takes a local
+# connection from `not_set_up` to `ready` — and the batch listing already puts
+# the moves ahead of the housekeeping for the same reason. ``delete`` stays last,
+# because it ends the resource rather than changing it.
 class ConnectionAction(StrEnum):
-    """What can be asked of an inference connection. Order is display order.
+    """What can be asked of an inference connection. Order is display order."""
 
-    Two, and the omissions are the point. ``download_weights`` and ``test`` are
-    the actions this resource will eventually be asked for, and neither is named
-    here yet because neither has anything behind it — under the
-    ``ui-capabilities`` contract a declared action obliges every client to offer
-    it, so naming one before its surface exists is how a wire becomes the source
-    of a control that cannot work. #376 is the precedent: the name returns in the
-    same change as the route that honours it.
-    """
-
+    DOWNLOAD_WEIGHTS = "download_weights"
     UPDATE = "update"
     DELETE = "delete"
 
@@ -250,38 +258,84 @@ and this set can only grow if the domain's own derivation rule does.
 
 
 CONNECTION_GATES: Final[Mapping[ConnectionAction, frozenset[ConnectionSetupState]]] = {
+    ConnectionAction.DOWNLOAD_WEIGHTS: frozenset({ConnectionSetupState.NOT_SET_UP}),
     ConnectionAction.UPDATE: EVERY_SETUP_STATE,
     ConnectionAction.DELETE: EVERY_SETUP_STATE,
 }
-"""Both connection actions change no state, so neither appears in any table.
+"""Which setup states each connection action is legal in.
 
-There is no ``CONNECTION_MOVES`` and no transition table beside it, because
-nothing in this slice moves ``setup_state``: a connection is born in the state
-its type implies and stays there until a download or a test — neither of which
-exists yet — moves it. A transition table with no edges would be a table
-describing nothing.
+There is still no ``CONNECTION_MOVES`` and no transition table beside this,
+even though ``download_weights`` now moves ``setup_state``. A transition table
+earns its place when a state has more than one way out and the edges need naming
+— ``BATCH_TRANSITIONS`` has eight. Here there is exactly one edge, ``not_set_up
+-> ready``, and it is not a move somebody *performs*: it is what a finished
+download leaves behind, in the same transaction, the way an annotation appearing
+moves an asset to ``annotated`` without anybody clicking it. So the gate answers
+the question a client actually asks — may this be downloaded — and the single
+edge lives in the service that writes it.
 
-Both entries are :data:`~visionset.kernel.domain.inference.EVERY_SETUP_STATE`
-itself rather than a frozenset spelled out here, which is the same discipline
-``DELETABLE_STATES`` gets above: the declaration reads the set, so an action that
-later stops being unconditional stops being declared in the same edit.
+``update`` and ``delete`` name
+:data:`~visionset.kernel.domain.inference.EVERY_SETUP_STATE` itself rather than a
+frozenset spelled out here, the discipline ``DELETABLE_STATES`` gets above.
+``download_weights`` spells its one member out because that *is* the rule, and
+there is no existing set for "the state weights are missing in" to name instead.
 """
 
 
-def connection_actions(setup_state: ConnectionSetupState) -> list[ConnectionAction]:
-    """Everything this connection's state does not refuse, in declaration order.
+CONNECTION_KINDS: Final[Mapping[ConnectionAction, frozenset[ConnectionType]]] = {
+    ConnectionAction.DOWNLOAD_WEIGHTS: frozenset({ConnectionType.LOCAL}),
+    ConnectionAction.UPDATE: EVERY_CONNECTION_TYPE,
+    ConnectionAction.DELETE: EVERY_CONNECTION_TYPE,
+}
+"""Which kinds each connection action is legal for — the second half of the gate.
 
-    Today that is both actions in every state, and the honest reading of that is
-    "this resource has no state-dependent legality yet" rather than "capabilities
-    are pointless here". The declaration still earns its place: it is what a
-    client renders from, and it is the seam that a later slice narrows when
-    ``delete`` has to refuse a connection with a download in flight.
+The first capability in this module whose legality is not a function of state
+alone, and the reason it needs its own table rather than a widened one: an
+``http`` connection has **no weights to fetch at all**, which is a fact about
+what it *is* and not about where it has got to. Folding that into
+:data:`CONNECTION_GATES` would mean inventing a setup state to carry it — a
+``not_applicable`` that exists only so a table can be square, and that every
+reader of the row would then have to interpret.
+
+Two maps read by one function is also what keeps the failure honest.
+``connection_actions`` requires **both**, so an action added to one table and
+forgotten in the other raises ``KeyError`` at the first call rather than
+silently defaulting to allowed — which is what a single table with a ``.get``
+would have done.
+"""
+
+
+def connection_actions(
+    setup_state: ConnectionSetupState, *, connection_type: ConnectionType
+) -> list[ConnectionAction]:
+    """Everything this connection does not refuse, in declaration order.
+
+    Both dimensions, and neither is optional. A local connection that has not
+    fetched its weights declares ``download_weights``; the same connection once
+    ready does not, because there is nothing left to fetch; and an ``http``
+    connection never does in any state, because it has no weights of its own.
+    That is the whole of :data:`CONNECTION_GATES` and :data:`CONNECTION_KINDS`
+    read together, and `InferenceConnectionService.require_downloadable` gates on
+    this same function rather than restating either table — the hand-mirror this
+    module exists to prevent, and the antipattern this repository has paid for
+    twice.
+
+    ``download_weights`` being declared says the *connection* is ready to be
+    asked, never that this installation can carry it out: whether the local
+    runtime extra is present is a fact about the machine, which no pure function
+    over domain values can see. A deployment without it refuses with an install
+    hint rather than hiding the control, which is #421's stated design and design
+    principle 9 — never a bare disabled control.
 
     ``delete`` never depends on what a connection's annotations say, and cannot:
     provenance is denormalised onto the label at write time, so deleting a
     connection takes nothing with it (`cf. #421`).
     """
-    return [action for action in ConnectionAction if setup_state in CONNECTION_GATES[action]]
+    return [
+        action
+        for action in ConnectionAction
+        if setup_state in CONNECTION_GATES[action] and connection_type in CONNECTION_KINDS[action]
+    ]
 
 
 def batch_actions(state: BatchState) -> list[BatchAction]:

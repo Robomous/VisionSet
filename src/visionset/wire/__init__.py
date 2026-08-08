@@ -577,7 +577,10 @@ def connection(value: InferenceConnection) -> dict[str, Any]:
         "precision": value.precision,
         "endpoint_url": value.endpoint_url,
         "setup_state": value.setup_state.value,
-        "allowed_actions": [a.value for a in connection_actions(value.setup_state)],
+        "allowed_actions": [
+            a.value
+            for a in connection_actions(value.setup_state, connection_type=value.connection_type)
+        ],
         "created_at": _moment(value.created_at),
         "updated_at": _moment(value.updated_at),
     }

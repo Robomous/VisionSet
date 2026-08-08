@@ -42,9 +42,11 @@ with WorkspaceService.open("./road-signs") as workspace:
         print(one.name, one.connection_type.value, one.setup_state.value)
 ```
 
-**Over HTTP:** `GET`/`POST /inference/connections`, and
-`GET`/`PATCH`/`DELETE /inference/connections/{connection_id}`. `PATCH` edits in place and leaves
-out what you omit; `DELETE` needs no confirmation, for the reason below.
+**Over HTTP:** `GET`/`POST /inference/connections`,
+`GET`/`PATCH`/`DELETE /inference/connections/{connection_id}`, and
+`POST /inference/connections/{connection_id}/download`. `PATCH` edits in place and leaves out what
+you omit; `DELETE` needs no confirmation, for the reason below; `download` answers `202` and points
+at a background job.
 
 ## Each kind carries its own parameters, and only its own
 
@@ -56,6 +58,72 @@ believe.
 The kind itself cannot be changed after creation. Switching `local` to `http` would empty every
 parameter the row carries and keep only its name, which is a new connection wearing an old id.
 
+## Running a model here needs the `local-inference` extra
+
+The auto-labeling feature is always present. What is optional is the runtime that executes a model
+*on this machine*:
+
+```bash
+pip install "visionset[local-inference]"
+```
+
+It brings torch, transformers, accelerate and huggingface_hub — roughly two gigabytes, most of it
+CUDA — which is why it is not in the base install. Without it you can create a local connection,
+list it, edit it and see exactly what it is configured for. What you cannot do is fetch its weights
+or ask it to predict, and both refusals print the command above rather than saying "unavailable".
+
+The action stays **offered** on a machine that lacks the extra, deliberately. Whether this
+installation has torch is not a fact about your connection, and a control that quietly vanished
+would leave the install command with nowhere to be shown.
+
+## Fetching weights
+
+Nothing arrives on your behalf: not at install, not at startup, not on the way to anything else.
+Weights arrive when you ask for them, and asking is one action.
+
+```bash
+visionset inference download local-detector
+```
+
+Over HTTP it is `POST /inference/connections/{id}/download`, which answers `202` with a background
+job and a `Location` header naming it — the same launch-and-poll contract an export uses. Poll
+`GET /background-jobs/{id}` until `state` is `succeeded`, then re-read the connection: its
+`setup_state` is now `ready`.
+
+At a terminal there is no queue to hand the work to, so the command **blocks** and reports each
+phase on stderr. Interrupting it is safe.
+
+**Where they land.** Inside the workspace, under `models/`, beside `blobs/`. A workspace you copy
+to another machine takes its model with it, which is what keeps "does this workspace run?" a
+question about the workspace rather than about the machine. One cache for the whole workspace, so
+two connections pinned to the same model and revision share the files instead of holding two copies.
+
+**What is fetched.** The model id and the **pinned revision** the connection carries, from the
+original source. Never a branch name, and never a substitute: a pin that does not resolve is an
+error, because quietly fetching something else would produce weights whose identity the row now
+misdescribes.
+
+**A failure changes nothing.** The connection is marked ready as the last step, after every file is
+present — so a download that dies partway leaves it exactly as it was, at `not_set_up`, with the
+error on the job. There is no half-ready state to recover from because there is no moment at which
+one could be written. Ask again; a partial cache is verified and resumed rather than restarted.
+
+**Asking twice is refused, not repeated.** Once a connection is ready there is nothing left to
+fetch, so `download_weights` stops being offered and the request is answered with
+`INFERENCE_CONNECTION_NOT_DOWNLOADABLE`. An `http` connection is refused with the same code for the
+other reason: its model runs elsewhere, so it has no weights of its own in any state.
+
+## Running on the CPU
+
+A connection asking for `cuda` on a machine with no GPU falls back to the CPU, in full precision,
+with a warning in the log. It is a fallback rather than a preference — a workspace configured on a
+workstation should still open on a laptop — but it is slower by a large factor, which is why it is
+said out loud rather than silently done.
+
+Half precision (`fp16`, `float16`, `half` — the spelling is yours) applies on CUDA only. On a CPU
+it is not the conservative choice it looks like: `float16` arithmetic outside CUDA's autocast is
+slower than the `float32` it was avoiding.
+
 ## What a connection is not
 
 It is **not a credential store**, yet. An HTTP connection carries no secret today, and the field
@@ -66,6 +134,11 @@ It is **not a model runner**. This layer knows the configuration; running a mode
 job, and the kernel imports no inference stack at all. A connection can be configured on a
 machine that could not possibly run it — which is exactly what you want when the thing that runs
 it is somewhere else.
+
+It is **not an endpoint client**, yet. An `http` connection can be created, edited and listed, but
+nothing in this version speaks to one: asking it to predict is refused with
+`INFERENCE_CONNECTION_NOT_RUNNABLE`, which is a statement about this build rather than about your
+configuration. There is no `test` action for the same reason.
 
 ## Deleting one destroys a configuration, not work
 
@@ -85,6 +158,7 @@ visionset inference create local-detector \
 visionset inference list
 visionset inference show local-detector --json
 visionset inference update local-detector --revision def456
+visionset inference download local-detector
 visionset inference delete local-detector --yes
 ```
 
@@ -101,5 +175,14 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | --- | --- | --- |
 | `INFERENCE_CONNECTION_NOT_FOUND` | 404 | No connection with that id or name in this workspace |
 | `INFERENCE_CONNECTION_NAME_TAKEN` | 409 | Another connection already holds that name |
+| `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` | 409 | Already set up, or a kind with no weights of its own |
+| `INFERENCE_CONNECTION_NOT_SET_UP` | 409 | Asked to predict before its weights were fetched — run `download` |
 | `INFERENCE_CONNECTION_INVALID` | 422 | The parameters do not describe a usable connection of that kind |
 | `INVALID_NAME` | 422 | The name is blank once stripped |
+| `UNSUPPORTED_PROMPT` | 422 | The model does not answer that way of asking |
+| `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
+| `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | This build has no adapter for that kind of connection |
+
+The last two are 5xx because they are conditions of the *installation* rather than of the request:
+no state you can change and no retry makes either succeed, so neither is a 409. Both expose their
+message, because the message is the remedy — which is the same licence a missing `ffmpeg` gets.

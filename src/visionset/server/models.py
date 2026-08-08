@@ -1629,7 +1629,9 @@ class ConnectionOut(BaseModel):
             precision=connection.precision,
             endpoint_url=connection.endpoint_url,
             setup_state=connection.setup_state,
-            allowed_actions=connection_actions(connection.setup_state),
+            allowed_actions=connection_actions(
+                connection.setup_state, connection_type=connection.connection_type
+            ),
             created_at=connection.created_at,
             updated_at=connection.updated_at,
         )

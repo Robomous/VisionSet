@@ -12,16 +12,22 @@ application inside a worker. One package above the kernel and beside the other
 two is the only place left, and the import-linter contracts say so out loud.
 
 **Importing this package is what populates the registry.** A job type is known
-because a module named it, so the two handler modules are imported here — that is
+because a module named it, so every handler module is imported here — that is
 the whole mechanism, and it is why ``known_types()`` is empty in a process that
 only imported ``visionset.jobs.registry``.
+
+**And it is why the weight-download handler reaches its work through
+``visionset.inference`` rather than importing torch.** This line runs in the API
+process at startup and in every worker at spawn; a handler module that imported
+the optional runtime at the top would make two gigabytes of CUDA wheels a
+condition of starting a server that may never run a model.
 
 The kernel still owns the vocabulary: ``JobQueue`` and ``ProgressReporter`` are
 ports, ``BackgroundJob`` is a domain model, and ``SqliteJobQueue`` is a kernel
 adapter. What lives here is *what the work is* and *where it runs*.
 """
 
-from visionset.jobs import export, ingest
+from visionset.jobs import export, ingest, weights
 from visionset.jobs.registry import (
     REGISTRY,
     HandlerRef,
@@ -42,6 +48,7 @@ __all__ = [
     "JobRunner",
     "export",
     "ingest",
+    "weights",
     "known_types",
     "load",
     "register",

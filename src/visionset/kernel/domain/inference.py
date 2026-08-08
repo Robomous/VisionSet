@@ -55,7 +55,9 @@ class ConnectionSetupState(StrEnum):
 
     ``not_set_up`` means something local is still missing — weights that were
     never fetched. It is the state a ``local`` connection is born in, and the one
-    a download clears.
+    a successful weight download clears, as its **last** step: a run that fails
+    partway leaves the row exactly where it was, so there is no third state
+    meaning "half fetched" and no window in which a caller could read one.
 
     Deliberately **not** a reachability answer. Whether an endpoint responds is a
     question with a fresh answer every time it is asked, so it belongs to a test
@@ -65,6 +67,15 @@ class ConnectionSetupState(StrEnum):
 
     NOT_SET_UP = "not_set_up"
     READY = "ready"
+
+
+EVERY_CONNECTION_TYPE: Final[frozenset[ConnectionType]] = frozenset(ConnectionType)
+"""The kinds that refuse nothing — the type half of an unconditional capability.
+
+The companion of :data:`EVERY_SETUP_STATE`, and it exists for the same reason:
+``update`` and ``delete`` are legal for both kinds, and ``CONNECTION_KINDS`` says
+so by naming this set rather than by spelling the members out a second time.
+"""
 
 
 EVERY_SETUP_STATE: Final[frozenset[ConnectionSetupState]] = frozenset(ConnectionSetupState)

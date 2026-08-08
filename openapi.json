@@ -1441,8 +1441,9 @@
         "type": "object"
       },
       "ConnectionAction": {
-        "description": "What can be asked of an inference connection. Order is display order.\n\nTwo, and the omissions are the point. ``download_weights`` and ``test`` are\nthe actions this resource will eventually be asked for, and neither is named\nhere yet because neither has anything behind it \u2014 under the\n``ui-capabilities`` contract a declared action obliges every client to offer\nit, so naming one before its surface exists is how a wire becomes the source\nof a control that cannot work. #376 is the precedent: the name returns in the\nsame change as the route that honours it.",
+        "description": "What can be asked of an inference connection. Order is display order.",
         "enum": [
+          "download_weights",
           "update",
           "delete"
         ],
@@ -1627,7 +1628,7 @@
         "type": "object"
       },
       "ConnectionSetupState": {
-        "description": "Whether a connection is ready to be asked for a prediction.\n\n``not_set_up`` means something local is still missing \u2014 weights that were\nnever fetched. It is the state a ``local`` connection is born in, and the one\na download clears.\n\nDeliberately **not** a reachability answer. Whether an endpoint responds is a\nquestion with a fresh answer every time it is asked, so it belongs to a test\ncall and its result, never to a stored row that would start lying the moment\nthe network moved.",
+        "description": "Whether a connection is ready to be asked for a prediction.\n\n``not_set_up`` means something local is still missing \u2014 weights that were\nnever fetched. It is the state a ``local`` connection is born in, and the one\na successful weight download clears, as its **last** step: a run that fails\npartway leaves the row exactly where it was, so there is no third state\nmeaning \"half fetched\" and no window in which a caller could read one.\n\nDeliberately **not** a reachability answer. Whether an endpoint responds is a\nquestion with a fresh answer every time it is asked, so it belongs to a test\ncall and its result, never to a stored row that would start lying the moment\nthe network moved.",
         "enum": [
           "not_set_up",
           "ready"
@@ -6044,6 +6045,105 @@
           }
         ],
         "summary": "Update Inference Connection",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/inference/connections/{connection_id}/download": {
+      "post": {
+        "description": "Fetch this connection's weights, and answer at once with the job to poll.\n\nThe `download_weights` action, and the only thing in this product that\ndownloads a model at all. It runs because somebody asked: nothing fetches\nweights at install time, at startup, or on the way to anything else.\n\n**202, not 200.** Weights for a detector of this class are gigabytes, so this\nfollows the launch-and-poll contract the export route uses: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 until `state` is\n`succeeded`, then re-read the connection to see `setup_state` as `ready`.\n\n**Everything a caller can be told now is told now.** A connection that is\nalready set up, or one whose model runs elsewhere, is 409\n`INFERENCE_CONNECTION_NOT_DOWNLOADABLE` on this request \u2014 the same answer\n`allowed_actions` gave, from the same table. A deployment without the local\nruntime installed is refused here too, with the exact install command in the\nmessage. Neither refusal creates a job, so a caller holding a job id holds\none that will run.\n\nThe action is declared on a connection whose *state* permits it even where\nthe runtime is missing, deliberately: whether this machine has the extra is\nnot a fact about the connection, and hiding the control would leave the\ninstall command with nowhere to be shown.\n\nRe-running is safe. The job verifies a cache it already filled rather than\nre-fetching it, and a run that fails leaves the connection exactly as it was\n\u2014 there is no half-set-up state to recover from.",
+        "operationId": "download_connection_weights",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Connection Weights",
         "tags": [
           "inference"
         ]

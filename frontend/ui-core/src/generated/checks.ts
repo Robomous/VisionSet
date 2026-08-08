@@ -111,7 +111,7 @@ export const checkBatchPage: Check<Schemas["BatchPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchOut)], "total": [true, isInteger] } as const);
 
 export const checkConnectionAction: Check<Schemas["ConnectionAction"]> =
-  /*#__PURE__*/ oneOf(["update", "delete"] as const);
+  /*#__PURE__*/ oneOf(["download_weights", "update", "delete"] as const);
 
 export const checkConnectionSetupState: Check<Schemas["ConnectionSetupState"]> =
   /*#__PURE__*/ oneOf(["not_set_up", "ready"] as const);
@@ -266,6 +266,7 @@ export const checkDeleteAnnotations = checkNoContent;
 export const checkDeleteBatch = checkNoContent;
 export const checkDeleteInferenceConnection = checkNoContent;
 export const checkDeleteProject = checkNoContent;
+export const checkDownloadConnectionWeights = checkBackgroundJobOut;
 export const checkExportRelease = checkBackgroundJobOut;
 export const checkGetActiveSchema = checkSchemaVersionOut;
 export const checkGetAsset = checkAssetOut;

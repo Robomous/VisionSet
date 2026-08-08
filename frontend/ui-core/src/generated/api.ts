@@ -750,6 +750,52 @@ export interface paths {
         patch: operations["update_inference_connection"];
         trace?: never;
     };
+    "/inference/connections/{connection_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Download Connection Weights
+         * @description Fetch this connection's weights, and answer at once with the job to poll.
+         *
+         *     The `download_weights` action, and the only thing in this product that
+         *     downloads a model at all. It runs because somebody asked: nothing fetches
+         *     weights at install time, at startup, or on the way to anything else.
+         *
+         *     **202, not 200.** Weights for a detector of this class are gigabytes, so this
+         *     follows the launch-and-poll contract the export route uses: poll `GET
+         *     /background-jobs/{id}` — the `Location` header names it — until `state` is
+         *     `succeeded`, then re-read the connection to see `setup_state` as `ready`.
+         *
+         *     **Everything a caller can be told now is told now.** A connection that is
+         *     already set up, or one whose model runs elsewhere, is 409
+         *     `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` on this request — the same answer
+         *     `allowed_actions` gave, from the same table. A deployment without the local
+         *     runtime installed is refused here too, with the exact install command in the
+         *     message. Neither refusal creates a job, so a caller holding a job id holds
+         *     one that will run.
+         *
+         *     The action is declared on a connection whose *state* permits it even where
+         *     the runtime is missing, deliberately: whether this machine has the extra is
+         *     not a fact about the connection, and hiding the control would leave the
+         *     install command with nowhere to be shown.
+         *
+         *     Re-running is safe. The job verifies a cache it already filled rather than
+         *     re-fetching it, and a run that fails leaves the connection exactly as it was
+         *     — there is no half-set-up state to recover from.
+         */
+        post: operations["download_connection_weights"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest-jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -2395,17 +2441,9 @@ export interface components {
         /**
          * ConnectionAction
          * @description What can be asked of an inference connection. Order is display order.
-         *
-         *     Two, and the omissions are the point. ``download_weights`` and ``test`` are
-         *     the actions this resource will eventually be asked for, and neither is named
-         *     here yet because neither has anything behind it — under the
-         *     ``ui-capabilities`` contract a declared action obliges every client to offer
-         *     it, so naming one before its surface exists is how a wire becomes the source
-         *     of a control that cannot work. #376 is the precedent: the name returns in the
-         *     same change as the route that honours it.
          * @enum {string}
          */
-        ConnectionAction: "update" | "delete";
+        ConnectionAction: "download_weights" | "update" | "delete";
         /**
          * ConnectionCreate
          * @description What a caller supplies to configure a connection.
@@ -2483,7 +2521,9 @@ export interface components {
          *
          *     ``not_set_up`` means something local is still missing — weights that were
          *     never fetched. It is the state a ``local`` connection is born in, and the one
-         *     a download clears.
+         *     a successful weight download clears, as its **last** step: a run that fails
+         *     partway leaves the row exactly where it was, so there is no third state
+         *     meaning "half fetched" and no window in which a caller could read one.
          *
          *     Deliberately **not** a reachability answer. Whether an endpoint responds is a
          *     question with a fresh answer every time it is asked, so it belongs to a test
@@ -5306,6 +5346,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_connection_weights: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

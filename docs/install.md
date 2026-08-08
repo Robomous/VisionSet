@@ -65,6 +65,27 @@ A missing binary is reported as `MediaToolUnavailable` with the same hint, at th
 is registered rather than at import — so a machine without ffmpeg still opens workspaces, ingests
 images, annotates, publishes and exports.
 
+## Running a model on this machine
+
+**Only for `local` inference connections**, and only when you have made one. VisionSet's
+auto-labeling feature is always present; what is optional is the runtime that executes a model
+*here*:
+
+```bash
+pip install "visionset[local-inference]"
+```
+
+That brings torch, transformers, accelerate and huggingface_hub — roughly two gigabytes, most of
+it CUDA — which is exactly why it is not in the base install. Without it you can still create a
+local connection, list it, and see what it is configured for; what you cannot do is fetch its
+weights or ask it to predict. Both refusals name the command above rather than saying
+"unavailable", the way a missing `ffmpeg` does.
+
+**Installing it downloads no model.** Weights arrive when you run `visionset inference download`,
+never at install time, never at startup, and never on the way to anything else. They land inside
+the workspace, under `models/`, so a workspace you copy to another machine takes its model with
+it. See [inference.md](inference.md).
+
 ## Optional extras, for checking exports
 
 Neither is needed to *use* VisionSet; both are what the project's own tests use to prove an export
