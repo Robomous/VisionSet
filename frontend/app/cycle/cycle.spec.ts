@@ -810,6 +810,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
+    // Out to the end of the job, because since #416 **Finish job renders on the
+    // last frame only** — it is the filled slot there, and `Save and next` is the
+    // filled slot everywhere else. Walking there is not incidental to this step:
+    // it is the same save-first advance a person makes, over frames this
+    // correction round left alone.
+    await page.getByTestId("next-asset").click();
+    await expect(page.getByTestId("asset-position")).toContainText("2/3");
+    await page.getByTestId("next-asset").click();
+    await expect(page.getByTestId("asset-position")).toContainText("3/3");
+
     await page.getByTestId("finish-job").click();
     await expect(page.getByTestId("finish-job")).toHaveText("Finished");
 

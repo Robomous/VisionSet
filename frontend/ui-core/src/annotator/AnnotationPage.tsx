@@ -252,6 +252,20 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
   );
 }
 
+/**
+ * The bar's divider, and the one idiom for it — `ZoomWidget` draws the same rule
+ * between its own sub-groups.
+ *
+ * Inside the navigation cluster it carries the whole of #416's claim: the three
+ * sub-groups are *instrument*, *browse* and *resolve*, and what tells them apart
+ * on screen is one hairline each. Without them the cluster is eight controls in a
+ * row and the browse/resolve distinction is back to being learned rather than
+ * read.
+ */
+function Divider(): JSX.Element {
+  return <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />;
+}
+
 export interface AnnotationPageProps {
   readonly jobId: string;
   /**
@@ -1116,6 +1130,25 @@ function Workspace({
   const lastFrame = assetIndex >= assetCount - 1;
 
   /**
+   * Why **Finish job** cannot be pressed, when it is on screen and cannot be
+   * (#416, principle 9).
+   *
+   * The control renders only on the last frame now, and there it is the filled
+   * slot — so it is the one control on the bar a person arrives at *expecting* to
+   * press. Arriving at a greyed one with nothing attached was the shape of the
+   * defect this replaces, one frame further along.
+   *
+   * Null on a job that is already `completed`: the label reads `Finished`, and a
+   * tooltip repeating the word in the button is a tooltip nobody needs. Null too
+   * once `complete` is declared, because then it is simply live.
+   */
+  const finishWithheld =
+    jobState === "completed" || declares({ allowed_actions: jobActions }, JOB_ACTION.complete)
+      ? null
+      : (withheld ??
+        "Every frame has to be annotated, skipped or accepted before this job can finish.");
+
+  /**
    * Whether pressing the flow verb will actually store anything (#383).
    *
    * Decision 2's rule is that the button never promises a save it will not
@@ -1163,20 +1196,39 @@ function Workspace({
     // makes still passes. #223's cycle step is where that was found.
     <div className="flex h-screen flex-col" data-testid="annotation-page" data-asset={asset.id}>
       {/*
-        Three zones (#368): **where you are**, **what you are drawing**, **what
-        happens next**. The bar was one undifferentiated row of thirteen controls
-        in which a navigation arrow, the save state and the button that ends the
-        job all looked alike, and the two that mattered were the hardest to find.
+        Three zones (#368, regrouped by #416): **where you are**, **what changes
+        the frame**, **the session**. The bar was one undifferentiated row of
+        thirteen controls in which a navigation arrow, the save state and the
+        button that ends the job all looked alike.
 
-        The zones are `flex-1` / content / `flex-1` rather than `ml-auto`, so the
-        class field is centred on the *bar* and not on whatever is left over —
-        the left zone grows with the asset id and the right with the state, and a
-        centre that drifted between frames is the one thing a person aims a mouse
-        at without looking.
+        #368 split it into three; #416 fixed *which* controls belong to which. The
+        four that change the picture on screen — the gallery, `‹` / `›`, Skip and
+        the flow verb — were split across the two far ends of a 44px row, one pair
+        beside the back arrow and the other beside the overflow. Two motion
+        clusters at opposite ends with the same destination and different meanings
+        is a hierarchy nothing on screen explains, so the distinction between
+        *browse* and *resolve* had to be learned. They are one centred cluster
+        now, and one hairline apart.
+
+        **The grid is what centres it, and it is `1fr auto 1fr` rather than two
+        flex spacers.** The two flexible tracks take an equal share of whatever is
+        left by definition, so the middle track sits on the bar's geometric
+        centre — not on the midpoint of what the side zones happened to leave. The
+        side tracks are `minmax(0, …)` so their content truncates instead of
+        pushing, and the centre track is `auto`, so it is sized by its contents and
+        never compresses or wraps. `e2e/annotate.spec.ts` measures all of it in a
+        real browser, which is the only place a layout claim means anything.
       */}
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-card px-2">
+      <header className="grid h-11 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-border bg-card px-2">
         {/* --- where you are ------------------------------------------- */}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        {/* Identity and state, and **nothing that changes the frame** (#416) —
+            that is the whole rule this zone is now held to.
+
+            `overflow-hidden` is how a side zone *yields*: it is a `minmax(0, 1fr)`
+            track, so it is handed exactly half of whatever the cluster leaves, and
+            clipping is what keeps a long readout from reaching under the cluster
+            instead of pushing it off centre. */}
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           {/*
             Principle 10: no exit may lose work. Both routes out of the editor go
             through `attempt`, which is the same save-first path `go()` gives the
@@ -1190,6 +1242,7 @@ function Workspace({
           <Button
             variant="ghost"
             size="icon"
+            className="shrink-0"
             aria-label="Back to the batch"
             data-testid="back"
             onClick={() => attempt(onOpenGallery)}
@@ -1217,51 +1270,30 @@ function Workspace({
             />
           )}
 
-          <div className="flex items-center gap-1" data-testid="asset-navigator">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Previous asset"
-              data-testid="prev-asset"
-              disabled={assetIndex === 0}
-              onClick={() => go(-1)}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <span className="font-mono text-meta text-muted-foreground" data-testid="asset-position">
-              {asset.content_hash.slice(0, 8)} {assetIndex + 1}/{assetCount}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Next asset"
-              data-testid="next-asset"
-              disabled={assetIndex >= assetCount - 1}
-              onClick={() => go(1)}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-
           {/*
-            The frame switcher (#390). It opens an overlay *inside* the editor —
-            no route change, nothing torn down, and no save on the way in because
-            nothing is being left.
+            Which frame this is, as a label and not as a control (#416).
 
-            It used to call `onOpenGallery`, the back arrow's own exit, so the
-            only way to look at your own frames was to stop looking at the one you
-            were on. `DESIGN.md` principle 10 forbids exactly that trip; the arrow
-            above still means *up* and keeps its guard.
+            It is the head of the content-addressed hash, because **there is no
+            filename to show**: `Asset.uri` is deliberately not on the wire (the
+            kernel publishes no server-side path), so the hash prefix is the only
+            identity a client holds. It reads as an identifier rather than as
+            prose, which is what `font-mono` is saying.
+
+            It used to be the first half of the navigator's own readout, glued to
+            `n/m` inside the `‹ ›` pair. The count went with the arrows to the
+            centre cluster; this stayed, because *which picture is this* is a fact
+            about where you are and not a way to go somewhere else.
+
+            `truncate` earns its keep here rather than being defensive: this is a
+            side track of a `1fr auto 1fr` grid, and truncating is exactly how a
+            side zone yields to the centre instead of pushing it off the middle.
           */}
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Show the job's frames"
-            data-testid="open-gallery"
-            onClick={() => setGalleryOpen(true)}
+          <span
+            className="truncate font-mono text-meta text-muted-foreground"
+            data-testid="asset-identity"
           >
-            <Grid3x3 className="size-4" />
-          </Button>
+            {asset.content_hash.slice(0, 8)}
+          </span>
 
           {/*
             Where the frame is and whether it is stored, as one microtext
@@ -1275,58 +1307,309 @@ function Workspace({
             alone** (`DESIGN.md`), and prose is the strongest form of that.
           */}
           <OpeningRefusal error={openingRefusal} />
-          <span className="flex items-center gap-1.5 text-meta text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-meta text-muted-foreground">
             <AssetProgressDot progress={asset.progress ?? "unannotated"} />
             <span aria-hidden="true">·</span>
             <SaveState dirty={dirty} pending={save.isPending} error={save.isError ? save.error : null} />
           </span>
         </div>
 
-        {/* --- what you are drawing ------------------------------------ */}
+        {/* --- what changes the frame ---------------------------------- */}
         {/*
-          The centre, and the only zone that is about the *next* shape rather than
-          about the ones already made. Hidden while read-only for the tool
-          palette's reason: a drawing class over a canvas that cannot be drawn on
-          offers a choice with no consequence, and the banner below carries the
-          reason once.
-        */}
-        {!readOnly && (
-          <ClassField
-            schema={store.document.schema}
-            activeClass={activeClass}
-            onActivateClass={activateClass}
-            open={classFieldOpen}
-            onOpenChange={setClassFieldOpen}
-            recent={recentClasses}
-            // The create row carries what was typed into the dialog's name field
-            // (#368). `ClassField` has handed the name over since WS2 and the page
-            // dropped it, because `AddClassDialog` had nowhere to put it until the
-            // session rework gave it one — typing a name, being told it does not
-            // exist, and then typing it again is the smallest way to make a
-            // shortcut feel like a detour.
-            //
-            // Unconditional, unlike WS2's first cut, which spread it in only when
-            // `onOpenGallery` was supplied. Nothing about knowing where the
-            // gallery is bears on whether a class can be created — the tool
-            // strip's own `+` was never gated on it — so the row was absent for
-            // exactly the callers whose `+` still worked, and WS4's prefill would
-            // have been unreachable behind it.
-            onAddClass={(typed: string) => {
-              setNewClassName(typed);
-              setAddingClass(true);
-            }}
-          />
-        )}
+          The navigation cluster (#416): every control that changes the picture on
+          screen, in one place, read left to right as **instrument | browse |
+          resolve**.
 
-        {/* --- what happens next --------------------------------------- */}
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+          The three sub-groups are what the two dividers are for, and the middle
+          one is the reason the cluster exists: `‹` and `›` *browse*, Skip and the
+          flow verb *resolve*. They were a bar apart and both advanced, so `›` and
+          `Save and next` looked like two spellings of one thing to anybody who
+          had not read #383. Side by side, one hairline apart, the difference is
+          the hairline.
+
+          `shrink-0` on the whole cluster, and it is load-bearing rather than
+          defensive: this is the `auto` track of the header's grid, and the
+          acceptance criterion is that the side zones truncate *before* anything
+          in here compresses or wraps.
+        */}
+        <div className="flex shrink-0 items-center gap-2" data-testid="frame-navigation">
+          {/*
+            The instrument — what the next shape will be, and the only member of
+            this cluster that changes nothing about *which* frame is on screen.
+            It is here because it is the most-used control on the page and the
+            centre is where the eye already is; moving it out is a later
+            refactoring and deliberately not this one (#416).
+
+            **The slot is a fixed reservation, and it keeps its width when the
+            field is not in it.** A read-only frame has no drawing class to pick,
+            and a class name is as wide as somebody chose to make it — so without
+            a reservation the arrows and the flow verb would slide sideways
+            between frames, on precisely the walk `‹ ›` exist for.
+
+            `w-48` rather than the trigger's own `max-w-64`: the reservation is
+            width the side zones do not get, and this bar is over-subscribed
+            enough that 256px in the middle costs the right zone a control (the
+            numbers are in `DESIGN.md`). 192px holds `Select` and every class
+            name of ordinary length; a longer one is clipped by the slot rather
+            than allowed to escape it, which is what `overflow-hidden` is for.
+
+            `justify-end` so the field hugs the divider it belongs to: the slack
+            in the reservation then falls on the cluster's outer edge, where it
+            reads as spacing, rather than opening a hole between the instrument
+            and the browse group.
+
+            Hidden while read-only for the tool palette's reason: a drawing class
+            over a canvas that cannot be drawn on offers a choice with no
+            consequence, and the banner below carries the reason once.
+          */}
+          <div className="flex w-48 shrink-0 justify-end overflow-hidden" data-testid="class-field-slot">
+            {!readOnly && (
+              <ClassField
+                schema={store.document.schema}
+                activeClass={activeClass}
+                onActivateClass={activateClass}
+                open={classFieldOpen}
+                onOpenChange={setClassFieldOpen}
+                recent={recentClasses}
+                // The create row carries what was typed into the dialog's name field
+                // (#368). `ClassField` has handed the name over since WS2 and the page
+                // dropped it, because `AddClassDialog` had nowhere to put it until the
+                // session rework gave it one — typing a name, being told it does not
+                // exist, and then typing it again is the smallest way to make a
+                // shortcut feel like a detour.
+                //
+                // Unconditional, unlike WS2's first cut, which spread it in only when
+                // `onOpenGallery` was supplied. Nothing about knowing where the
+                // gallery is bears on whether a class can be created — the tool
+                // strip's own `+` was never gated on it — so the row was absent for
+                // exactly the callers whose `+` still worked, and WS4's prefill would
+                // have been unreachable behind it.
+                onAddClass={(typed: string) => {
+                  setNewClassName(typed);
+                  setAddingClass(true);
+                }}
+              />
+            )}
+          </div>
+
+          <Divider />
+
+          {/* --- browse: move without resolving anything ---------------- */}
+          <div className="flex shrink-0 items-center gap-1" data-testid="asset-navigator">
+            {/*
+              The frame switcher (#390). It opens an overlay *inside* the editor —
+              no route change, nothing torn down, and no save on the way in because
+              nothing is being left.
+
+              It used to call `onOpenGallery`, the back arrow's own exit, so the
+              only way to look at your own frames was to stop looking at the one
+              you were on. `DESIGN.md` principle 10 forbids exactly that trip; the
+              back arrow still means *up* and keeps its guard.
+
+              It leads the browse group because it is the same question the arrows
+              ask, asked of all the frames at once — #416 moved it out of the left
+              zone for that reason and for no other. Its behaviour is untouched.
+            */}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Show the job's frames"
+              data-testid="open-gallery"
+              onClick={() => setGalleryOpen(true)}
+            >
+              <Grid3x3 className="size-4" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Previous asset"
+              data-testid="prev-asset"
+              disabled={assetIndex === 0}
+              onClick={() => go(-1)}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            {/*
+              `tabular-nums` is the whole reason this is a separate span rather
+              than part of a label: proportional digits make `1/48` and `11/48`
+              different widths, so walking a job would shuffle the two arrows
+              under a cursor that had not moved. A fixed advance width is what
+              makes `›` a target you can press twice without looking.
+            */}
+            <span
+              className="px-1 font-mono text-meta tabular-nums text-muted-foreground"
+              data-testid="asset-position"
+            >
+              {assetIndex + 1}/{assetCount}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Next asset"
+              data-testid="next-asset"
+              disabled={assetIndex >= assetCount - 1}
+              onClick={() => go(1)}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+
+          <Divider />
+
+          {/* --- resolve: finish with this frame ------------------------ */}
+          <div className="flex shrink-0 items-center gap-2">
+            {/*
+              One slot, two moves, because they are the same decision read
+              forwards and backwards. Offering `Skip` on an already-skipped asset
+              would be offering a refusal — `ASSET_PROGRESS_TRANSITIONS` gives
+              `skipped` one exit and it is not itself.
+
+              Skip and the flow verb are **siblings** (#383): two ways of resolving
+              this frame — skipped or annotated — that both advance. Neither ever
+              collapses into the overflow, which is what stopped Skip inheriting
+              prominence from a bar where nothing else advanced. #416 put them
+              beside the arrows they were always the counterpart of.
+            */}
+            {skipped ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="unskip"
+                disabled={!declares(asset, ASSET_ACTION.restore) || setProgress.isPending}
+                {...(withheld === null ? {} : { title: withheld })}
+                onClick={unskip}
+              >
+                <Undo2 className="size-4" />
+                Un-skip
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="skip"
+                disabled={!declares(asset, ASSET_ACTION.skip) || setProgress.isPending}
+                {...(withheld === null ? {} : { title: withheld })}
+                onClick={() => settle("skipped")}
+              >
+                <SkipForward className="size-4" />
+                Skip
+                <Chip>X</Chip>
+              </Button>
+            )}
+
+            {/*
+              The filled slot, and the two controls that share it by arithmetic.
+
+              `min-w-36` on both: `Next`, `Save and next`, `Finish job` and
+              `Finished` are four labels for one position, and without a floor the
+              cluster's right edge — and therefore the arrows, and therefore the
+              cluster's centre — would move whenever the label did. The width is
+              the widest of the four, so nothing is ever clipped and nothing ever
+              moves.
+            */}
+            {lastFrame ? (
+              /*
+                **Finish job renders on the last frame and nowhere else** (#416).
+
+                It used to render on every frame, disabled with nothing attached
+                for as long as one frame was unannotated — a bare greyed control
+                on a fresh job at 0 of 48, which is `DESIGN.md` principle 9's
+                exact prohibition. The comment here claimed it was "disabled with
+                a reason"; there was no reason.
+
+                Two things are true and only together do they fix it: it does not
+                appear until the frame it belongs on, and when it does appear it
+                carries why it cannot be pressed. Which frame that is was already
+                settled by #383 — the filled slot is `Save and next` while there
+                is somewhere to advance to and `Finish job` when there is not, so
+                the two are exclusive by arithmetic rather than by a priority
+                anybody maintains. It is not in `REVIEW_ACTIONS` and never was: it
+                is the *job's* action and it co-declares with `submit_for_review`
+                on the frame most jobs end on.
+
+                The consequence, stated rather than discovered: `complete` is
+                reachable from the last frame only. Pressing it from frame three
+                of forty-eight was possible before and is not now — which is the
+                same rule that already governs its filled treatment, applied to
+                whether it is on screen at all.
+              */
+              <Button
+                variant="primary"
+                size="sm"
+                className="min-w-36"
+                data-testid="finish-job"
+                disabled={
+                  !declares({ allowed_actions: jobActions }, JOB_ACTION.complete) ||
+                  finishJob.isPending
+                }
+                {...(finishWithheld === null ? {} : { title: finishWithheld })}
+                onClick={() => finishJob.mutate()}
+              >
+                <CheckCheck className="size-4" />
+                {jobState === "completed" ? "Finished" : "Finish job"}
+              </Button>
+            ) : (
+              /*
+                The flow verb, and the whole of #383 (decision 2).
+
+                After finishing a frame the right move is *this one is done, show
+                me the next* — and until #383 that had no button at all. The
+                navigator's `›` is chrome rather than a verb, so `Skip` was the
+                most prominent thing to press on a frame somebody had just
+                annotated, which is how work gets skipped by people who meant to
+                keep it.
+
+                It is `go(1)` and deliberately nothing more: the same save-first
+                advance the navigator has always used, so there is one save
+                pipeline and one place principle 10 is enforced. The settle to
+                `annotated` is not sent from here either — `progress_after_annotating`
+                makes that move in the same transaction as the write, which is why
+                an asset with labels on it is already `annotated` by the time this
+                lands.
+
+                **`Next` when there is nothing to save**, per decision 2, so the
+                button never promises a save it will not perform.
+
+                **No hotkey chip, unlike its two neighbours** (#385). `Chip` is a
+                muted box on a bordered ground, which is right on the ghost and the
+                outline controls and wrong on the only filled one: on near-black it
+                reads as a smudge beside the chevron rather than as a key. The
+                chord is unchanged and still listed in the shortcut sheet, which
+                derives its rows from the live registry — so `↵` stays discoverable
+                in the one place that cannot go stale.
+              */
+              <Button
+                variant="primary"
+                size="sm"
+                className="min-w-36"
+                data-testid="save-and-next"
+                disabled={save.isPending}
+                onClick={() => go(1)}
+              >
+                {flowLabel}
+                <ChevronRight className="size-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* --- the session --------------------------------------------- */}
+        {/* The other yielding track, clipped for the same reason — and
+            `justify-end` decides the order it gives way in: the progress readout
+            is what disappears first, and the overflow, which is the way to
+            everything reabsorbed into it, is what survives. */}
+        <div className="flex min-w-0 items-center justify-end gap-2 overflow-hidden">
           {/*
             **Past `unannotated`**, not the `annotated` count — the same rule the
             gallery's own bar states, and for the reason it states: a readout that
             counted only `annotated` goes *backwards* when a frame is accepted,
             which is the one thing a progress readout must never do.
           */}
-          <span className="text-meta text-muted-foreground" data-testid="job-progress">
+          {/* `truncate`, not `shrink-0`: this is the readout the right zone gives
+              way with, and an ellipsis is a graceful way to lose the tail of a
+              sentence where clipping a button would be a control nobody can press. */}
+          <span className="truncate text-meta text-muted-foreground" data-testid="job-progress">
             {counts === null
               ? "—"
               : `${Math.max(0, counts.total - counts.unannotated)} / ${counts.total} annotated`}
@@ -1344,12 +1627,19 @@ function Workspace({
 
             First to be reabsorbed when the bar runs out of room (decision 4): it
             is the one control on the right whose job the keyboard and every other
-            exit already do, and the overflow carries it below `xl`.
+            exit already do, and the overflow carries it below `2xl`.
+
+            The breakpoint moved from `xl` with #416, and it is what the centred
+            cluster costs: a bar whose middle is anchored on the header's centre
+            hands each side exactly half of what is left, and the right zone is
+            the heavier of the two. Nothing new moved into the overflow — this
+            control has had a row there since #368 — but it starts using it one
+            breakpoint sooner.
           */}
           <Button
             variant="ghost"
             size="sm"
-            className="hidden xl:inline-flex"
+            className="hidden 2xl:inline-flex"
             data-testid="save-and-stay"
             disabled={readOnly || !dirty || save.isPending}
             onClick={() => attempt()}
@@ -1370,7 +1660,8 @@ function Workspace({
 
             Second to be reabsorbed (decision 4), so it survives one breakpoint
             longer than the save: it is a decision about the work, and the save is
-            a convenience.
+            a convenience. `xl` since #416, one step up from `lg`, for the reason
+            written on the save above.
           */}
           {reviewAction !== undefined && (
             <Tooltip>
@@ -1378,7 +1669,7 @@ function Workspace({
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="hidden lg:inline-flex"
+                  className="hidden xl:inline-flex"
                   data-testid={reviewAction.testId}
                   disabled={setProgress.isPending}
                   onClick={() => settle(reviewAction.progress)}
@@ -1398,110 +1689,6 @@ function Workspace({
           )}
 
           {/*
-            One slot, two moves, because they are the same decision read forwards
-            and backwards. Offering `Skip` on an already-skipped asset would be
-            offering a refusal — `ASSET_PROGRESS_TRANSITIONS` gives `skipped` one
-            exit and it is not itself.
-
-            Skip and the flow verb are **siblings** (#383): two ways of resolving
-            this frame — skipped or annotated — that both advance. Neither ever
-            collapses into the overflow, which is what stopped Skip inheriting
-            prominence from a bar where nothing else advanced.
-          */}
-          {skipped ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              data-testid="unskip"
-              disabled={!declares(asset, ASSET_ACTION.restore) || setProgress.isPending}
-              {...(withheld === null ? {} : { title: withheld })}
-              onClick={unskip}
-            >
-              <Undo2 className="size-4" />
-              Un-skip
-            </Button>
-          ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              data-testid="skip"
-              disabled={!declares(asset, ASSET_ACTION.skip) || setProgress.isPending}
-              {...(withheld === null ? {} : { title: withheld })}
-              onClick={() => settle("skipped")}
-            >
-              <SkipForward className="size-4" />
-              Skip
-              <Chip>X</Chip>
-            </Button>
-          )}
-
-          {/*
-            Offered only when every asset is settled, because that is exactly when
-            `JobService.complete` stops refusing. `unannotated` is the one count
-            that blocks it — `annotated`, `skipped` and `accepted` are all settled.
-
-            **On the last frame it is the filled control**, because there is
-            nothing left to advance to and finishing is what the job is for; on
-            every other frame it keeps WS2's outline treatment and stays visible,
-            disabled with a reason. It is not in the review list and never was: it
-            is the *job's* action and it co-declares with `submit_for_review` on
-            the frame most jobs end on, so ranking the two against each other would
-            have made finishing a job require walking to a different frame first.
-          */}
-          <Button
-            variant={lastFrame ? "primary" : "secondary"}
-            size="sm"
-            data-testid="finish-job"
-            disabled={!declares({ allowed_actions: jobActions }, JOB_ACTION.complete) || finishJob.isPending}
-            onClick={() => finishJob.mutate()}
-          >
-            <CheckCheck className="size-4" />
-            {jobState === "completed" ? "Finished" : "Finish job"}
-          </Button>
-
-          {/*
-            The flow verb, and the whole of #383 (decision 2).
-
-            After finishing a frame the right move is *this one is done, show me
-            the next* — and until now that had no button at all. The navigator's
-            `›` is chrome rather than a verb, so `Skip` was the most prominent
-            thing to press on a frame somebody had just annotated, which is how
-            work gets skipped by people who meant to keep it.
-
-            It is `go(1)` and deliberately nothing more: the same save-first
-            advance the navigator has always used, so there is one save pipeline
-            and one place principle 10 is enforced. The settle to `annotated` is
-            not sent from here either — `progress_after_annotating` makes that move
-            in the same transaction as the write, which is why an asset with labels
-            on it is already `annotated` by the time this lands.
-
-            **`Next` when there is nothing to save**, per decision 2, so the button
-            never promises a save it will not perform. Absent entirely on the last
-            frame, where `Finish job` above takes the filled slot.
-
-            **No hotkey chip, unlike its two neighbours** (#385). `Chip` is a
-            muted box on a bordered ground, which is right on the ghost and the
-            outline controls and wrong on the only filled one: on near-black it
-            reads as a smudge beside the chevron rather than as a key, and on the
-            short `Next` label it is the widest thing in the button. The chord is
-            unchanged and still listed in the shortcut sheet, which derives its
-            rows from the live registry — so `↵` stays discoverable in the one
-            place that cannot go stale.
-          */}
-          {!lastFrame && (
-            <Button
-              variant="primary"
-              size="sm"
-              data-testid="save-and-next"
-              disabled={save.isPending}
-              onClick={() => go(1)}
-            >
-              {flowLabel}
-              <ChevronRight className="size-4" />
-            </Button>
-          )}
-
-          {/*
             Rarities, and whatever the bar could not fit.
 
             `Return to annotator` is here rather than beside Accept because it is
@@ -1513,7 +1700,13 @@ function Workspace({
           */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="More actions" data-testid="more-actions">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0"
+                aria-label="More actions"
+                data-testid="more-actions"
+              >
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -1522,7 +1715,7 @@ function Workspace({
                   the button's `hidden xl:inline-flex`, so the control exists once
                   at every width. */}
               <DropdownMenuItem
-                className="xl:hidden"
+                className="2xl:hidden"
                 data-testid="menu-save"
                 disabled={readOnly || !dirty || save.isPending}
                 onSelect={() => attempt()}
@@ -1533,7 +1726,7 @@ function Workspace({
               {/* The review move, reabsorbed one breakpoint later. */}
               {reviewAction !== undefined && (
                 <DropdownMenuItem
-                  className="lg:hidden"
+                  className="xl:hidden"
                   data-testid={`menu-${reviewAction.testId}`}
                   disabled={setProgress.isPending}
                   onSelect={() => settle(reviewAction.progress)}
