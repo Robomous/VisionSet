@@ -121,5 +121,20 @@ export function AssetThumbnail({
     return <div data-testid="thumbnail-loading" className={`animate-pulse bg-muted ${className ?? ""}`} />;
   }
 
-  return <img data-testid="thumbnail" src={url} alt={alt} className={className} loading="lazy" />;
+  return (
+    <img
+      data-testid="thumbnail"
+      src={url}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      // The browser's native image drag lifts a ghost of the picture out of any
+      // tile (#428) — inside a grid whose press means *open this frame*, a drag
+      // that grabs the image instead is a gesture the product never means. The
+      // attribute is the whole enforcement: an `<img draggable={false}>` starts
+      // no native drag in any engine this product supports, and a second guard
+      // behind it would be the untestable double `AnnotatorPanel` refuses.
+      draggable={false}
+    />
+  );
 }
