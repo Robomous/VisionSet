@@ -23,9 +23,16 @@ import type { JSX } from "react";
 import { polygonCloseAttempt } from "../../core/geometry/hitTest";
 import type { Target } from "../../core/interaction/target";
 import type { InteractionState } from "../../core/interaction/state";
+import type { PromptPoint } from "../../core/interaction/suggestion";
 import type { AssetDescriptor, Point } from "../../core/types";
-import { pendingPolygon, rubberBand, screenPx } from "./paint";
-import type { PaintedAnnotation } from "./paint";
+import {
+  SUGGESTION_DASH,
+  SUGGESTION_OPACITY,
+  pendingPolygon,
+  rubberBand,
+  screenPx,
+} from "./paint";
+import type { PaintedAnnotation, PaintedSuggestion } from "./paint";
 import {
   AnnotationShape,
   HANDLE_PX,
@@ -47,6 +54,24 @@ export interface TransientLayerProps {
   /** The pointer, in asset pixels, when a drawing tool wants a crosshair. */
   readonly crosshair: Point | null;
   readonly asset: AssetDescriptor;
+  /**
+   * The proposal waiting to be accepted, if one is showing (#424, D2).
+   *
+   * Here rather than in `AnnotationLayer` because it is exactly what this layer
+   * is for: something on screen that is not in the document. It never enters
+   * `AnnotatorStore`, so the committed layer has nothing to draw it from — which
+   * is D4's ephemerality made visible rather than merely promised.
+   */
+  readonly suggestion?: PaintedSuggestion | null;
+  /**
+   * Every click of the suggest session so far, drawn whatever the answer is
+   * doing — including while one is in flight and after a refusal.
+   *
+   * Separate from `suggestion` for that reason: the dots are what makes a refine
+   * click legible, and blanking them while the server thinks would make each
+   * press look like it had been dropped.
+   */
+  readonly promptPoints?: readonly PromptPoint[];
 }
 
 const DASH = "6 4";
@@ -60,6 +85,8 @@ export function TransientLayer({
   closeRing,
   crosshair,
   asset,
+  suggestion = null,
+  promptPoints,
 }: TransientLayerProps): JSX.Element {
   const band = rubberBand(state);
   const pending = pendingPolygon(state);
@@ -106,7 +133,130 @@ export function TransientLayer({
         />
       )}
 
+      {suggestion !== null && <SuggestedShape suggestion={suggestion} zoom={zoom} />}
+
+      {promptPoints !== undefined && promptPoints.length > 0 && (
+        <PromptPoints points={promptPoints} zoom={zoom} />
+      )}
+
       <HotTarget hot={hot} zoom={zoom} />
+    </g>
+  );
+}
+
+/**
+ * A proposal, drawn as a proposal: reduced opacity, a dashed outline, and its
+ * class and confidence beside it (#424, D2).
+ *
+ * Both signals together, and `paint.ts` states why neither is enough alone. The
+ * label carries the confidence because that is the one fact a person needs to
+ * decide whether to look closely before pressing Enter, and it has nowhere else
+ * to be — the panel lists annotations, and this is not one yet.
+ *
+ * The stroke is one step **wider** than a committed shape's, which sounds
+ * backwards for something drawn faintly and is not: opacity takes contrast away,
+ * and a hairline at 0.6 alpha over a photograph disappears. The two adjustments
+ * are one decision.
+ */
+function SuggestedShape({
+  suggestion,
+  zoom,
+}: {
+  readonly suggestion: PaintedSuggestion;
+  readonly zoom: number;
+}): JSX.Element {
+  const { geometry, color, label } = suggestion;
+  const stroke = screenPx(STROKE_PX + 1, zoom);
+  const anchor: Point =
+    geometry.type === "bbox"
+      ? [geometry.x, geometry.y]
+      : (geometry.points.reduce<Point>(
+          (best, point) => (point[1] < best[1] ? point : best),
+          geometry.points[0] ?? [0, 0],
+        ));
+  return (
+    <g data-testid="suggestion-preview" opacity={SUGGESTION_OPACITY}>
+      {geometry.type === "bbox" ? (
+        <rect
+          data-testid="suggestion-shape"
+          x={geometry.x}
+          y={geometry.y}
+          width={geometry.width}
+          height={geometry.height}
+          fill={color}
+          fillOpacity={0.14}
+          stroke={color}
+          strokeWidth={stroke}
+          strokeDasharray={SUGGESTION_DASH}
+        />
+      ) : (
+        <polygon
+          data-testid="suggestion-shape"
+          points={geometry.points.map((point) => `${point[0]},${point[1]}`).join(" ")}
+          fill={color}
+          fillOpacity={0.14}
+          stroke={color}
+          strokeWidth={stroke}
+          strokeDasharray={SUGGESTION_DASH}
+          strokeLinejoin="round"
+        />
+      )}
+      {/* `ShapeLabel`'s treatment, at the meta size — the halo is what keeps it
+          readable over a photograph, and the lift rides the CSS custom property
+          the stage publishes so this element carries no zoom of its own. */}
+      <text
+        data-testid="suggestion-label"
+        x={anchor[0]}
+        y={anchor[1]}
+        fill={color}
+        fontFamily="system-ui, sans-serif"
+        paintOrder="stroke"
+        stroke="#000000"
+        strokeOpacity={0.45}
+        style={{
+          fontSize: "var(--vs-label-size)",
+          strokeWidth: "var(--vs-label-halo)",
+          translate: "0 var(--vs-label-lift)",
+        }}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * Where the user clicked, and what each click meant.
+ *
+ * Filled for a positive point and hollow for a negative one, on top of the
+ * colour difference rather than instead of it: "this is the thing" and "this is
+ * not the thing" are opposite instructions, and a person who cannot tell green
+ * from red must still be able to see which of their four clicks was the
+ * subtraction.
+ */
+function PromptPoints({
+  points,
+  zoom,
+}: {
+  readonly points: readonly PromptPoint[];
+  readonly zoom: number;
+}): JSX.Element {
+  const radius = screenPx(VERTEX_PX + 1, zoom);
+  return (
+    <g data-testid="prompt-points">
+      {points.map((placed, index) => (
+        <circle
+          // A click *is* its position in the sequence, and nothing else names it.
+          key={index}
+          data-polarity={placed.polarity}
+          cx={placed.point[0]}
+          cy={placed.point[1]}
+          r={radius}
+          fill={placed.polarity === "positive" ? "#3ddc84" : "none"}
+          stroke={placed.polarity === "positive" ? "#0b3d20" : "#ff6b6b"}
+          strokeWidth={screenPx(2, zoom)}
+        />
+      ))}
     </g>
   );
 }

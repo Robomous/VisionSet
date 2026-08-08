@@ -323,6 +323,18 @@ export {
   type AssetProgress,
   type SavePlan,
 } from "./annotator/jobQueries.js";
+export { SuggestPanel, type SuggestPanelProps } from "./annotator/SuggestPanel.js";
+export {
+  inferenceKeys,
+  usableConnection,
+  useInferenceConnections,
+  useSuggestRegion,
+  type Connection,
+  type SuggestBlocker,
+  type SuggestInput,
+  type SuggestionOut,
+  type SuggestedRegion,
+} from "./annotator/inferenceQueries.js";
 export {
   queryKeys,
   useActiveSchema,

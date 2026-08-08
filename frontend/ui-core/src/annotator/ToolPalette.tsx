@@ -43,6 +43,21 @@
  * is disabled-with-reason, never absent* — is the part worth keeping, and `mask`
  * and `keypoints` are still in that position the day a schema declares one.
  *
+ * ## The suggest button is the one control here that is a mode (#424)
+ *
+ * Every other button on this strip *reports* a derived tool and moves the active
+ * class to derive it. Suggest cannot: it is not a `Tool`, because `tool.ts`
+ * derives the tool from the class and there is no class that means "ask a model".
+ * So it is a mode held beside the class — the host arms it, the host lights it —
+ * and it arrives as its own prop rather than as a row in `toolChoices`, so that
+ * the list stays exactly what its type says it is.
+ *
+ * It is **absent** rather than disabled on a schema whose classes can hold
+ * neither a box nor a polygon (D3), which is the same rule that keeps a
+ * `classification_tag` off the strip: a disabled control has to be explicable in
+ * principle 9's terms, and "no class in this project could accept the answer" is
+ * a fact about the schema rather than a capability that is coming.
+ *
  * ## Why this is a second component rather than the showcase's, moved
  *
  * `@visionset/app`'s `demo/ToolStrip.tsx` is the same rule with inline styles from
@@ -66,6 +81,7 @@
 import {
   drawableGeometry,
   hotkeyForClass,
+  schemaCanSuggest,
   type AnnotationSchema,
   type Tool,
 } from "@visionset/annotator";
@@ -74,6 +90,7 @@ import {
   MousePointer2,
   Plus,
   Redo2,
+  Sparkles,
   Spline,
   Square,
   Undo2,
@@ -180,6 +197,29 @@ export interface ToolPaletteProps {
   readonly onActivateClass: (labelClass: string | null) => void;
   readonly onToggleHelp: () => void;
   /**
+   * The suggest tool (#424), or absent where the host cannot serve one.
+   *
+   * A prop rather than a row in `toolChoices`, because it is not a `Tool` and
+   * must not be made to look like one: `tool.ts` derives the tool from the active
+   * class and stores nothing, while suggest is a *mode* held beside the class it
+   * borrows. Folding it into the list would put a stored mode in a derived one's
+   * row and force `toolFor` to answer for something it cannot see.
+   *
+   * **Hidden, not disabled, when this schema declares no class that can hold a
+   * suggestion** (D3's third case) — the strip's own rule for a tool the schema
+   * cannot reach, and the same mechanism that keeps a `classification_tag` off it.
+   * A disabled sparkle over a tag-only schema would be promising a capability
+   * that does not apply to this project rather than one that is coming.
+   *
+   * Absent as a whole for the `onOpenGallery` reason: a host with no API behind
+   * it — the showcase — renders no control rather than a dead one.
+   */
+  readonly suggest?: {
+    /** Whether the tool is armed. Held by the host, like the active class. */
+    readonly active: boolean;
+    readonly onToggle: () => void;
+  };
+  /**
    * Open the add-a-class dialog (#233), or absent where there is nowhere to add
    * one — the demo has no project behind it. The `onOpenGallery` rule: a host
    * that cannot honour a control renders no control rather than a dead one.
@@ -211,6 +251,7 @@ export function ToolPalette({
   onToggleHelp,
   onAddClass,
   history,
+  suggest,
 }: ToolPaletteProps): JSX.Element {
   /**
    * The canvas keeps the focus.
@@ -249,6 +290,21 @@ export function ToolPalette({
           <ToolIcon tool={choice.tool} />
         </PaletteButton>
       ))}
+
+      {/* After the drawing tools and before the `+`, because it is a way of
+          drawing rather than a way of managing the schema — and a mode, so it is
+          the one control here whose `active` is not `tool === choice.tool`. */}
+      {suggest !== undefined && schemaCanSuggest(schema) && (
+        <PaletteButton
+          testId="tool-suggest"
+          label="Suggest (S)"
+          active={suggest.active}
+          onMouseDown={keepFocus}
+          onClick={suggest.onToggle}
+        >
+          <Sparkles className="size-4" />
+        </PaletteButton>
+      )}
 
       {/* Beside the tools, because "the class I need is not here" is a thought
           somebody has while looking at this strip — and a digit hotkey for the

@@ -408,6 +408,47 @@ is distance-to-segment with a zoom-independent tolerance, and it is only worth
 solving beside the tool that edits the result), and it is **not draggable**. The
 object list is how a lane is selected, which is a real affordance rather than a gap.
 
+#### Suggesting a shape from a click
+
+The sparkles button — hotkey `S` — arms the **suggest tool**: click the thing you
+want and a segmentation model proposes its shape. It runs through a model
+connection (`docs/inference.md`), and the server side of it is
+`POST /inference/suggest`.
+
+The gesture:
+
+| Press | What it does |
+| --- | --- |
+| left-click | adds a point on the object, and asks again |
+| alt-click | adds a point that is **not** on the object, and asks again |
+| `↵` | accepts the proposal as an annotation |
+| `Esc` | clears the points; pressing it again puts the tool away |
+
+Every click sends **all** the points placed so far — the route is stateless — and
+the answer replaces the preview. The first click on a frame is the slow one,
+because the model reads the whole image once; refining after it is quick.
+
+**The proposal is not an annotation until it is accepted.** It is drawn faintly
+with a dashed outline, carries its class and the model's confidence beside it, and
+is in neither the document nor the undo history. `Esc` is its undo. Switching
+tools, switching frames or leaving the page discards it, and nothing is written.
+
+Accepting creates one ordinary annotation, in one undo step, carrying
+`provenance: model`, the `model_ref` the answer named and its `confidence` — the
+same write path a hand-drawn shape takes, so the same schema rules apply and the
+frame settles the same way.
+
+**The tool is offered only for a class that can hold the answer.** The proposal
+comes back as a polygon for a polygon class and as the shape's bounding box for a
+box class; a schema whose classes are tag-only or lane-only gets no button at all,
+because there is no kind the answer could be expressed in.
+
+Arming it with no usable connection shows an in-editor panel saying what is
+missing — none configured, or configured with its weights not yet downloaded — and
+one action to fix it. Nothing navigates away, and no exit loses work. A refusal
+from the server is rendered where the panel is, in the server's own words, which
+is what carries the install command when the optional runtime is absent.
+
 ### The annotation side panel
 
 `AnnotatorPanel` — Objects and Labels — lives in **`ui-core`**, not in the

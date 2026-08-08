@@ -256,3 +256,56 @@ describe("adding a class from the palette (#233)", () => {
     expect(document.activeElement).not.toBe(button);
   });
 });
+
+describe("the suggest tool (#424)", () => {
+  it("is absent without the prop — a host with no model behind it renders none", () => {
+    render(mount());
+    expect(screen.queryByTestId("tool-suggest")).toBeNull();
+  });
+
+  it("is offered when the schema declares a class that can hold the answer", () => {
+    render(mount({ suggest: { active: false, onToggle: vi.fn() } }));
+    expect(screen.getByTestId("tool-suggest")).toBeTruthy();
+    expect(screen.getByTestId("tool-suggest").getAttribute("aria-label")).toBe("Suggest (S)");
+  });
+
+  it("is hidden, not disabled, on a schema no class of which could hold one", () => {
+    // D3's third case. A disabled sparkle here would be promising a capability
+    // that does not apply to this project rather than one that is coming — which
+    // is the distinction `PENDING_TOOLS` exists for and this is not.
+    const tagsOnly = {
+      ...(SCHEMA as unknown as { classes: unknown[] }),
+      classes: [
+        { name: "daytime", geometry: "classification_tag", color: null, attributes: [] },
+        { name: "kerb", geometry: "polyline", color: null, attributes: [] },
+      ],
+    } as unknown as Parameters<typeof toolChoices>[0];
+    render(mount({ schema: tagsOnly, suggest: { active: false, onToggle: vi.fn() } }));
+    expect(screen.queryByTestId("tool-suggest")).toBeNull();
+  });
+
+  it("is lit from the host's mode rather than from the derived tool", () => {
+    // The one control on this strip whose `active` is not `tool === choice.tool`:
+    // suggest is a mode held beside the class, and the class still derives `bbox`.
+    render(mount({ tool: "bbox", suggest: { active: true, onToggle: vi.fn() } }));
+    expect(screen.getByTestId("tool-suggest").getAttribute("data-active")).toBe("true");
+    expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("true");
+  });
+
+  it("toggles on a press, and does not move the active class itself", async () => {
+    const onToggle = vi.fn();
+    const onActivateClass = vi.fn();
+    render(mount({ onActivateClass, suggest: { active: false, onToggle } }));
+    await userEvent.click(screen.getByTestId("tool-suggest"));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    // Arming *does* activate a class — but that is the page's decision, made from
+    // `suggestClassFor`, not this strip reaching for one.
+    expect(onActivateClass).not.toHaveBeenCalled();
+  });
+
+  it("keeps the canvas's focus, like every other button here", () => {
+    render(mount({ suggest: { active: false, onToggle: vi.fn() } }));
+    const press = fireEvent.mouseDown(screen.getByTestId("tool-suggest"));
+    expect(press).toBe(false);
+  });
+});

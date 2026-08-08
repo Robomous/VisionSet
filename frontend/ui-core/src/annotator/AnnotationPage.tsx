@@ -73,7 +73,9 @@
  */
 
 import {
+  ACCEPT_SUGGESTION,
   AnnotatorCanvas,
+  DISCARD_SUGGESTION,
   MAX_ZOOM,
   MIN_ZOOM,
   FOCUS_CLASS_FIELD,
@@ -81,18 +83,36 @@ import {
   SAVE_AND_NEXT,
   SKIP_FRAME,
   TOGGLE_HELP,
+  TOGGLE_SUGGEST,
+  acceptedAnnotation,
+  addAnnotationCommand,
+  allowedGeometriesFor,
+  answered,
+  armed,
   atZoomCeiling,
   atZoomFloor,
+  cleared,
   createClipboard,
   defaultRegistry,
   annotationsInDrawOrder,
   documentFromWire,
+  hasPending,
+  parseGeometry,
+  promptOf,
+  randomUuid,
+  refused,
   selectOnly,
+  suggestClassFor,
   toolFor,
   useAnnotatorSnapshot,
+  withPoint,
   type AnnotatorStore,
   type AnnotatorView,
   type Clipboard,
+  type Point,
+  type Polarity,
+  type Suggestion,
+  type SuggestionState,
   type Viewport,
 } from "@visionset/annotator";
 import { AnnotatorStore as Store } from "@visionset/annotator";
@@ -174,6 +194,8 @@ import {
 } from "./jobQueries";
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { FrameGallery } from "./FrameGallery";
+import { SuggestPanel } from "./SuggestPanel";
+import { useInferenceConnections, useSuggestRegion, usableConnection } from "./inferenceQueries";
 import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState";
 import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
@@ -226,6 +248,38 @@ export const REVIEW_ACTIONS: readonly {
 
 /** One notch, matching what a wheel step feels like on the same stage. */
 const ZOOM_STEP = 1.25;
+
+/**
+ * The wire's suggestion as the engine's, or `null` for an answer with nothing in
+ * it (#424).
+ *
+ * `parseGeometry` rather than a cast: it is the annotator's own *"unknown in,
+ * typed out"* door, and a suggestion arrives on the same wire an annotation does.
+ * A shape this build cannot read is treated as no suggestion rather than crashing
+ * a render — the same call `paintAnnotation` makes when the document moves under
+ * it — because the alternative is a `WireFormatError` thrown out of a mutation
+ * callback, where nothing is listening.
+ *
+ * `region` is optional in the generated type (the field carries a default), so
+ * `?? null` is what turns "absent" and "explicitly null" into the one answer they
+ * both are.
+ */
+function readSuggestion(answer: {
+  readonly model_ref: string;
+  readonly region?: { readonly geometry: unknown; readonly confidence: number | null } | null;
+}): Suggestion | null {
+  const region = answer.region ?? null;
+  if (region === null) return null;
+  try {
+    return {
+      geometry: parseGeometry(region.geometry),
+      confidence: region.confidence,
+      modelRef: answer.model_ref,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * A hotkey on a button, in the spelling the shortcut sheet uses.
@@ -314,6 +368,16 @@ export interface AnnotationPageProps {
    * *invisibly*, leaving the address bar naming a frame nobody was looking at.
    */
   readonly onAssetChange?: (assetId: string) => void;
+  /**
+   * Where somebody goes to set up a model connection, if the app has such a
+   * screen (#424, D6).
+   *
+   * Optional, and it is expected to be absent for now: the Inference surface
+   * waits on #421's open rail question, and `ui-core` imports no router. Absent,
+   * the suggest tool's panel still says what is missing and simply renders no
+   * control — a host that cannot honour one renders none rather than a dead one.
+   */
+  readonly onConfigureInference?: () => void;
 }
 
 export function AnnotationPage(props: AnnotationPageProps): JSX.Element {
@@ -384,6 +448,7 @@ function JobScreen({
   initialAssetId,
   onOpenGallery,
   onAssetChange,
+  onConfigureInference,
 }: AnnotationPageProps): JSX.Element {
   const job = useJob(jobId);
   const batch = useBatchOf(job.data?.batch_id);
@@ -522,6 +587,7 @@ function JobScreen({
       activeClass={activeClass}
       onActivateClass={activateClass}
       onNavigate={setChosen}
+      {...(onConfigureInference === undefined ? {} : { onConfigureInference })}
       {...(onOpenGallery === undefined
         ? {}
         : {
@@ -596,6 +662,8 @@ interface WorkspaceProps {
   readonly onActivateClass: (labelClass: string | null) => void;
   readonly onNavigate: (index: number) => void;
   readonly onOpenGallery?: () => void;
+  /** #424's D6 destination, if the host has one. See `AnnotationPageProps`. */
+  readonly onConfigureInference?: () => void;
 }
 
 /**
@@ -639,6 +707,7 @@ function Workspace({
   onActivateClass: activateClass,
   onNavigate,
   onOpenGallery,
+  onConfigureInference,
 }: WorkspaceProps): JSX.Element {
   const store = useMemo<AnnotatorStore>(
     () =>
@@ -697,6 +766,146 @@ function Workspace({
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
 
   /**
+   * The suggest session (#424, D4) — **here, and outside the store on purpose.**
+   *
+   * The whole of ephemerality is where this lives. `AnnotatorStore` is the
+   * document and its history; a pending suggestion is neither, so it is held as
+   * ordinary component state beside `activeClass` and `hiddenIds`. Nothing stages
+   * it, nothing commits it, and `canUndo` cannot move for it — accepting is a
+   * separate `addAnnotationCommand` like any drawn shape, and Escape is the
+   * preview's undo.
+   *
+   * In `Workspace` rather than in `JobScreen`, which is the opposite call from
+   * `activeClass` and `clipboard` — and the difference is exactly what those two
+   * are for. They live one level up so they *survive* the per-asset remount; a
+   * suggestion must not. D2 says switching assets discards, and the `key={asset.id}`
+   * remount is that rule enforced by construction rather than by an effect
+   * somebody has to remember to write.
+   */
+  const [session, setSession] = useState<SuggestionState | null>(null);
+
+  /**
+   * The connection list, fetched **only once the tool is armed**.
+   *
+   * A job nobody suggests on makes no inference request at all, which is the same
+   * discipline `useActiveSchema` follows two blocks down: a read that only one
+   * surface needs is enabled by that surface. The cost is a moment where the
+   * answer is not known yet, and `usableConnection` names it (`checking`) rather
+   * than leaving a click to vanish into it.
+   */
+  const connections = useInferenceConnections(session !== null);
+  const { connection, blocker } = usableConnection(connections.data);
+  const suggestRegion = useSuggestRegion();
+
+  /**
+   * Arming and disarming — and arming activates a class, exactly as every other
+   * button on the strip does.
+   *
+   * `suggestClassFor` keeps a held class that can already hold a suggestion and
+   * otherwise moves to the schema's first one, which is `ToolPalette`'s own rule:
+   * a press moves the active class to one that derives the tool asked for, and a
+   * press that would change *which* class without changing the tool changes
+   * nothing.
+   */
+  function toggleSuggest(): void {
+    if (readOnly) return;
+    if (session !== null) {
+      setSession(null);
+      return;
+    }
+    const labelClass = suggestClassFor(store.document.schema, activeClass);
+    if (labelClass === null) return;
+    activateClass(labelClass);
+    setSession(armed(labelClass));
+  }
+
+  /**
+   * A click on the canvas while the tool is armed: one more point, one more ask.
+   *
+   * The **accumulated** points go every time — the route is stateless and says
+   * so — and the serial the transition stamped is captured here so a slow first
+   * answer cannot overwrite a fast second one. Both callbacks fold through
+   * `setSession`'s updater rather than through the closed-over `session`, because
+   * by the time an answer lands the session has usually moved.
+   */
+  function suggestAt(point: Point, polarity: Polarity): void {
+    if (session === null || connection === null) return;
+    const declared = store.document.schema.classes.find(
+      (candidate) => candidate.name === session.labelClass,
+    );
+    if (declared === undefined) return;
+
+    const next = withPoint(session, point, polarity);
+    setSession(next);
+    const asked = next.serial;
+    const prompt = promptOf(next);
+    suggestRegion.mutate(
+      {
+        projectId,
+        assetId: asset.id,
+        connectionId: connection.id,
+        positive: prompt.positive,
+        negative: prompt.negative,
+        allowedGeometries: allowedGeometriesFor(declared),
+      },
+      {
+        onSuccess: (answer) => {
+          setSession((live) =>
+            live === null ? live : answered(live, asked, readSuggestion(answer)),
+          );
+        },
+        onError: (error: unknown) => {
+          setSession((live) =>
+            live === null ? live : refused(live, asked, refusalProse(error)),
+          );
+        },
+      },
+    );
+  }
+
+  /**
+   * Accept: one ordinary annotation, one history entry, `provenance: model`.
+   *
+   * Through `addAnnotationCommand` — the same command a finished draw produces —
+   * so the write path, the undo step and the save diff are all the ones that
+   * already exist. The frame enters at `annotated` through the normal settle,
+   * which is the Decision (Armando, 2026-08-07) on #424: an interactively
+   * accepted suggestion is not a *silent* write, so #418's `review_pending`
+   * constraint governs unattended batch prediction and not this.
+   *
+   * The session is cleared rather than disarmed: somebody who accepted one shape
+   * is usually about to click the next thing.
+   */
+  function acceptSuggestion(): void {
+    if (session === null || readOnly) return;
+    const drawn = acceptedAnnotation(store.document, session, randomUuid);
+    if (drawn === null) return;
+    store.execute(addAnnotationCommand(drawn));
+    store.select(selectOnly(drawn.id));
+    setSession(cleared(session));
+  }
+
+  /** Escape: clear what is pending, or — with nothing pending — put the tool away. */
+  function discardSuggestion(): void {
+    if (session === null) return;
+    setSession(hasPending(session) ? cleared(session) : null);
+  }
+
+  /**
+   * Switching tools discards (D2), and *switching tools* here means the active
+   * class moving off the one the session captured.
+   *
+   * The strip's other buttons, the panel's list and every digit hotkey all end at
+   * `activateClass`, so this one effect covers all of them — where a handler on
+   * each would be four places to add the fifth door to. Arming is unaffected: it
+   * activates the class first and opens the session with the same name, so the
+   * two agree by the time this runs.
+   */
+  useEffect(() => {
+    setSession((live) => (live === null || live.labelClass === activeClass ? live : null));
+  }, [activeClass]);
+
+  /**
    * The one capability the canvas hands out rather than owning (#189).
    *
    * It used to be `(name) => name === TOGGLE_HELP` — which returns **true**, the
@@ -738,6 +947,23 @@ function Workspace({
     // the chord cannot reach a move the button would refuse.
     if (name === SKIP_FRAME) {
       if (declares(asset, ASSET_ACTION.skip) && !setProgress.isPending) settle("skipped");
+      return true;
+    }
+    // `s` (#424). Claimed even where it does nothing — a read-only frame still
+    // has to swallow the chord rather than let a bare letter reach the page
+    // around the canvas, which is why the registry claims it at all.
+    if (name === TOGGLE_SUGGEST) {
+      toggleSuggest();
+      return true;
+    }
+    // `↵` and `Esc`, substituted by the adapter only while a session is live, so
+    // neither reaches here unless there is something to accept or take back.
+    if (name === ACCEPT_SUGGESTION) {
+      acceptSuggestion();
+      return true;
+    }
+    if (name === DISCARD_SUGGESTION) {
+      discardSuggestion();
       return true;
     }
     return false;
@@ -1068,6 +1294,17 @@ function Workspace({
    */
   const canAnnotate = declares(asset, ASSET_ACTION.annotate);
   const readOnly = !canAnnotate;
+
+  /**
+   * The session, gated on the mode rather than torn down by an effect (#424).
+   *
+   * A frame that becomes a viewer under somebody — `ui-capabilities`: *"read-only
+   * is a transition, not only an entry state"* — must not keep a preview offering
+   * a write that is now refused. Deriving it here rather than clearing the state
+   * means the mode arrives in place, on the same render, with no `setState`
+   * mirror of the rule to keep in step.
+   */
+  const suggesting = readOnly ? null : session;
 
   /**
    * Why it is read-only, in the words a person can act on.
@@ -1991,6 +2228,11 @@ function Workspace({
                   store.select(selectOnly(annotationId));
                   setReclassing(annotationId);
                 }}
+                // The suggest mode (#424). Its presence diverts every primary
+                // press away from the interaction machine, which is what stops a
+                // click meant for the model from drawing a box instead.
+                suggestion={suggesting}
+                onSuggestPoint={suggestAt}
               />
             )}
           </AssetImage>
@@ -2048,6 +2290,33 @@ function Workspace({
                 onUndo: () => store.undo(),
                 onRedo: () => store.redo(),
               }}
+              // #424. The strip hides it on a schema no class of which could
+              // hold the answer; this page offers it because it has an API
+              // behind it, which the showcase does not.
+              suggest={{ active: suggesting !== null, onToggle: toggleSuggest }}
+            />
+          )}
+
+          {/*
+            The suggest tool's own voice (#424, D6) — a sibling of the canvas for
+            `ToolPalette`'s reason, and in the one corner the editor does not
+            already occupy.
+
+            Rendered for the whole session rather than only for its refusals: the
+            asking state, the found-nothing state and the accept affordance are
+            the same question answered differently, and scattering them would
+            leave a person assembling one answer from three places.
+          */}
+          {suggesting !== null && (
+            <SuggestPanel
+              session={suggesting}
+              blocker={blocker}
+              refusal={suggesting.refusal}
+              onAccept={acceptSuggestion}
+              onDiscard={discardSuggestion}
+              {...(onConfigureInference === undefined
+                ? {}
+                : { onConfigure: onConfigureInference })}
             />
           )}
 

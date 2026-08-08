@@ -78,6 +78,8 @@ export {
   type ModifierState,
 } from "./keys";
 export {
+  ACCEPT_SUGGESTION,
+  DISCARD_SUGGESTION,
   FOCUS_CLASS_FIELD,
   READ_ONLY_KINDS,
   RESET_ZOOM,
@@ -85,6 +87,7 @@ export {
   SAVE_AND_NEXT,
   SKIP_FRAME,
   TOGGLE_HELP,
+  TOGGLE_SUGGEST,
   type Action,
   type ActionKind,
   type KeyIntent,

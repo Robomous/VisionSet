@@ -26,7 +26,14 @@ import {
   pressOf,
   wideSchema,
 } from "./_palette";
-import { FOCUS_CLASS_FIELD, RESET_ZOOM, SAVE, SKIP_FRAME, TOGGLE_HELP } from "./actions";
+import {
+  FOCUS_CLASS_FIELD,
+  RESET_ZOOM,
+  SAVE,
+  SKIP_FRAME,
+  TOGGLE_HELP,
+  TOGGLE_SUGGEST,
+} from "./actions";
 import type { Action } from "./actions";
 import {
   CLASS_HOTKEY_DIGITS,
@@ -87,6 +94,10 @@ const DISPATCH: readonly DispatchRow[] = [
   // the ring close above, substituted by the adapter when nothing is being drawn,
   // so a second `enter` row here would shadow the commit.
   { chord: "x", key: "x", action: { kind: "host", name: SKIP_FRAME } },
+  // #424. `enter` and `escape` are absent from this trio for `x`'s neighbour's
+  // reason: accepting and discarding a suggestion are substitutions the adapter
+  // makes over the two rows above, and a row here would shadow both.
+  { chord: "s", key: "s", action: { kind: "host", name: TOGGLE_SUGGEST } },
   { chord: "v", key: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 
@@ -148,6 +159,17 @@ describe("the default shortcut table", () => {
     for (const key of ["b", "p", "k", "l"]) {
       expect(resolve(DEFAULTS, keystroke(key))).toBeNull();
     }
+  });
+
+  it("keeps the suggest tool and the save chord apart, though both are `s` (#424)", () => {
+    // The same claim `mod+c`/`c` makes above, on the pair that arrived last: the
+    // modifier is part of the chord string, so claiming `s` did not shadow
+    // `mod+s` and nothing had to be re-bound to make room for it.
+    expect(resolve(DEFAULTS, keystroke("s"))).toEqual({
+      kind: "host",
+      name: TOGGLE_SUGGEST,
+    });
+    expect(resolve(DEFAULTS, keystroke("s", MOD))).toEqual({ kind: "host", name: SAVE });
   });
 
   it("answers null for a chord nobody bound", () => {

@@ -205,3 +205,53 @@ export const SAVE_AND_NEXT = "save-and-next";
  * `x` is unclaimed.
  */
 export const SKIP_FRAME = "skip-frame";
+
+/**
+ * Arm or disarm the suggest tool — `s`, a bare letter on `c`'s, `v`'s and `x`'s
+ * terms (#424, slice 3b).
+ *
+ * A host row, and it could be nothing else: a suggestion comes from a model
+ * behind an HTTP route, and this package has no HTTP and never will. What core
+ * owns is the *shape* of the session — `interaction/suggestion.ts` — the same
+ * split `SAVE` has, where the meaning is here and the request is the host's.
+ *
+ * It takes an ordinary row in `DEFAULT_BINDINGS` because `s` is unclaimed;
+ * `mod+s` is `SAVE` and the two are different chords. Claimed even on a host that
+ * offers no suggestions, for the reason every host row is: the registry is the
+ * list of keystrokes the annotator takes away from the browser, and a host that
+ * cannot serve it answers `false` and the chord falls through.
+ */
+export const TOGGLE_SUGGEST = "toggle-suggest";
+
+/**
+ * Turn the pending suggestion into an annotation — `enter` (#424, D4).
+ *
+ * `SAVE_AND_NEXT`'s sibling and its neighbour in the same substitution.
+ * `enter` already means *finish*, and this is the third thing it can finish:
+ * a shape being drawn (the commit row), a suggestion being previewed (this),
+ * or the frame (`SAVE_AND_NEXT`). All three are decided from state the adapter
+ * holds and this table does not, so all three are read off `enter` in
+ * `AnnotatorCanvas.handleKeyDown` rather than bound here — a second `enter` row
+ * would shadow the commit, because the fold is last-wins.
+ *
+ * A host row rather than an `add` effect, because the annotation an accepted
+ * suggestion becomes carries a `model_ref` and a `confidence` that arrived over
+ * a wire. `acceptedAnnotation` builds it; the host is what holds the answer.
+ */
+export const ACCEPT_SUGGESTION = "accept-suggestion";
+
+/**
+ * Throw the pending suggestion away — `escape` (#424, D4: *"Esc is the preview's
+ * undo"*).
+ *
+ * The same substitution as `ACCEPT_SUGGESTION`, on the other chord, and it is
+ * **first**: a preview is the most recent thing a person put on screen, so an
+ * Escape while one is showing is about that and not about the selection. With
+ * nothing pending the chord falls through to `send cancel` untouched, so every
+ * cancel rule in `machine.ts` still reads exactly as it did.
+ *
+ * It is the preview's undo rather than the command log's for the structural
+ * reason `suggestion.ts` gives: nothing about a pending suggestion is in the
+ * document, so there is nothing for `mod+z` to step back to.
+ */
+export const DISCARD_SUGGESTION = "discard-suggestion";
