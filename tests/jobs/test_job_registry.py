@@ -17,7 +17,7 @@ from visionset.jobs import REGISTRY, HandlerRef, known_types, load, register, re
 from visionset.kernel.errors import UnknownJobType
 
 #: What `visionset.jobs` itself registers, as opposed to what a test module has.
-SHIPPED = {"ingest.resume", "export.release"}
+SHIPPED = {"ingest.resume", "export.release", "inference.download_weights"}
 
 
 def shipped_refs() -> list[HandlerRef]:
@@ -50,11 +50,11 @@ def test_every_registered_handler_pickles_and_resolves() -> None:
 
 
 def test_every_shipped_handler_is_idempotent_and_says_so() -> None:
-    """Both of today's are, and both had to argue it — see their modules.
+    """All of today's are, and each had to argue it — see their modules.
 
     Not a rule for all time: a handler that is not idempotent declares `False`
-    and is never retried automatically. This pins what today's two claim, so
-    adding a third is a deliberate answer rather than a default nobody read.
+    and is never retried automatically. This pins what today's three claim, so
+    adding a fourth is a deliberate answer rather than a default nobody read.
     """
     assert all(ref.idempotent for ref in shipped_refs())
 

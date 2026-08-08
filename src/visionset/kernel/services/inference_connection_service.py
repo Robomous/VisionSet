@@ -1,13 +1,19 @@
 # usage: from visionset.kernel.services import InferenceConnectionService
 """Model connections: the one door to where this workspace may run inference.
 
-Creating, reading, editing and removing the rows every future predictor is
-instantiated from. **Nothing here predicts, downloads, or reaches a network**,
-and that is the boundary rather than a stage of construction: this service knows
-the configuration, the ``ModelProvider`` port (`cf. #418`) knows the protocol, and
-resolving one into the other is the composition root's job outside the kernel.
-So the kernel never imports torch, transformers, or an HTTP client, and a
-connection can be configured on a machine that could not possibly run it.
+Creating, reading, editing and removing the rows every predictor is instantiated
+from — and, since #418's second slice, saying whether one may be asked to fetch
+its weights and recording that they arrived.
+
+**Nothing here predicts, downloads, or reaches a network**, and that stays true
+of the download: :meth:`~InferenceConnectionService.require_downloadable` decides
+whether fetching is something to do, ``visionset.inference`` does the fetching,
+and :meth:`~InferenceConnectionService.record_weights_ready` writes down that it
+worked. This service knows the configuration and its legality; the
+``ModelProvider`` port (`cf. #418`) knows the protocol; resolving one into the
+other is the composition root's job outside the kernel. So the kernel never
+imports torch, transformers, or an HTTP client, and a connection can be
+configured on a machine that could not possibly run it.
 
 **Deleting is a hard delete, and it takes nothing with it.** An annotation records
 the model that produced it by copying its identity onto the label when it is
@@ -27,15 +33,19 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from visionset.kernel.domain import (
+    CONNECTION_KINDS,
+    ConnectionAction,
     ConnectionSetupState,
     ConnectionType,
     InferenceConnection,
+    connection_actions,
     normalize_name,
 )
 from visionset.kernel.errors import (
     ConstraintViolated,
     InferenceConnectionInvalid,
     InferenceConnectionNameTaken,
+    InferenceConnectionNotDownloadable,
     InferenceConnectionNotFound,
 )
 from visionset.kernel.ports import UnitOfWork
@@ -167,6 +177,89 @@ class InferenceConnectionService:
         except ConstraintViolated as exc:
             raise self._as_name_collision(exc, name or "") from exc
 
+    def require_downloadable(
+        self, connection_id: UUID, *, retrying: bool = False
+    ) -> InferenceConnection:
+        """The connection, if fetching weights for it is something to do.
+
+        The gate every download surface calls before it commits to anything —
+        the route before it enqueues, the command before it reaches a network —
+        so a refusal arrives as an answer to the request that asked rather than
+        as a failed row somebody has to go and read. That is
+        ``export_release``'s rule: a refusal a request can make is a refusal the
+        request makes, and the worker checks again because *that* one is the
+        guarantee.
+
+        Derived from ``connection_actions``, never from a second reading of the
+        tables underneath it. That is what makes ``allowed_actions`` and this
+        refusal the same answer: a client that saw ``download_weights`` in the
+        declaration can call, and one that did not will be told why.
+
+        **``retrying`` is what a re-run of already-accepted work passes**, and it
+        is the state half of the gate and only that half. The question this
+        answers is normally "may this be *started*?", and a retry was started
+        already: ``sweep_orphans`` re-enqueues an idempotent orphan as a new job,
+        so a crash between the state flip committing and the row settling
+        produces a second run against a connection that is now ``ready``.
+        Refusing that would fail a job whose work is done. The **kind** half is
+        not relaxed by it — a connection with no weights of its own has none on
+        the second attempt either — so this is narrower than a flag that skips
+        the gate.
+
+        Raises:
+            InferenceConnectionNotFound: no such connection in this workspace.
+            InferenceConnectionNotDownloadable: it is already set up, or it is a
+                kind with no weights of its own.
+        """
+        with self._workspace.unit_of_work() as uow:
+            connection = self.require_connection(uow, connection_id)
+        if ConnectionAction.DOWNLOAD_WEIGHTS in connection_actions(
+            connection.setup_state, connection_type=connection.connection_type
+        ):
+            return connection
+        kinds = CONNECTION_KINDS[ConnectionAction.DOWNLOAD_WEIGHTS]
+        if retrying and connection.connection_type in kinds:
+            return connection
+        raise InferenceConnectionNotDownloadable(_why_not_downloadable(connection))
+
+    def record_weights_ready(self, connection_id: UUID) -> InferenceConnection:
+        """Mark the weights present. Called **after** they are, never before.
+
+        The one edge in this entity's short life, and it is written last on
+        purpose: a download that fails partway has changed nothing here, so a
+        reader never sees a connection claiming a runtime it does not have. That
+        is the whole of "never a half-ready state" — not a guard, an ordering.
+
+        **Idempotent, and it has to be.** The download job is registered
+        idempotent, so a crash after this commit and before the row settled means
+        a retry arrives at a connection that is already ``ready``; answering that
+        with a refusal would fail a job whose work is done. Recording something
+        already true returns it unchanged.
+
+        Deliberately narrow. It takes no state to move *to*, because there is
+        only one, and it accepts no other field — the caller is a job handler
+        that has just written bytes to a cache, and the only thing it has
+        learned is that they are there.
+
+        Raises:
+            InferenceConnectionNotFound: no such connection in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            current = self.require_connection(uow, connection_id)
+            if current.setup_state is ConnectionSetupState.READY:
+                return current
+            return uow.inference_connections.update(
+                _built(
+                    **(
+                        current.model_dump()
+                        | {
+                            "setup_state": ConnectionSetupState.READY,
+                            "updated_at": datetime.now(UTC),
+                        }
+                    )
+                )
+            )
+
     def delete(self, connection_id: UUID) -> None:
         """Remove a connection. Annotations keep their model provenance.
 
@@ -283,6 +376,25 @@ def _first_reason(exc: ValidationError) -> str:
     """
     first = exc.errors()[0]
     return str(first.get("msg", exc)).removeprefix("Value error, ")
+
+
+def _why_not_downloadable(connection: InferenceConnection) -> str:
+    """Which of the two refusals this is, in a sentence somebody can act on.
+
+    The *message* distinguishes them and the code does not, deliberately: a
+    client branches on ``INFERENCE_CONNECTION_NOT_DOWNLOADABLE`` to decide
+    whether to stop asking, and both readings say stop. Splitting the code would
+    publish a distinction no caller behaves differently on.
+    """
+    if connection.connection_type is not ConnectionType.LOCAL:
+        return (
+            f"connection {connection.name!r} is an {connection.connection_type.value} connection; "
+            "its model runs elsewhere, so there are no weights here to fetch"
+        )
+    return (
+        f"connection {connection.name!r} is already set up; "
+        "its weights are present and there is nothing to fetch"
+    )
 
 
 def _born_in(connection_type: ConnectionType) -> ConnectionSetupState:

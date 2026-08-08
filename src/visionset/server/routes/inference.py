@@ -6,10 +6,12 @@ A route never translates an error — it raises the kernel's and stops, and the
 handlers ``create_app()`` installed turn it into an ``ErrorBody`` with a stable
 code.
 
-**Nothing here runs a model, fetches weights, or contacts an endpoint.** The two
-operations that will — a weight download and a reachability test — are absent
-rather than stubbed, and ``ConnectionOut.allowed_actions`` does not name them, so
-no client is told about a control that does not exist yet (`cf. #418`, `#421`).
+**Nothing in this file runs a model or contacts an endpoint.** The weight
+download is queued rather than performed — it answers 202 and points at a
+background job, the contract the export route already uses — and a reachability
+``test`` is still absent rather than stubbed, so ``allowed_actions`` does not
+name it and no client is told about a control that does not exist yet
+(`cf. #418`, `#421`).
 
 Handlers are ``def`` rather than ``async def``, on ``projects``' terms: every
 kernel call underneath is a blocking SQLite call, and a coroutine would run it on
@@ -18,12 +20,17 @@ the event loop.
 
 from uuid import UUID
 
-from fastapi import status
+from fastapi import Response, status
 
+from visionset.inference import require as require_local_inference
+from visionset.jobs.weights import JOB_TYPE as download_job_type
+from visionset.jobs.weights import payload_for as download_payload_for
+from visionset.kernel.domain import BackgroundJobSpec
 from visionset.kernel.services import InferenceConnectionService
-from visionset.server.dependencies import WorkspaceDep, protected_router
+from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
+    BackgroundJobOut,
     ConnectionCreate,
     ConnectionOut,
     ConnectionPage,
@@ -79,6 +86,63 @@ def update_inference_connection(
             endpoint_url=body.endpoint_url,
         )
     )
+
+
+@router.post(
+    "/{connection_id}/download",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=documented(404, 409),
+)
+def download_connection_weights(
+    workspace: WorkspaceDep,
+    runner: RunnerDep,
+    response: Response,
+    connection_id: UUID,
+) -> BackgroundJobOut:
+    """Fetch this connection's weights, and answer at once with the job to poll.
+
+    The `download_weights` action, and the only thing in this product that
+    downloads a model at all. It runs because somebody asked: nothing fetches
+    weights at install time, at startup, or on the way to anything else.
+
+    **202, not 200.** Weights for a detector of this class are gigabytes, so this
+    follows the launch-and-poll contract the export route uses: poll `GET
+    /background-jobs/{id}` — the `Location` header names it — until `state` is
+    `succeeded`, then re-read the connection to see `setup_state` as `ready`.
+
+    **Everything a caller can be told now is told now.** A connection that is
+    already set up, or one whose model runs elsewhere, is 409
+    `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` on this request — the same answer
+    `allowed_actions` gave, from the same table. A deployment without the local
+    runtime installed is refused here too, with the exact install command in the
+    message. Neither refusal creates a job, so a caller holding a job id holds
+    one that will run.
+
+    The action is declared on a connection whose *state* permits it even where
+    the runtime is missing, deliberately: whether this machine has the extra is
+    not a fact about the connection, and hiding the control would leave the
+    install command with nowhere to be shown.
+
+    Re-running is safe. The job verifies a cache it already filled rather than
+    re-fetching it, and a run that fails leaves the connection exactly as it was
+    — there is no half-set-up state to recover from.
+    """
+    InferenceConnectionService(workspace).require_downloadable(connection_id)
+    # Before the job exists, for the reason the export route gives: a refusal a
+    # request can make is a refusal the request makes. Discovering a missing
+    # install inside a worker would put an install command on a failed row
+    # somebody has to go and find.
+    require_local_inference()
+    job = workspace.job_queue.enqueue(
+        BackgroundJobSpec(
+            type=download_job_type,
+            payload=download_payload_for(connection_id),
+            idempotent=True,
+        )
+    )
+    runner.wake()
+    response.headers["Location"] = f"/background-jobs/{job.id}"
+    return BackgroundJobOut.of(job)
 
 
 @router.delete(

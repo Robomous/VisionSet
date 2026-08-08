@@ -7,12 +7,16 @@ never by calling the SDK — the SDK appears only to read state back.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.cli._flow import ok, payload, run, workspace
 
+from visionset.inference import MODULES
+from visionset.inference import weights as weights_module
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
     InferenceConnectionService,
@@ -173,6 +177,12 @@ def test_show_declares_what_this_slice_can_perform(root: Path) -> None:
     """The declaration reaches the terminal, identical to the REST answer."""
     ok(root, *LOCAL)
     assert payload(root, "inference", "show", "local-gd")["allowed_actions"] == [
+        "download_weights",
+        "update",
+        "delete",
+    ]
+    ok(root, *HTTP)
+    assert payload(root, "inference", "show", "remote")["allowed_actions"] == [
         "update",
         "delete",
     ]
@@ -224,3 +234,112 @@ def test_declining_the_prompt_keeps_the_connection(root: Path) -> None:
     result = run(root, "inference", "delete", "local-gd")
     assert result.exit_code != 0
     assert _stored(root) == ["local-gd"]
+
+
+# --- download -----------------------------------------------------------------
+
+
+def _extra_is_installed() -> bool:
+    """Whether this environment actually carries the local runtime.
+
+    The base development environment does not, and CI's does not either, so the
+    unstubbed refusal test is the one that runs for real. Guarded rather than
+    assumed: a contributor who has the extra installed must not see a red suite
+    for having it.
+    """
+    return all(importlib.util.find_spec(name) is not None for name in MODULES)
+
+
+@pytest.fixture()
+def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
+    """Record what would have been downloaded, and download nothing.
+
+    Patched at ``visionset.inference.weights.download``, the module global
+    ``fetch_weights`` calls, so the gate above it and the write below it are the
+    shipped code. The command itself is invoked for real.
+    """
+    seen: list[str] = []
+
+    def _download(connection: Any, *, into: Path) -> Path:
+        seen.append(f"{connection.model_id}@{connection.model_revision}")
+        return tmp_path / "snapshot"
+
+    monkeypatch.setattr(weights_module, "download", _download)
+    return seen
+
+
+def test_download_fetches_and_marks_the_connection_ready(root: Path, fetched: list[str]) -> None:
+    """The whole command, end to end, through the argv a person types."""
+    ok(root, *LOCAL)
+    assert ok(root, "inference", "download", "local-gd")
+    assert fetched == ["some/model@abc123"]
+    assert payload(root, "inference", "show", "local-gd")["setup_state"] == "ready"
+
+
+def test_download_says_what_it_is_doing_on_stderr(root: Path, fetched: list[str]) -> None:
+    """`ingest`'s pattern: it blocks, so it narrates rather than going quiet.
+
+    stdout carries the id alone, which is the one-datum rule every command here
+    keeps — so `$(visionset inference download ...)` is a connection id and not a
+    paragraph.
+    """
+    ok(root, *LOCAL)
+    result = run(root, "inference", "download", "local-gd")
+    assert result.exit_code == 0, result.output
+    assert "fetching some/model at abc123" in result.stderr
+    assert "is ready" in result.stderr
+    assert result.stdout.strip().count("\n") == 0
+
+
+def test_download_resolves_by_name_or_by_id(root: Path, fetched: list[str]) -> None:
+    created = ok(root, *LOCAL)
+    assert ok(root, "inference", "download", created).strip() == created
+
+
+def test_download_prints_the_connection_as_json(root: Path, fetched: list[str]) -> None:
+    """The same document `show` prints, so a script reads one shape."""
+    ok(root, *LOCAL)
+    document = payload(root, "inference", "download", "local-gd")
+    assert document["setup_state"] == "ready"
+    assert document["allowed_actions"] == ["update", "delete"]
+
+
+def test_downloading_twice_exits_one_with_a_sentence(root: Path, fetched: list[str]) -> None:
+    """The second one has nothing to do and says so, rather than fetching again."""
+    ok(root, *LOCAL)
+    ok(root, "inference", "download", "local-gd")
+
+    result = run(root, "inference", "download", "local-gd")
+    assert result.exit_code == 1, result.output
+    assert "already set up" in result.stderr
+    assert fetched == ["some/model@abc123"]
+
+
+def test_downloading_an_http_connection_exits_one(root: Path, fetched: list[str]) -> None:
+    ok(root, *HTTP)
+    result = run(root, "inference", "download", "remote")
+    assert result.exit_code == 1, result.output
+    assert "runs elsewhere" in result.stderr or "no weights" in result.stderr
+    assert fetched == []
+
+
+def test_downloading_an_unknown_connection_exits_one(root: Path, fetched: list[str]) -> None:
+    result = run(root, "inference", "download", "nothing-here")
+    assert result.exit_code == 1, result.output
+    assert "Error:" in result.stderr
+
+
+@pytest.mark.skipif(_extra_is_installed(), reason="the local runtime is installed here")
+def test_a_missing_local_runtime_exits_one_with_the_install_command(root: Path) -> None:
+    """Unstubbed. A sentence naming what to run, never a traceback.
+
+    The kernel-vocabulary translation working end to end: an `ImportError` deep
+    inside a package becomes one line at a terminal and exit 1, because
+    `opened_workspace` renders a `VisionSetError` and `_extra.imported` made it
+    one.
+    """
+    ok(root, *LOCAL)
+    result = run(root, "inference", "download", "local-gd")
+    assert result.exit_code == 1, result.output
+    assert 'pip install "visionset[local-inference]"' in result.stderr
+    assert "Traceback" not in result.stderr

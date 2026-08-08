@@ -39,6 +39,7 @@ from visionset.kernel import (
     BatchNotEditable,
     BatchNotFound,
     BatchNotInAnnotation,
+    InferenceConnectionNotDownloadable,
     InvalidTransition,
     JobNotComplete,
 )
@@ -49,7 +50,9 @@ from visionset.kernel.domain import (
     BATCH_MOVES,
     BATCH_TRANSITIONS,
     CONNECTION_GATES,
+    CONNECTION_KINDS,
     DELETABLE_STATES,
+    EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
     JOB_MOVES,
     JOB_TRANSITIONS,
@@ -659,18 +662,38 @@ def test_delete_is_declared_from_the_kernels_own_gate_and_not_from_a_copy() -> N
 # --- enforcement: inference connections ---------------------------------------
 
 
-def _connection_in(tmp_path: Path, setup_state: ConnectionSetupState) -> tuple[Any, Any]:
-    """A workspace holding one connection born in that state, and its service.
+def _connection_in(
+    tmp_path: Path, connection_type: ConnectionType, setup_state: ConnectionSetupState
+) -> tuple[Any, Any] | None:
+    """A workspace holding one connection of that kind in that state, or `None`.
 
-    Walked into by a real `create` call rather than written through the
-    repository, on this module's standing rule: a fixture that puts a row in a
-    state no service can produce proves the matrix against itself. The kind is
-    what chooses the state — a local connection has weights to fetch, an HTTP one
-    does not — so each state is reached by creating the kind that starts there.
+    Walked into by real service calls rather than written through the repository,
+    on this module's standing rule: a fixture that puts a row in a state no
+    service can produce proves the matrix against itself. The kind decides the
+    state a connection is *born* in, and `record_weights_ready` is the one thing
+    that moves it — so `(local, ready)` is reached by actually setting the
+    connection up, not by editing a column.
+
+    `None` is the honest answer for a square the domain cannot hold: an `http`
+    connection is born `ready` and nothing can put it back, so `(http,
+    not_set_up)` is unreachable rather than merely untested. Returning `None`
+    makes the parametrized test skip it out loud instead of the square quietly
+    not existing.
     """
     workspace = WorkspaceService.init(tmp_path / "ws", name="caps")
     connections = InferenceConnectionService(workspace)
-    if setup_state is ConnectionSetupState.NOT_SET_UP:
+    if connection_type is ConnectionType.HTTP:
+        if setup_state is ConnectionSetupState.NOT_SET_UP:
+            workspace.close()
+            return None
+        made = connections.create(
+            "http-one",
+            connection_type=ConnectionType.HTTP,
+            model_id="some/model",
+            model_revision="abc123",
+            endpoint_url="https://example.invalid/predict",
+        )
+    else:
         made = connections.create(
             "local-one",
             connection_type=ConnectionType.LOCAL,
@@ -679,15 +702,10 @@ def _connection_in(tmp_path: Path, setup_state: ConnectionSetupState) -> tuple[A
             device="cpu",
             precision="fp16",
         )
-    else:
-        made = connections.create(
-            "http-one",
-            connection_type=ConnectionType.HTTP,
-            model_id="some/model",
-            model_revision="abc123",
-            endpoint_url="https://example.invalid/predict",
-        )
+        if setup_state is ConnectionSetupState.READY:
+            made = connections.record_weights_ready(made.id)
     assert made.setup_state is setup_state
+    assert made.connection_type is connection_type
     return workspace, made
 
 
@@ -698,7 +716,17 @@ def _invoke_connection(
 
     Each closure asserts the effect the action's *name* promises, so a
     declaration cannot be satisfied by a call that returned and changed nothing.
+
+    `download_weights` stops at the gate rather than fetching anything, and that
+    is the honest boundary for this file: what the declaration promises is that
+    the *kernel* will accept the request, and the kernel's whole part in a
+    download is `require_downloadable`. Whether weights then arrive is
+    `visionset.inference`'s business and `tests/inference/`'s subject, and
+    reaching a network here would make this suite need one.
     """
+
+    def download_weights() -> None:
+        assert connections.require_downloadable(connection_id).id == connection_id
 
     def update() -> None:
         edited = connections.update(connection_id, model_revision="deadbeef")
@@ -708,53 +736,128 @@ def _invoke_connection(
         connections.delete(connection_id)
         assert all(one.id != connection_id for one in connections.list())
 
-    return {ConnectionAction.UPDATE: update, ConnectionAction.DELETE: delete}[action]
+    return {
+        ConnectionAction.DOWNLOAD_WEIGHTS: download_weights,
+        ConnectionAction.UPDATE: update,
+        ConnectionAction.DELETE: delete,
+    }[action]
+
+
+def _refuse_connection(
+    connections: InferenceConnectionService, connection_id: UUID, action: ConnectionAction
+) -> Callable[[], None] | None:
+    """The same call for an action that is *not* declared, where one exists.
+
+    The strong half of the capability claim — an undeclared action is refused —
+    and it is only assertable for `download_weights`, because the other two are
+    declared everywhere and so have no undeclared square to be refused in.
+    """
+    if action is not ConnectionAction.DOWNLOAD_WEIGHTS:
+        return None
+
+    def refused() -> None:
+        with pytest.raises(InferenceConnectionNotDownloadable):
+            connections.require_downloadable(connection_id)
+
+    return refused
 
 
 @pytest.mark.parametrize("action", list(ConnectionAction), ids=lambda a: a.value)
 @pytest.mark.parametrize("state", list(ConnectionSetupState), ids=lambda s: s.value)
+@pytest.mark.parametrize("kind", list(ConnectionType), ids=lambda k: k.value)
 def test_a_connection_allows_exactly_what_it_declares(
-    tmp_path: Path, state: ConnectionSetupState, action: ConnectionAction
+    tmp_path: Path,
+    kind: ConnectionType,
+    state: ConnectionSetupState,
+    action: ConnectionAction,
 ) -> None:
-    """Every square of `ConnectionSetupState` x `ConnectionAction`, for real.
+    """Every square of kind x `ConnectionSetupState` x `ConnectionAction`, for real.
 
-    Every square currently succeeds, and that is the claim rather than a gap in
-    it: this resource has no state-dependent legality yet, so "declared" and
-    "permitted" agreeing means both are total. The test is written as the same
-    matrix the other three resources get, so the day `delete` starts refusing a
-    connection with a download in flight, the square that stops being legal has
-    somewhere to fail.
+    Three dimensions rather than two since #418's second slice, because
+    `download_weights` is the first connection action whose legality is not a
+    function of state alone: an `http` connection has no weights of its own in
+    any state, and a `local` one that already fetched them has nothing left to
+    do.
+
+    Both directions are walked. A declared action is performed and its effect
+    asserted; an undeclared one is *refused*, which is the half that actually
+    protects a client — `ui-capabilities` says a conforming client renders what
+    the wire declares, so a declaration nothing enforces is a control that lies
+    in the other direction.
     """
-    workspace, made = _connection_in(tmp_path, state)
+    fixture = _connection_in(tmp_path, kind, state)
+    if fixture is None:
+        pytest.skip(f"the domain cannot hold a {kind.value} connection at {state.value}")
+    workspace, made = fixture
     connections = InferenceConnectionService(workspace)
-    invoke = _invoke_connection(connections, made.id, action)
 
-    assert action in connection_actions(state)
-    invoke()
+    if action in connection_actions(state, connection_type=kind):
+        _invoke_connection(connections, made.id, action)()
+    else:
+        refuse = _refuse_connection(connections, made.id, action)
+        assert refuse is not None, f"{action.value} is undeclared here with nothing to refuse it"
+        refuse()
     workspace.close()
 
 
 def test_a_connections_declaration_is_read_from_the_kernels_own_gate() -> None:
-    """The declaration reads `CONNECTION_GATES`, never a list beside it.
+    """The declaration reads the two tables, never a list beside them.
 
-    `DELETABLE_STATES`' test, one resource over: the entry must *be* the set the
-    kernel keeps, so narrowing an action narrows its declaration in the same
-    edit. Spelling the answer out here instead would be the hand-mirror this
-    module exists to remove.
+    `DELETABLE_STATES`' test, one resource over: an unconditional entry must *be*
+    the set the kernel keeps, so narrowing an action narrows its declaration in
+    the same edit. Spelling the answers out here instead would be the hand-mirror
+    this module exists to remove.
+
+    `download_weights` is the one entry that names its own members, because
+    "the state weights are missing in" and "the kind that has weights" are not
+    sets the domain had already. So the check on it is the *rule*: local and
+    not-set-up, and nothing else — which is what turns red if either table stops
+    gating it.
     """
-    for action in ConnectionAction:
+    unconditional = set(ConnectionAction) - {ConnectionAction.DOWNLOAD_WEIGHTS}
+    for action in unconditional:
         assert CONNECTION_GATES[action] is EVERY_SETUP_STATE
-    for state in ConnectionSetupState:
-        for action in ConnectionAction:
-            assert (action in connection_actions(state)) is (state in CONNECTION_GATES[action])
+        assert CONNECTION_KINDS[action] is EVERY_CONNECTION_TYPE
+
+    assert CONNECTION_GATES[ConnectionAction.DOWNLOAD_WEIGHTS] == {ConnectionSetupState.NOT_SET_UP}
+    assert CONNECTION_KINDS[ConnectionAction.DOWNLOAD_WEIGHTS] == {ConnectionType.LOCAL}
+
+    for kind in ConnectionType:
+        for state in ConnectionSetupState:
+            for action in ConnectionAction:
+                assert (action in connection_actions(state, connection_type=kind)) is (
+                    state in CONNECTION_GATES[action] and kind in CONNECTION_KINDS[action]
+                )
+
+
+def test_download_weights_is_declared_on_exactly_one_square() -> None:
+    """Local and not set up, and nowhere else.
+
+    The mutation gate for the download capability, stated as the one sentence a
+    reader can check: this fails if either table is widened, if either is
+    dropped from `connection_actions`, or if the action is quietly gated on
+    something else instead.
+    """
+    declared = {
+        (kind, state)
+        for kind in ConnectionType
+        for state in ConnectionSetupState
+        if ConnectionAction.DOWNLOAD_WEIGHTS in connection_actions(state, connection_type=kind)
+    }
+    assert declared == {(ConnectionType.LOCAL, ConnectionSetupState.NOT_SET_UP)}
 
 
 def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> None:
-    """`download_weights` and `test` are absent until something performs them.
+    """`test` is absent until something performs it.
 
     The #376 rule stated as a test: a declared action obliges every client to
     offer it, so naming one before its surface exists makes the wire the source
-    of a control that cannot work. This fails the moment somebody adds the name
-    without the slice behind it.
+    of a control that cannot work. `download_weights` is *here* now because the
+    route, the command and the job that perform it are here in the same change —
+    which is the condition #331 set when it withdrew a member, and the shape #376
+    used to bring one back.
+
+    This fails the moment somebody adds the remaining name without the slice
+    behind it.
     """
-    assert {a.value for a in ConnectionAction} == {"update", "delete"}
+    assert {a.value for a in ConnectionAction} == {"download_weights", "update", "delete"}

@@ -68,6 +68,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     # `UnserializableManifest`'s reason — the request is fine, the stored state is
     # not — so the message naming the asset reaches the caller.
     "ExportSourceUnreadable": (409, "EXPORT_SOURCE_UNREADABLE"),
+    "InferenceConnectionNotDownloadable": (409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
+    "InferenceConnectionNotSetUp": (409, "INFERENCE_CONNECTION_NOT_SET_UP"),
     "ThumbnailNotCached": (404, "THUMBNAIL_NOT_CACHED"),
     # 409 — well-formed request, the resource's state refuses it
     "ProjectNameTaken": (409, "PROJECT_NAME_TAKEN"),
@@ -109,6 +111,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "MediaError": (422, "MEDIA_ERROR"),
     "UnsupportedMedia": (422, "UNSUPPORTED_MEDIA"),
     "CorruptMedia": (422, "CORRUPT_MEDIA"),
+    "UnsupportedPrompt": (422, "UNSUPPORTED_PROMPT"),
     # 503 — transient, and a wait genuinely helps
     "WorkspaceBusy": (503, "WORKSPACE_BUSY"),
     # 5xx — nothing the caller can fix
@@ -120,6 +123,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "EntityAlreadyExists": (500, "ENTITY_ALREADY_EXISTS"),
     "ConstraintViolated": (500, "CONSTRAINT_VIOLATED"),
     "MediaToolUnavailable": (500, "MEDIA_TOOL_UNAVAILABLE"),
+    "LocalInferenceUnavailable": (500, "LOCAL_INFERENCE_UNAVAILABLE"),
+    "InferenceConnectionNotRunnable": (500, "INFERENCE_CONNECTION_NOT_RUNNABLE"),
 }
 
 # A code outlives the class name it was derived from. Rename a class and its
@@ -197,6 +202,13 @@ def test_message_exposure_is_opt_in_and_only_for_5xx() -> None:
         # complaint. The message names the table and column instead.
         "WorkspaceSchemaMismatch",
         "MediaToolUnavailable",
+        # #418 slice 2: the two deployment conditions inference can hit. Both
+        # carry a remedy nobody can reconstruct from a generic sentence — the
+        # exact `pip install` for one, and which connection kind this build has
+        # no adapter for in the other — which is `MediaToolUnavailable`'s stated
+        # licence and the only one this list takes.
+        "LocalInferenceUnavailable",
+        "InferenceConnectionNotRunnable",
     }
     assert all(rule.status >= 500 for rule in ERROR_RULES.values() if rule.expose_message)
 
