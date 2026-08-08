@@ -591,6 +591,47 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     });
   });
 
+  await test.step("the completed batch reopens as a viewer, from the tile and the address bar", async () => {
+    /*
+     * The step the walk never took (#423): every earlier read-only claim ran
+     * against stubs, so nothing proved that a *real* completed batch — whose
+     * asset declarations the kernel computes — reopens as a viewer. The two
+     * entries below are the two roads in: the gallery tile, and a reload of the
+     * job URL with no cache to inherit.
+     */
+    await page.getByTestId("open-batch-cycle-batch").click();
+    await expect(page.getByTestId("gallery")).toBeVisible();
+    const tiles = page.getByTestId(/^tile-/);
+    await expect(tiles).toHaveCount(3);
+    const assetId = (await tiles.first().getAttribute("data-testid"))!.replace("tile-", "");
+    await tiles.first().getByTestId(`open-${assetId}`).click();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+
+    await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
+    await expect(page.getByTestId("banner-create-correction")).toBeVisible();
+    await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+    await expect(page.getByTestId("class-add")).toBeDisabled();
+
+    // A full draw gesture writes nothing and dirties nothing.
+    const canvas = page.getByTestId("annotator-canvas");
+    const box = (await canvas.boundingBox())!;
+    await page.getByTestId("annotator-root").focus();
+    await page.keyboard.press("1");
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByTestId("save-state")).toContainText("Saved");
+
+    // The address bar is the second entry: a cold load of the same job answers
+    // the same mode, with nothing inherited from the session above.
+    await page.reload();
+    await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
+
+    await openProject(page, PROJECT, "batches");
+    await expect(page.getByTestId("batches-table")).toBeVisible();
+  });
+
   await test.step("promote the completed batch into the trunk", async () => {
     // The trunk carries assets only, and promotion is a **union** against current
     // membership — idempotent, with no log entry when nothing changed.

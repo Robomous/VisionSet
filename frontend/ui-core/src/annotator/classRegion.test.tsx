@@ -151,4 +151,19 @@ describe("the region's refusals", () => {
     expect(screen.getByTestId("classes-empty")).toBeDefined();
     expect(screen.queryByTestId("class-list")).toBeNull();
   });
+
+  it("closes every door into the add-a-class dialog while it is refusing", async () => {
+    // The create paths are writes the same way arming is: a viewer that can
+    // publish a schema version is a read-only mode with a hole in it (#423).
+    const onAddClass = vi.fn();
+    render(mount(3, { refusal: "This batch is completed.", onAddClass }));
+
+    const add = screen.getByTestId("class-add");
+    expect(add.hasAttribute("disabled")).toBe(true);
+    expect(add.getAttribute("title")).toBe("This batch is completed.");
+
+    await userEvent.type(screen.getByTestId("class-filter"), "nothing-declared{Enter}");
+    expect(screen.queryByTestId("class-create")).toBeNull();
+    expect(onAddClass).not.toHaveBeenCalled();
+  });
 });

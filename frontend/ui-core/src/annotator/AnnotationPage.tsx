@@ -1763,11 +1763,15 @@ function Workspace({
         fail" is what shipped, and what it looked like from the other side was a
         working editor that lost your work.
 
-        Not rendered for a skipped frame — the notice below is the same fact with
-        the remedy attached, and two banners saying one thing is how a person
-        learns to ignore both.
+        Not rendered for a skipped frame **in an open batch** — the notice below
+        is the same fact with the remedy attached, and two banners saying one
+        thing is how a person learns to ignore both. In a closed batch the yield
+        runs the other way (#423): the notice's Un-skip is a move the wire
+        withholds there, so this banner — and the correction route it carries —
+        is the one surface that can still say something actionable. The old
+        guard predated the correction link and hid it on exactly that frame.
       */}
-      {readOnly && !skipped && (
+      {readOnly && (!skipped || closedBecause !== null) && (
         <p
           className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-meta text-muted-foreground"
           data-testid="readonly-banner"
@@ -1807,7 +1811,10 @@ function Workspace({
         </p>
       )}
 
-      {skipped && (
+      {/* Only while the batch is open: "Un-skip it" is this notice's whole
+          remedy, and in a closed batch the wire withholds that move — the
+          read-only banner above speaks for that frame instead (#423). */}
+      {skipped && closedBecause === null && (
         <p
           className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-meta text-destructive"
           data-testid="skipped-notice"
