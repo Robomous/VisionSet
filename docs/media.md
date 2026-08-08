@@ -351,11 +351,17 @@ check being what moves the failure that far from the missing binary.
 
 Which ffmpeg is not incidental, and the image's base is chosen for it. Measured on 5.1, the
 version Debian bookworm ships: `-display_rotation` — how the rotation fixtures make a clip that
-declares a display matrix — does not exist before 6.0, and a truncated clip is reported as
+declares a display matrix — does not exist before 6.0, and a truncated clip was reported as
 *unsupported* rather than *corrupt*, collapsing the one distinction `IngestFailureKind` exists to
-make. So the image is built on trixie, whose 7.1 is within one major of what CI and a developer
-laptop run, and the `docker` job is what stops a future base-image change reintroducing either
-quietly. This is the same "determinism holds within one build, not across versions" fact stated
+make. So the image is built on trixie, whose 7.1 is one major above the 6.1 that CI and an Ubuntu
+workstation run, and the `docker` job is what stops a future base-image change reintroducing
+either quietly.
+
+Read those numbers off `ffmpeg -version` and never off the package version: Debian and Ubuntu
+both give ffmpeg an **epoch** of 7, so noble's `7:6.1.1-3ubuntu5` is 6.1.1 and trixie's
+`7:7.1.5-0+deb13u1` is 7.1.5. The leading `7:` is the same number in both and says nothing about
+either. Misreading it as a version is what had #444 filed against a version difference that did
+not exist. This is the same "determinism holds within one build, not across versions" fact stated
 above, arriving as an environment problem rather than a hashing one.
 
 Neither library needs an import-linter change. The contracts forbid *frameworks* inside the
