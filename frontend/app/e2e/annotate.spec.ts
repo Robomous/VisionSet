@@ -452,6 +452,71 @@ test("the last frame hands the filled slot to Finish job, and offers no next", a
   await expect(filled).toHaveAttribute("data-testid", "finish-job");
 });
 
+/**
+ * The navigation cluster's geometry (#416).
+ *
+ * **In chromium and nowhere else.** jsdom's `getBoundingClientRect` returns all
+ * zeros, so every claim below — centred, unmoved, unwrapped — is one a component
+ * test would report as passing over a bar laid out any way at all. The cluster's
+ * *membership* is asserted in `topBar.test.tsx`, which is what jsdom can see.
+ */
+test("the navigation cluster sits on the bar's centre and stays there", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const header = page.locator("header").first();
+  const cluster = page.getByTestId("frame-navigation");
+
+  const headerBox = (await header.boundingBox())!;
+  const before = (await cluster.boundingBox())!;
+  const headerCentre = headerBox.x + headerBox.width / 2;
+  // Half a pixel of tolerance, because a grid track can land on a subpixel — but
+  // not more: the whole point of `1fr auto 1fr` over two flex spacers is that the
+  // answer is arithmetic rather than leftover.
+  expect(Math.abs(before.x + before.width / 2 - headerCentre)).toBeLessThan(0.5);
+
+  // Now make both side zones much wider than their contents ever are, without
+  // touching anything in the cluster. A bar balanced on what the sides left over
+  // would move here; one anchored on the header's centre cannot.
+  await page.evaluate(() => {
+    const identity = document.querySelector('[data-testid="asset-identity"]')!;
+    identity.textContent = `${"a-very-long-frame-identifier-".repeat(6)}end`;
+    const progress = document.querySelector('[data-testid="job-progress"]')!;
+    progress.textContent = `${"9".repeat(60)} / 9999999999 annotated`;
+  });
+
+  const after = (await cluster.boundingBox())!;
+  expect(after.x).toBeCloseTo(before.x, 1);
+  expect(after.width).toBeCloseTo(before.width, 1);
+  // And the sides gave way rather than pushing: neither zone now reaches into
+  // the cluster's column.
+  const identityBox = (await page.getByTestId("asset-identity").boundingBox())!;
+  expect(identityBox.x + identityBox.width).toBeLessThanOrEqual(after.x + 1);
+});
+
+test("the cluster never wraps or drops a control, down to the narrowest supported width", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // 768 is `ANNOTATOR_MIN_VIEWPORT_PX` — one pixel below it the page renders the
+  // too-narrow explanation instead, so this is the tightest the bar is ever asked
+  // to be. The side zones are what absorb it; the cluster is the `auto` track.
+  await page.setViewportSize({ width: 768, height: 900 });
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
+
+  const header = (await page.locator("header").first().boundingBox())!;
+  const cluster = (await page.getByTestId("frame-navigation").boundingBox())!;
+  // One row, not two: a wrapped cluster would be taller than the 44px bar.
+  expect(cluster.height).toBeLessThanOrEqual(header.height);
+
+  for (const testId of ["open-gallery", "prev-asset", "asset-position", "next-asset", "skip"]) {
+    await expect(page.getByTestId(testId), testId).toBeVisible();
+  }
+  await expect(page.getByTestId("save-and-next")).toBeVisible();
+});
+
 test("Save is inert until something changes, then sends exactly the new annotation", async ({
   page,
 }) => {
@@ -1703,6 +1768,10 @@ test("a refused Finish job says why, rather than re-enabling in silence", async 
     job: "in_progress",
     refuseJobComplete: "JOB_NOT_COMPLETE",
   });
+
+  // The last frame, because that is the only one Finish job renders on (#416).
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
 
   await page.getByTestId("finish-job").click();
 
