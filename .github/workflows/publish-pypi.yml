@@ -9,7 +9,9 @@
 # is the ordering, plus a check after each step. Everything up to and including
 # that line is the `wheel` job in ci.yml, step for step and action version for
 # action version, which is what makes a green `wheel (build, install, serve)`
-# check evidence that this workflow's build half works.
+# check evidence that this workflow's build half works. The versions still match;
+# only the spelling differs, because every `uses:` here is pinned to a commit for
+# the reason given at the `steps:` block below. A bump must move both files.
 #
 # No credentials anywhere: `id-token: write` plus the `pypi` environment is what
 # PyPI's trusted publisher exchanges for a short-lived upload token. The workflow
@@ -38,18 +40,37 @@ jobs:
       # `actions/checkout` authenticates with GITHUB_TOKEN — hence `contents`.
       contents: read
       id-token: write
+    # Every `uses:` in this job is pinned to a commit, and this is the one job in
+    # the repository where that is worth the friction. `id-token: write` is a job
+    # scope, not a step scope: any step here can ask GitHub for an OIDC token and
+    # trade it with PyPI for an upload credential for the `visionset` name. A tag
+    # and a branch are both mutable — `v7` and `release/v1` are pointers their
+    # owners can move, and a mover who is not their owner is exactly the
+    # supply-chain compromise this is for. A commit cannot be moved.
+    #
+    # ci.yml is deliberately left on tags: it holds no secrets and its token is
+    # `contents: read`, so the same pin would buy little and cost every action
+    # bump a hand-resolved digest. Dependabot's `github-actions` ecosystem updates
+    # a pinned digest and the version comment beside it together, so the
+    # three-day cool-down in .github/dependabot.yml still governs these five.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        # Nothing is pushed back from here — the wheel leaves over PyPI's API, not
+        # over git — so the token has no reason to stay in `.git/config` while
+        # `build_dist.sh` runs the frontend build and a freshly resolved backend.
+        with:
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+      # reads packageManager from package.json
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
 
@@ -63,4 +84,4 @@ jobs:
       # `packages-dir` is `dist/`, which `build_dist.sh` empties before `uv build`
       # so both files there are from this run.
       - name: Publish
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
