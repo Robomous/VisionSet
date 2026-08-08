@@ -81,6 +81,7 @@ from visionset.kernel import (
     InvalidPartition,
     InvalidSchema,
     InvalidTransition,
+    JobFinished,
     JobNotComplete,
     JobNotFound,
     LabelClassNotInSchema,
@@ -256,6 +257,11 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # move. What refuses it is the asset's state, and the remedy is to change that
     # state and resubmit — which is exactly what 409 is for here.
     AssetNotWritable: ErrorRule(409, "ASSET_NOT_WRITABLE"),
+    # The job-level sibling of the two above, and 409 for their reason. Its
+    # remedy is the one that is not a retry: nothing re-opens a completed job, so
+    # a client that reads this code offers a correction batch rather than a
+    # resubmit. Which is why it is its own code and not folded into either.
+    JobFinished: ErrorRule(409, "JOB_FINISHED"),
     BatchNotComplete: ErrorRule(409, "BATCH_NOT_COMPLETE"),
     JobNotComplete: ErrorRule(409, "JOB_NOT_COMPLETE"),
     EmptyBatch: ErrorRule(409, "EMPTY_BATCH"),

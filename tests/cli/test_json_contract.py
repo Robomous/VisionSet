@@ -88,6 +88,7 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         wire.batch_asset(
             ASSET,
             job_id=JOB.id,
+            job_state=JOB.state,
             progress=AssetProgress.ANNOTATED,
             batch_state=BATCH.state,
         ),

@@ -580,6 +580,34 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("job-progress")).toHaveText("3 / 3 annotated");
     await page.getByTestId("finish-job").click();
     await expect(page.getByTestId("finish-job")).toHaveText("Finished");
+
+    /*
+     * #439, against the real kernel and in place — no reload, no navigation.
+     *
+     * The batch is still `in_annotation` here (the next step is what completes
+     * it), which is exactly the case the batch gate cannot cover: `JobService`
+     * does not cascade upward. What moves is `asset_actions` reading the job's
+     * state, so the declarations this mutation invalidates come back empty and
+     * the page re-derives its mode from them. A stub can be made to say that;
+     * only this walk proves the kernel does.
+     *
+     * Worth stating about the frame we are standing on: it was already a viewer
+     * a moment ago, because `accepted` is not writable — and `Finish job` was
+     * still on the bar, which is why it could be pressed at all. That is the
+     * rule kept deliberately when the frame's own verbs left the read-only mode:
+     * `complete` is the job's declaration, not the frame's.
+     */
+    await expect(page.getByTestId("readonly-banner")).toContainText(/this job is finished/i);
+    await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+    await expect(page.getByTestId("class-region")).toHaveCount(0);
+    await expect(page.getByTestId("save-and-next")).toHaveCount(0);
+
+    // Every frame, not only the one it was pressed on — and navigation is what
+    // proves it, which is also half the decision: only editing dies.
+    await page.getByTestId("prev-asset").click();
+    await expect(page.getByTestId("asset-position")).toHaveText("2/3");
+    await expect(page.getByTestId("readonly-banner")).toContainText(/this job is finished/i);
+    await expect(page.getByTestId("tool-palette")).toHaveCount(0);
   });
 
   await test.step("complete the batch", async () => {

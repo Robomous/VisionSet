@@ -41,6 +41,7 @@ from visionset.kernel import (
     BatchNotInAnnotation,
     InferenceConnectionNotDownloadable,
     InvalidTransition,
+    JobFinished,
     JobNotComplete,
 )
 from visionset.kernel.domain import (
@@ -56,6 +57,7 @@ from visionset.kernel.domain import (
     EVERY_SETUP_STATE,
     JOB_MOVES,
     JOB_TRANSITIONS,
+    OPEN_JOB_STATES,
     UNNAMED_EDGES,
     Annotation,
     AnnotationJobState,
@@ -107,6 +109,7 @@ STATE_REFUSALS = (
     BatchNotComplete,
     BatchImmutable,
     BatchNotInAnnotation,
+    JobFinished,
     JobNotComplete,
     AssetNotWritable,
 )
@@ -467,51 +470,83 @@ def _run_job(fixture: Fixture, job_id: UUID, action: JobAction) -> Any:
 
 # --- enforcement: batch assets ------------------------------------------------
 
-#: Every ``(batch state, asset progress)`` an asset can actually be in. A draft
-#: has no jobs, so its assets have no progress at all; an `approved` batch's
-#: assets are all `unannotated`, because `mark` needs the batch open; and a
-#: completed batch's are settled, because a job cannot finish otherwise.
-ASSET_SCENARIOS: list[tuple[BatchState, AssetProgress | None]] = [
-    (BatchState.DRAFT, None),
-    (BatchState.APPROVED, UNANNOTATED),
-    *[(BatchState.IN_ANNOTATION, p) for p in AssetProgress],
-    *[(BatchState.COMPLETED, p) for p in (ANNOTATED, SKIPPED, ACCEPTED)],
+#: Settled progress, spelled as the tuple the scenarios below iterate. The set
+#: itself is `SETTLED_PROGRESS`; this is its order, which parametrize ids need.
+_SETTLED = (ANNOTATED, SKIPPED, ACCEPTED)
+
+#: Every ``(batch state, job state, asset progress)`` an asset can actually be
+#: in. A draft has no jobs, so its assets have no job and no progress at all; an
+#: `approved` batch's jobs are `pending` and its assets all `unannotated`,
+#: because `mark` needs the batch open; a *finished job inside an open batch* is
+#: an ordinary state and its assets are settled, because a job cannot complete
+#: otherwise; and a completed batch's jobs are all completed, because the batch
+#: cannot complete otherwise.
+#:
+#: The job dimension is #439's. It was absent, and what it left out was exactly
+#: the row where the bug lived — a `completed` job in an `in_annotation` batch,
+#: whose assets went on declaring `annotate` and went on accepting labels.
+ASSET_SCENARIOS: list[tuple[BatchState, AnnotationJobState | None, AssetProgress | None]] = [
+    (BatchState.DRAFT, None, None),
+    (BatchState.APPROVED, AnnotationJobState.PENDING, UNANNOTATED),
+    *[(BatchState.IN_ANNOTATION, AnnotationJobState.PENDING, p) for p in AssetProgress],
+    *[(BatchState.IN_ANNOTATION, AnnotationJobState.IN_PROGRESS, p) for p in AssetProgress],
+    *[(BatchState.IN_ANNOTATION, AnnotationJobState.COMPLETED, p) for p in _SETTLED],
+    *[(BatchState.COMPLETED, AnnotationJobState.COMPLETED, p) for p in _SETTLED],
 ]
 
 
+def _scenario_id(
+    scenario: tuple[BatchState, AnnotationJobState | None, AssetProgress | None],
+) -> str:
+    batch_state, job_state, progress = scenario
+    job = job_state.value if job_state else "nojob"
+    where = progress.value if progress else "noprogress"
+    return f"{batch_state.value}-{job}-{where}"
+
+
 @pytest.mark.parametrize("action", list(AssetAction), ids=lambda a: a.value)
-@pytest.mark.parametrize(
-    "scenario", ASSET_SCENARIOS, ids=lambda s: f"{s[0].value}-{s[1].value if s[1] else 'nojob'}"
-)
+@pytest.mark.parametrize("scenario", ASSET_SCENARIOS, ids=_scenario_id)
 def test_an_asset_allows_exactly_what_it_declares(
     tmp_path: Path,
-    scenario: tuple[BatchState, AssetProgress | None],
+    scenario: tuple[BatchState, AnnotationJobState | None, AssetProgress | None],
     action: AssetAction,
 ) -> None:
-    """Every reachable ``(batch state, progress)`` under every asset action.
+    """Every reachable ``(batch state, job state, progress)`` under every asset action.
 
-    The `completed` rows are the reported blocker: the gallery offered skip and
-    restore there, the kernel refused every frame, and the reason never reached
-    the user. Declared is empty for all of them, and this proves the kernel
-    agrees.
+    The completed-batch rows are the originally reported blocker: the gallery
+    offered skip and restore there, the kernel refused every frame, and the
+    reason never reached the user. The completed-*job* rows are #439's, and they
+    were the same shape read one level down — declared is empty for both, and
+    this proves the kernel agrees on both.
     """
-    batch_state, progress = scenario
+    batch_state, job_state, progress = scenario
     fixture = Fixture(tmp_path)
-    job_id, asset_id = _reach(fixture, batch_state, progress)
-    declared = asset_actions(progress, batch_state=batch_state)
+    job_id, asset_id = _reach(fixture, batch_state, job_state, progress)
+    declared = asset_actions(progress, batch_state=batch_state, job_state=job_state)
 
     if action in declared:
         _run_asset(fixture, job_id, asset_id, action)
         assert _landed(fixture, job_id, asset_id, action, progress)
     else:
-        _assert_undeclared_is_refused(fixture, job_id, asset_id, action, progress, batch_state)
+        _assert_undeclared_is_refused(
+            fixture, job_id, asset_id, action, progress, batch_state, job_state
+        )
     fixture.close()
 
 
 def _reach(
-    fixture: Fixture, batch_state: BatchState, progress: AssetProgress | None
+    fixture: Fixture,
+    batch_state: BatchState,
+    job_state: AnnotationJobState | None,
+    progress: AssetProgress | None,
 ) -> tuple[UUID | None, UUID]:
-    """Walk the fixture to the scenario. ``job_id`` is None only for a draft."""
+    """Walk the fixture to the scenario. ``job_id`` is None only for a draft.
+
+    The job is moved **after** the asset, which is the only order that works:
+    every route to a progress state runs through ``mark``, and ``mark`` refuses
+    once the job is completed. That refusal is the change under test, so the walk
+    cannot borrow its way around it.
+    """
     if batch_state is BatchState.DRAFT:
         return None, fixture.batch.asset_ids[0]
     fixture.batches.approve(fixture.batch.id)
@@ -521,12 +556,15 @@ def _reach(
     fixture.batches.start(fixture.batch.id)
     assert progress is not None
     job_id, asset_id = fixture.walk_asset(progress)
-    if batch_state is BatchState.COMPLETED:
+    if job_state is AnnotationJobState.IN_PROGRESS:
+        fixture.jobs.start(job_id)
+    if job_state is AnnotationJobState.COMPLETED:
         for other in fixture.jobs.get(job_id).progress:
             if other != asset_id:
                 fixture.jobs.mark(job_id, other, ANNOTATED)
         fixture.jobs.start(job_id)
         fixture.jobs.complete(job_id)
+    if batch_state is BatchState.COMPLETED:
         fixture.batches.complete(fixture.batch.id)
     return job_id, asset_id
 
@@ -560,6 +598,7 @@ def _assert_undeclared_is_refused(
     action: AssetAction,
     progress: AssetProgress | None,
     batch_state: BatchState,
+    job_state: AnnotationJobState | None,
 ) -> None:
     """An undeclared action is refused — with the two exceptions the kernel documents.
 
@@ -577,6 +616,14 @@ def _assert_undeclared_is_refused(
         # The batch gate fires before the no-op check, deliberately: writing into
         # a closed batch is a bug whether or not the value would have changed.
         with pytest.raises(STATE_REFUSALS):
+            _run_asset(fixture, job_id, asset_id, action)
+        return
+
+    if job_state is AnnotationJobState.COMPLETED:
+        # #439, and the same argument one level down: the job gate fires before
+        # the no-op check too, so even a move to the state the asset is already
+        # in is refused rather than quietly accepted.
+        with pytest.raises(JobFinished):
             _run_asset(fixture, job_id, asset_id, action)
         return
 
@@ -604,8 +651,63 @@ def _assert_undeclared_is_refused(
 
 def test_a_completed_batch_offers_its_assets_nothing(tmp_path: Path) -> None:
     """The reported blocker, as a sentence rather than as sixty parametrized cases."""
-    for progress in (ANNOTATED, SKIPPED, ACCEPTED):
-        assert asset_actions(progress, batch_state=BatchState.COMPLETED) == []
+    for progress in _SETTLED:
+        assert (
+            asset_actions(
+                progress,
+                batch_state=BatchState.COMPLETED,
+                job_state=AnnotationJobState.COMPLETED,
+            )
+            == []
+        )
+
+
+def test_a_finished_job_offers_its_assets_nothing_even_in_an_open_batch(tmp_path: Path) -> None:
+    """#439, as a sentence: the batch gate cannot cover this and never did.
+
+    Completing a job does not complete its batch — `BatchService` derives that
+    separately — so the ordinary state of a finished job is inside an
+    `in_annotation` batch. Reading only the batch dimension, every one of these
+    still declared `annotate`, and the annotation workspace stayed an editor over
+    work that was over.
+    """
+    for progress in _SETTLED:
+        assert (
+            asset_actions(
+                progress,
+                batch_state=BatchState.IN_ANNOTATION,
+                job_state=AnnotationJobState.COMPLETED,
+            )
+            == []
+        )
+    # The control, and it has to be chosen rather than swept: `accepted` is
+    # terminal and declares nothing in any job state, so it could not tell a
+    # working gate from a broken one. These two do — one still writable, one
+    # still restorable — and one job state earlier they both speak.
+    for progress in (ANNOTATED, SKIPPED):
+        assert (
+            asset_actions(
+                progress,
+                batch_state=BatchState.IN_ANNOTATION,
+                job_state=AnnotationJobState.IN_PROGRESS,
+            )
+            != []
+        )
+
+
+def test_the_asset_gate_reads_the_same_set_the_services_refuse_by() -> None:
+    """No hand-mirror: `OPEN_JOB_STATES` decides both, and this proves it.
+
+    The stronger claim than "a completed job declares nothing" — that what an
+    asset declares is computed from the very set `JobService.require_open_job`
+    raises against, so a third job state arriving cannot be admitted by one and
+    refused by the other.
+    """
+    for job_state in AnnotationJobState:
+        declared = asset_actions(
+            ANNOTATED, batch_state=BatchState.IN_ANNOTATION, job_state=job_state
+        )
+        assert bool(declared) is (job_state in OPEN_JOB_STATES)
 
 
 def test_an_approved_batch_offers_its_jobs_nothing(tmp_path: Path) -> None:
@@ -631,7 +733,11 @@ def test_declaration_order_is_stable(tmp_path: Path) -> None:
         # workflow does not put a dead end in the middle of it.
         BatchAction.DELETE,
     ]
-    assert asset_actions(ANNOTATED, batch_state=BatchState.IN_ANNOTATION) == [
+    assert asset_actions(
+        ANNOTATED,
+        batch_state=BatchState.IN_ANNOTATION,
+        job_state=AnnotationJobState.IN_PROGRESS,
+    ) == [
         AssetAction.ANNOTATE,
         AssetAction.SKIP,
         AssetAction.SUBMIT_FOR_REVIEW,

@@ -55,6 +55,7 @@ from visionset.kernel.domain.inference import (
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
+    OPEN_JOB_STATES,
     SETTLED_PROGRESS,
     WRITABLE_PROGRESS,
     AnnotationJobState,
@@ -389,21 +390,44 @@ def job_actions(
     ]
 
 
-def asset_actions(progress: AssetProgress | None, *, batch_state: BatchState) -> list[AssetAction]:
+def asset_actions(
+    progress: AssetProgress | None,
+    *,
+    batch_state: BatchState,
+    job_state: AnnotationJobState | None,
+) -> list[AssetAction]:
     """Everything one asset of a batch can be asked to do, in declaration order.
 
-    ``progress`` is ``None`` exactly while the batch is a draft — a draft has no
-    jobs, so no asset in it has progress — and the answer is empty either way,
-    because nothing may be written into a batch nobody opened.
+    ``progress`` and ``job_state`` are ``None`` together and exactly while the
+    batch is a draft — a draft has no jobs, so no asset in it has either — and
+    the answer is empty either way, because nothing may be written into a batch
+    nobody opened.
+
+    **Three dimensions, and none of them optional.** The batch has to be open,
+    the job has to be open, and the asset's own progress decides the rest.
+    ``job_state`` is the one that arrived late (#439): a completed job's assets
+    went on declaring ``annotate`` while ``JobService`` had already recorded that
+    every one of them was dealt with, because a job completing does not complete
+    its batch — ``BatchService`` derives that separately — so the batch gate had
+    nothing to say. The annotation workspace reads this declaration to decide
+    whether it is an editor or a viewer, and it stayed an editor over a finished
+    job. ``OPEN_JOB_STATES`` is the set, shared with the services that refuse the
+    same writes, so the declaration and the refusal cannot disagree.
+
+    Keyword-only and defaulted nowhere, like ``job_actions``' ``batch_state``: a
+    caller that could omit a dimension is a caller that will, and the dropped
+    dimension is exactly how the browser's old mirror produced two blockers.
 
     ``annotate`` is not a progress move and is the one action here that is not in
     ``ASSET_MOVES``: it is the right to add, change or remove labels, which is
-    ``WRITABLE_PROGRESS`` and the batch gate together. It is also the declaration
+    ``WRITABLE_PROGRESS`` and the two gates together. It is also the declaration
     the annotator wants, because "can I open this in edit mode" is exactly that
     question — and answering it wrong is what left work stranded in a browser
     against a batch that had closed.
     """
     if batch_state is not BatchState.IN_ANNOTATION or progress is None:
+        return []
+    if job_state is None or job_state not in OPEN_JOB_STATES:
         return []
     return [
         action

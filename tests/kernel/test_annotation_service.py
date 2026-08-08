@@ -24,6 +24,7 @@ from visionset.kernel import (
     DuplicateClassificationTag,
     InvalidAnnotation,
     InvalidAttributeValue,
+    JobFinished,
     JobNotFound,
     LabelClassNotInSchema,
     MissingRequiredAttribute,
@@ -657,6 +658,54 @@ def test_the_batch_gate_fires_before_the_payload_is_looked_at(tmp_path: Path) ->
         fixture.annotations.add(job.id, [_box(fixture.assets[0], label_class="unicorn")])
     with pytest.raises(BatchNotInAnnotation):
         fixture.annotations.delete(job.id, [uuid4()])
+    fixture.close()
+
+
+def test_no_annotation_is_written_into_a_finished_job(tmp_path: Path) -> None:
+    """#439: the gate the batch gate above cannot stand in for.
+
+    `JobService.complete` does not complete the batch — `BatchService` derives
+    that separately — so the ordinary state of a finished job is inside a batch
+    that is still `in_annotation`. `require_open_batch` passes there, the asset's
+    progress is `annotated` and therefore writable, and every one of these three
+    calls used to be accepted: labels landing in work whose own record already
+    said it was over, where nobody would look for them.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    for asset_id in fixture.assets:
+        fixture.jobs.mark(job.id, asset_id, ANNOTATED)
+    fixture.jobs.complete(job.id)
+    assert fixture.batches.get(fixture.batch.id).state is BatchState.IN_ANNOTATION
+
+    with pytest.raises(JobFinished, match="does not re-open"):
+        fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    with pytest.raises(JobFinished):
+        fixture.annotations.update(job.id, [_box(fixture.assets[0], id=stored.id)])
+    with pytest.raises(JobFinished):
+        fixture.annotations.delete(job.id, [stored.id])
+
+    # Nothing moved: the box that was there is still there, unchanged.
+    assert [a.id for a in fixture.annotations.for_asset(job.id, fixture.assets[0])] == [stored.id]
+    fixture.close()
+
+
+def test_a_finished_job_still_reads_back_its_own_labels(tmp_path: Path) -> None:
+    """Reading is not writing, and the read-only workspace depends on it.
+
+    `_require_writable` is called by the three writes and never by `for_asset`,
+    for exactly this reason — and the new job gate keeps that division: a viewer
+    over finished work has to be able to show the work.
+    """
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0])])
+    for asset_id in fixture.assets:
+        fixture.jobs.mark(job.id, asset_id, ANNOTATED)
+    fixture.jobs.complete(job.id)
+
+    assert [a.id for a in fixture.annotations.for_asset(job.id, fixture.assets[0])] == [stored.id]
     fixture.close()
 
 

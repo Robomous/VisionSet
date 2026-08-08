@@ -960,19 +960,21 @@ class BatchAssetOut(AssetOut):
         asset: Asset,
         *,
         job_id: UUID | None,
+        job_state: AnnotationJobState | None,
         progress: AssetProgress | None,
         batch_state: BatchState,
     ) -> Self:
-        # ``job_id`` and ``progress`` are null exactly while the batch is a draft,
-        # which is honest rather than lossy: a draft has no jobs, so no asset in
-        # it has progress. ``batch_state`` is an argument and not a field — it
-        # belongs to the batch and is published there — but nothing can be said
-        # about what this asset allows without it.
+        # ``job_id``, ``job_state`` and ``progress`` are null together and exactly
+        # while the batch is a draft, which is honest rather than lossy: a draft
+        # has no jobs, so no asset in it has any of the three. ``batch_state`` and
+        # ``job_state`` are arguments and not fields — each belongs to the
+        # resource that publishes it — but nothing can be said about what this
+        # asset allows without both.
         return cls(
             **AssetOut.of(asset).model_dump(),
             job_id=job_id,
             progress=progress,
-            allowed_actions=asset_actions(progress, batch_state=batch_state),
+            allowed_actions=asset_actions(progress, batch_state=batch_state, job_state=job_state),
         )
 
 
