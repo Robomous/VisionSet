@@ -125,10 +125,17 @@ knowing about:
 - **There is no seek.** Input seeking lands on a keyframe and is approximate; output seeking
   interacts with the filter. Extraction reads the clip from the start every time, which is
   exactly what makes it reproducible.
-- **`-xerror`** is the least obvious and the most load-bearing. Without it ffmpeg reports a
-  truncated clip on stderr, exits **zero**, and hands back the frames it managed to decode — so a
-  damaged file would ingest as a merely short one and nothing would ever say so. Its opposite
-  number, `-err_detect explode`, is deliberately not used: it rejects perfectly good files.
+- **There is no `-xerror`**, and its absence is the least obvious choice here. It is the obvious
+  way to make a damaged clip fail loudly, and it was used until #444: it exits non-zero the
+  moment the decoder reports an error. It also aborts *in place*, without flushing the frames
+  already queued for the muxer — and the depth of that queue is the decoder's thread count, which
+  ffmpeg takes from the host's core count unless told otherwise. One truncated clip therefore
+  salvaged 46 frames on four cores, 34 on sixteen and 30 on twenty, and the suite's own fixture
+  salvaged four and then none. **How much of a damaged clip you got back depended on the machine
+  that opened it.** Letting the run finish makes the output byte-identical at every thread count
+  and loses nothing, because the error still arrives on stderr: at `-loglevel error` an intact
+  clip says nothing at all, so anything it *does* say is the break. `-err_detect explode` is
+  still not used, for the older reason — it rejects perfectly good files.
 - **`-pred none -compression_level 6` and `+bitexact`** pin the PNG encoder, whose bytes become
   the content hash of the asset each frame turns into.
 
@@ -157,6 +164,11 @@ that stashes the iterator somewhere should close it, `contextlib.closing`-style.
 The same caveat as thumbnails, with a bigger consequence. Identical clip, identical `fps`,
 identical frames — across runs and across processes, **on one machine with one installed
 ffmpeg**. It does *not* hold across ffmpeg builds.
+
+It does hold across *machines* running that build, including a damaged clip's surviving frames,
+and that is a property rather than an accident — see `-xerror` above, whose removal is what buys
+it. A four-core runner and a twenty-core workstation salvage the same frames from the same broken
+file, byte for byte.
 
 Frames are content-addressed, so this propagates: **video-derived asset identity is reproducible
 within an ffmpeg build, not across one.** Re-ingesting the same clip after an ffmpeg upgrade
