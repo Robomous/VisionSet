@@ -640,3 +640,29 @@ jobs:
             -e VISIONSET_REQUIRE_FFMPEG=1 \
             visionset-api-dev:ci \
             pytest tests/kernel/test_video_processor.py -q
+
+      # The same shape of gap as the ffmpeg one above, and it had the same cause:
+      # every other job installs visionset, so every entry-point assertion in the
+      # suite was true by construction everywhere it was ever run, and none of them
+      # ran here. The image shipped reaching the source by PYTHONPATH and installing
+      # no distribution metadata — which cost the dev stack every one of its export
+      # formats and stamped "0.0.0" into published releases, without a red build.
+      #
+      # Bind-mounted like the step above so it exercises the image the way
+      # docker/compose.yaml runs it. `tests/formats/test_entry_points.py` is here
+      # deliberately as well as in the `python` job: it was already the discovery
+      # test, and *where* it ran was the whole of what it was missing.
+      - name: The image can see its own distribution metadata
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            visionset-api-dev:ci \
+            pytest tests/packaging/test_installed_metadata.py \
+                   tests/formats/test_entry_points.py -q
+
+      # The console script comes from `[project.scripts]` now that the project is
+      # installed, rather than from a hand-written shim. `docker/api-dev.sh` calls
+      # `visionset init` and `visionset token create` on first boot, so an image
+      # where this is missing is one that cannot start a fresh workspace.
+      - name: The console script is on PATH
+        run: docker run --rm visionset-api-dev:ci visionset --help

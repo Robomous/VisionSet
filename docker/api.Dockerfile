@@ -46,15 +46,16 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 
 WORKDIR /workspace
 
-# Only the two files that decide what gets installed. Copying the source instead
-# would invalidate this layer on every edit, which is the cost being removed — the
-# source arrives by bind mount, not by COPY.
+# Only the two files that decide what gets installed, so that editing the source
+# does not invalidate the expensive layer below. The project itself is installed
+# afterwards, in its own cheap layer.
 COPY pyproject.toml uv.lock ./
 
 # `--frozen` so the lockfile is honoured rather than re-resolved: a build that
 # quietly picks up something uv.lock does not name is a build that disagrees with
 # CI. `--no-install-project` because visionset itself is not a dependency — it is
-# the thing being edited, and it is mounted rather than installed.
+# the thing being edited. It gets installed on its own terms two layers down, and
+# separately so that a source edit re-runs that step and not this one.
 #
 # The dev group is included on purpose: this is the image
 # `docker compose exec api pytest` runs in.
@@ -64,18 +65,41 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project
 
-# The project is reached through PYTHONPATH rather than an editable install. An
-# editable install records where the source was *at build time* — a stub here, the
-# real checkout at run time — so it is correct only by the two paths coincidentally
-# matching. Naming the directory is honest, and it also lets the image be used with
-# the source mounted somewhere else.
+# Which *code* runs: the bind-mounted checkout, ahead of anything site-packages
+# holds. This is the line that keeps --reload meaningful, and it is why the install
+# below cannot bake a stale copy of the source into the image.
 ENV PYTHONPATH=/workspace/src
 
-# `[project.scripts]` is not installed either, for the same reason, so the console
-# script is recreated here against the same target the packaging metadata names.
-# Without this `visionset init` in the entrypoint would have nothing to call.
-RUN printf '#!/bin/sh\nexec python -c "from visionset.cli.main import app; app()" "$@"\n' \
-      > /usr/local/bin/visionset \
-    && chmod +x /usr/local/bin/visionset
+# And which *metadata* describes it. These are two separate things, and treating
+# them as one is what broke this image: PYTHONPATH alone makes `visionset`
+# importable while installing no `.dist-info` at all, so `importlib.metadata` sees
+# no distribution named visionset. Both of the things that live in that directory
+# then vanish together, silently and with no error anywhere:
+#
+#   * `[project.entry-points."visionset.formats"]` — so `formats.registry`
+#     discovers zero exporters and `GET /formats` answers an honest `{"items": []}`.
+#     The export dialog's Format list is empty and nothing can be exported.
+#   * the version — so `visionset.__version__` falls back to its "0.0.0" sentinel,
+#     which `ReleaseService.publish` then *writes into* every release published
+#     here.
+#
+# The fix is metadata, not source. `--no-deps` because `uv sync` above already
+# installed every dependency from the lockfile and this must not re-resolve; `-e`
+# so the record points at the source rather than copying it. Its recorded location
+# is `/workspace/src`, which is exactly where docker/compose.yaml's `..:/workspace`
+# puts the checkout — the earlier worry about a build-time path only "coincidentally"
+# matching the run-time one is answered by that mount being the contract. And the
+# metadata that actually matters here is path-independent regardless: the entry
+# points and the version are read out of `.dist-info`, which lives in /opt/venv,
+# outside the mount, so they survive being mounted somewhere else entirely.
+#
+# The source copied here is shadowed by the bind mount at run time and is never
+# what executes; it exists so hatchling has something to build a record from.
+# VERSION and README.md come along because pyproject.toml reads the version out of
+# the first and declares the second as its readme.
+COPY VERSION README.md ./
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --no-deps -e .
 
 CMD ["sh", "/workspace/docker/api-dev.sh"]
