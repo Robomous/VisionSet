@@ -1052,11 +1052,12 @@ function Workspace({
    * turns on (audit finding F2).
    *
    * `annotate` is the wire's name for *the right to write labels here at all*,
-   * and the kernel derives it from both dimensions: the batch must be
-   * `in_annotation` **and** the frame's progress must be one the labels can still
-   * move with (`WRITABLE_PROGRESS`, which #304 made a real gate rather than a
-   * convention). So one question answers both "is this batch closed" and "is this
-   * frame settled", and neither is re-derived here.
+   * and the kernel derives it from all three dimensions: the batch must be
+   * `in_annotation`, the job must still be open (`OPEN_JOB_STATES`, #439), **and**
+   * the frame's progress must be one the labels can still move with
+   * (`WRITABLE_PROGRESS`, which #304 made a real gate rather than a convention).
+   * So one question answers "is this batch closed", "is this job finished" and
+   * "is this frame settled" alike, and none of the three is re-derived here.
    *
    * What it replaces: nothing. There was no read-only mode. `batchState` reached
    * this component and was consumed **only** by the two auto-start effects, so on

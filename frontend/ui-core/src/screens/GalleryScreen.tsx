@@ -603,8 +603,9 @@ function BatchHeader({
    * refuses, and a person's work was stranded in a tab.
    *
    * Answered from the frames' own declarations rather than from the batch's
-   * state, because the kernel derives them from both dimensions and this is the
-   * same question the annotator itself will ask on arrival. Same control either
+   * state, because the kernel derives them from every dimension it has — the
+   * batch's state, the job's and the frame's — and this is the same question the
+   * annotator itself will ask on arrival. Same control either
    * way — the door does not move — but the word on it is honest about what is
    * behind it.
    */
@@ -1153,8 +1154,9 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
  * was refused, and the bar reported "0 moved, N refused" with the reason gone.
  *
  * Now each target is a frame whose own `allowed_actions` names the move, which
- * the kernel derived from both dimensions. On a batch that is not open the lists
- * are empty by construction — so instead of two zeroed buttons the bar states the
+ * the kernel derived from the batch's state, the job's and the frame's alike. On
+ * a batch that is not open — or, since #439, in a job that has finished — the
+ * lists are empty by construction — so instead of two zeroed buttons the bar states the
  * batch-level reason once, and the buttons are **disabled with it**. The
  * selection survives, because choosing a set of frames is the first half of
  * making a correction batch out of them.

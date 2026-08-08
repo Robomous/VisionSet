@@ -137,9 +137,12 @@ the first move**. Every tool that writes — the three annotation tools, `set_as
 **`job_started`** in its answer, so the move is a fact you are told rather than one that happens
 behind you. `job_started` is `false` on every later call.
 
-Only `pending` moves. A job that is already `in_progress` reports no start, a `completed` one is
-left alone, and a job whose batch is not `in_annotation` refuses exactly as it always did — the
-batch gate is checked first, so a closed batch is not quietly marked as being worked on.
+Only `pending` moves. A job that is already `in_progress` reports no start; a `completed` one is
+left alone here and then **refused by the write's own gate** — `JobFinished` (409
+`JOB_FINISHED`), since #439 — so the auto-start neither re-opens finished work nor hides the
+refusal behind an `InvalidTransition` of its own. A job whose batch is not `in_annotation`
+refuses exactly as it always did: the batch gate is checked first, so a closed batch is not
+quietly marked as being worked on.
 
 `complete_job` starts a job too, which is not redundant: a correction batch cut over
 already-labeled assets opens fully settled (see [batches.md](batches.md)), so its job can be
@@ -150,7 +153,9 @@ both hops still go through the same funnel; the REST API and the CLI keep their 
 because the annotator page is what drives REST and it has always started a job when a human opens
 one, while a CLI's explicitness is its contract. #109 has the measurements: two of #36's twelve
 real agent runs labeled a whole job and then had `complete_job` refuse, having had no reason to
-start it — writing is gated on the *batch*, so nothing in the loop forced the call until the end.
+start it — writing was gated on the *batch* and not on the job, so nothing in the loop forced the
+call until the end. #439 has since added a job gate, but it changes none of this: `pending` is an
+*open* state, so the first write still starts the job it walks into.
 
 ### Datasets, releases and export
 
