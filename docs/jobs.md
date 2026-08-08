@@ -174,7 +174,7 @@ though the table alone would call it startable. That dimension is exactly what a
 re-deriving the rules from `JOB_TRANSITIONS` would drop. `complete` is refined by
 `SETTLED_PROGRESS` as well, which costs nothing: a job carries its own per-asset map.
 
-**Per asset, inside an `in_annotation` batch:**
+**Per asset, inside an open job in an `in_annotation` batch:**
 
 | Progress | Declares |
 | --- | --- |
@@ -185,10 +185,13 @@ re-deriving the rules from `JOB_TRANSITIONS` would drop. `complete` is refined b
 | `accepted` | *nothing* |
 
 Anywhere else — a draft, an approved batch, a completed one — every asset declares nothing,
-because nothing may be written into a batch nobody opened or one that has closed.
+because nothing may be written into a batch nobody opened or one that has closed. **A finished
+job empties the column the same way**, inside a batch that is still open: `asset_actions` reads
+`OPEN_JOB_STATES`, so the table above is what an asset says while its job is `pending` or
+`in_progress`, and `completed` is *nothing*, whatever the progress column would otherwise allow.
 
 `annotate` is not a progress move: it is the right to add, change or remove labels, which is
-`WRITABLE_PROGRESS` and the batch gate together. The five others each name one edge of
+`WRITABLE_PROGRESS` and the two lifecycle gates together. The five others each name one edge of
 `ASSET_PROGRESS_TRANSITIONS`. Two legal edges deliberately have **no** name — `unannotated ↔
 annotated`, the pair an annotation appearing or disappearing makes on its own. They are the
 consequence of `annotate`, which is declared; offering either as its own control would mean

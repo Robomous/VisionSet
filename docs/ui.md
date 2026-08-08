@@ -252,9 +252,17 @@ caught it the moment the review moves landed, at 3 of 3 becoming 2 of 3.
 #### Read-only is a mode, not an accident
 
 The annotator opens as a **viewer** whenever the frame it is showing does not
-declare `annotate` — which the kernel derives from both dimensions at once: the
-batch must be `in_annotation` *and* the frame's progress must be in
-`WRITABLE_PROGRESS`. One question, both causes.
+declare `annotate` — which the kernel derives from all three dimensions at once:
+the batch must be `in_annotation`, the job must be in `OPEN_JOB_STATES`, *and*
+the frame's progress must be in `WRITABLE_PROGRESS`. One question, three causes.
+
+**And it is a transition, not only a way to open** (#439). Pressing `Finish job`
+closes the job under a window that is already open, so the workspace flips to the
+viewer *in place* — same page, no navigation, no reload, on every frame of the
+job rather than the last one. Nothing on the page computes that: the mutation
+invalidates the frames' declarations and the wire's answer has moved, because
+`asset_actions` reads the job's state. Before #439 it did not move, and the page
+stayed a live editor over work it had just been told was over.
 
 Before this it had no such notion. `batchState` reached the page and was consumed
 only by the two auto-start effects, so a `completed` batch opened a fully live
