@@ -12,6 +12,35 @@ on:
   # every pull request, inside the job below it.
   workflow_dispatch:
 
+# Every job here reads the repository and writes nothing back to it: the two drift
+# gates run `git diff` locally, the artifacts go to the run rather than to a ref,
+# and no job touches an issue, a comment, a label or a release. So the token they
+# get is `contents: read` and every other scope is `none` — a `permissions:` block
+# sets what it does not name to `none`.
+#
+# Stated here rather than left to the repository setting it currently matches,
+# because that setting is a checkbox in another system: one click flips every
+# workflow in the repository back to a write-enabled token, and nothing in a diff
+# would record it. This is the same rule written where a reviewer reads it.
+#
+# It matters because of what this workflow deliberately *does* run: `uv sync` and
+# `pnpm install` execute build backends and lifecycle scripts from manifests the
+# pull request itself can edit, and the suites, the Playwright specs and the docker
+# build all run contributor code by design. That is correct for CI and it is why
+# the token in the same job must not be able to write anything.
+permissions:
+  contents: read
+
+# A pull request that is pushed to three times in a minute currently starts three
+# full copies of this workflow — twelve jobs each, two of which download a browser
+# and one of which resolves torch — and the first two are answering questions about
+# a commit nobody is reviewing any more. Superseded runs for the same pull request
+# are cancelled; `main` is never cancelled, because a push there is the only run of
+# that commit that will ever exist.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   python:
     runs-on: ubuntu-latest
@@ -20,7 +49,19 @@ jobs:
       # silently skipped video test looks exactly like a passing one.
       VISIONSET_REQUIRE_FFMPEG: "1"
     steps:
+      # `persist-credentials: false` on every checkout in this file, and the reason
+      # is the step that comes after it rather than this one. By default the action
+      # leaves the job's token in `.git/config` as a credential for the remote, where
+      # it outlives the checkout and is readable by everything else in the job — and
+      # everything else in the job is, on purpose, code the pull request supplied: a
+      # build backend, a lifecycle script, a test, a Playwright spec.
+      #
+      # Nothing here pushes. Both drift gates run `git diff` against the local
+      # working tree, which needs no remote and no credential, so switching it off
+      # costs this workflow nothing and removes the token from reach.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # ffmpeg is a binary, not a Python dependency: the video fixtures shell out to it.
       - name: Install ffmpeg
@@ -96,6 +137,8 @@ jobs:
             run: uv run python examples/mcp_end_to_end.py
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -115,6 +158,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6 # reads packageManager from package.json
 
@@ -168,6 +213,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6 # reads packageManager from package.json
 
@@ -237,6 +284,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -314,6 +363,8 @@ jobs:
       VISIONSET_REQUIRE_WHEEL: "1"
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6 # reads packageManager from package.json
 
@@ -371,6 +422,8 @@ jobs:
       MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install ffmpeg
         run: |
@@ -450,6 +503,8 @@ jobs:
       MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -472,6 +527,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6 # reads packageManager from package.json
 
@@ -516,6 +573,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -545,6 +604,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: docker/setup-buildx-action@v4
 
