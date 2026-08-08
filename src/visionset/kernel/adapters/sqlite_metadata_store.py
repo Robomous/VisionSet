@@ -284,6 +284,7 @@ class SqlUnitOfWork:
         self.releases = SqlRepository(session, m.RELEASES)
         self.tokens = SqlRepository(session, m.TOKENS)
         self.jobs = SqlRepository(session, m.BACKGROUND_JOBS)
+        self.inference_connections = SqlRepository(session, m.INFERENCE_CONNECTIONS)
 
     def claim_job(self, *, worker: str, now: datetime) -> BackgroundJob | None:
         """One guarded ``UPDATE`` — see the port's docstring for why it exists.

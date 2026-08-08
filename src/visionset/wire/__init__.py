@@ -70,6 +70,7 @@ from visionset.kernel.domain import (
     ExportCompatibility,
     ExportResult,
     Geometry,
+    InferenceConnection,
     IngestFailure,
     IngestJob,
     LabelClass,
@@ -86,6 +87,7 @@ from visionset.kernel.domain import (
     VideoProvenance,
     asset_actions,
     batch_actions,
+    connection_actions,
     job_actions,
 )
 from visionset.kernel.ports import Exporter
@@ -552,4 +554,30 @@ def export_result(value: ExportResult) -> dict[str, Any]:
         "file_count": value.file_count,
         "total_bytes": value.total_bytes,
         "compatibility": export_compatibility(value.compatibility),
+    }
+
+
+# --- inference connections ----------------------------------------------------
+
+
+def connection(value: InferenceConnection) -> dict[str, Any]:
+    """One configured place a model can be asked to predict.
+
+    No credential key, because the entity carries no credential — where an HTTP
+    connection's secret lives is still open (`cf. #421`), and a key published
+    here would be one every consumer starts parsing.
+    """
+    return {
+        "id": str(value.id),
+        "name": value.name,
+        "connection_type": value.connection_type.value,
+        "model_id": value.model_id,
+        "model_revision": value.model_revision,
+        "device": value.device,
+        "precision": value.precision,
+        "endpoint_url": value.endpoint_url,
+        "setup_state": value.setup_state.value,
+        "allowed_actions": [a.value for a in connection_actions(value.setup_state)],
+        "created_at": _moment(value.created_at),
+        "updated_at": _moment(value.updated_at),
     }

@@ -24,6 +24,7 @@ from visionset.kernel.domain import (
     Dataset,
     DatasetChange,
     DatasetMember,
+    InferenceConnection,
     IngestJob,
     Project,
     Release,
@@ -146,6 +147,21 @@ class UnitOfWork(Protocol):
         there is nothing to scope it by. See ``JobRow`` for why it carries no
         foreign key, and ``BACKGROUND_JOBS`` in ``_mappers`` for the trap that
         makes this worth saying out loud.
+        """
+        ...
+
+    @property
+    def inference_connections(self) -> Repository[InferenceConnection]:
+        """Where inference may be asked to run, as configured by a person.
+
+        The **third** root entity, and a root for the same reason the second is:
+        a connection belongs to the workspace, the workspace is this file, so
+        ``list()`` with no argument is the correct read rather than the
+        every-row-in-the-table trap it is on a scoped entity.
+
+        A plain repository and no narrow write beside it: nothing here is
+        contended the way progress and the job queue are, because a connection is
+        edited by a person in a form rather than by two writers racing.
         """
         ...
 

@@ -46,6 +46,7 @@ from visionset.kernel.domain.batch import (
     REPINNABLE_STATES,
     BatchState,
 )
+from visionset.kernel.domain.inference import EVERY_SETUP_STATE, ConnectionSetupState
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
@@ -109,6 +110,22 @@ class AssetAction(StrEnum):
     SUBMIT_FOR_REVIEW = "submit_for_review"
     ACCEPT = "accept"
     RETURN_TO_ANNOTATOR = "return_to_annotator"
+
+
+class ConnectionAction(StrEnum):
+    """What can be asked of an inference connection. Order is display order.
+
+    Two, and the omissions are the point. ``download_weights`` and ``test`` are
+    the actions this resource will eventually be asked for, and neither is named
+    here yet because neither has anything behind it — under the
+    ``ui-capabilities`` contract a declared action obliges every client to offer
+    it, so naming one before its surface exists is how a wire becomes the source
+    of a control that cannot work. #376 is the precedent: the name returns in the
+    same change as the route that honours it.
+    """
+
+    UPDATE = "update"
+    DELETE = "delete"
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +247,41 @@ Named at all so that a *new* edge cannot quietly arrive with no capability:
 of ``ASSET_PROGRESS_TRANSITIONS`` to be claimed by an action or to fall in here,
 and this set can only grow if the domain's own derivation rule does.
 """
+
+
+CONNECTION_GATES: Final[Mapping[ConnectionAction, frozenset[ConnectionSetupState]]] = {
+    ConnectionAction.UPDATE: EVERY_SETUP_STATE,
+    ConnectionAction.DELETE: EVERY_SETUP_STATE,
+}
+"""Both connection actions change no state, so neither appears in any table.
+
+There is no ``CONNECTION_MOVES`` and no transition table beside it, because
+nothing in this slice moves ``setup_state``: a connection is born in the state
+its type implies and stays there until a download or a test — neither of which
+exists yet — moves it. A transition table with no edges would be a table
+describing nothing.
+
+Both entries are :data:`~visionset.kernel.domain.inference.EVERY_SETUP_STATE`
+itself rather than a frozenset spelled out here, which is the same discipline
+``DELETABLE_STATES`` gets above: the declaration reads the set, so an action that
+later stops being unconditional stops being declared in the same edit.
+"""
+
+
+def connection_actions(setup_state: ConnectionSetupState) -> list[ConnectionAction]:
+    """Everything this connection's state does not refuse, in declaration order.
+
+    Today that is both actions in every state, and the honest reading of that is
+    "this resource has no state-dependent legality yet" rather than "capabilities
+    are pointless here". The declaration still earns its place: it is what a
+    client renders from, and it is the seam that a later slice narrows when
+    ``delete`` has to refuse a connection with a download in flight.
+
+    ``delete`` never depends on what a connection's annotations say, and cannot:
+    provenance is denormalised onto the label at write time, so deleting a
+    connection takes nothing with it (`cf. #421`).
+    """
+    return [action for action in ConnectionAction if setup_state in CONNECTION_GATES[action]]
 
 
 def batch_actions(state: BatchState) -> list[BatchAction]:

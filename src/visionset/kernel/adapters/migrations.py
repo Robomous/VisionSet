@@ -215,12 +215,34 @@ def _add_schema_provenance(connection: Connection) -> None:
     _add_column(connection, "annotation_schema", "provenance")
 
 
+def _add_inference_connections(connection: Connection) -> None:
+    """``inference_connection``: where a model may be asked to predict.
+
+    Migration 4's kind — a table created whole — so the rule about a key column
+    never arriving by ``ALTER`` does not come up: ``InferenceConnectionRow``
+    declares no foreign key at all, and its unique name index is created with the
+    table rather than after it.
+
+    ``create_all`` restricted to this one table, never a bare
+    ``Base.metadata.create_all``, for migration 4's reason: unrestricted it would
+    also create whatever a *later* baseline happens to declare, letting this
+    migration silently do a future one's work on an old file. ``checkfirst`` is on
+    by default and is what makes a re-run a no-op.
+
+    **Nothing to backfill.** A workspace that predates this table has no
+    connections, which is exactly what an empty table says — and the product it
+    describes is one where nothing predicts until somebody configures where.
+    """
+    Base.metadata.create_all(connection, tables=[Base.metadata.tables["inference_connection"]])
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
     Migration(version=3, name="annotation_provenance", upgrade=_add_annotation_provenance),
     Migration(version=4, name="job_queue", upgrade=_add_job_queue),
     Migration(version=5, name="schema_provenance", upgrade=_add_schema_provenance),
+    Migration(version=6, name="inference_connections", upgrade=_add_inference_connections),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

@@ -67,6 +67,9 @@ from visionset.kernel.domain import (
     ClassCount,
     ClassExportStatus,
     ClassificationGeometry,
+    ConnectionAction,
+    ConnectionSetupState,
+    ConnectionType,
     Dataset,
     DatasetChange,
     DatasetStats,
@@ -74,6 +77,7 @@ from visionset.kernel.domain import (
     Geometry,
     GeometryType,
     ImageFormat,
+    InferenceConnection,
     IngestFailure,
     IngestFailureKind,
     IngestJob,
@@ -100,6 +104,7 @@ from visionset.kernel.domain import (
     VideoProvenance,
     asset_actions,
     batch_actions,
+    connection_actions,
     job_actions,
 )
 from visionset.kernel.ports import Exporter
@@ -1587,3 +1592,84 @@ class FormatOut(BaseModel):
 
 class FormatPage(Page[FormatOut]):
     """A page of export formats."""
+
+
+# --- inference connections ----------------------------------------------------
+
+
+# No credential field, and its absence is a decision rather than an oversight:
+# where an HTTP connection's secret lives is open (`cf. #421`), and a nullable
+# field added here "for later" would answer it by publishing a shape. A wire
+# model is the hardest thing in this repo to take back.
+class ConnectionOut(BaseModel):
+    """One configured place a model can be asked to predict."""
+
+    id: UUID
+    name: str
+    connection_type: ConnectionType
+    model_id: str
+    model_revision: str
+    device: str | None
+    precision: str | None
+    endpoint_url: str | None
+    setup_state: ConnectionSetupState
+    allowed_actions: list[ConnectionAction]
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, connection: InferenceConnection) -> Self:
+        return cls(
+            id=connection.id,
+            name=connection.name,
+            connection_type=connection.connection_type,
+            model_id=connection.model_id,
+            model_revision=connection.model_revision,
+            device=connection.device,
+            precision=connection.precision,
+            endpoint_url=connection.endpoint_url,
+            setup_state=connection.setup_state,
+            allowed_actions=connection_actions(connection.setup_state),
+            created_at=connection.created_at,
+            updated_at=connection.updated_at,
+        )
+
+
+class ConnectionPage(Page[ConnectionOut]):
+    """A page of inference connections."""
+
+
+class ConnectionCreate(BaseModel):
+    """What a caller supplies to configure a connection.
+
+    ``setup_state`` is absent on purpose: it is derived from the kind by the
+    service, because it says what the kind still needs rather than what the
+    caller wants. Accepting it would let a client declare weights present that
+    were never fetched.
+    """
+
+    name: str
+    connection_type: ConnectionType
+    model_id: str
+    model_revision: str
+    device: str | None = None
+    precision: str | None = None
+    endpoint_url: str | None = None
+
+
+class ConnectionUpdate(BaseModel):
+    """A partial edit. Every field omitted or null means *leave this alone*.
+
+    ``connection_type`` is absent because the kind is not editable — see
+    ``InferenceConnectionService.update``. A field cannot be *cleared* through
+    this shape, which is the honest consequence of null meaning "unchanged": the
+    parameters that could be cleared are exactly the ones the kind requires, so
+    clearing one would produce a row the domain refuses anyway.
+    """
+
+    name: str | None = None
+    model_id: str | None = None
+    model_revision: str | None = None
+    device: str | None = None
+    precision: str | None = None
+    endpoint_url: str | None = None
