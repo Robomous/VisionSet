@@ -900,3 +900,92 @@ class InferenceConnectionInvalid(VisionSetError):
     cross-field rule on ``ConnectionCreate`` would be a second encoding of a
     domain invariant, which is the mirror this repo has paid for twice.
     """
+
+
+class UnsupportedPrompt(VisionSetError):
+    """The provider was asked in a way this model does not answer.
+
+    A detector handed points, or a segmenter handed words. Not a harder question
+    — a *different* one — and a provider that guessed which box the click meant
+    would be inventing an answer nobody could check.
+
+    A payload error rather than a state one, on ``DuplicateClassificationTag``'s
+    reading: nothing about the connection needs to change and no wait helps, so
+    "change the state and resubmit" would be a promise that cannot be kept. What
+    is wrong is the request, and the remedy is a different prompt or a different
+    connection.
+
+    Sits beside ``UnsupportedGeometry`` and ``UnsupportedMedia`` on purpose:
+    all three say "this is well formed and this build has nothing that consumes
+    it", which is one thought worth spelling one way.
+    """
+
+
+class InferenceConnectionNotDownloadable(VisionSetError):
+    """This connection cannot be asked to fetch weights.
+
+    Two ways to arrive and one answer, because the remedy for both is to stop
+    asking: the connection is already set up, so there is nothing left to fetch;
+    or it is an ``http`` connection, which has no weights of its own at all. The
+    message says which.
+
+    The refusal `CONNECTION_GATES` and `CONNECTION_KINDS` describe, raised
+    through ``connection_actions`` rather than beside it — so a client that
+    renders ``allowed_actions`` and a caller that asks anyway get the same
+    answer from the same table, and narrowing the gate narrows both.
+    """
+
+
+class InferenceConnectionNotSetUp(VisionSetError):
+    """A local connection was asked to predict before its weights arrived.
+
+    Genuinely change-the-state-and-resubmit, which is what separates it from
+    ``InferenceConnectionNotRunnable`` below: the state to change is real, the
+    action that changes it is ``download_weights``, and the identical request
+    succeeds afterwards. The message names that action, because "not set up" on
+    its own tells an operator what they already knew.
+    """
+
+
+class InferenceConnectionNotRunnable(VisionSetError):
+    """Nothing in this build can run a connection of that kind.
+
+    The ``MediaToolUnavailable`` reading, one layer up: this answers "what is
+    missing from this software?" rather than "what is wrong with this
+    connection?". An ``http`` connection is perfectly well formed and perfectly
+    unusable here, because the adapter that would speak to an endpoint is a
+    later slice — and no amount of editing the row, waiting, or retrying changes
+    that. It is deliberately **not** a sibling of
+    ``InferenceConnectionNotSetUp``: one is a state a user can leave, the other
+    is a version of this program they do not have.
+
+    The message carries what a reader can act on, which is the kind that was
+    asked for and the fact that this build has no adapter for it.
+    """
+
+
+class LocalInferenceUnavailable(VisionSetError):
+    """Running a model locally needs the optional runtime, and it is absent.
+
+    ``MediaToolUnavailable``'s exact shape, and it is here for the same three
+    reasons that error gives. It answers "what is wrong with this machine?",
+    never "what is wrong with this connection?" — so a run that hits it records
+    one fatal cause rather than blaming the configuration it was handed. It is
+    not transient, so it is not a 503: retrying never succeeds until somebody
+    installs the extra. And the **message is the remedy**, carrying the exact
+    command, because an error that merely says "unavailable" has told an
+    operator nothing they had not already worked out.
+
+    Which command that is lives at the raise site, in ``visionset.inference``,
+    for the reason ``MediaToolUnavailable`` is "named for the tool rather than
+    for the program": the kernel does not know what the extra is called, and
+    should not learn — it knows only that something outside it declined to be
+    importable.
+
+    Being raised at all is a fact about the *installation*, never about the
+    domain, which is why no capability is gated on it: ``download_weights`` is
+    declared on a connection whose state permits it and refused here if the
+    machine cannot carry it out. Hiding the control instead would be the bare
+    disabled control design principle 9 forbids, and would leave the install
+    command with nowhere to be shown (`cf. #421`).
+    """

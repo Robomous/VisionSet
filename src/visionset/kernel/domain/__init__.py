@@ -25,6 +25,7 @@ from visionset.kernel.domain.capabilities import (
     BATCH_GATES,
     BATCH_MOVES,
     CONNECTION_GATES,
+    CONNECTION_KINDS,
     JOB_MOVES,
     UNNAMED_EDGES,
     AssetAction,
@@ -65,6 +66,7 @@ from visionset.kernel.domain.geometry import (
     PolylineGeometry,
 )
 from visionset.kernel.domain.inference import (
+    EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
     ConnectionSetupState,
     ConnectionType,
@@ -103,6 +105,15 @@ from visionset.kernel.domain.partition import (
     Partition,
     SingleJob,
     partition_assets,
+)
+from visionset.kernel.domain.prediction import (
+    AssetPrediction,
+    PointPrompt,
+    PredictedRegion,
+    PredictionRequest,
+    PredictionTarget,
+    Prompt,
+    TextPrompt,
 )
 from visionset.kernel.domain.project import Project, ProjectStats
 from visionset.kernel.domain.release import (
@@ -182,6 +193,8 @@ __all__ = [
     "BATCH_MOVES",
     "BATCH_GATES",
     "CONNECTION_GATES",
+    "CONNECTION_KINDS",
+    "EVERY_CONNECTION_TYPE",
     "EVERY_SETUP_STATE",
     "ASSET_MOVES",
     "ASSET_PROGRESS_TRANSITIONS",
@@ -209,6 +222,7 @@ __all__ = [
     "AnnotationSchema",
     "AnnotationsWritten",
     "Asset",
+    "AssetPrediction",
     "AssetProgress",
     "BackgroundJob",
     "BackgroundJobFailed",
@@ -259,10 +273,15 @@ __all__ = [
     "ManifestAsset",
     "MembershipChange",
     "Partition",
+    "PointPrompt",
     "PolygonGeometry",
     "PolylineGeometry",
+    "PredictedRegion",
+    "PredictionRequest",
+    "PredictionTarget",
     "Project",
     "ProjectStats",
+    "Prompt",
     "Provenance",
     "Release",
     "ReleasePublished",
@@ -276,6 +295,7 @@ __all__ = [
     "SplitAssignment",
     "SplitRecipe",
     "TaskGroup",
+    "TextPrompt",
     "ThumbnailBackfill",
     "Token",
     "VideoFrame",

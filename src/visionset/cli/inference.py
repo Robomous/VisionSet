@@ -1,11 +1,18 @@
 # usage: from visionset.cli.inference import inference_app
 """``visionset inference`` — configuring where a model may be asked to predict.
 
-Five commands over one service, so a workspace can be made ready for
-auto-labeling without a browser. Nothing here downloads weights or contacts an
-endpoint: those are the two operations this slice deliberately does not have
-(`cf. #418`, `#421`), and a command that cannot work is worse than one that is
-not there yet.
+Six commands over one service, so a workspace can be made ready for
+auto-labeling without a browser — including the one operation that reaches a
+network, ``download``. Contacting an endpoint is still absent (`cf. #421`): a
+command that cannot work is worse than one that is not there yet.
+
+**``download`` blocks, and that is ``ingest``'s pattern rather than a shortcut.**
+The API queues the same work because it has a dispatcher to run it; a terminal
+does not, and a CLI that enqueued would print a job id nothing was ever going to
+claim. So this runs the work here, says so on stderr first, and shares its body
+with the job handler — ``visionset.inference.fetch_weights`` is the sequence
+both call, because two implementations of "what downloading means" is how a
+terminal and an API come to disagree about what "set up" means.
 """
 
 from __future__ import annotations
@@ -18,6 +25,7 @@ import typer
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
+from visionset.inference import fetch_weights
 from visionset.kernel.domain import ConnectionType, InferenceConnection
 from visionset.kernel.services import InferenceConnectionService
 
@@ -132,6 +140,41 @@ def inference_update(
         return
     note(f"Updated connection {edited.name!r}.")
     typer.echo(str(edited.id))
+
+
+@inference_app.command("download")
+def inference_download(
+    connection: ConnectionArgument,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Fetch a local connection's weights. This is the only thing that downloads a model.
+
+    Nothing arrives on your behalf: no install, no first run, and no other
+    command fetches anything. This one does, because you asked it to.
+
+    It **blocks** — the weights are gigabytes and there is no worker at a
+    terminal to hand the job to — and reports each phase on stderr. Interrupting
+    it is safe: the connection is only marked ready once the files are all here,
+    so a run you stop has changed nothing and running it again resumes the cache
+    rather than starting over.
+
+    Refused, with a sentence, when there is nothing to do: an `http` connection
+    has no weights of its own, and one that is already set up has them.
+    """
+    with opened_workspace(workspace) as service:
+        connections = InferenceConnectionService(service)
+        connection_id = _resolve(connections, connection)
+        # Inside the block: every refusal below is a ``VisionSetError`` —
+        # already set up, no weights of its own, the extra not installed — and
+        # ``opened_workspace`` is what turns one into a sentence and exit 1
+        # rather than a traceback.
+        ready = fetch_weights(service, connection_id, on_progress=note)
+    if json_out:
+        document(wire.connection(ready))
+        return
+    note(f"Connection {ready.name!r} is ready.")
+    typer.echo(str(ready.id))
 
 
 @inference_app.command("delete")

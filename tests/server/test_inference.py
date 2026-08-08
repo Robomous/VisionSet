@@ -5,14 +5,21 @@ branches on, and what `allowed_actions` declares. What the kernel does underneat
 is `tests/kernel/test_inference_connections.py`'s subject.
 """
 
+import importlib.util
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
+from tests.server._jobs import InlineDispatcher, ManualDispatcher
+
+from visionset.inference import MODULES
+from visionset.inference import weights as weights_module
+from visionset.kernel.domain import BackgroundJobState
+from visionset.server.routes import inference as inference_routes
 
 LOCAL: dict[str, Any] = {
     "name": "local-gd",
@@ -36,6 +43,37 @@ HTTP: dict[str, Any] = {
 def client(tmp_path: Path) -> Iterator[TestClient]:
     with api_client(tmp_path / "ws") as made:
         yield made
+
+
+@pytest.fixture()
+def runtime_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Answer the route's install check as if the extra were installed.
+
+    Every download test below is about routing, gating and the job — none is
+    about whether torch imports — and the base development environment
+    deliberately does not carry the extra. Stubbing the *check* rather than the
+    library keeps that separation: what the check does when it really fails has
+    its own test, and it is the one that runs unstubbed.
+    """
+    monkeypatch.setattr(inference_routes, "require_local_inference", lambda: None)
+
+
+@pytest.fixture()
+def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
+    """Record what the handler would have downloaded, and download nothing.
+
+    Patched at ``visionset.inference.weights.download`` — the module global
+    ``fetch_weights`` calls — so everything above it is the shipped code: the
+    gate, the ordering, and the write that records the connection ready.
+    """
+    seen: list[str] = []
+
+    def _download(connection: Any, *, into: Path) -> Path:
+        seen.append(f"{connection.model_id}@{connection.model_revision}")
+        return tmp_path / "snapshot"
+
+    monkeypatch.setattr(weights_module, "download", _download)
+    return seen
 
 
 def created(client: TestClient, body: dict[str, Any]) -> dict[str, Any]:
@@ -107,19 +145,20 @@ def test_an_unknown_connection_is_not_found(client: TestClient) -> None:
 
 
 def test_a_connection_declares_what_this_slice_can_perform(client: TestClient) -> None:
-    """The declared set is exactly the routes that exist.
+    """The declared set is exactly the routes that exist, per kind.
 
-    `download_weights` and `test` are the actions this resource will grow, and
-    neither is declared while nothing performs it — a declaration obliges every
-    conforming client to render a control.
+    A fresh `local` connection has weights to fetch and says so; an `http` one
+    has none of its own and never will, in any state. `test` is the action this
+    resource will still grow, and it is not declared while nothing performs it —
+    a declaration obliges every conforming client to render a control.
     """
-    for body in (LOCAL, HTTP):
-        assert created(client, body)["allowed_actions"] == ["update", "delete"]
+    assert created(client, LOCAL)["allowed_actions"] == ["download_weights", "update", "delete"]
+    assert created(client, HTTP)["allowed_actions"] == ["update", "delete"]
 
 
 @pytest.mark.parametrize("body", [LOCAL, HTTP], ids=["local", "http"])
 def test_every_declared_action_is_one_the_api_performs(
-    client: TestClient, body: dict[str, Any]
+    client: TestClient, runtime_present: None, body: dict[str, Any]
 ) -> None:
     """Declared ⇔ reachable, walked over HTTP rather than asserted about a table.
 
@@ -129,15 +168,16 @@ def test_every_declared_action_is_one_the_api_performs(
     """
     made = created(client, body)
     routes = {
+        "download_weights": lambda: client.post(f"/inference/connections/{made['id']}/download"),
         "update": lambda: client.patch(
             f"/inference/connections/{made['id']}", json={"model_revision": "deadbeef"}
         ),
         "delete": lambda: client.delete(f"/inference/connections/{made['id']}"),
     }
-    assert set(made["allowed_actions"]) == set(routes)
+    assert set(made["allowed_actions"]) <= set(routes)
     for action in made["allowed_actions"]:
         response = routes[action]()
-        assert response.status_code in (200, 204), (action, response.text)
+        assert response.status_code in (200, 202, 204), (action, response.text)
 
 
 # --- updating -----------------------------------------------------------------
@@ -200,3 +240,170 @@ def test_deleting_needs_no_confirmation(client: TestClient) -> None:
 
 def test_deleting_an_unknown_connection_is_not_found(client: TestClient) -> None:
     assert client.delete(f"/inference/connections/{uuid4()}").status_code == 404
+
+
+# --- downloading weights ------------------------------------------------------
+
+
+def _extra_is_installed() -> bool:
+    """Whether this environment actually carries the local runtime.
+
+    The base development environment does not, and CI's does not either, so the
+    unstubbed refusal test below is the one that runs for real. Guarded rather
+    than assumed, because a contributor with the extra installed must not see a
+    red suite for having it.
+    """
+    return all(importlib.util.find_spec(name) is not None for name in MODULES)
+
+
+def test_downloading_answers_202_and_points_at_its_job(
+    tmp_path: Path, runtime_present: None
+) -> None:
+    """The launch-and-poll contract, the same one the export route answers with."""
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        made = created(client, LOCAL)
+        response = client.post(f"/inference/connections/{made['id']}/download")
+
+        assert response.status_code == 202, response.text
+        job = response.json()
+        assert job["type"] == "inference.download_weights"
+        assert job["state"] == "queued"
+        assert response.headers["Location"] == f"/background-jobs/{job['id']}"
+        # The launch nudged the dispatcher rather than leaving the row for a poll.
+        assert dispatcher.wakes == 1
+        # Queued is queued: nothing has run, so the connection has not moved.
+        assert client.get(f"/inference/connections/{made['id']}").json()["setup_state"] == (
+            "not_set_up"
+        )
+
+
+def test_a_finished_download_leaves_the_connection_ready(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """The state flip is the job's last act, and it is visible over the wire."""
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = created(client, LOCAL)
+        job = client.post(f"/inference/connections/{made['id']}/download").json()
+
+        settled = client.get(f"/background-jobs/{job['id']}").json()
+        assert settled["state"] == BackgroundJobState.SUCCEEDED.value, settled
+        assert settled["result"]["setup_state"] == "ready"
+        assert fetched == ["some/model@abc123"]
+
+        after = client.get(f"/inference/connections/{made['id']}").json()
+        assert after["setup_state"] == "ready"
+        # And the declaration follows the state: there is nothing left to fetch.
+        assert after["allowed_actions"] == ["update", "delete"]
+
+
+def test_a_failed_download_leaves_the_connection_not_set_up(
+    tmp_path: Path, runtime_present: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Never a half-ready row: the failure is on the job and nowhere else.
+
+    The ordering rule `visionset.inference.weights` states, proved by breaking
+    the download rather than by reading the code: the state flip is the last
+    statement, so a run that dies before it has written nothing at all.
+    """
+
+    def _explode(connection: Any, *, into: Path) -> Path:
+        raise OSError("the disk filled")
+
+    monkeypatch.setattr(weights_module, "download", _explode)
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = created(client, LOCAL)
+        job = client.post(f"/inference/connections/{made['id']}/download").json()
+
+        settled = client.get(f"/background-jobs/{job['id']}").json()
+        assert settled["state"] == BackgroundJobState.FAILED.value
+        assert "the disk filled" in settled["error"]
+
+        after = client.get(f"/inference/connections/{made['id']}").json()
+        assert after["setup_state"] == "not_set_up"
+        assert "download_weights" in after["allowed_actions"]
+
+
+def test_running_the_download_twice_is_a_verified_no_op(
+    tmp_path: Path, runtime_present: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The idempotency the registry claims for this handler, exercised.
+
+    The route refuses a second *request* — the connection is ready, so
+    `download_weights` is no longer declared — but a re-queued orphan does not go
+    through the route. This drives the handler directly, which is the path a
+    crash recovery actually takes.
+    """
+    from visionset.jobs.weights import run as download_run
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        weights_module,
+        "download",
+        lambda connection, *, into: (calls.append(connection.model_id), into)[1],
+    )
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+        assert client.get(f"/inference/connections/{made['id']}").json()["setup_state"] == "ready"
+
+        response = client.post(f"/inference/connections/{made['id']}/download")
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"
+
+    assert calls == ["some/model"]
+    assert callable(download_run)
+
+
+def test_downloading_an_http_connection_is_a_conflict(
+    client: TestClient, runtime_present: None
+) -> None:
+    """Its model runs elsewhere, so there is nothing here to fetch — in any state."""
+    made = created(client, HTTP)
+    response = client.post(f"/inference/connections/{made['id']}/download")
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"
+    assert "download_weights" not in made["allowed_actions"]
+
+
+def test_downloading_an_unknown_connection_is_not_found(
+    client: TestClient, runtime_present: None
+) -> None:
+    response = client.post(f"/inference/connections/{uuid4()}/download")
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_FOUND"
+
+
+@pytest.mark.skipif(_extra_is_installed(), reason="the local runtime is installed here")
+def test_a_missing_local_runtime_refuses_with_the_install_command(client: TestClient) -> None:
+    """Unstubbed, and the message is the remedy.
+
+    A deployment condition rather than a client error, so it is a 5xx — and one
+    of the four that opt out of the opaque body, because nobody can reconstruct
+    a `pip install` line from "the server failed to handle the request".
+
+    The action stays *declared* through all of this, deliberately: whether this
+    machine has the extra is not a fact about the connection, and a control that
+    vanished would leave the install command with nowhere to be shown
+    (design principle 9, `cf. #421`).
+    """
+    made = created(client, LOCAL)
+    assert "download_weights" in made["allowed_actions"]
+
+    response = client.post(f"/inference/connections/{made['id']}/download")
+    assert response.status_code == 500, response.text
+    body = response.json()
+    assert body["code"] == "LOCAL_INFERENCE_UNAVAILABLE"
+    assert 'pip install "visionset[local-inference]"' in body["message"]
+
+
+def test_a_refused_download_creates_no_job(client: TestClient, runtime_present: None) -> None:
+    """A caller holding a job id holds one that will run.
+
+    `export_release`'s rule: the refusals a request can make are made on the
+    request, so no row is ever written for work that was never going to happen.
+    """
+    made = created(client, HTTP)
+    assert client.post(f"/inference/connections/{made['id']}/download").status_code == 409
+    assert client.get("/background-jobs").json()["total"] == 0
+    assert UUID(made["id"])

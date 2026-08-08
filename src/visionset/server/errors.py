@@ -70,7 +70,10 @@ from visionset.kernel import (
     ExportSourceUnreadable,
     InferenceConnectionInvalid,
     InferenceConnectionNameTaken,
+    InferenceConnectionNotDownloadable,
     InferenceConnectionNotFound,
+    InferenceConnectionNotRunnable,
+    InferenceConnectionNotSetUp,
     IngestJobNotFound,
     InvalidAnnotation,
     InvalidAttributeValue,
@@ -81,6 +84,7 @@ from visionset.kernel import (
     JobNotComplete,
     JobNotFound,
     LabelClassNotInSchema,
+    LocalInferenceUnavailable,
     LossyExportNotConsented,
     MediaError,
     MediaToolUnavailable,
@@ -104,6 +108,7 @@ from visionset.kernel import (
     UnserializableManifest,
     UnsupportedGeometry,
     UnsupportedMedia,
+    UnsupportedPrompt,
     VisionSetError,
     WorkspaceAlreadyExists,
     WorkspaceBusy,
@@ -275,6 +280,19 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # the point: it names the asset, and the remedy is `GET /releases/{id}/verify`
     # followed by restoring the blob.
     ExportSourceUnreadable: ErrorRule(409, "EXPORT_SOURCE_UNREADABLE"),
+    # The `download_weights` gate, refusing what `allowed_actions` had already
+    # declined to declare. 409 rather than 404 because both readings are about
+    # the resource as it stands — already set up, or a kind with no weights of
+    # its own — and neither is a missing thing. Only the first is retryable after
+    # a state change, which is why the *message* separates them and the code does
+    # not: both answers say stop asking.
+    InferenceConnectionNotDownloadable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
+    # Change-the-state-and-resubmit in its purest form: the state is
+    # `setup_state`, the change is `download_weights`, and the identical request
+    # then succeeds. Distinct from INFERENCE_CONNECTION_NOT_RUNNABLE below, which
+    # no state change can fix — precisely the pair that proves a client must
+    # branch on the code and never on the status.
+    InferenceConnectionNotSetUp: ErrorRule(409, "INFERENCE_CONNECTION_NOT_SET_UP"),
     # --- 422: the payload itself is wrong ----------------------------------
     InvalidName: ErrorRule(422, "INVALID_NAME"),
     InferenceConnectionInvalid: ErrorRule(422, "INFERENCE_CONNECTION_INVALID"),
@@ -307,6 +325,13 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # another — which is what ``error_response(exc, status=...)`` is for.
     UnsupportedMedia: ErrorRule(422, "UNSUPPORTED_MEDIA"),
     CorruptMedia: ErrorRule(422, "CORRUPT_MEDIA"),
+    # A detector asked by pointing, or a segmenter asked in words. The payload is
+    # what is wrong — `DuplicateClassificationTag`'s reading — because nothing
+    # about the connection needs to change and no wait helps: the remedy is a
+    # different prompt or a different connection. No route reaches this yet;
+    # mapped anyway, because the exact-correspondence test is what keeps this
+    # table honest and an unmapped kernel error answers 500 the day one appears.
+    UnsupportedPrompt: ErrorRule(422, "UNSUPPORTED_PROMPT"),
     # --- 503: transient, and a wait genuinely helps ------------------------
     WorkspaceBusy: ErrorRule(
         503, "WORKSPACE_BUSY", retry_after=RETRY_AFTER_SECONDS, expose_message=True
@@ -339,6 +364,21 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # is exposed because it carries the install hint, which its docstring calls
     # the whole reason the message exists.
     MediaToolUnavailable: ErrorRule(500, "MEDIA_TOOL_UNAVAILABLE", expose_message=True),
+    # The same shape, one layer up: an optional runtime rather than an external
+    # program, and the message carries the exact `pip install` rather than an
+    # apt or brew line. Not a 503 for MEDIA_TOOL_UNAVAILABLE's reason — 503
+    # promises transience, and retrying never succeeds until somebody installs
+    # the extra — and exposed because the command *is* the remedy and nobody can
+    # reconstruct it from "unavailable".
+    LocalInferenceUnavailable: ErrorRule(500, "LOCAL_INFERENCE_UNAVAILABLE", expose_message=True),
+    # A deployment condition too, and the distance from
+    # INFERENCE_CONNECTION_NOT_SET_UP is the whole reason it is not a 409: there
+    # is no state to change and no flag to pass. The remedy is a version of this
+    # program that ships the adapter, so the message says which kind was asked
+    # for rather than inviting a retry that cannot work.
+    InferenceConnectionNotRunnable: ErrorRule(
+        500, "INFERENCE_CONNECTION_NOT_RUNNABLE", expose_message=True
+    ),
 }
 
 ERROR_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {

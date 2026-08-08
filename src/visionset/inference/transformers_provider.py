@@ -1,0 +1,320 @@
+# usage: from visionset.inference import LocalTransformersProvider
+"""A ``ModelProvider`` that runs a zero-shot detector in this process.
+
+**Neutral foundations, per the decision recorded on #418.** This adapter is
+written against ``transformers`` and takes its weights from their original
+source. It is not written against any third-party inference framework, and none
+is a dependency of this distribution.
+
+**The model is loaded once, lazily, and never at construction.** Building a
+provider is what a composition root does while deciding whether it needs one;
+reading gigabytes off disk is what the first ``predict`` does. The split matters
+because a surface may construct one to ask a question — is this connection
+usable — and paying a load for the answer would make asking expensive.
+
+**Everything about which model this is lives here**, which is the boundary
+``kernel/ports/model_provider.py`` draws: the prompt string a detector wants
+(lowercase phrases separated by full stops), the second threshold its
+post-processor takes, the fact that its boxes arrive as corners rather than as a
+corner and a size. The port carries none of it, and the kernel does not know this
+file exists.
+
+Two findings from the Phase 0 spike on #418 are implemented rather than
+remembered: half precision needs shims (``_fp16``), and raw output needs
+cross-box suppression (``nms``). Both have tests that fail if they are removed.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Iterator, Sequence
+from io import BytesIO
+from pathlib import Path
+from typing import Any, Final
+
+from PIL import Image
+
+from visionset.inference import _fp16
+from visionset.inference._extra import imported
+from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
+from visionset.kernel.domain import (
+    AssetPrediction,
+    BboxGeometry,
+    PredictedRegion,
+    PredictionRequest,
+    PredictionTarget,
+    TextPrompt,
+)
+from visionset.kernel.errors import UnsupportedPrompt
+
+_logger: Final = logging.getLogger(__name__)
+
+DEFAULT_TEXT_THRESHOLD: Final = 0.25
+"""How sure the model must be that a box matches a *phrase*, as opposed to that
+it is an object at all.
+
+A detector of this family scores those two things separately, which is why one
+``minimum_confidence`` on the port cannot stand in for both: that one is the box
+score, the value the answer publishes and a caller compares against. This is the
+text side, it never leaves this file, and 0.25 is the value the spike's runs
+used.
+"""
+
+CPU_FALLBACK_WARNING: Final = (
+    "inference connection %r asks for device %r, which this machine does not offer; "
+    "running on the CPU in full precision instead"
+)
+"""Said out loud, once, at WARNING. A fallback that happens silently is a
+fifty-times-slower run somebody spends an afternoon not understanding — and the
+throughput figure on #418 (~115 ms an image) is a GPU figure."""
+
+
+def regions_from(
+    boxes: Sequence[Sequence[float]],
+    scores: Sequence[float],
+    labels: Sequence[str],
+    *,
+    minimum_confidence: float,
+    iou_threshold: float | None,
+) -> tuple[PredictedRegion, ...]:
+    """Turn one image's raw detections into domain regions, suppressed and sorted.
+
+    Pure, over plain numbers — which is the point of it being a function rather
+    than four lines inside :meth:`LocalTransformersProvider.predict`. The
+    conversion and the suppression are the two things about this adapter that can
+    be wrong in a way no GPU is needed to see, so they are the two things a test
+    can drive with literals.
+
+    ``boxes`` arrive as ``(x1, y1, x2, y2)`` — corners, the post-processor's
+    convention — and leave as a corner and a size, which is
+    :class:`~visionset.kernel.domain.BboxGeometry`'s. A box that survived
+    thresholding with zero width or height is dropped rather than raised on: the
+    domain refuses a zero-area box, and failing a whole batch over one degenerate
+    detection would lose every good answer beside it.
+
+    ``iou_threshold`` of ``None`` disables suppression. It is the only way to get
+    the raw output, it is not the default, and a caller reaching for it is asking
+    for the duplicates the spike measured.
+    """
+    regions = []
+    for (x1, y1, x2, y2), score, label in zip(boxes, scores, labels, strict=True):
+        if score < minimum_confidence:
+            continue
+        width, height = x2 - x1, y2 - y1
+        if width <= 0 or height <= 0:
+            continue
+        regions.append(
+            PredictedRegion(
+                label=label,
+                # Clamped rather than refused: a model may answer 1.0000001, and
+                # the domain's [0, 1] bound is about meaning rather than about
+                # float arithmetic.
+                confidence=min(1.0, max(0.0, score)),
+                geometry=BboxGeometry(x=x1, y=y1, width=width, height=height),
+            )
+        )
+    if iou_threshold is None:
+        return tuple(sorted(regions, key=lambda region: -region.confidence))
+    return suppressed(regions, iou_threshold=iou_threshold)
+
+
+def prompt_text(prompt: TextPrompt) -> str:
+    """The phrases as this family of detector wants them: lowercase, full stops.
+
+    A model-specific spelling, so it lives at the model-specific end. The port
+    carries a tuple of phrases because that is what a caller means; turning that
+    into one string with the punctuation a tokenizer was trained on is the
+    adapter's translation and nobody else's.
+    """
+    return " ".join(f"{phrase.strip().casefold()}." for phrase in prompt.phrases)
+
+
+class LocalTransformersProvider:
+    """Runs a zero-shot detector here, in this process, on this machine.
+
+    Satisfies :class:`~visionset.kernel.ports.ModelProvider` structurally rather
+    than by inheritance, which is what a ``Protocol`` is for — and what a test
+    asserts with ``isinstance``, on the instance, for the reason
+    ``formats/registry.py`` already documents.
+
+    Not thread safe and not meant to be: the port says a provider is built by the
+    code about to use it, and a worker process runs one task at a time.
+    """
+
+    def __init__(
+        self,
+        model_id: str,
+        model_revision: str,
+        *,
+        device: str,
+        precision: str | None,
+        cache_dir: Path,
+        connection_name: str = "",
+        nms_iou_threshold: float | None = DEFAULT_IOU_THRESHOLD,
+        text_threshold: float = DEFAULT_TEXT_THRESHOLD,
+    ) -> None:
+        self._model_id = model_id
+        self._model_revision = model_revision
+        self._device = device
+        self._precision = precision
+        self._cache_dir = cache_dir
+        self._connection_name = connection_name
+        self._nms_iou_threshold = nms_iou_threshold
+        self._text_threshold = text_threshold
+        self._loaded: tuple[Any, Any, str, bool] | None = None
+
+    @property
+    def model_ref(self) -> str:
+        """What every answer is stamped with, and what an annotation will carry.
+
+        ``id@revision``, the same spelling the CLI's listing prints, because the
+        revision is half of the identity: "which model produced this label" is
+        unanswerable if the answer names a moving pointer (`cf. #421`).
+        """
+        return f"{self._model_id}@{self._model_revision}"
+
+    def predict(self, request: PredictionRequest) -> Iterator[AssetPrediction]:
+        """One answer per target, yielded as each image finishes.
+
+        Yielding rather than returning is the port's contract and is what lets a
+        caller report progress between images with no channel of its own. It also
+        means **nothing is loaded until the first item is pulled**, which is
+        ordinary generator behaviour and worth stating: a caller that builds the
+        iterator and never iterates has not started a model.
+
+        Raises:
+            UnsupportedPrompt: the request asks by pointing, and this is a
+                detector. It answers words.
+            LocalInferenceUnavailable: the optional runtime is not installed.
+        """
+        if not isinstance(request.prompt, TextPrompt):
+            raise UnsupportedPrompt(
+                f"{self.model_ref} answers text prompts; it was asked with "
+                f"{request.prompt.kind!r} points, which it has no way to interpret"
+            )
+        text = prompt_text(request.prompt)
+        processor, model, device, half = self._ready()
+        torch = imported("torch")
+        for target in request.targets:
+            yield self._one(
+                target,
+                text=text,
+                processor=processor,
+                model=model,
+                device=device,
+                half=half,
+                torch=torch,
+                minimum_confidence=request.minimum_confidence,
+            )
+
+    def _one(
+        self,
+        target: PredictionTarget,
+        *,
+        text: str,
+        processor: Any,
+        model: Any,
+        device: str,
+        half: bool,
+        torch: Any,
+        minimum_confidence: float,
+    ) -> AssetPrediction:
+        """Everything that happens to one image, from bytes to domain regions."""
+        image = self._decoded(target)
+        inputs = processor(images=image, text=text, return_tensors="pt").to(device)
+        with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
+            outputs = model(**inputs)
+        # ``target_sizes`` is (height, width) and PIL's ``size`` is (width,
+        # height). Reversed here rather than remembered at the call site.
+        raw = processor.post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            threshold=minimum_confidence,
+            text_threshold=self._text_threshold,
+            target_sizes=[image.size[::-1]],
+        )[0]
+        return AssetPrediction(
+            asset_id=target.asset_id,
+            model_ref=self.model_ref,
+            regions=regions_from(
+                [[float(value) for value in box] for box in raw["boxes"].tolist()],
+                [float(score) for score in raw["scores"].tolist()],
+                _labels_in(raw),
+                minimum_confidence=minimum_confidence,
+                iou_threshold=self._nms_iou_threshold,
+            ),
+        )
+
+    def _decoded(self, target: PredictionTarget) -> Any:
+        """The bytes as an RGB image.
+
+        Pillow rather than anything the optional runtime brings: it is already a
+        hard dependency for the media adapters, so decoding costs a base install
+        nothing and is importable at the top of this module like an ordinary
+        thing. ``RGB`` unconditionally — a greyscale or palette image would
+        otherwise reach a three-channel model as the wrong shape, and a palette
+        PNG is an ordinary thing to find in a dataset.
+        """
+        return Image.open(BytesIO(target.content)).convert("RGB")
+
+    def _ready(self) -> tuple[Any, Any, str, bool]:
+        """The processor, the model, the device it is on, and whether it is half.
+
+        Loaded once and remembered. The device is re-derived here rather than
+        taken from the connection because what the connection holds is a
+        *request* — free text, written on a machine that may not be this one —
+        and what a forward needs is somewhere that exists.
+        """
+        if self._loaded is None:
+            self._loaded = self._load()
+        return self._loaded
+
+    def _load(self) -> tuple[Any, Any, str, bool]:
+        torch = imported("torch")
+        transformers = imported("transformers")
+        device, half = self._resolved_device(torch)
+        common = {
+            "revision": self._model_revision,
+            "cache_dir": str(self._cache_dir),
+            # Weights only; nothing here executes code that arrived with them.
+            "local_files_only": True,
+        }
+        processor = transformers.AutoProcessor.from_pretrained(self._model_id, **common)
+        model = transformers.AutoModelForZeroShotObjectDetection.from_pretrained(
+            self._model_id,
+            dtype=torch.float16 if half else torch.float32,
+            **common,
+        )
+        return processor, model.to(device).eval(), device, half
+
+    def _resolved_device(self, torch: Any) -> tuple[str, bool]:
+        """Where this actually runs, and whether half precision survives the trip.
+
+        The CPU fallback is a fallback, not a preference: a connection asking for
+        ``cuda`` on a machine with none gets the CPU **and a warning**, because
+        the alternative — refusing — would make a workspace configured on a
+        laptop unusable on it, and the alternative to the warning is a run that
+        is fifty times slower for no visible reason.
+
+        Falling back also drops half precision. fp16 on a CPU is not the
+        conservative choice it looks like: the shims above exist for CUDA's
+        autocast, and ``float16`` arithmetic outside it is slower than the
+        float32 it was avoiding.
+        """
+        wanted = self._device.strip()
+        if wanted.startswith("cuda") and not torch.cuda.is_available():
+            _logger.warning(CPU_FALLBACK_WARNING, self._connection_name, wanted)
+            return "cpu", False
+        return wanted, wanted.startswith("cuda") and _fp16.wants_half(self._precision)
+
+
+def _labels_in(raw: dict[str, Any]) -> list[str]:
+    """The phrase each box answered under.
+
+    Two keys because the post-processor renamed one: ``text_labels`` is the
+    current spelling and ``labels`` is what older releases wrote. Read both, in
+    that order, rather than pinning a floor — the alternative is a hard
+    dependency bound on a rename that costs one line to tolerate.
+    """
+    found = raw.get("text_labels", raw.get("labels", []))
+    return [str(label) for label in found]

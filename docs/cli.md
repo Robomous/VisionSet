@@ -41,6 +41,7 @@ visionset inference create NAME --type local|http --model ID --revision REV
                                [--device D] [--precision P] [--endpoint URL]
 visionset inference list
 visionset inference show|update|delete NAME_OR_ID
+visionset inference download NAME_OR_ID
 visionset server [--host] [--port] [--reload]            # no --json
 visionset mcp                                            # stdio; no --json
 ```
@@ -389,9 +390,13 @@ digest is stored, and why revocation does not free the name — in [auth.md](aut
 
 ## `visionset inference`
 
-Configuring where a model may be asked to predict. **Nothing here downloads weights or contacts an
-endpoint** — a connection is a row, and that is the point. Covered in full, including the two kinds
-and why deleting one never touches an annotation's provenance, in
+Configuring where a model may be asked to predict, and fetching the weights a local connection
+names. **`download` is the only command in this product that downloads a model, and it downloads
+one only because you asked it to** — nothing else here reaches a network, and creating a
+connection writes a row. It blocks, because there is no worker at a terminal to hand the work to,
+and it needs the `local-inference` extra; without it you get one line naming the exact
+`pip install`. Covered in full, including the two kinds, where the weights land and why deleting a
+connection never touches an annotation's provenance, in
 [inference.md](inference.md#at-a-terminal).
 
 ## `visionset mcp`

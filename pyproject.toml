@@ -45,6 +45,34 @@ dependencies = [
     "python-multipart>=0.0.9",
 ]
 
+# The runtime for `local`-type inference connections (#418). An **extra**, not a
+# dependency group: a group is for developing this repository, and this is
+# something a user installs — `pip install "visionset[local-inference]"`, the
+# exact command `visionset/inference/_extra.py` puts in its refusal message.
+#
+# It is the runtime for connections that run a model *here*, and not the
+# auto-labeling feature, which is always present. A base install can create a
+# local connection, list it, and be told precisely what to install; what it
+# cannot do is fetch weights or run a forward pass.
+#
+# Roughly two gigabytes of CUDA wheels, which is the whole reason it is optional
+# and the reason `visionset/inference` defers every one of these imports into a
+# function: `visionset.jobs` is imported at server startup and at every worker
+# spawn, so a module-level `import torch` would make this mandatory in practice
+# while remaining optional in the metadata.
+#
+# The canonical spelling is `local-inference`; it supersedes the earlier
+# `autolabel` framing. Version floors rather than pins: this is a user's
+# environment and their CUDA build decides most of it. `uv.lock` does not carry
+# extras, so nothing here is resolved by a `uv sync` in this repository.
+[project.optional-dependencies]
+local-inference = [
+    "torch>=2.4",
+    "transformers>=4.44",
+    "accelerate>=0.33",
+    "huggingface-hub>=0.24",
+]
+
 [project.urls]
 Homepage = "https://github.com/Robomous/VisionSet"
 Issues = "https://github.com/Robomous/VisionSet/issues"
@@ -173,6 +201,14 @@ forbidden_modules = [
     # exists to hold. It is also what keeps `SqliteJobQueue` unable to resolve a
     # job type, which is why `UnknownJobType` is raised outside the kernel.
     "visionset.jobs",
+    # The composition root that turns a connection row into a running model
+    # (#418). Same direction as the three above, and load-bearing for the same
+    # kind of reason: it is where torch and transformers are reached, so a kernel
+    # that could import it could import them — and `ModelProvider` would stop
+    # being a port describing a protocol and start being a description of one
+    # implementation. The kernel knows the configuration and the protocol; what
+    # runs is on the other side of this line.
+    "visionset.inference",
     "fastapi",
     "typer",
     "mcp",
@@ -198,6 +234,26 @@ forbidden_modules = [
     "visionset.server",
     "visionset.cli",
     "visionset.mcp",
+    "fastapi",
+    "typer",
+    "uvicorn",
+]
+
+# The composition root for inference, one package below the three surfaces and
+# beside `formats`, `wire` and `jobs`. Forbidden from `visionset.jobs` as well as
+# from the delivery packages, and that one is not tidiness: the download handler
+# imports *this*, so the reverse would close a cycle — and would put the optional
+# runtime back on the path a worker takes at spawn, which is exactly what
+# deferring every heavy import into a function exists to prevent.
+[[tool.importlinter.contracts]]
+name = "Inference adapters are below the surfaces: visionset.inference imports no delivery package"
+type = "forbidden"
+source_modules = ["visionset.inference"]
+forbidden_modules = [
+    "visionset.server",
+    "visionset.cli",
+    "visionset.mcp",
+    "visionset.jobs",
     "fastapi",
     "typer",
     "uvicorn",
