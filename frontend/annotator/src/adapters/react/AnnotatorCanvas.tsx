@@ -138,6 +138,8 @@ import { NO_TARGET } from "../../core/interaction/target";
 import { toolFor } from "../../core/interaction/tool";
 import type { Tool } from "../../core/interaction/tool";
 import {
+  ACCEPT_SUGGESTION,
+  DISCARD_SUGGESTION,
   READ_ONLY_KINDS,
   RESET_ZOOM,
   SAVE_AND_NEXT,
@@ -150,6 +152,8 @@ import {
   runAction,
 } from "../../core/input";
 import type { Action, Binding, InputHost } from "../../core/input";
+import { hasPending, isAcceptable } from "../../core/interaction/suggestion";
+import type { Polarity, SuggestionState } from "../../core/interaction/suggestion";
 import { createClipboard } from "../../core/interaction/clipboard";
 import type { Clipboard } from "../../core/interaction/clipboard";
 import type { IdFactory } from "../../core/ids";
@@ -172,7 +176,7 @@ import type { Viewport } from "../viewport";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
-import { classColor, editedId, paintAnnotation } from "./paint";
+import { classColor, editedId, paintAnnotation, paintSuggestion } from "./paint";
 import { stageScreenSizes } from "./Shapes";
 import { withoutHidden } from "./visibility";
 import { TransientLayer } from "./TransientLayer";
@@ -362,6 +366,42 @@ export interface AnnotatorCanvasProps {
    * deciding a host's policy. This governs *input*.
    */
   readonly readOnly?: boolean;
+  /**
+   * The suggest session, or `null`/absent when the tool is not armed (#424).
+   *
+   * **The host holds it**, for the reason `core/interaction/suggestion.ts` gives
+   * at length: every transition but the first is driven by a server's answer, and
+   * this adapter deliberately fetches nothing. What arrives here is the state to
+   * draw and to route presses into — not a channel to change it.
+   *
+   * Its presence is a **mode**, and it is exactly the mode `state.ts`'s pan
+   * contract already describes from the other side: *"while panning or pinching,
+   * the adapter does not forward pointer events to the machine; if a gesture was
+   * in flight when the pan began, it sends `pointer-cancel` first."* An armed
+   * suggest tool is the second occupant of that rule, and it is honoured in the
+   * same two places — the effect below arms it, `handlePointerDown` diverts.
+   *
+   * That is also why the suggest tool is not a `Tool`. `tool.ts` derives the tool
+   * from the active class and stores nothing, and it is emphatic about why; a
+   * fifth variant there would be a stored mode wearing a derived one's name, and
+   * `toolFor` would have nowhere to derive it from. The class stays what it was —
+   * a suggestion is labelled with it — and this is a mode over the top.
+   */
+  readonly suggestion?: SuggestionState | null;
+  /**
+   * A press while the suggest tool is armed, in asset pixels.
+   *
+   * Alt-click is the negative point, which is D2's *"left-click adds a positive
+   * point, alt/right-click a negative point"* with the alt half taken and the
+   * right half left alone: a secondary press is a pan on this canvas, and #380's
+   * `contextmenu` note explains why taking it back is not free. Alt is the
+   * spelling that costs no existing gesture.
+   *
+   * Absent, with a session armed, means a host that armed a tool it cannot serve
+   * — so the press is swallowed rather than falling through to a drawing gesture,
+   * which would draw a shape somebody was trying to point at.
+   */
+  readonly onSuggestPoint?: (point: Point, polarity: Polarity) => void;
 }
 
 /** What a host can do to the stage. Read the position through `onViewChange`. */
@@ -389,6 +429,8 @@ export function AnnotatorCanvas({
   className,
   viewRef,
   readOnly = false,
+  suggestion = null,
+  onSuggestPoint,
 }: AnnotatorCanvasProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const { asset, schema } = snapshot.document;
@@ -514,6 +556,32 @@ export function AnnotatorCanvas({
     dispatch({ type: "tool-changed" });
   }, [tool, dispatch]);
 
+  /**
+   * Arming the suggest tool interrupts whatever the pointer was doing (#424).
+   *
+   * The pan contract's second occupant, discharged the way the first one is: a
+   * gesture in flight when the mode begins is cancelled, and after that the
+   * presses simply do not arrive. Without this, arming mid-drag would leave the
+   * machine in `moving` with a staged preview nothing will ever commit — and the
+   * next `pointer-up`, which this component no longer forwards, would never come
+   * to clear it.
+   *
+   * Keyed on **armed-ness** rather than on the session object, which changes on
+   * every click and every answer: re-cancelling an already-idle machine on each
+   * refine is harmless and re-running this effect that often is not what it is
+   * for. Disarming needs nothing — there is no gesture to interrupt on the way
+   * out, and the machine has been idle throughout.
+   */
+  const armedSuggest = suggestion !== null;
+  const armedNow = useRef(armedSuggest);
+  useEffect(() => {
+    if (armedSuggest === armedNow.current) return;
+    armedNow.current = armedSuggest;
+    if (armedSuggest && interactionNow.current.type !== "idle") {
+      dispatch({ type: "pointer-cancel" });
+    }
+  }, [armedSuggest, dispatch]);
+
   const announced = useRef({ document: snapshot.document, selection: snapshot.selection });
   useEffect(() => {
     const seen = announced.current;
@@ -602,10 +670,26 @@ export function AnnotatorCanvas({
      * same frame as a pointer event must read the state that event left behind.
      */
     const finishing = resolved.kind === "send" && resolved.event.type === "commit";
+    /**
+     * `escape` means **take back**, and a pending suggestion is the most recent
+     * thing there is to take back (#424, D4: *"Esc is the preview's undo"*).
+     *
+     * The same substitution `enter` has had since #383, on the other chord and
+     * for the same reason: the deciding fact is state the adapter holds. It
+     * outranks the machine's cancel while something is pending and disappears
+     * the moment nothing is — so every cancel row in `machine.ts` still reads
+     * exactly as written, and a second Escape clears the selection as it always
+     * did.
+     */
+    const escaping = resolved.kind === "send" && resolved.event.type === "cancel";
     const action: Action =
-      finishing && interactionNow.current.type === "idle"
-        ? { kind: "host", name: SAVE_AND_NEXT }
-        : resolved;
+      suggestion !== null && escaping && hasPending(suggestion)
+        ? { kind: "host", name: DISCARD_SUGGESTION }
+        : suggestion !== null && finishing && isAcceptable(suggestion)
+          ? { kind: "host", name: ACCEPT_SUGGESTION }
+          : finishing && interactionNow.current.type === "idle"
+            ? { kind: "host", name: SAVE_AND_NEXT }
+            : resolved;
 
     // (3) The guard, with Escape surviving it. v1 ran Escape *before* its `inInput`
     // check, deliberately, so Escape blurs a field; that ordering is easy to lose
@@ -617,10 +701,12 @@ export function AnnotatorCanvas({
     // on a read-only page unable to paste into an ordinary input. Nothing else
     // changes hands — the branch below still swallows a claimed chord that
     // reached the canvas.
+    // Read off `resolved`, never off `action`: Escape blurs a field because it is
+    // Escape, and the substitution above must not be able to take that away by
+    // turning the chord into a host row.
     const target = event.target instanceof HTMLElement ? event.target : null;
-    const cancelling = action.kind === "send" && action.event.type === "cancel";
     if (isTextEntry(target)) {
-      if (!cancelling) return;
+      if (!escaping) return;
       target?.blur();
     }
 
@@ -697,6 +783,20 @@ export function AnnotatorCanvas({
 
     const point = imagePoint(event);
     if (point === null) return;
+
+    // The suggest mode: this press is a prompt point, and the machine hears
+    // nothing at all. Placed after the pan branch so a secondary press still
+    // pans — a person refining a suggestion needs to move around the picture —
+    // and before the dispatch, because a press that reached the machine would
+    // start drawing the very box the model is being asked for.
+    //
+    // A session with no handler swallows the press rather than falling through,
+    // for the reason the prop's docstring gives.
+    if (suggestion !== null) {
+      onSuggestPoint?.(point, event.altKey ? "negative" : "positive");
+      return;
+    }
+
     dispatch({ type: "pointer-down", point, button, modifiers: modifiersOf(event) });
     // After the dispatch, and only for a drag — see the note above.
     if (DRAG_STATES.has(interactionNow.current.type)) {
@@ -802,6 +902,19 @@ export function AnnotatorCanvas({
   const declared =
     activeClass === null ? undefined : schema.classes.find((row) => row.name === activeClass);
   const drawColor = activeClass === null ? "#8a8a93" : classColor(declared, activeClass);
+
+  // The session's own class rather than `activeClass`: they agree today, because
+  // arming the tool activates a class that can hold a suggestion — but the
+  // session captured its class at arming time, the way `drawing-bbox` captures
+  // its `labelClass` at the press, and the preview must be labelled with what it
+  // will actually be written as.
+  const painted =
+    suggestion === null
+      ? null
+      : paintSuggestion(
+          suggestion,
+          schema.classes.find((row) => row.name === suggestion.labelClass),
+        );
 
   return (
     <div
@@ -918,6 +1031,8 @@ export function AnnotatorCanvas({
               closeRing={tolerances.closePolygon}
               crosshair={tool === "select" ? null : hover}
               asset={asset}
+              suggestion={painted}
+              {...(suggestion === null ? {} : { promptPoints: suggestion.points })}
             />
           </svg>
         </div>

@@ -45,6 +45,7 @@ import { annotationsInDrawOrder } from "../../core/state/document";
 import type { AnnotationDocument } from "../../core/state/document";
 import type { Selection } from "../../core/state/selection";
 import type { InteractionState } from "../../core/interaction/state";
+import type { PromptPoint, SuggestionState } from "../../core/interaction/suggestion";
 import type {
   Annotation,
   BboxGeometry,
@@ -238,4 +239,77 @@ export function pendingPolygon(state: InteractionState): PendingPolygon | null {
     labelClass: state.labelClass,
     closable: state.type === "drawing-polygon",
   };
+}
+
+/**
+ * How a proposal is told apart from a stored annotation (#424, D2).
+ *
+ * **Two signals, and never colour alone.** A suggestion is drawn in its class's
+ * own colour — that is the point of it, since the class is what it will be
+ * labelled — so hue cannot be what distinguishes it. Reduced opacity plus a
+ * dashed stroke are both visible to somebody who cannot tell the two hues apart,
+ * and the dash is the one that survives a screenshot at any zoom.
+ *
+ * The dash is deliberately **not** `TransientLayer`'s `"6 4"`: that one is a
+ * rubber band the pointer is dragging, and this is a shape waiting to be
+ * accepted. A longer dash at the same stroke width reads as a different kind of
+ * provisional rather than as the same one.
+ */
+export const SUGGESTION_OPACITY = 0.6;
+
+/** The preview's stroke pattern — see `SUGGESTION_OPACITY`. */
+export const SUGGESTION_DASH = "10 6";
+
+/** A pending suggestion, ready to draw. */
+export interface PaintedSuggestion {
+  /** Never a tag or a path: the two kinds `SUGGESTIBLE_GEOMETRY_TYPES` names. */
+  readonly geometry: BboxGeometry | PolygonGeometry;
+  readonly color: string;
+  /** The class, and the model's confidence when it reported one. */
+  readonly label: string;
+  /** The clicks that produced it, so the preview shows what it was asked. */
+  readonly points: readonly PromptPoint[];
+}
+
+/**
+ * The pending suggestion as a draw list, or `null` when there is nothing to draw.
+ *
+ * `null` covers every status but `shown` — an armed tool nobody has clicked with,
+ * a first ask still in flight, an answer with nothing in it, a refusal. Each of
+ * those is a *sentence*, and a sentence is the host's to render: this package
+ * ships no chrome, and `AnnotatorPanel`'s argument applies to a spinner and an
+ * error message exactly as it does to a toolbar.
+ *
+ * The **points are carried whatever the status**, which is why the caller checks
+ * for them separately: the dots are what makes a refine click legible, and they
+ * must stay on screen while the answer to the click that placed them is still
+ * coming back.
+ */
+export function paintSuggestion(
+  state: SuggestionState,
+  declared: LabelClass | undefined,
+): PaintedSuggestion | null {
+  const suggestion = state.suggestion;
+  if (state.status !== "shown" || suggestion === null) return null;
+  const geometry = suggestion.geometry;
+  if (geometry.type !== "bbox" && geometry.type !== "polygon") return null;
+  return {
+    geometry,
+    color: classColor(declared, state.labelClass),
+    label: confidenceLabel(state.labelClass, suggestion.confidence),
+    points: state.points,
+  };
+}
+
+/**
+ * `class 87%`, or the bare class when the model reported no confidence.
+ *
+ * Rounded to whole percent, because a suggestion's confidence is a rough signal
+ * about whether to look closely and two decimal places would suggest a precision
+ * the number does not have. A confidence outside `[0, 1]` cannot arrive — the
+ * kernel's `PredictedRegion` refuses one — so nothing is clamped here.
+ */
+export function confidenceLabel(labelClass: string, confidence: number | null): string {
+  if (confidence === null) return labelClass;
+  return `${labelClass} ${Math.round(confidence * 100)}%`;
 }

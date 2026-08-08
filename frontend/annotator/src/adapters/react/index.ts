@@ -29,14 +29,19 @@ export {
   Vertices,
 } from "./Shapes";
 export {
+  SUGGESTION_DASH,
+  SUGGESTION_OPACITY,
   classColor,
+  confidenceLabel,
   editedId,
   paintAnnotation,
   paintDocument,
+  paintSuggestion,
   pendingPolygon,
   rubberBand,
   screenPx,
   type PaintedAnnotation,
+  type PaintedSuggestion,
   type PendingPolygon,
 } from "./paint";
 export {

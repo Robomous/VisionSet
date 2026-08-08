@@ -12,14 +12,26 @@ import { createDocument } from "../../core/state/document";
 import { EMPTY_SELECTION, selectionOf } from "../../core/state/selection";
 import type { Annotation } from "../../core/types";
 import {
+  SUGGESTION_DASH,
+  SUGGESTION_OPACITY,
   classColor,
+  confidenceLabel,
   editedId,
   paintAnnotation,
   paintDocument,
+  paintSuggestion,
   pendingPolygon,
   rubberBand,
   screenPx,
 } from "./paint";
+import {
+  answered,
+  armed,
+  cleared,
+  refused,
+  withPoint,
+} from "../../core/interaction/suggestion";
+import type { Suggestion, SuggestionState } from "../../core/interaction/suggestion";
 
 function tag(id: string): Annotation {
   return { ...annotation(id), geometry: { type: "classification_tag" } };
@@ -231,5 +243,75 @@ describe("the shape under construction", () => {
       if (type === "drawing-polygon" || type === "drawing-polyline") continue;
       expect(pendingPolygon(worldIn(type).state)).toBeNull();
     }
+  });
+});
+
+describe("a pending suggestion, drawn as a proposal (#424)", () => {
+  const SIGN = SCHEMA.classes.find((declared) => declared.name === "sign");
+  const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;
+
+  function proposal(confidence: number | null = 0.871): Suggestion {
+    return { geometry: A_BOX, confidence, modelRef: "facebook/sam2-hiera-base-plus@main" };
+  }
+
+  function shown(suggestion: Suggestion = proposal()): SuggestionState {
+    const asked = withPoint(armed("sign"), [100, 120], "positive");
+    return answered(asked, asked.serial, suggestion);
+  }
+
+  it("is told apart by two signals, and never by colour alone", () => {
+    // The shape draws in its class's own colour — that is the point of it — so
+    // hue cannot be what distinguishes it from a stored annotation. Both of these
+    // are visible to somebody who cannot tell the two hues apart.
+    expect(SUGGESTION_OPACITY).toBeLessThan(1);
+    expect(SUGGESTION_DASH).not.toBe("");
+    expect(paintSuggestion(shown(), SIGN)?.color).toBe(classColor(SIGN, "sign"));
+  });
+
+  it("carries the geometry, the class and the confidence", () => {
+    const painted = paintSuggestion(shown(), SIGN);
+    expect(painted?.geometry).toEqual(A_BOX);
+    expect(painted?.label).toBe("sign 87%");
+  });
+
+  it("carries the clicks that produced it, so a refine is legible", () => {
+    const refined = withPoint(shown(), [200, 210], "negative");
+    const settled = answered(refined, refined.serial, proposal());
+    expect(paintSuggestion(settled, SIGN)?.points).toEqual([
+      { point: [100, 120], polarity: "positive" },
+      { point: [200, 210], polarity: "negative" },
+    ]);
+  });
+
+  it("names the class alone when the model reported no confidence", () => {
+    expect(confidenceLabel("sign", null)).toBe("sign");
+    expect(paintSuggestion(shown(proposal(null)), SIGN)?.label).toBe("sign");
+  });
+
+  it("rounds the confidence to whole percent at both ends", () => {
+    expect(confidenceLabel("sign", 0)).toBe("sign 0%");
+    expect(confidenceLabel("sign", 1)).toBe("sign 100%");
+    expect(confidenceLabel("sign", 0.005)).toBe("sign 1%");
+  });
+
+  it("draws nothing for every status but `shown` — each of those is a sentence", () => {
+    const asked = withPoint(armed("sign"), [100, 120], "positive");
+    expect(paintSuggestion(armed("sign"), SIGN)).toBeNull();
+    expect(paintSuggestion(asked, SIGN)).toBeNull();
+    expect(paintSuggestion(answered(asked, asked.serial, null), SIGN)).toBeNull();
+    expect(paintSuggestion(refused(asked, asked.serial, "not here yet"), SIGN)).toBeNull();
+    expect(paintSuggestion(cleared(shown()), SIGN)).toBeNull();
+  });
+
+  it("draws nothing for a kind that is not one of the two suggestible ones", () => {
+    // Unreachable through the route, which narrows to `allowed_geometries` — and
+    // still refused here, because this function is exported from the package root
+    // and a caller could hand it anything the type permits.
+    const path = shown({
+      geometry: { type: "polyline", points: [[0, 0], [1, 1]] },
+      confidence: 0.5,
+      modelRef: "m@1",
+    });
+    expect(paintSuggestion(path, SIGN)).toBeNull();
   });
 });
