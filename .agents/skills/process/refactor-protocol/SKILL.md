@@ -74,6 +74,32 @@ All work in the worktree; never the primary checkout. Conventional commits in lo
    dependabot minor/patch PR, and because it was never a required check, that X was pure noise
    sitting beside twelve green ones. — #402/#405/#406
 
+   **The one exception is a step that was already red on `main`, and it is a conjunction.** A
+   failing gate step stops blocking the merge only when *every* one of these holds:
+
+   - The identical failure is **reproduced on unmodified `main` at the merge-base, by you, in
+     this environment**. A prior session's report of the same failure is not a substitute,
+     however recent — that is the claim being tested.
+   - **Both outputs are in the PR body, verbatim** — the branch run and the baseline run.
+   - **The diff does not touch the failing step's surface**, and the PR body says why: what the
+     diff touches, what the failure exercises.
+   - **The matching CI job is green on the PR**, or the failure is already tracked as CI-red
+     with an issue.
+   - **An issue for the baseline failure exists and is cited in the PR body.** Locate it or file
+     it before merging. A pre-existing red with nobody tracking it is undocumented rot, and this
+     exception is exactly the mechanism by which it would spread from one session to all of
+     them.
+
+   **Say that you used it, every time** — in the session's report and in the PR body: "merged
+   under the baseline-proof exception, step X, cf. #N". Applied silently it is indistinguishable
+   from not having run the gate.
+
+   **It never covers a failure first observed on the branch**, however environmental the failure
+   looks. First-observed-on-branch means investigate, not exempt. #442 merged this way against a
+   red `python tests` step; the two truncated-clip tests behind it turned out to be neither an
+   ffmpeg version problem nor a test problem but a core-count-dependent one, which only the
+   baseline reproduction and the issue that followed it made visible. — #442, #443/#444
+
 ## Cleanup
 
 After merge confirmation (`gh pr view --json state,mergedAt`):
