@@ -43,12 +43,17 @@ if [ ! -f "$WORKSPACE/visionset.db" ]; then
   echo "compose: ----------------------------------------------------------------"
 fi
 
-# `--reload-dir` is not tidiness. uvicorn's default watch list is the working
-# directory, which here is the whole bind-mounted repository: `node_modules/` and
-# `workspace-data/` among the rest — so every SQLite write during an ingest would
-# restart the server mid-run. `visionset server` scopes its own `reload_dirs` to the
-# package for exactly this reason; raw uvicorn does not inherit that, so the scope
-# is stated here instead.
+# `--reload-dir` is not tidiness, and it is not made redundant by the mounts
+# either. uvicorn's default watch list is the working directory, which used to be
+# the whole bind-mounted repository — `node_modules/` and `workspace-data/` among
+# the rest, so every SQLite write during an ingest would restart the server
+# mid-run. docker/compose.yaml now mounts only `src` and `docker` here, which
+# removes that particular hazard, but the scope still belongs in writing: it says
+# *which* directory is the source of truth rather than leaving it to be inferred
+# from what happens to be mounted, and it keeps an edit to this very script from
+# bouncing a server that would not re-read it anyway. `visionset server` scopes
+# its own `reload_dirs` to the package for the same reason; raw uvicorn does not
+# inherit that, so the scope is stated here instead.
 exec uvicorn visionset.server.main:app \
   --reload \
   --reload-dir /workspace/src \
