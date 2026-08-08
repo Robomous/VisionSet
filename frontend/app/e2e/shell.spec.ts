@@ -35,6 +35,13 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
   // because the gate and the sign-out button are what it is about and both are
   // only reachable when the server declines to sign the browser in by itself.
   await page.route("**/api/session", (route) => route.fulfill({ json: { issued: session } }));
+  // The Inference section's one read. Empty, because this suite is about the
+  // rail and the router: what the screen does with rows is `ui-core`'s
+  // `inference.test.tsx`, and an unrouted request here would leave the page
+  // waiting on a network that is not there.
+  await page.route("**/api/inference/**", (route) =>
+    route.fulfill({ status: 200, json: { items: [], total: 0 } }),
+  );
   await page.route("**/api/projects**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/schema")) {
@@ -154,11 +161,30 @@ test("the rail carries exactly what the design gives it", async ({ page }) => {
   await signIn(page);
 
   const rail = page.getByTestId("app-rail");
-  await expect(rail.getByRole("link")).toHaveCount(2);
+  // Three, not two: `Inference` joined by the decision recorded on #421
+  // (2026-08-08), which supersedes #58's rule. The count is the assertion — a
+  // fourth destination arriving without that decision fails here first.
+  await expect(rail.getByRole("link")).toHaveCount(3);
   await expect(page.getByTestId("rail-home")).toBeVisible();
   await expect(page.getByTestId("rail-projects")).toBeVisible();
+  await expect(page.getByTestId("rail-inference")).toBeVisible();
   await expect(page.getByTestId("rail-collapse")).toBeVisible();
   await expect(page.getByTestId("rail-sign-out")).toBeVisible();
+});
+
+test("the Inference entry goes to the section, and is current once you are on it", async ({
+  page,
+}) => {
+  await signIn(page);
+  await expect(page.getByTestId("rail-inference")).toHaveAttribute("href", "/inference");
+
+  await page.getByTestId("rail-inference").click();
+  await expect(page).toHaveURL(/\/inference$/);
+  await expect(page.getByTestId("rail-inference")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("rail-projects")).not.toHaveAttribute("aria-current", "page");
+  // A rail destination has no back-link: the rail is its way out, and a second
+  // answer to "where am I" inside the pane would contradict it.
+  await expect(page.getByTestId("back-link")).toHaveCount(0);
 });
 
 test("navigation is real links, and the active one is the one you are on", async ({ page }) => {

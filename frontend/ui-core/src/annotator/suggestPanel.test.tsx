@@ -18,7 +18,7 @@ import { answered, armed, refused, withPoint } from "@visionset/annotator";
 import type { Suggestion, SuggestionState } from "@visionset/annotator";
 
 import { SuggestPanel } from "./SuggestPanel";
-import { usableConnection, type Connection } from "./inferenceQueries";
+import { usableConnection, type Connection } from "../data/inferenceQueries";
 
 const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;
 

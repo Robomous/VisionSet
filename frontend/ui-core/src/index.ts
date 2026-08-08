@@ -252,6 +252,7 @@ export {
   type ErrorBoundaryProps,
 } from "./patterns/ErrorBoundary.js";
 export { DatasetScreen, type DatasetScreenProps } from "./screens/DatasetScreen.js";
+export { InferenceScreen } from "./screens/InferenceScreen.js";
 export { saveBlob } from "./screens/download.js";
 export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
 
@@ -327,14 +328,24 @@ export { SuggestPanel, type SuggestPanelProps } from "./annotator/SuggestPanel.j
 export {
   inferenceKeys,
   usableConnection,
-  useInferenceConnections,
+  useConnections,
+  useCreateConnection,
+  useDeleteConnection,
+  useDownloadSize,
+  useDownloadWeights,
   useSuggestRegion,
+  useUpdateConnection,
   type Connection,
+  type ConnectionInput,
+  type ConnectionPage,
+  type ConnectionSetupState,
+  type ConnectionType,
+  type DownloadSizeOut,
   type SuggestBlocker,
   type SuggestInput,
   type SuggestionOut,
   type SuggestedRegion,
-} from "./annotator/inferenceQueries.js";
+} from "./data/inferenceQueries.js";
 export {
   queryKeys,
   useActiveSchema,

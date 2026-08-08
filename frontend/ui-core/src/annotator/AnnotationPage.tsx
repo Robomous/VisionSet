@@ -195,7 +195,7 @@ import {
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { FrameGallery } from "./FrameGallery";
 import { SuggestPanel } from "./SuggestPanel";
-import { useInferenceConnections, useSuggestRegion, usableConnection } from "./inferenceQueries";
+import { useConnections, useSuggestRegion, usableConnection } from "../data/inferenceQueries";
 import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState";
 import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
@@ -793,8 +793,8 @@ function Workspace({
    * answer is not known yet, and `usableConnection` names it (`checking`) rather
    * than leaving a click to vanish into it.
    */
-  const connections = useInferenceConnections(session !== null);
-  const { connection, blocker } = usableConnection(connections.data);
+  const connections = useConnections(session !== null);
+  const { connection, blocker } = usableConnection(connections.data?.items);
   const suggestRegion = useSuggestRegion();
 
   /**
