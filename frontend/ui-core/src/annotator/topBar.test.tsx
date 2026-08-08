@@ -59,6 +59,20 @@ let jobSettled = false;
  */
 let assetCount = 1;
 
+/**
+ * What `/jobs/{id}/progress` answers — the counts the Finish-job tooltip reads
+ * (#427). Null keeps the route unanswered, which is how the older tests ran and
+ * what the page treats as "no counts yet".
+ */
+let jobCounts: {
+  unannotated: number;
+  annotated: number;
+  skipped: number;
+  review_pending: number;
+  accepted: number;
+  total: number;
+} | null = null;
+
 /** Whether the frames arrive carrying a box — what `drawn > 0` reads. */
 let annotated = false;
 
@@ -77,6 +91,9 @@ const PROGRESS_STATES = [
 ] as const satisfies readonly Progress[];
 
 function answer(path: string): unknown {
+  if (path === `/jobs/${JOB}/progress` && jobCounts !== null) {
+    return jobCounts;
+  }
   if (path === `/jobs/${JOB}`) {
     return {
       id: JOB,
@@ -152,6 +169,7 @@ function answer(path: string): unknown {
 
 beforeEach(() => {
   sent.length = 0;
+  jobCounts = null;
   progress = "unannotated";
   jobSettled = false;
   assetCount = 1;
@@ -478,13 +496,70 @@ describe("the flow verb", () => {
   it("says why Finish job cannot be pressed where it does render (#416, principle 9)", async () => {
     // The other half: it appears on the last frame whether or not the job can be
     // finished — it is the filled slot there — so on that frame it owes a reason.
+    //
+    // `aria-disabled`, never the native attribute, and a real tooltip rather
+    // than a `title` (#427): a natively disabled button cannot be hovered or
+    // focused, so its reason could never be read. The press is refused in the
+    // handler instead, which the mutation assertion below holds.
     assetCount = 1;
     jobSettled = false;
     await open();
 
     const finish = screen.getByTestId("finish-job");
-    expect(finish.hasAttribute("disabled")).toBe(true);
-    expect(finish.getAttribute("title")).toMatch(/before this job can finish/i);
+    expect(finish.hasAttribute("disabled")).toBe(false);
+    expect(finish.getAttribute("aria-disabled")).toBe("true");
+    expect(finish.getAttribute("title")).toBeNull();
+
+    await userEvent.hover(finish);
+    expect(
+      (await screen.findAllByText(/before this job can finish/i)).length,
+    ).toBeGreaterThan(0);
+
+    // After the reason was read: the press is refused in the handler, so the
+    // `aria-disabled` spelling has not quietly made the button live.
+    await userEvent.click(finish);
+    expect(sent.some((request) => request.path.endsWith("/complete"))).toBe(false);
+  });
+
+  it("names the blocker with its count, from the same progress the readout shows (#427)", async () => {
+    assetCount = 1;
+    jobSettled = false;
+    jobCounts = { unannotated: 2, annotated: 1, skipped: 0, review_pending: 1, accepted: 0, total: 4 };
+    await open();
+
+    // `outstandingWork`: unannotated + review_pending — the two states whose
+    // settling is what makes the kernel declare `complete`.
+    await userEvent.hover(screen.getByTestId("finish-job"));
+    expect(
+      (await screen.findAllByText("3 frames unresolved — annotate or skip them to finish the job.")).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("speaks singular for a single unresolved frame", async () => {
+    assetCount = 1;
+    jobSettled = false;
+    jobCounts = { unannotated: 1, annotated: 3, skipped: 0, review_pending: 0, accepted: 0, total: 4 };
+    await open();
+
+    await userEvent.hover(screen.getByTestId("finish-job"));
+    expect(
+      (await screen.findAllByText("1 frame unresolved — annotate or skip it to finish the job.")).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("carries no tooltip at all once it is live", async () => {
+    // An enabled Finish job explains itself by being pressable (#427).
+    assetCount = 1;
+    jobSettled = true;
+    progress = "annotated";
+    jobCounts = { unannotated: 0, annotated: 4, skipped: 0, review_pending: 0, accepted: 0, total: 4 };
+    await open();
+
+    const finish = screen.getByTestId("finish-job");
+    expect(finish.hasAttribute("disabled")).toBe(false);
+    expect(finish.getAttribute("aria-disabled")).toBeNull();
+    await userEvent.hover(finish);
+    expect(screen.queryByTestId("finish-withheld")).toBeNull();
   });
 
   it("hands the filled slot to Finish job on the last frame, and does not render", async () => {

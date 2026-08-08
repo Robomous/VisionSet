@@ -108,6 +108,12 @@ interface Lifecycle {
   refuseProgress?: string;
   /** When set, `POST /jobs/{id}/complete` refuses 409 with this code instead. */
   refuseJobComplete?: string;
+  /**
+   * Whether every asset is settled, which is what makes the job declare
+   * `complete`. Defaults true, as the older scenarios assumed; the withheld
+   * Finish-job scenarios (#427) set it false.
+   */
+  jobSettled?: boolean;
 }
 
 function openedWorld(): Lifecycle {
@@ -176,7 +182,10 @@ async function serveApi(
     batch_id: BATCH,
     state: lifecycle.job,
     asset_count: 2,
-    allowed_actions: jobActions(lifecycle.job, { batchState: lifecycle.batch }),
+    allowed_actions: jobActions(lifecycle.job, {
+      batchState: lifecycle.batch,
+      settled: lifecycle.jobSettled ?? true,
+    }),
   });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -2092,6 +2101,44 @@ test("a refused Accept says why", async ({ page }) => {
   await page.getByTestId("accept").click();
 
   await expect(page.getByTestId("action-refusal")).toContainText(/already moved on/i);
+});
+
+/**
+ * Principle 9 with principle 4 riding on it (#427): the withheld Finish job
+ * carries its reason as a real tooltip that opens on **focus**, not only on
+ * hover — which is only possible because the withheld state is `aria-disabled`
+ * rather than natively disabled, and only provable in a real browser, where
+ * focus and Radix's open-on-focus actually run.
+ */
+test("a withheld Finish job explains itself on focus, with the count", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "unannotated", "asset-2": "annotated" }), {
+    batch: "in_annotation",
+    job: "in_progress",
+    jobSettled: false,
+  });
+
+  // The last frame, the only one Finish job renders on (#416). Frame 1 stays
+  // unannotated behind us — the one unresolved frame the sentence counts.
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+
+  const finish = page.getByTestId("finish-job");
+  await expect(finish).toHaveAttribute("aria-disabled", "true");
+
+  // Keyboard first: the reason is reachable without a pointer.
+  await finish.focus();
+  await expect(page.getByTestId("finish-withheld")).toContainText(
+    "1 frame unresolved — annotate or skip it to finish the job.",
+  );
+
+  // The press is refused in the handler, so nothing reaches the wire — the
+  // `aria-disabled` spelling must not have quietly made the button live.
+  // `force`, because Playwright itself honours `aria-disabled` and would
+  // refuse to press at all — which is the assistive-tech contract working, but
+  // here the claim is about the handler behind it.
+  await finish.click({ force: true });
+  expect(sent.filter((r) => r.method() === "POST" && r.url().endsWith("/complete"))).toEqual([]);
 });
 
 test("a refused Finish job says why, rather than re-enabling in silence", async ({ page }) => {
