@@ -1012,18 +1012,20 @@ async function openProject(
 /**
  * Pick a class and **wait until it is active**.
  *
- * Through the top bar's class field rather than the digit, and the difference is
+ * Through the panel's class list rather than the digit, and the difference is
  * not cosmetic: a hotkey's effect reaches the machine through the host's own state,
  * so a press and a drag issued back to back can both be seen while the old class is
- * still current. The field prints the class it is holding, which turns that into
- * something to wait on — and it is also how a person picks a class.
+ * still current. The row marks itself selected, which turns that into something to
+ * wait on — and it is also how a person picks a class.
  *
  * The cycle lost a run to exactly this before the wait existed.
+ *
+ * The list moved out of the top bar with #420; what it is doing here did not
+ * change, and neither did the reason for the wait.
  */
 async function activate(page: Page, name: string): Promise<void> {
-  await page.getByTestId("class-field-trigger").click();
-  await page.getByTestId(`class-field-option-${name}`).click();
-  await expect(page.getByTestId("class-field-name")).toHaveText(name);
+  await page.getByTestId(`class-row-${name}`).click();
+  await expect(page.getByTestId(`class-row-${name}`)).toHaveAttribute("data-selected", "true");
 }
 
 async function drawBox(page: Page): Promise<void> {

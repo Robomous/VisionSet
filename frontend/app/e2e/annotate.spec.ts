@@ -114,11 +114,41 @@ function openedWorld(): Lifecycle {
   return { batch: "in_annotation", job: "in_progress" };
 }
 
+/**
+ * How many classes the served schema declares.
+ *
+ * Only the classes-region scenarios pass one — everything else wants the three
+ * `SCHEMA` names its assertions are written against. Padding rather than
+ * replacing, so a scenario asking for twelve still gets `vehicle` and `lane`
+ * where it expects them.
+ */
+interface SchemaSize {
+  readonly classes?: number;
+}
+
+function schemaOfSize(size: SchemaSize | undefined): typeof SCHEMA {
+  const want = size?.classes ?? SCHEMA.classes.length;
+  if (want <= SCHEMA.classes.length) return SCHEMA;
+  return {
+    ...SCHEMA,
+    classes: [
+      ...SCHEMA.classes,
+      ...Array.from({ length: want - SCHEMA.classes.length }, (_unused, index) => ({
+        name: `filler-${index + 1}`,
+        geometry: "bbox",
+        color: "#94a3b8",
+        attributes: [],
+      })),
+    ],
+  };
+}
+
 async function serveApi(
   page: Page,
   sent: Request[],
   progress: Map<string, string> = progressStore({ "asset-1": "unannotated", "asset-2": "annotated" }),
   lifecycle: Lifecycle = openedWorld(),
+  size?: SchemaSize,
 ): Promise<void> {
   const stored: Record<string, unknown>[] = [];
   const batchBody = (): Record<string, unknown> => ({
@@ -194,7 +224,7 @@ async function serveApi(
     if (path === `/batches/${BATCH}`) {
       return route.fulfill({ json: batchBody() });
     }
-    if (path.endsWith("/schema/versions/3")) return route.fulfill({ json: SCHEMA });
+    if (path.endsWith("/schema/versions/3")) return route.fulfill({ json: schemaOfSize(size) });
     if (path.endsWith("/assets") && path.startsWith("/batches")) {
       return route.fulfill({
         json: {
@@ -291,8 +321,9 @@ async function openJob(
   sent: Request[],
   progress?: Map<string, string>,
   lifecycle?: Lifecycle,
+  size?: SchemaSize,
 ): Promise<void> {
-  await serveApi(page, sent, progress, lifecycle);
+  await serveApi(page, sent, progress, lifecycle, size);
   await page.goto(`/jobs/${JOB}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
@@ -492,6 +523,133 @@ test("the navigation cluster sits on the bar's centre and stays there", async ({
   // the cluster's column.
   const identityBox = (await page.getByTestId("asset-identity").boundingBox())!;
   expect(identityBox.x + identityBox.width).toBeLessThanOrEqual(after.x + 1);
+});
+
+/**
+ * The width the class field gave back (#420).
+ *
+ * #416 measured the right zone at 460px of demand against 366px offered at 1440
+ * and patched it by moving `Save and stay` behind `2xl` and the review move
+ * behind `xl` — below those widths they lived only in the overflow. Removing the
+ * class field's 192px reservation from the cluster is what pays that back, so
+ * this asserts the outcome rather than the patch: both are buttons on the bar at
+ * the viewport the suite runs at, and the overflow trigger is at its full size
+ * rather than squashed by a zone that had run out of room.
+ */
+test("both reabsorbable controls are on the bar again at 1440", async ({ page }) => {
+  const sent: Request[] = [];
+  // An `annotated` frame, because that is the state that declares
+  // `submit_for_review` — the heavier of the two, and the one whose presence made
+  // the zone overflow in the first place.
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
+
+  await expect(page.getByTestId("save-and-stay")).toBeVisible();
+  await expect(page.getByTestId("submit-for-review")).toBeVisible();
+  // Nothing was reabsorbed, so the overflow holds neither copy.
+  await expect(page.getByTestId("menu-save")).toHaveCount(0);
+
+  // The squash that reported the overflow before it was visible: `more-actions`
+  // measured 16px against its declared 36 while the zone was over-subscribed.
+  const overflow = (await page.getByTestId("more-actions").boundingBox())!;
+  expect(overflow.width).toBeGreaterThanOrEqual(36);
+});
+
+test("the cluster is the same width whichever resolution verb the frame offers", async ({
+  page,
+}) => {
+  // `Skip` is 104px and `Un-skip` 96px, so without a floor a skipped frame pulls
+  // the whole cluster 4px sideways — and the cluster is centred, so that moves
+  // the arrows under a cursor that has not moved. The class field's reservation
+  // used to be the cluster's width; these two floors are what replace it.
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "skipped" }));
+
+  const cluster = page.getByTestId("frame-navigation");
+  const before = (await cluster.boundingBox())!;
+
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("unskip")).toBeVisible();
+
+  const after = (await cluster.boundingBox())!;
+  expect(after.width).toBeCloseTo(before.width, 1);
+  expect(after.x).toBeCloseTo(before.x, 1);
+});
+
+/**
+ * The side panel's two regions (#420), in a browser because none of it is
+ * visible to jsdom.
+ *
+ * `getBoundingClientRect` answers zero for everything there, and `scrollHeight`
+ * against `clientHeight` — which is what "scrolls internally" means — is exactly
+ * the comparison that needs a layout engine. The height *rule* is arithmetic and
+ * is asserted in `classRegion.test.tsx`; what is asserted here is that the
+ * arithmetic reaches the screen.
+ */
+test("the panel stacks a sized classes region over an objects region that takes the rest", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const panel = (await page.getByTestId("annotator-panel").boundingBox())!;
+  const classes = (await page.getByTestId("class-region").boundingBox())!;
+  const objects = (await page.getByTestId("objects-region").boundingBox())!;
+
+  // Stacked, not side by side, and in that order.
+  expect(classes.y).toBeLessThan(objects.y);
+  expect(Math.round(classes.width)).toBe(Math.round(objects.width));
+  // The objects region reaches the bottom of the panel: it is what absorbs the
+  // remainder, which is the half of the split that has no number of its own.
+  // Within the panel's own `p-2`, and to the pixel rather than the subpixel: what
+  // is being asserted is *reaches the bottom*, not a rounding mode.
+  expect(Math.abs(objects.y + objects.height - (panel.y + panel.height - 8))).toBeLessThan(2);
+  // And the panel did not grow to fit its contents — the whole point of the cap.
+  expect(panel.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+});
+
+test("the two regions scroll independently, neither pushing the other", async ({ page }) => {
+  const sent: Request[] = [];
+  // Twelve classes is past the eight-row cap, so the classes list has surplus to
+  // scroll; the objects list has its own scroller whatever is drawn in it.
+  await openJob(page, sent, undefined, undefined, { classes: 12 });
+
+  const classList = page.getByTestId("class-list");
+  const objectScroller = page.getByTestId("objects-scroller");
+
+  const overflowing = await classList.evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+  expect(overflowing).toBe(true);
+
+  // Scrolling one moves nothing in the other — two scrollers, not one panel that
+  // scrolls as a whole.
+  const objectsTopBefore = await objectScroller.evaluate((el) => el.scrollTop);
+  await classList.evaluate((el) => {
+    el.scrollTop = 200;
+  });
+  expect(await classList.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await objectScroller.evaluate((el) => el.scrollTop)).toBe(objectsTopBefore);
+
+  // The header and the filter are not rows and do not scroll away with them.
+  await expect(page.getByTestId("class-filter")).toBeVisible();
+  await expect(page.getByTestId("class-count")).toBeVisible();
+});
+
+test("a digit arms the class the panel says it will, whatever the filter shows", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // Filter down to the second class, then press `1` — which belongs to the
+  // first, and is not on screen. Schema order, never the filtered order.
+  await page.getByTestId("class-filter").fill("lane");
+  await expect(page.getByTestId("class-row-vehicle")).toHaveCount(0);
+
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+
+  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
+  await page.getByTestId("class-filter").fill("");
+  await expect(page.getByTestId("class-row-vehicle")).toHaveAttribute("data-selected", "true");
 });
 
 test("the cluster never wraps or drops a control, down to the narrowest supported width", async ({
@@ -1670,8 +1828,7 @@ test("the palette reports the tool whatever moved the class", async ({ page }) =
   await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "true");
   await expect(page.getByTestId("tool-select")).toHaveAttribute("data-active", "false");
 
-  await page.getByTestId("class-field-trigger").click();
-  await page.getByTestId("class-field-option-vehicle").click();
+  await page.getByTestId("class-row-vehicle").click();
   await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
   await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "false");
 });

@@ -164,18 +164,61 @@ export function DistributionBar({
   );
 }
 
+/**
+ * The compact row's height, in CSS pixels — `h-9`, and exported because a
+ * caller sizes a viewport in rows (#420).
+ *
+ * A number rather than a measurement: the classes region's height rule is
+ * "three rows minimum, one per class, eight maximum", and a rule stated in rows
+ * needs the row to be a known quantity. That is also why the compact variant
+ * carries an explicit height instead of letting its content decide — a row whose
+ * height depended on whether a hotkey badge was drawn would make the region
+ * eight-and-a-bit rows tall.
+ */
+export const CLASS_ROW_PX = 36;
+
 export interface ClassListRowProps {
   readonly name: string;
   readonly geometry: string;
-  readonly count: number;
+  /**
+   * How many annotations carry the class. **Omit it for the compact variant**:
+   * a row with a count stacks `geometry · count` under the name, and a row
+   * without one puts the geometry on the same line and stands `CLASS_ROW_PX`
+   * tall.
+   *
+   * Optional rather than a `variant` prop because the two are the same
+   * distinction said once: the second line exists to carry the count, so a row
+   * with nothing to count has no second line.
+   */
+  readonly count?: number;
   readonly color: string;
+  /** `1`–`9` for the first nine classes in schema order, else absent (#420). */
+  readonly hotkey?: string | null;
   readonly selected?: boolean;
   readonly onSelect?: () => void;
+  /**
+   * Why the row cannot be chosen, or absent when it can.
+   *
+   * Present means *disabled and explained* — principle 9 in the one shape a
+   * list row has room for. A row that were merely `disabled` would state that
+   * something is unavailable and nothing about why.
+   */
+  readonly refusal?: string;
+  /**
+   * A `data-testid` for the row's own button.
+   *
+   * This component takes a fixed set of props and does not spread the rest, so a
+   * `data-testid` written on it would type-check — JSX permits hyphenated
+   * attributes on a component — and reach nothing. A caller that needs to
+   * address the row asks for it here.
+   */
+  readonly testId?: string;
   readonly className?: string;
 }
 
 /**
- * One class in a master list: swatch, name, and `geometry · count` beneath.
+ * One class in a master list: swatch, name, and `geometry · count` beneath — or,
+ * without a count, swatch · name · geometry · hotkey on one `CLASS_ROW_PX` line.
  *
  * A real `<button>` spanning the whole row, which is two rules at once — the
  * entire row is the click target, and a keyboard reaches it without the list
@@ -185,27 +228,44 @@ export interface ClassListRowProps {
  * Selected is a tinted background plus a 2px left accent rule. The **inactive**
  * row carries the same border at `transparent`, so selecting one does not shift
  * the text by two pixels — the trick `Tabs`' underline variant already uses.
+ *
+ * The compact variant arrived with #420, when the annotator's class picker
+ * stopped being a dropdown on the top bar and became a persistent list in the
+ * side panel. It is an extension rather than a sibling component deliberately:
+ * the selected treatment, the swatch and the truncation are the parts a second
+ * spelling would eventually get differently, and the schema editor and the
+ * annotator showing "the selected class" two different ways is exactly the
+ * drift worth spending a prop to avoid.
  */
 export function ClassListRow({
   name,
   geometry,
   count,
   color,
+  hotkey,
   selected = false,
   onSelect,
+  refusal,
+  testId,
   className,
 }: ClassListRowProps): JSX.Element {
+  const compact = count === undefined;
   return (
     <button
       type="button"
       onClick={onSelect}
+      {...(testId === undefined ? {} : { "data-testid": testId })}
+      disabled={refusal !== undefined}
+      {...(refusal === undefined ? {} : { title: refusal })}
       aria-current={selected ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       className={cn(
-        "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors",
+        "flex w-full items-center gap-2 border-l-2 px-3 text-left transition-colors",
+        compact ? "h-9 shrink-0" : "py-2",
         selected
           ? "border-l-primary bg-primary/10"
           : "border-l-transparent hover:bg-muted focus-visible:bg-muted",
+        refusal !== undefined && "cursor-not-allowed text-disabled-foreground",
         className,
       )}
     >
@@ -214,14 +274,35 @@ export function ClassListRow({
         className="size-2.5 shrink-0 rounded-sm"
         style={{ backgroundColor: color }}
       />
-      <span className="flex min-w-0 flex-col">
-        <span className={cn("truncate text-body", selected ? "font-semibold" : "text-foreground")}>
-          {name}
+      {compact ? (
+        <>
+          <span
+            className={cn("min-w-0 flex-1 truncate text-body", selected && "font-semibold")}
+          >
+            {name}
+          </span>
+          <span className="shrink-0 text-meta text-muted-foreground">{geometry}</span>
+          {/* Rendered only where the key works — `hotkeyForClass` answers null
+              past the ninth class, and a chip on a row no digit reaches would be
+              the same lie `ReassignMenu` refuses to tell one column over. */}
+          {hotkey != null && (
+            <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-meta text-muted-foreground">
+              {hotkey}
+            </kbd>
+          )}
+        </>
+      ) : (
+        <span className="flex min-w-0 flex-col">
+          <span
+            className={cn("truncate text-body", selected ? "font-semibold" : "text-foreground")}
+          >
+            {name}
+          </span>
+          <span className="truncate text-meta text-muted-foreground">
+            {geometry} · <span className="tabular-nums">{formatCount(count)}</span>
+          </span>
         </span>
-        <span className="truncate text-meta text-muted-foreground">
-          {geometry} · <span className="tabular-nums">{formatCount(count)}</span>
-        </span>
-      </span>
+      )}
     </button>
   );
 }

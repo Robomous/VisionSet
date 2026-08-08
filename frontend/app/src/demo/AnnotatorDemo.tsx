@@ -166,7 +166,13 @@ export function AnnotatorDemo(): JSX.Element {
         {/* #126's panel, composed here so the showcase is where its browser
             scenarios run. It is `ui-core`'s and styled with the design tokens; the
             debug panels below it stay inline-styled, which `theme.ts` argues. */}
-        <AnnotatorPanel store={store} hiddenIds={hiddenIds} onHiddenChange={setHiddenIds} />
+        <AnnotatorPanel
+          store={store}
+          hiddenIds={hiddenIds}
+          onHiddenChange={setHiddenIds}
+          activeClass={activeClass}
+          onActivateClass={setActiveClass}
+        />
 
         <Panel title="Classes" testId="palette">
           <PaletteRow
