@@ -35,7 +35,7 @@ from uuid import UUID
 
 from fastapi import Query, status
 
-from visionset.kernel.domain import AssetProgress, MembershipChange
+from visionset.kernel.domain import AnnotationJobState, AssetProgress, MembershipChange
 from visionset.kernel.services import BatchService, DatasetService, JobService, ProjectService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -296,16 +296,25 @@ def list_batch_assets(
     # per-asset progress map that approval wrote, so where an asset has got to is
     # read off the job that owns it rather than asked for separately — and the
     # partition is exact, so every asset appears in this map at most once.
-    placement: dict[UUID, tuple[UUID | None, AssetProgress | None]] = {
-        asset_id: (job.id, progress)
+    placement: dict[UUID, tuple[UUID | None, AnnotationJobState | None, AssetProgress | None]] = {
+        asset_id: (job.id, job.state, progress)
         for job in batches.jobs(batch_id)
         for asset_id, progress in job.progress.items()
     }
     items = []
     for asset in window(found, limit=limit, offset=offset):
-        job_id, progress = placement.get(asset.id, (None, None))
+        # The job's *state* travels beside its id because what an asset allows
+        # depends on it: a completed job's frames are settled and declare nothing,
+        # and the job it belongs to is the only thing that knows (#439).
+        job_id, job_state, progress = placement.get(asset.id, (None, None, None))
         items.append(
-            BatchAssetOut.in_batch(asset, job_id=job_id, progress=progress, batch_state=batch.state)
+            BatchAssetOut.in_batch(
+                asset,
+                job_id=job_id,
+                job_state=job_state,
+                progress=progress,
+                batch_state=batch.state,
+            )
         )
     return BatchAssetPage(items=items, total=len(found))
 

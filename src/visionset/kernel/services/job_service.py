@@ -13,12 +13,14 @@ Three things shape this module:
   ``ASSET_PROGRESS_TRANSITIONS`` live in ``domain/task.py``; this service
   consults them through ``domain.require_move`` and never restates them.
   Adding a state is one edit there.
-- **Work only happens inside an open batch.** Every write here requires the
-  job's batch to be ``in_annotation``. ``AnnotationService`` needs the same gate,
-  and rather than restate it, it calls :meth:`JobService.require_job` and
-  :meth:`JobService.require_open_batch` — public, and taking a unit of work,
-  because the caller has to run them inside its own transaction. One ladder from
-  job to batch, one wording of ``BatchNotInAnnotation``, in both services.
+- **Work only happens inside an open batch, and inside an open job.** Every
+  write here requires the job's batch to be ``in_annotation`` and the job itself
+  not to have been completed. ``AnnotationService`` needs both gates, and rather
+  than restate them, it calls :meth:`JobService.require_job`,
+  :meth:`JobService.require_open_batch` and :meth:`JobService.require_open_job` —
+  public, and the first two taking a unit of work, because the caller has to run
+  them inside its own transaction. One ladder from job to batch, one wording of
+  ``BatchNotInAnnotation`` and one of ``JobFinished``, in both services.
 - **Nothing here completes a batch.** ``BatchService.complete`` derives that from
   its jobs when asked. Cascading upward from here would put the batch's machine
   in two places, and the two would eventually disagree. The ladder *down* to a
@@ -37,6 +39,7 @@ from uuid import UUID
 from visionset.kernel.domain import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
+    OPEN_JOB_STATES,
     SETTLED_PROGRESS,
     AnnotationJob,
     AnnotationJobState,
@@ -49,6 +52,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     AssetNotInJob,
     BatchNotInAnnotation,
+    JobFinished,
     JobNotComplete,
     JobNotFound,
     ProjectNotFound,
@@ -241,10 +245,12 @@ class JobService:
                     f"job {job.id} does not carry asset {asset_id}; a job's assets are fixed "
                     f"when its batch is approved"
                 )
-            # The gate comes before the no-op check on purpose: a caller writing
-            # into a closed batch has a bug whether or not the value would change,
+            # Both gates come before the no-op check on purpose: a caller
+            # writing into a closed batch — or into a job that has already been
+            # finished (#439) — has a bug whether or not the value would change,
             # and hearing about it only when it happens to differ would hide it.
             self.require_open_batch(uow, job)
+            self.require_open_job(job)
             if current is progress:
                 return job
 
@@ -349,6 +355,32 @@ class JobService:
                 f"{BatchState.IN_ANNOTATION.value!r}; no work happens in a batch nobody opened"
             )
         return batch
+
+    @staticmethod
+    def require_open_job(job: AnnotationJob) -> None:
+        """Refuse a job that has already been completed.
+
+        Public beside :meth:`require_open_batch`, for the same reason and as the
+        level below it: ``AnnotationService`` has to pass this gate too, and "a
+        finished job is finished" should have one wording rather than four.
+
+        No ``uow``, unlike its neighbour — the job is already in hand and its own
+        state is the whole of the question. That is also why it is a
+        ``staticmethod``: nothing here reaches the workspace.
+
+        The batch gate does not imply this one and cannot. A job completing does
+        not complete its batch (see :meth:`complete`), so the ordinary state of a
+        finished job is *inside an open batch* — which is what let a finished
+        job's frames go on accepting labels (#439).
+
+        Raises:
+            JobFinished: the job is ``completed``.
+        """
+        if job.state not in OPEN_JOB_STATES:
+            raise JobFinished(
+                f"job {job.id} is {job.state.value!r}, so its assets are settled and its work "
+                f"is over; a completed job does not re-open — correct the labels in a new batch"
+            )
 
 
 def _require_asset(uow: UnitOfWork, job: AnnotationJob, asset_id: UUID) -> Asset:

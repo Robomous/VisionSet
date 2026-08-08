@@ -565,8 +565,10 @@ The page the reference design shows (#56), with measurements verified in v1's so
 
   `Save and next` is `go(1)`: the same save-first advance the navigator has always used,
   so there is one save pipeline and one place principle 10 is enforced. It reads **`Next`
-  when no save will happen** — an untouched frame, or one that cannot be written to at
-  all — because the button never promises a save it will not perform.
+  when no save will happen** — an untouched frame — because the button never promises a
+  save it will not perform, and once the *job* is closed it is **not rendered at all**
+  (#439): there is no save-first advance to offer on any frame of it, and `›` is what
+  moves there. See *The read-only mode* below.
 
   **On the last frame `Finish job` takes the filled slot**, in place: `Save and next` is
   not rendered there, and Finish job is not rendered anywhere else (#416). There is
@@ -777,18 +779,36 @@ The page the reference design shows (#56), with measurements verified in v1's so
 ### The read-only mode
 
 The workspace opens as a **viewer** whenever the wire withholds `annotate` on the
-frame — a completed batch, or a settled frame inside an open one. The mode is the
-frame's own declaration (`allowed_actions`), never this page's arithmetic; it was
-made a mode at all by audit F2, which found "open it and let the saves fail"
-shipping as the behaviour.
+frame — a completed batch, a **finished job**, or a settled frame inside an open
+one. The mode is the frame's own declaration (`allowed_actions`), never this
+page's arithmetic; it was made a mode at all by audit F2, which found "open it
+and let the saves fail" shipping as the behaviour.
 
-What a viewer is (decision of 2026-08-07, #426):
+**It is also a transition, not only an entry state** (decision of 2026-08-08,
+#439). Pressing `Finish job` turns the workspace into a viewer **in place** —
+same window, no navigation away, no reload — across every frame of the job and
+not only the last. That works for one reason and it is worth stating: the
+mutation invalidates the frames' declarations, the wire's answer moves because
+the *kernel's* did (`asset_actions` reads the job's state), and the page
+re-derives. Nothing here mirrors a rule. A job completing does not complete its
+batch, so before #439 the wire's answer did not move and the workspace stayed an
+editor over work it had just been told was over.
+
+The press says so out loud — a toast, the add-a-class chain's idiom — because
+everything else it does is a subtraction, and a screen with less on it is not an
+explanation.
+
+What a viewer is (decisions of 2026-08-07, #426, and 2026-08-08, #439):
 
 - **One explanation surface.** The banner under the top bar says `Viewing only.`
   with the cause, and — when the wire declares `create_correction` — the route
-  onward: `Correct this batch`. It renders on every frame of a closed batch,
-  including skipped ones (#423), where the skipped notice would otherwise promise
-  an Un-skip the wire withholds.
+  onward: `Correct this batch`. It renders on every frame of a closed batch or a
+  finished job, including skipped ones (#423, #439), where the skipped notice
+  would otherwise promise an Un-skip the wire withholds. Three causes, three
+  sentences, ranked: a **closed batch** carries the correction route; a
+  **finished job** names itself and offers nothing, because `JOB_TRANSITIONS` has
+  no way back and the batch is still open; a **settled frame** in an open batch
+  points at the control on this very toolbar.
 - **No classes region.** The side panel is the objects region alone, at full
   height — the region, its filter, its quick-create and its hotkey badges are
   absent, not disabled, and `C` and the digits do nothing. This supersedes #420's
@@ -804,10 +824,32 @@ What a viewer is (decision of 2026-08-07, #426):
   right-click menu uses — and the objects panel's row highlights and scrolls
   into view. That reflection is both modes' behaviour, not the viewer's alone.
   DOM focus stays with the canvas, which reads its chords off its own root.
-- **Reads stay live.** Zoom, pan, fullscreen, the frame gallery, `‹` `›`,
-  visibility toggles, the object filter, and copy (`⌘C`) — the road a box takes
-  into a correction batch — all work; paste and every other write is refused at
-  the engine (`readOnly` on the canvas, `READ_ONLY_KINDS` for the keyboard).
+- **Once the job is closed, the frame's own verbs go with it — and the job's
+  does not.** `Skip` / `Un-skip` and the flow verb (`Save and next` / `Next`)
+  stop rendering on every frame of a completed batch or a finished job: the tool
+  strip's rule applied to the bar, since all three only ever move *this frame*
+  and there is no move behind any of them there. The `browse | resolve` divider
+  goes with them.
+
+  **The gate is the job, never the frame**, and both halves of that are load
+  bearing. A merely *settled* frame inside a working job keeps the pair, greyed —
+  because the cluster is measured to one width (above) and a slot that emptied
+  and refilled as somebody walked a mixed job would move the arrows under their
+  cursor, and because `Un-skip` is the one way back out of a skipped frame, which
+  is itself read-only. A closed job withholds every move on every frame alike, so
+  the cluster is uniformly narrower and nothing jitters.
+
+  **`Finish job` stays** on the last frame: `complete` is the *job's* declaration
+  rather than the frame's, and a job whose last frame happens to be `accepted`
+  would otherwise have no way to be finished at all. Once it is finished it reads
+  `Finished`, which is this page's standing statement that the work is over.
+- **Navigation stays whole.** `‹` `›`, the `n/m` counter and the frame gallery
+  all work, and no save-first guard engages — there is nothing to save. Only
+  editing dies; moving between pictures does not.
+- **Reads stay live.** Zoom, pan, fullscreen, visibility toggles, the object
+  filter, and copy (`⌘C`) — the road a box takes into a correction batch — all
+  work; paste and every other write is refused at the engine (`readOnly` on the
+  canvas, `READ_ONLY_KINDS` for the keyboard).
 
 ### The canvas surround
 

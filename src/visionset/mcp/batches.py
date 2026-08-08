@@ -360,8 +360,10 @@ def list_batch_assets(
         # The partition is exact, so each asset appears in at most one job and
         # this projection is a lookup rather than a join. Two public reads and no
         # new kernel method, which is what the REST listing does too.
+        # The job's *state* travels beside its id: what an asset allows depends
+        # on it, and a completed job's frames declare nothing (#439).
         placement = {
-            asset_id: (job.id, progress)
+            asset_id: (job.id, job.state, progress)
             for job in service.jobs(resolved)
             for asset_id, progress in job.progress.items()
         }
@@ -370,9 +372,15 @@ def list_batch_assets(
         # batch — page until you have seen `total` items, not until it moves.
         window = assets[offset:] if limit is None else assets[offset : offset + limit]
         items = [
-            wire.batch_asset(a, job_id=job_id, progress=progress, batch_state=batch.state)
+            wire.batch_asset(
+                a,
+                job_id=job_id,
+                job_state=job_state,
+                progress=progress,
+                batch_state=batch.state,
+            )
             for a in window
-            for job_id, progress in [placement.get(a.id, (None, None))]
+            for job_id, job_state, progress in [placement.get(a.id, (None, None, None))]
         ]
     return {"items": items, "total": len(assets)}
 

@@ -18,6 +18,7 @@ from visionset.kernel import (
     BatchNotFound,
     BatchNotInAnnotation,
     InvalidTransition,
+    JobFinished,
     JobNotComplete,
     JobNotFound,
     ProjectNotFound,
@@ -540,6 +541,78 @@ def test_a_batch_reaches_completed_through_its_jobs(tmp_path: Path) -> None:
 
     assert fixture.batches.complete(fixture.batch.id).state is BatchState.COMPLETED
     assert fixture.jobs.batch_progress(fixture.batch.id)[ANNOTATED] == 4
+    fixture.close()
+
+
+# --- a finished job is finished (#439) ----------------------------------------
+
+
+def _finished_job(tmp_path: Path) -> tuple[Fixture, UUID, UUID]:
+    """A completed job inside a batch that is **still open**. Returns ids."""
+    fixture = Fixture(tmp_path, assets=2)
+    fixture.batches.approve(fixture.batch.id)
+    fixture.batches.start(fixture.batch.id)
+    job = fixture.batches.jobs(fixture.batch.id)[0]
+    fixture.jobs.start(job.id)
+    for asset in fixture.jobs.next_pending(job.id, 99):
+        fixture.jobs.mark(job.id, asset.id, ANNOTATED)
+    fixture.jobs.complete(job.id)
+    assert fixture.batches.get(fixture.batch.id).state is BatchState.IN_ANNOTATION
+    return fixture, job.id, next(iter(fixture.jobs.get(job.id).progress))
+
+
+def test_a_finished_job_refuses_a_progress_move_inside_an_open_batch(tmp_path: Path) -> None:
+    """The batch gate cannot cover this, which is the whole reason it exists.
+
+    Completing a job leaves its batch `in_annotation` — `BatchService` derives
+    completion separately — so `require_open_batch` passes and, until #439,
+    nothing else was asked. An asset in a finished job could be skipped, or
+    un-skipped back to `unannotated`, which unsettles a job that had already
+    stated every asset was dealt with.
+    """
+    fixture, job_id, asset_id = _finished_job(tmp_path)
+
+    with pytest.raises(JobFinished, match="does not re-open"):
+        fixture.jobs.mark(job_id, asset_id, SKIPPED)
+
+    assert fixture.jobs.get(job_id).progress[asset_id] is ANNOTATED
+    fixture.close()
+
+
+def test_the_job_gate_fires_before_the_no_op(tmp_path: Path) -> None:
+    """Marking a state the asset is already in is a documented no-op — until now.
+
+    The same argument the batch gate is ordered by: a caller writing into work
+    that is over has a bug whether or not the value would have changed, and
+    hearing about it only when it happens to differ would hide it.
+    """
+    fixture, job_id, asset_id = _finished_job(tmp_path)
+
+    with pytest.raises(JobFinished):
+        fixture.jobs.mark(job_id, asset_id, ANNOTATED)
+    fixture.close()
+
+
+def test_a_second_job_of_the_same_batch_carries_on(tmp_path: Path) -> None:
+    """The gate is *this* job's, not the batch's, and that difference is the point.
+
+    A batch is partitioned into jobs that finish at different times. The first to
+    finish freezes its own frames; its neighbours are untouched.
+    """
+    fixture = Fixture(tmp_path, assets=4)
+    fixture.batches.approve(fixture.batch.id, BySize(size=2))
+    fixture.batches.start(fixture.batch.id)
+    first, second = fixture.batches.jobs(fixture.batch.id)
+    fixture.jobs.start(first.id)
+    for asset in fixture.jobs.next_pending(first.id, 99):
+        fixture.jobs.mark(first.id, asset.id, ANNOTATED)
+    fixture.jobs.complete(first.id)
+
+    with pytest.raises(JobFinished):
+        fixture.jobs.mark(first.id, next(iter(first.progress)), SKIPPED)
+
+    still_open = next(iter(second.progress))
+    assert fixture.jobs.mark(second.id, still_open, SKIPPED).progress[still_open] is SKIPPED
     fixture.close()
 
 

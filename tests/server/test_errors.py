@@ -83,6 +83,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "StaleWrite": (409, "STALE_WRITE"),
     "BatchNotEditable": (409, "BATCH_NOT_EDITABLE"),
     "BatchNotInAnnotation": (409, "BATCH_NOT_IN_ANNOTATION"),
+    "JobFinished": (409, "JOB_FINISHED"),
     "BatchImmutable": (409, "BATCH_IMMUTABLE"),
     "AssetNotWritable": (409, "ASSET_NOT_WRITABLE"),
     "BatchNotComplete": (409, "BATCH_NOT_COMPLETE"),

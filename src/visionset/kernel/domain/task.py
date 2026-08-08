@@ -56,6 +56,34 @@ completion — which is derived from these — quietly out of date.
 """
 
 
+OPEN_JOB_STATES: Final[frozenset[AnnotationJobState]] = frozenset(
+    {AnnotationJobState.PENDING, AnnotationJobState.IN_PROGRESS}
+)
+"""The job states work may still happen in.
+
+``JobService`` and ``AnnotationService`` both consult this before touching
+anything a job carries — labels through the three annotation writes, progress
+through ``mark`` — and :func:`~visionset.kernel.domain.capabilities.asset_actions`
+reads the same set, so what an asset declares and what it accepts cannot drift.
+
+A ``completed`` job is a statement that every asset in it was dealt with, and
+``JOB_TRANSITIONS`` gives it no way back. Without this gate that statement was
+decoration: the batch stays ``in_annotation`` until somebody completes it
+separately, so a finished job's assets kept accepting labels — the word
+"finished" describing nothing, and work landing where nobody would look for it.
+
+Stated outright rather than derived as "the states with a move left", on
+``PROMOTABLE_PROGRESS``'s argument: the two sets agree today by coincidence, and
+whether a new job state admits writes is a decision that should have to be made
+rather than inherited from a table row.
+
+Not to be read beside ``SETTLED_JOB_STATES``, which is about a *background* job —
+an ingest — and shares nothing with this but the word. Bare "job" in this module
+is the annotation job, the way ``JOB_TRANSITIONS`` is and
+``BACKGROUND_JOB_TRANSITIONS`` is not.
+"""
+
+
 ASSET_PROGRESS_TRANSITIONS: Final[Mapping[AssetProgress, frozenset[AssetProgress]]] = {
     AssetProgress.UNANNOTATED: frozenset({AssetProgress.ANNOTATED, AssetProgress.SKIPPED}),
     AssetProgress.ANNOTATED: frozenset(

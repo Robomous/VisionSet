@@ -555,6 +555,47 @@ def test_nothing_is_written_after_the_batch_closes(
     assert response.json()["code"] == "BATCH_NOT_IN_ANNOTATION"
 
 
+def test_nothing_is_written_after_the_job_finishes_even_with_the_batch_open(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    """#439, over HTTP, and the batch is deliberately left open.
+
+    The sibling of the test above and the one it could not stand in for:
+    completing a job does not complete its batch, so `BATCH_NOT_IN_ANNOTATION`
+    never fired here and every write below answered 201. What the workspace then
+    showed was a live editor over a job it had just been told was finished.
+    """
+    batch_id, job_id = working
+    for asset_id in assets:
+        client.post(f"/jobs/{job_id}/annotations", json=[a_box(asset_id)])
+    assert client.post(f"/jobs/{job_id}/complete").status_code == 200
+    assert client.get(f"/batches/{batch_id}").json()["state"] == "in_annotation"
+
+    response = client.post(f"/jobs/{job_id}/annotations", json=[a_box(assets[0])])
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "JOB_FINISHED"
+    # The declaration agrees with the refusal, which is the whole contract: a
+    # client renders what the wire declares, and it now declares nothing here.
+    rows = client.get(f"/batches/{batch_id}/assets").json()["items"]
+    assert [row["allowed_actions"] for row in rows] == [[] for _ in rows]
+    # And a progress move is refused by the same code, so a client cannot walk
+    # around the write gate through the settle route.
+    moved = client.put(f"/jobs/{job_id}/assets/{assets[0]}/progress", json={"progress": "skipped"})
+    assert (moved.status_code, moved.json()["code"]) == (409, "JOB_FINISHED")
+
+
+def test_an_open_job_still_declares_its_frames_writable(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    """The control for the test above: the gate is the job's state and nothing else."""
+    batch_id, job_id = working
+
+    rows = client.get(f"/batches/{batch_id}/assets").json()["items"]
+
+    assert all("annotate" in row["allowed_actions"] for row in rows)
+
+
 def test_writing_to_an_unknown_job_is_404(client: TestClient) -> None:
     response = client.post(f"/jobs/{uuid4()}/annotations", json=[a_box(str(uuid4()))])
 

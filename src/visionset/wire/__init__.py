@@ -55,6 +55,7 @@ from uuid import UUID
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
+    AnnotationJobState,
     AnnotationSchema,
     Asset,
     AssetProgress,
@@ -270,6 +271,7 @@ def batch_asset(
     value: Asset,
     *,
     job_id: UUID | None,
+    job_state: AnnotationJobState | None,
     progress: AssetProgress | None,
     batch_state: BatchState,
 ) -> dict[str, Any]:
@@ -277,19 +279,24 @@ def batch_asset(
 
     Widens :func:`asset` rather than replacing it, which is what the wire model
     does by inheriting ``AssetOut`` — they are the same asset from a different
-    vantage point, and a field added to one belongs to both. ``job_id`` and
-    ``progress`` are null exactly while the batch is a draft, because a draft has
-    no jobs.
+    vantage point, and a field added to one belongs to both. ``job_id``,
+    ``job_state`` and ``progress`` are null together and exactly while the batch
+    is a draft, because a draft has no jobs.
 
-    ``batch_state`` is an argument and not a field: it belongs to the batch and is
-    published there, but ``allowed_actions`` cannot be answered without it — the
-    dimension a client's own copy of these rules dropped.
+    ``batch_state`` and ``job_state`` are arguments and not fields: each belongs
+    to the resource that publishes it, but ``allowed_actions`` cannot be answered
+    without both. The batch dimension is the one a client's own copy of these
+    rules dropped; the job dimension is the one this projection dropped, which
+    left a finished job's frames declaring that they could still be annotated
+    (#439).
     """
     return {
         **asset(value),
         "job_id": None if job_id is None else str(job_id),
         "progress": None if progress is None else progress.value,
-        "allowed_actions": [a.value for a in asset_actions(progress, batch_state=batch_state)],
+        "allowed_actions": [
+            a.value for a in asset_actions(progress, batch_state=batch_state, job_state=job_state)
+        ],
     }
 
 

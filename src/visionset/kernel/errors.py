@@ -363,6 +363,26 @@ class BatchNotInAnnotation(VisionSetError):
     """
 
 
+class JobFinished(VisionSetError):
+    """Work was attempted on a job that has already been completed.
+
+    ``OPEN_JOB_STATES`` is the two states this allows. A ``completed`` job is a
+    statement that every asset in it was dealt with, and ``JOB_TRANSITIONS``
+    gives it no way back — so a label written into one, or a progress marker
+    moved inside one, would be work the statement does not cover.
+
+    Not a ``BatchNotInAnnotation``, on ``AssetNotWritable``'s reasoning. That one
+    is about the *batch* — nobody opened it, or everybody closed it — and applies
+    to every job in it at once. This one is about *this job* inside a batch that
+    is still open, which is the ordinary case: a batch is partitioned into jobs
+    that finish at different times, and the first to finish freezes its own
+    frames while its neighbours carry on.
+
+    The remedy is not a move: nothing re-opens a job. Correcting finished work is
+    a correction batch, the same forward-only route a completed batch offers.
+    """
+
+
 class JobNotComplete(VisionSetError):
     """A job was told to complete while one of its assets is still unsettled.
 

@@ -83,8 +83,31 @@ The remedy is the transition table. `skipped → unannotated` is the take-it-bac
 reversed while the job is open makes the asset writable again. `accepted` has no exit at all, by
 design, which is why correcting accepted work means a new batch rather than a progress move.
 
-Two gates, two questions: `BatchNotInAnnotation` says nobody opened this batch, and its remedy is
-to start it. `AssetNotWritable` says this asset inside an open batch is done being labeled.
+### …and so does a job that has already finished
+
+```python
+OPEN_JOB_STATES  # {pending, in_progress}
+```
+
+The third gate, and the one that arrived last (#439). `JobService.complete` does **not** complete
+the batch — `BatchService` derives that separately when asked — so the ordinary state of a
+finished job is *inside a batch that is still open*. The batch gate therefore had nothing to say
+about it, and until this existed a completed job went on accepting labels and progress moves: the
+word "finished" describing nothing, and work landing where nobody would look for it.
+
+`AnnotationService.add`, `update` and `delete` consult it, and so does `JobService.mark`; all four
+answer `JobFinished` (409 `JOB_FINISHED`). Reads are untouched — `AnnotationService.for_asset`
+passes no gate but membership, because a viewer over finished work has to be able to show it.
+
+The remedy is not a move. `JOB_TRANSITIONS` gives `completed` no way back, by the same
+forward-only argument a completed batch is immutable by, so correcting finished work means a
+correction batch.
+
+Three gates, three questions: `BatchNotInAnnotation` says nobody opened this batch, and its
+remedy is to start it. `JobFinished` says this job inside an open batch is over, and it has no
+remedy — a batch is partitioned into jobs that finish at different times, and the first to finish
+freezes its own frames while its neighbours carry on. `AssetNotWritable` says this asset inside an
+open job is done being labeled.
 
 ### Marking a state it is already in is a no-op
 

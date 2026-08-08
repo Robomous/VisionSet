@@ -67,13 +67,22 @@ export function jobActions(
   return JOB_ACTIONS[state].filter((action) => settled || action !== "complete");
 }
 
-/** An asset's actions. `progress` is null exactly while the batch is a draft. */
+/**
+ * An asset's actions. `progress` is null exactly while the batch is a draft.
+ *
+ * `jobState` is the third dimension (#439) and defaults to `in_progress`, the
+ * state a job is in while somebody is working it — which is what every caller
+ * here means. A `completed` job declares nothing on any of its frames, in an
+ * open batch as much as in a closed one: completing a job does not complete its
+ * batch, so the batch dimension cannot cover this.
+ */
 export function assetActions(
   progress: Progress | null,
-  options: { batchState?: BatchState } = {},
+  options: { batchState?: BatchState; jobState?: JobState } = {},
 ): AssetAction[] {
-  const { batchState = "in_annotation" } = options;
+  const { batchState = "in_annotation", jobState = "in_progress" } = options;
   if (batchState !== "in_annotation" || progress === null) return [];
+  if (jobState === "completed") return [];
   return [...ASSET_ACTIONS[progress]];
 }
 
