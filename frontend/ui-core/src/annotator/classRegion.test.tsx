@@ -1,5 +1,5 @@
 /**
- * The classes region (#420): the height rule, the hotkeys, and the refusal.
+ * The classes region (#420): the height rule and the hotkeys.
  *
  * Driven through `ClassRegion` directly rather than through `AnnotationPage`,
  * unlike `topBar.test.tsx` — every claim here is about this component's own
@@ -125,45 +125,14 @@ describe("the hotkeys the rows advertise", () => {
   });
 });
 
-describe("the region's refusals", () => {
-  it("still lists the classes on a frame nothing can be armed on", () => {
-    // Which classes exist stays true on a settled frame. The row is disabled and
-    // says why — principle 9's distinction between a refusal and a grey box.
-    render(mount(3, { refusal: "This frame has been accepted." }));
-
-    const row = screen.getByTestId("class-row-class-1");
-    expect(row.hasAttribute("disabled")).toBe(true);
-    expect(row.getAttribute("title")).toBe("This frame has been accepted.");
-  });
-
-  it("does not arm anything on Enter while it is refusing", async () => {
-    const onActivateClass = vi.fn();
-    render(mount(3, { refusal: "This frame has been accepted.", onActivateClass }));
-
-    await userEvent.type(screen.getByTestId("class-filter"), "class-1{Enter}");
-
-    expect(onActivateClass).not.toHaveBeenCalled();
-  });
-
+describe("the empty schema", () => {
+  // The refusal machinery this region carried until #426 is gone with the
+  // reason for it: the read-only mode renders no classes region at all, so a
+  // region that exists is always armable. `panel.test.tsx` holds the absence.
   it("invites a first class rather than showing an empty list", () => {
     render(mount(0, { onAddClass: vi.fn() }));
 
     expect(screen.getByTestId("classes-empty")).toBeDefined();
     expect(screen.queryByTestId("class-list")).toBeNull();
-  });
-
-  it("closes every door into the add-a-class dialog while it is refusing", async () => {
-    // The create paths are writes the same way arming is: a viewer that can
-    // publish a schema version is a read-only mode with a hole in it (#423).
-    const onAddClass = vi.fn();
-    render(mount(3, { refusal: "This batch is completed.", onAddClass }));
-
-    const add = screen.getByTestId("class-add");
-    expect(add.hasAttribute("disabled")).toBe(true);
-    expect(add.getAttribute("title")).toBe("This batch is completed.");
-
-    await userEvent.type(screen.getByTestId("class-filter"), "nothing-declared{Enter}");
-    expect(screen.queryByTestId("class-create")).toBeNull();
-    expect(onAddClass).not.toHaveBeenCalled();
   });
 });

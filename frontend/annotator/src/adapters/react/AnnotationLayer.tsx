@@ -43,6 +43,14 @@ export interface AnnotationLayerProps {
   readonly skipId: string | null;
   readonly hotId: string | null;
   readonly zoom: number;
+  /**
+   * Whether a selected shape grows grips and vertex dots. `false` in the
+   * read-only mode (#426): selection there highlights — stroke and label — and
+   * must not advertise a resize or a vertex drag that no press can start. A
+   * boolean constant per mode, so it never moves mid-gesture and the `memo`
+   * above keeps its bail-out.
+   */
+  readonly handles: boolean;
 }
 
 export const AnnotationLayer = memo(function AnnotationLayer({
@@ -51,6 +59,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
   skipId,
   hotId,
   zoom,
+  handles,
 }: AnnotationLayerProps): JSX.Element {
   const shapes = paintDocument(committed, selection, skipId, hotId);
   return (
@@ -61,7 +70,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
     // removed by the very press that hit it.
     <g data-testid="annotation-layer" pointerEvents="none">
       {shapes.map((shape) => (
-        <AnnotationShape key={shape.id} shape={shape} zoom={zoom} />
+        <AnnotationShape key={shape.id} shape={shape} zoom={zoom} handles={handles} />
       ))}
     </g>
   );

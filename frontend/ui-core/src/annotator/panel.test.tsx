@@ -431,4 +431,42 @@ describe("what the panel offers when the document cannot be written", () => {
     expect(screen.queryByTestId("object-reclass-0")).not.toBeNull();
     expect(screen.getByTestId("tag-chip-daytime")).toHaveProperty("disabled", false);
   });
+
+  it("renders no classes region at all — absent, not disabled", () => {
+    // Decision (a) of #426, superseding #420's render-as-information direction:
+    // *what may I draw* is not a question a viewer can ask, so the region, its
+    // filter, its quick-create and its hotkey badges all leave the panel. The
+    // split rule goes with it — a divider between one region and nothing is a
+    // line about nothing. What the region's absence buys — the objects region
+    // taking the whole panel — is a layout fact, held in chromium.
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store, { readOnly: true }));
+
+    expect(screen.queryByTestId("class-region")).toBeNull();
+    expect(screen.queryByTestId("class-add")).toBeNull();
+    expect(screen.queryByTestId("class-filter")).toBeNull();
+    expect(screen.queryByTestId("panel-split")).toBeNull();
+    expect(screen.getByTestId("objects-region")).toBeDefined();
+  });
+});
+
+describe("selection is one state, reflected everywhere (#426 d)", () => {
+  it("scrolls the selected row into view when the selection arrives from outside", async () => {
+    // The canvas selects through `store.select`, never through this panel — so
+    // the row has to notice its own `selected` moving. jsdom has no layout, so
+    // what a unit test can hold is that the row *asks* to be scrolled; whether
+    // it then is visible is `annotate.spec.ts`'s, in chromium.
+    const store = storeWith([
+      annotation("a", "vehicle", "bbox"),
+      annotation("b", "lane", "polygon"),
+    ]);
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    render(mount(store));
+
+    store.select(selectOnly("b"));
+
+    expect(await screen.findByTestId("object-row-1")).toHaveProperty("dataset.selected", "true");
+    expect(scrolled).toHaveBeenCalled();
+  });
 });

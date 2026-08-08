@@ -610,7 +610,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
     await expect(page.getByTestId("banner-create-correction")).toBeVisible();
     await expect(page.getByTestId("tool-palette")).toHaveCount(0);
-    await expect(page.getByTestId("class-add")).toBeDisabled();
+    // The classes region leaves the viewer entirely (#426) — with it go the
+    // add-a-class doors #423 first closed by disabling.
+    await expect(page.getByTestId("class-region")).toHaveCount(0);
 
     // A full draw gesture writes nothing and dirties nothing.
     const canvas = page.getByTestId("annotator-canvas");

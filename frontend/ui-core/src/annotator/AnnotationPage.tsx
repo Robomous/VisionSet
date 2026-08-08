@@ -704,15 +704,11 @@ function Workspace({
       setHelpOpen((open) => !open);
       return true;
     }
-    // `c` (#368). Refused while read-only for the reason the palette is hidden
-    // there: picking a drawing class on a canvas that cannot be drawn on offers a
-    // choice with no consequence.
+    // `c` (#368). Still claimed while read-only, where it does nothing: the
+    // classes region is absent there (#426), so the ref holds null and the
+    // focus call is a no-op — which is exactly what "C does nothing" means,
+    // with no second spelling of the mode to keep in step.
     if (name === FOCUS_CLASS_FIELD) {
-      // Claimed even while read-only now, and that is the #420 change: the
-      // classes list renders on a settled frame — which classes exist stays
-      // true — so focusing its filter is a legitimate thing to do there. What
-      // is refused is *arming* one, on the rows themselves, with the reason
-      // attached.
       classFilterRef.current?.focus();
       return true;
     }
@@ -1951,13 +1947,10 @@ function Workspace({
           renders it and reports a choice, so the canvas, the tool strip, a digit
           and this list all land on the one `activateClass`.
 
-          `classRefusal` rather than reusing `readOnly` for the rows: the list
-          renders on a settled frame — which classes exist stays true there — and
-          what it owes is the sentence, which the page has already computed for
-          its own banner. `withheld` speaks for a closed batch and
-          `settledBecause` for a settled frame; the fallback covers `skipped`,
-          where `settledBecause` deliberately answers null because the notice
-          below says it better and carries the Un-skip.
+          In the read-only mode the panel renders no classes region at all —
+          decision (a) of #426, superseding #420's render-as-information
+          direction — so this page no longer owes it a refusal sentence; the
+          banner above is the one surface that says why the frame is a viewer.
         */}
         <AnnotatorPanel
           store={store}
@@ -1974,14 +1967,6 @@ function Workspace({
             setNewClassName(name);
             setAddingClass(true);
           }}
-          {...(readOnly
-            ? {
-                classRefusal:
-                  withheld ??
-                  settledBecause ??
-                  "This frame cannot be drawn on, so arming a class would have no effect.",
-              }
-            : {})}
         />
       </div>
 
