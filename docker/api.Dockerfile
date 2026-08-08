@@ -7,8 +7,14 @@
 # with --reload.
 # Trixie rather than bookworm, and the reason is the apt line below: bookworm's
 # ffmpeg is 5.1, which is old enough to decode this project's own test clips
-# differently. Trixie's is 7.1, within one major of what CI and a developer laptop
-# run. Same Python 3.12, so nothing else about this image moves.
+# differently. Trixie's is 7.1, one major above the 6.1 that CI and an Ubuntu
+# workstation run. Same Python 3.12, so nothing else about this image moves.
+#
+# Read those numbers off `ffmpeg -version`, never off the package version. Debian
+# and Ubuntu both ship ffmpeg with an **epoch** of 7, so noble's `7:6.1.1-3ubuntu5`
+# is 6.1.1 and trixie's `7:7.1.5-0+deb13u1` is 7.1.5 — the leading `7:` is the same
+# number in both and means nothing about either. Misreading it is what had #444
+# filed against an ffmpeg version difference that did not exist.
 FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim
 
 # ffmpeg is a binary, not a Python dependency, so `uv sync` below structurally
