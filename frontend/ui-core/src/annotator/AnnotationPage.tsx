@@ -149,7 +149,6 @@ import {
 import { Eye } from "lucide-react";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { CanvasReassign } from "./CanvasReassign";
-import { ClassField } from "./ClassField";
 import { ShortcutSheet, modKey } from "./ShortcutSheet";
 import { ToolPalette } from "./ToolPalette";
 import { ZoomWidget } from "./ZoomWidget";
@@ -446,24 +445,18 @@ function JobScreen({
    */
   const [activeClass, setActiveClass] = useState<string | null>(null);
   /**
-   * Classes used in this job, most recent first — the class field's ordering.
+   * Every route to a drawing class goes through here — the panel's list, the tool
+   * strip, a digit hotkey and the canvas's own `activate-class`.
    *
-   * Component state rather than derived from the document: what a person reached
-   * for is a fact about *them*, and a document read would rank by whatever is on
-   * screen, so deleting the last car would demote `car` to the bottom of the list
-   * a second after they used it.
-   */
-  const [recentClasses, setRecentClasses] = useState<readonly string[]>([]);
-
-  /**
-   * Every route to a drawing class goes through here, so the recency list cannot
-   * miss one — the field, the tool strip, a digit hotkey and the canvas's own
-   * `activate-class` all land on this callback.
+   * The recency list this used to keep went with the top-bar field (#420). It
+   * existed to order that field's rows, and the panel's list is in **schema
+   * order** and stays there: a persistent list that reordered itself by what was
+   * last used would move rows under the cursor, and the digits are schema
+   * positions, so a recency-ordered list would show `3` against the row sitting
+   * first.
    */
   const activateClass = useCallback((labelClass: string | null): void => {
     setActiveClass(labelClass);
-    if (labelClass === null) return;
-    setRecentClasses((seen) => [labelClass, ...seen.filter((name) => name !== labelClass)]);
   }, []);
 
   const index = chosen ?? assetPositionOf(assets.data, initialAssetId);
@@ -527,7 +520,6 @@ function JobScreen({
       counts={progress.data ?? null}
       clipboard={clipboard}
       activeClass={activeClass}
-      recentClasses={recentClasses}
       onActivateClass={activateClass}
       onNavigate={setChosen}
       {...(onOpenGallery === undefined
@@ -594,7 +586,6 @@ interface WorkspaceProps {
   readonly clipboard: Clipboard;
   /** Also `JobScreen`'s, and for a sharper reason — see the note where it is declared. */
   readonly activeClass: string | null;
-  readonly recentClasses: readonly string[];
   readonly onActivateClass: (labelClass: string | null) => void;
   readonly onNavigate: (index: number) => void;
   readonly onOpenGallery?: () => void;
@@ -638,7 +629,6 @@ function Workspace({
   counts,
   clipboard,
   activeClass,
-  recentClasses,
   onActivateClass: activateClass,
   onNavigate,
   onOpenGallery,
@@ -679,7 +669,16 @@ function Workspace({
    * the empty-schema button both mean "I want a class", not a particular one.
    */
   const [newClassName, setNewClassName] = useState("");
-  const [classFieldOpen, setClassFieldOpen] = useState(false);
+  /**
+   * The panel's class filter, for `c` (#420).
+   *
+   * A ref rather than a piece of state, because the keystroke arrives at the
+   * annotator's own keyboard root and what it wants is *focus* — and focus is
+   * not a value React re-renders towards. It replaces the `classFieldOpen`
+   * boolean the top-bar combobox needed, which had to exist only because a popup
+   * has an open state and a list does not.
+   */
+  const classFilterRef = useRef<HTMLInputElement | null>(null);
   /** Whether the pin badge's popover is open — and therefore whether it fetches. */
   const [pinOpen, setPinOpen] = useState(false);
   const viewRef = useRef<AnnotatorView | null>(null);
@@ -709,8 +708,12 @@ function Workspace({
     // there: picking a drawing class on a canvas that cannot be drawn on offers a
     // choice with no consequence.
     if (name === FOCUS_CLASS_FIELD) {
-      if (readOnly) return false;
-      setClassFieldOpen(true);
+      // Claimed even while read-only now, and that is the #420 change: the
+      // classes list renders on a settled frame — which classes exist stays
+      // true — so focusing its filter is a legitimate thing to do there. What
+      // is refused is *arming* one, on the rows themselves, with the reason
+      // attached.
+      classFilterRef.current?.focus();
       return true;
     }
     // `mod+s`. Claimed even where it does nothing — a read-only view still has to
@@ -1317,15 +1320,20 @@ function Workspace({
         {/* --- what changes the frame ---------------------------------- */}
         {/*
           The navigation cluster (#416): every control that changes the picture on
-          screen, in one place, read left to right as **instrument | browse |
-          resolve**.
+          screen, in one place, read left to right as **browse | resolve**.
 
-          The three sub-groups are what the two dividers are for, and the middle
-          one is the reason the cluster exists: `‹` and `›` *browse*, Skip and the
-          flow verb *resolve*. They were a bar apart and both advanced, so `›` and
-          `Save and next` looked like two spellings of one thing to anybody who
-          had not read #383. Side by side, one hairline apart, the difference is
-          the hairline.
+          The divider is what tells them apart, and it is the reason the cluster
+          exists: `‹` and `›` *browse*, Skip and the flow verb *resolve*. They
+          were a bar apart and both advanced, so `›` and `Save and next` looked
+          like two spellings of one thing to anybody who had not read #383. Side
+          by side, one hairline apart, the difference is the hairline.
+
+          **The instrument sub-group is gone** (#420). The class field held a
+          192px reservation here and now lives in the side panel, where the
+          ontology is a list rather than a popup. What the bar gets back is that
+          width — which is what pays for `Save and stay` and the review move
+          being visible buttons again at every supported width instead of
+          reabsorbing into the overflow one breakpoint early.
 
           `shrink-0` on the whole cluster, and it is load-bearing rather than
           defensive: this is the `auto` track of the header's grid, and the
@@ -1333,67 +1341,6 @@ function Workspace({
           in here compresses or wraps.
         */}
         <div className="flex shrink-0 items-center gap-2" data-testid="frame-navigation">
-          {/*
-            The instrument — what the next shape will be, and the only member of
-            this cluster that changes nothing about *which* frame is on screen.
-            It is here because it is the most-used control on the page and the
-            centre is where the eye already is; moving it out is a later
-            refactoring and deliberately not this one (#416).
-
-            **The slot is a fixed reservation, and it keeps its width when the
-            field is not in it.** A read-only frame has no drawing class to pick,
-            and a class name is as wide as somebody chose to make it — so without
-            a reservation the arrows and the flow verb would slide sideways
-            between frames, on precisely the walk `‹ ›` exist for.
-
-            `w-48` rather than the trigger's own `max-w-64`: the reservation is
-            width the side zones do not get, and this bar is over-subscribed
-            enough that 256px in the middle costs the right zone a control (the
-            numbers are in `DESIGN.md`). 192px holds `Select` and every class
-            name of ordinary length; a longer one is clipped by the slot rather
-            than allowed to escape it, which is what `overflow-hidden` is for.
-
-            `justify-end` so the field hugs the divider it belongs to: the slack
-            in the reservation then falls on the cluster's outer edge, where it
-            reads as spacing, rather than opening a hole between the instrument
-            and the browse group.
-
-            Hidden while read-only for the tool palette's reason: a drawing class
-            over a canvas that cannot be drawn on offers a choice with no
-            consequence, and the banner below carries the reason once.
-          */}
-          <div className="flex w-48 shrink-0 justify-end overflow-hidden" data-testid="class-field-slot">
-            {!readOnly && (
-              <ClassField
-                schema={store.document.schema}
-                activeClass={activeClass}
-                onActivateClass={activateClass}
-                open={classFieldOpen}
-                onOpenChange={setClassFieldOpen}
-                recent={recentClasses}
-                // The create row carries what was typed into the dialog's name field
-                // (#368). `ClassField` has handed the name over since WS2 and the page
-                // dropped it, because `AddClassDialog` had nowhere to put it until the
-                // session rework gave it one — typing a name, being told it does not
-                // exist, and then typing it again is the smallest way to make a
-                // shortcut feel like a detour.
-                //
-                // Unconditional, unlike WS2's first cut, which spread it in only when
-                // `onOpenGallery` was supplied. Nothing about knowing where the
-                // gallery is bears on whether a class can be created — the tool
-                // strip's own `+` was never gated on it — so the row was absent for
-                // exactly the callers whose `+` still worked, and WS4's prefill would
-                // have been unreachable behind it.
-                onAddClass={(typed: string) => {
-                  setNewClassName(typed);
-                  setAddingClass(true);
-                }}
-              />
-            )}
-          </div>
-
-          <Divider />
-
           {/* --- browse: move without resolving anything ---------------- */}
           <div className="flex shrink-0 items-center gap-1" data-testid="asset-navigator">
             {/*
@@ -1475,6 +1422,7 @@ function Workspace({
               <Button
                 variant="secondary"
                 size="sm"
+                className="min-w-27"
                 data-testid="unskip"
                 disabled={!declares(asset, ASSET_ACTION.restore) || setProgress.isPending}
                 {...(withheld === null ? {} : { title: withheld })}
@@ -1487,6 +1435,7 @@ function Workspace({
               <Button
                 variant="secondary"
                 size="sm"
+                className="min-w-27"
                 data-testid="skip"
                 disabled={!declares(asset, ASSET_ACTION.skip) || setProgress.isPending}
                 {...(withheld === null ? {} : { title: withheld })}
@@ -1507,6 +1456,15 @@ function Workspace({
               cluster's centre — would move whenever the label did. The width is
               the widest of the four, so nothing is ever clipped and nothing ever
               moves.
+
+              `min-w-27` on the resolution pair above it, for the same reason and
+              measured the same way: `Skip` is 104px and `Un-skip` 96px, so a
+              skipped frame used to pull the whole cluster 4px sideways. 108px
+              rather than 104 because a floor equal to the wider label is not a
+              floor at all — `Skip` measures 104.09, so clamping `Un-skip` to 104
+              left 0.39px of drift, which a browser test catches and a person
+              would not. With the class field's reservation gone (#420) these two
+              floors are the whole of what keeps the cluster a constant width.
             */}
             {lastFrame ? (
               /*
@@ -1627,19 +1585,20 @@ function Workspace({
 
             First to be reabsorbed when the bar runs out of room (decision 4): it
             is the one control on the right whose job the keyboard and every other
-            exit already do, and the overflow carries it below `2xl`.
+            exit already do, and the overflow carries it below `xl`.
 
-            The breakpoint moved from `xl` with #416, and it is what the centred
-            cluster costs: a bar whose middle is anchored on the header's centre
-            hands each side exactly half of what is left, and the right zone is
-            the heavier of the two. Nothing new moved into the overflow — this
-            control has had a row there since #368 — but it starts using it one
-            breakpoint sooner.
+            **Back to `xl` with #420**, from the `2xl` #416 had to move it to.
+            That move was what the centred cluster cost while the class field
+            still held 192px in the middle: the grid hands each side exactly half
+            of what is left, and the right zone is the heavier of the two. With
+            the field in the side panel the halves cover the demand again, so the
+            patch is reverted rather than kept — measured, not assumed, in
+            `e2e/annotate.spec.ts`.
           */}
           <Button
             variant="ghost"
             size="sm"
-            className="hidden 2xl:inline-flex"
+            className="hidden xl:inline-flex"
             data-testid="save-and-stay"
             disabled={readOnly || !dirty || save.isPending}
             onClick={() => attempt()}
@@ -1660,8 +1619,8 @@ function Workspace({
 
             Second to be reabsorbed (decision 4), so it survives one breakpoint
             longer than the save: it is a decision about the work, and the save is
-            a convenience. `xl` since #416, one step up from `lg`, for the reason
-            written on the save above.
+            a convenience. Back to `lg` with #420, for the reason written on the
+            save above.
           */}
           {reviewAction !== undefined && (
             <Tooltip>
@@ -1669,7 +1628,7 @@ function Workspace({
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="hidden xl:inline-flex"
+                  className="hidden lg:inline-flex"
                   data-testid={reviewAction.testId}
                   disabled={setProgress.isPending}
                   onClick={() => settle(reviewAction.progress)}
@@ -1715,7 +1674,7 @@ function Workspace({
                   the button's `hidden xl:inline-flex`, so the control exists once
                   at every width. */}
               <DropdownMenuItem
-                className="2xl:hidden"
+                className="xl:hidden"
                 data-testid="menu-save"
                 disabled={readOnly || !dirty || save.isPending}
                 onSelect={() => attempt()}
@@ -1726,7 +1685,7 @@ function Workspace({
               {/* The review move, reabsorbed one breakpoint later. */}
               {reviewAction !== undefined && (
                 <DropdownMenuItem
-                  className="xl:hidden"
+                  className="lg:hidden"
                   data-testid={`menu-${reviewAction.testId}`}
                   disabled={setProgress.isPending}
                   onSelect={() => settle(reviewAction.progress)}
@@ -1978,13 +1937,44 @@ function Workspace({
           />
         </div>
 
-        {/* No `activeClass` here since #368: the panel is about what is on this
-            asset, and arming the drawing class is the top bar's job. */}
+        {/*
+          The panel arms the drawing class again (#420) — the top bar's job since
+          #368, and the bar's combobox was clipped into invisibility by the
+          reservation it sat in. `activeClass` is still the page's: the panel
+          renders it and reports a choice, so the canvas, the tool strip, a digit
+          and this list all land on the one `activateClass`.
+
+          `classRefusal` rather than reusing `readOnly` for the rows: the list
+          renders on a settled frame — which classes exist stays true there — and
+          what it owes is the sentence, which the page has already computed for
+          its own banner. `withheld` speaks for a closed batch and
+          `settledBecause` for a settled frame; the fallback covers `skipped`,
+          where `settledBecause` deliberately answers null because the notice
+          below says it better and carries the Un-skip.
+        */}
         <AnnotatorPanel
           store={store}
           readOnly={readOnly}
           hiddenIds={hiddenIds}
           onHiddenChange={setHiddenIds}
+          activeClass={activeClass}
+          onActivateClass={activateClass}
+          classFilterRef={classFilterRef}
+          // The name comes from whoever asked: the no-match row hands over what
+          // was typed (the WS4 prefill), and the header's `+` hands over "" —
+          // it means *I want a class*, not a particular one.
+          onAddClass={(name) => {
+            setNewClassName(name);
+            setAddingClass(true);
+          }}
+          {...(readOnly
+            ? {
+                classRefusal:
+                  withheld ??
+                  settledBecause ??
+                  "This frame cannot be drawn on, so arming a class would have no effect.",
+              }
+            : {})}
         />
       </div>
 

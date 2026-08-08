@@ -517,7 +517,7 @@ The page the reference design shows (#56), with measurements verified in v1's so
   | Zone | Contents |
   | --- | --- |
   | Left | back · pinned `v{n}` badge · the frame's identity as a label (the content-hash head — there is no filename on the wire) · the frame microtext `● annotated · Saved` |
-  | Centre | the **navigation cluster**: `[class field] │ [⊞] [‹] n/m [›] │ [Skip] [Save and next]` |
+  | Centre | the **navigation cluster**: `[⊞] [‹] n/m [›] │ [Skip] [Save and next]` |
   | Right | `n / m annotated` · **Save and stay** (ghost, ⌘S) · the review move (outline) · overflow `⋯` |
 
   **Everything that changes the picture on screen is in the centre cluster, and nothing
@@ -525,9 +525,14 @@ The page the reference design shows (#56), with measurements verified in v1's so
   arrow, and **Skip** and **Save and next** at the far right beside the overflow: two
   motion clusters at opposite ends of a 44px row, same destination, different meanings,
   with nothing on screen to say which was which. Adjacency is the explanation. One
-  `h-5 w-px` divider each separates the three sub-groups — **instrument | browse |
-  resolve** — so the difference between *look at another frame* and *finish this one* is
-  a hairline rather than something learned.
+  `h-5 w-px` divider separates the two sub-groups — **browse | resolve** — so the
+  difference between *look at another frame* and *finish this one* is a hairline rather
+  than something learned.
+
+  **The class field is not on the bar** (#420). #368 put it here and #416 gave it a 192px
+  reservation in the middle of the cluster; it is a list in the side panel now, and the
+  bar is navigation only. The width it gives back is what pays for the right zone's two
+  controls being visible buttons again at every supported width.
 
   `‹` `›` **browse**: they move without settling progress, under the same save-first
   guard back and the gallery use. `n/m` renders between them in `tabular-nums`, so
@@ -536,18 +541,20 @@ The page the reference design shows (#56), with measurements verified in v1's so
   **The centre is anchored on the bar's geometric centre**, not balanced between two flex
   spacers: the header is a `1fr auto 1fr` grid, the two flexible tracks take an equal
   share of what is left by definition, and the side tracks yield — a label truncates,
-  never a control. Two widths inside the cluster are pinned for the same reason — the
-  class field's slot (`w-48`, kept even on a read-only frame where there is no field to
-  put in it) and the flow verb's `min-w-36`, which is the widest of `Next` /
-  `Save and next` / `Finish job` / `Finished`. The cluster's controls therefore hold one
-  screen position through every frame state.
+  never a control. Two widths inside the cluster are pinned so it is the same size on
+  every frame: the resolution pair's `min-w-27` (`Skip` is 104px and `Un-skip` 96px) and
+  the flow verb's `min-w-36`, the widest of `Next` / `Save and next` / `Finish job` /
+  `Finished`. The cluster's controls therefore hold one screen position through every
+  frame state.
 
   **Equal halves is what a centred bar costs, and the right zone is the heavier side.**
-  Measured in chromium at 1440: left 290px, cluster 616px, right 460px — so each side is
-  offered 382px and the right wants 460. Reserving the class field's slot is what tips it,
-  which is why the reservation is 192px and not the trigger's 256px maximum. The remedy is
-  the bar's own, unchanged in kind: the two reabsorbable controls each start using their
-  overflow row one breakpoint sooner. Nothing new moved into the overflow.
+  It is measured, not reasoned about. With the class field on the bar, chromium at 1440
+  gave left 290px, cluster 616px, right 460px — each side offered 382px against a right
+  wanting 460, so #416 had to send the two reabsorbable controls to the overflow one
+  breakpoint early. With the field in the side panel (#420) the cluster is **423px** and
+  each side is offered **462px** against the same 460px of demand, so both breakpoints are
+  back where they were. It clears by a pixel, which is why the readout that gives way is a
+  readout: `n / m annotated` truncates, and no button is ever clipped.
 
   **The filled slot is the flow verb** (#383). After finishing a frame the right move is
   *this one is done, show me the next* — and until #383 that had no button at all: the
@@ -588,7 +595,7 @@ The page the reference design shows (#56), with measurements verified in v1's so
   is the honest weight for a control most people never need.
 
   **Reabsorption order when the bar runs out of room**: `Save and stay` first (below
-  `2xl`), the review move second (below `xl`), into the overflow; the Skip/Save-and-next
+  `xl`), the review move second (below `lg`), into the overflow; the Skip/Save-and-next
   pair never collapses. Each reabsorbed control carries the exact inverse of its button's
   breakpoint, so it exists in exactly one place at any width. The `n / m annotated`
   readout has no overflow row and needs none — it truncates, which is what a sentence may
@@ -614,16 +621,22 @@ The page the reference design shows (#56), with measurements verified in v1's so
   until 2026-08-05 to hold the design's shape, which principle 9 forbids — the only
   honest tooltip for them is "this feature does not exist", and that is not an
   explanation of what would enable the button. They return with the model, not before.
-- **Class field** (#368): the centre of the top bar, and where class selection lives —
-  it replaced the side panel's Labels tab, which put the most-used control on the page
-  furthest from the eye. A `Combobox`: swatch · name · hotkey chip at rest; typeahead
-  filtering on open; rows carry swatch · name · geometry · hotkey, **recently used in
-  this job first** and then the schema's authored order. `c` opens it, digits 1–9 still
-  activate directly, and the derived tool follows the class as it always has. When
-  nothing matches what was typed the last row is `Create class "<text>"`; an empty schema
-  renders a dashed `No classes — create one` instead of an empty list. **It shows the
-  drawing class and never follows the selection** — re-classing an existing annotation is
-  the side panel's row menu, a different question about a different object.
+- **Classes region** (#368 as a top-bar field, #420 as the panel's upper region): where
+  class selection lives. It was the side panel's Labels tab, then a `Combobox` in the
+  centre of the top bar, and it is a **list** now — because what is being chosen between
+  is the ontology, and a picker keeps all of it one click away, so the answer to *what can
+  I draw here* was never on screen. Rows carry swatch · name · geometry · hotkey badge, in
+  the **schema's authored order and only that**: a persistent list that reordered itself
+  by recency would move rows under the cursor, and the digits are schema positions, so a
+  recency-ordered list would print `3` against the row sitting first. `c` focuses its
+  filter, Enter takes the first match, digits 1–9 activate directly, and the derived tool
+  follows the class as it always has. When nothing matches what was typed the last row is
+  `Create class "<text>"`, which opens the add-a-class dialog on that name; an empty schema
+  renders an invitation instead of an empty list. **It shows the drawing class and never
+  follows the selection** — re-classing an existing annotation is an object row's menu, a
+  different question about a different object. On a frame nothing can be drawn on the list
+  still renders — which classes exist stays true there — with every row disabled *and
+  carrying why*, which is principle 9 rather than a grey box.
 
   **The drawing class's lifetime is the job**, not the frame: it survives moving to the
   next asset, because somebody labelling one class across a clip picks it once, and it
@@ -645,8 +658,9 @@ The page the reference design shows (#56), with measurements verified in v1's so
   the primary publishes everything banked plus whatever is still in the form, so nobody
   has to press *and another* before finishing. The banked classes show as chips that can
   be taken back out, the auto-written description names them all, and the primary says
-  how many it will publish (`Add 3 classes`). Opened from the class field's create row it
-  starts on the name that was typed; opened from the tool strip's `+` it starts empty,
+  how many it will publish (`Add 3 classes`). Opened from the class list's create row it
+  starts on the name that was typed; opened from the tool strip's `+` or the region's own
+  `+` it starts empty,
   because that press means "I want a class", not a particular one. When it lands, the
   **last** class written becomes the drawing class and a toast says so — a session
   publishes one version and arms one class, neither of which anybody watched happen.
@@ -676,21 +690,39 @@ The page the reference design shows (#56), with measurements verified in v1's so
   (`Nothing to undo`) rather than hidden, because an empty history is a state a person is
   in constantly — every freshly opened frame — and a control that vanished and reappeared
   as they worked would be worse than one that explains itself.
-- **Side panel** (#126, reshaped by #368): 288px (`w-72`) column, `muted` surface,
-  `border`, 12px radius. **One view, no tabs** — it used to be Objects | Labels, and the
-  Labels tab did two unrelated jobs under one heading: it armed the drawing class and it
-  toggled the asset's classification tags. The first moved to the top bar's class field,
-  where the eye already is; the second stays, because a tag is a fact about this frame.
-  So the panel is about one subject, what is on this asset, and it can no longer set the
-  drawing class at all — `activeClass` is gone from its props, not merely unused.
-  Top to bottom: **header** (the word `Annotations`, the object count in muted meta text,
-  the all-visibility toggle); the **tag chip strip**, rendered only when the pinned schema
+- **Side panel** (#126, reshaped by #368, split in two by #420): 288px (`w-72`) column,
+  `muted` surface, `border`, 12px radius. **Two stacked regions, no tabs and no
+  splitter.** It was Objects | Labels tabs until #368, which sent class selection to the
+  top bar; #420 brings it back and deliberately does not bring the tabs with it. A tab is
+  a claim that two things are alternatives, and these are the two halves of one question —
+  *what may I draw* and *what have I drawn* — so both are on screen at once.
+
+  **Classes (upper).** Header — the word `Classes`, the class count in muted meta, and a
+  24px `+` opening the add-a-class dialog; then a 32px `Filter classes…` input; then the
+  rows described under **Classes region** above. Its height is **content-driven and stated
+  in rows**: a floor of 3 rows' worth, one row per class after that, a ceiling of 8, after
+  which the region is fixed and the list scrolls inside it. A small ontology gets a region
+  proportional to what it holds; a large one cannot push the objects region off the bottom.
+  The count it is computed from is the **schema's**, never the filtered one — a height
+  that tracked the filter would reflow the region below it on every keystroke. The header
+  and the filter are not rows and do not scroll away.
+
+  **Annotations (lower).** Takes all remaining height and scrolls independently. Top to
+  bottom: **header** (the word `Annotations`, the object count in muted meta text, the
+  all-visibility toggle); the **tag chip strip**, rendered only when the pinned schema
   declares a `classification_tag` class — rounded-full chips carrying swatch, name and
   either the hotkey digit or a check; the **filter**, a 32px input that is *always*
   rendered, because a control that appears once a list is long enough is a control nobody
   finds; then the **object rows**: `rounded-md border px-1.5 py-1`, meta-size text
   `N. class`; **selected = `border-primary` + `bg-primary/10`**; hidden = 50% opacity;
   per-row tag, eye and trash as 24px ghost icon buttons.
+
+  The split between them is a **1px rule, not a handle**. The classes region decides its
+  own height by the rule above and the objects region takes the rest; a draggable splitter
+  would add a third piece of per-user state to a surface whose whole value is being the
+  same on every frame. The two regions' selected treatments are deliberately different —
+  a class row is a left accent rule plus a tint, an object row is a full border — because
+  they are selections of different kinds of thing and a person reads both at once.
   **The number is draw order and filtering does not renumber it** — it is the object's
   identity on the canvas, and a panel that renumbered as somebody typed would disagree
   with the picture about which shape is "3".

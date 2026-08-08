@@ -140,9 +140,8 @@ it("keeps the drawing class when the next frame opens", async () => {
   // keyed on the asset.
   render(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("class-field-trigger"));
-  await userEvent.click(screen.getByTestId("class-field-option-vehicle"));
-  expect(screen.getByTestId("class-field-name").textContent).toBe("vehicle");
+  await userEvent.click(await screen.findByTestId("class-row-vehicle"));
+  expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
 
   await userEvent.click(screen.getByTestId("next-asset"));
 
@@ -150,7 +149,7 @@ it("keeps the drawing class when the next frame opens", async () => {
     "dataset.asset",
     SECOND,
   );
-  expect(screen.getByTestId("class-field-name").textContent).toBe("vehicle");
+  expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
 });
 
 it("does not carry it into a different job", async () => {
@@ -159,12 +158,13 @@ it("does not carry it into a different job", async () => {
   // judged against somebody else's pinned schema.
   const { unmount } = render(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("class-field-trigger"));
-  await userEvent.click(screen.getByTestId("class-field-option-vehicle"));
-  expect(screen.getByTestId("class-field-name").textContent).toBe("vehicle");
+  await userEvent.click(await screen.findByTestId("class-row-vehicle"));
+  expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
   unmount();
 
   render(mount(<AnnotationPage jobId={JOB} />));
 
-  expect((await screen.findByTestId("class-field-name")).textContent).toBe("Select");
+  // Nothing armed: the panel's rows are the readout now, and none of them is
+  // selected. There is no "Select" row to read — select mode is the tool strip's.
+  expect((await screen.findByTestId("class-row-vehicle")).getAttribute("data-selected")).toBeNull();
 });
