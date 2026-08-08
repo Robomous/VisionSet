@@ -379,8 +379,9 @@ Three things were deliberately **not** changed:
   description, so a destructive tool self-authorises in one call. If this surface wants a real gate
   it belongs in the server's configuration, out of the agent's reach. Post-beta.
 - [#109](https://github.com/Robomous/VisionSet/issues/109) — whether `start_job` earned its place
-  at all, given that writes are gated on the batch. **Settled: it did not.** The tool is gone and
-  every write starts a `pending` job, reporting `job_started`. See
+  at all, given that writes were gated on the batch and not on the job. **Settled: it did not.**
+  The tool is gone and every write starts a `pending` job, reporting `job_started` — and #439's
+  job gate does not bring it back, because `pending` is one of the open states. See
   [mcp.md](mcp.md#there-is-no-start_job-the-first-write-starts-it).
 
 The limits in [mcp.md](mcp.md) were not re-litigated and none of them caused a failure: ingest and

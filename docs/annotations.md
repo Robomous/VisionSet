@@ -154,8 +154,9 @@ another object is the service's.
 
 The one exception to the rule in [projects.md](projects.md) and [batches.md](batches.md).
 Deleting a box is the ordinary annotator edit loop — draw it, look at it, take it off again —
-not the destruction of a lifecycle entity the way deleting a project or a batch is. The batch
-gate is the guard instead: once the work closes, nothing here can touch it at all.
+not the destruction of a lifecycle entity the way deleting a project or a batch is. The
+lifecycle gates are the guard instead: once the work closes — the batch, or just this job —
+nothing here can touch it at all.
 
 ## Progress follows the annotations — two edges of it
 
@@ -175,17 +176,23 @@ applies it inside its own transaction, so labels and progress commit together. I
 `JobService.mark`, which would open a second session and write from it while the first is
 still open.
 
-## Work only happens inside an open batch
+## Work only happens inside an open batch, and inside an open job
 
-Every write requires the job's batch to be `in_annotation`, else `BatchNotInAnnotation` — the
-same error `JobService` raises, reached through the same two lookups (`require_job`,
-`require_open_batch`) rather than a second copy of the ladder.
+Every write requires the job's batch to be `in_annotation`, else `BatchNotInAnnotation`, **and
+the job itself to be open** — `OPEN_JOB_STATES`, else `JobFinished` — the same two errors
+`JobService` raises, reached through the same three lookups (`require_job`,
+`require_open_batch`, `require_open_job`) rather than a second copy of the ladder.
 
-The gate fires **before** the payload is looked at. A write into a closed batch is a bug
-whether or not the annotation is also wrong, and hearing about it only sometimes would hide it.
+The second gate is not implied by the first and arrived last, in #439. `JobService.complete`
+does not complete the batch, so a finished job ordinarily sits inside one that is still
+`in_annotation`: the batch gate had nothing to say, and a job whose work was over went on
+accepting labels. See [jobs.md](jobs.md) for the set and the reasoning.
 
-Reads are not gated: `get` and `for_asset` work long after the batch closed, because a label
-outlives the work that produced it.
+The gates fire **before** the payload is looked at. A write into closed work is a bug whether
+or not the annotation is also wrong, and hearing about it only sometimes would hide it.
+
+Reads are not gated: `get` and `for_asset` work long after the batch closed or the job
+finished, because a label outlives the work that produced it.
 
 ## Over HTTP
 
