@@ -37,6 +37,7 @@ function asset(
   index: number,
   progress: string,
   batchState = "in_annotation",
+  jobState = "in_progress",
 ): Record<string, unknown> {
   return {
     id: `asset-${index}`,
@@ -53,12 +54,14 @@ function asset(
     ingested_at: null,
     job_id: JOB,
     progress,
-    // Threaded from the batch, because that is what the server does:
-    // `asset_actions` returns `[]` for every frame of a batch that is not
-    // `in_annotation`, whatever the frame's own progress is. Without it a mock
-    // would declare `annotate` on a completed batch and the read-only mode this
-    // suite is about would never be exercised.
-    allowed_actions: assetActions(progress, { batchState }),
+    // Threaded from the batch **and from the job**, because that is what the
+    // server does: `asset_actions` returns `[]` for every frame of a batch that
+    // is not `in_annotation` and for every frame of a job that has been
+    // completed, whatever the frame's own progress is. Without the first a mock
+    // would declare `annotate` on a completed batch; without the second it would
+    // declare it on a finished job — and since the job's state is what the
+    // Finish press moves, that is the whole of the live transition below (#439).
+    allowed_actions: assetActions(progress, { batchState, jobState }),
   };
 }
 
@@ -239,8 +242,8 @@ async function serveApi(
       return route.fulfill({
         json: {
           items: [
-            asset(1, progress.get("asset-1") ?? "unannotated", lifecycle.batch),
-            asset(2, progress.get("asset-2") ?? "annotated", lifecycle.batch),
+            asset(1, progress.get("asset-1") ?? "unannotated", lifecycle.batch, lifecycle.job),
+            asset(2, progress.get("asset-2") ?? "annotated", lifecycle.batch, lifecycle.job),
           ],
           total: 2,
         },
@@ -1266,9 +1269,12 @@ test("a completed batch opens as a viewer, and says so", async ({ page }) => {
   await expect(banner).toContainText(/correction batch/i);
 
   // Every control that writes is out, and the palette is gone entirely — a tool
-  // palette over a canvas that cannot be drawn on explains nothing.
+  // palette over a canvas that cannot be drawn on explains nothing. `skip` is
+  // absent rather than disabled since #439: the pair keeps its slot inside a
+  // working job and loses it once the job is closed, which a completed batch's
+  // is.
   await expectNothingToSave(page);
-  await expect(page.getByTestId("skip")).toBeDisabled();
+  await expect(page.getByTestId("skip")).toHaveCount(0);
   await expect(page.getByTestId("accept")).toHaveCount(0);
   await expect(page.getByTestId("tool-palette")).toHaveCount(0);
 });
@@ -1444,6 +1450,111 @@ test("selecting on the canvas scrolls the object's row into view", async ({ page
 });
 
 /**
+ * #439: **the transition itself**, which is the part that had never worked.
+ *
+ * Pressing Finish completed the job and left the workspace a live editor — tool
+ * strip, classes panel, Skip, Save and next, on every frame — because the
+ * declaration the page reads did not move. Completing a job does not complete
+ * its batch (`BatchService` derives that separately), so the batch dimension
+ * could not cover it; `asset_actions` now reads the job's state too, and the
+ * invalidation the mutation already performed does the rest.
+ *
+ * Asserted **in place**: a sentinel written on `window` before the press is read
+ * back after it, so a reload — which would hide the whole defect by rebuilding
+ * the page from a fresh fetch — fails the test rather than passing it.
+ */
+test("finishing the job turns the workspace into a viewer in place, on every frame", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  // Both frames settled, so the job declares `complete` and Finish is live; a
+  // stored box on the last frame so the post-transition selection rules have
+  // something to select.
+  await openJob(
+    page,
+    sent,
+    progressStore({ "asset-1": "annotated", "asset-2": "annotated" }),
+    openedWorld(),
+    undefined,
+    [storedBox("asset-2")],
+  );
+
+  // Frame 2 of 2 — where Finish job renders, and only there (#416).
+  await page.getByTestId("next-asset").click();
+  await expect(page.getByTestId("asset-position")).toHaveText("2/2");
+
+  // The editor, before: the state the defect left behind afterwards.
+  await expect(page.getByTestId("tool-palette")).toBeVisible();
+  await expect(page.getByTestId("class-region")).toBeVisible();
+  await expect(page.getByTestId("readonly-banner")).toHaveCount(0);
+  const finish = page.getByTestId("finish-job");
+  await expect(finish).toHaveAttribute("data-withheld", "false");
+
+  await page.evaluate(() => {
+    (window as unknown as { __sameDocument?: number }).__sameDocument = 439;
+  });
+  await finish.click();
+
+  // The mode flipped, and the banner names the cause the batch cannot: this
+  // batch is still `in_annotation`, so there is no correction route to offer and
+  // the sentence stops at the cause.
+  const banner = page.getByTestId("readonly-banner");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(/viewing only/i);
+  await expect(banner).toContainText(/this job is finished/i);
+  await expect(page.getByTestId("banner-create-correction")).toHaveCount(0);
+
+  // Same document — no navigation, no reload.
+  expect(
+    await page.evaluate(() => (window as unknown as { __sameDocument?: number }).__sameDocument),
+  ).toBe(439);
+
+  // Visible success, in the vocabulary the add-a-class chain already uses.
+  await expect(page.getByText(/job finished/i).first()).toBeVisible();
+
+  // Everything that only ever performed an edit is **absent**, not disabled.
+  await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+  await expect(page.getByTestId("class-region")).toHaveCount(0);
+  await expect(page.getByTestId("panel-split")).toHaveCount(0);
+  await expect(page.getByTestId("skip")).toHaveCount(0);
+  await expect(page.getByTestId("save-and-next")).toHaveCount(0);
+  await expectNothingToSave(page);
+  // The job's own control keeps its slot and states the outcome.
+  await expect(finish).toHaveText(/finished/i);
+  await expect(finish).toBeDisabled();
+
+  // The objects region takes the whole panel (#426 a), measured after the flip
+  // rather than assumed from the completed-batch scenario.
+  const panel = (await page.getByTestId("annotator-panel").boundingBox())!;
+  const objects = (await page.getByTestId("objects-region").boundingBox())!;
+  expect(objects.y - panel.y).toBeLessThanOrEqual(12);
+  expect(panel.y + panel.height - (objects.y + objects.height)).toBeLessThanOrEqual(12);
+
+  // #426 (c) and (d) hold on the far side of the transition: a press selects,
+  // the row follows, and the selection grows no handles.
+  const shape = page.locator("[data-annotation-id]").first();
+  const where = (await shape.boundingBox())!;
+  await page.mouse.click(where.x + where.width / 2, where.y + where.height / 2);
+  await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "true");
+  await expect(page.locator("[data-handle]")).toHaveCount(0);
+  await expect(page.locator("[data-vertex]")).toHaveCount(0);
+
+  // **Every frame, not only the one Finish was pressed on.** Navigation is what
+  // proves it, and navigation still working is half the decision.
+  await page.getByTestId("prev-asset").click();
+  await expect(page.getByTestId("asset-position")).toHaveText("1/2");
+  await expect(page.getByTestId("readonly-banner")).toBeVisible();
+  await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+  await expect(page.getByTestId("class-region")).toHaveCount(0);
+
+  // The other half: the gallery still opens, and no save-first guard engages —
+  // there is nothing to save.
+  await page.getByTestId("open-gallery").click();
+  await expect(page.getByTestId("frame-gallery")).toBeVisible();
+  expect(sent.filter((r) => r.method() === "POST" && r.url().includes("/annotations"))).toEqual([]);
+});
+
+/**
  * The one frame where the read-only mode said nothing at all (#423): the banner
  * rendered only while the frame was not skipped — a guard older than the
  * correction link that now lives inside it — so a skipped frame in a completed
@@ -1468,7 +1579,10 @@ test("a skipped frame in a completed batch still says viewing only, and names th
   // that speaks — two banners saying different things about one frame is how a
   // person learns to trust neither.
   await expect(page.getByTestId("skipped-notice")).toHaveCount(0);
-  await expect(page.getByTestId("unskip")).toBeDisabled();
+  // Absent rather than disabled since #439 — the frame's own verbs leave once
+  // the job is closed, and a completed batch's is. Inside an *open* batch this
+  // same frame keeps its Un-skip, which is the distinction that rule turns on.
+  await expect(page.getByTestId("unskip")).toHaveCount(0);
 });
 
 /**

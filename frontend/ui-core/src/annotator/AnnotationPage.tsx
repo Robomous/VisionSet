@@ -1071,14 +1071,38 @@ function Workspace({
   /**
    * Why it is read-only, in the words a person can act on.
    *
-   * Two different causes, and running them together is what would make this
+   * Three different causes, and running them together is what would make this
    * banner useless: a **closed batch** is about the workflow and its remedy is a
-   * correction batch, while a **settled frame** in an open batch is about this
-   * one picture and its remedy is on this very toolbar. `withheldBecause`
-   * answering null is how the first is told from the second — it speaks only for
-   * the states that close a batch.
+   * correction batch; a **finished job** is about this sitting of work and has no
+   * remedy at all, because nothing re-opens a job; a **settled frame** in an open
+   * batch is about this one picture and its remedy is on this very toolbar.
+   * `withheldBecause` answering null is how the first is told from the rest — it
+   * speaks only for the states that close a batch.
    */
   const closedBecause = withheldBecause(batchState);
+  /**
+   * The middle cause (#439), and it is copy rather than legality: whether the
+   * frame is a viewer is `allowed_actions`' answer and is already decided above.
+   * This only picks the sentence, the way `withheldBecause` picks one from the
+   * batch's state.
+   *
+   * It names no route onward on purpose. `JOB_TRANSITIONS` has no way back from
+   * `completed`, and the batch is still open, so there is no correction to offer
+   * either — the honest sentence stops at the cause. When the batch does close,
+   * `closedBecause` outranks this and brings `Correct this batch` with it.
+   */
+  const finishedBecause =
+    jobState === "completed"
+      ? "This job is finished, so its frames can no longer be edited."
+      : null;
+  /**
+   * The two causes that are about the *workflow* rather than about this picture,
+   * held as one value because three places have to agree on them: the banner
+   * renders for either, the skipped notice yields to either, and the sentence is
+   * whichever spoke. Kept as one derivation so a fourth cause cannot be added to
+   * two of the three.
+   */
+  const workflowBecause = closedBecause ?? finishedBecause;
   /** The tooltip a withheld control carries. Null when the batch is not the cause. */
   const withheld = closedBecause;
   /**
@@ -1180,6 +1204,25 @@ function Workspace({
    * reachable at all.
    */
   const flowLabel = !readOnly && (dirty || drawn > 0) ? "Save and next" : "Next";
+  /**
+   * Whether the frame's own verbs render at all (#439).
+   *
+   * **A job-level question, deliberately, and not `readOnly`.** Two invariants
+   * meet here and only this reading keeps both. #416 measured the navigation
+   * cluster to a constant width so that walking a job does not move the arrows
+   * under a cursor — which is why `Skip` is `min-w-27` and disabled rather than
+   * absent on a frame that cannot take it. And #423 made `Un-skip` the one way
+   * back out of a skipped frame, which is a *read-only* frame in an open batch.
+   *
+   * Gating on the mode would break both: the slot would empty and refill frame
+   * by frame as somebody walked a mixed job, and a skipped frame would lose the
+   * control its own notice promises. Gating on whether **the whole job is
+   * closed** breaks neither — a closed batch and a finished job withhold every
+   * move on every frame alike, so the cluster is uniformly narrower and nothing
+   * jitters, and that is exactly the state where a greyed-out pair was repeating
+   * the banner's sentence with no move behind it.
+   */
+  const frameVerbs = workflowBecause === null;
 
   const progressWord = PROGRESS_LABEL[asset.progress ?? "unannotated"] ?? asset.progress ?? "";
   /**
@@ -1418,7 +1461,15 @@ function Workspace({
             </Button>
           </div>
 
-          <Divider />
+          {/*
+            The hairline between *look at another frame* and *finish this one*,
+            and it renders only while there is a second group to divide from
+            (#439). Everything on its right can now be absent at once — a middle
+            frame of a closed batch or a finished job offers no resolution move
+            and no save-first advance — and a divider drawn around an absence is
+            a rule with nothing on one side of it.
+          */}
+          {(frameVerbs || lastFrame) && <Divider />}
 
           {/* --- resolve: finish with this frame ------------------------ */}
           <div className="flex shrink-0 items-center gap-2">
@@ -1433,15 +1484,22 @@ function Workspace({
               collapses into the overflow, which is what stopped Skip inheriting
               prominence from a bar where nothing else advanced. #416 put them
               beside the arrows they were always the counterpart of.
+
+              **Absent once the job is closed** (#439) — see `frameVerbs`, which
+              is a question about the job rather than about this frame. Inside a
+              working job the pair keeps its slot and its disabled state, which
+              is what holds the cluster still and what keeps `Un-skip` reachable
+              on a skipped frame; once a batch or a job has closed there is no
+              move behind either label on any frame, and a greyed pair there was
+              repeating the banner's sentence with nothing attached.
             */}
-            {skipped ? (
+            {!frameVerbs ? null : skipped ? (
               <Button
                 variant="secondary"
                 size="sm"
                 className="min-w-27"
                 data-testid="unskip"
                 disabled={!declares(asset, ASSET_ACTION.restore) || setProgress.isPending}
-                {...(withheld === null ? {} : { title: withheld })}
                 onClick={unskip}
               >
                 <Undo2 className="size-4" />
@@ -1454,7 +1512,6 @@ function Workspace({
                 className="min-w-27"
                 data-testid="skip"
                 disabled={!declares(asset, ASSET_ACTION.skip) || setProgress.isPending}
-                {...(withheld === null ? {} : { title: withheld })}
                 onClick={() => settle("skipped")}
               >
                 <SkipForward className="size-4" />
@@ -1532,7 +1589,22 @@ function Workspace({
                     disabled={jobState === "completed" || finishJob.isPending}
                     aria-disabled={finishWithheld !== null || undefined}
                     onClick={() => {
-                      if (finishWithheld === null && !finishJob.isPending) finishJob.mutate();
+                      if (finishWithheld !== null || finishJob.isPending) return;
+                      // **Said out loud**, because the rest of what this press
+                      // does is a subtraction: the tool strip, the classes
+                      // region and the frame's own verbs all leave, which is a
+                      // screen with less on it and no statement of why. The
+                      // banner arrives in the same paint and stays; the toast is
+                      // the moment, and this is the add-a-class chain's idiom
+                      // (`toast.success`) rather than a second one.
+                      //
+                      // On the mutation and not in `useJobTransition`, which
+                      // also spells `start` — a job starting is a consequence of
+                      // opening the page and nobody asked for it.
+                      finishJob.mutate(undefined, {
+                        onSuccess: () =>
+                          toast.success("Job finished — its frames are read-only now"),
+                      });
                     }}
                   >
                     <CheckCheck className="size-4" />
@@ -1548,9 +1620,25 @@ function Workspace({
                   </TooltipContent>
                 )}
               </Tooltip>
-            ) : (
+            ) : !frameVerbs ? null : (
               /*
                 The flow verb, and the whole of #383 (decision 2).
+
+                **Absent once the job is closed** (#439), beside Skip and on its
+                terms: this slot is the *save*-first advance, and a job nobody
+                can write to has nothing to save on any of its frames. `‹` `›`
+                and the gallery are what move between frames there, and they are
+                untouched — the decision this implements keeps navigation whole
+                and takes editing only.
+
+                Finish job, in the branch above, deliberately does **not** follow
+                that rule. It is the *job's* action rather than the frame's, and
+                a job whose last frame happens to be settled — accepted, say,
+                while other frames are still outstanding — would otherwise have
+                no way to be finished from the workspace at all. Where it is
+                withheld it already says why (#427); once the job is completed it
+                reads `Finished`, which is this page's standing statement that
+                the work is over.
 
                 After finishing a frame the right move is *this one is done, show
                 me the next* — and until #383 that had no button at all. The
@@ -1812,14 +1900,14 @@ function Workspace({
         is the one surface that can still say something actionable. The old
         guard predated the correction link and hid it on exactly that frame.
       */}
-      {readOnly && (!skipped || closedBecause !== null) && (
+      {readOnly && (!skipped || workflowBecause !== null) && (
         <p
           className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-meta text-muted-foreground"
           data-testid="readonly-banner"
         >
           <Eye className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="font-medium">Viewing only.</span>
-          {closedBecause ?? settledBecause}
+          {workflowBecause ?? settledBecause}
           {/*
             The sentence names a correction batch, and now it can reach one — the
             last link in the forward-only story (audit G6). #306 wrote that
@@ -1855,7 +1943,7 @@ function Workspace({
       {/* Only while the batch is open: "Un-skip it" is this notice's whole
           remedy, and in a closed batch the wire withholds that move — the
           read-only banner above speaks for that frame instead (#423). */}
-      {skipped && closedBecause === null && (
+      {skipped && workflowBecause === null && (
         <p
           className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-meta text-destructive"
           data-testid="skipped-notice"

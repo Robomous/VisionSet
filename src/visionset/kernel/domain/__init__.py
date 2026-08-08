@@ -156,6 +156,7 @@ from visionset.kernel.domain.source import (
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
+    OPEN_JOB_STATES,
     PROMOTABLE_PROGRESS,
     SETTLED_PROGRESS,
     WRITABLE_PROGRESS,
@@ -207,6 +208,7 @@ __all__ = [
     "INGEST_TRANSITIONS",
     "JOB_TRANSITIONS",
     "MANIFEST_VERSION",
+    "OPEN_JOB_STATES",
     "PROMOTABLE_PROGRESS",
     "PROMOTABLE_STATES",
     "REPINNABLE_STATES",

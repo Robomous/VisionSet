@@ -40,9 +40,13 @@ Four things shape this module:
   has no account of it, and for a ``skipped`` asset the labels would be stored
   and then dropped at promotion with nothing saying so.
 
-The batch gate is ``JobService``'s, reused rather than restated: this service
-calls ``require_job`` and ``require_open_batch``, so "no work happens in a batch
-nobody opened" has exactly one wording.
+Both gates above the asset are ``JobService``'s, reused rather than restated:
+this service calls ``require_job``, ``require_open_batch`` and
+``require_open_job``, so "no work happens in a batch nobody opened" and "a
+finished job is finished" each have exactly one wording. The second is not
+implied by the first and was missing until #439 — a job completing does not
+complete its batch, so the ordinary state of a finished job is inside an open
+one, and its frames went on accepting labels.
 
 Composition follows the rule in ``docs/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and never names an adapter.
@@ -141,6 +145,7 @@ class AnnotationService:
         Raises:
             JobNotFound: no such job in this workspace.
             BatchNotInAnnotation: the job's batch is not open for annotation.
+            JobFinished: the job is already completed.
             AssetNotInJob: an annotation names an asset the job does not carry.
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: an annotation does not satisfy the pinned version.
@@ -149,6 +154,7 @@ class AnnotationService:
         with self._workspace.unit_of_work() as uow:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
+            self._jobs.require_open_job(job)
             schema = self._pinned_schema(batch)
 
             # `job_id` is stamped exactly like `schema_version`, and for the same
@@ -191,6 +197,7 @@ class AnnotationService:
         Raises:
             JobNotFound: no such job in this workspace.
             BatchNotInAnnotation: the job's batch is not open for annotation.
+            JobFinished: the job is already completed.
             AnnotationNotFound: an id is not stored in this workspace.
             AssetNotInJob: a stored annotation sits on an asset outside this job.
             AssetNotWritable: an asset's progress says its labeling is over.
@@ -200,6 +207,7 @@ class AnnotationService:
         with self._workspace.unit_of_work() as uow:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
+            self._jobs.require_open_job(job)
             schema = self._pinned_schema(batch)
 
             replacements = []
@@ -258,6 +266,7 @@ class AnnotationService:
         Raises:
             JobNotFound: no such job in this workspace.
             BatchNotInAnnotation: the job's batch is not open for annotation.
+            JobFinished: the job is already completed.
             AnnotationNotFound: an id is not stored in this workspace.
             AssetNotInJob: an annotation sits on an asset outside this job.
             AssetNotWritable: an asset's progress says its labeling is over.
@@ -265,6 +274,7 @@ class AnnotationService:
         with self._workspace.unit_of_work() as uow:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
+            self._jobs.require_open_job(job)
 
             # No schema is read: removing a label never has to satisfy a
             # contract, and a version that has since been narrowed must not stop

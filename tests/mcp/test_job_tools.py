@@ -225,23 +225,44 @@ def test_a_fully_seeded_job_can_be_closed_with_no_edits_at_all(
     assert closed["job_started"] is True
 
 
-def test_a_write_into_a_completed_job_starts_nothing(
+def test_a_write_into_a_completed_job_is_refused_and_starts_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Only `pending` moves. A closed job stays closed, and the write still lands.
+    """Only `pending` moves, and a closed job stays closed — now by refusing.
 
-    Writing here is legal — the gate is the batch, and its batch is still
-    `in_annotation` — so this is the state where a naive "start it if it is not
-    `in_progress`" would drag a finished job backwards. `JOB_TRANSITIONS` has no
-    such edge, and the guard never asks it to: it checks for `pending` rather
-    than catching an `InvalidTransition` and carrying on.
+    This is the state where a naive "start it if it is not `in_progress`" would
+    drag a finished job backwards. `JOB_TRANSITIONS` has no such edge, and the
+    auto-start guard never asks it to: it checks for `pending` rather than
+    catching an `InvalidTransition` and carrying on.
+
+    **The write itself no longer lands** (#439). Until then the gate was the
+    batch alone, and this batch is still `in_annotation` — so a label written
+    here was accepted into a job whose own record already said every asset was
+    dealt with. `JobFinished` is the refusal, and the two halves are asserted
+    together on purpose: a refusal that had nevertheless started the job would
+    be the same backwards move by another road.
     """
     _, _, job_id = open_batch(monkeypatch, tmp_path, count=1)
     asset_id = payload(call("next_pending_assets", job_id=job_id, count=1))["items"][0]["id"]
     _annotate(job_id, asset_id)
     assert payload(call("complete_job", job_id=job_id))["state"] == "completed"
 
-    assert _add(job_id, asset_id)["job_started"] is False
+    refused = error(
+        call(
+            "add_annotations",
+            job_id=job_id,
+            annotations=[
+                {
+                    "asset_id": asset_id,
+                    "label_class": "sign",
+                    "geometry": BBOX,
+                    "provenance": "model",
+                    "model_ref": "probe@1",
+                }
+            ],
+        )
+    )
+    assert "does not re-open" in refused["message"]
     assert payload(call("get_job", job_id=job_id))["state"] == "completed"
 
 

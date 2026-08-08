@@ -90,6 +90,7 @@ const PROGRESS_STATES = [
   "accepted",
 ] as const satisfies readonly Progress[];
 
+
 function answer(path: string): unknown {
   if (path === `/jobs/${JOB}/progress` && jobCounts !== null) {
     return jobCounts;
@@ -577,6 +578,12 @@ describe("the flow verb", () => {
     // is `Save and next` while a next frame exists and `Finish job` when none
     // does, so it is exclusive by arithmetic and cannot be contended by a
     // declaration. A review action promoted back to `primary` would fail here.
+    //
+    // **Still exactly one after #439**, and this sweep is what says so. The
+    // frame's own verbs leave the bar once the *job* is closed, never because
+    // this one frame is settled — the batch here is open in every row, so the
+    // slot stays filled through all five progresses and the cluster keeps the
+    // constant width #416 measured.
     for (const state of PROGRESS_STATES) {
       for (const count of [1, 2]) {
         progress = state;
