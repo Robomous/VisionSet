@@ -68,6 +68,7 @@ import {
   SelectValue,
 } from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { formatWhen } from "../lib/format";
@@ -865,19 +866,54 @@ function ExportDialog({
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="export-format">Format</Label>
-            <Select value={format} onValueChange={setFormat}>
-              <SelectTrigger id="export-format" data-testid="export-format">
-                <SelectValue placeholder="Choose a format" />
-              </SelectTrigger>
-              <SelectContent>
-                {installed.map((one) => (
-                  <SelectItem key={one.name} value={one.name}>
-                    {one.name}
-                    {one.lossy ? " (lossy)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/*
+              Three renderings for three answers, because `?? []` above used to
+              give the first two the same one (audit's swallowed-refusal pattern,
+              #440). A failed `GET /formats` is not an answer at all; a
+              successful empty page is an answer about this server's plugins;
+              and the combobox is for when there is something to choose. Rolling
+              the first two together produced a control offering nothing and
+              saying nothing — which is also the whole visible signature of the
+              packaging defect fixed in #436 (cf. #437), so the screen that
+              should have told a broken install from a broken request was the
+              reason the two were indistinguishable.
+
+              Loading is deliberately not a fourth branch: `formats.data ===
+              undefined` while pending, so the combobox stands empty for the one
+              tick it takes, exactly as it did before.
+            */}
+            {formats.isError ? (
+              <div data-testid="export-formats-error">
+                {/* No `code`: the identifier is not the half a person can act
+                    on, and the sibling refusal on this screen
+                    (`manifest-error-*`) already renders prose without one. */}
+                <ErrorState
+                  message={`${refusalProse(formats.error)} Try again to choose a format.`}
+                  onRetry={() => void formats.refetch()}
+                />
+              </div>
+            ) : formats.data !== undefined && installed.length === 0 ? (
+              <div data-testid="export-formats-empty">
+                <EmptyState
+                  title="No exporters installed"
+                  description="Exporters ship as plugins on the server. Install one to write this release out."
+                />
+              </div>
+            ) : (
+              <Select value={format} onValueChange={setFormat}>
+                <SelectTrigger id="export-format" data-testid="export-format">
+                  <SelectValue placeholder="Choose a format" />
+                </SelectTrigger>
+                <SelectContent>
+                  {installed.map((one) => (
+                    <SelectItem key={one.name} value={one.name}>
+                      {one.name}
+                      {one.lossy ? " (lossy)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {/* Declared by the format, never by the release: a bbox-only format
                 loses a polygon whether or not today's dataset holds one. */}
             {chosen?.lossy === true && (

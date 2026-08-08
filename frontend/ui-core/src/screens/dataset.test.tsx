@@ -472,6 +472,104 @@ describe("export, and the third gate word", () => {
 });
 
 /**
+ * The two ways the format list arrives with nothing in it (#440).
+ *
+ * They are different facts and the dialog owes a different sentence to each. A
+ * failed `GET /formats` is a request that never got an answer; a successful
+ * `{items: [], total: 0}` is an answer, and it says this server has no exporter
+ * plugins installed. Before this, both fell through the same `?? []` into a
+ * combobox with an empty popover and no message anywhere — the swallowed-refusal
+ * pattern `ui-capabilities` bans, and the exact visible signature of the
+ * packaging defect fixed in #436 (cf. #437), so the one screen that should have
+ * told the two apart was the reason they looked alike.
+ *
+ * The assertions that matter are the *pair*: each state renders its own thing
+ * and not the other one's. A single test proving "something appears" would pass
+ * against a component that answered both with the same alert.
+ */
+describe("a format list with nothing in it", () => {
+  /** The first matching handler wins, so a failing one must be registered first. */
+  function formatsFail(answer: Answer): void {
+    on("GET", /\/formats$/, answer);
+    baseline();
+  }
+
+  it("says a failed formats request failed, in the shared vocabulary (#440)", async () => {
+    formatsFail({
+      status: 503,
+      body: { code: "WORKSPACE_BUSY", message: "Another writer holds the workspace." },
+    });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+
+    const said = (await screen.findByTestId("export-formats-error")).textContent ?? "";
+    // The product's sentence for the code, not the kernel's identifier.
+    expect(said).toContain("workspace is busy");
+    expect(said).not.toContain("WORKSPACE_BUSY");
+    // Principle 9: the button is shut, and this is the adjacent explanation of why.
+    expect(screen.getByTestId("export-submit")).toHaveProperty("disabled", true);
+  });
+
+  it("does not leave a silently empty combobox where the failure is (#440)", async () => {
+    formatsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await screen.findByTestId("export-formats-error");
+
+    // A control offering nothing, beside a message saying why there is nothing,
+    // is the same unanswerable question over again.
+    expect(screen.queryByTestId("export-format")).toBeNull();
+  });
+
+  it("offers the request again, and asking again asks the server (#440)", async () => {
+    formatsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    const failed = await screen.findByTestId("export-formats-error");
+
+    const before = sent.filter((r) => new URL(r.url).pathname.endsWith("/formats")).length;
+    await userEvent.click(within(failed).getByRole("button", { name: /try again/i }));
+
+    await waitFor(() =>
+      expect(
+        sent.filter((r) => new URL(r.url).pathname.endsWith("/formats")).length,
+      ).toBeGreaterThan(before),
+    );
+  });
+
+  it("calls an empty install an empty install, not a failure (#440)", async () => {
+    on("GET", /\/formats$/, { status: 200, body: { items: [], total: 0 } });
+    baseline();
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+
+    const said = (await screen.findByTestId("export-formats-empty")).textContent ?? "";
+    // An invitation, not an apology — and it names what would fix it.
+    expect(said).toContain("exporter");
+    // The other state's rendering is absent. This is the half that a single
+    // shared "nothing here" alert would fail.
+    expect(screen.queryByTestId("export-formats-error")).toBeNull();
+    expect(screen.queryByTestId("export-format")).toBeNull();
+  });
+
+  it("still lists the formats when there are formats (#440)", async () => {
+    baseline();
+
+    render(mount(<DatasetScreen projectId={PROJECT} />));
+    await userEvent.click(await screen.findByTestId("export-v1"));
+
+    // The success path keeps its combobox and neither of the two explanations.
+    expect(await screen.findByTestId("export-format")).not.toBeNull();
+    expect(screen.queryByTestId("export-formats-error")).toBeNull();
+    expect(screen.queryByTestId("export-formats-empty")).toBeNull();
+  });
+});
+
+/**
  * Curating the trunk (#316).
  *
  * `DELETE /datasets/{id}/assets/{id}` had been on the wire since M3 with no
