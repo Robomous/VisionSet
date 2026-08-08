@@ -17,12 +17,20 @@ needs nothing installed on the host and no build of any kind.
 | Storage | `workspace-data/` (git-ignored): `visionset.db` + `blobs/`. Move it with `VISIONSET_DATA=/path` |
 | Token | minted on first boot, printed in the `api` logs |
 | Behind the proxy | API on :8000 and vite on :5173 are published too, for curl and for reading a vite error without nginx in the way |
-| After a dependency change | `build`, then `down -v` before `up` — node_modules lives in volumes seeded from the image, and Docker seeds a volume only when it is new |
+| Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, and `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from |
+| After a dependency change | `build`, then `down -v` before `up` — `frontend/*/node_modules` lives in volumes seeded from the image, and Docker seeds a volume only when it is new |
+| After changing a Dockerfile or an entry script | `build` for the first, `restart api` / `restart app` for the second — an entry script is read once, at container start |
 
 Every dependency is installed at **image build** (`docker/api.Dockerfile`,
 `docker/app.Dockerfile`), both honouring their lockfiles, so starting a container downloads
 nothing — the stack comes up offline. What is left at start is compiling the repository's own two
 TypeScript libraries, which no image can hold because the source does not exist until you write it.
+
+Only the directories a running service actually reads are mounted — `src/` into the api,
+`frontend/` into the app, `docker/` into both, and the storage directory. The whole checkout is
+not, so `tests/` is absent from the api container and `docker compose exec api pytest` collects
+nothing: run the suite on the host with `bash scripts/check.sh python`. The mount list is in
+`docker/compose.yaml`, next to the reasoning.
 
 Dev only; the release artifact is always the pip package, and these images are never it. Running
 it on the host stays faster, because a bind mount has to poll for file changes rather than being

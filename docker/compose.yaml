@@ -15,9 +15,35 @@
 #   docker compose -f docker/compose.yaml build
 #   docker compose -f docker/compose.yaml down -v && … up
 #
-# The `down -v` is not optional for a frontend dependency: node_modules lives in
-# named volumes seeded from the image, and Docker seeds a volume only when it is
-# new, so a rebuilt image cannot reach one that already has contents.
+# The `down -v` is not optional for a frontend dependency: `frontend/*/node_modules`
+# lives in named volumes seeded from the image, and Docker seeds a volume only when
+# it is new, so a rebuilt image cannot reach one that already has contents.
+#
+# **What reloads while the stack runs, and what does not.** Every layer of source
+# reaches the browser without restarting anything:
+#
+#   src/visionset/**        uvicorn --reload            (docker/api-dev.sh)
+#   frontend/app/src/**     vite HMR
+#   frontend/ui-core/src/** tsc --watch → dist/ → vite  (docker/app-dev.sh)
+#   frontend/annotator/…    tsc --watch → dist/ → vite  (docker/app-dev.sh)
+#
+# The residual cases, all of them changes to how a container is *built* rather
+# than to what it runs, and each with the command it needs:
+#
+#   a Python dependency          build
+#   a frontend dependency        build, then down -v      (the volumes above)
+#   either Dockerfile            build
+#   docker/nginx.conf            up --force-recreate nginx (mounted read-only,
+#                                nginx reads it once at start)
+#   either entry script          restart api / restart app (read once at start)
+#
+# **Only what a running service reads is mounted** — the api gets `src/`, the app
+# gets `frontend/` and the two root files pnpm needs to see a workspace, and both
+# get `docker/` for their entry script. The whole checkout used to be mounted into
+# both, which meant a polling watcher walking `tests/`, `.git/`, the host `.venv/`
+# and the Playwright report directories on every tick, for services that read none
+# of them. A path that is not in the list above does not exist inside these
+# containers; adding one is a line in this file.
 #
 #   The app is at http://localhost:8080
 #
@@ -93,13 +119,25 @@ services:
       dockerfile: docker/api.Dockerfile
     working_dir: /workspace
     volumes:
-      - ..:/workspace
+      # What a running API reads, and nothing else — see the header for why the
+      # whole checkout is no longer mounted here.
+      #
+      # `src` is both halves of how this container reaches the code: it is what
+      # PYTHONPATH names and what the editable install's record points at (see
+      # docker/api.Dockerfile), and it is uvicorn's `--reload-dir`. The
+      # `.dist-info` that carries the version and the exporter entry points lives
+      # in /opt/venv, outside the mount, and is unaffected by any of this.
+      - ../src:/workspace/src
+      # The entry script, read once at container start. Read-only because nothing
+      # inside the container has any business rewriting how it boots.
+      - ../docker:/workspace/docker:ro
       # The backend's storage, and the only mount here holding anything a person
-      # would miss. Its default is inside the checkout — `**/workspace-data/` is
-      # already git-ignored, so nothing written here can be committed by accident
-      # — which means the host directory is visible twice in this container, once
-      # as /data and once under /workspace. Same files either way; /data is the
-      # one to think in, and the one that moves when VISIONSET_DATA is set.
+      # would miss. Its default is inside the checkout, and `**/workspace-data/`
+      # is git-ignored so nothing written here can be committed by accident.
+      # Under the old whole-tree mount the same host directory was visible twice
+      # in this container, once as /data and once under /workspace; now it has
+      # exactly one name. /data is the one to think in, and the one that moves
+      # when VISIONSET_DATA is set.
       - ${VISIONSET_DATA:-../workspace-data}:/data
     environment:
       # Which workspace this server serves, inside the storage mount above.
@@ -138,36 +176,38 @@ services:
     depends_on:
       - api
     volumes:
-      - ..:/workspace
-      # One volume per directory pnpm installed into during the image build.
+      # What a running vite reads. The frontend workspace is the bulk of it —
+      # sources, per-package manifests, tsconfigs, vite config, index.html — and
+      # the two root files below are what makes pnpm recognise a workspace at all
+      # from `working_dir`. Without either of them `--filter @visionset/app` finds
+      # no such package and the container exits before vite is reached.
+      - ../frontend:/workspace/frontend
+      - ../package.json:/workspace/package.json
+      - ../pnpm-workspace.yaml:/workspace/pnpm-workspace.yaml
+      # The entry script, read once at container start; read-only for the reason
+      # the api service states.
+      - ../docker:/workspace/docker:ro
+      # One volume per `node_modules/` that the bind mount above would otherwise
+      # cover, and only those. pnpm's workspace layout puts a `node_modules/` at
+      # the root *and* in every package; the root one is no longer under any bind
+      # mount, so it is simply the image's own directory now and needs no volume.
+      # These three are still inside `../frontend`, and still do two jobs.
       #
-      # Two jobs, and it is worth separating them. First, they carry the build's
-      # output past the bind mount: `..:/workspace` covers the whole tree, so
-      # without these the host's `node_modules/` — or its absence — would shadow
-      # what the image installed. Docker seeds a *new* named volume from the image
-      # content at that path, which is what makes the install survive.
+      # First, they carry the build's output past the bind mount: without them the
+      # host's `frontend/*/node_modules/` — or its absence — would shadow what the
+      # image installed. Docker seeds a *new* named volume from the image content
+      # at that path, which is what makes the install survive.
       #
       # Second, they keep the container off the host's tree. A macOS checkout holds
       # darwin-only native packages (esbuild, rollup, @tailwindcss/oxide,
       # lightningcss) that a Linux install would overwrite.
       #
-      # pnpm's workspace layout puts a `node_modules/` at the root *and* in every
-      # package, so each needs its own volume — a root-only volume would still let
-      # the container write into `frontend/*/node_modules` on the host.
-      #
       # Consequence worth knowing: these are seeded once, at creation. After
       # changing a dependency, `build` then `down -v` — a rebuilt image does not
       # reach a volume that already has contents.
-      - app-node-modules:/workspace/node_modules
       - app-annotator-modules:/workspace/frontend/annotator/node_modules
       - app-ui-core-modules:/workspace/frontend/ui-core/node_modules
       - app-app-modules:/workspace/frontend/app/node_modules
-      # Nothing installs at run time any more, so this is a guard rather than a
-      # cache: pnpm relocates its store next to the project when its default is on
-      # another filesystem, and a bind mount always is. Without it, a
-      # `docker compose exec app pnpm …` would write `.pnpm-store/` into the host
-      # checkout.
-      - app-pnpm-store:/workspace/.pnpm-store
     environment:
       # Where vite's own `/api` proxy points. Requests arriving through nginx
       # never reach it — nginx has already routed `/api/` to the API by then — so
@@ -242,10 +282,8 @@ services:
       - minio-data:/data
 
 volumes:
-  app-node-modules:
   app-annotator-modules:
   app-ui-core-modules:
   app-app-modules:
-  app-pnpm-store:
   postgres-data:
   minio-data:
