@@ -1285,6 +1285,59 @@ test("a completed batch's canvas cannot be drawn on, however hard it is asked", 
 });
 
 /**
+ * The doors #422 left open (#423). The classes region renders in the read-only
+ * mode — which classes exist stays true there — but its create paths are writes:
+ * each one opens the add-a-class dialog, and the dialog publishes a real schema
+ * version from a page that has just said it is a viewer.
+ */
+test("a completed batch's viewer leaves no door into the add-a-class dialog", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, { batch: "completed", job: "completed" });
+  await expect(page.getByTestId("readonly-banner")).toBeVisible();
+
+  // The `+` stays on screen — hiding it would be a control that comes and goes —
+  // but it is a refusal, and it says why.
+  const add = page.getByTestId("class-add");
+  await expect(add).toBeDisabled();
+  await expect(add).toHaveAttribute("title", /completed/i);
+
+  // Nothing matches what was typed: the `Create class` row must not appear, and
+  // the Enter fallthrough that would have created it must be dead too.
+  await page.getByTestId("class-filter").fill("a-class-nobody-declared");
+  await expect(page.getByTestId("class-create")).toHaveCount(0);
+  await page.getByTestId("class-filter").press("Enter");
+  await expect(page.getByTestId("add-class-dialog")).toHaveCount(0);
+});
+
+/**
+ * The one frame where the read-only mode said nothing at all (#423): the banner
+ * rendered only while the frame was not skipped — a guard older than the
+ * correction link that now lives inside it — so a skipped frame in a completed
+ * batch showed no "viewing only", no route onward, and a skipped notice whose
+ * "Un-skip it" names a move the wire withholds there.
+ */
+test("a skipped frame in a completed batch still says viewing only, and names the correction path", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, progressStore({ "asset-1": "skipped", "asset-2": "annotated" }), {
+    batch: "completed",
+    job: "completed",
+  });
+
+  const banner = page.getByTestId("readonly-banner");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(/viewing only/i);
+  await expect(page.getByTestId("banner-create-correction")).toBeVisible();
+
+  // The notice's remedy is not available here, so the banner is the one surface
+  // that speaks — two banners saying different things about one frame is how a
+  // person learns to trust neither.
+  await expect(page.getByTestId("skipped-notice")).toHaveCount(0);
+  await expect(page.getByTestId("unskip")).toBeDisabled();
+});
+
+/**
  * The founder's decision in #123, and the half no unit test can reach: **the
  * clipboard survives moving to the next frame.**
  *
