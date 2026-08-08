@@ -694,6 +694,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inference/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Inference Connections
+         * @description Every configured connection in this workspace, in the order they were made.
+         */
+        get: operations["list_inference_connections"];
+        put?: never;
+        /**
+         * Create Inference Connection
+         * @description Configure a connection. Nothing is downloaded and nothing is contacted.
+         */
+        post: operations["create_inference_connection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inference/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Inference Connection
+         * @description The connection with that id.
+         */
+        get: operations["get_inference_connection"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Inference Connection
+         * @description Remove a connection. Annotations keep the model provenance they recorded.
+         *
+         *     No ``confirm`` gate, unlike deleting a project: nothing holds a key to this
+         *     row, because an annotation copies its model's identity at write time rather
+         *     than pointing here (`cf. #417`). What is destroyed is a configuration.
+         */
+        delete: operations["delete_inference_connection"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Inference Connection
+         * @description Edit a connection. Omitted fields are left alone; the kind cannot change.
+         */
+        patch: operations["update_inference_connection"];
+        trace?: never;
+    };
     "/ingest-jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -2335,6 +2391,141 @@ export interface components {
              * @enum {string}
              */
             type: "classification_tag";
+        };
+        /**
+         * ConnectionAction
+         * @description What can be asked of an inference connection. Order is display order.
+         *
+         *     Two, and the omissions are the point. ``download_weights`` and ``test`` are
+         *     the actions this resource will eventually be asked for, and neither is named
+         *     here yet because neither has anything behind it — under the
+         *     ``ui-capabilities`` contract a declared action obliges every client to offer
+         *     it, so naming one before its surface exists is how a wire becomes the source
+         *     of a control that cannot work. #376 is the precedent: the name returns in the
+         *     same change as the route that honours it.
+         * @enum {string}
+         */
+        ConnectionAction: "update" | "delete";
+        /**
+         * ConnectionCreate
+         * @description What a caller supplies to configure a connection.
+         *
+         *     ``setup_state`` is absent on purpose: it is derived from the kind by the
+         *     service, because it says what the kind still needs rather than what the
+         *     caller wants. Accepting it would let a client declare weights present that
+         *     were never fetched.
+         */
+        ConnectionCreate: {
+            connection_type: components["schemas"]["ConnectionType"];
+            /** Device */
+            device?: string | null;
+            /** Endpoint Url */
+            endpoint_url?: string | null;
+            /** Model Id */
+            model_id: string;
+            /** Model Revision */
+            model_revision: string;
+            /** Name */
+            name: string;
+            /** Precision */
+            precision?: string | null;
+        };
+        /**
+         * ConnectionOut
+         * @description One configured place a model can be asked to predict.
+         */
+        ConnectionOut: {
+            /** Allowed Actions */
+            allowed_actions: components["schemas"]["ConnectionAction"][];
+            connection_type: components["schemas"]["ConnectionType"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Device */
+            device: string | null;
+            /** Endpoint Url */
+            endpoint_url: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Id */
+            model_id: string;
+            /** Model Revision */
+            model_revision: string;
+            /** Name */
+            name: string;
+            /** Precision */
+            precision: string | null;
+            setup_state: components["schemas"]["ConnectionSetupState"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ConnectionPage
+         * @description A page of inference connections.
+         */
+        ConnectionPage: {
+            /** Items */
+            items: components["schemas"]["ConnectionOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ConnectionSetupState
+         * @description Whether a connection is ready to be asked for a prediction.
+         *
+         *     ``not_set_up`` means something local is still missing — weights that were
+         *     never fetched. It is the state a ``local`` connection is born in, and the one
+         *     a download clears.
+         *
+         *     Deliberately **not** a reachability answer. Whether an endpoint responds is a
+         *     question with a fresh answer every time it is asked, so it belongs to a test
+         *     call and its result, never to a stored row that would start lying the moment
+         *     the network moved.
+         * @enum {string}
+         */
+        ConnectionSetupState: "not_set_up" | "ready";
+        /**
+         * ConnectionType
+         * @description Where a connection's model runs.
+         *
+         *     A ``StrEnum`` rather than a plain ``str`` on ``SourceKind``'s test: nothing
+         *     outside this build writes the value, the kernel branches on it, and the set
+         *     grows only by a deliberate kernel change — a hosted connection type arriving
+         *     later is exactly that change.
+         * @enum {string}
+         */
+        ConnectionType: "local" | "http";
+        /**
+         * ConnectionUpdate
+         * @description A partial edit. Every field omitted or null means *leave this alone*.
+         *
+         *     ``connection_type`` is absent because the kind is not editable — see
+         *     ``InferenceConnectionService.update``. A field cannot be *cleared* through
+         *     this shape, which is the honest consequence of null meaning "unchanged": the
+         *     parameters that could be cleared are exactly the ones the kind requires, so
+         *     clearing one would produce a row the domain refuses anyway.
+         */
+        ConnectionUpdate: {
+            /** Device */
+            device?: string | null;
+            /** Endpoint Url */
+            endpoint_url?: string | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** Model Revision */
+            model_revision?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Precision */
+            precision?: string | null;
         };
         /**
          * DatasetChangeOut
@@ -4805,6 +4996,343 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_inference_connections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_inference_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_inference_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_inference_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_inference_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description The request payload is not processable */

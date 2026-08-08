@@ -110,6 +110,21 @@ export const checkBatchMembershipOut: Check<Schemas["BatchMembershipOut"]> =
 export const checkBatchPage: Check<Schemas["BatchPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchOut)], "total": [true, isInteger] } as const);
 
+export const checkConnectionAction: Check<Schemas["ConnectionAction"]> =
+  /*#__PURE__*/ oneOf(["update", "delete"] as const);
+
+export const checkConnectionSetupState: Check<Schemas["ConnectionSetupState"]> =
+  /*#__PURE__*/ oneOf(["not_set_up", "ready"] as const);
+
+export const checkConnectionType: Check<Schemas["ConnectionType"]> =
+  /*#__PURE__*/ oneOf(["local", "http"] as const);
+
+export const checkConnectionOut: Check<Schemas["ConnectionOut"]> =
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkConnectionAction)], "connection_type": [true, checkConnectionType], "created_at": [true, isString], "device": [true, either([isString, isNull] as const)], "endpoint_url": [true, either([isString, isNull] as const)], "id": [true, isString], "model_id": [true, isString], "model_revision": [true, isString], "name": [true, isString], "precision": [true, either([isString, isNull] as const)], "setup_state": [true, checkConnectionSetupState], "updated_at": [true, isString] } as const);
+
+export const checkConnectionPage: Check<Schemas["ConnectionPage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkConnectionOut)], "total": [true, isInteger] } as const);
+
 export const checkDatasetChangeOut: Check<Schemas["DatasetChangeOut"]> =
   /*#__PURE__*/ object({ "actor": [true, either([isString, isNull] as const)], "dataset_id": [true, isString], "id": [true, isString], "occurred_at": [true, isString], "operation": [true, isString], "subject_ids": [true, arrayOf(isString)] } as const);
 
@@ -243,11 +258,13 @@ export const checkCompleteBatch = checkBatchOut;
 export const checkCompleteJob = checkJobOut;
 export const checkCreateBatch = checkBatchOut;
 export const checkCreateCorrectionBatch = checkBatchOut;
+export const checkCreateInferenceConnection = checkConnectionOut;
 export const checkCreateProject = checkProjectOut;
 export const checkCreateSchemaVersion = checkSchemaVersionOut;
 export const checkDatasetStats = checkDatasetStatsOut;
 export const checkDeleteAnnotations = checkNoContent;
 export const checkDeleteBatch = checkNoContent;
+export const checkDeleteInferenceConnection = checkNoContent;
 export const checkDeleteProject = checkNoContent;
 export const checkExportRelease = checkBackgroundJobOut;
 export const checkGetActiveSchema = checkSchemaVersionOut;
@@ -258,6 +275,7 @@ export const checkGetBackgroundJob = checkBackgroundJobOut;
 export const checkGetBackgroundJobArtifact = checkBlob;
 export const checkGetBatch = checkBatchOut;
 export const checkGetDataset = checkDatasetOut;
+export const checkGetInferenceConnection = checkConnectionOut;
 export const checkGetIngestJob = checkIngestJobOut;
 export const checkGetJob = checkJobOut;
 export const checkGetJobProgress = checkProgressCounts;
@@ -280,6 +298,7 @@ export const checkListBatches = checkBatchPage;
 export const checkListDatasetAssets = checkAssetPage;
 export const checkListDatasetChanges = checkDatasetChangePage;
 export const checkListFormats = checkFormatPage;
+export const checkListInferenceConnections = checkConnectionPage;
 export const checkListIngestJobs = checkIngestJobPage;
 export const checkListProjectAssets = checkAssetPage;
 export const checkListProjects = checkProjectPage;
@@ -301,4 +320,5 @@ export const checkStartBatch = checkBatchOut;
 export const checkStartIngest = checkIngestJobOut;
 export const checkStartJob = checkJobOut;
 export const checkUpdateAnnotations = checkAnnotationPage;
+export const checkUpdateInferenceConnection = checkConnectionOut;
 export const checkVerifyRelease = checkReleaseVerificationOut;
