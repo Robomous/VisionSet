@@ -93,10 +93,13 @@ from visionset.kernel.domain.job import (
     JobPayload,
 )
 from visionset.kernel.domain.media import (
+    MEDIA_TYPES,
+    OCTET_STREAM,
     ImageFormat,
     ImageMetadata,
     VideoFrame,
     VideoMetadata,
+    media_type_of,
 )
 from visionset.kernel.domain.names import normalize_name
 from visionset.kernel.domain.partition import (
@@ -208,6 +211,8 @@ __all__ = [
     "INGEST_TRANSITIONS",
     "JOB_TRANSITIONS",
     "MANIFEST_VERSION",
+    "MEDIA_TYPES",
+    "OCTET_STREAM",
     "OPEN_JOB_STATES",
     "PROMOTABLE_PROGRESS",
     "PROMOTABLE_STATES",
@@ -311,6 +316,7 @@ __all__ = [
     "generate_secret",
     "hash_secret",
     "initial_progress",
+    "media_type_of",
     "normalize_name",
     "partition_assets",
     "progress_after_annotating",

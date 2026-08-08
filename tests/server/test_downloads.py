@@ -23,9 +23,8 @@ from tests.server._api import api_client
 from tests.server._flow import batch_from_ingest, project_with_schema
 from tests.server._jobs import InlineDispatcher
 
-from visionset.kernel.domain import ImageFormat
+from visionset.kernel.domain import MEDIA_TYPES, ImageFormat
 from visionset.kernel.ports import THUMBNAIL_FORMAT
-from visionset.server.routes.assets import _MEDIA_TYPES
 
 
 @pytest.fixture()
@@ -61,18 +60,23 @@ def ingested(
 
 
 def test_every_image_format_has_a_media_type() -> None:
-    """Indexed directly by the route, so a new member must arrive with its type.
+    """Indexed directly by every reader, so a new member must arrive with its type.
 
     Read off the enum rather than restated, the `ProgressCounts` bargain: adding
     a format without a media type fails here instead of quietly degrading every
     download of it.
+
+    The table lives in the domain rather than in this route since the inference
+    adapters became its second reader — a provider has to be told what the bytes
+    it is handed are — so this asserts a domain fact from the surface that first
+    needed it.
     """
-    assert set(_MEDIA_TYPES) == set(ImageFormat)
+    assert set(MEDIA_TYPES) == set(ImageFormat)
 
 
 def test_the_thumbnail_format_is_one_of_them() -> None:
     """The route indexes the table with it, so it cannot be a format nobody mapped."""
-    assert THUMBNAIL_FORMAT in _MEDIA_TYPES
+    assert THUMBNAIL_FORMAT in MEDIA_TYPES
 
 
 # --- the asset itself ---------------------------------------------------------

@@ -37,7 +37,9 @@ while ``DatasetOperation`` is the enum a writer picks from.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,6 +56,36 @@ class ImageFormat(StrEnum):
 
     JPEG = "jpeg"
     PNG = "png"
+
+
+MEDIA_TYPES: Final[Mapping[ImageFormat, str]] = {
+    ImageFormat.JPEG: "image/jpeg",
+    ImageFormat.PNG: "image/png",
+}
+"""The IANA name for each accepted encoding.
+
+Total over :class:`ImageFormat` and asserted so by a test, for the reason the
+enum's own docstring gives about half-done extensions: a member added here
+without a media type would otherwise degrade every download of it to
+``octet-stream`` quietly, which is the failure that looks like nothing.
+
+Here rather than beside the route that serves bytes because it is a fact about
+the format, and it now has two readers — the asset download and the inference
+adapters, which must tell a provider what it is being handed. A second copy of a
+two-line map is how a product ends up serving ``image/png`` on one surface and
+``application/octet-stream`` on another for the same asset.
+"""
+
+OCTET_STREAM: Final = "application/octet-stream"
+"""For an asset written before the ingest pipeline probed formats.
+
+Nothing can invent what nobody measured, and admitting that beats guessing.
+"""
+
+
+def media_type_of(image_format: ImageFormat | None) -> str:
+    """The IANA media type for that format, or ``octet-stream`` for an unprobed one."""
+    return OCTET_STREAM if image_format is None else MEDIA_TYPES[image_format]
 
 
 class ImageMetadata(BaseModel):

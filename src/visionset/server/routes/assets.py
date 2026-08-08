@@ -30,7 +30,7 @@ from uuid import UUID
 
 from fastapi.responses import StreamingResponse
 
-from visionset.kernel.domain import Asset, ImageFormat
+from visionset.kernel.domain import MEDIA_TYPES, OCTET_STREAM, Asset, media_type_of
 from visionset.kernel.ports import THUMBNAIL_FORMAT
 from visionset.kernel.services import (
     BatchService,
@@ -72,40 +72,23 @@ def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
     return DatasetService(workspace).member_asset_ids(dataset.id)
 
 
-#: What each ``ImageFormat`` is called on the wire. A mapping rather than
-#: ``f"image/{format}"`` because the two coincide today and would stop coinciding
-#: the moment a format whose media type is not its own name arrives — WEBP is
-#: already named as the next member — and a wrong ``Content-Type`` is the kind of
-#: bug that shows up in one browser and nowhere else.
-#:
-#: Indexed directly rather than with a fallback, the ``ProgressCounts`` bargain:
-#: exhaustiveness is asserted by a test against the enum itself, so adding a
-#: member without a media type fails the suite instead of quietly degrading every
-#: download of it to ``octet-stream``.
-_MEDIA_TYPES: Final[dict[ImageFormat, str]] = {
-    ImageFormat.JPEG: "image/jpeg",
-    ImageFormat.PNG: "image/png",
-}
-
-#: For an asset written before the ingest pipeline probed formats. The store
-#: cannot invent what nobody measured, and admitting that beats guessing.
-_OCTET_STREAM: Final = "application/octet-stream"
-
 # FastAPI documents a 200 as ``application/json`` unless told otherwise — the
 # app-level ``UNIVERSAL_ERROR_RESPONSES`` only covers 422/500/503 — so the binary
 # content type is declared per route. ``{}`` as the schema is OpenAPI's way of
 # saying "bytes, and there is nothing more to say about their shape".
 #
-# Every type ``_media_type`` can return is listed, ``_OCTET_STREAM`` included. A
+# Every type ``media_type_of`` can return is listed, ``OCTET_STREAM`` included. A
 # response the route really sends and the contract does not declare is a lie a
 # generated client inherits — and the pre-pipeline rows that produce it are
 # exactly the ones a caller is least prepared for.
+#
+# Built from ``MEDIA_TYPES`` rather than written out, so a format added to the
+# domain cannot be served with a content type this contract never declared.
 _IMAGE_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
     200: {
         "content": {
-            "image/jpeg": {"schema": {}},
-            "image/png": {"schema": {}},
-            _OCTET_STREAM: {"schema": {}},
+            **{media_type: {"schema": {}} for media_type in sorted(MEDIA_TYPES.values())},
+            OCTET_STREAM: {"schema": {}},
         },
         "description": "The bytes, streamed.",
     }
@@ -120,7 +103,7 @@ _THUMBNAIL_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
 
 
 def _media_type(asset: Asset) -> str:
-    return _OCTET_STREAM if asset.format is None else _MEDIA_TYPES[asset.format]
+    return media_type_of(asset.format)
 
 
 @router.get("", responses=documented(404))
@@ -262,6 +245,6 @@ def get_asset_thumbnail(
     stream = ingest.open_thumbnail(asset)
     return StreamingResponse(
         stream,
-        media_type=_MEDIA_TYPES[THUMBNAIL_FORMAT],
+        media_type=MEDIA_TYPES[THUMBNAIL_FORMAT],
         headers={"ETag": f'"{asset.thumbnail_hash}"', "Cache-Control": _IMMUTABLE},
     )
