@@ -68,6 +68,9 @@ from visionset.kernel import (
     EntityNotFound,
     ExportFormatNotFound,
     ExportSourceUnreadable,
+    InferenceConnectionInvalid,
+    InferenceConnectionNameTaken,
+    InferenceConnectionNotFound,
     IngestJobNotFound,
     InvalidAnnotation,
     InvalidAttributeValue,
@@ -193,6 +196,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # with one: a token that does not verify raises nothing at all, so this 404
     # can never become an oracle for which secrets exist.
     TokenNotFound: ErrorRule(404, "TOKEN_NOT_FOUND"),
+    InferenceConnectionNotFound: ErrorRule(404, "INFERENCE_CONNECTION_NOT_FOUND"),
     # A job's assets are fixed at approval, so an asset outside the segment is
     # a sub-resource that does not exist — the "reads as missing, not as
     # forbidden" rule one scope down. A route that takes the asset id in a
@@ -223,6 +227,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     ProjectNameTaken: ErrorRule(409, "PROJECT_NAME_TAKEN"),
     ReleaseTagTaken: ErrorRule(409, "RELEASE_TAG_TAKEN"),
     TokenNameTaken: ErrorRule(409, "TOKEN_NAME_TAKEN"),
+    InferenceConnectionNameTaken: ErrorRule(409, "INFERENCE_CONNECTION_NAME_TAKEN"),
     WorkspaceAlreadyExists: ErrorRule(409, "WORKSPACE_ALREADY_EXISTS"),
     WorkspaceNotEmpty: ErrorRule(409, "WORKSPACE_NOT_EMPTY"),
     # Retryable, but immediately rather than after a wait — a re-read lands on
@@ -272,6 +277,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     ExportSourceUnreadable: ErrorRule(409, "EXPORT_SOURCE_UNREADABLE"),
     # --- 422: the payload itself is wrong ----------------------------------
     InvalidName: ErrorRule(422, "INVALID_NAME"),
+    InferenceConnectionInvalid: ErrorRule(422, "INFERENCE_CONNECTION_INVALID"),
     InvalidSchema: ErrorRule(422, "INVALID_SCHEMA"),
     UnsupportedGeometry: ErrorRule(422, "UNSUPPORTED_GEOMETRY"),
     InvalidAnnotation: ErrorRule(422, "INVALID_ANNOTATION"),

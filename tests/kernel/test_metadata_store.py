@@ -34,10 +34,12 @@ from visionset.kernel.domain import (
     Batch,
     BboxGeometry,
     ClassificationGeometry,
+    ConnectionType,
     Dataset,
     DatasetChange,
     DatasetMember,
     GeometryType,
+    InferenceConnection,
     IngestFailure,
     IngestFailureKind,
     IngestJob,
@@ -185,6 +187,18 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
             revoked_at=datetime(2026, 7, 27, 9, 30, tzinfo=UTC),
         )
     )
+    connection = uow.inference_connections.add(
+        InferenceConnection(
+            name="local-gd",
+            connection_type=ConnectionType.LOCAL,
+            model_id="some/model",
+            model_revision="abc123",
+            device="cpu",
+            precision="fp16",
+            created_at=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
+        )
+    )
     # Appended LAST, and it has to be: the tests below index into this list by
     # position, so inserting anywhere else renames every entity after it.
     return [
@@ -204,6 +218,7 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
         ("dataset_changes", change.id),
         ("releases", release.id),
         ("tokens", token.id),
+        ("inference_connections", connection.id),
     ]
 
 

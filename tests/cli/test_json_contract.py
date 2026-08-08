@@ -38,6 +38,7 @@ from tests.fixtures.samples import (
     DATASET_STATS,
     EXPORT_COMPATIBILITY,
     EXPORT_RESULT,
+    INFERENCE_CONNECTION,
     INGEST_FAILURE,
     INGEST_JOB,
     JOB,
@@ -62,6 +63,7 @@ from visionset.server import models
 # does not encode fails collection rather than one parametrized case.
 PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
     ("project", wire.project(PROJECT), models.ProjectOut),
+    ("connection", wire.connection(INFERENCE_CONNECTION), models.ConnectionOut),
     ("dataset", wire.dataset(DATASET), models.DatasetOut),
     ("schema_version", wire.schema_version(SCHEMA_VERSION), models.SchemaVersionOut),
     ("schema_diff", wire.schema_diff(SCHEMA_DIFF), models.SchemaDiffOut),

@@ -59,6 +59,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "AnnotationNotFound": (404, "ANNOTATION_NOT_FOUND"),
     "ReleaseNotFound": (404, "RELEASE_NOT_FOUND"),
     "TokenNotFound": (404, "TOKEN_NOT_FOUND"),
+    "InferenceConnectionNotFound": (404, "INFERENCE_CONNECTION_NOT_FOUND"),
     "AssetNotInBatch": (422, "ASSET_NOT_IN_BATCH"),
     "AssetNotInJob": (404, "ASSET_NOT_IN_JOB"),
     "NoSplitRecipe": (404, "NO_SPLIT_RECIPE"),
@@ -72,6 +73,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "ProjectNameTaken": (409, "PROJECT_NAME_TAKEN"),
     "ReleaseTagTaken": (409, "RELEASE_TAG_TAKEN"),
     "TokenNameTaken": (409, "TOKEN_NAME_TAKEN"),
+    "InferenceConnectionNameTaken": (409, "INFERENCE_CONNECTION_NAME_TAKEN"),
     "WorkspaceAlreadyExists": (409, "WORKSPACE_ALREADY_EXISTS"),
     "WorkspaceNotEmpty": (409, "WORKSPACE_NOT_EMPTY"),
     "SchemaVersionConflict": (409, "SCHEMA_VERSION_CONFLICT"),
@@ -92,6 +94,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "LossyExportNotConsented": (409, "LOSSY_EXPORT_NOT_CONSENTED"),
     # 422 — the payload itself is wrong
     "InvalidName": (422, "INVALID_NAME"),
+    "InferenceConnectionInvalid": (422, "INFERENCE_CONNECTION_INVALID"),
     "InvalidSchema": (422, "INVALID_SCHEMA"),
     "UnsupportedGeometry": (422, "UNSUPPORTED_GEOMETRY"),
     "InvalidAnnotation": (422, "INVALID_ANNOTATION"),

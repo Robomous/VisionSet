@@ -863,3 +863,40 @@ class TokenNameTaken(VisionSetError):
     and the name has to resolve to exactly one token for revocation by name to
     mean anything.
     """
+
+
+class InferenceConnectionNotFound(VisionSetError):
+    """No inference connection with that id or name lives in this workspace.
+
+    The ``TokenNotFound`` rule, one entity over: a connection is workspace-scoped
+    by living in this file, so "not here" and "never existed" are the same
+    sentence and neither is a permission answer.
+    """
+
+
+class InferenceConnectionNameTaken(VisionSetError):
+    """Another inference connection in this workspace already uses that name.
+
+    Case-insensitive, on ``TokenNameTaken``'s terms and for its reason: the name
+    is what a person reads in a list and types at a terminal, so ``local`` and
+    ``Local`` naming two connections is a trap rather than a feature. Enforced
+    twice — the service checks so the caller gets a sentence, and
+    ``uq_inference_connection_name`` refuses the write so a race cannot pass the
+    check.
+    """
+
+
+class InferenceConnectionInvalid(VisionSetError):
+    """The parameters do not describe a usable connection of that kind.
+
+    A local connection with no device, an HTTP one with no endpoint, or either
+    carrying the other's parameters — the cross-field rule
+    ``InferenceConnection`` enforces, in the kernel's own vocabulary.
+
+    It exists because that rule is a *pydantic* refusal at the point it is
+    caught, and letting a ``ValidationError`` out would break the rule
+    ``_read_manifest`` states: no exception from outside the kernel's vocabulary
+    escapes the kernel. The wire model cannot answer this instead — restating a
+    cross-field rule on ``ConnectionCreate`` would be a second encoding of a
+    domain invariant, which is the mirror this repo has paid for twice.
+    """

@@ -37,6 +37,10 @@ visionset backfill-thumbnails --project P
 visionset token create --name NAME
 visionset token list
 visionset token revoke NAME [--yes]
+visionset inference create NAME --type local|http --model ID --revision REV
+                               [--device D] [--precision P] [--endpoint URL]
+visionset inference list
+visionset inference show|update|delete NAME_OR_ID
 visionset server [--host] [--port] [--reload]            # no --json
 visionset mcp                                            # stdio; no --json
 ```
@@ -382,6 +386,13 @@ is reported here rather than having failed its ingest. Idempotent. See
 
 Issuing, listing and revoking per-workspace API tokens. Covered in full — including why only a
 digest is stored, and why revocation does not free the name — in [auth.md](auth.md#at-a-terminal).
+
+## `visionset inference`
+
+Configuring where a model may be asked to predict. **Nothing here downloads weights or contacts an
+endpoint** — a connection is a row, and that is the point. Covered in full, including the two kinds
+and why deleting one never touches an annotation's provenance, in
+[inference.md](inference.md#at-a-terminal).
 
 ## `visionset mcp`
 

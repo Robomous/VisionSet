@@ -10,6 +10,7 @@ is port-typed, so nothing above it can reach SQLAlchemy by accident.
 from visionset.kernel.services.annotation_service import AnnotationService
 from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.dataset_service import DatasetService
+from visionset.kernel.services.inference_connection_service import InferenceConnectionService
 from visionset.kernel.services.ingest_service import IngestService
 from visionset.kernel.services.job_service import JobService
 from visionset.kernel.services.project_service import ProjectService
@@ -33,6 +34,7 @@ __all__ = [
     "AnnotationService",
     "BatchService",
     "DatasetService",
+    "InferenceConnectionService",
     "IngestService",
     "JobService",
     "ProjectService",

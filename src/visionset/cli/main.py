@@ -10,6 +10,7 @@ from visionset import __version__
 from visionset.cli.batches import batch_app
 from visionset.cli.export import export
 from visionset.cli.formats import format_app
+from visionset.cli.inference import inference_app
 from visionset.cli.ingest import backfill_thumbnails, ingest
 from visionset.cli.init import init
 from visionset.cli.jobs import job_app
@@ -51,6 +52,7 @@ app.command("export")(export)
 app.add_typer(format_app, name="format")
 app.command("backfill-thumbnails")(backfill_thumbnails)
 app.add_typer(token_app, name="token")
+app.add_typer(inference_app, name="inference")
 app.command()(server)
 app.command()(mcp)
 

@@ -48,11 +48,14 @@ from visionset.kernel.domain import (
     BackgroundJob,
     BackgroundJobState,
     Batch,
+    ConnectionSetupState,
+    ConnectionType,
     Dataset,
     DatasetChange,
     DatasetMember,
     Geometry,
     ImageFormat,
+    InferenceConnection,
     IngestFailure,
     IngestJob,
     IngestState,
@@ -397,6 +400,45 @@ def _token_to_domain(_: Session, row: Any) -> Token:
     )
 
 
+def _connection_to_row(entity: InferenceConnection) -> t.Base:
+    """Two timestamps are already enough to cost this pair ``_flat_mapping``.
+
+    The two enums are written as members rather than as ``.value`` on the warning
+    this module carries above: a ``StrEnum`` member is a ``str``, so the wrong
+    spelling round-trips through SQLite unnoticed and shows up as a value nobody
+    can match on.
+    """
+    return t.InferenceConnectionRow(
+        id=entity.id,
+        name=entity.name,
+        connection_type=entity.connection_type.value,
+        model_id=entity.model_id,
+        model_revision=entity.model_revision,
+        device=entity.device,
+        precision=entity.precision,
+        endpoint_url=entity.endpoint_url,
+        setup_state=entity.setup_state.value,
+        created_at=entity.created_at.isoformat(),
+        updated_at=entity.updated_at.isoformat(),
+    )
+
+
+def _connection_to_domain(_: Session, row: Any) -> InferenceConnection:
+    return InferenceConnection(
+        id=row.id,
+        name=row.name,
+        connection_type=ConnectionType(row.connection_type),
+        model_id=row.model_id,
+        model_revision=row.model_revision,
+        device=row.device,
+        precision=row.precision,
+        endpoint_url=row.endpoint_url,
+        setup_state=ConnectionSetupState(row.setup_state),
+        created_at=datetime.fromisoformat(row.created_at),
+        updated_at=datetime.fromisoformat(row.updated_at),
+    )
+
+
 def _release_to_row(entity: Release) -> t.Base:
     return t.ReleaseRow(
         id=entity.id,
@@ -648,4 +690,16 @@ ANNOTATION_JOBS: EntityMapping[AnnotationJob] = EntityMapping(
     to_row=_job_to_row,
     to_domain=_job_to_domain,
     write_children=_job_write_children,
+)
+#: ``parent_column=None``, like ``BACKGROUND_JOBS`` and unlike ``TOKENS``.
+#:
+#: A connection has no parent inside the file to be scoped by — see
+#: ``InferenceConnectionRow`` for why it carries no workspace key — so
+#: ``list(None)`` is the correct read here rather than the trap it is on a scoped
+#: entity.
+INFERENCE_CONNECTIONS: EntityMapping[InferenceConnection] = EntityMapping(
+    row=t.InferenceConnectionRow,
+    parent_column=None,
+    to_row=_connection_to_row,
+    to_domain=_connection_to_domain,
 )
