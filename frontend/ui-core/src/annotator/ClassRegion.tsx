@@ -120,9 +120,16 @@ export function ClassRegion({
    * create row would put a schema change one stray Enter away from somebody who
    * was picking a class. An exact match suppresses it too, so the row never sits
    * under the very class it offers to add.
+   *
+   * Null while refusing, with the header's `+`: the create paths are writes the
+   * same way arming is — each ends in a published schema version — so a region
+   * that refuses its rows and still offers to create is a read-only mode with a
+   * hole in it (#423).
    */
   const creatable =
-    onAddClass === undefined || query === "" || shown.length > 0 ? null : filter.trim();
+    onAddClass === undefined || refusal !== undefined || query === "" || shown.length > 0
+      ? null
+      : filter.trim();
 
   /**
    * Enter takes the first match, which is the typeahead the top-bar field had.
@@ -167,7 +174,10 @@ export function ClassRegion({
             className="size-6"
             aria-label="Add a class"
             data-testid="class-add"
-            disabled={onAddClass === undefined}
+            // Refusing closes this door too, with the rows' own sentence on it —
+            // hiding it would be a control that comes and goes between frames.
+            disabled={onAddClass === undefined || refusal !== undefined}
+            {...(refusal === undefined ? {} : { title: refusal })}
             onClick={() => onAddClass?.("")}
           >
             <Plus className="size-4" />
