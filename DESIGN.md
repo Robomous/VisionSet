@@ -511,15 +511,43 @@ filtered out.
 The page the reference design shows (#56), with measurements verified in v1's source:
 
 - **Top bar**: one 44px (`h-11`) row on `card` with a `border-b`, 32px (`h-8`) controls,
-  in **three zones** since #368 — *where you are*, *what you are drawing*, *what happens
-  next*. The zones are `flex-1` / content / `flex-1`, so the class field is centred on the
-  bar rather than on whatever is left over and does not drift between frames.
+  in **three zones** since #368, regrouped by #416 — *where you are*, *what changes the
+  frame*, *the session*.
 
   | Zone | Contents |
   | --- | --- |
-  | Left | back · pinned `v{n}` badge · asset navigator `‹ hash n/m ›` · frame gallery · the frame microtext `● annotated · Saved` |
-  | Centre | the **class field** — swatch, name, hotkey chip; opens on click or on `c` |
-  | Right | `n / m annotated` · **Save and stay** (ghost, ⌘S) · the review move (outline) · **Skip**/**Un-skip** (outline, `X`) · **Finish job** · **Save and next** (filled, `↵`) · overflow `⋯` |
+  | Left | back · pinned `v{n}` badge · the frame's identity as a label (the content-hash head — there is no filename on the wire) · the frame microtext `● annotated · Saved` |
+  | Centre | the **navigation cluster**: `[class field] │ [⊞] [‹] n/m [›] │ [Skip] [Save and next]` |
+  | Right | `n / m annotated` · **Save and stay** (ghost, ⌘S) · the review move (outline) · overflow `⋯` |
+
+  **Everything that changes the picture on screen is in the centre cluster, and nothing
+  else is** (#416). The gallery and `‹` `›` used to sit at the far left beside the back
+  arrow, and **Skip** and **Save and next** at the far right beside the overflow: two
+  motion clusters at opposite ends of a 44px row, same destination, different meanings,
+  with nothing on screen to say which was which. Adjacency is the explanation. One
+  `h-5 w-px` divider each separates the three sub-groups — **instrument | browse |
+  resolve** — so the difference between *look at another frame* and *finish this one* is
+  a hairline rather than something learned.
+
+  `‹` `›` **browse**: they move without settling progress, under the same save-first
+  guard back and the gallery use. `n/m` renders between them in `tabular-nums`, so
+  walking a job does not shuffle the arrows under a cursor that has not moved.
+
+  **The centre is anchored on the bar's geometric centre**, not balanced between two flex
+  spacers: the header is a `1fr auto 1fr` grid, the two flexible tracks take an equal
+  share of what is left by definition, and the side tracks yield — a label truncates,
+  never a control. Two widths inside the cluster are pinned for the same reason — the
+  class field's slot (`w-48`, kept even on a read-only frame where there is no field to
+  put in it) and the flow verb's `min-w-36`, which is the widest of `Next` /
+  `Save and next` / `Finish job` / `Finished`. The cluster's controls therefore hold one
+  screen position through every frame state.
+
+  **Equal halves is what a centred bar costs, and the right zone is the heavier side.**
+  Measured in chromium at 1440: left 290px, cluster 616px, right 460px — so each side is
+  offered 382px and the right wants 460. Reserving the class field's slot is what tips it,
+  which is why the reservation is 192px and not the trigger's 256px maximum. The remedy is
+  the bar's own, unchanged in kind: the two reabsorbable controls each start using their
+  overflow row one breakpoint sooner. Nothing new moved into the overflow.
 
   **The filled slot is the flow verb** (#383). After finishing a frame the right move is
   *this one is done, show me the next* — and until #383 that had no button at all: the
@@ -533,11 +561,15 @@ The page the reference design shows (#56), with measurements verified in v1's so
   when no save will happen** — an untouched frame, or one that cannot be written to at
   all — because the button never promises a save it will not perform.
 
-  **On the last frame `Finish job` takes the filled slot** and `Save and next` is not
-  rendered: there is nothing to advance to, and finishing is what the job is for.
-  Everywhere else Finish job keeps its outline treatment and stays visible, disabled with
-  a reason. The filled slot is therefore contended by nothing — which frame you are on is
-  this page's own arithmetic, not a declaration anything else can co-claim.
+  **On the last frame `Finish job` takes the filled slot**, in place: `Save and next` is
+  not rendered there, and Finish job is not rendered anywhere else (#416). There is
+  nothing to advance to, and finishing is what the job is for. It used to render on every
+  frame, greyed with nothing attached for as long as one frame was unannotated — a bare
+  disabled control at 0 of 48, which principle 9 forbids. Where it does render it carries
+  why it cannot be pressed. The filled slot is therefore contended by nothing — which
+  frame you are on is this page's own arithmetic, not a declaration anything else can
+  co-claim — and the consequence is worth stating: `complete` is reachable from the last
+  frame only.
 
   **The review move is an outline control**, chosen from the frame's own
   `allowed_actions`: `submit_for_review`, else `accept`. The two are mutually exclusive by
@@ -555,10 +587,12 @@ The page the reference design shows (#56), with measurements verified in v1's so
   press meaning *store this now, without going anywhere* two clicks from the work. Ghost
   is the honest weight for a control most people never need.
 
-  **Reabsorption order when the bar runs out of room**: `Save and stay` first, the review
-  move second, into the overflow; the Skip/Save-and-next pair never collapses. Each
-  reabsorbed control carries the exact inverse of its button's breakpoint, so it exists in
-  exactly one place at any width.
+  **Reabsorption order when the bar runs out of room**: `Save and stay` first (below
+  `2xl`), the review move second (below `xl`), into the overflow; the Skip/Save-and-next
+  pair never collapses. Each reabsorbed control carries the exact inverse of its button's
+  breakpoint, so it exists in exactly one place at any width. The `n / m annotated`
+  readout has no overflow row and needs none — it truncates, which is what a sentence may
+  do and a button may not.
 
   **Hotkey chips go on the ghost and outline controls and on nothing else** — `⌘S` on
   Save and stay, `X` on Skip, both rows in `core/input/bindings.ts`. A chip is a muted

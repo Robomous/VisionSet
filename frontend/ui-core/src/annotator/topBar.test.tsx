@@ -354,6 +354,62 @@ function filled(): HTMLElement[] {
   );
 }
 
+describe("the navigation cluster (#416)", () => {
+  /** Every control on the bar whose press puts a different picture on screen. */
+  const FRAME_CHANGING = ["open-gallery", "prev-asset", "next-asset", "skip", "save-and-next"];
+
+  it("holds every control that changes the frame, and the count they move", async () => {
+    // The claim the regroup exists to make, written as a containment check rather
+    // than as prose: these were split across the two far ends of the bar, one
+    // pair beside the back arrow and the other beside the overflow. A control
+    // that drifted back out — or a new one added to the wrong zone — fails here.
+    assetCount = 2;
+    await open();
+
+    const cluster = screen.getByTestId("frame-navigation");
+    for (const testId of FRAME_CHANGING) {
+      expect(cluster.contains(screen.getByTestId(testId)), `${testId} is outside`).toBe(true);
+    }
+    expect(cluster.contains(screen.getByTestId("asset-position"))).toBe(true);
+  });
+
+  it("leaves nothing in the left zone that changes the frame", async () => {
+    // The other direction, and the one that would go unnoticed: the identity
+    // label is what is left where the navigator used to be, and it is a label.
+    // `Back` is the zone's only control and it goes *up*, not sideways.
+    assetCount = 2;
+    await open();
+
+    const cluster = screen.getByTestId("frame-navigation");
+    const identity = screen.getByTestId("asset-identity");
+    expect(cluster.contains(identity)).toBe(false);
+    expect(identity.tagName).toBe("SPAN");
+    // The hash and the count were one readout; they are two things now, and the
+    // count is the half that travelled.
+    expect(identity.textContent).not.toContain("/");
+    expect(screen.getByTestId("asset-position").textContent).toBe("1/2");
+  });
+
+  it("keeps the class field's slot when there is no class field in it", async () => {
+    // A read-only frame renders no drawing class — and if the slot collapsed with
+    // it, every control to its right would slide half a combobox sideways on
+    // exactly the walk `‹ ›` exist for. The reservation is what holds the cluster
+    // still across frames of different progress.
+    progress = "accepted";
+    assetCount = 2;
+    await open();
+
+    const cluster = screen.getByTestId("frame-navigation");
+    const slot = screen.getByTestId("class-field-slot");
+    expect(screen.queryByTestId("class-field-trigger")).toBeNull();
+    expect(cluster.contains(slot)).toBe(true);
+    // A reservation is a *fixed* width; `w-auto` or nothing at all is the shape
+    // of the bug this guards, and it is invisible in jsdom's zero-size layout —
+    // so the class is the assertion, and the pixels are the browser suite's.
+    expect(slot.className).toMatch(/(^|\s)w-\d+(\s|$)/);
+  });
+});
+
 describe("the flow verb", () => {
   it("is the filled control while a next frame exists", async () => {
     assetCount = 2;
@@ -362,9 +418,39 @@ describe("the flow verb", () => {
     expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual([
       "save-and-next",
     ]);
-    // Finish job is still on the bar, and still outline — it is the job's action
-    // and this is not the end of the job.
-    expect(screen.getByTestId("finish-job").className).not.toContain("bg-primary");
+  });
+
+  it("does not render Finish job at all on a frame that is not the last (#416)", async () => {
+    // The conformance defect this replaces: **Finish job rendered on every
+    // frame**, disabled with nothing attached for as long as one frame was
+    // unannotated — a bare greyed control on a fresh job at 0 of 48, which is
+    // `DESIGN.md` principle 9's exact prohibition. It also contradicted #383,
+    // which settled that the filled slot is `Save and next` while there is
+    // somewhere to advance to and `Finish job` when there is not.
+    //
+    // Deliberately asserted on the *most* favourable mid-job state there is:
+    // every frame settled, so `complete` is declared and the old button would
+    // have been live rather than merely grey. Absence here is about position, not
+    // about legality.
+    assetCount = 2;
+    jobSettled = true;
+    progress = "annotated";
+    await open();
+
+    expect(screen.queryByTestId("finish-job")).toBeNull();
+    expect(screen.getByTestId("save-and-next")).toBeDefined();
+  });
+
+  it("says why Finish job cannot be pressed where it does render (#416, principle 9)", async () => {
+    // The other half: it appears on the last frame whether or not the job can be
+    // finished — it is the filled slot there — so on that frame it owes a reason.
+    assetCount = 1;
+    jobSettled = false;
+    await open();
+
+    const finish = screen.getByTestId("finish-job");
+    expect(finish.hasAttribute("disabled")).toBe(true);
+    expect(finish.getAttribute("title")).toMatch(/before this job can finish/i);
   });
 
   it("hands the filled slot to Finish job on the last frame, and does not render", async () => {
