@@ -59,9 +59,9 @@
 
 import { bboxHandlePositions } from "../geometry/bbox";
 import type { BboxHandle } from "../geometry/bbox";
-import { polygonCloseAttempt } from "../geometry/hitTest";
+import { polygonCloseAttempt, topmostAnnotationAt } from "../geometry/hitTest";
 import { clampPoint } from "../geometry/primitives";
-import { annotationById } from "../state/document";
+import { annotationById, annotationsInDrawOrder } from "../state/document";
 import type { Point } from "../types";
 import type { InteractionState } from "./state";
 import { NO_TARGET, resolveTarget } from "./target";
@@ -253,4 +253,44 @@ export function affordanceAt(
     default:
       return unreachable(state);
   }
+}
+
+/**
+ * The affordance a **viewer** answers, where selection is the only gesture
+ * (#426).
+ *
+ * The cursor is `default` everywhere — decision (b): a read-only page never
+ * shows `move`, because no move exists to promise. What survives is the hot
+ * body, so hovering still says *this is the shape a press would pick*: a
+ * highlight aids selection, which is a read, where a cursor change advertises
+ * an edit.
+ *
+ * It deliberately does not call `resolveTarget`: that resolver offers grips and
+ * vertices on the selected shape, and a viewer draws none (the same mirror as
+ * `AnnotationShape` — a target that cannot be painted must not be resolvable).
+ * Instead it answers from `topmostAnnotationAt` with the body tolerance — the
+ * **same rule the viewer's press uses**, so the highlight and the selection
+ * cannot disagree, which is this module's whole contract restated for the mode.
+ */
+export function viewerAffordanceAt(scene: Scene, point: Point): Affordance {
+  const id = viewerPressTarget(scene, point);
+  return id === null
+    ? { cursor: "default", hot: NO_TARGET }
+    : { cursor: "default", hot: { kind: "body", id } };
+}
+
+/**
+ * What a viewer's press selects: the topmost shape under the point, or nothing.
+ *
+ * One function for the press and the hover above — and it is also the rule the
+ * right-click menu already resolves with, so every pointer gesture a viewer has
+ * agrees about what is "under" a point.
+ */
+export function viewerPressTarget(scene: Scene, point: Point): string | null {
+  const hit = topmostAnnotationAt(
+    annotationsInDrawOrder(scene.document),
+    point,
+    scene.tolerances.shape,
+  );
+  return hit === null ? null : hit.id;
 }

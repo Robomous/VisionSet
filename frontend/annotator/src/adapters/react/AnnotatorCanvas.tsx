@@ -128,7 +128,7 @@ import type {
 
 import { topmostAnnotationAt } from "../../core/geometry/hitTest";
 import { assetTolerances } from "../../core/geometry/tolerance";
-import { affordanceAt } from "../../core/interaction/affordance";
+import { affordanceAt, viewerAffordanceAt } from "../../core/interaction/affordance";
 import { transition } from "../../core/interaction/machine";
 import { runEffects } from "../../core/interaction/runEffects";
 import { IDLE } from "../../core/interaction/state";
@@ -155,6 +155,7 @@ import type { Clipboard } from "../../core/interaction/clipboard";
 import type { IdFactory } from "../../core/ids";
 import { annotationsInDrawOrder } from "../../core/state/document";
 import type { AnnotationDocument } from "../../core/state/document";
+import { clearSelection, selectOnly } from "../../core/state/selection";
 import type { Selection } from "../../core/state/selection";
 import type { AnnotatorStore } from "../../core/state/store";
 import type { Point } from "../../core/types";
@@ -662,11 +663,28 @@ export function AnnotatorCanvas({
     // was clicked. Pressing on it is the click.
     rootRef.current?.focus({ preventScroll: true });
 
-    // Read-only: a primary press is the start of every document change this
-    // component can make — a draw, a move, a resize, a vertex drag — so it is
-    // the one that stops. Non-primary is a pan, which changes nothing, and
-    // falls through to the branch below.
-    if (readOnly && button === "primary") return;
+    // Read-only: a primary press *selects* and does nothing else (#426). It
+    // never reaches the machine, so no drag state — a draw, a move, a resize, a
+    // vertex drag — is reachable at all, which is a stronger guarantee than
+    // gating each one. Selection is a read: it is what lets the panel name the
+    // shape somebody is looking at, and it is the first half of the copy that
+    // carries a box into a correction batch. The hit rule below is
+    // `topmostAnnotationAt` with the body tolerance over the hidden-filtered
+    // document — the same rule `viewerAffordanceAt` highlights with and the
+    // same one the right-click menu resolves, so the highlight, the press and
+    // the menu cannot disagree about what is "under" a point. Non-primary is a
+    // pan, which changes nothing, and falls through to the branch below.
+    if (readOnly && button === "primary") {
+      const point = imagePoint(event);
+      if (point === null) return;
+      const hit = topmostAnnotationAt(
+        annotationsInDrawOrder(withoutHidden(store.document, hiddenNow.current)),
+        point,
+        assetTolerances(viewNow.current.zoom).shape,
+      );
+      store.select(hit === null ? clearSelection() : selectOnly(hit.id));
+      return;
+    }
 
     if (button !== "primary") {
       // `state.ts`'s written contract: while panning the adapter forwards nothing,
@@ -757,14 +775,22 @@ export function AnnotatorCanvas({
   const affordance =
     hover === null
       ? { cursor: "default" as const, hot: NO_TARGET }
-      : affordanceAt(
-          interaction,
-          // Built from what is **rendered**, where the machine's context is the
-          // committed document — `affordance.ts` states that asymmetry.
-          { document: visibleRendered, selection: snapshot.selection, tolerances },
-          tool,
-          hover,
-        );
+      : readOnly
+        ? // The viewer's answer (#426): `default` everywhere — no cursor may
+          // promise a move that cannot happen — with the hot body kept, because
+          // a highlight aids the one gesture a viewer has, which is selecting.
+          viewerAffordanceAt(
+            { document: visibleRendered, selection: snapshot.selection, tolerances },
+            hover,
+          )
+        : affordanceAt(
+            interaction,
+            // Built from what is **rendered**, where the machine's context is the
+            // committed document — `affordance.ts` states that asymmetry.
+            { document: visibleRendered, selection: snapshot.selection, tolerances },
+            tool,
+            hover,
+          );
   const hotBodyId = affordance.hot.kind === "body" ? affordance.hot.id : null;
 
   const skipId = editedId(interaction);
@@ -881,6 +907,7 @@ export function AnnotatorCanvas({
               skipId={skipId}
               hotId={hotBodyId}
               zoom={view.zoom}
+              handles={!readOnly}
             />
             <TransientLayer
               edited={edited}

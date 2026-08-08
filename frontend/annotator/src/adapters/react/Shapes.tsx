@@ -155,6 +155,8 @@ function labelAnchor(shape: PaintedAnnotation): Point {
 interface ShapeProps {
   readonly shape: PaintedAnnotation;
   readonly zoom: number;
+  /** Whether selection grows grips and vertex dots — `false` in a viewer (#426). */
+  readonly handles: boolean;
 }
 
 /**
@@ -336,9 +338,11 @@ export function PolylineShape({ geometry, color, hot, selected }: {
  * Grips and vertices are drawn only for a selected shape, which mirrors
  * `resolveTarget` — it looks for a handle or a vertex only among the *selected*
  * annotations, so painting them on an unselected one would offer a grip that
- * cannot be taken.
+ * cannot be taken. `handles` is the same mirror for the read-only mode (#426):
+ * a viewer's press cannot take a grip either, so none is painted — selection
+ * there is the stroke and the label, nothing more.
  */
-export function AnnotationShape({ shape, zoom }: ShapeProps): JSX.Element {
+export function AnnotationShape({ shape, zoom, handles }: ShapeProps): JSX.Element {
   return (
     <g data-annotation-id={shape.id} data-label-class={shape.labelClass}>
       {shape.geometry.type === "bbox" ? (
@@ -364,10 +368,11 @@ export function AnnotationShape({ shape, zoom }: ShapeProps): JSX.Element {
         />
       )}
       <ShapeLabel shape={shape} />
-      {shape.selected && shape.geometry.type === "bbox" && (
+      {handles && shape.selected && shape.geometry.type === "bbox" && (
         <Grips geometry={shape.geometry} color={shape.color} zoom={zoom} hotHandle={null} />
       )}
-      {shape.selected &&
+      {handles &&
+        shape.selected &&
         (shape.geometry.type === "polygon" || shape.geometry.type === "polyline") && (
         <Vertices
           points={shape.geometry.points}
