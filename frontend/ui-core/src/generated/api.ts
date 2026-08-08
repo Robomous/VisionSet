@@ -796,6 +796,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inference/download-size": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inference Download Size
+         * @description How big fetching that model's weights would be, before anybody fetches them.
+         *
+         *     What the local-connection form shows beside its confirm control, so the
+         *     decision recorded on #418 — that VisionSet downloads nothing on its own — is
+         *     one somebody can actually make (`cf. #421`, `#424`).
+         *
+         *     **This downloads nothing.** It reads the publishing hub's file listing, which
+         *     is the one question answerable before the download it describes. The number
+         *     covers every file in the revision, because that is what the download fetches.
+         *
+         *     Query parameters rather than a path, because a model id contains a slash
+         *     (`facebook/sam2-hiera-base-plus`) and a segment that has to be escaped to be
+         *     written is a URL people get wrong by hand.
+         *
+         *     **Not a connection route**, and it takes no connection id: the moment the
+         *     number is needed is the moment before the connection exists. Asking about a
+         *     connection that already exists is the same pair of values, asked the same way.
+         *
+         *     Refused with the install command when the local runtime is absent — the size
+         *     is read with the same client that would do the fetching — and refused rather
+         *     than guessed when the hub cannot size every file in the revision.
+         */
+        get: operations["inference_download_size"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/inference/suggest": {
         parameters: {
             query?: never;
@@ -2730,6 +2770,25 @@ export interface components {
              * Format: uuid
              */
             dataset_id: string;
+        };
+        /**
+         * DownloadSizeOut
+         * @description What fetching a model's weights would cost, before anybody fetches them.
+         *
+         *     Answered from the publishing hub's file listing, so asking costs a metadata
+         *     request and never a download. The pair is echoed back for ``SuggestionOut``'s
+         *     reason: a form that had to remember which model it asked about would be
+         *     keeping a second copy of something the response can simply state.
+         */
+        DownloadSizeOut: {
+            /** File Count */
+            file_count: number;
+            /** Model Id */
+            model_id: string;
+            /** Model Revision */
+            model_revision: string;
+            /** Total Bytes */
+            total_bytes: number;
         };
         /**
          * ErrorBody
@@ -5671,6 +5730,65 @@ export interface operations {
             };
             /** @description The resource's state refuses this request */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    inference_download_size: {
+        parameters: {
+            query: {
+                model_id: string;
+                model_revision: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadSizeOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

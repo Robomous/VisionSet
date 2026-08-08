@@ -68,6 +68,7 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     Dataset,
     DatasetStats,
+    DownloadSize,
     ExportCompatibility,
     ExportResult,
     Geometry,
@@ -590,4 +591,19 @@ def connection(value: InferenceConnection) -> dict[str, Any]:
         ],
         "created_at": _moment(value.created_at),
         "updated_at": _moment(value.updated_at),
+    }
+
+
+def download_size(value: DownloadSize) -> dict[str, Any]:
+    """What fetching a model's weights would cost, before anybody fetches them.
+
+    Bytes rather than a formatted string, on ``export_result``'s terms: how to
+    say "2.3 GB" is a question about a locale and a screen width, and a machine
+    reading this wants the integer either way.
+    """
+    return {
+        "model_id": value.model_id,
+        "model_revision": value.model_revision,
+        "total_bytes": value.total_bytes,
+        "file_count": value.file_count,
     }

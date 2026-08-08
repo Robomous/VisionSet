@@ -34,7 +34,7 @@ from enum import StrEnum
 from typing import Final
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ConnectionType(StrEnum):
@@ -91,6 +91,43 @@ A set that is total today is not a set that is pointless: the alternative is
 ``connection_actions`` returning a hardcoded list, which is precisely the second
 encoding ``capabilities`` exists to prevent.
 """
+
+
+class DownloadSize(BaseModel):
+    """What fetching a model's weights would cost, before anybody fetches them.
+
+    The answer to the question a setup form has to ask on somebody's behalf: the
+    decision recorded on #418 is that VisionSet downloads nothing on its own, and
+    a person can only make that decision if the size is on screen **before** they
+    confirm. So this is read separately from the download and ahead of it.
+
+    **A pair, not a connection.** It is keyed on a model id and a revision rather
+    than on an :class:`InferenceConnection`, because the moment it is needed is
+    the moment before a connection exists — the form is being filled in. A
+    connection that already exists is the same pair, asked the same way.
+
+    **Every file, because the download fetches every file.** ``total_bytes`` is
+    the whole revision rather than the weights alone: what gets fetched is a
+    snapshot, so a number counting only ``.safetensors`` would be a smaller
+    number than the thing it claims to describe. A repository publishing both a
+    ``.bin`` and a ``.safetensors`` copy of the same tensors is therefore
+    reported at the sum of the two, which is what will actually land on the disk.
+
+    Not persisted anywhere. A size is a fact about a published revision, so it is
+    the same answer on every machine and there is nothing about it worth storing
+    in a workspace.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model_id: str
+    model_revision: str
+    #: A revision whose size could not be established is a refusal, never a zero
+    #: here: a form showing "0 B" would be inviting somebody to confirm a download
+    #: it knows nothing about. The bound admits zero because the type should not
+    #: encode a lookup's policy, not because anything answers with it.
+    total_bytes: int = Field(ge=0)
+    file_count: int = Field(ge=0)
 
 
 class InferenceConnection(BaseModel):

@@ -1,10 +1,14 @@
 # usage: from visionset.cli.inference import inference_app
 """``visionset inference`` — configuring where a model may be asked to predict.
 
-Six commands over one service, so a workspace can be made ready for
-auto-labeling without a browser — including the one operation that reaches a
-network, ``download``. Contacting an endpoint is still absent (`cf. #421`): a
-command that cannot work is worse than one that is not there yet.
+Seven commands, so a workspace can be made ready for auto-labeling without a
+browser. Six are one call to ``InferenceConnectionService``; ``size`` is the
+exception and says so — it is about a published model rather than about a
+configured row, so it opens no workspace at all. Two reach a network:
+``download``, which fetches, and ``size``, which reads a listing so that
+``download`` can be an informed decision. Contacting a configured endpoint is
+still absent (`cf. #421`): a command that cannot work is worse than one that is
+not there yet.
 
 **``download`` blocks, and that is ``ingest``'s pattern rather than a shortcut.**
 The API queues the same work because it has a dispatcher to run it; a terminal
@@ -23,9 +27,10 @@ from uuid import UUID
 import typer
 
 from visionset import wire
+from visionset.cli._errors import domain_errors
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.inference import fetch_weights
+from visionset.inference import download_size, fetch_weights
 from visionset.kernel.domain import ConnectionType, InferenceConnection
 from visionset.kernel.services import InferenceConnectionService
 
@@ -140,6 +145,36 @@ def inference_update(
         return
     note(f"Updated connection {edited.name!r}.")
     typer.echo(str(edited.id))
+
+
+@inference_app.command("size")
+def inference_size(
+    model_id: Annotated[str, typer.Argument(help="Which model, at its source.")],
+    model_revision: Annotated[
+        str, typer.Option("--revision", help="Pinned. A size is a fact about one revision.")
+    ],
+    json_out: JsonOption = False,
+) -> None:
+    """How big fetching that model's weights would be. Nothing is downloaded.
+
+    The number to look at *before* running ``download``, read from the publishing
+    hub's file listing rather than from the files. It covers every file in the
+    revision, because that is what the download fetches.
+
+    Takes a model and a revision rather than a connection, and opens no
+    workspace: the moment the number is wanted is usually the moment before a
+    connection exists. ``domain_errors`` is therefore explicit here, where every
+    other command in this file inherits it from ``opened_workspace`` — a missing
+    extra is still a refusal and must still be a sentence rather than a
+    traceback.
+    """
+    with domain_errors():
+        size = download_size(model_id, model_revision)
+    if json_out:
+        document(wire.download_size(size))
+        return
+    note(f"{size.file_count} files in {size.model_id} at {size.model_revision}.")
+    typer.echo(str(size.total_bytes))
 
 
 @inference_app.command("download")

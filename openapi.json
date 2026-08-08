@@ -1921,6 +1921,35 @@
         "title": "DatasetStatsOut",
         "type": "object"
       },
+      "DownloadSizeOut": {
+        "description": "What fetching a model's weights would cost, before anybody fetches them.\n\nAnswered from the publishing hub's file listing, so asking costs a metadata\nrequest and never a download. The pair is echoed back for ``SuggestionOut``'s\nreason: a form that had to remember which model it asked about would be\nkeeping a second copy of something the response can simply state.",
+        "properties": {
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "model_revision": {
+            "title": "Model Revision",
+            "type": "string"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model_id",
+          "model_revision",
+          "total_bytes",
+          "file_count"
+        ],
+        "title": "DownloadSizeOut",
+        "type": "object"
+      },
       "ErrorBody": {
         "description": "The one error shape this API emits, at every status.",
         "properties": {
@@ -6417,6 +6446,93 @@
           }
         ],
         "summary": "Download Connection Weights",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/inference/download-size": {
+      "get": {
+        "description": "How big fetching that model's weights would be, before anybody fetches them.\n\nWhat the local-connection form shows beside its confirm control, so the\ndecision recorded on #418 \u2014 that VisionSet downloads nothing on its own \u2014 is\none somebody can actually make (`cf. #421`, `#424`).\n\n**This downloads nothing.** It reads the publishing hub's file listing, which\nis the one question answerable before the download it describes. The number\ncovers every file in the revision, because that is what the download fetches.\n\nQuery parameters rather than a path, because a model id contains a slash\n(`facebook/sam2-hiera-base-plus`) and a segment that has to be escaped to be\nwritten is a URL people get wrong by hand.\n\n**Not a connection route**, and it takes no connection id: the moment the\nnumber is needed is the moment before the connection exists. Asking about a\nconnection that already exists is the same pair of values, asked the same way.\n\nRefused with the install command when the local runtime is absent \u2014 the size\nis read with the same client that would do the fetching \u2014 and refused rather\nthan guessed when the hub cannot size every file in the revision.",
+        "operationId": "inference_download_size",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "title": "Model Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model_revision",
+            "required": true,
+            "schema": {
+              "title": "Model Revision",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSizeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Inference Download Size",
         "tags": [
           "inference"
         ]
