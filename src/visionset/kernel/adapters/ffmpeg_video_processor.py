@@ -44,11 +44,18 @@ _PROBE_ARGS: Final = (
 
 #: Every ffmpeg argument that decides what comes out, pinned. Each one earns it:
 #:
-#: ``-xerror`` is load-bearing and the least obvious. Without it ffmpeg reports a
-#: truncated clip on stderr, exits **zero**, and hands back the frames it managed
-#: to decode — so a damaged file would ingest as a short one and nothing would
-#: ever say so. Its opposite number, ``-err_detect explode``, is deliberately not
-#: here: it rejects perfectly good files.
+#: **There is deliberately no ``-xerror``**, and its absence is the least obvious
+#: thing here. It reads as the obvious way to make a damaged clip fail loudly —
+#: exit non-zero the moment the decoder reports an error — and it was in the
+#: command until #444. What it also does is abort *in place*, without flushing the
+#: frames already queued for the muxer, and the depth of that queue is the
+#: decoder's thread count, which ffmpeg picks from the host's core count when
+#: nobody says otherwise. One truncated clip therefore salvaged 46 frames on four
+#: cores, 34 on sixteen and 30 on twenty; the suite's own fixture salvaged 4 and
+#: 0. Letting the run finish instead makes the output byte-identical at every
+#: thread count, and loses nothing: the error still arrives, on stderr, which is
+#: where :func:`_extract` now reads it. ``-err_detect explode`` is not here
+#: either, for the older reason — it rejects perfectly good files.
 #:
 #: ``fps=...:round=up`` is the extraction grid *and* the reason
 #: ``timestamp = index / fps`` is honest. The filter maps each input frame onto an
@@ -309,9 +316,16 @@ def _last_lines(output: str, *names: str) -> str:
     return "; ".join(tail) if tail else "the decoder gave no reason"
 
 
-def _diagnostic(diagnostics: IO[bytes], *names: str) -> str:
+def _complaint(diagnostics: IO[bytes]) -> str:
+    """Everything the decoder wrote, raw — and for an intact clip that is nothing.
+
+    At ``-loglevel error`` ffmpeg is silent on a file it read to the end, so an
+    empty answer here is a positive statement and not merely an absent one. That
+    is what lets :func:`_extract` treat *anything at all* as the break, rather
+    than parsing which complaint it was.
+    """
     diagnostics.seek(0)
-    return _last_lines(diagnostics.read().decode("utf-8", "replace"), *names)
+    return diagnostics.read().decode("utf-8", "replace").strip()
 
 
 class FfmpegVideoProcessor:
@@ -471,12 +485,21 @@ def _extract(ffmpeg: str, source: Path, fps: float, clip: str) -> Iterator[Video
     fastidiousness: reading stdout while an unread stderr pipe fills its buffer
     deadlocks, and a damaged clip — the exact input this has to survive — is what
     makes ffmpeg talkative.
+
+    That file is also the signal. Without ``-xerror`` (see ``_EXTRACTION_ARGS``)
+    ffmpeg decodes as far as it can, hands back every frame it got, and exits
+    **zero** on a clip whose bytes ran out — so what happened is read from what it
+    said rather than from how it exited. The two are near enough the same event:
+    ``-xerror`` is a check for the error-level log this reads, bolted to an
+    immediate exit. Dropping it keeps the report and drops the truncation.
+
+    The exit code is still consulted, and still carries the case stderr cannot: a
+    file ffmpeg never opened at all.
     """
     command = [
         ffmpeg,
         "-nostdin",
         "-loglevel", "error",
-        "-xerror",
         "-i", str(source),
         "-vf", f"fps=fps={fps}:round=up",
         *_EXTRACTION_ARGS,
@@ -510,8 +533,9 @@ def _extract(ffmpeg: str, source: Path, fps: float, clip: str) -> Iterator[Video
         finally:
             _stop(process)
 
-        if returncode != 0:
-            detail = _diagnostic(diagnostics, str(source), clip)
+        complaint = _complaint(diagnostics)
+        if returncode != 0 or complaint:
+            detail = _last_lines(complaint, str(source), clip)
             if produced == 0:
                 # It never got a picture out, so there was nothing here to break:
                 # an intact file that is not one we can read.

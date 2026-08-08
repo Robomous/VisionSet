@@ -360,6 +360,47 @@ def test_a_truncated_clip_yields_what_decoded_and_then_refuses(tmp_path: Path) -
     assert 0 < len(decoded) < broken.frame_count
 
 
+def _decoded_with_threads(source: Path, *, threads: int, fps: float) -> list[VideoFrame]:
+    """The extraction, run with the decoder's thread count forced to `threads`.
+
+    ffmpeg takes that number from the host's core count when nobody says otherwise, which makes
+    it the one input to extraction a test cannot vary by running normally: a four-core runner and
+    a twenty-core laptop are different machines, not different cases. Forcing it through the
+    adapter's own `Popen` keeps the real command, the real binary and the real error handling,
+    and changes exactly the number under test.
+    """
+    real_popen = ffmpeg_video_processor.subprocess.Popen
+
+    def pinned(command: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        return real_popen([command[0], "-threads", str(threads), *command[1:]], **kwargs)  # type: ignore[arg-type]
+
+    decoded: list[VideoFrame] = []
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ffmpeg_video_processor.subprocess, "Popen", pinned)
+        with pytest.raises(CorruptMedia, match="damaged or truncated"):
+            for frame in FfmpegVideoProcessor().frames(source, fps=fps):
+                decoded.append(frame)
+    return decoded
+
+
+def test_a_truncated_clip_yields_the_same_frames_however_many_threads_decode_it(
+    tmp_path: Path,
+) -> None:
+    """#444: what survives a damaged clip must not depend on the hardware that opened it.
+
+    Sixteen is not an arbitrary large number — it is ffmpeg's own cap on the thread count it
+    picks for itself, so it is literally what any host with sixteen cores or more runs. This is
+    the half of #444 a four-core runner cannot see: there, the unforced number *is* four.
+    """
+    broken = write_corrupt_video(tmp_path / "broken.mp4")
+
+    many = _decoded_with_threads(broken.path, threads=16, fps=10)
+    one = _decoded_with_threads(broken.path, threads=1, fps=10)
+
+    assert [frame.content for frame in many] == [frame.content for frame in one]
+    assert 0 < len(many) < broken.frame_count
+
+
 def test_a_truncated_clip_still_probes(tmp_path: Path) -> None:
     """Deliberate: the index survived, so the container can still say what it holds."""
     broken = write_corrupt_video(tmp_path / "broken.mp4")
