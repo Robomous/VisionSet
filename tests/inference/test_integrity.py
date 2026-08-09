@@ -157,6 +157,23 @@ class FakeHub:
         # a purged blob with its symlink still in place — read as absent.
         return str(candidate) if candidate.exists() else None
 
+    def redownload(self, cache_dir: Path, repo_id: str, filename: str) -> bytes:
+        """What the download would put back, modelling the library's own rule.
+
+        **A surviving blob is re-linked, not re-fetched.** Verified against the
+        locked 1.26.0 by removing a snapshot symlink over a corrupt blob and
+        re-running the real ``snapshot_download``: the corrupt bytes came back.
+        That is precisely why a purge has to remove both, and modelling it here
+        is what lets a purge that removed only the link be seen as the failure
+        it is rather than as a pass.
+        """
+        published = self.files[filename]
+        folder = cache_dir / f"models--{repo_id.replace('/', '--')}"
+        for blob in (folder / "blobs").iterdir():
+            if blob.name in (published.blob_id, (published.lfs or {}).get("sha256")):
+                return blob.read_bytes()
+        return b"<freshly fetched>"
+
 
 def _snapshot(cache: Path, repo_id: str, commit: str) -> Path:
     """Where the library puts a revision's files. Verified against 1.26.0."""
@@ -336,6 +353,13 @@ def test_the_purge_removes_the_blob_so_the_next_download_really_re_fetches(
         revision=COMMIT,
     )
     assert found is None, "the download would still be served the damaged copy"
+    # And the stronger half: the *blob* is gone, so the next download is a
+    # transfer. Removing only the symlink would leave the library re-linking the
+    # damaged bytes and calling the connection ready again — the exact laundering
+    # this whole ordering exists to prevent.
+    assert hub.redownload(cache_root(workspace.root), "acme/sam", "config.json") != b"tampered\n", (
+        "a re-download would be served the damaged bytes from a surviving blob"
+    )
 
 
 def test_a_file_that_is_simply_gone_is_damage_too(
