@@ -94,11 +94,11 @@ def test_a_prompt_with_no_negatives_still_labels_every_point() -> None:
 
 def test_the_highest_scoring_mask_is_the_one_offered() -> None:
     """A click is ambiguous about scale; the model's own IoU head is what resolves it."""
-    assert best_of([0.2, 0.91, 0.5], [[], [], []]) == (1, 0.91)
+    assert best_of([0.2, 0.91, 0.5]) == (1, 0.91)
 
 
 def test_a_score_outside_the_domains_bounds_is_clamped_rather_than_refused() -> None:
-    assert best_of([1.0000001], [[]])[1] == 1.0
+    assert best_of([1.0000001])[1] == 1.0
 
 
 # --- what it refuses ----------------------------------------------------------
