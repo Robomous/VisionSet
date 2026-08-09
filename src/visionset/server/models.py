@@ -1755,10 +1755,6 @@ class SuggestRequest(BaseModel):
     #: to refuse. Sent by the caller because the class is the caller's state —
     #: the server would otherwise be guessing which class a click was meant for.
     allowed_geometries: list[GeometryType] = Field(min_length=1)
-    #: How much detail to keep when an outline becomes a polygon, as a fraction
-    #: of the region's own size. Null takes the server's default, which is what
-    #: every ordinary caller sends.
-    detail: float | None = Field(default=None, gt=0.0, le=1.0)
 
 
 class SuggestedRegion(BaseModel):

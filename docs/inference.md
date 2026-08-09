@@ -196,10 +196,11 @@ kind your schema would refuse would hand you a suggestion that cannot be accepte
 a model less sure than you asked for, or a shape too thin to be a polygon. `model_ref` is still
 there, because it is what an accepted suggestion has to carry.
 
-**`detail` controls how much of the outline survives simplification**, as a fraction of the
-region's own size rather than a pixel count, so one setting works on a thing eight pixels across
-and a thing eight hundred across alike. Omit it and the server's default keeps a typical object in
-the 10–40 vertex range. Smaller is more faithful and more vertices.
+**How much of the outline survives simplification is the server's setting, not a per-call knob.**
+The tolerance is a fraction of the region's own size rather than a pixel count, so one setting
+works on a thing eight pixels across and a thing eight hundred across alike, and it keeps a typical
+object in the 10–40 vertex range. There is nothing to send: every caller gets the same
+simplification, which is what makes two clients' suggestions comparable.
 
 ### Nothing is written, and the first click is the slow one
 

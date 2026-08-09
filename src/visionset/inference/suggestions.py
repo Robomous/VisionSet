@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from visionset.inference.masks import DEFAULT_DETAIL, narrowed
+from visionset.inference.masks import narrowed
 from visionset.inference.providers import ProviderPool, resident
 from visionset.kernel.domain import (
     AssetPrediction,
@@ -49,7 +49,6 @@ def suggest(
     connection_id: UUID,
     prompt: PointPrompt,
     allowed: tuple[GeometryType, ...],
-    detail: float = DEFAULT_DETAIL,
     minimum_confidence: float = 0.0,
     pool: ProviderPool | None = None,
 ) -> AssetPrediction:

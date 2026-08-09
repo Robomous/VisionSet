@@ -3367,19 +3367,6 @@
             "title": "Connection Id",
             "type": "string"
           },
-          "detail": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "maximum": 1.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Detail"
-          },
           "negative": {
             "items": {
               "$ref": "#/components/schemas/SuggestPoint"
