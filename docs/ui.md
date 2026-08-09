@@ -434,7 +434,18 @@ because the model reads the whole image once; refining after it is quick.
 **The proposal is not an annotation until it is accepted.** It is drawn faintly
 with a dashed outline, carries its class and the model's confidence beside it, and
 is in neither the document nor the undo history. `Esc` is its undo. Switching
-tools, switching frames or leaving the page discards it, and nothing is written.
+class, switching frames or leaving the page discards it, and nothing is written.
+
+**The tool stays armed while you change class.** Arming it is a decision about how
+to work, and picking the class to work on is the next thing you do — so a class
+switch ends the proposal on screen and not the tool. The next click asks under the
+new class, in its geometry and its colour. Only pressing the button again, or
+moving to another frame, puts the tool away.
+
+Land on a class that can hold no proposal — a tag, a lane — and the tool **parks**
+rather than switching itself off: the button dims and says why, the panel says what
+to pick, and the canvas goes back to drawing that class normally. Choose a box or a
+polygon class again and the tool carries on, with nothing to press.
 
 Accepting creates one ordinary annotation, in one undo step, carrying
 `provenance: model`, the `model_ref` the answer named and its `confidence` — the
@@ -444,7 +455,10 @@ frame settles the same way.
 **The tool is offered only for a class that can hold the answer.** The proposal
 comes back as a polygon for a polygon class and as the shape's bounding box for a
 box class; a schema whose classes are tag-only or lane-only gets no button at all,
-because there is no kind the answer could be expressed in.
+because there is no kind the answer could be expressed in. That is the *project*
+answered; the parked state above is the same question asked of the class you are
+holding, and it dims the button rather than removing it because the answer changes
+again the moment you pick another class.
 
 Arming it with no usable connection shows an in-editor panel saying what is
 missing — none configured, or configured with its weights not yet downloaded — and

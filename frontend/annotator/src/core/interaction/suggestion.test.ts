@@ -25,11 +25,14 @@ import {
   cleared,
   hasPending,
   isAcceptable,
+  isParked,
   isSuggestibleClass,
   promptOf,
   refused,
   schemaCanSuggest,
   suggestClassFor,
+  suggestibleClassIn,
+  withClass,
   withPoint,
 } from "./suggestion";
 import type { Suggestion, SuggestionState } from "./suggestion";
@@ -117,6 +120,100 @@ describe("which classes the tool is offered for", () => {
   it("falls back to the first suggestible class when the held one is not", () => {
     expect(suggestClassFor(schemaOf(LANE, ROAD, CAR), "lane")).toBe("road");
     expect(suggestClassFor(schemaOf(LANE, ROAD, CAR), null)).toBe("road");
+  });
+
+  it("reads the held class without the fallback, which is the parked question (#472)", () => {
+    const schema = schemaOf(LANE, ROAD, CAR);
+    expect(suggestibleClassIn(schema, "car")).toBe("car");
+    // The very case `suggestClassFor` answers `road` for. Moving somebody off the
+    // class they just picked is not this function's business.
+    expect(suggestibleClassIn(schema, "lane")).toBe(null);
+    expect(suggestibleClassIn(schema, null)).toBe(null);
+    expect(suggestibleClassIn(schema, "not-a-class")).toBe(null);
+  });
+});
+
+/**
+ * The class moving under an armed session (#472) — the behaviour #451 shipped, and
+ * the direction it was deliberately turned around in.
+ */
+describe("the active class moves and the session goes with it", () => {
+  it("returns the state by identity when the class did not really move", () => {
+    const state = showing();
+    // Not merely equal: the host folds this through on every render of the class
+    // it is already on, so a fresh object here would be a re-render per keystroke
+    // and, worse, a discarded preview.
+    expect(withClass(state, "car")).toBe(state);
+  });
+
+  it("stays armed on the new class, with nothing pending carried over", () => {
+    const state = withClass(armed("car"), "road");
+    expect(state.labelClass).toBe("road");
+    expect(state.status).toBe("idle");
+    expect(isParked(state)).toBe(false);
+    expect(hasPending(state)).toBe(false);
+  });
+
+  it("discards a preview the new class may not be able to hold", () => {
+    const shown = showing();
+    expect(shown.suggestion).not.toBe(null);
+
+    const moved = withClass(shown, "road");
+
+    // The shape was answered under `car`'s `allowed_geometries`; accepting it
+    // under `road` could write a kind that class does not admit.
+    expect(moved.suggestion).toBe(null);
+    expect(moved.points).toEqual([]);
+    expect(moved.status).toBe("idle");
+    expect(isAcceptable(moved)).toBe(false);
+    // And the tool is still armed, which is the whole of the change.
+    expect(moved.labelClass).toBe("road");
+  });
+
+  it("keeps the serial counting, so the answer in flight cannot repaint", () => {
+    const asked = withPoint(armed("car"), [10, 10], "positive");
+    const moved = withClass(asked, "road");
+
+    expect(moved.serial).toBe(asked.serial);
+    // The ask that was in flight lands under the old serial and is dropped whole.
+    expect(answered(moved, asked.serial - 1, proposal())).toBe(moved);
+
+    // And the next click on the new class cannot be answered by it either: the
+    // serial moves on rather than being handed back out.
+    const again = withPoint(moved, [20, 20], "positive");
+    expect(again.serial).toBe(asked.serial + 1);
+  });
+
+  it("parks on a class that can hold nothing, rather than ending", () => {
+    const state = withClass(showing(), null);
+    expect(isParked(state)).toBe(true);
+    expect(state.labelClass).toBe(null);
+    expect(state.suggestion).toBe(null);
+    expect(state.points).toEqual([]);
+  });
+
+  it("re-arms from parked on the class that unparked it, with no second press", () => {
+    const parked = withClass(armed("car"), null);
+    const back = withClass(parked, "road");
+
+    expect(isParked(back)).toBe(false);
+    // `road`, not `car`: a parked session resumes on the class the person has just
+    // picked, and nothing here remembers the one they left.
+    expect(back.labelClass).toBe("road");
+    expect(back.status).toBe("idle");
+  });
+
+  it("stays parked while the active class moves between classes that hold nothing", () => {
+    const parked = withClass(armed("car"), null);
+    expect(withClass(parked, null)).toBe(parked);
+  });
+
+  it("writes nothing while parked, whatever a caller believes about the status", () => {
+    const document = documentOf();
+    // Constructed, not reachable: a parked session cannot be `shown`. The guard is
+    // the guarantee — no class, no annotation — and not a formality.
+    const impossible: SuggestionState = { ...showing(), labelClass: null };
+    expect(acceptedAnnotation(document, impossible, () => "id-1")).toBe(null);
   });
 });
 

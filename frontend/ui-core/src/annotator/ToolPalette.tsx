@@ -58,6 +58,13 @@
  * principle 9's terms, and "no class in this project could accept the answer" is
  * a fact about the schema rather than a capability that is coming.
  *
+ * The *class* is a different question from the schema, and gets the other
+ * treatment (#472). An armed tool over a class that can hold nothing is **dimmed
+ * with its reason**, not hidden: the capability is real in this project and comes
+ * back the moment the active class moves, so a button that vanished and returned
+ * as somebody worked down the class list would be describing a project that keeps
+ * changing. `unavailable` carries the sentence.
+ *
  * ## Why this is a second component rather than the showcase's, moved
  *
  * `@visionset/app`'s `demo/ToolStrip.tsx` is the same rule with inline styles from
@@ -218,6 +225,18 @@ export interface ToolPaletteProps {
     /** Whether the tool is armed. Held by the host, like the active class. */
     readonly active: boolean;
     readonly onToggle: () => void;
+    /**
+     * Why the armed tool cannot act right now, or `null` when it can (#472).
+     *
+     * The *class* half of what the schema check above is the project half of: a
+     * schema with no suggestible class hides the button, and a suggestible schema
+     * sitting on a class that can hold nothing dims it and says so. Disabled-with-
+     * reason rather than hidden, because unlike the schema case this is a
+     * capability that comes back the moment the active class moves — a control
+     * that vanished and reappeared as somebody worked down the class list would
+     * be describing a project that keeps changing.
+     */
+    readonly unavailable?: string | null;
   };
   /**
    * Open the add-a-class dialog (#233), or absent where there is nowhere to add
@@ -297,8 +316,13 @@ export function ToolPalette({
       {suggest !== undefined && schemaCanSuggest(schema) && (
         <PaletteButton
           testId="tool-suggest"
-          label="Suggest (S)"
+          // The reason replaces the name, as it does for every other disabled
+          // control on this strip: the tooltip is where a refusal is readable, so
+          // a dimmed button still labelled "Suggest (S)" would be the bare
+          // disabled state principle 9 names.
+          label={suggest.unavailable ?? "Suggest (S)"}
           active={suggest.active}
+          disabled={suggest.unavailable !== undefined && suggest.unavailable !== null}
           onMouseDown={keepFocus}
           onClick={suggest.onToggle}
         >

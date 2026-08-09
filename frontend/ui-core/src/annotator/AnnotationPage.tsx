@@ -97,14 +97,17 @@ import {
   annotationsInDrawOrder,
   documentFromWire,
   hasPending,
+  isParked,
   parseGeometry,
   promptOf,
   randomUuid,
   refused,
   selectOnly,
   suggestClassFor,
+  suggestibleClassIn,
   toolFor,
   useAnnotatorSnapshot,
+  withClass,
   withPoint,
   type AnnotatorStore,
   type AnnotatorView,
@@ -782,6 +785,8 @@ function Workspace({
    * suggestion must not. D2 says switching assets discards, and the `key={asset.id}`
    * remount is that rule enforced by construction rather than by an effect
    * somebody has to remember to write.
+   *
+   * It survives a **class** switch, though, since #472 — see the effect below.
    */
   const [session, setSession] = useState<SuggestionState | null>(null);
 
@@ -893,8 +898,26 @@ function Workspace({
   }
 
   /**
-   * Switching tools discards (D2), and *switching tools* here means the active
-   * class moving off the one the session captured.
+   * The class the session would run under: the active one, or `null` where it can
+   * hold nothing a segmenter proposes.
+   */
+  const suggestibleClass = suggestibleClassIn(store.document.schema, activeClass);
+
+  /**
+   * The active class moved, and the tool goes with it (#472).
+   *
+   * **This is the behaviour #451 shipped, deliberately reversed.** That slice
+   * discarded the session whenever the active class left the one it captured, on
+   * the reading that moving the active class is how this build spells switching
+   * tools (D2). Directed (Armando, 2026-08-09): arming is a decision about how to
+   * work and picking a class is the next thing somebody does, so a class switch
+   * ends what is *pending* and not the session. `withClass` is the whole rule —
+   * swap, discard the preview, or park — and it returns the state by identity when
+   * the class did not really move, so this can fold unconditionally.
+   *
+   * Keyed on the derived class rather than on `activeClass`, so a schema that
+   * changed under the session is answered too, and so the effect is a no-op for
+   * two different classes that both park.
    *
    * The strip's other buttons, the panel's list and every digit hotkey all end at
    * `activateClass`, so this one effect covers all of them — where a handler on
@@ -903,8 +926,8 @@ function Workspace({
    * two agree by the time this runs.
    */
   useEffect(() => {
-    setSession((live) => (live === null || live.labelClass === activeClass ? live : null));
-  }, [activeClass]);
+    setSession((live) => (live === null ? live : withClass(live, suggestibleClass)));
+  }, [suggestibleClass]);
 
   /**
    * The one capability the canvas hands out rather than owning (#189).
@@ -1306,6 +1329,18 @@ function Workspace({
    * mirror of the rule to keep in step.
    */
   const suggesting = readOnly ? null : session;
+
+  /**
+   * The session as the **canvas** sees it — which is `null` while parked (#472).
+   *
+   * `AnnotatorCanvas`'s prop is the instruction to divert every primary press
+   * into a prompt point, and a parked session has nothing to prompt. The class
+   * that parked it may still be drawable — a lane is a `polyline` — so a canvas
+   * that swallowed those presses would have stopped being parked and started
+   * being broken. The panel and the strip get the whole session, because being
+   * parked is the thing they are there to say.
+   */
+  const diverting = suggesting !== null && !isParked(suggesting) ? suggesting : null;
 
   /**
    * Why it is read-only, in the words a person can act on.
@@ -2231,8 +2266,10 @@ function Workspace({
                 }}
                 // The suggest mode (#424). Its presence diverts every primary
                 // press away from the interaction machine, which is what stops a
-                // click meant for the model from drawing a box instead.
-                suggestion={suggesting}
+                // click meant for the model from drawing a box instead — so it is
+                // `diverting`, which drops a parked session (#472), and not the
+                // whole of `suggesting`.
+                suggestion={diverting}
                 onSuggestPoint={suggestAt}
               />
             )}
@@ -2294,7 +2331,20 @@ function Workspace({
               // #424. The strip hides it on a schema no class of which could
               // hold the answer; this page offers it because it has an API
               // behind it, which the showcase does not.
-              suggest={{ active: suggesting !== null, onToggle: toggleSuggest }}
+              //
+              // `unavailable` is the parked reading (#472): the schema can
+              // suggest, so the button is present, but the class the workspace is
+              // sitting on cannot hold one — which is a fact to state rather than
+              // a control that quietly stops working. Lit *and* dimmed, because
+              // both halves are true: the tool is still armed, and it cannot act.
+              suggest={{
+                active: suggesting !== null,
+                onToggle: toggleSuggest,
+                unavailable:
+                  suggesting !== null && isParked(suggesting)
+                    ? `Suggest is on, but “${activeClass ?? ""}” cannot hold a suggested shape`
+                    : null,
+              }}
             />
           )}
 
@@ -2311,6 +2361,9 @@ function Workspace({
           {suggesting !== null && (
             <SuggestPanel
               session={suggesting}
+              // The class the workspace is on, which the session's own only stops
+              // matching while parked — the one reading that has to name it (#472).
+              heldClass={activeClass}
               blocker={blocker}
               refusal={suggesting.refusal}
               onAccept={acceptSuggestion}
