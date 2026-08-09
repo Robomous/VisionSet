@@ -69,7 +69,8 @@ def suggest(
     Raises:
         InferenceConnectionNotFound: no such connection in this workspace.
         InferenceConnectionNotSetUp: a local connection whose weights are not here.
-        InferenceConnectionNotRunnable: nothing in this build runs that kind.
+        InferenceConnectionNotRunnable: nothing in this build runs that kind of
+            connection, or that model type.
         LocalInferenceUnavailable: the optional runtime is not installed.
         UnsupportedPrompt: that connection's model answers words, not places.
         ProjectNotFound: no such project.
