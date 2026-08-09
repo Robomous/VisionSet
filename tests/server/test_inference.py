@@ -407,3 +407,114 @@ def test_a_refused_download_creates_no_job(client: TestClient, runtime_present: 
     assert client.post(f"/inference/connections/{made['id']}/download").status_code == 409
     assert client.get("/background-jobs").json()["total"] == 0
     assert UUID(made["id"])
+
+
+# --- the download size, read before anybody agrees to a download ---------------
+
+
+@pytest.fixture()
+def listing(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str | None]]:
+    """A hub that lists files and refuses to fetch any.
+
+    Patched at ``visionset.inference.weights.imported`` — the one door the
+    optional runtime arrives through — so everything above it is the shipped
+    code: the counting, the refusals, and the cache.
+    """
+    asked: list[tuple[str, str | None]] = []
+
+    class Sibling:
+        def __init__(self, rfilename: str, size: int) -> None:
+            self.rfilename = rfilename
+            self.size = size
+
+    class Info:
+        siblings = [Sibling("config.json", 1_024), Sibling("model.safetensors", 300_000_000)]
+
+    class Hub:
+        @staticmethod
+        def model_info(repo_id: str, **kwargs: Any) -> type[Info]:
+            asked.append((repo_id, kwargs.get("revision")))
+            return Info
+
+        @staticmethod
+        def snapshot_download(**_: object) -> str:
+            raise AssertionError("reading a size must not download anything")
+
+    monkeypatch.setattr(weights_module, "imported", lambda _name: Hub)
+    weights_module.known_sizes().clear()
+    return asked
+
+
+def test_the_download_size_is_answered_from_the_listing(
+    client: TestClient, listing: list[tuple[str, str | None]]
+) -> None:
+    """The number D1 requires on screen before somebody confirms a download.
+
+    `Hub.snapshot_download` raises, so this reds if the route ever answers by
+    fetching what it is measuring.
+    """
+    response = client.get(
+        "/inference/download-size",
+        params={"model_id": "facebook/sam2-hiera-base-plus", "model_revision": "main"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "model_id": "facebook/sam2-hiera-base-plus",
+        "model_revision": "main",
+        "total_bytes": 300_001_024,
+        "file_count": 2,
+    }
+    assert listing == [("facebook/sam2-hiera-base-plus", "main")]
+
+
+def test_the_size_route_names_no_connection(
+    client: TestClient, listing: list[tuple[str, str | None]]
+) -> None:
+    """It is asked while a form is being filled in, so there is no row yet.
+
+    A workspace with no connections at all answers it, which is the state every
+    first-time setup is in.
+    """
+    assert client.get("/inference/connections").json()["total"] == 0
+    response = client.get(
+        "/inference/download-size",
+        params={"model_id": "some/model", "model_revision": "abc123"},
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_a_size_asked_for_twice_is_read_once(
+    client: TestClient, listing: list[tuple[str, str | None]]
+) -> None:
+    """A pinned revision is a fixed set of files, so the answer cannot go stale."""
+    for _ in range(2):
+        client.get(
+            "/inference/download-size",
+            params={"model_id": "some/model", "model_revision": "abc123"},
+        )
+    assert listing == [("some/model", "abc123")]
+
+
+def test_the_size_route_wants_both_halves_of_the_pair(client: TestClient) -> None:
+    """A size is a fact about one revision, so the revision is not optional."""
+    response = client.get("/inference/download-size", params={"model_id": "some/model"})
+    assert response.status_code == 422, response.text
+
+
+@pytest.mark.skipif(_extra_is_installed(), reason="the local runtime is installed here")
+def test_a_size_without_the_runtime_carries_the_install_command(client: TestClient) -> None:
+    """Unstubbed, and the same refusal the download gives.
+
+    The size is read with the client that would do the fetching, so a machine
+    without the extra cannot answer — and says what to install rather than
+    failing opaquely (design principle 9).
+    """
+    weights_module.known_sizes().clear()
+    response = client.get(
+        "/inference/download-size",
+        params={"model_id": "some/model", "model_revision": "abc123"},
+    )
+    assert response.status_code == 500, response.text
+    body = response.json()
+    assert body["code"] == "LOCAL_INFERENCE_UNAVAILABLE"
+    assert 'pip install "visionset[local-inference]"' in body["message"]

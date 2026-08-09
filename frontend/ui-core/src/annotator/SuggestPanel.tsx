@@ -44,7 +44,7 @@ import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { Button } from "../primitives/Button";
-import type { SuggestBlocker } from "./inferenceQueries";
+import type { SuggestBlocker } from "../data/inferenceQueries";
 
 export interface SuggestPanelProps {
   /** The session, whose status decides which sentence this card carries. */
@@ -289,7 +289,19 @@ function Card({
       data-testid={testId}
       data-tone={tone}
       role="status"
-      className={`absolute bottom-2 right-2 flex max-w-80 gap-2 rounded-lg border p-3 text-meta shadow-lg ${
+      /*
+        Above the zoom widget, not beside it. Both are bottom-right overlays on
+        the same stage, and at `bottom-2` this card sat *under* `ZoomWidget`'s
+        `bottom-3` box — which does not merely look wrong: the widget's subtree
+        intercepts the pointer, so the panel's own action could not be clicked at
+        all. It shipped that way in #451 because nothing had a destination to
+        click through to yet, and the e2e that gave it one is what found it.
+
+        `bottom-16` clears the widget's 44px row and its gutter. The two never
+        overlap now, so no z-index is needed and neither has to know about the
+        other beyond this line.
+      */
+      className={`absolute bottom-16 right-3 flex max-w-80 gap-2 rounded-lg border p-3 text-meta shadow-lg ${
         tone === "warn"
           ? "border-destructive/40 bg-destructive/5"
           : "border-border bg-card"

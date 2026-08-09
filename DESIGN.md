@@ -289,9 +289,14 @@ base**, line-height 1.6. One scale — reuse it, don't invent sizes:
 
 ## Layout
 
-- **App shell**: dark left rail (logo, collapse toggle, Home, Projects, account avatar at
-  the bottom — nothing else; #58), bright content area. Rail width 240px, 60px collapsed,
-  280px mobile — a single source of truth.
+- **App shell**: dark left rail (logo, collapse toggle, Home, Projects, Inference, account
+  avatar at the bottom — nothing else; #58, and #421's decision of 2026-08-08 which
+  supersedes it by adding Inference), bright content area. Rail width 240px, 60px
+  collapsed, 280px mobile — a single source of truth.
+  **What earns a rail entry**: a workspace-level object every project uses, which has
+  nowhere else to live. Model connections carry no project id, so a project tab would
+  state a scope the object does not have. A destination that belongs to one project does
+  not qualify, however often it is visited.
 - **Page widths**: lists/dashboards/detail `max-w-7xl`; forms/settings `max-w-3xl`;
   centered, `px-4 md:px-6 py-6`.
 - **Page header**: title + subtitle left, actions right, `border-b` below, `mb-8`.
@@ -329,7 +334,9 @@ from being rediscovered one screen at a time.
   to send anybody renders no control rather than a dead one.
 - **The rail is for top-level destinations only.** Per-screen return navigation never
   lives on it — that is what lets it name where it goes, and what keeps the rail the
-  four things `## Layout` gives it.
+  five things `## Layout` gives it. A rail destination therefore has no back-link of
+  its own, for the reason a tab has none: the rail *is* its way out, and a second
+  answer to "where am I" inside the pane would contradict it.
 - **The browser's Back button stays correct, and is never the only way out.** Nothing
   here replaces it; a `replace` navigation is still right where a change is a view of
   the same resource rather than a place (#171's tabs).

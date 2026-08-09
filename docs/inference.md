@@ -42,6 +42,8 @@ with WorkspaceService.open("./road-signs") as workspace:
         print(one.name, one.connection_type.value, one.setup_state.value)
 ```
 
+**In the browser:** the **Inference** entry in the rail. See *The Inference section* below.
+
 **Over HTTP:** `GET`/`POST /inference/connections`,
 `GET`/`PATCH`/`DELETE /inference/connections/{connection_id}`, and
 `POST /inference/connections/{connection_id}/download`. `PATCH` edits in place and leaves out what
@@ -75,6 +77,32 @@ or ask it to predict, and both refusals print the command above rather than sayi
 The action stays **offered** on a machine that lacks the extra, deliberately. Whether this
 installation has torch is not a fact about your connection, and a control that quietly vanished
 would leave the install command with nowhere to be shown.
+
+## Knowing what a download costs, before agreeing to it
+
+A decision you cannot see the price of is not a decision, so the size is readable on its own,
+ahead of anything being fetched:
+
+```bash
+visionset inference size facebook/sam2-hiera-base-plus --revision main
+```
+
+It prints the byte count on stdout and the file count on stderr, and `--json` gives the document
+the API answers with. Over HTTP it is
+`GET /inference/download-size?model_id=…&model_revision=…`.
+
+This reads the publishing hub's **file listing** — names and byte counts — and downloads nothing.
+It takes a model and a revision rather than a connection, because the moment the number is wanted
+is usually the moment before a connection exists; the same call answers for a connection that
+already has one.
+
+**Every file in the revision is counted**, because fetching takes the whole snapshot. A repository
+publishing two serialisations of the same tensors really does cost both, and a figure counting one
+of them would understate what lands on your disk. A revision the listing cannot fully size is
+refused rather than estimated.
+
+It needs the `local-inference` extra, because the size is read with the same client that would do
+the fetching. Without it you get `LOCAL_INFERENCE_UNAVAILABLE` and the install command.
 
 ## Fetching weights
 
@@ -214,9 +242,50 @@ provenance, and only this configuration is removed.
 That is also why a connection has no lifecycle to speak of — it is a form somebody filled in, and
 the remedy for a wrong one is to edit it or make another.
 
+## The Inference section
+
+Connections live behind **Inference** in the rail, beside Home and Projects. It is a top-level
+destination rather than something inside a project because a connection belongs to the
+*workspace*: it carries no project id, and every project uses the same ones.
+
+A workspace with none says so and offers one thing — **Add connection**. Creating one is two
+steps, because the two kinds share almost no fields: first where the model runs, then that kind's
+form.
+
+- **Local** opens pre-filled with the suggested model, `facebook/sam2-hiera-base-plus` at `main`,
+  a `cpu` device and `fp16` precision. Every one of those is a starting point you can type over.
+  Underneath the fields is what fetching that revision would cost — the size described above, read
+  while you are still deciding. If this machine has no `local-inference` extra the size cannot be
+  read, and the form says so, in the server's own words, with the install command. **It stays
+  usable**: creating a connection downloads nothing, so not knowing the size is information rather
+  than a barrier.
+- **HTTP** asks for the endpoint URL. There is no credential field; where a secret would live is
+  still open (`cf. #421`), and a field added ahead of that answer would be answering it.
+
+Each row shows its name, its kind, `model @ revision`, and its status as a word — **Ready** or
+**Not set up** — beside a colour, never as a colour alone. A local row that is not set up carries
+**Download weights**, which launches the background job described above and reports its progress
+in place; the row becomes **Ready** when the job finishes. A machine without the extra still shows
+the control, and pressing it answers with the install command — a control that vanished would take
+the remedy with it.
+
+Editing does not offer to change the kind, because the kind is not editable. Deleting asks once
+and says exactly what it destroys: *annotations keep their model provenance; only this
+configuration is removed.*
+
+Above twenty rows the list grows a filter, which matches a name substring and keeps saying how
+many it hid.
+
+**Reached from the editor, too.** Arming the editor's suggest tool with no usable connection shows
+a panel naming what is missing and offering **Set up a connection**, which lands here. Nothing
+about that flow forces you out of the editor or loses work: the panel is an explanation with a
+door, and the door is optional — a host that wires no destination gets the explanation and no
+control.
+
 ## At a terminal
 
 ```bash
+visionset inference size some/model --revision abc123
 visionset inference create local-detector \
     --type local --model some/model --revision abc123 --device cuda --precision fp16
 visionset inference list
@@ -225,6 +294,9 @@ visionset inference update local-detector --revision def456
 visionset inference download local-detector
 visionset inference delete local-detector --yes
 ```
+
+`size` is the one command here that opens no workspace: it asks about a published model rather
+than about a configured row, so it takes no `--workspace`.
 
 `create` prints the new id on stdout alone. `list` leads with the id, so `awk '{print $1}'` is
 stable even for a name holding internal whitespace. Every command takes `--json`, and the

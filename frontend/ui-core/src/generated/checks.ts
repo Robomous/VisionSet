@@ -140,6 +140,9 @@ export const checkClassCountOut: Check<Schemas["ClassCountOut"]> =
 export const checkDatasetStatsOut: Check<Schemas["DatasetStatsOut"]> =
   /*#__PURE__*/ object({ "annotated_asset_count": [true, isInteger], "annotation_count": [true, isInteger], "asset_count": [true, isInteger], "classes": [true, arrayOf(checkClassCountOut)], "dataset_id": [true, isString] } as const);
 
+export const checkDownloadSizeOut: Check<Schemas["DownloadSizeOut"]> =
+  /*#__PURE__*/ object({ "file_count": [true, isInteger], "model_id": [true, isString], "model_revision": [true, isString], "total_bytes": [true, isInteger] } as const);
+
 export const checkClassExportStatus: Check<Schemas["ClassExportStatus"]> =
   /*#__PURE__*/ oneOf(["supported", "degraded", "dropped"] as const);
 
@@ -308,6 +311,7 @@ export const checkGetSchemaVersion = checkSchemaVersionOut;
 export const checkGetSource = checkSourceOut;
 export const checkHealth: Check<operations["health"]["responses"][200]["content"]["application/json"]> =
   /*#__PURE__*/ mapOf(isString);
+export const checkInferenceDownloadSize = checkDownloadSizeOut;
 export const checkListAssetAnnotations = checkAnnotationPage;
 export const checkListAssetBatches = checkBatchPage;
 export const checkListBackgroundJobs = checkBackgroundJobPage;

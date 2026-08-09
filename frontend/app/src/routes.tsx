@@ -45,6 +45,7 @@ import {
   AnnotationPage,
   assetParamFor,
   GalleryScreen,
+  InferenceScreen,
   resolveProjectTab,
   IngestScreen,
   ProjectScreen,
@@ -74,6 +75,13 @@ export function AppRoutes(): JSX.Element {
                 redirect keeps one screen rather than two that drift. */}
             <Route index element={<Navigate to="/projects" replace />} />
             <Route path="projects" element={<Projects />} />
+            {/*
+              A top-level destination rather than a project route, per the
+              decision recorded on #421: a connection carries no project id and
+              every project uses the same ones, so nesting it under a project
+              would put a workspace-scoped object inside one project's URL.
+            */}
+            <Route path="inference" element={<InferenceScreen />} />
             <Route path="projects/:projectId" element={<Project />} />
             <Route path="projects/:projectId/ingest" element={<Ingest />} />
             <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
@@ -155,6 +163,10 @@ function Projects(): JSX.Element {
  */
 const PARENT = {
   projects: "/projects",
+  //: A rail destination, so nothing declares it as a parent — it is here because
+  //: this table is the route map's own index, and an entry point missing from it
+  //: is the drift #199 was about. Its own way out is the rail.
+  inference: "/inference",
   project: (projectId: string) => `/projects/${projectId}`,
   batches: (projectId: string) => `/projects/${projectId}?tab=batches`,
   dataset: (projectId: string) => `/projects/${projectId}?tab=dataset`,
@@ -313,6 +325,10 @@ function Annotate(): JSX.Element {
         const next = assetParamFor(showing, query.get("asset"));
         if (next !== null) setQuery({ asset: next }, { replace: true });
       }}
+      // #424's D6: the editor's no-connection panel had no destination until
+      // there was an Inference section to send somebody to. `ui-core` renders no
+      // control when this callback is absent, which is what it did until now.
+      onConfigureInference={() => void navigate(PARENT.inference)}
     />
   );
 }
