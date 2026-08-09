@@ -2,22 +2,22 @@
 """Model connections: the one door to where this workspace may run inference.
 
 Creating, reading, editing and removing the rows every predictor is instantiated
-from — and, since #418's second slice, saying whether one may be asked to fetch
-its weights and recording that they arrived.
+from — and saying whether one may be asked to fetch its weights, and recording
+that they arrived.
 
 **Nothing here predicts, downloads, or reaches a network**, and that stays true
 of the download: :meth:`~InferenceConnectionService.require_downloadable` decides
 whether fetching is something to do, ``visionset.inference`` does the fetching,
 and :meth:`~InferenceConnectionService.record_weights_ready` writes down that it
 worked. This service knows the configuration and its legality; the
-``ModelProvider`` port (`cf. #418`) knows the protocol; resolving one into the
+``ModelProvider`` port knows the protocol; resolving one into the
 other is the composition root's job outside the kernel. So the kernel never
 imports torch, transformers, or an HTTP client, and a connection can be
 configured on a machine that could not possibly run it.
 
 **Deleting is a hard delete, and it takes nothing with it.** An annotation records
 the model that produced it by copying its identity onto the label when it is
-written (`cf. #417`), so provenance survives the configuration it came from. That
+written, so provenance survives the configuration it came from. That
 denormalisation is what lets this be an ordinary delete instead of a lifecycle:
 there is no row anywhere holding a key to this one.
 
@@ -195,14 +195,12 @@ class InferenceConnectionService:
         refusal the same answer: a client that saw ``download_weights`` in the
         declaration can call, and one that did not will be told why.
 
-        **A ``ready`` connection passes, and there is no ``retrying`` flag any
-        more (#469).** The flag existed because the gate refused ``ready``, while
-        two callers legitimately arrive there: ``sweep_orphans`` re-enqueues an
+        **A ``ready`` connection passes, and there is no flag relaxing that.**
+        Two callers legitimately arrive there: ``sweep_orphans`` re-enqueues an
         idempotent orphan whose previous attempt may have finished, and somebody
-        asking a set-up connection to check its own weights. Both are the same
-        call doing the same idempotent work, so the table says so and the
-        exception disappears — a parameter that relaxes a rule is worse than a
-        rule that was drawn correctly.
+        asks a set-up connection to check its own weights. Both are the same call
+        doing the same idempotent work, so the gate table says so — a parameter
+        that relaxes a rule is worse than a rule drawn correctly.
 
         Raises:
             InferenceConnectionNotFound: no such connection in this workspace.
@@ -451,10 +449,9 @@ def _first_reason(exc: ValidationError) -> str:
 def _why_not_downloadable(connection: InferenceConnection) -> str:
     """The one remaining refusal, in a sentence somebody can act on.
 
-    There were two until ``download_weights`` became legal at ``ready`` (#469),
-    where it verifies rather than refuses. What is left is a fact about the kind
-    and never about where a connection has got to, which is why the sentence
-    names the kind.
+    ``download_weights`` is legal at ``ready``, where it verifies rather than
+    refuses, so the only refusal left is a fact about the kind and never about
+    where a connection has got to — which is why the sentence names the kind.
     """
     return (
         f"connection {connection.name!r} is an {connection.connection_type.value} connection; "

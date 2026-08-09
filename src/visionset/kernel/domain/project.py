@@ -55,7 +55,7 @@ class ProjectStats(BaseModel):
     #: schema, so it is read from the schema. Counting the distinct classes that
     #: appear in ``per_class`` instead would report a project whose ontology
     #: nobody has used yet as having no classes, which is the reverse of true.
-    #: Zero for a project with no schema, which every project starts as (#6).
+    #: Zero for a project with no schema, which every project starts as.
     class_count: int = Field(ge=0)
     #: Only classes that appear at least once, in canonical order by name. A
     #: declared-but-unused class is absent here and still counted above — the
@@ -65,9 +65,9 @@ class ProjectStats(BaseModel):
     #:
     #: The newest ``Asset.ingested_at`` in the project. NULL has one meaning and
     #: it is not "never ingested" — it is **unknown**: no asset here records an
-    #: arrival, which nothing backfills (#216). A project with no assets at all
-    #: reads NULL too, and the two are deliberately not distinguished,
-    #: because the only caller is a chip that omits itself either way.
+    #: arrival, which nothing backfills. A project with no assets at all reads
+    #: NULL too, and the two are deliberately not distinguished, because the only
+    #: caller is a chip that omits itself either way.
     #:
     #: Unlike ``annotated_fraction``, this is *not* derived to a zero when there
     #: is nothing to derive it from. A count has an honest identity element and a

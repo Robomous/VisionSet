@@ -221,10 +221,9 @@ class SqlRepository[T: m.Entity]:
         self._session.add(self._mapping.to_row(entity))
         # Flushed **before** the children, because they carry a foreign key to
         # the row just added and there is no ORM relationship for SQLAlchemy to
-        # order the two by. This used to happen by accident: every child writer
-        # began with a `session.execute(delete(...))`, whose autoflush pushed the
-        # parent out first. #281 removed the batch's delete and the accident with
-        # it, and the whole suite answered `FOREIGN KEY constraint failed`.
+        # order the two by. It used to happen by accident, through the autoflush
+        # of a child writer's opening `delete(...)`; without this line, dropping
+        # such a delete answers `FOREIGN KEY constraint failed`.
         self._flush()
         self._write_children(entity, inserting=True)
         self._flush()

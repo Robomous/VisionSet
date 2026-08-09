@@ -409,12 +409,12 @@ class ReleaseVerification(BaseModel):
         )
 
 
-# Three values because a boolean was two answers wearing one word, which is #158:
-# ``supported=false`` meant "absent from the output" where ``_compatibility``
-# computed it and "convert it to something I can write" where the YOLO and VOC
-# exporters read it, so a user consenting to lose three annotations received two
-# of them back as boxes under the polygon's own class name. Nothing about the
-# output was malformed; it simply was not what the report promised.
+# Three values because a boolean is two answers wearing one word.
+# ``supported=false`` read as "absent from the output" where ``_compatibility``
+# computed it and as "convert it to something I can write" where the YOLO and VOC
+# exporters consumed it, so a user consenting to lose three annotations received
+# two of them back as boxes under the polygon's own class name — output that was
+# well-formed and not what the report had promised.
 #
 # A ``StrEnum`` for the reason ``SourceKind`` is one and ``DatasetChange``'s
 # operation is not: the kernel branches on this value, no foreign writer produces
@@ -457,10 +457,10 @@ class ClassCompatibility(BaseModel):
 
     label_class: str
     geometry: GeometryType
-    #: Replaces #65's ``supported: bool``. The two questions that boolean was
-    #: being asked — "is this written?" and "is this written intact?" — are
-    #: :attr:`carried` and :attr:`supported` below, and they are properties
-    #: rather than stored fields so no report can carry a pair that disagree.
+    #: The two questions a single ``supported: bool`` was being asked — "is this
+    #: written?" and "is this written intact?" — are :attr:`carried` and
+    #: :attr:`supported` below, and they are properties rather than stored fields
+    #: so no report can carry a pair that disagree.
     status: ClassExportStatus
     #: Annotations of this class in the release. Zero is normal and is *not* a
     #: problem: a class the schema declares and nobody used excludes nothing, so
@@ -487,11 +487,11 @@ class ClassCompatibility(BaseModel):
 class ExportCompatibility(BaseModel):
     """What one format would lose from one release, worked out before writing.
 
-    The report #65 exists for, and it is deliberately **computed from the frozen
-    manifest** rather than from live membership: an export describes a release,
-    and a release is a snapshot. Two runs against one release therefore agree
-    forever, which is what lets the same document be shown in a consent dialog,
-    attached to a refusal and written into the output.
+    Deliberately **computed from the frozen manifest** rather than from live
+    membership: an export describes a release, and a release is a snapshot. Two
+    runs against one release therefore agree forever, which is what lets the same
+    document be shown in a consent dialog, attached to a refusal and written into
+    the output.
 
     ``compatible`` is the whole answer, and it is *not* the same question as
     ``Exporter.lossy``. That flag is the format's blanket statement about
@@ -500,10 +500,9 @@ class ExportCompatibility(BaseModel):
     release**: a bbox-only format meeting a bbox-only release excludes nothing,
     and the report says so with numbers.
 
-    Both are consulted, and consent is required if *either* says so. That is
-    monotone with what shipped in #30 — a lossy format still always asks — and it
-    adds the case #65 was filed for: a format that declares itself lossless still
-    cannot silently drop a geometry it never claimed to write.
+    Both are consulted, and consent is required if *either* says so: a lossy
+    format always asks, and a format that declares itself lossless still cannot
+    silently drop a geometry it never claimed to write.
 
     ``classes`` sorts by name. Canonical ordering belongs to the artifact rather
     than to whoever built it, which is the rule ``Manifest`` already follows and
@@ -541,10 +540,10 @@ class ExportCompatibility(BaseModel):
     format_is_lossy: bool
     #: Annotations that will be **absent** from the output.
     #:
-    #: Dropped only, since #158. It used to count degraded annotations too, which
-    #: made it the number a user weighed while describing something else — YOLO
-    #: reported three excluded and wrote two of them as boxes. The number that
-    #: disappears is the number worth having under this name.
+    #: Dropped only. Counting degraded annotations here too would make it the
+    #: number a user weighs while describing something else — three reported as
+    #: excluded, two of them written as boxes. The number that disappears is the
+    #: number worth having under this name.
     excluded_annotations: int = Field(default=0, ge=0)
     excluded_assets: int = Field(default=0, ge=0)
     #: Annotations that will be **present but reduced** — a polygon arriving as

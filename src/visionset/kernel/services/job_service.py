@@ -247,7 +247,7 @@ class JobService:
                 )
             # Both gates come before the no-op check on purpose: a caller
             # writing into a closed batch — or into a job that has already been
-            # finished (#439) — has a bug whether or not the value would change,
+            # finished — has a bug whether or not the value would change,
             # and hearing about it only when it happens to differ would hide it.
             self.require_open_batch(uow, job)
             self.require_open_job(job)
@@ -370,8 +370,8 @@ class JobService:
 
         The batch gate does not imply this one and cannot. A job completing does
         not complete its batch (see :meth:`complete`), so the ordinary state of a
-        finished job is *inside an open batch* — which is what let a finished
-        job's frames go on accepting labels (#439).
+        finished job is *inside an open batch* — and without this gate its frames
+        go on accepting labels.
 
         Raises:
             JobFinished: the job is ``completed``.

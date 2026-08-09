@@ -119,9 +119,9 @@ class Source(BaseModel):
     the kernel branches on it and nothing validates it, which is exactly why the
     values are ``str``: a typed value would imply someone was checking.
 
-    :attr:`display_name` is what a caller asked this source to be *called*
-    (#245), and ``None`` means nobody said. It exists because not every path has
-    a readable last segment: an HTTP upload of stills is staged under a
+    :attr:`display_name` is what a caller asked this source to be *called*, and
+    ``None`` means nobody said. It exists because not every path has a readable
+    last segment: an HTTP upload of stills is staged under a
     content-addressed directory, so its basename is a 64-character digest, while
     a CLI directory or a clip carries a name a person chose. Like
     ``capture_params`` it is **not** part of the source's identity — renaming

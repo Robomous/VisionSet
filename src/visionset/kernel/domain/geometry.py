@@ -9,12 +9,11 @@ translation layer in between.
 
 Adding a geometry (keypoints, mask, the 3D variants) means defining a model whose
 ``type`` is the matching ``GeometryType`` member and appending it to the
-``Geometry`` union. Nothing about the discriminator changes shape, and no
-existing payload stops parsing — which #223 proved by doing it: ``polyline``
-moved from roadmap to implemented as one variant plus one name in the union, with
-no migration, because geometry rides in the annotation's JSON column.
-``GeometryType`` names eight geometries; four are implemented here — the rest are
-roadmap, and a payload naming one is rejected until its model exists.
+``Geometry`` union. Nothing about the discriminator changes shape and no existing
+payload stops parsing, because geometry rides in the annotation's JSON column and
+needs no migration. ``GeometryType`` names eight geometries; four are implemented
+here — the rest are roadmap, and a payload naming one is rejected until its model
+exists.
 """
 
 from __future__ import annotations

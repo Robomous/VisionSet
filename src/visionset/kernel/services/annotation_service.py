@@ -44,9 +44,9 @@ Both gates above the asset are ``JobService``'s, reused rather than restated:
 this service calls ``require_job``, ``require_open_batch`` and
 ``require_open_job``, so "no work happens in a batch nobody opened" and "a
 finished job is finished" each have exactly one wording. The second is not
-implied by the first and was missing until #439 — a job completing does not
-complete its batch, so the ordinary state of a finished job is inside an open
-one, and its frames went on accepting labels.
+implied by the first: a job completing does not complete its batch, so the
+ordinary state of a finished job is inside an open one, and without its own gate
+its frames go on accepting labels.
 
 Composition follows the rule in ``docs/workspaces.md``: this service takes an
 open :class:`WorkspaceService` and nothing else, and never names an adapter.
@@ -551,7 +551,7 @@ def _refresh_progress(uow: UnitOfWork, job: AnnotationJob, asset_ids: Iterable[U
     The write is ``set_asset_progress``, guarded on the value this move was
     derived from, and **not** ``annotation_jobs.update`` — that replaces the whole
     job, so two annotators labeling two different assets of one job would each put
-    back the other's progress as they read it (#302). A guard that fails aborts
+    back the other's progress as they read it. A guard that fails aborts
     the whole call, and that is the right outcome rather than a harsh one: this
     service is all-or-nothing, so the labels roll back with it, and a caller that
     reads again derives its progress from a state that is actually there.

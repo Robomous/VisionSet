@@ -23,8 +23,8 @@ a workspace, a path layout or a port.
 
 **It raises rather than returning ``None``** when the bytes are gone — a released
 asset whose blob is missing is damage, and an exporter that swallowed it would
-write a training set quietly missing images. That is v1's failure #1, and it is
-why this signature has no error branch to ignore.
+write a training set quietly missing images, which is why this signature has no
+error branch to ignore.
 
 The handle is open and positioned at the start; the caller closes it. A file
 already read once must be re-requested rather than rewound, because nothing
@@ -81,11 +81,10 @@ class Exporter(Protocol):
 
     #: Which geometries this format can write.
     #:
-    #: The **checkable** half of ``lossy``, added by #65. The flag above is a
-    #: blanket statement a plugin makes about itself and nobody can verify; this
-    #: is a list a report can be computed against, which is what turns "this
-    #: format is lossy" into "this release loses 1,204 polygon annotations across
-    #: 310 assets".
+    #: The **checkable** half of ``lossy``. The flag above is a blanket statement
+    #: a plugin makes about itself and nobody can verify; this is a list a report
+    #: can be computed against, which is what turns "this format is lossy" into
+    #: "this release loses 1,204 polygon annotations across 310 assets".
     #:
     #: Declared over ``GeometryType`` — every name the domain can address, not
     #: only the three an ``Annotation`` may carry today — so a format that will
@@ -99,13 +98,13 @@ class Exporter(Protocol):
 
     #: Which geometries this format writes, but not as they stand.
     #:
-    #: Added by #158, and it exists because ``supported_geometries`` was being
-    #: read with two intents. ``_compatibility`` read "not supported" as *absent
-    #: from the output*; the YOLO and VOC exporters read it as *convert to
-    #: something I can write*, and both wrote a polygon as its axis-aligned
-    #: bounding box under the polygon's own class name. Both readings were
-    #: defensible, which is what made the report wrong rather than the code buggy:
-    #: the model had no word for **carried, but reduced**.
+    #: Without it, ``supported_geometries`` gets read with two intents.
+    #: ``_compatibility`` reads "not supported" as *absent from the output*, while
+    #: the YOLO and VOC exporters read it as *convert to something I can write*
+    #: and emit a polygon as its axis-aligned bounding box under the polygon's own
+    #: class name. Both readings are defensible, which is what makes the report
+    #: wrong rather than the code buggy: the model had no word for **carried, but
+    #: reduced**.
     #:
     #: Declare a geometry here when an annotation of it reaches the output having
     #: lost something the kernel could represent. Declare it in

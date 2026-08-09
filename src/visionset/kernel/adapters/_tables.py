@@ -159,8 +159,8 @@ class SourceRow(Base):
 
 
 #: One origin is one source: the backstop under ``SourceService``'s idempotency
-#: rule, which shipped in #18 with nothing underneath it and acquired teeth here
-#: — see that service's module docstring for why ingest is when it had to.
+#: rule — see that service's module docstring for why ingest is when it had to
+#: acquire teeth.
 #:
 #: The fourth term is an **expression**, not a column, and it is ``coalesce``d
 #: rather than left to be NULL. SQLite treats NULLs in a unique index as
@@ -172,9 +172,6 @@ class SourceRow(Base):
 #: for values "nothing ever queries". An index is not a query: no service gains
 #: a JSON path, ``_source_to_domain`` still rehydrates ``VideoProvenance`` whole,
 #: and the doctrine's purpose — no service building SQL over JSON — is intact.
-#: The alternative was a redundant ``extraction_fps`` column written by the
-#: mapper and read by nobody, which would need this same ``json_extract`` to
-#: backfill itself and could later stop being maintained without failing.
 SOURCE_ORIGIN_UNIQUE = Index(
     "uq_source_project_kind_path_fps",
     SourceRow.project_id,
@@ -692,9 +689,9 @@ class InferenceConnectionRow(Base):
     already refuses the combinations that make no sense. A blob would move a rule
     the domain enforces into a shape nothing can index or inspect.
 
-    No credential column, and its absence is deliberate rather than pending —
-    where an HTTP connection's secret lives is an open decision (`cf. #421`), and
-    a nullable column added "for later" would answer it by default, in the
+    No credential column, and its absence is deliberate rather than pending:
+    where an HTTP connection's secret lives is still an open decision, and a
+    nullable column added "for later" would answer it by default, in the
     direction nobody chose.
     """
 

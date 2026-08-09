@@ -18,8 +18,7 @@ say which weights this connection is configured for. An annotation's ``model_ref
 (``domain/annotation.py``) is a string copied onto a label when it is written,
 denormalised on purpose so that deleting a connection never breaks provenance.
 The two meet only when an adapter writes the second from the first. Two
-vocabularies, one word — worth saying out loud, because this area already has
-another pair like it (`cf. #421`).
+vocabularies, one word.
 
 **No workspace column**, on ``JobRow``'s terms rather than ``TokenRow``'s: one
 workspace is one SQLite file, so a connection is workspace-scoped by living in
@@ -213,10 +212,10 @@ encoding ``capabilities`` exists to prevent.
 class DownloadSize(BaseModel):
     """What fetching a model's weights would cost, before anybody fetches them.
 
-    The answer to the question a setup form has to ask on somebody's behalf: the
-    decision recorded on #418 is that VisionSet downloads nothing on its own, and
-    a person can only make that decision if the size is on screen **before** they
-    confirm. So this is read separately from the download and ahead of it.
+    The answer to the question a setup form has to ask on somebody's behalf.
+    VisionSet downloads nothing on its own, and a person can only make that
+    decision if the size is on screen **before** they confirm — so this is read
+    separately from the download and ahead of it.
 
     **A pair, not a connection.** It is keyed on a model id and a revision rather
     than on an :class:`InferenceConnection`, because the moment it is needed is

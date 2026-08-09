@@ -261,8 +261,8 @@ class StaleWrite(VisionSetError):
     already expired.
 
     Refused rather than applied, because applying it is the defect this exists to
-    close (#302): a write judged against a state nobody is in any more lands on
-    top of somebody else's and reports success for both. The message names where
+    close: a write judged against a state nobody is in any more lands on top of
+    somebody else's and reports success for both. The message names where
     the asset actually is, so the remedy is exactly one round trip — read again,
     decide again, resubmit — and the caller never has to guess whether its own
     write survived.
@@ -560,10 +560,10 @@ class DuplicateClassificationTag(InvalidAnnotation):
 
     A ``ClassificationGeometry`` has **zero fields** and is frozen, so two tags
     of one class on one asset are the same statement made twice — not two facts
-    the way two boxes under one class are. #121 made that unrepresentable: a
-    partial unique index on ``(asset_id, label_class)``, restricted to tag
-    geometry, plus this refusal so a caller meets a sentence rather than a raw
-    ``ConstraintViolated``.
+    the way two boxes under one class are. A partial unique index on
+    ``(asset_id, label_class)``, restricted to tag geometry, makes it
+    unrepresentable; this refusal is so a caller meets a sentence rather than a
+    raw ``ConstraintViolated``.
 
     Deliberately inside the :class:`InvalidAnnotation` family even though it is
     the only one of the six that reads the *store* rather than the schema. What
@@ -722,7 +722,7 @@ class LossyExportNotConsented(VisionSetError):
     stays intact. Nothing in the workspace changes either way.
     """
 
-    #: What the format would drop, attached since #65.
+    #: What the format would drop.
     #:
     #: A class attribute with a ``None`` default and **not** a constructor
     #: parameter, exactly as ``VisionSetError.index`` is — so this error is still
@@ -1042,5 +1042,5 @@ class LocalInferenceUnavailable(VisionSetError):
     declared on a connection whose state permits it and refused here if the
     machine cannot carry it out. Hiding the control instead would be the bare
     disabled control design principle 9 forbids, and would leave the install
-    command with nowhere to be shown (`cf. #421`).
+    command with nowhere to be shown.
     """
