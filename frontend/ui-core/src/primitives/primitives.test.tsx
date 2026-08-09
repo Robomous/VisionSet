@@ -23,6 +23,13 @@ import { Button } from "./Button";
 import { Card, CardTitle } from "./Card";
 import { Progress } from "./Feedback";
 import { FieldError, Input, Label } from "./Input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./Select";
 import { Table, TableBody, TableEmpty } from "./Table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
 
@@ -100,6 +107,63 @@ describe("fields", () => {
   it("announces a field error", () => {
     render(<FieldError>must not be blank</FieldError>);
     expect(screen.getByRole("alert").textContent).toBe("must not be blank");
+  });
+});
+
+/**
+ * The two-line option (#472) — a primitive variant rather than one screen's
+ * styling, which is why it is asserted here.
+ *
+ * The claim worth a test is the one that is easy to lose: the trigger shows the
+ * *same* two lines the list does, because Radix renders the selected item's own
+ * `ItemText` into it. A second copy of the layout at the call site would look
+ * identical the day it was written and drift the day either half moved.
+ */
+describe("Select", () => {
+  function pickOne(): JSX.Element {
+    return (
+      <Select defaultValue="a">
+        <SelectTrigger data-testid="model">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="a" meta="311.9 MB · tiny">
+            org/model-tiny
+          </SelectItem>
+          <SelectItem value="b">org/model-large</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  it("stacks the identifier and its meta in the closed trigger", () => {
+    render(pickOne());
+    const trigger = screen.getByTestId("model");
+    expect(trigger.textContent).toContain("org/model-tiny");
+    expect(trigger.textContent).toContain("311.9 MB · tiny");
+    // Two elements, not one line that happens to wrap — the meta carries the
+    // muted role and the id does not.
+    const meta = trigger.querySelector(".text-muted-foreground");
+    expect(meta?.textContent).toBe("311.9 MB · tiny");
+    expect(meta?.textContent).not.toContain("org/model-tiny");
+  });
+
+  it("grows rather than clipping, and leaves a one-line option where it was", () => {
+    render(pickOne());
+    // `h-9` would fix the height and squash the second line; `min-h-9` keeps the
+    // one-line control on the contract's 36px and lets a two-line one grow.
+    const trigger = screen.getByTestId("model");
+    expect(trigger.className).toContain("min-h-9");
+    expect(trigger.className).not.toMatch(/(^|\s)h-9(\s|$)/);
+    // Nothing truncates: half a model id is not a model id.
+    expect(trigger.className).not.toContain("truncate");
+  });
+
+  it("leaves an option with no meta exactly as it was", async () => {
+    render(pickOne());
+    await userEvent.click(screen.getByTestId("model"));
+    const plain = screen.getByRole("option", { name: "org/model-large" });
+    expect(plain.querySelector(".text-muted-foreground")).toBeNull();
   });
 });
 

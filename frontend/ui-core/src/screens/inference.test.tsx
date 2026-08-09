@@ -395,6 +395,36 @@ it("offers every curated model, grouped, from the one module that holds them", a
   }
 });
 
+it("stacks each option: the id on one line, what it costs on the next (#472)", async () => {
+  listing([]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+
+  // The closed trigger first, which is where the squash was visible: it shows the
+  // selected option's own two lines rather than a second copy of the layout.
+  const trigger = await screen.findByTestId("connection-model");
+  const triggerMeta = trigger.querySelector(".text-muted-foreground");
+  expect(trigger.textContent).toContain(DEFAULT_MODEL.modelId);
+  expect(triggerMeta?.textContent).toContain(DEFAULT_MODEL.hint);
+  // The id keeps the line to itself — the whole point of the restructure.
+  expect(triggerMeta?.textContent).not.toContain(DEFAULT_MODEL.modelId);
+
+  await userEvent.click(trigger);
+  for (const group of CURATED_MODELS) {
+    for (const model of group.models) {
+      const option = screen.getByRole("option", { name: new RegExp(model.modelId) });
+      const meta = option.querySelector(".text-muted-foreground");
+      expect(meta?.textContent).toBe(`${bytes(model.totalBytes)} · ${model.hint}`);
+    }
+  }
+  // Including Custom, so no row in the list is a different height from its
+  // neighbours.
+  const custom = screen.getByRole("option", { name: /Custom model/ });
+  expect(custom.querySelector(".text-muted-foreground")).not.toBeNull();
+});
+
 it("curates without restricting: Custom reveals the free model and revision", async () => {
   listing([]);
   sizeIs(1_200_000_000);
