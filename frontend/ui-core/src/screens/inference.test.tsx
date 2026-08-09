@@ -26,7 +26,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { InferenceScreen, SUGGESTED_MODEL, SUGGESTED_REVISION, bytes } from "./InferenceScreen";
+import { InferenceScreen, bytes } from "./InferenceScreen";
+import { CURATED_MODELS, DEFAULT_MODEL } from "./inferenceCatalog";
 import type { Connection } from "../data/inferenceQueries";
 
 const API = "http://visionset.test";
@@ -89,8 +90,8 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     id: "11111111-1111-4111-8111-111111111111",
     name: "sam2-local",
     connection_type: "local",
-    model_id: SUGGESTED_MODEL,
-    model_revision: SUGGESTED_REVISION,
+    model_id: DEFAULT_MODEL.modelId,
+    model_revision: DEFAULT_MODEL.revision,
     device: "cuda",
     precision: "fp16",
     endpoint_url: null,
@@ -131,8 +132,8 @@ function sizeIs(totalBytes: number, fileCount = 3): void {
   on("GET", /^\/inference\/download-size$/, {
     status: 200,
     body: {
-      model_id: SUGGESTED_MODEL,
-      model_revision: SUGGESTED_REVISION,
+      model_id: DEFAULT_MODEL.modelId,
+      model_revision: DEFAULT_MODEL.revision,
       total_bytes: totalBytes,
       file_count: fileCount,
     },
@@ -174,7 +175,7 @@ it("shows the model and its revision the way a person reads them", async () => {
   listing([connection()]);
   render(mount(<InferenceScreen />));
   expect(
-    await screen.findByText(`${SUGGESTED_MODEL} @ ${SUGGESTED_REVISION}`),
+    await screen.findByText(`${DEFAULT_MODEL.modelId} @ ${DEFAULT_MODEL.revision}`),
   ).not.toBeNull();
 });
 
@@ -257,14 +258,20 @@ it("asks where the model runs before asking anything else", async () => {
   expect(screen.queryByTestId("connection-name")).toBeNull();
 });
 
-it("pre-fills the local form with the suggested model", async () => {
+it("pre-fills the local form with the default curated model, pinned", async () => {
   listing([]);
   sizeIs(1_200_000_000);
   render(mount(<InferenceScreen />));
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-local"));
-  expect(value(await screen.findByTestId("connection-model"))).toBe(SUGGESTED_MODEL);
-  expect(value(screen.getByTestId("connection-revision"))).toBe(SUGGESTED_REVISION);
+  expect((await screen.findByTestId("connection-model")).textContent).toContain(
+    DEFAULT_MODEL.modelId,
+  );
+  // A curated entry carries its own revision, so there is nothing to type and
+  // nothing left showing a branch name.
+  expect(screen.queryByTestId("connection-revision")).toBeNull();
+  const asked = sent.find((one) => one.url.includes("download-size"));
+  expect(asked!.url).toContain(encodeURIComponent(DEFAULT_MODEL.revision));
 });
 
 it("shows the download size before anything is confirmed", async () => {
@@ -321,7 +328,7 @@ it("sends only the fields the chosen kind carries", async () => {
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
   await userEvent.type(await screen.findByTestId("connection-name"), "remote");
-  await userEvent.type(screen.getByTestId("connection-model"), "some/model");
+  await userEvent.type(screen.getByTestId("connection-custom-model"), "some/model");
   await userEvent.type(screen.getByTestId("connection-revision"), "abc123");
   await userEvent.type(screen.getByTestId("connection-endpoint"), "https://example.invalid");
   await userEvent.click(screen.getByTestId("connection-submit"));
@@ -348,7 +355,7 @@ it("keeps what was typed when a create is refused", async () => {
   await userEvent.click(await screen.findByTestId("new-connection"));
   await userEvent.click(await screen.findByTestId("choose-http"));
   await userEvent.type(await screen.findByTestId("connection-name"), "remote");
-  await userEvent.type(screen.getByTestId("connection-model"), "some/model");
+  await userEvent.type(screen.getByTestId("connection-custom-model"), "some/model");
   await userEvent.type(screen.getByTestId("connection-revision"), "abc123");
   await userEvent.type(screen.getByTestId("connection-endpoint"), "https://example.invalid");
   await userEvent.click(screen.getByTestId("connection-submit"));
@@ -363,6 +370,253 @@ it("has no credential field, because where a secret lives is still open", async 
   await userEvent.click(await screen.findByTestId("choose-http"));
   await screen.findByTestId("connection-endpoint");
   expect(screen.queryByLabelText(/credential|token|api key|secret/i)).toBeNull();
+});
+
+// --- the curated list, and the fields that are closed sets ----------------------
+
+it("offers every curated model, grouped, from the one module that holds them", async () => {
+  listing([]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+  await userEvent.click(await screen.findByTestId("connection-model"));
+
+  // Derived from the catalog rather than listed here: a model id spelled out in
+  // this file would be a second source, which is exactly what the module exists
+  // to prevent.
+  for (const group of CURATED_MODELS) {
+    expect(screen.getByText(group.label)).not.toBeNull();
+    for (const model of group.models) {
+      const option = screen.getByRole("option", { name: new RegExp(model.modelId) });
+      expect(option.textContent).toContain(bytes(model.totalBytes));
+      expect(option.textContent).toContain(model.hint);
+    }
+  }
+});
+
+it("curates without restricting: Custom reveals the free model and revision", async () => {
+  listing([]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+  expect(screen.queryByTestId("connection-custom-model")).toBeNull();
+
+  await userEvent.click(await screen.findByTestId("connection-model"));
+  await userEvent.click(screen.getByRole("option", { name: /Custom model/ }));
+
+  const model = await screen.findByTestId("connection-custom-model");
+  await userEvent.clear(model);
+  await userEvent.type(model, "someone/else");
+  await userEvent.clear(screen.getByTestId("connection-revision"));
+  await userEvent.type(screen.getByTestId("connection-revision"), "deadbeef");
+  expect(value(model)).toBe("someone/else");
+  expect(value(screen.getByTestId("connection-revision"))).toBe("deadbeef");
+});
+
+it("offers half precision only where an adapter would honour it", async () => {
+  listing([]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+
+  // A CPU connection: `fp16` is dropped by both adapters, so it is not on offer
+  // and the field says why rather than leaving the absence to be guessed at.
+  await userEvent.click(await screen.findByTestId("connection-precision"));
+  expect(screen.queryByRole("option", { name: "fp16" })).toBeNull();
+  expect(screen.getByRole("option", { name: "fp32" })).not.toBeNull();
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByTestId("precision-hint").textContent).toContain("CUDA only");
+
+  await userEvent.click(screen.getByTestId("connection-device"));
+  await userEvent.click(screen.getByRole("option", { name: "cuda" }));
+  await userEvent.click(screen.getByTestId("connection-precision"));
+  expect(screen.getByRole("option", { name: "fp16" })).not.toBeNull();
+});
+
+it("moves the precision with the device rather than leaving a refused pair", async () => {
+  listing([]);
+  sizeIs(1_200_000_000);
+  const posted: Record<string, unknown>[] = [];
+  handlers.push((request) => {
+    if (request.method !== "POST" || !request.url.endsWith("/inference/connections")) return;
+    return { status: 201, body: connection() };
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+  await userEvent.type(await screen.findByTestId("connection-name"), "sam2");
+
+  await userEvent.click(screen.getByTestId("connection-device"));
+  await userEvent.click(screen.getByRole("option", { name: "cuda" }));
+  await userEvent.click(screen.getByTestId("connection-precision"));
+  await userEvent.click(screen.getByRole("option", { name: "fp16" }));
+  // Back to the CPU, where `fp16` is not a thing the kernel accepts.
+  await userEvent.click(screen.getByTestId("connection-device"));
+  await userEvent.click(screen.getByRole("option", { name: "cpu" }));
+
+  await userEvent.click(screen.getByTestId("connection-submit"));
+  await waitFor(() => expect(sent.some((one) => one.method === "POST")).toBe(true));
+  const body = JSON.parse(await sent.find((one) => one.method === "POST")!.clone().text());
+  posted.push(body as Record<string, unknown>);
+  expect(body.device).toBe("cpu");
+  expect(body.precision).toBe("fp32");
+});
+
+it("renders the kernel's refusal of a pair it disagrees with, as prose", async () => {
+  // The form offers only what works; this is the other half of the same rule —
+  // the kernel is the authority, and whatever it refuses reaches a person in the
+  // words the kernel wrote. Nothing here is computed client-side.
+  listing([]);
+  sizeIs(1_200_000_000);
+  on("POST", /^\/inference\/connections$/, {
+    status: 422,
+    body: {
+      code: "INFERENCE_CONNECTION_INVALID",
+      message: "fp16 is not available on cpu; cpu runs in fp32",
+    },
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+  await userEvent.type(await screen.findByTestId("connection-name"), "sam2");
+  await userEvent.click(screen.getByTestId("connection-submit"));
+  expect((await screen.findByTestId("connection-error")).textContent).toContain(
+    "fp16 is not available on cpu",
+  );
+});
+
+it("shows a stored device the form does not offer instead of rewriting it", async () => {
+  // `cuda:1` is a device the kernel accepts and a form cannot enumerate — how
+  // many GPUs this machine has is not something the list can know. Opening the
+  // edit form must not quietly reassign the row to `cuda`.
+  listing([
+    connection({ setup_state: "ready", device: "cuda:1", allowed_actions: ["update", "delete"] }),
+  ]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+  expect((await screen.findByTestId("connection-device")).textContent).toContain("cuda:1");
+});
+
+it("shows a curated model at another revision as a custom connection", async () => {
+  // The pair is the identity. A row naming a curated model at a revision the
+  // list does not pin is not that entry, and showing it as one would misreport
+  // which weights it runs.
+  listing([
+    connection({
+      model_revision: "0000000000000000000000000000000000000000",
+      setup_state: "ready",
+      allowed_actions: ["update", "delete"],
+    }),
+  ]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+  expect(value(await screen.findByTestId("connection-revision"))).toBe(
+    "0000000000000000000000000000000000000000",
+  );
+  expect((screen.getByTestId("connection-model")).textContent).toContain("Custom");
+});
+
+// --- the download's whole life --------------------------------------------------
+
+it("refreshes the row when the job finishes, with no reload", async () => {
+  // The bug this closes: the `202` invalidated the list, and nothing invalidated
+  // it again when the work actually finished — so the row sat at `Not set up`
+  // until the page was reloaded.
+  let ready = false;
+  handlers.push((request) => {
+    if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
+    const row = ready
+      ? connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] })
+      : connection();
+    return { status: 200, body: { items: [row], total: 1 } };
+  });
+  on("POST", /\/download$/, { status: 202, body: job("queued") });
+  handlers.push((request) => {
+    if (!request.url.includes("/background-jobs/")) return;
+    // The job settles, and the row it moved is what the next listing answers.
+    ready = true;
+    return { status: 200, body: job("succeeded", 1, 1) };
+  });
+
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("download-weights"));
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-status").textContent).toContain("Ready"),
+  );
+  // And the row's control follows the state it is now in.
+  expect(screen.queryByTestId("download-weights")).toBeNull();
+});
+
+it("surfaces a failed download as prose, and leaves the same action as the retry", async () => {
+  listing([connection()]);
+  on("POST", /\/download$/, { status: 202, body: job("queued") });
+  on("GET", /^\/background-jobs\/job-1$/, {
+    status: 200,
+    body: {
+      ...(job("failed") as Record<string, unknown>),
+      error: "could not fetch facebook/sam2.1-hiera-base-plus at b73207: the connection was lost",
+    },
+  });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("download-weights"));
+
+  const shown = await screen.findByTestId("download-error");
+  expect(shown.textContent).toContain("the connection was lost");
+  // What happened, and what to do about it — including that nothing is half done.
+  expect(shown.textContent).toContain("still Not set up");
+  expect(shown.textContent).toContain("resumes");
+  // The never-half-ready invariant, at the layer a person reads it.
+  expect(screen.getByTestId("connection-status").textContent).toContain("Not set up");
+  // The retry *is* the action: no second control appeared, and this one is live.
+  const retry = screen.getByTestId("download-weights") as HTMLButtonElement;
+  expect(retry.disabled).toBe(false);
+  expect(screen.queryByText(/retry/i)).toBeNull();
+});
+
+it("offers Verify weights in the overflow once a connection is ready", async () => {
+  listing([
+    connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
+  ]);
+  render(mount(<InferenceScreen />));
+  await screen.findByTestId("connections-table");
+  // Not the prominent control — there is nothing to fetch, only something to check.
+  expect(screen.queryByTestId("download-weights")).toBeNull();
+
+  await userEvent.click(screen.getByTestId("actions-sam2-local"));
+  expect(await screen.findByTestId("action-verify-weights")).not.toBeNull();
+});
+
+it("does not offer Verify weights when the wire withholds the action", async () => {
+  // The same `setup_state`, so a screen deriving the item from the row's state
+  // would still render it. Only `allowed_actions` gets this right.
+  listing([connection({ setup_state: "ready", allowed_actions: ["update", "delete"] })]);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await screen.findByTestId("action-edit");
+  expect(screen.queryByTestId("action-verify-weights")).toBeNull();
+});
+
+it("runs the same request for Verify weights as for Download weights", async () => {
+  listing([
+    connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
+  ]);
+  on("POST", /\/download$/, { status: 202, body: job("queued") });
+  on("GET", /^\/background-jobs\/job-1$/, { status: 200, body: job("succeeded", 1, 1) });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-verify-weights"));
+  await waitFor(() =>
+    expect(
+      sent.some((one) => one.method === "POST" && one.url.endsWith("/download")),
+    ).toBe(true),
+  );
 });
 
 // --- editing and deleting ------------------------------------------------------

@@ -306,14 +306,12 @@ def test_download_prints_the_connection_as_json(root: Path, fetched: list[str]) 
     assert document["allowed_actions"] == ["download_weights", "update", "delete"]
 
 
-def test_downloading_twice_verifies_rather_than_refusing(
-    root: Path, fetched: list[str]
-) -> None:
+def test_downloading_twice_verifies_rather_than_refusing(root: Path, fetched: list[str]) -> None:
     """The second run checks the cache it already filled, and says so (#469).
 
-    The command that fetches is the command that verifies, because the work is
-    the same work: a snapshot already on disk is compared against its hashes
-    rather than transferred again.
+    The command that fetches is the command that checks, because the work is the
+    same work: a snapshot already on disk is found rather than transferred
+    again, and only what is missing moves.
     """
     ok(root, *LOCAL)
     ok(root, "inference", "download", "local-gd")

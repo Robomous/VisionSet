@@ -27,6 +27,29 @@
  * (`cf. #421`); until then there is no third value to render and no control that
  * would produce one.
  *
+ * ## What the form offers, and what it refuses to compute
+ *
+ * The model, the device and the precision are all chosen from lists rather than
+ * typed, and every one of those lists lives in `inferenceCatalog.ts` — one
+ * module, so extending the curated set is one entry and no other edit. Curation
+ * guides without restricting: **Custom model…** reveals the same free model id
+ * and revision fields the form had before.
+ *
+ * The device and precision lists are the kernel's vocabularies, offering-side.
+ * The kernel is what refuses a pair outside them — including `cpu` with `fp16`,
+ * which both local adapters silently drop — and its refusal renders here as
+ * prose like any other. This is not the hand-mirror `ui-capabilities` bans: that
+ * rule is about `allowed_actions`, and no field-level shape can carry which
+ * precision a device honours.
+ *
+ * ## One declared action, two things to call it
+ *
+ * `download_weights` is declared for a local connection in either state (#469).
+ * Below `Ready` it is the row's **Download weights** button; at `Ready` it is
+ * **Verify weights** in the overflow, where it re-checks that the snapshot is
+ * still complete. The row picks the label from `setup_state` — a field the wire
+ * states — and never from a table of its own.
+ *
  * ## The size is asked for before the connection exists
  *
  * D1 on #424 requires the local form to show what a download would cost *before*
@@ -37,7 +60,7 @@
  * instead of disabling itself.
  */
 
-import { Download, Filter, MoreHorizontal, Pencil, Plug, Trash2 } from "lucide-react";
+import { Download, Filter, MoreHorizontal, Pencil, Plug, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -48,6 +71,7 @@ import {
   useDeleteConnection,
   useDownloadSize,
   useDownloadWeights,
+  useRefreshConnections,
   useUpdateConnection,
   type Connection,
   type ConnectionType,
@@ -68,18 +92,28 @@ import {
   DropdownMenuTrigger,
 } from "../primitives/Menu";
 import { FieldError, FieldHint, Input, Label } from "../primitives/Input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
+import {
+  CURATED_BY_ID,
+  CURATED_MODELS,
+  CUSTOM_MODEL,
+  DEFAULT_MODEL,
+  DEVICES,
+  curatedEntry,
+  precisionOn,
+  precisionsFor,
+  type Precision,
+} from "./inferenceCatalog";
 import { useBackgroundJob } from "./queries";
-
-/**
- * The model D1 suggests, and the revision it is pinned at.
- *
- * "Suggested default" means exactly that: it fills the form in, and anybody may
- * type over it. Nothing is bundled and nothing is fetched until somebody presses
- * the action that fetches it.
- */
-export const SUGGESTED_MODEL = "facebook/sam2-hiera-base-plus";
-export const SUGGESTED_REVISION = "main";
 
 /** Above this many rows a list carries a filter input (`DESIGN.md`). */
 const FILTER_ABOVE = 20;
@@ -203,6 +237,7 @@ function ConnectionRow({
 }): JSX.Element {
   const can = new Set(connection.allowed_actions);
   const ready = connection.setup_state === "ready";
+  const weights = useWeightsRun(connection);
   return (
     <TableRow data-testid={`connection-${connection.name}`}>
       <TableCell className="font-medium">{connection.name}</TableCell>
@@ -230,35 +265,76 @@ function ConnectionRow({
         </Badge>
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-2">
-          {can.has("download_weights") && <DownloadWeights connection={connection} />}
-          {(can.has("update") || can.has("delete")) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Actions for ${connection.name}`}
-                  data-testid={`actions-${connection.name}`}
-                >
-                  <MoreHorizontal className="size-4" aria-hidden="true" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {can.has("update") && (
-                  <DropdownMenuItem data-testid="action-edit" onSelect={onEdit}>
-                    <Pencil className="size-4" aria-hidden="true" />
-                    Edit
-                  </DropdownMenuItem>
-                )}
-                {can.has("delete") && (
-                  <DropdownMenuItem data-testid="action-delete" onSelect={onDelete}>
-                    <Trash2 className="size-4" aria-hidden="true" />
-                    Delete
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center justify-end gap-2">
+            {/*
+              One declared action, two readings of it, and the row picks the
+              reading from `setup_state` — a field the wire states. Whether the
+              control may exist is still `allowed_actions` and nothing else.
+            */}
+            {can.has("download_weights") && !ready && (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="download-weights"
+                disabled={weights.running}
+                onClick={weights.start}
+              >
+                <Download className="size-4" aria-hidden="true" />
+                {weights.running ? "Downloading…" : "Download weights"}
+              </Button>
+            )}
+            {(can.has("update") || can.has("delete") || (can.has("download_weights") && ready)) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Actions for ${connection.name}`}
+                    data-testid={`actions-${connection.name}`}
+                  >
+                    <MoreHorizontal className="size-4" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {can.has("download_weights") && ready && (
+                    <DropdownMenuItem
+                      data-testid="action-verify-weights"
+                      disabled={weights.running}
+                      onSelect={weights.start}
+                    >
+                      <ShieldCheck className="size-4" aria-hidden="true" />
+                      {weights.running ? "Checking…" : "Verify weights"}
+                    </DropdownMenuItem>
+                  )}
+                  {can.has("update") && (
+                    <DropdownMenuItem data-testid="action-edit" onSelect={onEdit}>
+                      <Pencil className="size-4" aria-hidden="true" />
+                      Edit
+                    </DropdownMenuItem>
+                  )}
+                  {can.has("delete") && (
+                    <DropdownMenuItem data-testid="action-delete" onSelect={onDelete}>
+                      <Trash2 className="size-4" aria-hidden="true" />
+                      Delete
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+          {weights.running && weights.progress !== null && (
+            <span className="text-meta text-muted-foreground" data-testid="download-progress">
+              {weights.progress}
+            </span>
+          )}
+          {weights.failure !== null && (
+            <FieldError data-testid="download-error">
+              <Badge variant="destructive">{weights.failure.code}</Badge> {weights.failure.message}{" "}
+              {ready
+                ? "The connection is still Ready — nothing was changed. Verify weights again to re-check the cache."
+                : "The connection is still Not set up: weights arrive or they do not, so there is nothing half-installed to clear up. Download weights again — an interrupted transfer resumes from what it had."}
+            </FieldError>
           )}
         </div>
       </TableCell>
@@ -267,58 +343,59 @@ function ConnectionRow({
 }
 
 /**
- * The `download_weights` action, and the job it launches.
+ * The `download_weights` action, wherever the row renders it, and the job it runs.
  *
- * 202 and poll, the contract the export route uses: the button hands off to
- * `useBackgroundJob` and reports the phase the job is in. A failed run leaves the
- * connection exactly as it was — the state flip is the download's last statement
- * — so there is nothing to undo and the button simply comes back.
+ * 202 and poll, the contract the export route uses. It lives on the *row* rather
+ * than inside a control because one of the two controls is a menu item, and a
+ * menu closes when it is chosen — a job whose progress and refusal lived inside
+ * the item would take both with it on the way out.
+ *
+ * **The list is re-read when the job settles, and that is the fix for a bug**
+ * (#469). What the `202` changed was the declaration; what the *completion*
+ * changes is `setup_state` and, with it, the row's whole meaning. Nothing was
+ * re-reading at that moment, so a finished download left `Not set up` on screen
+ * until somebody reloaded the page. A settled job is a mutation like any other,
+ * so it invalidates what it touched.
  */
-function DownloadWeights({ connection }: { readonly connection: Connection }): JSX.Element {
+function useWeightsRun(connection: Connection): {
+  readonly start: () => void;
+  readonly running: boolean;
+  readonly progress: string | null;
+  readonly failure: { readonly code: string; readonly message: string } | null;
+} {
   const download = useDownloadWeights();
+  const refresh = useRefreshConnections();
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useBackgroundJob(jobId);
   const state = job.data?.state;
   const running = download.isPending || state === "queued" || state === "running";
 
-  // Stop polling once the work settles, and let the invalidated list carry the
-  // outcome — the row itself is what says `Ready`, so a second announcement here
-  // would be the same fact twice.
   useEffect(() => {
-    if (state === "succeeded" || state === "cancelled") setJobId(null);
+    if (state !== "succeeded" && state !== "failed" && state !== "cancelled") return;
+    refresh();
+    // A failure keeps its job id, because the job is where the reason is; the
+    // poll has already stopped on its own — `useBackgroundJob` settles — so this
+    // holds a finished row, not an open request.
+    if (state !== "failed") setJobId(null);
+    // `refresh` is stable per render under the compiler and re-running this on a
+    // list re-read would invalidate in a loop; the transition is what it watches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
-  const failure = download.isError
-    ? asApiError(download.error)
-    : state === "failed"
-      ? { code: "DOWNLOAD_FAILED", message: job.data?.error ?? "The download did not finish." }
-      : null;
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        variant="secondary"
-        size="sm"
-        data-testid="download-weights"
-        disabled={running}
-        onClick={() => download.mutate(connection.id, { onSuccess: (queued) => setJobId(queued.id) })}
-      >
-        <Download className="size-4" aria-hidden="true" />
-        {running ? "Downloading…" : "Download weights"}
-      </Button>
-      {running && job.data !== undefined && (
-        <span className="text-meta text-muted-foreground" data-testid="download-progress">
-          {job.data.processed}
-          {job.data.total === null ? "" : ` of ${job.data.total}`}
-        </span>
-      )}
-      {failure !== null && (
-        <FieldError data-testid="download-error">
-          <Badge variant="destructive">{failure.code}</Badge> {failure.message}
-        </FieldError>
-      )}
-    </div>
-  );
+  return {
+    start: () =>
+      download.mutate(connection.id, { onSuccess: (queued) => setJobId(queued.id) }),
+    running,
+    progress:
+      job.data === undefined
+        ? null
+        : `${job.data.processed}${job.data.total === null ? "" : ` of ${job.data.total}`}`,
+    failure: download.isError
+      ? asApiError(download.error)
+      : state === "failed"
+        ? { code: "DOWNLOAD_FAILED", message: job.data?.error ?? "The download did not finish." }
+        : null,
+  };
 }
 
 /**
@@ -344,13 +421,18 @@ function ConnectionDialog({
   const [name, setName] = useState("");
   const [modelId, setModelId] = useState("");
   const [revision, setRevision] = useState("");
-  const [device, setDevice] = useState("");
-  const [precision, setPrecision] = useState("");
+  // Which entry the model select is showing: a curated model id, or the sentinel
+  // that reveals the free fields. Kept beside `modelId` rather than derived from
+  // it, because a custom connection may name a curated model at another revision
+  // and the select must go on showing "Custom" while it does.
+  const [choice, setChoice] = useState<string>(CUSTOM_MODEL);
+  const [device, setDevice] = useState<string>("cpu");
+  const [precision, setPrecision] = useState<Precision>("fp32");
   const [endpoint, setEndpoint] = useState("");
 
   // Fill the form from whatever the dialog was opened for. An edit arrives with a
-  // row; a create arrives with nothing and, once a local kind is chosen, with
-  // D1's suggestion already in it.
+  // row; a create arrives with nothing and, once a local kind is chosen, with the
+  // default curated model already in it.
   useEffect(() => {
     if (!open) return;
     if (editing !== undefined) {
@@ -358,8 +440,14 @@ function ConnectionDialog({
       setName(editing.name);
       setModelId(editing.model_id);
       setRevision(editing.model_revision);
-      setDevice(editing.device ?? "");
-      setPrecision(editing.precision ?? "");
+      setChoice(
+        curatedEntry(editing.model_id, editing.model_revision)?.modelId ?? CUSTOM_MODEL,
+      );
+      // A device outside what a form offers — `cuda:1`, or a row from a build
+      // before the vocabulary closed — is shown as it is rather than rewritten
+      // to the nearest offered member behind somebody's back.
+      setDevice(editing.device ?? "cpu");
+      setPrecision(editing.precision ?? "fp32");
       setEndpoint(editing.endpoint_url ?? "");
       return;
     }
@@ -367,26 +455,47 @@ function ConnectionDialog({
     setName("");
     setModelId("");
     setRevision("");
+    setChoice(CUSTOM_MODEL);
     setDevice("cpu");
-    setPrecision("fp16");
+    setPrecision("fp32");
     setEndpoint("");
   }, [open, editing]);
 
   function choose(next: ConnectionType): void {
     setKind(next);
-    if (next === "local") {
-      setModelId(SUGGESTED_MODEL);
-      setRevision(SUGGESTED_REVISION);
-    }
+    if (next === "local") pickModel(DEFAULT_MODEL.modelId);
+  }
+
+  /** Pick a curated entry — which sets both halves of the pair — or reveal the fields. */
+  function pickModel(next: string): void {
+    setChoice(next);
+    const entry = next === CUSTOM_MODEL ? undefined : CURATED_BY_ID.get(next);
+    if (entry === undefined) return;
+    setModelId(entry.modelId);
+    setRevision(entry.revision);
+  }
+
+  /**
+   * Moving the device can strand the precision, so the precision moves with it.
+   *
+   * The kernel refuses `cpu` + `fp16`, so a form that left `fp16` selected while
+   * the device went to `cpu` would be offering a pair it knows will be refused —
+   * which is worse than either offering it and rendering the refusal or not
+   * offering it at all.
+   */
+  function pickDevice(next: string): void {
+    setDevice(next);
+    setPrecision(precisionOn(next, precision));
   }
 
   const local = kind === "local";
+  const custom = choice === CUSTOM_MODEL;
   const pending = create.isPending || update.isPending;
   const complete =
     name.trim() !== "" &&
     modelId.trim() !== "" &&
     revision.trim() !== "" &&
-    (local ? device.trim() !== "" && precision.trim() !== "" : endpoint.trim() !== "");
+    (local ? device.trim() !== "" : endpoint.trim() !== "");
 
   function submit(event: FormEvent): void {
     event.preventDefault();
@@ -397,7 +506,7 @@ function ConnectionDialog({
       modelId: modelId.trim(),
       modelRevision: revision.trim(),
       device: device.trim(),
-      precision: precision.trim(),
+      precision,
       endpointUrl: endpoint.trim(),
     };
     // Only on success: a refusal leaves the dialog open with what was typed
@@ -445,59 +554,151 @@ function ConnectionDialog({
                 />
                 <FieldHint>Unique in this workspace, ignoring case.</FieldHint>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="connection-model">Model</Label>
-                <Input
-                  id="connection-model"
-                  data-testid="connection-model"
-                  value={modelId}
-                  onChange={(event) => setModelId(event.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="connection-revision">Revision</Label>
-                <Input
-                  id="connection-revision"
-                  data-testid="connection-revision"
-                  value={revision}
-                  onChange={(event) => setRevision(event.target.value)}
-                />
-                <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
-              </div>
+              {/*
+                The curated list is the *local* form's, and only its. A curated
+                entry is a checkpoint this build has an adapter for and would
+                download; an HTTP connection names whatever the endpoint on the
+                other end runs, which this build never loads and cannot vouch
+                for. Offering the same list there would be recommending models
+                for somebody else's server.
+              */}
               {local ? (
                 <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="connection-model">Model</Label>
+                    <Select value={choice} onValueChange={pickModel}>
+                      <SelectTrigger id="connection-model" data-testid="connection-model">
+                        <SelectValue placeholder="Choose a model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CURATED_MODELS.map((group) => (
+                          <SelectGroup key={group.label}>
+                            <SelectLabel>{group.label}</SelectLabel>
+                            {group.models.map((model) => (
+                              <SelectItem key={model.modelId} value={model.modelId}>
+                                {model.modelId} · {bytes(model.totalBytes)} · {model.hint}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))}
+                        <SelectGroup>
+                          <SelectItem value={CUSTOM_MODEL}>Custom model…</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FieldHint>
+                      {custom
+                        ? "Any model this build has an adapter for. The list above is a starting point, not a limit."
+                        : "Pinned to the revision this list was checked against."}
+                    </FieldHint>
+                  </div>
+                  {custom && (
+                    <>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="connection-custom-model">Model id</Label>
+                        <Input
+                          id="connection-custom-model"
+                          data-testid="connection-custom-model"
+                          value={modelId}
+                          onChange={(event) => setModelId(event.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="connection-revision">Revision</Label>
+                        <Input
+                          id="connection-revision"
+                          data-testid="connection-revision"
+                          value={revision}
+                          onChange={(event) => setRevision(event.target.value)}
+                        />
+                        <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                      </div>
+                    </>
+                  )}
                   <div className="flex gap-3">
                     <div className="flex flex-1 flex-col gap-1.5">
                       <Label htmlFor="connection-device">Device</Label>
-                      <Input
-                        id="connection-device"
-                        data-testid="connection-device"
-                        value={device}
-                        onChange={(event) => setDevice(event.target.value)}
-                      />
+                      <Select value={device} onValueChange={pickDevice}>
+                        <SelectTrigger id="connection-device" data-testid="connection-device">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {/*
+                            A row already holding something else — `cuda:1` for a
+                            second GPU — keeps its own value as an option, so
+                            opening the edit form does not silently reassign it.
+                          */}
+                          {(DEVICES.includes(device as (typeof DEVICES)[number])
+                            ? DEVICES
+                            : [...DEVICES, device]
+                          ).map((one) => (
+                            <SelectItem key={one} value={one}>
+                              {one}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="flex flex-1 flex-col gap-1.5">
                       <Label htmlFor="connection-precision">Precision</Label>
-                      <Input
-                        id="connection-precision"
-                        data-testid="connection-precision"
+                      <Select
                         value={precision}
-                        onChange={(event) => setPrecision(event.target.value)}
-                      />
+                        onValueChange={(next) => setPrecision(next as Precision)}
+                      >
+                        <SelectTrigger
+                          id="connection-precision"
+                          data-testid="connection-precision"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {precisionsFor(device).map((one) => (
+                            <SelectItem key={one} value={one}>
+                              {one}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FieldHint data-testid="precision-hint">
+                        {precisionsFor(device).length === 1
+                          ? "Half precision applies on CUDA only — on a CPU it has no effect."
+                          : "fp16 halves the memory and runs faster on CUDA."}
+                      </FieldHint>
                     </div>
                   </div>
                   <DownloadSizeLine modelId={modelId.trim()} revision={revision.trim()} />
                 </>
               ) : (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="connection-endpoint">Endpoint URL</Label>
-                  <Input
-                    id="connection-endpoint"
-                    data-testid="connection-endpoint"
-                    value={endpoint}
-                    onChange={(event) => setEndpoint(event.target.value)}
-                  />
-                </div>
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="connection-custom-model">Model</Label>
+                    <Input
+                      id="connection-custom-model"
+                      data-testid="connection-custom-model"
+                      value={modelId}
+                      onChange={(event) => setModelId(event.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="connection-revision">Revision</Label>
+                    <Input
+                      id="connection-revision"
+                      data-testid="connection-revision"
+                      value={revision}
+                      onChange={(event) => setRevision(event.target.value)}
+                    />
+                    <FieldHint>Pinned. A moving pointer is not a provenance.</FieldHint>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="connection-endpoint">Endpoint URL</Label>
+                    <Input
+                      id="connection-endpoint"
+                      data-testid="connection-endpoint"
+                      value={endpoint}
+                      onChange={(event) => setEndpoint(event.target.value)}
+                    />
+                  </div>
+                </>
               )}
               {failure !== null && (
                 <FieldError data-testid="connection-error">

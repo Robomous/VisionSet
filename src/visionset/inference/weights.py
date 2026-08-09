@@ -22,11 +22,22 @@ nothing, so there is no half-``ready`` row for a reader to find and no third
 state meaning "some of it arrived". That is an ordering rather than a guard,
 which is why nothing in the domain has to encode it.
 
-**Idempotent, and it is the handler's idempotency that needs it.** A connection
-already ``ready`` is verified — the files are looked for — and left alone. That
-is not a convenience for people typing twice: the download job is registered
-idempotent, and an orphan re-queued after a crash arrives at a connection a
-previous attempt already finished.
+**Idempotent, and two callers need it to be.** A connection already ``ready`` is
+re-checked — every file the revision names is looked for, and anything missing is
+fetched — and then left alone. That is not only a convenience for people typing
+twice: the download job is registered idempotent, an orphan re-queued after a
+crash arrives at a connection a previous attempt already finished, and since #469
+so does somebody asking a set-up connection to check itself.
+
+**What that check is, precisely.** ``huggingface_hub`` addresses its cache by the
+revision's commit hash and each file's etag, so a re-run at a pinned revision
+finds the files it already has and returns them without reading their bytes.
+What a re-run therefore proves is that the snapshot is **complete** — the common
+failure, since a download interrupted by a network or a full disk leaves it
+incomplete — and what it does not prove is that a file already on disk still
+holds the bytes it was written with. Saying the difference out loud is the point:
+a control labelled as a check must not imply an integrity guarantee the library
+underneath it does not make.
 """
 
 from __future__ import annotations
@@ -82,12 +93,14 @@ def fetch_weights(
     this sequence is how the CLI and the API would come to disagree about what
     "set up" means.
 
-    **A run against a connection that is already ``ready`` is a verification,
-    and it needs no flag to be one (#469).** The snapshot download checks a cache
-    it already filled against its hashes rather than re-fetching it, and the
-    write below is a no-op on a connection that is already ready — so the orphan
-    the queue re-enqueues after a crash and the person asking a set-up connection
-    to check itself take the identical path.
+    **A run against a connection that is already ``ready`` is a re-check, and it
+    needs no flag to be one (#469).** The snapshot download finds what the cache
+    already holds and fetches only what is missing, and the write below is a
+    no-op on a connection that is already ready — so the orphan the queue
+    re-enqueues after a crash and the person asking a set-up connection to check
+    itself take the identical path. What it establishes is completeness rather
+    than integrity; see this module's docstring for why the distinction is worth
+    a paragraph.
 
     ``on_progress`` is a plain callable rather than a ``ProgressReporter``,
     because what this can honestly report is a *phase* and not a count: a
@@ -126,9 +139,13 @@ def download(connection: InferenceConnection, *, into: Path) -> Path:
     whose identity the row now misdescribes — which is the provenance failure the
     pin exists to prevent.
 
-    Idempotent by the library's own design: a snapshot already in the cache is
-    verified against its hashes and not re-fetched, which is what makes a
-    re-run of the job cheap rather than merely safe.
+    Idempotent by the library's own design, and idempotent in a specific way. A
+    file already in the cache under this revision's commit hash is returned
+    without being re-read, so a re-run costs a metadata call per file and fetches
+    only what is absent; a file that arrives is checked against the size the hub
+    published for it before it is moved into place, and a transfer interrupted
+    part-way resumes from what it had. So a re-run repairs a snapshot that is
+    incomplete and cannot detect one that is complete but damaged.
 
     Raises:
         LocalInferenceUnavailable: ``huggingface_hub`` is not installed, or the

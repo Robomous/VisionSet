@@ -135,13 +135,9 @@ def test_the_service_refuses_in_the_kernels_own_vocabulary(connections) -> None:
     ("written", "stored"),
     [("cpu", "cpu"), ("cuda", "cuda"), ("cuda:1", "cuda:1"), (" CUDA ", "cuda")],
 )
-def test_a_device_this_build_can_address_is_kept_and_normalized(
-    written: str, stored: str
-) -> None:
+def test_a_device_this_build_can_address_is_kept_and_normalized(written: str, stored: str) -> None:
     """Case and surrounding space are forgiven; `cuda:N` is a device, not a typo."""
-    made = InferenceConnection(
-        name="x", **(dict(LOCAL) | {"device": written, "precision": "fp32"})
-    )
+    made = InferenceConnection(name="x", **(dict(LOCAL) | {"device": written, "precision": "fp32"}))
     assert made.device == stored
 
 
@@ -179,9 +175,7 @@ def test_the_spellings_this_build_has_honoured_normalize_onto_the_vocabulary(
     product. A vocabulary that closed around them by refusing them would refuse
     them on the way *out* of the store, which is a workspace that will not list.
     """
-    made = InferenceConnection(
-        name="x", **(dict(LOCAL) | {"device": "cuda", "precision": written})
-    )
+    made = InferenceConnection(name="x", **(dict(LOCAL) | {"device": "cuda", "precision": written}))
     assert made.precision is stored
 
 

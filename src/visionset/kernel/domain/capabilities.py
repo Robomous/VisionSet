@@ -267,13 +267,15 @@ CONNECTION_GATES: Final[Mapping[ConnectionAction, frozenset[ConnectionSetupState
 
 **``download_weights`` is legal in both, and that is a decision rather than a
 widening for convenience (#469).** The work behind it is idempotent by the
-library's own design: a snapshot already in the cache is verified against its
-hashes and not re-fetched, and ``record_weights_ready`` returns a ``ready``
-connection unchanged. So the same request against a ``ready`` connection is a
-*verification* — the answer to "are the weights still there and still intact?",
-which is a real question on a machine where a disk filled or a cache was
-pruned, and which had no action at all before. A client renders it under its own
-label; the wire keeps one name, because it is one call doing one thing.
+download library's own design: files already in the cache under this revision
+are found rather than re-fetched, and ``record_weights_ready`` returns a
+``ready`` connection unchanged. So the same request against a ``ready``
+connection answers "is this snapshot still complete?" — a real question on a
+machine where a disk filled or a cache was pruned mid-download — and it had no
+action at all before. It is completeness rather than integrity, and
+``visionset.inference.weights`` says why that distinction is worth keeping. A
+client renders it under its own label; the wire keeps one name, because it is
+one call doing one thing.
 
 That leaves this table unconditional in every row, and the conditionality
 entirely in :data:`CONNECTION_KINDS`. The table stays rather than folding away:
