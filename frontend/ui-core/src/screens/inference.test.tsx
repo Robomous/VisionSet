@@ -610,7 +610,7 @@ it("surfaces a failed download as prose, and leaves the same action as the retry
   expect(screen.queryByText(/retry/i)).toBeNull();
 });
 
-it("offers Verify weights in the overflow once a connection is ready", async () => {
+it("offers the completeness check in the overflow once a connection is ready", async () => {
   listing([
     connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
   ]);
@@ -623,7 +623,7 @@ it("offers Verify weights in the overflow once a connection is ready", async () 
   expect(await screen.findByTestId("action-verify-weights")).not.toBeNull();
 });
 
-it("does not offer Verify weights when the wire withholds the action", async () => {
+it("does not offer the completeness check when the wire withholds the action", async () => {
   // The same `setup_state`, so a screen deriving the item from the row's state
   // would still render it. Only `allowed_actions` gets this right.
   listing([connection({ setup_state: "ready", allowed_actions: ["update", "delete"] })]);
@@ -633,7 +633,7 @@ it("does not offer Verify weights when the wire withholds the action", async () 
   expect(screen.queryByTestId("action-verify-weights")).toBeNull();
 });
 
-it("runs the same request for Verify weights as for Download weights", async () => {
+it("runs the same request for the completeness check as for Download weights", async () => {
   listing([
     connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
   ]);
@@ -647,6 +647,110 @@ it("runs the same request for Verify weights as for Download weights", async () 
       sent.some((one) => one.method === "POST" && one.url.endsWith("/download")),
     ).toBe(true),
   );
+});
+
+// --- the integrity check, and keeping it apart from the other one (#471) --------
+
+const READY_BOTH = ["download_weights", "check_integrity", "update", "delete"];
+
+it("names the two checks by what each one proves", async () => {
+  // The bug being closed is a labelling one: **Verify weights** covered both
+  // readings and could only be honest about one. A download reads an index and
+  // finds what is absent; only a full re-read finds what is present and wrong.
+  listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+
+  expect((await screen.findByTestId("action-verify-weights")).textContent).toContain(
+    "Check for missing files",
+  );
+  expect((await screen.findByTestId("action-check-integrity")).textContent).toContain(
+    "Check files are undamaged",
+  );
+  expect(screen.queryByText("Verify weights")).toBeNull();
+});
+
+it("sends the integrity check to its own route, not to the download", async () => {
+  listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
+  on("POST", /\/check-integrity$/, { status: 202, body: job("queued") });
+  on("GET", /^\/background-jobs\/job-1$/, { status: 200, body: job("succeeded", 4, 4) });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-check-integrity"));
+
+  await waitFor(() =>
+    expect(sent.some((one) => one.method === "POST" && one.url.endsWith("/check-integrity"))).toBe(
+      true,
+    ),
+  );
+  // Two actions, two requests: a check that fell through to the download route
+  // would look identical on screen and prove nothing about the files.
+  expect(sent.some((one) => one.url.endsWith("/download"))).toBe(false);
+});
+
+it("does not offer the integrity check when the wire withholds it", async () => {
+  // The same `setup_state` as the row above, so a screen deriving the item from
+  // the state would still render it. `allowed_actions` is the only source.
+  listing([
+    connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
+  ]);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await screen.findByTestId("action-verify-weights");
+  expect(screen.queryByTestId("action-check-integrity")).toBeNull();
+});
+
+it("lands the row at Not set up when a check finds damage, and says what was done", async () => {
+  // The transition #471 added, and the reason the settle-invalidation from #469
+  // has to cover it: the row's whole meaning changed, in the other direction.
+  let damaged = false;
+  handlers.push((request) => {
+    if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
+    const row = damaged
+      ? connection({ setup_state: "not_set_up", allowed_actions: ["download_weights", "update", "delete"] })
+      : connection({ setup_state: "ready", allowed_actions: READY_BOTH });
+    return { status: 200, body: { items: [row], total: 1 } };
+  });
+  on("POST", /\/check-integrity$/, { status: 202, body: job("queued") });
+  handlers.push((request) => {
+    if (!request.url.includes("/background-jobs/")) return;
+    damaged = true;
+    return {
+      status: 200,
+      body: {
+        ...(job("failed") as Record<string, unknown>),
+        error: "1 file does not match (model.safetensors). The damaged copies have been removed",
+      },
+    };
+  });
+
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-check-integrity"));
+
+  const shown = await screen.findByTestId("integrity-error");
+  expect(shown.textContent).toContain("model.safetensors");
+  // What was done, and what to do — the remedy is the action the row now has.
+  expect(shown.textContent).toContain("removed");
+  expect(shown.textContent).toContain("real transfer");
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-status").textContent).toContain("Not set up"),
+  );
+  expect(await screen.findByTestId("download-weights")).not.toBeNull();
+});
+
+it("keeps a running check from reading as a running download", async () => {
+  // Two independent polls. One shared run state would light both controls, and
+  // the slow one would look like the fast one having stalled.
+  listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
+  on("POST", /\/check-integrity$/, { status: 202, body: job("queued") });
+  on("GET", /^\/background-jobs\/job-1$/, { status: 200, body: job("running", 2, 9) });
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-check-integrity"));
+
+  expect((await screen.findByTestId("integrity-progress")).textContent).toContain("2 of 9");
+  expect(screen.queryByTestId("download-progress")).toBeNull();
 });
 
 // --- editing and deleting ------------------------------------------------------
