@@ -77,6 +77,71 @@ def test_an_isolated_pixel_has_no_ring_to_walk() -> None:
     assert outline(rect(3, 3, 3, 3)) == [(3.0, 3.0)]
 
 
+# --- which blob, when the mask holds more than one (#461) ----------------------
+
+
+def speckled() -> list[list[int]]:
+    """#461's repro, verbatim: a 1-px speck in the topmost row, a 36-px object below-left.
+
+    The speck owns the topmost-leftmost lit pixel, which is where the tracer
+    starts from when nothing points it anywhere — so a click on the object used
+    to lose to a single stray pixel.
+    """
+    mask = [[0] * 10 for _ in range(10)]
+    mask[0][9] = 1  # 1-px speck, topmost row
+    for y in range(3, 9):
+        for x in range(1, 7):
+            mask[y][x] = 1  # the real object, 36 px
+    return mask
+
+
+def test_the_blob_under_the_click_wins_over_a_speck() -> None:
+    """#461's first symptom: a shape returned from somewhere the user did not click."""
+    traced = outline(speckled(), at=[(3.0, 5.0)])
+    assert (9.0, 0.0) not in traced, "the speck is not the answer to a click on the object"
+    assert traced[0] == (1.0, 3.0), "tracing starts at the clicked blob's own top-left"
+    assert len(traced) == 20  # the perimeter of the 6x6 object, corners counted once
+
+
+def test_a_real_segmentation_is_not_reported_as_nothing() -> None:
+    """#461's second symptom, and the one that reads as "the model found nothing".
+
+    The speck traces to a single point, three are needed for a polygon, so the
+    whole suggestion was dropped while a 36-px object sat under the click.
+    """
+    assert polygon_from(speckled(), at=[(3.0, 5.0)]) == PolygonGeometry(
+        points=[(1.0, 3.0), (6.0, 3.0), (6.0, 8.0), (1.0, 8.0)]
+    )
+
+
+def test_a_click_just_off_the_blob_falls_back_to_the_nearest_one() -> None:
+    """A mask need not cover the exact pixel clicked, and that is not a refusal.
+
+    The fallback is nearest-to-the-point rather than topmost-leftmost: the speck
+    is nearer the top of the frame, the object is nearer the click.
+    """
+    traced = outline(speckled(), at=[(0.0, 5.0)])  # one pixel left of the object
+    assert traced[0] == (1.0, 3.0)
+    assert (9.0, 0.0) not in traced
+
+
+def test_several_points_spanning_blobs_prefer_the_largest_of_them() -> None:
+    """Two positives can straddle two blobs; the bigger one is the better answer."""
+    traced = outline(speckled(), at=[(9.0, 0.0), (3.0, 5.0)])  # on the speck and on the object
+    assert traced[0] == (1.0, 3.0), "the 36-px object beats the 1-px speck"
+
+
+def test_without_a_point_the_topmost_blob_still_wins() -> None:
+    """The no-point call is unchanged — nothing outside a point prompt has an opinion."""
+    assert outline(speckled()) == [(9.0, 0.0)]
+
+
+def test_a_genuinely_empty_mask_is_still_nothing() -> None:
+    """Zero lit pixels stays exactly as it was: the contract's documented "no suggestion"."""
+    assert outline(empty(), at=[(5.0, 5.0)]) == []
+    assert polygon_from(empty(), at=[(5.0, 5.0)]) is None
+
+
 # --- simplification -----------------------------------------------------------
 
 
