@@ -16,9 +16,12 @@ import pytest
 from click.testing import Result
 from tests.cli._flow import ok, payload, run, runner, workspace
 
+from visionset.cli import inference as cli_inference
 from visionset.cli.main import app
 from visionset.inference import MODULES
 from visionset.inference import weights as weights_module
+from visionset.inference.integrity import IntegrityReport
+from visionset.kernel.errors import WeightsDamaged
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
     InferenceConnectionService,
@@ -303,7 +306,12 @@ def test_download_prints_the_connection_as_json(root: Path, fetched: list[str]) 
     ok(root, *LOCAL)
     document = payload(root, "inference", "download", "local-gd")
     assert document["setup_state"] == "ready"
-    assert document["allowed_actions"] == ["download_weights", "update", "delete"]
+    assert document["allowed_actions"] == [
+        "download_weights",
+        "check_integrity",
+        "update",
+        "delete",
+    ]
 
 
 def test_downloading_twice_verifies_rather_than_refusing(root: Path, fetched: list[str]) -> None:
@@ -446,3 +454,74 @@ def test_a_size_without_the_runtime_exits_one_with_the_install_command() -> None
     assert result.exit_code == 1, result.output
     assert 'pip install "visionset[local-inference]"' in result.stderr
     assert "Traceback" not in result.stderr
+
+
+# --- checking that what is on disk is undamaged (#471) ------------------------
+
+
+@pytest.fixture()
+def checked(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Answer the check as intact, and record the connection it was asked about.
+
+    Patched at ``visionset.cli.inference.check_integrity`` — the name the command
+    bound at import — so the resolution, the gate and the output are the shipped
+    code and only the reading of gigabytes is not.
+    """
+    seen: list[str] = []
+
+    def _check(workspace: Any, connection_id: Any, **_: Any) -> IntegrityReport:
+        seen.append(str(connection_id))
+        return IntegrityReport(files_checked=4, bytes_read=2048)
+
+    monkeypatch.setattr(cli_inference, "check_integrity", _check)
+    return seen
+
+
+def test_check_integrity_prints_what_it_read(
+    root: Path, fetched: list[str], checked: list[str]
+) -> None:
+    """The file count on stdout, the sentence on stderr — ``size``'s shape."""
+    ok(root, *LOCAL)
+    ok(root, "inference", "download", "local-gd")
+    assert ok(root, "inference", "check-integrity", "local-gd").strip() == "4"
+    assert len(checked) == 1
+
+
+def test_check_integrity_json_is_what_the_job_result_carries(
+    root: Path, fetched: list[str], checked: list[str]
+) -> None:
+    """One projection, two surfaces. The keys agree because both call ``counts``."""
+    ok(root, *LOCAL)
+    ok(root, "inference", "download", "local-gd")
+    document = payload(root, "inference", "check-integrity", "local-gd")
+    assert document == {"files_checked": 4, "bytes_read": 2048}
+
+
+def test_check_integrity_refuses_a_connection_with_nothing_to_read(root: Path) -> None:
+    """A sentence and exit 1, never a traceback — and it names the remedy.
+
+    **Unstubbed**, deliberately, unlike the three above. The gate lives *inside*
+    ``check_integrity``, so a test that replaced the function would be asserting
+    against its own stub — and this refusal reaches no network to be worth
+    faking: it is answered from the row before the hub is asked anything.
+    """
+    ok(root, *LOCAL)
+    result = run(root, "inference", "check-integrity", "local-gd")
+    assert result.exit_code == 1, result.output
+    assert "download them first" in result.stderr
+
+
+def test_check_integrity_reports_damage_as_a_sentence(
+    root: Path, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verdict reaches a terminal as prose, with the files named in it."""
+
+    def _damaged(workspace: Any, connection_id: Any, **_: Any) -> IntegrityReport:
+        raise WeightsDamaged("1 file does not match (model.safetensors)")
+
+    monkeypatch.setattr(cli_inference, "check_integrity", _damaged)
+    ok(root, *LOCAL)
+    ok(root, "inference", "download", "local-gd")
+    result = run(root, "inference", "check-integrity", "local-gd")
+    assert result.exit_code == 1, result.output
+    assert "model.safetensors" in result.stderr

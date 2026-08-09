@@ -1,22 +1,26 @@
 # usage: from visionset.cli.inference import inference_app
 """``visionset inference`` — configuring where a model may be asked to predict.
 
-Seven commands, so a workspace can be made ready for auto-labeling without a
-browser. Six are one call to ``InferenceConnectionService``; ``size`` is the
+Eight commands, so a workspace can be made ready for auto-labeling without a
+browser. Seven are one call to ``InferenceConnectionService``; ``size`` is the
 exception and says so — it is about a published model rather than about a
-configured row, so it opens no workspace at all. Two reach a network:
-``download``, which fetches, and ``size``, which reads a listing so that
-``download`` can be an informed decision. Contacting a configured endpoint is
-still absent (`cf. #421`): a command that cannot work is worse than one that is
-not there yet.
+configured row, so it opens no workspace at all. Three reach a network:
+``download``, which fetches, ``size``, which reads a listing so that
+``download`` can be an informed decision, and ``check-integrity``, which reads
+the digests a snapshot on disk is compared against. Contacting a configured
+endpoint is still absent (`cf. #421`): a command that cannot work is worse than
+one that is not there yet.
 
-**``download`` blocks, and that is ``ingest``'s pattern rather than a shortcut.**
+**``download`` and ``check-integrity`` block, and that is ``ingest``'s pattern
+rather than a shortcut.**
 The API queues the same work because it has a dispatcher to run it; a terminal
 does not, and a CLI that enqueued would print a job id nothing was ever going to
 claim. So this runs the work here, says so on stderr first, and shares its body
 with the job handler — ``visionset.inference.fetch_weights`` is the sequence
 both call, because two implementations of "what downloading means" is how a
 terminal and an API come to disagree about what "set up" means.
+``check-integrity`` shares ``visionset.inference.check_integrity`` with its own
+job handler for the same reason (#471).
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ from visionset import wire
 from visionset.cli._errors import domain_errors
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.inference import download_size, fetch_weights
+from visionset.inference import check_integrity, download_size, fetch_weights
 from visionset.kernel.domain import ConnectionType, InferenceConnection, Precision
 from visionset.kernel.services import InferenceConnectionService
 
@@ -218,6 +222,48 @@ def inference_download(
         return
     note(f"Connection {ready.name!r} is ready.")
     typer.echo(str(ready.id))
+
+
+@inference_app.command("check-integrity")
+def inference_check_integrity(
+    connection: ConnectionArgument,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Re-read a local connection's weights and prove they are undamaged.
+
+    Not the same check as re-running ``download``. That one establishes the
+    snapshot is **complete** — every file the revision names is present — and it
+    answers from an index without opening a file. This reads **every byte** and
+    compares it against the digests the publishing hub holds, which is the only
+    way to catch a file that is present and wrong: truncated by a filesystem
+    error, rotted on a failing disk, edited in place.
+
+    It **blocks**, and it is slow in proportion to the model — gigabytes of
+    reading for a large one. ``download``'s reason: there is no worker at a
+    terminal to hand the job to.
+
+    If anything fails to match, the damaged copies are **removed** and the
+    connection goes back to not set up, so that ``download`` is a real transfer
+    rather than a cache hit that hands the same bad bytes back. Interrupting is
+    safe: nothing is written or removed until every file has been read.
+
+    Refused when there is nothing to read: an `http` connection has no weights
+    of its own, and a local one whose weights never arrived has none yet.
+    """
+    with opened_workspace(workspace) as service:
+        connections = InferenceConnectionService(service)
+        connection_id = _resolve(connections, connection)
+        # Inside the block, ``download``'s reason: every refusal below is a
+        # ``VisionSetError`` — nothing to check, the extra missing, the hub
+        # unreachable, and the damage verdict itself — and this is what turns
+        # one into a sentence and exit 1 rather than a traceback.
+        report = check_integrity(service, connection_id, on_progress=note)
+    if json_out:
+        document(report.counts())
+        return
+    note(f"{report.files_checked} files read, {report.bytes_read} bytes, all intact.")
+    typer.echo(str(report.files_checked))
 
 
 @inference_app.command("delete")

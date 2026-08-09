@@ -42,13 +42,27 @@
  * rule is about `allowed_actions`, and no field-level shape can carry which
  * precision a device honours.
  *
- * ## One declared action, two things to call it
+ * ## Two actions over the same files, and each label says what it proves
  *
  * `download_weights` is declared for a local connection in either state (#469).
  * Below `Ready` it is the row's **Download weights** button; at `Ready` it is
- * **Verify weights** in the overflow, where it re-checks that the snapshot is
- * still complete. The row picks the label from `setup_state` — a field the wire
- * states — and never from a table of its own.
+ * **Check for missing files** in the overflow, where it re-runs the fetch and
+ * turns up anything absent. The row picks that reading from `setup_state` — a
+ * field the wire states — and never from a table of its own.
+ *
+ * `check_integrity` is the second action, declared only at `Ready` and only for
+ * a local connection (#471), and it renders as **Check files are undamaged**.
+ * The two labels are written against each other on purpose: a download reads an
+ * index and can prove nothing is *missing*, and only a full re-read of every
+ * byte can prove nothing is *damaged*. **Verify weights** was the old label for
+ * the first and claimed the second, which is the confusion this pair removes;
+ * `docs/inference.md` carries the same two sentences, so the page and the
+ * product cannot drift apart.
+ *
+ * A failed integrity check is the one refusal on this screen that has already
+ * acted: the damaged files are purged and the connection is back to `Not set up`
+ * before the job row says so. The settle-invalidation is what makes the row
+ * agree, and the prose describes a state the workspace is already in.
  *
  * ## The size is asked for before the connection exists
  *
@@ -60,12 +74,22 @@
  * instead of disabling itself.
  */
 
-import { Download, Filter, MoreHorizontal, Pencil, Plug, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  Download,
+  FileSearch,
+  Filter,
+  MoreHorizontal,
+  Pencil,
+  Plug,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
 import {
+  useCheckIntegrity,
   useConnections,
   useCreateConnection,
   useDeleteConnection,
@@ -237,7 +261,8 @@ function ConnectionRow({
 }): JSX.Element {
   const can = new Set(connection.allowed_actions);
   const ready = connection.setup_state === "ready";
-  const weights = useWeightsRun(connection);
+  const weights = useWeightsRun(connection, useDownloadWeights(), "DOWNLOAD_FAILED");
+  const integrity = useWeightsRun(connection, useCheckIntegrity(), "WEIGHTS_DAMAGED");
   return (
     <TableRow data-testid={`connection-${connection.name}`}>
       <TableCell className="font-medium">{connection.name}</TableCell>
@@ -284,7 +309,10 @@ function ConnectionRow({
                 {weights.running ? "Downloading…" : "Download weights"}
               </Button>
             )}
-            {(can.has("update") || can.has("delete") || (can.has("download_weights") && ready)) && (
+            {(can.has("update") ||
+              can.has("delete") ||
+              can.has("check_integrity") ||
+              (can.has("download_weights") && ready)) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -297,14 +325,33 @@ function ConnectionRow({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  {/*
+                    Two checks over the same files, and each label says what its
+                    own check *proves* rather than what it is called (#471).
+                    "Verify weights" covered both readings and could only be
+                    honest about one: a download against a set-up connection
+                    reads an index and finds a file that is absent, and no
+                    amount of it will find a file that is present and wrong.
+                    `docs/inference.md` carries the same two sentences.
+                  */}
                   {can.has("download_weights") && ready && (
                     <DropdownMenuItem
                       data-testid="action-verify-weights"
                       disabled={weights.running}
                       onSelect={weights.start}
                     >
+                      <FileSearch className="size-4" aria-hidden="true" />
+                      {weights.running ? "Checking…" : "Check for missing files"}
+                    </DropdownMenuItem>
+                  )}
+                  {can.has("check_integrity") && (
+                    <DropdownMenuItem
+                      data-testid="action-check-integrity"
+                      disabled={integrity.running}
+                      onSelect={integrity.start}
+                    >
                       <ShieldCheck className="size-4" aria-hidden="true" />
-                      {weights.running ? "Checking…" : "Verify weights"}
+                      {integrity.running ? "Reading every file…" : "Check files are undamaged"}
                     </DropdownMenuItem>
                   )}
                   {can.has("update") && (
@@ -328,12 +375,33 @@ function ConnectionRow({
               {weights.progress}
             </span>
           )}
+          {integrity.running && integrity.progress !== null && (
+            <span className="text-meta text-muted-foreground" data-testid="integrity-progress">
+              {integrity.progress} files
+            </span>
+          )}
           {weights.failure !== null && (
             <FieldError data-testid="download-error">
               <Badge variant="destructive">{weights.failure.code}</Badge> {weights.failure.message}{" "}
               {ready
-                ? "The connection is still Ready — nothing was changed. Verify weights again to re-check the cache."
+                ? "The connection is still Ready — nothing was changed. Check again to re-read the cache."
                 : "The connection is still Not set up: weights arrive or they do not, so there is nothing half-installed to clear up. Download weights again — an interrupted transfer resumes from what it had."}
+            </FieldError>
+          )}
+          {/*
+            The one failure on this screen that has already acted. A check that
+            found damage purged the bad files and stood the connection down
+            before the job row said so, so the sentence describes a state the
+            row is *already* in — and the remedy it names is the action the
+            connection now declares, one line above it in this very menu.
+          */}
+          {integrity.failure !== null && (
+            <FieldError data-testid="integrity-error">
+              <Badge variant="destructive">{integrity.failure.code}</Badge>{" "}
+              {integrity.failure.message}{" "}
+              {ready
+                ? "Nothing was removed and the connection is still Ready — a check that cannot reach the model's source is not an answer about the files here."
+                : "The damaged copies have been removed and the connection is back to Not set up. Download weights again: with the bad files gone, it is a real transfer rather than a cache hit."}
             </FieldError>
           )}
         </div>
@@ -343,32 +411,52 @@ function ConnectionRow({
 }
 
 /**
- * The `download_weights` action, wherever the row renders it, and the job it runs.
+ * One launched-and-polled job on a connection row: how to start it, and what it
+ * is saying.
  *
  * 202 and poll, the contract the export route uses. It lives on the *row* rather
- * than inside a control because one of the two controls is a menu item, and a
- * menu closes when it is chosen — a job whose progress and refusal lived inside
- * the item would take both with it on the way out.
+ * than inside a control because the controls are menu items, and a menu closes
+ * when one is chosen — a job whose progress and refusal lived inside the item
+ * would take both with it on the way out.
  *
  * **The list is re-read when the job settles, and that is the fix for a bug**
  * (#469). What the `202` changed was the declaration; what the *completion*
  * changes is `setup_state` and, with it, the row's whole meaning. Nothing was
  * re-reading at that moment, so a finished download left `Not set up` on screen
  * until somebody reloaded the page. A settled job is a mutation like any other,
- * so it invalidates what it touched.
+ * so it invalidates what it touched. It covers the new transition too (#471):
+ * a check that finds damage moves the row the *other* way, `Ready` to `Not set
+ * up`, and the same settle is what makes the row say so without a reload.
+ *
+ * **Taken as a parameter rather than chosen inside**, since #471 gave the row a
+ * second job to run. Two calls means two independent poll states, which is what
+ * keeps a running check from reading as a running download; passing the mutation
+ * in is what lets one body serve both without a `kind` flag branching over
+ * everything it does.
  */
-function useWeightsRun(connection: Connection): {
+function useWeightsRun(
+  connection: Connection,
+  mutation: {
+    readonly mutate: (
+      id: string,
+      options: { readonly onSuccess: (queued: { readonly id: string }) => void },
+    ) => void;
+    readonly isPending: boolean;
+    readonly isError: boolean;
+    readonly error: unknown;
+  },
+  failed: string,
+): {
   readonly start: () => void;
   readonly running: boolean;
   readonly progress: string | null;
   readonly failure: { readonly code: string; readonly message: string } | null;
 } {
-  const download = useDownloadWeights();
   const refresh = useRefreshConnections();
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useBackgroundJob(jobId);
   const state = job.data?.state;
-  const running = download.isPending || state === "queued" || state === "running";
+  const running = mutation.isPending || state === "queued" || state === "running";
 
   useEffect(() => {
     if (state !== "succeeded" && state !== "failed" && state !== "cancelled") return;
@@ -383,17 +471,16 @@ function useWeightsRun(connection: Connection): {
   }, [state]);
 
   return {
-    start: () =>
-      download.mutate(connection.id, { onSuccess: (queued) => setJobId(queued.id) }),
+    start: () => mutation.mutate(connection.id, { onSuccess: (queued) => setJobId(queued.id) }),
     running,
     progress:
       job.data === undefined
         ? null
         : `${job.data.processed}${job.data.total === null ? "" : ` of ${job.data.total}`}`,
-    failure: download.isError
-      ? asApiError(download.error)
+    failure: mutation.isError
+      ? asApiError(mutation.error)
       : state === "failed"
-        ? { code: "DOWNLOAD_FAILED", message: job.data?.error ?? "The download did not finish." }
+        ? { code: failed, message: job.data?.error ?? "The job did not finish." }
         : null,
   };
 }

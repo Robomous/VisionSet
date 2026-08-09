@@ -44,6 +44,7 @@ from visionset.kernel.errors import (
     ConstraintViolated,
     InferenceConnectionInvalid,
     InferenceConnectionNameTaken,
+    InferenceConnectionNotCheckable,
     InferenceConnectionNotDownloadable,
     InferenceConnectionNotFound,
 )
@@ -254,6 +255,81 @@ class InferenceConnectionService:
                 )
             )
 
+    def require_checkable(self, connection_id: UUID) -> InferenceConnection:
+        """The connection, if there is a snapshot on disk to re-read (#471).
+
+        ``require_downloadable``'s sibling, and the same construction for the
+        same reason: derived from ``connection_actions`` rather than from a
+        second reading of the tables, so ``allowed_actions`` and this refusal
+        cannot disagree about when integrity may be checked.
+
+        The one difference is that this gate is **narrow in state** where that
+        one is total. A connection at ``not_set_up`` is refused, because a check
+        that re-reads a snapshot has nothing to read before one exists — and
+        answering "intact" over an empty cache would be the false verdict this
+        whole feature exists to make impossible.
+
+        Raises:
+            InferenceConnectionNotFound: no such connection in this workspace.
+            InferenceConnectionNotCheckable: it has no weights of its own, or
+                they are not here yet.
+        """
+        with self._workspace.unit_of_work() as uow:
+            connection = self.require_connection(uow, connection_id)
+        if ConnectionAction.CHECK_INTEGRITY in connection_actions(
+            connection.setup_state, connection_type=connection.connection_type
+        ):
+            return connection
+        raise InferenceConnectionNotCheckable(_why_not_checkable(connection))
+
+    def record_weights_missing(self, connection_id: UUID) -> InferenceConnection:
+        """Mark the weights gone. Called **after** they are, never before (#471).
+
+        The other edge, and the mirror of ``record_weights_ready`` in every
+        respect that matters. An integrity check that found damage purges the
+        bad blobs and then calls this, in that order: a cache hit is returned
+        unread, so a connection sent back to ``not_set_up`` while the corrupt
+        bytes were still on disk would be repaired by a download that re-served
+        them and arrive back at ``ready`` carrying the same damage. Purging
+        first is what makes ``download_weights`` the genuine remedy.
+
+        **Never-half-ready is preserved, and it is the same ordering argument.**
+        There are two states and this writes one of them; there is no moment at
+        which a reader finds a third. What a crash between the purge and this
+        write leaves is a ``ready`` connection missing a file — which is an
+        *incomplete* snapshot, exactly the condition ``download_weights``
+        already exists to repair, and it is the safe side of the window to fail
+        on. See ``visionset.inference.integrity`` for why the other ordering is
+        not available.
+
+        **Idempotent**, for ``record_weights_ready``'s reason one state over: the
+        check job is registered idempotent, so a retry can arrive at a
+        connection a previous attempt already sent back.
+
+        Deliberately narrow, and it takes no reason. What the row records is
+        that the weights are not usable; *why* is the job's error, where a
+        sentence naming the damaged files can be read and where it does not
+        outlive the remedy.
+
+        Raises:
+            InferenceConnectionNotFound: no such connection in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            current = self.require_connection(uow, connection_id)
+            if current.setup_state is ConnectionSetupState.NOT_SET_UP:
+                return current
+            return uow.inference_connections.update(
+                _built(
+                    **(
+                        current.model_dump()
+                        | {
+                            "setup_state": ConnectionSetupState.NOT_SET_UP,
+                            "updated_at": datetime.now(UTC),
+                        }
+                    )
+                )
+            )
+
     def delete(self, connection_id: UUID) -> None:
         """Remove a connection. Annotations keep their model provenance.
 
@@ -383,6 +459,26 @@ def _why_not_downloadable(connection: InferenceConnection) -> str:
     return (
         f"connection {connection.name!r} is an {connection.connection_type.value} connection; "
         "its model runs elsewhere, so there are no weights here to fetch"
+    )
+
+
+def _why_not_checkable(connection: InferenceConnection) -> str:
+    """Why there is nothing to re-read, in a sentence somebody can act on (#471).
+
+    Two ways to arrive, unlike ``_why_not_downloadable``'s one, and they want
+    different sentences because they want different remedies: an ``http``
+    connection will never have files here and the answer is to stop asking,
+    while a ``local`` one at ``not_set_up`` is a download away from being
+    checkable and the sentence names that download.
+    """
+    if connection.connection_type is not ConnectionType.LOCAL:
+        return (
+            f"connection {connection.name!r} is an {connection.connection_type.value} "
+            "connection; its model runs elsewhere, so there are no files here to check"
+        )
+    return (
+        f"connection {connection.name!r} has no weights on this machine yet, so there is "
+        "nothing to check; download them first"
     )
 
 

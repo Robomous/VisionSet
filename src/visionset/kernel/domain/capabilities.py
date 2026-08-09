@@ -47,8 +47,10 @@ from visionset.kernel.domain.batch import (
     BatchState,
 )
 from visionset.kernel.domain.inference import (
+    CHECKABLE_STATES,
     EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
+    WEIGHT_HOLDING_TYPES,
     ConnectionSetupState,
     ConnectionType,
 )
@@ -129,10 +131,25 @@ class AssetAction(StrEnum):
 # connection from `not_set_up` to `ready` — and the batch listing already puts
 # the moves ahead of the housekeeping for the same reason. ``delete`` stays last,
 # because it ends the resource rather than changing it.
+#
+# ``check_integrity`` is the second action over the same files and deliberately
+# not a second reading of the first (#471). ``download_weights`` at ``ready``
+# asks *is every file here*, which the download library answers from its own
+# index without opening one; this asks *does every file still hold the bytes it
+# was written with*, which can only be answered by reading all of them and
+# comparing digests the hub published. One name for two costs would misstate the
+# contract to every client: a listing is a second, a full re-read of a
+# multi-gigabyte snapshot is not.
+#
+# It is declared **between** the download and the housekeeping, which is the
+# display decision the ordering rule above implies: it is about the weights, so
+# it belongs beside the action that fetched them, and it moves the resource
+# (backwards, on failure) rather than editing or ending it.
 class ConnectionAction(StrEnum):
     """What can be asked of an inference connection. Order is display order."""
 
     DOWNLOAD_WEIGHTS = "download_weights"
+    CHECK_INTEGRITY = "check_integrity"
     UPDATE = "update"
     DELETE = "delete"
 
@@ -260,6 +277,7 @@ and this set can only grow if the domain's own derivation rule does.
 
 CONNECTION_GATES: Final[Mapping[ConnectionAction, frozenset[ConnectionSetupState]]] = {
     ConnectionAction.DOWNLOAD_WEIGHTS: EVERY_SETUP_STATE,
+    ConnectionAction.CHECK_INTEGRITY: CHECKABLE_STATES,
     ConnectionAction.UPDATE: EVERY_SETUP_STATE,
     ConnectionAction.DELETE: EVERY_SETUP_STATE,
 }
@@ -277,29 +295,33 @@ action at all before. It is completeness rather than integrity, and
 client renders it under its own label; the wire keeps one name, because it is
 one call doing one thing.
 
-That leaves this table unconditional in every row, and the conditionality
-entirely in :data:`CONNECTION_KINDS`. The table stays rather than folding away:
-two maps read together is what makes a later narrowing a one-line edit here
-instead of a new dimension, and ``connection_actions`` requires both.
+**``check_integrity`` is the row that made this table conditional (#471)**, and
+it is the narrowing the previous paragraph said a later slice would make as a
+one-line edit here. It is legal at ``ready`` and nowhere else, because it
+re-reads the snapshot a download left behind: at ``not_set_up`` there is no
+snapshot, so the action is not merely useless but unanswerable. That is
+:data:`~visionset.kernel.domain.inference.CHECKABLE_STATES`, named in the domain
+beside the states it narrows rather than spelled out here — the discipline
+``DELETABLE_STATES`` gets above, and the reason the other three rows still name
+:data:`~visionset.kernel.domain.inference.EVERY_SETUP_STATE` itself.
 
-There is still no ``CONNECTION_MOVES`` and no transition table beside this,
-even though ``download_weights`` can move ``setup_state``. A transition table
-earns its place when a state has more than one way out and the edges need naming
-— ``BATCH_TRANSITIONS`` has eight. Here there is exactly one edge, ``not_set_up
--> ready``, and it is not a move somebody *performs*: it is what a finished
-download leaves behind, in the same transaction, the way an annotation appearing
-moves an asset to ``annotated`` without anybody clicking it. So the gate answers
-the question a client actually asks — may this be downloaded — and the single
-edge lives in the service that writes it.
-
-Every entry names
-:data:`~visionset.kernel.domain.inference.EVERY_SETUP_STATE` itself rather than a
-frozenset spelled out here, the discipline ``DELETABLE_STATES`` gets above.
+There is still no ``CONNECTION_MOVES`` and no transition table beside this, and
+that survives ``check_integrity`` adding the second edge. There are now two —
+``not_set_up -> ready`` when a download finishes, and ``ready -> not_set_up``
+when a check finds damage and purges it — and **neither is a move somebody
+performs**. Each is what an operation over the *cache* leaves behind, written in
+the same transaction, the way an annotation appearing moves an asset to
+``annotated`` without anybody clicking it: nobody asks for "make this connection
+not set up", they ask for the files to be checked. A transition table earns its
+place when the edges are what a caller names — ``BATCH_TRANSITIONS`` has eight of
+those. So both gates answer the question a client actually asks, and both edges
+live in the service that writes them.
 """
 
 
 CONNECTION_KINDS: Final[Mapping[ConnectionAction, frozenset[ConnectionType]]] = {
-    ConnectionAction.DOWNLOAD_WEIGHTS: frozenset({ConnectionType.LOCAL}),
+    ConnectionAction.DOWNLOAD_WEIGHTS: WEIGHT_HOLDING_TYPES,
+    ConnectionAction.CHECK_INTEGRITY: WEIGHT_HOLDING_TYPES,
     ConnectionAction.UPDATE: EVERY_CONNECTION_TYPE,
     ConnectionAction.DELETE: EVERY_CONNECTION_TYPE,
 }
