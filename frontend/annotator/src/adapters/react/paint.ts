@@ -291,12 +291,17 @@ export function paintSuggestion(
 ): PaintedSuggestion | null {
   const suggestion = state.suggestion;
   if (state.status !== "shown" || suggestion === null) return null;
+  // A parked session (#472) has no class, so there is no colour to draw it in and
+  // no label to write on it. It also cannot be `shown`, so this is the same kind
+  // of guard as the one above: what the type allows, not what the machine does.
+  const labelClass = state.labelClass;
+  if (labelClass === null) return null;
   const geometry = suggestion.geometry;
   if (geometry.type !== "bbox" && geometry.type !== "polygon") return null;
   return {
     geometry,
-    color: classColor(declared, state.labelClass),
-    label: confidenceLabel(state.labelClass, suggestion.confidence),
+    color: classColor(declared, labelClass),
+    label: confidenceLabel(labelClass, suggestion.confidence),
     points: state.points,
   };
 }

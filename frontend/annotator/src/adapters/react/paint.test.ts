@@ -303,6 +303,14 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
     expect(paintSuggestion(cleared(shown()), SIGN)).toBeNull();
   });
 
+  it("draws nothing for a parked session, which has no class to draw it in (#472)", () => {
+    // Constructed, because a parked session cannot reach `shown` — the same
+    // belt-and-braces as the kind check below, for a function exported from the
+    // package root that a caller could hand anything the type permits.
+    const parked: SuggestionState = { ...shown(), labelClass: null };
+    expect(paintSuggestion(parked, SIGN)).toBeNull();
+  });
+
   it("draws nothing for a kind that is not one of the two suggestible ones", () => {
     // Unreachable through the route, which narrows to `allowed_geometries` — and
     // still refused here, because this function is exported from the package root

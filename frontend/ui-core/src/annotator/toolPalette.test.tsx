@@ -308,4 +308,42 @@ describe("the suggest tool (#424)", () => {
     const press = fireEvent.mouseDown(screen.getByTestId("tool-suggest"));
     expect(press).toBe(false);
   });
+
+  /**
+   * The class half of what the schema check is the project half of (#472).
+   *
+   * Hidden is for a schema that could never hold an answer; dimmed-with-reason is
+   * for a class that cannot hold one *right now*, because that comes back the
+   * moment the active class moves.
+   */
+  it("is dimmed with its reason, not hidden, while the held class can hold nothing", async () => {
+    const onToggle = vi.fn();
+    render(
+      mount({
+        suggest: {
+          active: true,
+          onToggle,
+          unavailable: "Suggest is on, but “kerb” cannot hold a suggested shape",
+        },
+      }),
+    );
+
+    const button = screen.getByTestId("tool-suggest");
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    // The reason replaces the name, because the tooltip is where a refusal is
+    // readable — a dimmed button still labelled "Suggest (S)" is the bare
+    // disabled state principle 9 names.
+    expect(button.getAttribute("aria-label")).toContain("kerb");
+    // Lit and dimmed at once, both true: the tool is armed, and it cannot act.
+    expect(button.getAttribute("data-active")).toBe("true");
+
+    await userEvent.click(button);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("is an ordinary button again when the reason is absent or null", () => {
+    render(mount({ suggest: { active: true, onToggle: vi.fn(), unavailable: null } }));
+    expect(screen.getByTestId("tool-suggest").getAttribute("aria-disabled")).toBeNull();
+    expect(screen.getByTestId("tool-suggest").getAttribute("aria-label")).toBe("Suggest (S)");
+  });
 });

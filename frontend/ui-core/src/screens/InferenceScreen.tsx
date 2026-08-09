@@ -574,15 +574,31 @@ function ConnectionDialog({
                         {CURATED_MODELS.map((group) => (
                           <SelectGroup key={group.label}>
                             <SelectLabel>{group.label}</SelectLabel>
+                            {/*
+                              Two lines: the id is what identifies the checkpoint
+                              and the rest is what it costs and what it is for
+                              (#472). On one line it was a sentence long enough to
+                              wrap inside the trigger, and a wrapped identifier is
+                              harder to read than a stacked one.
+                            */}
                             {group.models.map((model) => (
-                              <SelectItem key={model.modelId} value={model.modelId}>
-                                {model.modelId} · {bytes(model.totalBytes)} · {model.hint}
+                              <SelectItem
+                                key={model.modelId}
+                                value={model.modelId}
+                                meta={`${bytes(model.totalBytes)} · ${model.hint}`}
+                              >
+                                {model.modelId}
                               </SelectItem>
                             ))}
                           </SelectGroup>
                         ))}
                         <SelectGroup>
-                          <SelectItem value={CUSTOM_MODEL}>Custom model…</SelectItem>
+                          <SelectItem
+                            value={CUSTOM_MODEL}
+                            meta="Any model id, at a revision you pin yourself"
+                          >
+                            Custom model…
+                          </SelectItem>
                         </SelectGroup>
                       </SelectContent>
                     </Select>

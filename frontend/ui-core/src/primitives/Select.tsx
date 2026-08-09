@@ -8,11 +8,35 @@
  *
  * `#126`'s rule rides on this component's *callers*, not on the component: every
  * class control in VisionSet is a picker over the schema, never free text (#6).
+ *
+ * ## An option can be two lines (#472)
+ *
+ * Some options are an identifier plus the facts about it — a model id, then its
+ * download size and what it is for. On one line that is a sentence long enough to
+ * wrap inside a control measured for one line, which reads as squashed text
+ * rather than as a choice.
+ *
+ * So {@link SelectItem} takes an optional `meta`: the children stay the
+ * identifier, at the label role, and `meta` goes underneath at the meta role.
+ * Because Radix renders the *selected* item's `ItemText` into the trigger, the
+ * closed control and the open list are the same two lines by construction — there
+ * is no second place to keep in step, which is the whole reason this lives on the
+ * primitive rather than at a call site.
+ *
+ * The trigger grows to fit rather than clipping: `min-h-9` and vertical padding
+ * instead of a fixed `h-9`. A single-line option still measures exactly 36px, so
+ * every select that shipped before this is unmoved. Nothing truncates and nothing
+ * ellipsises — an identifier cut off in the middle is not an identifier.
  */
 
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type ElementRef,
+  type ReactNode,
+} from "react";
 
 import { cn } from "../lib/cn";
 
@@ -29,8 +53,14 @@ export const SelectTrigger = forwardRef<
       ref={ref}
       className={cn(
         // `card` and the neutral disabled skin, for `Input`'s reasons (#323).
-        "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input " +
-          "bg-card px-3 text-body text-foreground disabled:cursor-not-allowed " +
+        //
+        // `min-h-9` with `py-1` rather than `h-9`: a one-line value still lands on
+        // exactly 36px (22.4px of text plus 8px of padding plus the border is under
+        // the floor), and a two-line one grows the control instead of overflowing
+        // it. `text-left` because this is a <button>, which centres its text, and a
+        // value that wrapped would centre with it.
+        "flex min-h-9 w-full items-center justify-between gap-2 rounded-md border border-input " +
+          "bg-card px-3 py-1 text-left text-body text-foreground disabled:cursor-not-allowed " +
           "disabled:border-transparent disabled:bg-disabled disabled:text-disabled-foreground",
         className,
       )}
@@ -68,8 +98,16 @@ export const SelectContent = forwardRef<
 
 export const SelectItem = forwardRef<
   ElementRef<typeof SelectPrimitive.Item>,
-  ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(function SelectItem({ className, children, ...props }, ref) {
+  ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & {
+    /**
+     * A second line under the option, for the facts about it (#472).
+     *
+     * Inside `ItemText`, so the trigger shows the same two lines the list does.
+     * Absent leaves the one-line option exactly as it was.
+     */
+    readonly meta?: ReactNode;
+  }
+>(function SelectItem({ className, children, meta, ...props }, ref) {
   return (
     <SelectPrimitive.Item
       ref={ref}
@@ -80,7 +118,18 @@ export const SelectItem = forwardRef<
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      <SelectPrimitive.ItemText>
+        {meta === undefined ? (
+          children
+        ) : (
+          // `break-words` and no `truncate`: a long identifier wraps onto a third
+          // line rather than losing its end, because half a model id is not one.
+          <span className="flex min-w-0 flex-col gap-0.5 break-words">
+            <span className="font-medium text-foreground">{children}</span>
+            <span className="text-meta text-muted-foreground">{meta}</span>
+          </span>
+        )}
+      </SelectPrimitive.ItemText>
       <span className="absolute right-2 flex size-4 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
           <Check className="size-4 text-primary" aria-hidden="true" />

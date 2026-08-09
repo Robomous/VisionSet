@@ -1,6 +1,6 @@
 /**
- * The suggest tool's panel: the five things it can be saying, and the one rule
- * about its action (#424, D6).
+ * The suggest tool's panel: the six things it can be saying, and the one rule
+ * about its action (#424, D6; the sixth is #472's parked reading).
  *
  * The three *blocked* readings are the issue's own list — none configured, none
  * ready, and the server refusing because this build cannot run the model — and
@@ -14,7 +14,7 @@ import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { answered, armed, refused, withPoint } from "@visionset/annotator";
+import { answered, armed, refused, withClass, withPoint } from "@visionset/annotator";
 import type { Suggestion, SuggestionState } from "@visionset/annotator";
 
 import { SuggestPanel } from "./SuggestPanel";
@@ -39,6 +39,7 @@ function mount(overrides: Partial<Parameters<typeof SuggestPanel>[0]> = {}): JSX
   return (
     <SuggestPanel
       session={armed("vehicle")}
+      heldClass="vehicle"
       blocker={null}
       refusal={null}
       onAccept={vi.fn()}
@@ -173,6 +174,49 @@ describe("what the panel says while the tool is working", () => {
     render(mount({ session: answered(session, session.serial, null) }));
     expect(screen.getByTestId("suggest-none")).toBeTruthy();
     expect(screen.queryByTestId("suggest-accept")).toBeNull();
+  });
+});
+
+describe("parked over a class that can hold nothing (#472)", () => {
+  function parked(): SuggestionState {
+    return withClass(shown(), null);
+  }
+
+  it("names the class the person just picked, and says the tool is still on", () => {
+    render(mount({ session: parked(), heldClass: "lane" }));
+
+    expect(screen.getByTestId("suggest-parked").textContent).toContain("lane");
+    // The sentence principle 9 requires beside the strip's dimmed button: what to
+    // change, and that nothing needs turning back on.
+    const card = screen.getByTestId("suggest-panel");
+    expect(card.textContent).toContain("box or a polygon");
+    expect(card.textContent).toContain("still armed");
+    expect(card.getAttribute("data-tone")).toBe("calm");
+  });
+
+  it("offers the way out, which is the only one while the strip button is dimmed", async () => {
+    const onDiscard = vi.fn();
+    render(mount({ session: parked(), heldClass: "lane", onDiscard }));
+
+    await userEvent.click(screen.getByTestId("suggest-discard"));
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    // No `Esc` chip: the chord is a substitution the canvas makes while something
+    // is pending, and a parked session has nothing pending.
+    expect(screen.getByTestId("suggest-panel").textContent).not.toContain("Esc");
+  });
+
+  it("outranks the blocker, which is not the thing standing in the way", () => {
+    render(mount({ session: parked(), heldClass: "lane", blocker: "checking" }));
+
+    expect(screen.getByTestId("suggest-parked")).toBeTruthy();
+    // "Getting the model ready" would report progress towards something that is
+    // not going to happen, and hide the one choice the person can change.
+    expect(screen.queryByTestId("suggest-checking")).toBeNull();
+  });
+
+  it("has a sentence for a workspace sitting on no class at all", () => {
+    render(mount({ session: parked(), heldClass: null }));
+    expect(screen.getByTestId("suggest-parked").textContent).toContain("Nothing selected");
   });
 });
 
