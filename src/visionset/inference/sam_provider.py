@@ -29,7 +29,7 @@ reused rather than respelled — same ``_fp16.forward_guard``, same
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Final
@@ -216,6 +216,11 @@ class LocalSamProvider:
                 processor=processor,
                 size=size,
                 minimum_confidence=minimum_confidence,
+                at=[
+                    (point[0], point[1])
+                    for point, label in zip(points, labels, strict=True)
+                    if label == POSITIVE
+                ],
             ),
         )
 
@@ -226,6 +231,7 @@ class LocalSamProvider:
         processor: Any,
         size: tuple[int, int],
         minimum_confidence: float,
+        at: Sequence[tuple[float, float]] = (),
     ) -> tuple[PredictedRegion, ...]:
         """The chosen mask as a domain polygon, or nothing at all.
 
@@ -233,6 +239,12 @@ class LocalSamProvider:
         with no answer — the model was not sure enough, the mask was empty, or
         the blob was too thin to be a polygon. A click on a patch of sky is an
         ordinary thing to do and "no suggestion" is the honest reply to it.
+
+        **The prompt's positive points travel with the mask.** A mask can hold
+        more than one blob, and which of them the caller meant is a question only
+        the points can answer; without them the outline is whichever blob the
+        speckle put nearest the top-left (#461). Negatives stay behind — they
+        shape the mask, and by here the mask is already made.
 
         **The label is deliberately empty.** Pointing says *where*, not *what*:
         this model has no vocabulary and answers with a shape. The editor already
@@ -248,7 +260,7 @@ class LocalSamProvider:
         if confidence < minimum_confidence:
             return ()
         mask = lifted.reshape(-1, *lifted.shape[-2:])[chosen]
-        polygon = polygon_from(mask.tolist(), detail=self._detail)
+        polygon = polygon_from(mask.tolist(), detail=self._detail, at=at)
         if polygon is None:
             return ()
         return (PredictedRegion(label="", confidence=confidence, geometry=polygon),)
