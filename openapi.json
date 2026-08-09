@@ -2103,17 +2103,40 @@
         "type": "string"
       },
       "IngestFailureKind": {
-        "description": "Why one item did not become an asset, split by what to do about it.\n\nAn enum rather than a plain ``str``, on exactly ``SourceKind``'s terms: the\nset is closed, no writer outside this build produces a value, and the kernel\nbranches on it. What makes it worth a type at all is that a report has to be\n**grouped**, not read \u2014 ``CorruptMedia``'s docstring is explicit that a\nreport unable to separate the two would bury real data loss under ordinary\noperator noise, and a reason sentence cannot be grouped on.",
+        "description": "What became of one item the run could not simply read, split by remedy.\n\nAn enum rather than a plain ``str``, on exactly ``SourceKind``'s terms: the\nset is closed, no writer outside this build produces a value, and the kernel\nbranches on it. What makes it worth a type at all is that a report has to be\n**grouped**, not read \u2014 ``CorruptMedia``'s docstring is explicit that a\nreport unable to separate the kinds would bury real data loss under ordinary\noperator noise, and a reason sentence cannot be grouped on.\n\n``PARTIAL`` is the third member and the only one that is not a total loss.\nIt was added by #452, and what earned it is that the two below could not say\nthe thing an operator most needs to hear about a damaged clip: *some of it is\nin your batch*. A truncated video was filed as ``CORRUPT`` \u2014 true of the\nfile, and misleading about the run, which had just created assets from it.",
         "enum": [
           "unsupported",
-          "corrupt"
+          "corrupt",
+          "partial"
         ],
         "title": "IngestFailureKind",
         "type": "string"
       },
       "IngestFailureOut": {
-        "description": "One item a run could not read, and why.",
+        "description": "What became of one item the run could not simply read.",
         "properties": {
+          "frames_expected_estimate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frames Expected Estimate"
+          },
+          "frames_produced": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frames Produced"
+          },
           "kind": {
             "$ref": "#/components/schemas/IngestFailureKind"
           },
@@ -2129,7 +2152,9 @@
         "required": [
           "name",
           "kind",
-          "reason"
+          "reason",
+          "frames_produced",
+          "frames_expected_estimate"
         ],
         "title": "IngestFailureOut",
         "type": "object"

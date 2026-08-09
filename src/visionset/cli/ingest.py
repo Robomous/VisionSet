@@ -44,7 +44,7 @@ from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption, resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.kernel.domain import IngestResult
+from visionset.kernel.domain import IngestFailure, IngestFailureKind, IngestResult
 from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
 from visionset.kernel.services import IngestService, SourceService
 
@@ -52,15 +52,43 @@ _FAILURE_COLUMNS: Final = ("FILE", "KIND", "REASON")
 
 
 def _report(result: IngestResult) -> None:
-    """Say what the run did, on stderr, with the refused files named one per line."""
+    """Say what the run did, on stderr, with the refused files named one per line.
+
+    On stderr and never on stdout, which carries the batch id alone — a damaged
+    clip still fills a batch, so ``BATCH=$(visionset ingest …)`` has to keep
+    working through a partial run.
+
+    The partials come first and in sentences, because they are the lines that ask
+    for a decision: what arrived is already stored, and the remedy is a good copy
+    rather than anything to fix here. The refusals stay a table below them.
+    """
     note(
         f"Ingested {result.created} new and {result.deduplicated} already-known "
         f"assets into batch {result.batch_id}."
     )
-    if result.failures:
+    for failure in result.failures:
+        if failure.kind is IngestFailureKind.PARTIAL:
+            note(f"  {failure.name}  {_recovered(failure)}")
+            note("    The frames are in the batch; re-ingest a good copy to replace them.")
+    refused = [f for f in result.failures if f.kind is not IngestFailureKind.PARTIAL]
+    if refused:
         note(f"{result.failed} file(s) could not be used:")
-        for failure in result.failures:
+        for failure in refused:
             note(f"  {failure.name}  {failure.kind.value}  {failure.reason}")
+
+
+def _recovered(failure: IngestFailure) -> str:
+    """Half a line: ``damaged source: 8 frame(s) recovered (container claimed about 20)``.
+
+    The denominator is dropped rather than guessed when the container did not
+    give one — see ``IngestFailure.frames_expected_estimate`` — and it is hedged
+    when it did, because a damaged container's own metadata is suspect.
+    """
+    produced = failure.frames_produced or 0
+    recovered = f"damaged source: {produced} frame(s) recovered"
+    if failure.frames_expected_estimate is None:
+        return recovered
+    return f"{recovered} (container claimed about {failure.frames_expected_estimate})"
 
 
 def ingest(
@@ -137,6 +165,11 @@ def ingest(
                 "created": result.created,
                 "deduplicated": result.deduplicated,
                 "failed": result.failed,
+                # A separate count from ``failed`` rather than a subset of it: a
+                # clip that put frames in the batch is not a file the run could
+                # not use, and a script branching on ``failed`` should not see
+                # one (#452).
+                "partial": result.partial,
                 "failures": [wire.ingest_failure(f) for f in result.failures],
             }
         )

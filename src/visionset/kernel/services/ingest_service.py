@@ -54,6 +54,16 @@ thousand files needs the other four thousand nine hundred. A missing ffmpeg is
 not a file's fault at all; it fails the job outright and is re-raised, which is
 precisely why ``MediaToolUnavailable`` sits outside the ``MediaError`` family.
 
+**A damaged clip is a third case, and it is the only one with a remainder.**
+Extraction yields the frames it managed and then says the bytes ran out, so the
+run has both an entry to write and assets to keep. That entry is ``PARTIAL`` and
+it carries the two numbers — what arrived, and what the container claimed — so
+the surfaces can say "eight of about twenty" instead of "this file is corrupt"
+about a run that had just filled a batch (#452). The report is where it stops:
+nothing about a partial run is stamped on an asset or a batch, and an asset
+lifted out of a damaged clip is an ordinary asset from the moment the ingest
+result has been read.
+
 **A preview is a cache, so it fails softly.** Every item also gets a thumbnail,
 stored content-addressed beside its content and named by ``Asset.thumbnail_hash``
 — the M5 gallery's reason for this task. One that will not render is *not* an
@@ -94,6 +104,7 @@ from visionset.kernel.domain import (
     Source,
     SourceKind,
     ThumbnailBackfill,
+    VideoProvenance,
     normalize_name,
     report_name,
     require_move,
@@ -674,6 +685,15 @@ class IngestService:
         it, which is one of the two ways the port allows an iterator to be
         released.
 
+        **And this is the one caller that can count the loss**, which is why
+        #452's report is assembled here rather than in ``_failure``. Both numbers
+        are already in hand at the moment the refusal arrives: what arrived is
+        the length of ``candidates``, and what was expected is the probe this
+        source has carried since it was registered, times the rate it was
+        registered at. Neither costs a second pass over the clip — the estimate
+        is the same arithmetic the ingest screen shows as "Frames expected"
+        before a run starts.
+
         ``total`` stays NULL for the whole run, and honestly so. ``VideoMetadata``
         carries no frame count by design — it would be a guess for a
         variable-rate clip and the number an ingest wants is what extraction
@@ -717,7 +737,14 @@ class IngestService:
             # The clip's own filename, which is already what ``frames`` was told
             # to call it. ``source.path`` is absolute and would put the server's
             # directory layout in a client's failure table.
-            failures.append(_failure(report_name(clip), exc))
+            failures.append(
+                _extraction_failure(
+                    report_name(clip),
+                    exc,
+                    produced=len(candidates),
+                    expected=_expected_frames(provenance),
+                )
+            )
             self._record_progress(job_id, processed=len(candidates), total=None, failures=failures)
         return candidates, failures
 
@@ -990,9 +1017,12 @@ def _failure(name: str, exc: MediaError) -> IngestFailure:
     it through ``report_name`` first, which is what keeps the server's own
     directory layout out of a report that travels to a client.
 
-    The two branches are the whole family — ``UnsupportedMedia`` is "intact and
-    not for us", ``CorruptMedia`` is "for us and broken" — and a third member
-    would have to say which of those a report should file it under.
+    The two branches are the whole of what an *image* can be — ``UnsupportedMedia``
+    is "intact and not for us", ``CorruptMedia`` is "for us and broken" — and
+    nothing read one file at a time can be read in part. ``PARTIAL`` is therefore
+    unreachable from here by construction rather than by omission; the one caller
+    that can produce it is :meth:`IngestService._read_video`, through
+    :func:`_extraction_failure` below.
     """
     kind = (
         IngestFailureKind.CORRUPT
@@ -1000,3 +1030,49 @@ def _failure(name: str, exc: MediaError) -> IngestFailure:
         else IngestFailureKind.UNSUPPORTED
     )
     return IngestFailure(name=name, kind=kind, reason=exc.reason)
+
+
+def _extraction_failure(
+    name: str, exc: MediaError, *, produced: int, expected: int | None
+) -> IngestFailure:
+    """The same report line for a clip, which can end up with some of itself read.
+
+    ``produced`` decides the kind, and it decides it the way the adapter already
+    decided which error to raise: since #449 the extraction answers
+    ``UnsupportedMedia`` when nothing came out and ``CorruptMedia`` when the
+    bytes ran out partway, so on this path the two are already "nothing arrived"
+    and "some of it did". Reading the count rather than the exception's type is
+    what keeps the report honest if that ever stops being true — a ``0`` here can
+    never be published as a partial read, whatever was raised.
+
+    ``expected`` rides along only when there is a partial to attach it to. It is
+    an estimate and the model says so; see ``IngestFailure``.
+    """
+    if produced > 0:
+        return IngestFailure(
+            name=name,
+            kind=IngestFailureKind.PARTIAL,
+            reason=exc.reason,
+            frames_produced=produced,
+            frames_expected_estimate=expected,
+        )
+    return _failure(name, exc)
+
+
+def _expected_frames(provenance: VideoProvenance) -> int | None:
+    """What the clip claimed to hold, from the probe stored when it was registered.
+
+    ``floor`` rather than ``round``, matching the number the ingest screen has
+    always shown before a run starts: the two are the same claim about the same
+    clip and must not differ by one.
+
+    ``None`` is reachable in principle rather than in practice — ``VideoMetadata``
+    refuses a non-positive duration, so a registered source always has one — and
+    the branch stays because the report's contract is that the denominator is
+    optional. A future probe that cannot time a damaged container must be able to
+    say so here without the report losing the count it *does* have.
+    """
+    seconds = provenance.metadata.duration_seconds
+    if seconds <= 0:
+        return None
+    return int(seconds * provenance.extraction_fps)

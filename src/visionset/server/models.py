@@ -477,16 +477,28 @@ class SourcePage(Page[SourceOut]):
 # --- ingest ------------------------------------------------------------------
 
 
+# ``partial`` is the kind that is not a total loss: the clip was read as far as
+# its bytes went and those frames are in the batch, so the two counts travel with
+# it (#452). They are null on every other kind, which the domain enforces rather
+# than merely intends — see ``IngestFailure``.
 class IngestFailureOut(BaseModel):
-    """One item a run could not read, and why."""
+    """What became of one item the run could not simply read."""
 
     name: str
     kind: IngestFailureKind
     reason: str
+    frames_produced: int | None
+    frames_expected_estimate: int | None
 
     @classmethod
     def of(cls, failure: IngestFailure) -> Self:
-        return cls(name=failure.name, kind=failure.kind, reason=failure.reason)
+        return cls(
+            name=failure.name,
+            kind=failure.kind,
+            reason=failure.reason,
+            frames_produced=failure.frames_produced,
+            frames_expected_estimate=failure.frames_expected_estimate,
+        )
 
 
 # The polling contract. ``processed``/``total``/``failures`` are written to the

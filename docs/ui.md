@@ -587,6 +587,13 @@ Three more things it inherits:
   prevent. Names are rendered as basenames with the full string in `title`, because
   for a *directory* ingest `IngestFailure.name` is the full server path — a known
   kernel inconsistency, deliberately left alone.
+- **A `partial` entry is not in that table** (#452). It is the one kind that is not
+  a total loss — a damaged clip read as far as its bytes went, whose frames are in
+  the batch — so it renders as prose above the table: what arrived, roughly what the
+  container claimed, and the remedy, which is a good copy re-ingested. The table
+  below counts only the files that produced nothing. This card is the whole of where
+  that fact is ever stated: nothing is stamped on the assets, no later view mentions
+  it, and a run that read everything renders neither report.
 
 Nothing is filtered in the browser and there is no `react-dropzone`. Every filter
 the library would apply — MIME type, size, per-file rejection — is a rule the server
