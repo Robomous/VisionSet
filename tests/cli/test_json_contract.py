@@ -42,6 +42,7 @@ from tests.fixtures.samples import (
     INGEST_FAILURE,
     INGEST_JOB,
     JOB,
+    PARTIAL_EXTRACTION,
     POLYGON,
     PROJECT,
     RELEASE,
@@ -82,6 +83,14 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
     ("video_provenance", wire.video_provenance(SOURCE.require_video()), models.VideoProvenanceOut),
     ("ingest_job", wire.ingest_job(INGEST_JOB), models.IngestJobOut),
     ("ingest_failure", wire.ingest_failure(INGEST_FAILURE), models.IngestFailureOut),
+    # The partial shape as well, and for the reason the sample module states: the
+    # two counts are null on every other kind, so the entry above would leave that
+    # half of the projection unchecked.
+    (
+        "ingest_failure_partial",
+        wire.ingest_failure(PARTIAL_EXTRACTION),
+        models.IngestFailureOut,
+    ),
     ("asset", wire.asset(ASSET), models.AssetOut),
     (
         "batch_asset",

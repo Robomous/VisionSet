@@ -227,8 +227,19 @@ def source(value: Source) -> dict[str, Any]:
 
 
 def ingest_failure(value: IngestFailure) -> dict[str, Any]:
-    """One file a run could not use, and why."""
-    return {"name": value.name, "kind": value.kind.value, "reason": value.reason}
+    """What became of one file the run could not simply read.
+
+    The two counts are null on every kind but ``partial`` — the domain refuses
+    any other arrangement — and are published anyway rather than omitted, so the
+    shape of an entry does not depend on which kind it is.
+    """
+    return {
+        "name": value.name,
+        "kind": value.kind.value,
+        "reason": value.reason,
+        "frames_produced": value.frames_produced,
+        "frames_expected_estimate": value.frames_expected_estimate,
+    }
 
 
 def ingest_job(value: IngestJob) -> dict[str, Any]:

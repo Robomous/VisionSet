@@ -13,6 +13,7 @@ from uuid import UUID
 import pytest
 from tests.fixtures.media import (
     require_ffmpeg,
+    write_corrupt_video,
     write_images,
     write_unsupported_file,
     write_video,
@@ -140,6 +141,28 @@ def test_a_clip_is_decomposed_into_frames(monkeypatch: pytest.MonkeyPatch, tmp_p
     # The rate is part of what the source *is*, so it comes back on the source.
     assert result["source"]["video"]["extraction_fps"] == 1.0
     assert result["created"] == 2
+
+
+def test_a_damaged_clip_reports_what_it_recovered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#452: an agent decides in the moment on the same numbers a person does.
+
+    Which is the whole argument for putting the counts in the result rather than in the
+    reason sentence — an agent that has to parse "after 8 frames" out of prose is an agent
+    that will eventually parse it wrong.
+    """
+    require_ffmpeg()
+    named = schema(monkeypatch, tmp_path)
+    clip = write_corrupt_video(tmp_path / "broken.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
+
+    result = payload(call("ingest", project=named, path=str(clip.path), fps=5.0))
+
+    assert result["failures"][0]["kind"] == "partial"
+    assert result["failures"][0]["frames_produced"] == result["created"] > 0
+    assert result["failures"][0]["frames_expected_estimate"] == 10
+    assert result["failed"] == 0
+    assert result["partial"] == 1
 
 
 def test_sources_are_listed_without_the_path_they_live_at(

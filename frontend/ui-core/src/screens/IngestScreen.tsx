@@ -58,6 +58,20 @@
  * those render on the launch form. Everything after the launch is on the job:
  * `error` is the one fatal cause, `failures` is the per-item report.
  *
+ * ## The per-item report has two halves, and only one of them is a failure
+ *
+ * #452. A damaged clip is read as far as its bytes go and the frames that came
+ * out become assets, so its entry says *some of this is in your batch* — the
+ * opposite of every other row in that table. It renders as prose above the
+ * table, with the count it recovered and the remedy; the table below counts only
+ * the files that produced nothing.
+ *
+ * **And this card is the only place either fact is ever stated.** The decision
+ * on #452 is that a partial extraction is reported once, at ingest, to the
+ * person doing the ingest. The assets carry nothing, no later screen mentions
+ * it, and a run that read everything says nothing at all — surfacing it again
+ * would only be noise.
+ *
  * ## `total` is null for a clip, and a progress bar has to survive that
  *
  * `VideoMetadata` carries no frame count by design, so an extraction has no
@@ -210,7 +224,14 @@ function runStateVariant(state: string): BadgeTone {
   return RUN_STATE_VARIANT[state] ?? "neutral";
 }
 
-/** `IngestFailureKind`, likewise: what is wrong with the file, said plainly. */
+/**
+ * `IngestFailureKind`, likewise: what is wrong with the file, said plainly.
+ *
+ * `partial` is deliberately absent, and its absence is not an oversight. The
+ * other two kinds fit a table cell because they say the same thing about every
+ * row — this file did not become an asset — and a partial says the opposite:
+ * part of it did. It gets prose above the table instead. See `Partials`.
+ */
 const FAILURE_KIND_LABEL: Record<string, string> = {
   unsupported: "Unsupported format",
   corrupt: "Corrupt file",
@@ -936,7 +957,11 @@ function RunCard({
               </Alert>
             )}
 
-            {job.failures.length > 0 && <Failures failures={job.failures} />}
+            {/* Two reports, split by whether anything arrived. A partial is not a
+                file the run could not read, so it does not go in the table that
+                says so — and a run with only partials renders no table at all. */}
+            <Partials failures={job.failures} />
+            <Failures failures={job.failures} />
 
             {job.state === "failed" && (
               <div>
@@ -1015,7 +1040,10 @@ function Outcome({
   const batchId = job.batch_id ?? null;
   // Resolved at enqueue, so it survives a run that never reached the batch.
   const batchName = job.batch_name ?? "the batch";
-  const partial = job.state === "failed" || job.failures.length > 0;
+  // Anything the run did not read whole — a fatal stop, a refused file, or a
+  // clip that ran out partway. All three make "everything this run read" a
+  // sentence the outcome must not say.
+  const incomplete = job.state === "failed" || job.failures.length > 0;
 
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-4" data-testid="run-outcome">
@@ -1026,7 +1054,7 @@ function Outcome({
           // it materialized a batch therefore has nothing to open — and
           // saying so is more use than a button that cannot work.
           <>This run never reached a batch, so there is nothing to open yet.</>
-        ) : partial ? (
+        ) : incomplete ? (
           <>
             What this run managed to read is in{" "}
             <strong className="font-medium" title={batchName}>
@@ -1068,22 +1096,99 @@ function Outcome({
 }
 
 /**
- * The per-file report.
+ * What arrived out of a source that was only read in part (#452).
+ *
+ * Prose rather than a table row, because a partial is the one entry in the
+ * report that asks for a decision. The other kinds say "this file is not in your
+ * batch" and the remedy is obvious; this one says "some of this file *is* in
+ * your batch", and what to do about the rest — obtain a good copy, ingest it
+ * again, content addressing makes the overlap free — is not something a reader
+ * derives from a count. `DESIGN.md`'s copy rule, one sentence each: what
+ * happened, then what to do.
+ *
+ * **This is the whole of where the fact lives.** The decision on #452 is that a
+ * partial extraction is reported once, here, to the person doing the ingest —
+ * the assets themselves carry nothing, and no later view mentions it.
+ *
+ * The estimate is hedged (`about`) and dropped entirely when the server sent
+ * none: a damaged container's own metadata is suspect, and a denominator stated
+ * flatly would be the one number on screen that nobody measured.
+ *
+ * Renders nothing at all when nothing was partial, which is the ok-state.
+ *
+ * The treatment is the one this card already uses for a report — the neutral
+ * `Alert` box, with `Failures`' own `AlertTriangle` in the heading. No new
+ * `Alert` variant was added for it: the icon and the sentence carry the status,
+ * which is what keeps it from being conveyed by colour alone.
+ */
+function Partials({
+  failures,
+}: {
+  readonly failures: readonly IngestFailure[];
+}): JSX.Element | null {
+  const partials = failures.filter((failure) => failure.kind === "partial");
+  if (partials.length === 0) return null;
+
+  return (
+    <Alert
+      title={
+        <span className="flex items-center gap-2">
+          <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
+          Some of what you ingested was damaged
+        </span>
+      }
+      data-testid="partials"
+    >
+      <ul className="flex flex-col gap-2">
+        {partials.map((failure, index) => (
+          <li key={`${failure.name}-${index}`} data-testid={`partial-${index}`}>
+            <span className="font-mono text-meta" title={failure.name}>
+              {basename(failure.name)}
+            </span>{" "}
+            — damaged source: {formatCount(failure.frames_produced ?? 0)} frame
+            {failure.frames_produced === 1 ? "" : "s"} recovered
+            {failure.frames_expected_estimate !== null &&
+              failure.frames_expected_estimate !== undefined &&
+              ` (the container claimed about ${formatCount(failure.frames_expected_estimate)})`}
+            . The frames are in the batch; re-ingest a good copy to replace them.
+          </li>
+        ))}
+      </ul>
+    </Alert>
+  );
+}
+
+/**
+ * The per-file report of what did *not* arrive.
  *
  * Grouped by `kind`, which is the whole reason `IngestFailureKind` exists: an
  * `unsupported` file is operator noise — a `.txt` in a directory of photographs —
  * and a `corrupt` one is data loss. Reading fifty rows to notice that one of them
  * is the second kind is exactly the mistake a table can prevent.
+ *
+ * `partial` is filtered out rather than given a third badge: every row here is
+ * a file that produced nothing, and the heading counts them on that basis. A
+ * partial that slipped into this table would be counted as a file that could
+ * not be read while its frames sat in the batch — the exact claim #452 removed.
  */
-function Failures({ failures }: { readonly failures: readonly IngestFailure[] }): JSX.Element {
+function Failures({
+  failures,
+}: {
+  readonly failures: readonly IngestFailure[];
+}): JSX.Element | null {
   const corrupt = failures.filter((failure) => failure.kind === "corrupt");
   const unsupported = failures.filter((failure) => failure.kind === "unsupported");
+  const refused = corrupt.length + unsupported.length;
+  if (refused === 0) return null;
 
   return (
     <div className="flex flex-col gap-2" data-testid="failures">
       <p className="flex items-center gap-2 text-body">
         <AlertTriangle className="size-4 text-destructive" aria-hidden="true" />
-        {failures.length} file{failures.length === 1 ? "" : "s"} could not be read
+        {/* The refused count, not `failures.length`: a partial belongs to the
+            report above, and counting it here would say a file could not be read
+            while its frames are in the batch. */}
+        {refused} file{refused === 1 ? "" : "s"} could not be read
         {corrupt.length > 0 && (
           <Badge variant="destructive" data-testid="corrupt-count">
             {corrupt.length} corrupt

@@ -138,6 +138,19 @@ INGEST_FAILURE = IngestFailure(
     name="notes.txt", kind=IngestFailureKind.UNSUPPORTED, reason="not a recognizable image"
 )
 
+#: The other shape a report entry has, and the one that carries the two counts.
+#: A second constant rather than fields on the one above, because the domain
+#: refuses to let a single entry hold both: `partial` names what arrived and the
+#: other two kinds name what did not, so a fully-populated sample of each is the
+#: only way this module's rule can be kept.
+PARTIAL_EXTRACTION = IngestFailure(
+    name="broken.mp4",
+    kind=IngestFailureKind.PARTIAL,
+    reason="the video is damaged or truncated after 8 frames",
+    frames_produced=8,
+    frames_expected_estimate=20,
+)
+
 BATCH = Batch(
     project_id=PROJECT.id,
     name="clip-5fps",
@@ -158,7 +171,7 @@ INGEST_JOB = IngestJob(
     batch_name=BATCH.name,
     processed=2,
     total=3,
-    failures=(INGEST_FAILURE,),
+    failures=(INGEST_FAILURE, PARTIAL_EXTRACTION),
 )
 
 ASSET = Asset(

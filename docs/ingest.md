@@ -14,7 +14,9 @@ result = ingest.ingest(source.id, batch_name="monday")
 
 result.created  # assets new to this project
 result.deduplicated  # items whose bytes the project already held
-result.failures  # one line per item that could not be read at all
+result.failures  # one line per item that was not simply read
+result.failed  # of those, how many produced nothing
+result.partial  # of those, how many were read in part and kept
 ```
 
 ## One `ingest`, where registration has two methods
@@ -216,6 +218,45 @@ A missing ffmpeg is not a file's fault at all. `MediaToolUnavailable` is recorde
 `failed`, and it is re-raised, which is precisely why it sits outside the `MediaError` family.
 One broken machine is not five thousand broken files.
 
+## A damaged clip is read in part, and the report says how much (#452)
+
+Extraction yields the frames it managed and *then* says the bytes ran out, so a truncated clip
+leaves the run with both an entry to write and assets to keep. That entry is `IngestFailureKind`'s
+third member, `partial`, and it is the only one that is not a total loss:
+
+```python
+reported = result.failures[0]
+reported.kind  # IngestFailureKind.PARTIAL
+reported.frames_produced  # 8 — exact, and the assets are in the batch
+reported.frames_expected_estimate  # 20 — an estimate, and may be None
+```
+
+`frames_produced` is the length of what the loop kept. `frames_expected_estimate` is
+`duration_seconds × extraction_fps` off the probe the source has carried since it was registered
+— the same arithmetic the ingest screen shows as "Frames expected" before a run starts — so no
+second pass over the clip is made for it. It is named an estimate because it is one:
+`VideoMetadata` deliberately carries no frame count (for a variable-rate stream the product is a
+guess), and a damaged container's own metadata is suspect besides. A partial with no denominator
+still states what it recovered.
+
+The two counts belong to `partial` alone, and the model refuses any other arrangement — an
+`unsupported` entry allowed to carry `frames_produced=0` would give the report two ways to say
+"nothing arrived" and force every reader to check both. Zero frames out of a clip is not a partial
+read of it: the adapter answers `UnsupportedMedia` there, and the report has a kind for it
+already.
+
+`result.failed` counts only the entries that produced nothing; `result.partial` counts the rest.
+A clip that put eight frames in a batch is not a file the run could not use, and no surface says
+both.
+
+**And the report is where it stops.** The decision recorded on #452 is that a partial extraction
+is reported once, at ingest time, to the person performing the ingest — and nowhere else. No flag
+on the asset, none on the batch, nothing queryable afterwards, no chip in a later view. An asset
+lifted out of a damaged clip is an ordinary asset in every respect from the moment the ingest
+result has been read; the remedy, if the person wants one, is to obtain a good copy and ingest it
+again, which content addressing makes nearly free. A run that read everything reports none of
+this: silence is the ok-state.
+
 ## A preview per asset, and it is allowed to fail
 
 Every item also gets a thumbnail, stored content-addressed beside its content and named by
@@ -380,3 +421,8 @@ It shows `processed` against `total` for a directory and a bare count for a clip
 `IngestFailureKind`, and offers **Resume** only for a `failed` run — a stuck
 `running` job has no button, because `running → running` is deliberately not a
 transition. See [ui.md](ui.md#the-ingest-flow-and-the-order-the-domain-forces).
+
+A `partial` entry renders as prose above that table rather than as a row in it, with what it
+recovered and what to do — the frames are in the batch, and a good copy re-ingested replaces
+them. The table below counts only the files that produced nothing. That card is the whole of
+where the fact is ever stated, and a run that read everything renders neither.
