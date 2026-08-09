@@ -78,10 +78,20 @@ The action stays **offered** on a machine that lacks the extra, deliberately. Wh
 installation has torch is not a fact about your connection, and a control that quietly vanished
 would leave the install command with nowhere to be shown.
 
-Working inside the Docker dev stack instead? It is CPU-only by default and its api image does not
-carry the extra at all. `docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up
---build` gives it both the runtime and the host's NVIDIA GPU; `docker/compose.gpu.yaml` says what
-the host needs first. That stack is for development and changes nothing about the wheel above.
+Working inside the Docker dev stack instead? Its default api image does not carry the extra at
+all, so it refuses exactly as above. Two override files add it:
+
+```bash
+docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build            # the host's NVIDIA GPU
+docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build  # the CPU, anywhere
+```
+
+The first needs the NVIDIA Container Toolkit on the host and answers in milliseconds; the second
+needs nothing beyond Docker and answers in seconds. Each file's header says the rest, including
+what its host needs. Both share the stack's `workspace-data/`, so switching between them — or back
+to the plain file — keeps projects, connections and downloaded weights; only the api image changes,
+and `--build` is not optional on any of those switches. That stack is for development and changes
+nothing about the wheel above.
 
 ## Knowing what a download costs, before agreeing to it
 

@@ -1,0 +1,45 @@
+# Local inference on the CPU, for the dev stack. Development only, like everything
+# under docker/ — the release artifact is still `pip install visionset`.
+#
+#   docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build
+#
+# The third of three ways to run this stack, and the one that needs nothing of the
+# host beyond Docker:
+#
+#   compose.yaml alone            everything except suggestions; the api image does
+#                                 not carry the runtime, so a suggestion answers
+#                                 LOCAL_INFERENCE_UNAVAILABLE and says what to install
+#   + compose.gpu.yaml            suggestions on the host's NVIDIA card, milliseconds,
+#                                 needs the NVIDIA Container Toolkit installed
+#   + compose.cpu-inference.yaml  suggestions anywhere, seconds instead of milliseconds
+#
+# All three share the same `workspace-data/`, so switching between them keeps
+# projects, connections and downloaded weights. Only the api image changes.
+#
+# **An override file rather than a profile, for exactly the reason
+# docker/compose.gpu.yaml gives.** `profiles:` selects *whole services* — a profiled
+# service joins the run or is absent from it — and cannot amend a service that is
+# already there. The nearest profile-shaped attempt, a second `api-cpu-inference`
+# service beside `api`, starts *alongside* it and the two collide on
+# 127.0.0.1:8000. What is being changed here is a property of a service that already
+# exists, and Compose's mechanism for that is a second `-f`.
+#
+# **`--build` is not optional when switching, in either direction and between any
+# two of the three.** Each mode is a different api image built from a different
+# Dockerfile, and Compose reuses whatever image it already has under that name. The
+# symptom of getting it wrong is a stack whose behaviour belongs to the mode you
+# just left: suggestions refused in a mode that has the runtime, or a device
+# reservation over an image without it.
+#
+# Nothing here reserves a device, which is the entire difference from
+# docker/compose.gpu.yaml. There is nothing to ask the host for: the work happens on
+# the CPU the container already has, and torch built for CUDA is exactly what
+# docker/api-cpu-inference.Dockerfile leaves out.
+
+services:
+  api:
+    build:
+      # The only line that makes this the CPU-inference stack. The context is
+      # inherited from docker/compose.yaml and is still the repository root, so all
+      # three Dockerfiles see the same tree.
+      dockerfile: docker/api-cpu-inference.Dockerfile
