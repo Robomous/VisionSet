@@ -47,38 +47,77 @@ docker compose -f docker/compose.yaml --profile postgres up
 docker compose -f docker/compose.yaml --profile minio up      # console on 9001
 ```
 
-## The GPU, and why it is not a profile
+## The three ways to run it
 
-Local inference in this stack is CPU-only by default. To give the api container the
-host's NVIDIA GPU **and** the `local-inference` runtime that can use it:
+The stack has three permanent, mutually compatible configurations. They differ in one
+thing — which api image is built — and the difference is visible in exactly one
+feature, the suggestion a click asks a model for:
 
 ```bash
-docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build
+docker compose -f docker/compose.yaml up                                                # 1. base
+docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build             # 2. GPU inference
+docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build   # 3. CPU inference
 ```
 
-A second `-f`, not `--profile gpu`, and the distinction is worth holding on to when
-adding the next optional thing. **`profiles:` selects whole services** — a profiled
-service joins the run or is absent from it. It cannot amend a service that is
-already present, so the nearest profile-shaped attempt (an `api-gpu` beside `api`)
-starts *both* and they collide on 127.0.0.1:8000. `postgres` and `minio` are
-profiles because they are genuinely extra services; a GPU is a property of a service
-that already exists, and merging a second file is Compose's mechanism for that.
+| | api image | A suggestion | Needs on the host |
+| --- | --- | --- | --- |
+| **base** | `docker/api.Dockerfile` | refused, naming the install command | Docker |
+| **GPU** | `docker/api-gpu.Dockerfile` | milliseconds | Docker, an NVIDIA card, the Container Toolkit |
+| **CPU inference** | `docker/api-cpu-inference.Dockerfile` | seconds | Docker |
 
-Two things follow from what that file sets:
+**Which to use.** The base stack does everything VisionSet does except propose a shape
+from a click: its image does not carry the `local-inference` runtime, so a suggestion is
+refused with the command that would install it. That refusal is correct there and is
+worth keeping intact — it is the behaviour every base install has. Reach for the **GPU**
+stack when the suggestion loop is what you are working on and you want it to feel
+instant. Reach for **CPU inference** when the host has no NVIDIA card, or has one that is
+not usable today, and you want to try or demonstrate the flow anyway: same models, same
+code path, seconds per click instead of milliseconds.
 
-- **It needs the NVIDIA Container Toolkit on the host** — that is what teaches Docker
-  the `nvidia` device driver and injects the driver libraries and `nvidia-smi` into
+**They are compatible, and switching between them costs nothing but a build.** All three
+mount the same `workspace-data/`, so projects, connections and already-downloaded weights
+are still there afterwards. Only the api image changes; no state is converted and nothing
+is re-fetched.
+
+**`--build` on every switch, in both directions, between any two of the three.** Each
+mode is a different api image built from a different Dockerfile, and without `--build`
+Compose reuses whichever image it already has under that name. The symptom is a stack
+behaving like the mode you just left: suggestions refused in a mode that has the runtime,
+or a device reservation held over an image that cannot use it.
+
+**A hand-installed package inside a running container is not a fourth mode.** Installing
+torch with `pip` in a live `api` container appears to work and does not survive: the next
+`build` replaces the image and the install is gone, with no trace of why. These two
+overlay files are the durable path — and see the dual-Python trap below, which is the
+other half of why the hand-typed version so often does not work even before the rebuild.
+
+### Why an override file rather than a profile
+
+A second `-f`, not `--profile gpu` or `--profile inference`, and the distinction is worth
+holding on to when adding the next optional thing. **`profiles:` selects whole services**
+— a profiled service joins the run or is absent from it. It cannot amend a service that is
+already present, so the nearest profile-shaped attempt (an `api-gpu` beside `api`) starts
+*both* and they collide on 127.0.0.1:8000. `postgres` and `minio` are profiles because
+they are genuinely extra services; a GPU, or a runtime inside an image, is a property of a
+service that already exists, and merging a second file is Compose's mechanism for that.
+
+### What each inference image does, and the traps in them
+
+- **The GPU stack needs the NVIDIA Container Toolkit on the host** — that is what teaches
+  Docker the `nvidia` device driver and injects the driver libraries and `nvidia-smi` into
   the container. Install it from
   [NVIDIA's instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html);
   the steps are per-distribution and are not worth a stale copy here.
   `docker info --format '{{json .Runtimes}}'` naming an `nvidia` runtime is the check.
   Without it, `up` fails at container creation with `could not select device driver
-  "nvidia" with capabilities: [[gpu]]` — and the plain compose file still works.
-- **`--build` is not optional when switching either way.** The two stacks are two
-  different api images — `docker/api.Dockerfile` and `docker/api-gpu.Dockerfile`,
-  with different bases — so without it Compose reuses whichever it already has. The
-  symptom is a stack that has the card but answers `LOCAL_INFERENCE_UNAVAILABLE`, or
-  one with the runtime and no device.
+  "nvidia" with capabilities: [[gpu]]` — and the other two configurations still work.
+- **A GPU stack that worked yesterday and today dies at container creation with
+  `failed to fulfil mount request: open /usr/lib/x86_64-linux-gnu/libnvidia-*.so.<version>:
+  no such file or directory` is a host whose NVIDIA driver was updated under it.** The
+  toolkit is still injecting the file list it discovered before the update, and some of
+  those files are gone. `nvidia-smi` on the host answers perfectly while this is true, so
+  it is not the check that catches it. Reboot the host. Nothing in this stack is involved,
+  nothing here fixes it, and the other two configurations are unaffected.
 - **The GPU image starts from `pytorch/pytorch`, and does not install torch from the
   lockfile.** Installing the `local-inference` extra from `uv.lock` means ~4 GB of
   `nvidia-*` wheels resolved and unpacked on every cache miss; the pinned base
@@ -88,10 +127,35 @@ Two things follow from what that file sets:
   those floors have to stay in step with it**; and the image has no venv, because uv
   does not count a venv's inherited system site-packages as installed and would
   reinstall torch and every CUDA wheel beside it.
+- **The CPU-inference image is `docker/api.Dockerfile` with one install step added**, on
+  the same trixie base, so it inherits the same venv at `/opt/venv` and the same ffmpeg
+  7.1. The five packages come from `https://download.pytorch.org/whl/cpu` at the versions
+  `uv.lock` resolves — that index publishes torch built without CUDA, ~250 MB instead of
+  ~2 GB — and **those pins have to stay in step with the lock**, exactly as the GPU
+  image's floors do.
+- **The dual-Python trap, which is why that install names an interpreter.** Both api
+  images built on the trixie base hold two interpreters: `/usr/local/bin/python`, the base
+  image's own, and `/opt/venv/bin/python`, which is what PATH resolves and therefore the
+  only one that ever serves a request — `docker/api-dev.sh` boots the server with `exec
+  uvicorn`, whose shebang is `#!/opt/venv/bin/python`. An install landing in `/usr/local`
+  succeeds loudly and changes nothing the server can see. Both natural spellings land
+  there: `uv pip install --system` means that interpreter by definition, and the venv has
+  no `pip` of its own, so a hand-typed `pip install` in a running container resolves to
+  `/usr/local/bin/pip` while `python` on the next line is still the venv's and still
+  cannot see the result. `docker/api-cpu-inference.Dockerfile` reads the interpreter out
+  of uvicorn's shebang and fails the build if it is not the one it installs into; when
+  checking by hand, `python -c "import sys, torch; print(sys.executable, …)"` is the
+  spelling that cannot lie to you.
 
-Verify inside the running container:
+Verify inside the running container — the interpreter first, because it is the one that
+answers:
 
 ```bash
+# CPU inference: the server's own python, and a version ending in +cpu
+docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml exec api \
+  python -c "import sys, torch; print(sys.executable, torch.__version__)"
+
+# GPU: the card, then the runtime that can reach it
 docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml exec api nvidia-smi
 docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml exec api \
   python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
