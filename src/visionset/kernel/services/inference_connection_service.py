@@ -254,7 +254,7 @@ class InferenceConnectionService:
             )
 
     def require_checkable(self, connection_id: UUID) -> InferenceConnection:
-        """The connection, if there is a snapshot on disk to re-read (#471).
+        """The connection, if there is a snapshot on disk to re-read.
 
         ``require_downloadable``'s sibling, and the same construction for the
         same reason: derived from ``connection_actions`` rather than from a
@@ -281,7 +281,7 @@ class InferenceConnectionService:
         raise InferenceConnectionNotCheckable(_why_not_checkable(connection))
 
     def record_weights_missing(self, connection_id: UUID) -> InferenceConnection:
-        """Mark the weights gone. Called **after** they are, never before (#471).
+        """Mark the weights gone. Called **after** they are, never before.
 
         The other edge, and the mirror of ``record_weights_ready`` in every
         respect that matters. An integrity check that found damage purges the
@@ -460,7 +460,7 @@ def _why_not_downloadable(connection: InferenceConnection) -> str:
 
 
 def _why_not_checkable(connection: InferenceConnection) -> str:
-    """Why there is nothing to re-read, in a sentence somebody can act on (#471).
+    """Why there is nothing to re-read, in a sentence somebody can act on.
 
     Two ways to arrive, unlike ``_why_not_downloadable``'s one, and they want
     different sentences because they want different remedies: an ``http``

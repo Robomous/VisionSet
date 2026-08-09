@@ -171,16 +171,16 @@ WEIGHT_HOLDING_TYPES: Final[frozenset[ConnectionType]] = frozenset({ConnectionTy
 What both weight actions gate on, and the reason they can share one set: an
 ``http`` connection has nothing to fetch and therefore nothing to re-read, which
 is a fact about what it *is* rather than about where it has got to. Named once
-since #471 gave the fact a second reader — two actions each spelling
+because the fact has two readers: two actions each spelling
 ``frozenset({ConnectionType.LOCAL})`` would be two places to edit on the day a
 third kind arrives with weights.
 """
 
 
 CHECKABLE_STATES: Final[frozenset[ConnectionSetupState]] = frozenset({ConnectionSetupState.READY})
-"""The setup states in which a snapshot is there to be checked (#471).
+"""The setup states in which a snapshot is there to be checked.
 
-The first connection gate that is **not** total in state, and the narrowing is
+The one connection gate that is **not** total in state, and the narrowing is
 the point rather than an oversight. ``check_integrity`` re-reads the files a
 download left behind; a connection at ``not_set_up`` has no snapshot to read, so
 the action is not merely pointless there but unanswerable — it would have to

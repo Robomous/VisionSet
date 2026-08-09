@@ -130,7 +130,7 @@ class AssetAction(StrEnum):
 # because it ends the resource rather than changing it.
 #
 # ``check_integrity`` is the second action over the same files and deliberately
-# not a second reading of the first (#471). ``download_weights`` at ``ready``
+# not a second reading of the first. ``download_weights`` at ``ready``
 # asks *is every file here*, which the download library answers from its own
 # index without opening one; this asks *does every file still hold the bytes it
 # was written with*, which can only be answered by reading all of them and
@@ -289,9 +289,9 @@ integrity, and ``visionset.inference.weights`` says why that distinction is wort
 keeping. A client renders it under its own label; the wire keeps one name,
 because it is one call doing one thing.
 
-**``check_integrity`` is the row that made this table conditional (#471)**, and
-it is the narrowing the previous paragraph said a later slice would make as a
-one-line edit here. It is legal at ``ready`` and nowhere else, because it
+**``check_integrity`` is the row that makes this table conditional**, and it is
+exactly the one-line narrowing the previous paragraph left room for. It is legal
+at ``ready`` and nowhere else, because it
 re-reads the snapshot a download left behind: at ``not_set_up`` there is no
 snapshot, so the action is not merely useless but unanswerable. That is
 :data:`~visionset.kernel.domain.inference.CHECKABLE_STATES`, named in the domain

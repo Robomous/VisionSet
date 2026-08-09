@@ -957,7 +957,7 @@ class InferenceConnectionNotDownloadable(VisionSetError):
 
 
 class WeightsDamaged(VisionSetError):
-    """A cached snapshot's files do not match what the hub published (#471).
+    """A cached snapshot's files do not match what the hub published.
 
     The verdict of an integrity check, and the only error in this module that is
     raised **after** the state it describes has already been written: by the
@@ -978,7 +978,7 @@ class WeightsDamaged(VisionSetError):
 class InferenceConnectionNotCheckable(VisionSetError):
     """This connection's weights cannot be re-read, because they are not here.
 
-    ``InferenceConnectionNotDownloadable``'s sibling and not its synonym (#471).
+    ``InferenceConnectionNotDownloadable``'s sibling and not its synonym.
     Two ways to arrive, and unlike that one they do not share a remedy: an
     ``http`` connection has no files here in any state, while a ``local`` one at
     ``not_set_up`` is one download away from being checkable. The message says
