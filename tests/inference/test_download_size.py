@@ -153,7 +153,7 @@ def test_a_file_the_hub_did_not_size_is_refused_rather_than_skipped(
 def test_an_empty_listing_is_refused_rather_than_reported_as_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """"0 B" would invite somebody to confirm a download nothing is known about."""
+    """ "0 B" would invite somebody to confirm a download nothing is known about."""
     hub_of(monkeypatch, [])
     with pytest.raises(LocalInferenceUnavailable) as raised:
         measure("some/model", "abc123")
