@@ -4,11 +4,19 @@
 #   docker compose -f docker/compose.yaml --profile postgres up
 #   docker compose -f docker/compose.yaml --profile minio up
 #
-# And, for a stack that can reach the host's NVIDIA GPU and has the runtime to use
-# it — a second file rather than a profile, because a profile adds services and this
-# amends one; docker/compose.gpu.yaml says the rest, including what the host needs:
+# That stack does everything except run a model here: its api image does not carry
+# the `local-inference` runtime, so a suggestion is refused with the command that
+# would install it. Two override files add that runtime — a second file rather than a
+# profile, because a profile adds services and these amend one:
 #
 #   docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build
+#   docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build
+#
+# The first reaches the host's NVIDIA GPU and needs the NVIDIA Container Toolkit
+# installed; the second runs on the CPU and needs nothing of the host, at seconds per
+# suggestion instead of milliseconds. Each file says the rest. All three configurations
+# share this file's `workspace-data/`, so switching keeps projects, connections and
+# downloaded weights — only the api image changes, and `--build` is what changes it.
 #
 # From a clean checkout this needs nothing installed on the host — no `uv sync`,
 # no `pnpm install`, no `pnpm -r build`, no wheel. `up` builds the two images the

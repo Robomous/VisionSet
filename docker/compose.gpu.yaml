@@ -5,10 +5,14 @@
 #
 # Without this file nothing changes: `docker compose -f docker/compose.yaml up`
 # builds and runs exactly what it did before, on the CPU, from an api image this
-# file does not touch. docker/api.Dockerfile is not modified by any of this — the
-# GPU variant is a second Dockerfile with a different base, because what makes a GPU
-# useful is torch built against CUDA and that is most of an image rather than a
-# package added to one. docker/api-gpu.Dockerfile says the rest.
+# file does not touch. For the same runtime *without* a card — the third
+# configuration, for a host with no NVIDIA hardware or none available today — see
+# docker/compose.cpu-inference.yaml.
+#
+# docker/api.Dockerfile is not modified by any of this — the GPU variant is a second
+# Dockerfile with a different base, because what makes a GPU useful is torch built
+# against CUDA and that is most of an image rather than a package added to one.
+# docker/api-gpu.Dockerfile says the rest.
 #
 # **An override file rather than a profile, and the reason is what profiles are.**
 # `profiles:` selects *whole services*: a profiled service joins the run when its
