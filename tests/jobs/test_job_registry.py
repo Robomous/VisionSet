@@ -17,7 +17,12 @@ from visionset.jobs import REGISTRY, HandlerRef, known_types, load, register, re
 from visionset.kernel.errors import UnknownJobType
 
 #: What `visionset.jobs` itself registers, as opposed to what a test module has.
-SHIPPED = {"ingest.resume", "export.release", "inference.download_weights"}
+SHIPPED = {
+    "ingest.resume",
+    "export.release",
+    "inference.download_weights",
+    "inference.check_integrity",
+}
 
 
 def shipped_refs() -> list[HandlerRef]:
@@ -32,7 +37,7 @@ def shipped_refs() -> list[HandlerRef]:
     return [ref for ref in REGISTRY.values() if ref.func.startswith("visionset.jobs.")]
 
 
-def test_importing_the_package_registers_both_shipped_types() -> None:
+def test_importing_the_package_registers_every_shipped_type() -> None:
     """The registry is populated by import, which is the one thing to remember."""
     assert {ref.type for ref in shipped_refs()} == SHIPPED
     assert known_types() >= SHIPPED

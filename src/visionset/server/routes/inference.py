@@ -6,12 +6,12 @@ A route never translates an error — it raises the kernel's and stops, and the
 handlers ``create_app()`` installed turn it into an ``ErrorBody`` with a stable
 code.
 
-**Nothing in this file runs a model or contacts a configured endpoint.** The
-weight download is queued rather than performed — it answers 202 and points at a
-background job, the contract the export route already uses — and a reachability
-``test`` is still absent rather than stubbed, so ``allowed_actions`` does not
-name it and no client is told about a control that does not exist yet
-(`cf. #418`, `#421`).
+**Nothing in this file runs a model or contacts a configured endpoint.** The two
+operations over a snapshot — the weight download and the integrity check — are
+both queued rather than performed, answering 202 and pointing at a background
+job, the contract the export route already uses. A reachability ``test`` is
+still absent rather than stubbed, so ``allowed_actions`` does not name it and no
+client is told about a control that does not exist yet (`cf. #418`, `#421`).
 
 The one network call made here is ``download-size``, and it reads a file
 listing rather than files: the number has to be on screen *before* somebody
@@ -28,6 +28,8 @@ from fastapi import Response, status
 
 from visionset.inference import download_size, suggest
 from visionset.inference import require as require_local_inference
+from visionset.jobs.integrity import JOB_TYPE as integrity_job_type
+from visionset.jobs.integrity import payload_for as integrity_payload_for
 from visionset.jobs.weights import JOB_TYPE as download_job_type
 from visionset.jobs.weights import payload_for as download_payload_for
 from visionset.kernel.domain import BackgroundJobSpec, PointPrompt
@@ -154,6 +156,62 @@ def download_connection_weights(
         BackgroundJobSpec(
             type=download_job_type,
             payload=download_payload_for(connection_id),
+            idempotent=True,
+        )
+    )
+    runner.wake()
+    response.headers["Location"] = f"/background-jobs/{job.id}"
+    return BackgroundJobOut.of(job)
+
+
+@router.post(
+    "/{connection_id}/check-integrity",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=documented(404, 409),
+)
+def check_connection_integrity(
+    workspace: WorkspaceDep,
+    runner: RunnerDep,
+    response: Response,
+    connection_id: UUID,
+) -> BackgroundJobOut:
+    """Re-read every cached file and compare it against what the hub published.
+
+    The `check_integrity` action (`cf. #471`). Distinct from `download_weights`
+    over the same files, and the distinction is what each can prove: a download
+    against a set-up connection establishes that nothing is **missing**, reading
+    an index rather than the files; this establishes that nothing is
+    **damaged**, and can only do so by reading every byte.
+
+    **202, not 200.** A snapshot is gigabytes and this reads all of it, so it
+    follows the launch-and-poll contract the download route uses: poll `GET
+    /background-jobs/{id}` — the `Location` header names it — where `processed`
+    and `total` count files. A successful job's result carries how many files
+    were read and how many bytes that came to.
+
+    **Only for a local connection that is already set up.** An HTTP connection
+    has no files here and one whose weights never arrived has none to read;
+    both are 409 `INFERENCE_CONNECTION_NOT_CHECKABLE`, the same answer
+    `allowed_actions` gave, from the same table. A deployment without the local
+    runtime is refused here too, with the install command.
+
+    **A failed check has already acted.** Damage means the offending files are
+    purged and the connection is back to `not_set_up` by the time the job row
+    says so — purged first, because a cache hit is returned unread and a
+    download over damaged bytes would otherwise hand them straight back. So the
+    remedy is the `download_weights` the connection now declares, and it is a
+    real transfer. A check that could not reach the hub changes nothing and
+    purges nothing: no digests to compare against is an absence of evidence, not
+    a verdict.
+    """
+    InferenceConnectionService(workspace).require_checkable(connection_id)
+    # Before the job exists, for the download route's reason: a refusal a
+    # request can make is a refusal the request makes.
+    require_local_inference()
+    job = workspace.job_queue.enqueue(
+        BackgroundJobSpec(
+            type=integrity_job_type,
+            payload=integrity_payload_for(connection_id),
             idempotent=True,
         )
     )

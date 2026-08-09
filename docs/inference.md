@@ -154,11 +154,45 @@ that arrives is checked against the size the hub published for it before it is p
 
 **Asking again checks rather than repeats.** `download_weights` stays available once a connection
 is `ready`, where the same call re-checks that the snapshot is still complete and fetches only what
-is missing — the browser labels it **Verify weights** and puts it in the row's overflow menu. That
-is worth doing on a machine where a disk filled or a cache was pruned; it is *completeness* and not
-integrity, because a file already in the cache under this revision is found rather than re-read. An
-`http` connection is refused with `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` in any state, for the
-other reason: its model runs elsewhere, so it has no weights of its own.
+is missing — the browser labels it **Check for missing files** and puts it in the row's overflow
+menu. That is worth doing on a machine where a disk filled or a cache was pruned. An `http`
+connection is refused with `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` in any state, for the other
+reason: its model runs elsewhere, so it has no weights of its own.
+
+## Two checks, and what each one proves
+
+They are different questions about the same files, and the labels are written so that neither
+claims the other's answer.
+
+| | What it proves | How it works | What it costs |
+| --- | --- | --- | --- |
+| **Check for missing files** (`download_weights` at `ready`) | Nothing is **missing** | Consults the download index and fetches anything absent | Seconds; it opens no file |
+| **Check files are undamaged** (`check_integrity`) | Nothing is **damaged** | Reads every file in full and compares its digest against the one the hub published | Minutes for a large model; it reads every byte |
+
+The first cannot see the second's failure, and that is a property of the cache rather than an
+oversight: a file already there under this revision is *returned without being read*, so a copy that
+was truncated by a filesystem error, rotted on a failing disk, or edited in place passes the
+completeness check for ever. It surfaces much later, inside a model load, in a sentence about
+tensors, on a connection the row still calls **Ready**.
+
+```bash
+visionset inference check-integrity local-detector
+```
+
+Over HTTP it is `POST /inference/connections/{id}/check-integrity`, which answers `202` with a
+background job whose `processed` and `total` count files. Legal only for a **local** connection that
+is already `ready`: an `http` connection has no files here and one whose weights never arrived has
+none to read, and both are `INFERENCE_CONNECTION_NOT_CHECKABLE`.
+
+**A failed check has already acted.** Damage means the offending files are removed and the
+connection is put back to `not_set_up` before the job says so, in that order. The order is the whole
+point: a cache hit is returned unread, so leaving the bad bytes in place would let the download
+somebody runs next hand back the same damaged file and call the connection ready again. With them
+gone, **Download weights** is a real transfer, which is why it is the remedy the row then offers.
+
+The two states stay the only two throughout. A check that cannot reach the hub — no network, a
+repository that moved — changes nothing and removes nothing: there are no published digests to
+compare against, and that is an absence of evidence rather than a verdict in either direction.
 
 ## Running on the CPU
 
@@ -298,13 +332,16 @@ Each row shows its name, its kind, `model @ revision`, and its status as a word 
 **Not set up** — beside a colour, never as a colour alone. A local row that is not set up carries
 **Download weights**, which launches the background job described above and reports its progress
 in place; the row becomes **Ready** when the job finishes, without a reload. A row that is already
-ready carries **Verify weights** in its overflow menu instead — the same request, re-checking the
-snapshot. A machine without the extra still shows the control, and pressing it answers with the
-install command — a control that vanished would take the remedy with it.
+ready carries two checks in its overflow menu instead — **Check for missing files**, which is the
+same request re-run, and **Check files are undamaged**, which reads every byte. The table above is
+what separates them. A machine without the extra still shows both controls, and pressing either
+answers with the install command — a control that vanished would take the remedy with it.
 
 A failed download leaves the row at **Not set up**, because weights arrive or they do not, and says
 what happened in the job's own words with what to do about it. There is no separate retry button:
-**Download weights** is the retry.
+**Download weights** is the retry. A failed *integrity* check leaves the row at **Not set up** for a
+different reason — the damaged files were removed and the connection stood down before the row said
+so — and the retry is the same **Download weights**, which now has to fetch them again for real.
 
 Editing does not offer to change the kind, because the kind is not editable. Deleting asks once
 and says exactly what it destroys: *annotations keep their model provenance; only this
@@ -350,6 +387,8 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `INFERENCE_CONNECTION_NOT_FOUND` | 404 | No connection with that id or name in this workspace |
 | `INFERENCE_CONNECTION_NAME_TAKEN` | 409 | Another connection already holds that name |
 | `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` | 409 | Already set up, or a kind with no weights of its own |
+| `INFERENCE_CONNECTION_NOT_CHECKABLE` | 409 | A kind with no weights of its own, or weights that are not here yet — run `download` |
+| `WEIGHTS_DAMAGED` | 409 | An integrity check found files that do not match; they were removed and the connection stood down |
 | `INFERENCE_CONNECTION_NOT_SET_UP` | 409 | Asked to predict before its weights were fetched — run `download` |
 | `INFERENCE_CONNECTION_INVALID` | 422 | The parameters do not describe a usable connection of that kind |
 | `INVALID_NAME` | 422 | The name is blank once stripped |

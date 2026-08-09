@@ -32,7 +32,8 @@ connection may hold a detector that answers words or a segmenter that answers
 places and those are not interchangeable.
 
 **What each surface reaches for.** ``fetch_weights`` is the download,
-``suggest`` is one click's worth of interactive segmentation, and ``provider_for``
+``check_integrity`` is the full re-read that tells damage from completeness
+(#471), ``suggest`` is one click's worth of interactive segmentation, and ``provider_for``
 is the raw resolution underneath both. A surface serving clicks wants ``suggest``
 and the pool behind it; anything building a provider per call is paying a model
 load per request, which is the latency failure D5 on #424 exists to prevent.
@@ -45,6 +46,16 @@ from visionset.inference.cache import (
     DEFAULT_EMBEDDING_CAPACITY,
     DEFAULT_PROVIDER_CAPACITY,
     BoundedCache,
+)
+from visionset.inference.integrity import (
+    READ_CHUNK,
+    Digest,
+    IntegrityReport,
+    PublishedDigest,
+    check_integrity,
+    digest_of,
+    published_digests,
+    purge,
 )
 from visionset.inference.masks import DEFAULT_DETAIL, narrowed, polygon_from
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
@@ -91,12 +102,20 @@ __all__ = [
     "LocalTransformersProvider",
     "ProviderPool",
     "cache_root",
+    "check_integrity",
+    "digest_of",
     "download",
     "download_size",
     "family_of",
     "fetch_weights",
+    "Digest",
+    "IntegrityReport",
+    "PublishedDigest",
+    "READ_CHUNK",
     "known_sizes",
     "measure",
+    "published_digests",
+    "purge",
     "narrowed",
     "polygon_from",
     "provider_for",

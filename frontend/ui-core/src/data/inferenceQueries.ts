@@ -56,6 +56,7 @@ import {
 import { useApiClient } from "./ApiProvider";
 import { unwrap } from "./errors";
 import {
+  checkCheckConnectionIntegrity,
   checkCreateInferenceConnection,
   checkDeleteInferenceConnection,
   checkDownloadConnectionWeights,
@@ -205,6 +206,34 @@ export function useDownloadWeights() {
           params: { path: { connection_id: connectionId } },
         }),
         checkDownloadConnectionWeights,
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: inferenceKeys.connections() }),
+  });
+}
+
+/**
+ * Re-read every cached file and prove it is undamaged, in a background job.
+ *
+ * A different question from `useDownloadWeights` over the same files, and the
+ * one the row must not conflate: a download against a set-up connection proves
+ * nothing is *missing* and answers from an index, while this proves nothing is
+ * *damaged* and can only do so by reading every byte (#471).
+ *
+ * The list is invalidated on the `202` for the download hook's reason — the
+ * declaration changed the moment the check started — and again when the job
+ * settles, which matters more here than it does there: a failed check has moved
+ * the connection to `not_set_up` and swapped which actions it offers.
+ */
+export function useCheckIntegrity() {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (connectionId: string) =>
+      unwrap(
+        await client.POST("/inference/connections/{connection_id}/check-integrity", {
+          params: { path: { connection_id: connectionId } },
+        }),
+        checkCheckConnectionIntegrity,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: inferenceKeys.connections() }),
   });

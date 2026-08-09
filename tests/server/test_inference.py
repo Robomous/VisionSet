@@ -18,7 +18,11 @@ from tests.server._jobs import InlineDispatcher, ManualDispatcher
 
 from visionset.inference import MODULES
 from visionset.inference import weights as weights_module
+from visionset.inference.integrity import IntegrityReport
+from visionset.jobs import integrity as job_module
 from visionset.kernel.domain import BackgroundJobState
+from visionset.kernel.errors import WeightsDamaged
+from visionset.kernel.services import InferenceConnectionService
 from visionset.server.routes import inference as inference_routes
 
 LOCAL: dict[str, Any] = {
@@ -154,6 +158,9 @@ def test_a_connection_declares_what_this_slice_can_perform(client: TestClient) -
     """
     assert created(client, LOCAL)["allowed_actions"] == ["download_weights", "update", "delete"]
     assert created(client, HTTP)["allowed_actions"] == ["update", "delete"]
+    # `check_integrity` is absent from both, and for two different reasons —
+    # the local one has no snapshot yet and the HTTP one never will (#471).
+    # The `ready` half is `test_a_ready_connection_declares_the_integrity_check`.
 
 
 @pytest.mark.parametrize("body", [LOCAL, HTTP], ids=["local", "http"])
@@ -169,6 +176,9 @@ def test_every_declared_action_is_one_the_api_performs(
     made = created(client, body)
     routes = {
         "download_weights": lambda: client.post(f"/inference/connections/{made['id']}/download"),
+        "check_integrity": lambda: client.post(
+            f"/inference/connections/{made['id']}/check-integrity"
+        ),
         "update": lambda: client.patch(
             f"/inference/connections/{made['id']}", json={"model_revision": "deadbeef"}
         ),
@@ -334,8 +344,16 @@ def test_a_finished_download_leaves_the_connection_ready(
         assert after["setup_state"] == "ready"
         # The declaration survives the flip: what the action means changes from
         # "fetch these" to "check these are still here" (#469), and the name of
-        # a capability does not change with the state it is read in.
-        assert after["allowed_actions"] == ["download_weights", "update", "delete"]
+        # a capability does not change with the state it is read in. What the
+        # flip *adds* is `check_integrity`, which had nothing to read before
+        # (#471) — so this is the one square where becoming ready grows the row
+        # a control rather than only re-labelling one.
+        assert after["allowed_actions"] == [
+            "download_weights",
+            "check_integrity",
+            "update",
+            "delete",
+        ]
 
 
 def test_a_failed_download_leaves_the_connection_not_set_up(
@@ -456,6 +474,124 @@ def test_a_refused_download_creates_no_job(client: TestClient, runtime_present: 
     assert client.post(f"/inference/connections/{made['id']}/download").status_code == 409
     assert client.get("/background-jobs").json()["total"] == 0
     assert UUID(made["id"])
+
+
+# --- the integrity check (#471) -----------------------------------------------
+
+
+def _made_ready(client: TestClient) -> dict[str, Any]:
+    """A local connection the download job has taken to `ready`."""
+    made = created(client, LOCAL)
+    client.post(f"/inference/connections/{made['id']}/download")
+    return client.get(f"/inference/connections/{made['id']}").json()
+
+
+def test_a_ready_connection_declares_the_integrity_check(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """The one square it is legal on, read off the wire rather than the table."""
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        assert "check_integrity" in _made_ready(client)["allowed_actions"]
+
+
+def test_checking_a_ready_connection_launches_the_check(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """202, its own type, and the `Location` header the poll follows."""
+    # Patched on the *handler*, not on `visionset.inference`: the handler binds
+    # the name at import, so patching the source module would leave the job
+    # calling the real thing — which is a network call, and how this test first
+    # failed against a 401 from the hub.
+    monkeypatch.setattr(
+        job_module,
+        "check_integrity",
+        lambda workspace, connection_id, **_: IntegrityReport(files_checked=3, bytes_read=99),
+    )
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        response = client.post(f"/inference/connections/{made['id']}/check-integrity")
+
+        assert response.status_code == 202, response.text
+        job = response.json()
+        assert job["type"] == "inference.check_integrity"
+        assert response.headers["Location"] == f"/background-jobs/{job['id']}"
+
+        settled = client.get(f"/background-jobs/{job['id']}").json()
+        assert settled["state"] == BackgroundJobState.SUCCEEDED.value, settled
+        assert settled["result"]["files_checked"] == 3
+        assert settled["result"]["bytes_read"] == 99
+        # Success is no transition: the row is where it was.
+        assert client.get(f"/inference/connections/{made['id']}").json()["setup_state"] == "ready"
+
+
+def test_a_check_that_found_damage_leaves_the_row_not_set_up_with_the_reason(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The transition #471 added, seen the way a browser sees it.
+
+    The job carries the sentence and the row carries the state, and the row has
+    *already* moved by the time the job says so — which is what lets the failed
+    job name a remedy the connection now declares.
+    """
+
+    def _damaged(workspace: Any, connection_id: Any, **_: Any) -> None:
+        InferenceConnectionService(workspace).record_weights_missing(connection_id)
+        raise WeightsDamaged("1 file does not match (model.safetensors)")
+
+    monkeypatch.setattr(job_module, "check_integrity", _damaged)
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        job = client.post(f"/inference/connections/{made['id']}/check-integrity").json()
+
+        settled = client.get(f"/background-jobs/{job['id']}").json()
+        assert settled["state"] == BackgroundJobState.FAILED.value, settled
+        assert "model.safetensors" in settled["error"]
+
+        after = client.get(f"/inference/connections/{made['id']}").json()
+        assert after["setup_state"] == "not_set_up"
+        # The remedy is declared, and the check no longer is — there is nothing
+        # left to read.
+        assert "download_weights" in after["allowed_actions"]
+        assert "check_integrity" not in after["allowed_actions"]
+
+
+def test_checking_a_connection_whose_weights_never_arrived_is_a_conflict(
+    client: TestClient, runtime_present: None
+) -> None:
+    """Its own code, because its remedy is not the other one's: download first."""
+    made = created(client, LOCAL)
+    response = client.post(f"/inference/connections/{made['id']}/check-integrity")
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_CHECKABLE"
+    assert "download" in response.json()["message"]
+    assert "check_integrity" not in made["allowed_actions"]
+
+
+def test_checking_an_http_connection_is_a_conflict(
+    client: TestClient, runtime_present: None
+) -> None:
+    """No files here in any state, and the sentence says so rather than
+    pointing at a download that would fetch nothing."""
+    made = created(client, HTTP)
+    response = client.post(f"/inference/connections/{made['id']}/check-integrity")
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_CHECKABLE"
+    assert "runs elsewhere" in response.json()["message"]
+
+
+def test_checking_an_unknown_connection_is_not_found(
+    client: TestClient, runtime_present: None
+) -> None:
+    response = client.post(f"/inference/connections/{uuid4()}/check-integrity")
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_FOUND"
+
+
+def test_a_refused_check_creates_no_job(client: TestClient, runtime_present: None) -> None:
+    """The download route's rule, one action over."""
+    made = created(client, LOCAL)
+    assert client.post(f"/inference/connections/{made['id']}/check-integrity").status_code == 409
+    assert client.get("/background-jobs").json()["total"] == 0
 
 
 # --- the download size, read before anybody agrees to a download ---------------

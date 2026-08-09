@@ -69,6 +69,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     # not — so the message naming the asset reaches the caller.
     "ExportSourceUnreadable": (409, "EXPORT_SOURCE_UNREADABLE"),
     "InferenceConnectionNotDownloadable": (409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
+    "InferenceConnectionNotCheckable": (409, "INFERENCE_CONNECTION_NOT_CHECKABLE"),
+    "WeightsDamaged": (409, "WEIGHTS_DAMAGED"),
     "InferenceConnectionNotSetUp": (409, "INFERENCE_CONNECTION_NOT_SET_UP"),
     "ThumbnailNotCached": (404, "THUMBNAIL_NOT_CACHED"),
     # 409 — well-formed request, the resource's state refuses it

@@ -956,6 +956,41 @@ class InferenceConnectionNotDownloadable(VisionSetError):
     """
 
 
+class WeightsDamaged(VisionSetError):
+    """A cached snapshot's files do not match what the hub published (#471).
+
+    The verdict of an integrity check, and the only error in this module that is
+    raised **after** the state it describes has already been written: by the
+    time it surfaces the damaged blobs are gone and the connection is back to
+    ``not_set_up``. That is the point of it rather than a wrinkle — a caller
+    reading this sentence is being told what was found *and* what was done
+    about it, and the remedy it names is an action the connection now declares.
+
+    Not a sibling of ``LocalInferenceUnavailable``, which the same check raises
+    when it could not reach the hub: that one is an absence of evidence and
+    changes nothing, while this is evidence.
+
+    The message names the files, because a count tells somebody looking at a
+    disk nothing about which disk.
+    """
+
+
+class InferenceConnectionNotCheckable(VisionSetError):
+    """This connection's weights cannot be re-read, because they are not here.
+
+    ``InferenceConnectionNotDownloadable``'s sibling and not its synonym (#471).
+    Two ways to arrive, and unlike that one they do not share a remedy: an
+    ``http`` connection has no files here in any state, while a ``local`` one at
+    ``not_set_up`` is one download away from being checkable. The message says
+    which, and names the download where there is one.
+
+    The refusal ``CONNECTION_GATES`` and ``CONNECTION_KINDS`` describe for
+    ``check_integrity``, raised through ``connection_actions`` rather than beside
+    it — so the declaration a client rendered and the answer a caller gets come
+    from the same table.
+    """
+
+
 class InferenceConnectionNotSetUp(VisionSetError):
     """A local connection was asked to predict before its weights arrived.
 
