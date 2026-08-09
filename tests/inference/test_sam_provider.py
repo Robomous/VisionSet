@@ -155,6 +155,46 @@ def test_a_model_less_sure_than_the_caller_asked_answers_nothing(
     assert answer.model_ref == "some/segmenter@abc123", "still says who was asked"
 
 
+def test_the_polygon_is_the_blob_under_the_click_and_not_a_speck(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#461 through the adapter: the positive points have to actually reach the tracer.
+
+    A speck in the topmost row owns the topmost-leftmost lit pixel, so without
+    the points this answers ``()`` — the speck traces to one point and a polygon
+    needs three. The click is on the disc, and the disc is what comes back.
+    """
+    speckled = [list(row) for row in disc(20)]
+    speckled[0][63] = True
+    provider, _, _ = built(monkeypatch, masks=[speckled], scores=[0.9])
+
+    prompt = PointPrompt(positive=((32.0, 32.0),))
+    (answer,) = list(provider.predict(asked(prompt)))
+
+    (region,) = answer.regions
+    assert isinstance(region.geometry, PolygonGeometry)
+    xs = [x for x, _ in region.geometry.points]
+    ys = [y for _, y in region.geometry.points]
+    assert min(xs) >= 12 and max(xs) <= 52, "the disc's extent, not the speck at x=63"
+    assert max(ys) > 40, "and its full height, so this is the disc and not a fragment"
+
+
+def test_negative_points_do_not_choose_the_blob(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A negative says what the shape is not; by selection time the shape is already made."""
+    speckled = [list(row) for row in disc(20)]
+    speckled[0][63] = True
+    provider, _, _ = built(monkeypatch, masks=[speckled], scores=[0.9])
+
+    prompt = PointPrompt(positive=((32.0, 32.0),), negative=((63.0, 0.0),))
+    (answer,) = list(provider.predict(asked(prompt)))
+
+    (region,) = answer.regions
+    assert isinstance(region.geometry, PolygonGeometry)
+    assert max(x for x, _ in region.geometry.points) <= 52, "still the disc"
+
+
 def test_negative_points_reach_the_model_alongside_the_positive_ones(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

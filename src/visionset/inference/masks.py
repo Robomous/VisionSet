@@ -97,8 +97,136 @@ def bbox_from(mask: Mask) -> BboxGeometry | None:
     )
 
 
-def outline(mask: Mask) -> list[Point]:
-    """The boundary of the blob the topmost-leftmost lit pixel belongs to.
+def runs(mask: Mask) -> list[tuple[int, int, int]]:
+    """``(y, first_x, last_x)`` for every maximal run of lit pixels, in reading order.
+
+    Runs rather than pixels, for the reason :func:`spans` gives: ``list.index``
+    scans in C, and the Python-level loop only ever goes round as many times as
+    the row changes colour — not once per pixel. A megapixel mask of one clean
+    object is a few hundred runs, which is what makes blob selection affordable
+    on the interactive path.
+    """
+    found: list[tuple[int, int, int]] = []
+    for y, row in enumerate(mask):
+        width = len(row)
+        at = 0
+        while at < width:
+            try:
+                first = row.index(True, at)  # type: ignore[attr-defined]
+            except ValueError:
+                break
+            try:
+                last = row.index(False, first) - 1  # type: ignore[attr-defined]
+            except ValueError:
+                last = width - 1
+            found.append((y, first, last))
+            # +2 rather than +1: the pixel that ended the run is known unlit.
+            at = last + 2
+    return found
+
+
+def _adjacent(one: tuple[int, int, int], other: tuple[int, int, int]) -> bool:
+    """Do two runs on neighbouring rows touch, counting diagonals?"""
+    return one[1] <= other[2] + 1 and other[1] <= one[2] + 1
+
+
+def _components(found: Sequence[tuple[int, int, int]]) -> list[int]:
+    """One label per run: which blob it belongs to, 8-connected.
+
+    Union-find over *runs* rather than a flood fill over pixels. The row-pair
+    walk is two pointers over lists already sorted by ``x``, so the whole pass
+    is linear in the number of runs.
+    """
+    parent = list(range(len(found)))
+
+    def root(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def join(left: int, right: int) -> None:
+        one, other = root(left), root(right)
+        if one != other:
+            # The earlier run wins, so a label is always its blob's first run.
+            parent[max(one, other)] = min(one, other)
+
+    rows: dict[int, list[int]] = {}
+    for index, (y, _, _) in enumerate(found):
+        rows.setdefault(y, []).append(index)
+    for y, here in rows.items():
+        above = rows.get(y - 1)
+        if not above:
+            continue
+        this, prior = 0, 0
+        while this < len(here) and prior < len(above):
+            mine, theirs = found[here[this]], found[above[prior]]
+            if _adjacent(mine, theirs):
+                join(here[this], above[prior])
+            if mine[2] < theirs[2]:
+                this += 1
+            else:
+                prior += 1
+    return [root(index) for index in range(len(found))]
+
+
+def _gap(point: Point, run: tuple[int, int, int]) -> float:
+    """Distance from a point to a run, which is a horizontal segment of pixels."""
+    x, y = point
+    row, first, last = run
+    across = max(0.0, first - x, x - last)
+    return (across * across + (row - y) * (row - y)) ** 0.5
+
+
+def _start_of(mask: Mask, at: Sequence[Point]) -> tuple[int, int] | None:
+    """The pixel to begin tracing from: top-left of the blob the prompt asks about.
+
+    The selection rule, and the whole of #461. A point-prompted segmenter is
+    asked *about a place*, so the blob that answers is the one under the point —
+    not the one that happens to own the topmost-leftmost lit pixel, which is a
+    property of where the speckle fell rather than of what was clicked.
+
+    Three cases, in order. A point inside a blob picks that blob; several points
+    inside several blobs pick the largest of them, because two positives are a
+    caller describing one object rather than proposing two. A point inside none
+    of them — the model's mask need not cover the exact pixel clicked — picks the
+    blob nearest the point, which is still an answer about where the user
+    pointed. Negatives never select: they say what the shape is not, and a blob
+    is chosen before its shape is known.
+
+    Without any point at all the topmost-leftmost blob still wins. Nothing but a
+    point prompt has an opinion about which blob was meant.
+    """
+    found = runs(mask)
+    if not found:
+        return None
+    if not at:
+        return (found[0][1], found[0][0])
+
+    labels = _components(found)
+    size: dict[int, int] = {}
+    for (_, first, last), label in zip(found, labels, strict=True):
+        size[label] = size.get(label, 0) + last - first + 1
+
+    under = {
+        labels[index]
+        for point in at
+        for index, (row, first, last) in enumerate(found)
+        if row == round(point[1]) and first <= round(point[0]) <= last
+    }
+    if under:
+        chosen = max(under, key=lambda label: size[label])
+    else:
+        nearest = min(
+            range(len(found)), key=lambda index: min(_gap(point, found[index]) for point in at)
+        )
+        chosen = labels[nearest]
+    first_run = next(index for index, label in enumerate(labels) if label == chosen)
+    return (found[first_run][1], found[first_run][0])
+
+
+def outline(mask: Mask, *, at: Sequence[Point] = ()) -> list[Point]:
+    """The boundary of one blob — the one the prompt points at, if it points anywhere.
 
     Moore-neighbourhood tracing with Jacob's stopping criterion: walk the ring of
     lit pixels, at each one resuming the search from where the previous step
@@ -107,16 +235,14 @@ def outline(mask: Mask) -> list[Point]:
     classic bug — a shape with a one-pixel isthmus revisits its start mid-trace
     and the outline comes back truncated.
 
-    **One blob, not all of them.** A component-labelling pass would be a second
-    walk over every pixel to answer a question this caller does not have: a
-    point-prompted segmenter answers with the thing under the point, and the
-    speckle that survives its own post-processing is not a second object worth
-    tracing. A mask holding two real blobs yields the first one found.
+    **One blob, not all of them** — but which one is :func:`_start_of`'s
+    decision, and ``at`` is what informs it. The walk itself cannot leave the
+    blob it starts in: it only ever steps to an 8-adjacent lit pixel, and two
+    pixels 8-adjacent to each other are the same blob by definition.
     """
-    rows = spans(mask)
-    if not rows:
+    start = _start_of(mask, at)
+    if start is None:
         return []
-    start = (rows[0][1], rows[0][0])
     height, width = len(mask), len(mask[0])
 
     def lit(point: tuple[int, int]) -> bool:
@@ -203,15 +329,23 @@ def tolerance_for(points: Sequence[Point], *, detail: float) -> float:
     return max(MINIMUM_TOLERANCE, detail * diagonal)
 
 
-def polygon_from(mask: Mask, *, detail: float = DEFAULT_DETAIL) -> PolygonGeometry | None:
+def polygon_from(
+    mask: Mask, *, detail: float = DEFAULT_DETAIL, at: Sequence[Point] = ()
+) -> PolygonGeometry | None:
     """The mask's outline, simplified — or ``None`` if no polygon can be made.
 
     ``None`` covers both an empty mask and a blob too thin to have three distinct
     corners: the domain requires three points, and a two-point "polygon" is a
     line somebody would have to fix by hand rather than a suggestion worth
     offering.
+
+    ``at`` is the prompt's positive points, and it reaches :func:`outline` to
+    choose *which* blob. It matters here and not only there because a stray blob
+    is usually a speck, a speck traces to fewer than three points, and the answer
+    would otherwise be this ``None`` — "no suggestion" reported over a mask that
+    segmented the object perfectly well (#461).
     """
-    traced = outline(mask)
+    traced = outline(mask, at=at)
     if len(traced) < 3:
         return None
     tolerance = tolerance_for(traced, detail=detail)
