@@ -81,11 +81,10 @@ def run(
     # Never a ``with``: the handle belongs to the worker and outlives this task.
     # See ``jobs/context.py``.
     workspace = workspace_for(workspace_root)
-    # ``retrying``: this handler is only ever entered for work a surface
-    # already gated, and a crash between the state flip and the row settling
-    # re-enqueues it against a connection that is now ``ready``. See
-    # ``require_downloadable``.
-    ready = fetch_weights(workspace, connection_id, retrying=True)
+    # No flag for the re-run: ``download_weights`` is legal at ``ready`` too
+    # (#469), so an orphan re-enqueued after a crash and a person asking a
+    # set-up connection to check itself are the same idempotent call.
+    ready = fetch_weights(workspace, connection_id)
     reporter.report(processed=1, total=1)
     return {
         "connection_id": str(ready.id),

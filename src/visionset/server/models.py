@@ -90,6 +90,7 @@ from visionset.kernel.domain import (
     Partition,
     PolygonGeometry,
     PolylineGeometry,
+    Precision,
     Project,
     ProjectStats,
     Release,
@@ -1624,8 +1625,14 @@ class ConnectionOut(BaseModel):
     connection_type: ConnectionType
     model_id: str
     model_revision: str
+    #: Two closed vocabularies published two ways, because one of them has a
+    #: member that is not a fixed word: ``cuda:N`` addresses the second GPU on a
+    #: machine that has one, so ``device`` travels as a string the kernel refuses
+    #: when it is outside ``DEVICE_PATTERN``, while ``precision`` is an enum a
+    #: client can enumerate. Which precisions a device honours is the kernel's
+    #: cross-field rule, not a shape either type can carry.
     device: str | None
-    precision: str | None
+    precision: Precision | None
     endpoint_url: str | None
     setup_state: ConnectionSetupState
     allowed_actions: list[ConnectionAction]
@@ -1670,7 +1677,7 @@ class ConnectionCreate(BaseModel):
     model_id: str
     model_revision: str
     device: str | None = None
-    precision: str | None = None
+    precision: Precision | None = None
     endpoint_url: str | None = None
 
 
@@ -1688,7 +1695,7 @@ class ConnectionUpdate(BaseModel):
     model_id: str | None = None
     model_revision: str | None = None
     device: str | None = None
-    precision: str | None = None
+    precision: Precision | None = None
     endpoint_url: str | None = None
 
 

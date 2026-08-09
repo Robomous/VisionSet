@@ -72,7 +72,6 @@ def fetch_weights(
     workspace: WorkspaceService,
     connection_id: UUID,
     *,
-    retrying: bool = False,
     on_progress: Callable[[str], None] | None = None,
 ) -> InferenceConnection:
     """Fetch the weights this connection names, then mark it ready.
@@ -83,13 +82,12 @@ def fetch_weights(
     this sequence is how the CLI and the API would come to disagree about what
     "set up" means.
 
-    ``retrying`` is passed by the job handler and by nobody else, and it is what
-    makes a re-run safe rather than merely cheap: an orphan re-enqueued after a
-    crash may arrive at a connection a previous attempt already finished, and
-    ``require_downloadable`` explains why refusing that would be wrong. The work
-    it then does is a *verification* — the snapshot download checks a cache it
-    already filled against its hashes rather than re-fetching it — and the write
-    below is a no-op on a connection that is already ready.
+    **A run against a connection that is already ``ready`` is a verification,
+    and it needs no flag to be one (#469).** The snapshot download checks a cache
+    it already filled against its hashes rather than re-fetching it, and the
+    write below is a no-op on a connection that is already ready — so the orphan
+    the queue re-enqueues after a crash and the person asking a set-up connection
+    to check itself take the identical path.
 
     ``on_progress`` is a plain callable rather than a ``ProgressReporter``,
     because what this can honestly report is a *phase* and not a count: a
@@ -100,12 +98,12 @@ def fetch_weights(
 
     Raises:
         InferenceConnectionNotFound: no such connection in this workspace.
-        InferenceConnectionNotDownloadable: it is already set up, or it is a kind
-            with no weights of its own.
+        InferenceConnectionNotDownloadable: it is a kind with no weights of its
+            own.
         LocalInferenceUnavailable: the optional runtime is not installed.
     """
     connections = InferenceConnectionService(workspace)
-    connection = connections.require_downloadable(connection_id, retrying=retrying)
+    connection = connections.require_downloadable(connection_id)
     say = on_progress or (lambda _: None)
 
     say(f"fetching {connection.model_id} at {connection.model_revision}")

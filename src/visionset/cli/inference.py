@@ -31,7 +31,7 @@ from visionset.cli._errors import domain_errors
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.inference import download_size, fetch_weights
-from visionset.kernel.domain import ConnectionType, InferenceConnection
+from visionset.kernel.domain import ConnectionType, InferenceConnection, Precision
 from visionset.kernel.services import InferenceConnectionService
 
 inference_app = typer.Typer(
@@ -71,10 +71,12 @@ def inference_create(
         str, typer.Option("--revision", help="Pinned. A moving pointer is not a provenance.")
     ],
     device: Annotated[
-        str | None, typer.Option("--device", help="Local only. For example cuda or cpu.")
+        str | None,
+        typer.Option("--device", help="Local only. cpu, cuda, or cuda:N for a second GPU."),
     ] = None,
     precision: Annotated[
-        str | None, typer.Option("--precision", help="Local only. For example fp16.")
+        Precision | None,
+        typer.Option("--precision", help="Local only. fp16 needs a cuda device."),
     ] = None,
     endpoint_url: Annotated[
         str | None, typer.Option("--endpoint", help="HTTP only. Where to send predictions.")
@@ -122,8 +124,14 @@ def inference_update(
     name: Annotated[str | None, typer.Option("--name", help="Rename it.")] = None,
     model_id: Annotated[str | None, typer.Option("--model", help="Point at another model.")] = None,
     model_revision: Annotated[str | None, typer.Option("--revision", help="Move the pin.")] = None,
-    device: Annotated[str | None, typer.Option("--device", help="Local only.")] = None,
-    precision: Annotated[str | None, typer.Option("--precision", help="Local only.")] = None,
+    device: Annotated[
+        str | None,
+        typer.Option("--device", help="Local only. cpu, cuda, or cuda:N for a second GPU."),
+    ] = None,
+    precision: Annotated[
+        Precision | None,
+        typer.Option("--precision", help="Local only. fp16 needs a cuda device."),
+    ] = None,
     endpoint_url: Annotated[str | None, typer.Option("--endpoint", help="HTTP only.")] = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,

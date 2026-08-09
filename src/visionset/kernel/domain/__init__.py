@@ -66,12 +66,18 @@ from visionset.kernel.domain.geometry import (
     PolylineGeometry,
 )
 from visionset.kernel.domain.inference import (
+    CPU,
+    CUDA,
+    DEVICE_PATTERN,
     EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
+    OFFERED_DEVICES,
     ConnectionSetupState,
     ConnectionType,
     DownloadSize,
     InferenceConnection,
+    Precision,
+    precisions_for,
 )
 from visionset.kernel.domain.ingest import (
     INGEST_TRANSITIONS,
@@ -201,6 +207,11 @@ __all__ = [
     "CONNECTION_KINDS",
     "EVERY_CONNECTION_TYPE",
     "EVERY_SETUP_STATE",
+    "CPU",
+    "CUDA",
+    "DEVICE_PATTERN",
+    "OFFERED_DEVICES",
+    "precisions_for",
     "ASSET_MOVES",
     "ASSET_PROGRESS_TRANSITIONS",
     "BACKGROUND_JOB_TRANSITIONS",
@@ -259,6 +270,7 @@ __all__ = [
     "DatasetStats",
     "DomainEvent",
     "DownloadSize",
+    "Precision",
     "ClassCompatibility",
     "ClassExportStatus",
     "ExportCompatibility",

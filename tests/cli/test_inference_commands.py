@@ -38,7 +38,7 @@ LOCAL = (
     "--device",
     "cpu",
     "--precision",
-    "fp16",
+    "fp32",
 )
 
 HTTP = (
@@ -303,18 +303,25 @@ def test_download_prints_the_connection_as_json(root: Path, fetched: list[str]) 
     ok(root, *LOCAL)
     document = payload(root, "inference", "download", "local-gd")
     assert document["setup_state"] == "ready"
-    assert document["allowed_actions"] == ["update", "delete"]
+    assert document["allowed_actions"] == ["download_weights", "update", "delete"]
 
 
-def test_downloading_twice_exits_one_with_a_sentence(root: Path, fetched: list[str]) -> None:
-    """The second one has nothing to do and says so, rather than fetching again."""
+def test_downloading_twice_verifies_rather_than_refusing(
+    root: Path, fetched: list[str]
+) -> None:
+    """The second run checks the cache it already filled, and says so (#469).
+
+    The command that fetches is the command that verifies, because the work is
+    the same work: a snapshot already on disk is compared against its hashes
+    rather than transferred again.
+    """
     ok(root, *LOCAL)
     ok(root, "inference", "download", "local-gd")
 
     result = run(root, "inference", "download", "local-gd")
-    assert result.exit_code == 1, result.output
-    assert "already set up" in result.stderr
-    assert fetched == ["some/model@abc123"]
+    assert result.exit_code == 0, result.output
+    assert "is ready" in result.stderr
+    assert fetched == ["some/model@abc123", "some/model@abc123"]
 
 
 def test_downloading_an_http_connection_exits_one(root: Path, fetched: list[str]) -> None:

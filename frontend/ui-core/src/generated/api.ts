@@ -2593,8 +2593,7 @@ export interface components {
             model_revision: string;
             /** Name */
             name: string;
-            /** Precision */
-            precision?: string | null;
+            precision?: components["schemas"]["Precision"] | null;
         };
         /**
          * ConnectionOut
@@ -2624,8 +2623,7 @@ export interface components {
             model_revision: string;
             /** Name */
             name: string;
-            /** Precision */
-            precision: string | null;
+            precision: components["schemas"]["Precision"] | null;
             setup_state: components["schemas"]["ConnectionSetupState"];
             /**
              * Updated At
@@ -2692,8 +2690,7 @@ export interface components {
             model_revision?: string | null;
             /** Name */
             name?: string | null;
-            /** Precision */
-            precision?: string | null;
+            precision?: components["schemas"]["Precision"] | null;
         };
         /**
          * DatasetChangeOut
@@ -3144,6 +3141,23 @@ export interface components {
              */
             type: "polyline";
         };
+        /**
+         * Precision
+         * @description The numeric precision a local connection asks its weights to be loaded in.
+         *
+         *     A closed vocabulary rather than the free text this field started as, on
+         *     ``ConnectionType``'s test: the set is small, the kernel is what decides
+         *     whether a member is usable on a given device, and it grows only by a
+         *     deliberate kernel change — bf16 arriving later is exactly that change.
+         *
+         *     Free text here was not neutrality but a gap. ``fp32x`` was accepted and then
+         *     ignored; so was ``fp16`` beside ``cpu``, which the adapters silently drop
+         *     (see :func:`precisions_for`). A field whose wrong values are absorbed rather
+         *     than refused is a field that cannot tell somebody they are configuring a run
+         *     that will not happen.
+         * @enum {string}
+         */
+        Precision: "fp16" | "fp32";
         /**
          * ProgressCounts
          * @description How many assets sit in each annotation state.

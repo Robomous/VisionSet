@@ -27,7 +27,7 @@ LOCAL: dict[str, Any] = {
     "model_id": "some/model",
     "model_revision": "abc123",
     "device": "cpu",
-    "precision": "fp16",
+    "precision": "fp32",
 }
 
 HTTP: dict[str, Any] = {
@@ -219,6 +219,45 @@ def test_an_edit_into_a_shape_the_kind_refuses_is_a_422(client: TestClient) -> N
     assert response.status_code == 422, response.text
 
 
+def test_a_device_this_build_cannot_address_is_refused_with_the_reason(
+    client: TestClient,
+) -> None:
+    """The vocabulary reaches the wire as a sentence, not as a silent fallback (#469).
+
+    What the form does with the two fields is the form's business; that a caller
+    who bypasses it is *told* is the kernel's, and this is where a client can see
+    it. The message is what a control renders, so it names the members rather
+    than saying the value was rejected.
+    """
+    response = client.post("/inference/connections", json=LOCAL | {"device": "gpu"})
+    assert response.status_code == 422, response.text
+    body = response.json()
+    assert body["code"] == "INFERENCE_CONNECTION_INVALID"
+    assert "not a device this build can run on" in body["message"]
+    assert "cuda:N" in body["message"]
+
+
+def test_half_precision_on_a_cpu_is_refused_with_the_reason(client: TestClient) -> None:
+    """The cross-field rule at the wire, which is the one a form cannot own alone."""
+    response = client.post("/inference/connections", json=LOCAL | {"precision": "fp16"})
+    assert response.status_code == 422, response.text
+    assert "fp16 is not available on cpu" in response.json()["message"]
+
+
+def test_a_precision_outside_the_vocabulary_never_reaches_the_kernel(
+    client: TestClient,
+) -> None:
+    """An enum on the wire, so the contract states the members rather than implying them.
+
+    `device` cannot be one — `cuda:N` is a member that is not a fixed word — which
+    is why the two closed vocabularies are published two different ways and why
+    the kernel, not the schema, is what both refusals have in common.
+    """
+    response = client.post("/inference/connections", json=LOCAL | {"precision": "bf16"})
+    assert response.status_code == 422, response.text
+    assert "fp16" in response.text and "fp32" in response.text
+
+
 # --- deleting -----------------------------------------------------------------
 
 
@@ -293,8 +332,10 @@ def test_a_finished_download_leaves_the_connection_ready(
 
         after = client.get(f"/inference/connections/{made['id']}").json()
         assert after["setup_state"] == "ready"
-        # And the declaration follows the state: there is nothing left to fetch.
-        assert after["allowed_actions"] == ["update", "delete"]
+        # The declaration survives the flip: what the action means changes from
+        # "fetch these" to "check these are still here" (#469), and the name of
+        # a capability does not change with the state it is read in.
+        assert after["allowed_actions"] == ["download_weights", "update", "delete"]
 
 
 def test_a_failed_download_leaves_the_connection_not_set_up(
@@ -329,10 +370,12 @@ def test_running_the_download_twice_is_a_verified_no_op(
 ) -> None:
     """The idempotency the registry claims for this handler, exercised.
 
-    The route refuses a second *request* — the connection is ready, so
-    `download_weights` is no longer declared — but a re-queued orphan does not go
-    through the route. This drives the handler directly, which is the path a
-    crash recovery actually takes.
+    Both the re-queued orphan and the person pressing the action a second time
+    take this path since #469: the route accepts, the handler runs, the download
+    verifies a cache it already filled, and the row ends where it started. What
+    the test holds is that *nothing moved* — a second run that reported a state
+    change would mean the write is not the no-op the handler's registration
+    promises.
     """
     from visionset.jobs.weights import run as download_run
 
@@ -345,13 +388,19 @@ def test_running_the_download_twice_is_a_verified_no_op(
     with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
         made = created(client, LOCAL)
         client.post(f"/inference/connections/{made['id']}/download")
-        assert client.get(f"/inference/connections/{made['id']}").json()["setup_state"] == "ready"
+        ready = client.get(f"/inference/connections/{made['id']}").json()
+        assert ready["setup_state"] == "ready"
 
         response = client.post(f"/inference/connections/{made['id']}/download")
-        assert response.status_code == 409, response.text
-        assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"
+        assert response.status_code == 202, response.text
+        job = client.get(f"/background-jobs/{response.json()['id']}").json()
+        assert job["state"] == BackgroundJobState.SUCCEEDED.value, job
 
-    assert calls == ["some/model"]
+        again = client.get(f"/inference/connections/{made['id']}").json()
+        assert again["setup_state"] == "ready"
+        assert again["updated_at"] == ready["updated_at"]
+
+    assert calls == ["some/model", "some/model"]
     assert callable(download_run)
 
 
