@@ -60,6 +60,14 @@ HELLO_BLOB_OID = "ce013625030ba8dba906f756967f9e9ca394464a"
 """git's object id for ``b"hello\\n"``. The same oracle, with a body."""
 
 
+def _pointer(data: bytes) -> bytes:
+    """The text git actually holds for an LFS-tracked file."""
+    return b"version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %d\n" % (
+        sha256_of(data).encode(),
+        len(data),
+    )
+
+
 def sha256_of(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -107,8 +115,16 @@ class FakeSibling:
     def __init__(self, name: str, data: bytes, *, lfs: bool) -> None:
         self.rfilename = name
         self.size = len(data)
-        self.blob_id = git_oid_of(data)
         self.lfs = {"sha256": sha256_of(data), "size": len(data)} if lfs else None
+        # An LFS file's `blob_id` is the object id of its **pointer text**, not
+        # of its contents — git only ever stored the pointer. Verified against
+        # the hub on three real LFS files. Getting this right in the fixture is
+        # what makes the wrong digest choice *fail*: an implementation checking
+        # weights against `blob_id` would compare a hash of megabytes to a hash
+        # of a hundred-odd bytes, which is exactly what would happen in
+        # production and exactly what a fixture that reused the content's oid
+        # would hide.
+        self.blob_id = git_oid_of(_pointer(data) if lfs else data)
 
 
 class FakeHub:
