@@ -63,8 +63,12 @@ dependencies = [
 #
 # The canonical spelling is `local-inference`; it supersedes the earlier
 # `autolabel` framing. Version floors rather than pins: this is a user's
-# environment and their CUDA build decides most of it. `uv.lock` does not carry
-# extras, so nothing here is resolved by a `uv sync` in this repository.
+# environment and their CUDA build decides most of it. `uv.lock` does record the
+# extra — once as a member list, once per member under `requires-dist` — so
+# editing these lines without re-running `uv lock` leaves it stale and
+# `uv lock --check` fails on the result. What a plain `uv sync` does not do is
+# *install* it: that takes `--extra local-inference`, which is how two gigabytes
+# of CUDA wheels stay out of a developer's environment by default.
 #
 # `torchvision` is here because SAM 2's image processor imports it, and nothing
 # else in this list brings it: `Sam2ImageProcessor` refuses to construct without

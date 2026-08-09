@@ -93,7 +93,6 @@ export interface SuggestionOut {
   readonly region?: SuggestedRegion | null;
 }
 
-export type ConnectionAction = components["schemas"]["ConnectionAction"];
 export type ConnectionType = components["schemas"]["ConnectionType"];
 export type ConnectionSetupState = components["schemas"]["ConnectionSetupState"];
 export type DownloadSizeOut = components["schemas"]["DownloadSizeOut"];

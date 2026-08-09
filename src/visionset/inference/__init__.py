@@ -14,11 +14,10 @@ three is the only place left, and the import-linter contracts say so out loud.
 **Importing this package imports nothing heavy.** Every reference to torch,
 transformers, accelerate and huggingface_hub is inside a function, and
 torchvision — which nothing here names, and ``transformers`` imports for us — is
-held to the same line — see
-``_extra`` for why that is load-bearing rather than tidy — so a base install
-starts a server, runs a worker and imports this module without the optional
-runtime present. ``tests/architecture/test_optional_runtime.py`` proves it in a
-fresh interpreter.
+held to the same line. See ``_extra`` for why that is load-bearing rather than
+tidy: a base install starts a server, runs a worker and imports this module
+without the optional runtime present, and
+``tests/architecture/test_optional_runtime.py`` proves it in a fresh interpreter.
 
 **There is no plugin registry, and resolution happens in two steps.** #418's
 recorded decision is that adapters are instantiated from user-created model
