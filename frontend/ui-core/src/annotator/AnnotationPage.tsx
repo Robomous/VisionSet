@@ -372,10 +372,11 @@ export interface AnnotationPageProps {
    * Where somebody goes to set up a model connection, if the app has such a
    * screen (#424, D6).
    *
-   * Optional, and it is expected to be absent for now: the Inference surface
-   * waits on #421's open rail question, and `ui-core` imports no router. Absent,
-   * the suggest tool's panel still says what is missing and simply renders no
-   * control — a host that cannot honour one renders none rather than a dead one.
+   * Optional because `ui-core` imports no router and cannot know whether its
+   * host has such a screen — the app does, and wires this to the Inference
+   * section. Absent, the suggest tool's panel still says what is missing and
+   * simply renders no control: a host that cannot honour one renders none
+   * rather than a dead one.
    */
   readonly onConfigureInference?: () => void;
 }

@@ -87,7 +87,7 @@ def points_and_labels(prompt: PointPrompt) -> tuple[list[list[float]], list[int]
     return points, labels
 
 
-def best_of(iou_scores: list[float], masks: list[Any]) -> tuple[int, float]:
+def best_of(iou_scores: list[float]) -> tuple[int, float]:
     """Which of the multi-mask answers to offer, and how sure it is.
 
     A segmenter of this family answers a single click with several masks at
@@ -256,7 +256,7 @@ class LocalSamProvider:
             outputs.pred_masks, original_sizes=[list(size)], binarize=True
         )[0]
         scores = [float(value) for value in outputs.iou_scores.flatten().tolist()]
-        chosen, confidence = best_of(scores, lifted)
+        chosen, confidence = best_of(scores)
         if confidence < minimum_confidence:
             return ()
         mask = lifted.reshape(-1, *lifted.shape[-2:])[chosen]

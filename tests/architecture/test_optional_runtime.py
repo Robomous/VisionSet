@@ -4,10 +4,9 @@
 huggingface_hub in the `local-inference` extra, and `visionset/inference/_extra.py`
 reaches every one of them from inside a function — torchvision by never naming it
 at all, since it is `transformers` that imports it. Neither of those is
-self-enforcing: a single
-module-level `import torch` anywhere under `visionset.inference` would leave the
-metadata unchanged and make roughly two gigabytes of CUDA wheels a condition of
-starting the server.
+self-enforcing: a single module-level `import torch` anywhere under
+`visionset.inference` would leave the metadata unchanged and make roughly two
+gigabytes of CUDA wheels a condition of starting the server.
 
 It is a condition of *starting* rather than of running a model because
 `visionset.jobs` imports its handler modules at package import to populate the

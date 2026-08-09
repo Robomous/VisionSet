@@ -1,9 +1,12 @@
-"""The composition root's refusals, and the adapter's tensor-to-domain half.
+"""What the runtime's presence decides, and the adapter's tensor-to-domain half.
 
-Two subjects, both reachable without the optional runtime and without a GPU:
+Two subjects, both reachable without a GPU:
 
-- `provider_for`, which answers "can this connection predict here?" and must
-  refuse with a sentence rather than a `None` or a stack trace;
+- the half of `provider_for` that turns on whether the optional runtime is
+  installed here — the refusal that names the install command when it is not,
+  and structural conformance to the port when it is. The refusals that turn on
+  the *connection* instead are `test_providers.py`'s, beside the resolution
+  they belong to;
 - `regions_from`, the conversion the adapter does after a forward — the one part
   of running a model that can be wrong in a way no weights are needed to see.
 
@@ -35,8 +38,6 @@ from visionset.kernel.domain import (
     TextPrompt,
 )
 from visionset.kernel.errors import (
-    InferenceConnectionNotRunnable,
-    InferenceConnectionNotSetUp,
     LocalInferenceUnavailable,
     UnsupportedPrompt,
 )
@@ -59,56 +60,7 @@ def local(
     )
 
 
-def remote() -> InferenceConnection:
-    return InferenceConnection(
-        name="remote",
-        connection_type=ConnectionType.HTTP,
-        model_id="some/model",
-        model_revision="abc123",
-        endpoint_url="https://example.invalid/predict",
-        setup_state=ConnectionSetupState.READY,
-    )
-
-
 # --- resolving a connection to something that can answer ----------------------
-
-
-def test_a_local_connection_without_weights_is_refused_by_state(tmp_path: Path) -> None:
-    """And the message names the action that fixes it.
-
-    "Not set up" alone tells an operator what they already knew; the remedy is
-    the point, and it is a real one — the identical call succeeds after the
-    download.
-    """
-    with pytest.raises(InferenceConnectionNotSetUp) as raised:
-        provider_for(local(), workspace_root=tmp_path)
-    assert "download_weights" in str(raised.value)
-
-
-def test_an_http_connection_is_refused_because_this_build_has_no_adapter(
-    tmp_path: Path,
-) -> None:
-    """A different refusal from the one above, deliberately.
-
-    No state change fixes this and no wait helps — the adapter that would speak
-    to an endpoint is a later slice — so it must not be the error whose whole
-    meaning is "change the state and resubmit".
-    """
-    with pytest.raises(InferenceConnectionNotRunnable) as raised:
-        provider_for(remote(), workspace_root=tmp_path)
-    assert "http" in str(raised.value)
-
-
-def test_the_connections_own_state_is_reported_before_the_machines(tmp_path: Path) -> None:
-    """Order of the two checks, and it matters to whoever reads the answer.
-
-    A not-set-up connection on a machine with no extra has two problems. Telling
-    somebody to run a `pip install` when what they needed was a download sends
-    them to the wrong place; the state is the one they can act on from where they
-    are standing.
-    """
-    with pytest.raises(InferenceConnectionNotSetUp):
-        provider_for(local(), workspace_root=tmp_path)
 
 
 @pytest.mark.skipif(EXTRA_INSTALLED, reason="the local runtime is installed here")
