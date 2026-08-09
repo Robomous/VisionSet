@@ -3525,8 +3525,6 @@ export interface components {
              * Format: uuid
              */
             connection_id: string;
-            /** Detail */
-            detail?: number | null;
             /** Negative */
             negative?: components["schemas"]["SuggestPoint"][];
             /** Positive */

@@ -26,7 +26,7 @@ from uuid import UUID
 
 from fastapi import Response, status
 
-from visionset.inference import DEFAULT_DETAIL, download_size, suggest
+from visionset.inference import download_size, suggest
 from visionset.inference import require as require_local_inference
 from visionset.jobs.weights import JOB_TYPE as download_job_type
 from visionset.jobs.weights import payload_for as download_payload_for
@@ -233,7 +233,6 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
         connection_id=body.connection_id,
         prompt=prompt,
         allowed=tuple(body.allowed_geometries),
-        detail=DEFAULT_DETAIL if body.detail is None else body.detail,
     )
     region = next(iter(prediction.regions), None)
     return SuggestionOut(
