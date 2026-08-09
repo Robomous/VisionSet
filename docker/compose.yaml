@@ -4,6 +4,12 @@
 #   docker compose -f docker/compose.yaml --profile postgres up
 #   docker compose -f docker/compose.yaml --profile minio up
 #
+# And, for a stack that can reach the host's NVIDIA GPU and has the runtime to use
+# it — a second file rather than a profile, because a profile adds services and this
+# amends one; docker/compose.gpu.yaml says the rest, including what the host needs:
+#
+#   docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build
+#
 # From a clean checkout this needs nothing installed on the host — no `uv sync`,
 # no `pnpm install`, no `pnpm -r build`, no wheel. `up` builds the two images the
 # first time; after that it starts them.
