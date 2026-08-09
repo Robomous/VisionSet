@@ -325,6 +325,12 @@ async function serveApi(
       return route.fulfill({ contentType: "image/png", body: PIXEL });
     }
     if (path === "/projects") return route.fulfill({ json: { items: [], total: 0 } });
+    // The suggest tool's own read (#424 D5/D6). Empty is the interesting answer
+    // here: it is the state D6's panel exists for, and it is what a workspace
+    // that has never been to the Inference section is in.
+    if (path === "/inference/connections") {
+      return route.fulfill({ json: { items: [], total: 0 } });
+    }
     return route.fulfill({ status: 500, json: { code: "NO_STUB", message: path } });
   });
 }
@@ -2689,4 +2695,22 @@ test("Escape closes the canvas picker and leaves the object alone", async ({ pag
 
   await expect(page.getByTestId("canvas-reclass-pedestrian")).toHaveCount(0);
   await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");
+});
+
+test("the no-connection panel now has somewhere to send you (#424 D6)", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  // Arming the tool is what makes the editor ask whether a model is reachable —
+  // a job nobody suggests on makes no inference request at all.
+  await page.getByTestId("tool-suggest").click();
+  await expect(page.getByTestId("suggest-no-connections")).toBeVisible();
+
+  // The half that did not exist until this slice. `ui-core` imports no router,
+  // so the panel's action is a callback and `routes.tsx` is the only place that
+  // can name a destination for it — which is why this is asserted here and not
+  // in a component test.
+  await page.getByTestId("suggest-configure").click();
+  await expect(page).toHaveURL(/\/inference$/);
+  await expect(page.getByTestId("inference-screen")).toBeVisible();
 });

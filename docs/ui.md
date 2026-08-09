@@ -38,6 +38,7 @@ handler is not an operation.
 | --- | --- | --- |
 | `/` | Home | yes |
 | `/projects`, `/projects/:id` (`?tab=schema\|batches\|versions`), `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
+| `/inference` | model connections, workspace-scoped | yes |
 | `/jobs/:jobId` (`?asset=<id>`) | the annotation page | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
 | `/styleguide` | the rendered design system | **no** |
@@ -62,9 +63,11 @@ prefix the wheel serves under. A **reload** on a client route is a real request 
 path no file backs; [`api.md`](api.md#where-the-ui-lives) describes the server-side
 fallback that answers it.
 
-The rail is the whole shell: logo, collapse toggle, Home, Projects, sign out. Anything
-richer growing on it is what the thin-app audit exists to catch — a capability in
-`app/` is one the future enterprise UI cannot reuse.
+The rail is the whole shell: logo, collapse toggle, Home, Projects, Inference, sign
+out. Anything richer growing on it is what the thin-app audit exists to catch — a
+capability in `app/` is one the future enterprise UI cannot reuse. `Inference` joined by
+the decision recorded on #421 (2026-08-08): what earns an entry is a workspace-level
+object every project uses and that has nowhere else to live, never frequency of use.
 
 ### Two panes, and which one a route gets
 

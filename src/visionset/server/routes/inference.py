@@ -6,12 +6,16 @@ A route never translates an error — it raises the kernel's and stops, and the
 handlers ``create_app()`` installed turn it into an ``ErrorBody`` with a stable
 code.
 
-**Nothing in this file runs a model or contacts an endpoint.** The weight
-download is queued rather than performed — it answers 202 and points at a
+**Nothing in this file runs a model or contacts a configured endpoint.** The
+weight download is queued rather than performed — it answers 202 and points at a
 background job, the contract the export route already uses — and a reachability
 ``test`` is still absent rather than stubbed, so ``allowed_actions`` does not
 name it and no client is told about a control that does not exist yet
 (`cf. #418`, `#421`).
+
+The one network call made here is ``download-size``, and it reads a file
+listing rather than files: the number has to be on screen *before* somebody
+agrees to a download, so it cannot be a by-product of one.
 
 Handlers are ``def`` rather than ``async def``, on ``projects``' terms: every
 kernel call underneath is a blocking SQLite call, and a coroutine would run it on
@@ -22,7 +26,7 @@ from uuid import UUID
 
 from fastapi import Response, status
 
-from visionset.inference import DEFAULT_DETAIL, suggest
+from visionset.inference import DEFAULT_DETAIL, download_size, suggest
 from visionset.inference import require as require_local_inference
 from visionset.jobs.weights import JOB_TYPE as download_job_type
 from visionset.jobs.weights import payload_for as download_payload_for
@@ -36,6 +40,7 @@ from visionset.server.models import (
     ConnectionOut,
     ConnectionPage,
     ConnectionUpdate,
+    DownloadSizeOut,
     SuggestedRegion,
     SuggestionOut,
     SuggestRequest,
@@ -43,12 +48,13 @@ from visionset.server.models import (
 
 router = protected_router(prefix="/inference/connections", tags=["inference"])
 
-#: A second router because the path is a sibling of ``connections`` rather than a
-#: child of one: a suggestion is made *through* a connection, not *on* it, and
+#: A second router for the paths that are siblings of ``connections`` rather than
+#: children of one. A suggestion is made *through* a connection, not *on* it, and
 #: nesting it under ``/inference/connections/{id}/suggest`` would put the asset —
 #: the thing the call is actually about — in the body under a URL claiming the
-#: connection owns it.
-suggestions = protected_router(prefix="/inference", tags=["inference"])
+#: connection owns it. A download size is not about a connection at all: it is
+#: asked while a form is being filled in, before there is a row to hang it on.
+beside_connections = protected_router(prefix="/inference", tags=["inference"])
 
 
 @router.get("")
@@ -156,7 +162,34 @@ def download_connection_weights(
     return BackgroundJobOut.of(job)
 
 
-@suggestions.post("/suggest", responses=documented(404, 409, 422))
+@beside_connections.get("/download-size", responses=documented(422))
+def inference_download_size(model_id: str, model_revision: str) -> DownloadSizeOut:
+    """How big fetching that model's weights would be, before anybody fetches them.
+
+    What the local-connection form shows beside its confirm control, so the
+    decision recorded on #418 — that VisionSet downloads nothing on its own — is
+    one somebody can actually make (`cf. #421`, `#424`).
+
+    **This downloads nothing.** It reads the publishing hub's file listing, which
+    is the one question answerable before the download it describes. The number
+    covers every file in the revision, because that is what the download fetches.
+
+    Query parameters rather than a path, because a model id contains a slash
+    (`facebook/sam2-hiera-base-plus`) and a segment that has to be escaped to be
+    written is a URL people get wrong by hand.
+
+    **Not a connection route**, and it takes no connection id: the moment the
+    number is needed is the moment before the connection exists. Asking about a
+    connection that already exists is the same pair of values, asked the same way.
+
+    Refused with the install command when the local runtime is absent — the size
+    is read with the same client that would do the fetching — and refused rather
+    than guessed when the hub cannot size every file in the revision.
+    """
+    return DownloadSizeOut.of(download_size(model_id, model_revision))
+
+
+@beside_connections.post("/suggest", responses=documented(404, 409, 422))
 def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionOut:
     """Propose a shape for the thing under those points.
 

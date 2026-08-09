@@ -73,6 +73,7 @@ from visionset.kernel.domain import (
     Dataset,
     DatasetChange,
     DatasetStats,
+    DownloadSize,
     ExportCompatibility,
     Geometry,
     GeometryType,
@@ -1689,6 +1690,33 @@ class ConnectionUpdate(BaseModel):
     device: str | None = None
     precision: str | None = None
     endpoint_url: str | None = None
+
+
+class DownloadSizeOut(BaseModel):
+    """What fetching a model's weights would cost, before anybody fetches them.
+
+    Answered from the publishing hub's file listing, so asking costs a metadata
+    request and never a download. The pair is echoed back for ``SuggestionOut``'s
+    reason: a form that had to remember which model it asked about would be
+    keeping a second copy of something the response can simply state.
+    """
+
+    model_id: str
+    model_revision: str
+    #: Every file in the revision, because the download fetches every file in the
+    #: revision. Bytes rather than a formatted string: how to say "2.3 GB" is a
+    #: question about a locale and a screen width, and neither is the server's.
+    total_bytes: int
+    file_count: int
+
+    @classmethod
+    def of(cls, size: DownloadSize) -> Self:
+        return cls(
+            model_id=size.model_id,
+            model_revision=size.model_revision,
+            total_bytes=size.total_bytes,
+            file_count=size.file_count,
+        )
 
 
 class SuggestPoint(BaseModel):

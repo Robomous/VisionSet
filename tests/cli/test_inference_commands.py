@@ -13,8 +13,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.cli._flow import ok, payload, run, workspace
+from click.testing import Result
+from tests.cli._flow import ok, payload, run, runner, workspace
 
+from visionset.cli.main import app
 from visionset.inference import MODULES
 from visionset.inference import weights as weights_module
 from visionset.kernel.services import (
@@ -340,6 +342,102 @@ def test_a_missing_local_runtime_exits_one_with_the_install_command(root: Path) 
     """
     ok(root, *LOCAL)
     result = run(root, "inference", "download", "local-gd")
+    assert result.exit_code == 1, result.output
+    assert 'pip install "visionset[local-inference]"' in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+# --- ``size``, the one command here that opens no workspace --------------------
+
+
+def sized(*argv: str) -> Result:
+    """Invoke ``size`` without ``--workspace``.
+
+    ``_flow.run`` appends the flag to everything, and this command genuinely does
+    not take one: it asks about a published model, not about a configured row.
+    That is the assertion as much as the helper — a ``size`` that had grown a
+    workspace option would fail here rather than quietly acquiring a dependency
+    on state it does not read.
+    """
+    return runner.invoke(app, list(argv))
+
+
+class _Sibling:
+    def __init__(self, rfilename: str, size: int) -> None:
+        self.rfilename = rfilename
+        self.size = size
+
+
+class _Listing:
+    """A hub that lists files and fails the test if asked to fetch one."""
+
+    siblings = [_Sibling("config.json", 24), _Sibling("model.safetensors", 1_000)]
+
+    @classmethod
+    def model_info(cls, _repo_id: str, **_: object) -> type[_Listing]:
+        return cls
+
+    @staticmethod
+    def snapshot_download(**_: object) -> str:
+        raise AssertionError("reading a size must not download anything")
+
+
+def test_the_size_command_reads_a_listing_and_downloads_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The number to look at before running ``download``.
+
+    ``snapshot_download`` raises, so this reds if the command ever answers by
+    fetching the files it is measuring.
+    """
+    monkeypatch.setattr(weights_module, "imported", lambda _name: _Listing)
+    weights_module.known_sizes().clear()
+    result = sized("inference", "size", "some/model", "--revision", "abc123")
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "1024"
+    assert "2 files" in result.stderr
+
+
+def test_the_size_command_needs_no_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The moment the number is wanted is usually the moment before anything exists.
+
+    With no workspace flag and no environment variable, a command that opened one
+    would refuse here — which is exactly what a first-time setup would hit.
+    """
+    monkeypatch.setattr(weights_module, "imported", lambda _name: _Listing)
+    monkeypatch.delenv(WORKSPACE_ENV_VAR, raising=False)
+    monkeypatch.chdir(tmp_path)
+    weights_module.known_sizes().clear()
+    result = sized("inference", "size", "some/model", "--revision", "abc123")
+    assert result.exit_code == 0, result.output
+
+
+def test_the_size_command_prints_the_document_on_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bytes as an integer: how to say "2.3 GB" is a question about a screen."""
+    monkeypatch.setattr(weights_module, "imported", lambda _name: _Listing)
+    weights_module.known_sizes().clear()
+    result = sized("inference", "size", "some/model", "--revision", "abc123", "--json")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "model_id": "some/model",
+        "model_revision": "abc123",
+        "total_bytes": 1_024,
+        "file_count": 2,
+    }
+
+
+@pytest.mark.skipif(_extra_is_installed(), reason="the local runtime is installed here")
+def test_a_size_without_the_runtime_exits_one_with_the_install_command() -> None:
+    """``size`` opens no workspace, so it carries ``domain_errors`` itself.
+
+    Without it a missing extra would reach a terminal as a traceback rather than
+    as the one line naming what to install — the translation every other command
+    in this file inherits from ``opened_workspace``.
+    """
+    weights_module.known_sizes().clear()
+    result = sized("inference", "size", "some/model", "--revision", "abc123")
     assert result.exit_code == 1, result.output
     assert 'pip install "visionset[local-inference]"' in result.stderr
     assert "Traceback" not in result.stderr

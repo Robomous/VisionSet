@@ -3,7 +3,11 @@
  * routed page.
  *
  * `DESIGN.md` is explicit about what is on it — logo, collapse toggle, Home,
- * Projects, and the account control at the bottom — and about what is not.
+ * Projects, Inference, and the account control at the bottom — and about what is
+ * not. `Inference` joined it by the decision recorded on #421 (2026-08-08), which
+ * supersedes #58's rule: model connections are workspace infrastructure that every
+ * project uses, so they cannot live inside any one project, and the rail is the
+ * only workspace-level surface there is.
  * Anything richer growing here is exactly what the **thin-app audit** exists to
  * catch: this file is composition and identity, and a capability that lands in it
  * is one the future enterprise UI cannot reuse.
@@ -66,7 +70,7 @@
  */
 
 import { readRailCollapsed, useApiSession, writeRailCollapsed } from "@visionset/ui-core";
-import { FolderGit2, Home, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Cpu, FolderGit2, Home, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 
@@ -119,6 +123,9 @@ export function AppShell(): JSX.Element {
         </RailLink>
         <RailLink to="/projects" collapsed={collapsed} testId="rail-projects" label="Projects">
           <FolderGit2 className="size-4 shrink-0" aria-hidden="true" />
+        </RailLink>
+        <RailLink to="/inference" collapsed={collapsed} testId="rail-inference" label="Inference">
+          <Cpu className="size-4 shrink-0" aria-hidden="true" />
         </RailLink>
 
         <div className="mt-auto">

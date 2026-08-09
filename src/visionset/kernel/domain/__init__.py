@@ -70,6 +70,7 @@ from visionset.kernel.domain.inference import (
     EVERY_SETUP_STATE,
     ConnectionSetupState,
     ConnectionType,
+    DownloadSize,
     InferenceConnection,
 )
 from visionset.kernel.domain.ingest import (
@@ -257,6 +258,7 @@ __all__ = [
     "DatasetOperation",
     "DatasetStats",
     "DomainEvent",
+    "DownloadSize",
     "ClassCompatibility",
     "ClassExportStatus",
     "ExportCompatibility",

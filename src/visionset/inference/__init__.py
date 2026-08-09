@@ -57,26 +57,41 @@ from visionset.inference.providers import (
 from visionset.inference.sam_provider import LocalSamProvider
 from visionset.inference.suggestions import suggest
 from visionset.inference.transformers_provider import LocalTransformersProvider
-from visionset.inference.weights import MODELS_DIRNAME, cache_root, download, fetch_weights
+from visionset.inference.weights import (
+    DEFAULT_SIZE_CAPACITY,
+    MODELS_DIRNAME,
+    DownloadSizes,
+    cache_root,
+    download,
+    download_size,
+    fetch_weights,
+    known_sizes,
+    measure,
+)
 
 __all__ = [
     "DEFAULT_DETAIL",
     "DEFAULT_EMBEDDING_CAPACITY",
     "DEFAULT_IOU_THRESHOLD",
     "DEFAULT_PROVIDER_CAPACITY",
+    "DEFAULT_SIZE_CAPACITY",
     "EXTRA",
     "INSTALL_COMMAND",
     "MODELS_DIRNAME",
     "MODULES",
     "SEGMENTER_FAMILIES",
     "BoundedCache",
+    "DownloadSizes",
     "LocalSamProvider",
     "LocalTransformersProvider",
     "ProviderPool",
     "cache_root",
     "download",
+    "download_size",
     "family_of",
     "fetch_weights",
+    "known_sizes",
+    "measure",
     "narrowed",
     "polygon_from",
     "provider_for",
