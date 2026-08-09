@@ -235,6 +235,44 @@ export function Styleguide(): JSX.Element {
               </Select>
               <FieldHint>Singular per class — picking a class picks a tool.</FieldHint>
             </div>
+            {/*
+              The two-line option (#472). Here because it is a primitive variant
+              rather than one screen's styling: an option that is an identifier
+              plus the facts about it stacks them, and the trigger shows the same
+              two lines the list does because Radix renders the selected item's
+              own text into it.
+            */}
+            <div className="flex flex-col gap-1.5 md:col-span-2">
+              <Label htmlFor="sg-model">Model</Label>
+              <Select defaultValue="facebook/sam2.1-hiera-base-plus">
+                <SelectTrigger id="sg-model">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    value="facebook/sam2.1-hiera-tiny"
+                    meta="311.9 MB · tiny — fastest, comfortable on a CPU"
+                  >
+                    facebook/sam2.1-hiera-tiny
+                  </SelectItem>
+                  <SelectItem
+                    value="facebook/sam2.1-hiera-base-plus"
+                    meta="647.1 MB · base-plus — the balanced default"
+                  >
+                    facebook/sam2.1-hiera-base-plus
+                  </SelectItem>
+                  <SelectItem
+                    value="facebook/sam2.1-hiera-large"
+                    meta="1.8 GB · large — the most accurate, wants a GPU"
+                  >
+                    facebook/sam2.1-hiera-large
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <FieldHint>
+                The id at the label role, what it costs beneath it. Nothing truncates.
+              </FieldHint>
+            </div>
             <div className="flex flex-col gap-1.5 md:col-span-2">
               <Label htmlFor="sg-notes">Description</Label>
               <Textarea id="sg-notes" placeholder="What this dataset is for" />

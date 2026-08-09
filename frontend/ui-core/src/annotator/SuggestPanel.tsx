@@ -11,13 +11,20 @@
  * not a redirect (which loses the frame), and not a modal (which stops the
  * gesture the page exists for).
  *
- * ## One panel for five states, because they are one question
+ * ## One panel for six states, because they are one question
  *
- * "What is the suggest tool doing" has five honest answers, and each of them is a
+ * "What is the suggest tool doing" has six honest answers, and each of them is a
  * sentence somewhere on this card: waiting for a click, asking, showing something
- * to accept, having found nothing, or refusing. The alternative — a spinner in
- * one corner, an error surface in another, an empty state somewhere else —
- * scatters one answer across three places and leaves the person to assemble it.
+ * to accept, having found nothing, refusing, or parked over a class that can hold
+ * nothing (#472). The alternative — a spinner in one corner, an error surface in
+ * another, an empty state somewhere else — scatters one answer across three
+ * places and leaves the person to assemble it.
+ *
+ * The parked reading is the one that answers a control the strip has dimmed, so
+ * it is the sentence principle 9 requires beside a disabled state. It says what
+ * to change rather than what is wrong, and it says the tool is still armed —
+ * because it is, and because a person who has just been told a capability does
+ * not apply will otherwise assume they have to turn it back on.
  *
  * Principle 9, *never disable without explanation*, is what makes the refusal
  * cases carry a remedy rather than a state: "not configured" names the thing to
@@ -37,6 +44,7 @@
 
 import {
   isAcceptable,
+  isParked,
   hasPending,
   type SuggestionState,
 } from "@visionset/annotator";
@@ -49,6 +57,15 @@ import type { SuggestBlocker } from "../data/inferenceQueries";
 export interface SuggestPanelProps {
   /** The session, whose status decides which sentence this card carries. */
   readonly session: SuggestionState;
+  /**
+   * The class the workspace is on (#472).
+   *
+   * The same thing as `session.labelClass` for every reading but one: a **parked**
+   * session has no class of its own, and the sentence it needs is about the class
+   * the person just picked. Naming it is the difference between "that will not
+   * work" and knowing which choice to change.
+   */
+  readonly heldClass: string | null;
   /**
    * Why the tool cannot run at all, from the connection list — or `null` when it
    * can, and `undefined` while the list is still loading.
@@ -112,14 +129,55 @@ const BLOCKER_COPY: Readonly<
 
 export function SuggestPanel({
   session,
+  heldClass,
   blocker,
   refusal,
   onConfigure,
   onAccept,
   onDiscard,
 }: SuggestPanelProps): JSX.Element {
-  // The blocker outranks everything: a session over a workspace with no usable
-  // connection has nothing to report about a request it never made.
+  /*
+    Parked outranks even the blocker (#472). A connection this tool will not use
+    is not the thing standing in the way, and "getting the model ready" over a
+    class that could never hold the answer would be the wrong sentence twice: it
+    reports progress towards something that is not going to happen, and it hides
+    the one choice the person can change.
+  */
+  if (isParked(session)) {
+    return (
+      <Card testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+        <p className="font-medium text-foreground" data-testid="suggest-parked">
+          {heldClass === null
+            ? "Nothing selected to suggest for"
+            : `“${heldClass}” cannot hold a suggestion`}
+        </p>
+        <p className="text-muted-foreground">
+          A suggestion comes back as a box or a polygon. Pick a class that holds one
+          and the tool carries on from here — it is still armed.
+        </p>
+        {/*
+          No `Esc` chip beside it, unlike the other take-backs on this card. The
+          chord is a substitution the canvas makes while something is pending, and
+          a parked session has nothing pending — so printing the key would be
+          printing one that does nothing. This button is the way out, and it is
+          why the dimmed strip button is not a trap.
+        */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 self-start"
+          data-testid="suggest-discard"
+          onClick={onDiscard}
+        >
+          <X className="size-4" aria-hidden="true" />
+          Put the tool away
+        </Button>
+      </Card>
+    );
+  }
+
+  // The blocker outranks everything else: a session over a workspace with no
+  // usable connection has nothing to report about a request it never made.
   if (blocker !== null && blocker !== undefined) {
     const copy = BLOCKER_COPY[blocker];
     return (

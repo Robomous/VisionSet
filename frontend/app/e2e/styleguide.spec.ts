@@ -177,3 +177,30 @@ test("the tab bar sits one rhythm step above its content", async ({ page }) => {
   expect(panel).not.toBeNull();
   expect(panel!.y - (list!.y + list!.height)).toBeCloseTo(12, 0);
 });
+
+/**
+ * #472's claim, which is a claim about pixels.
+ *
+ * `primitives.test.tsx` asserts the *structure* — two elements, the meta in the
+ * muted role, the id keeping its own line — and jsdom computes no layout, so the
+ * one thing it cannot see is the thing that was reported: a two-line value inside
+ * a control measured for one line. A revert to `h-9` leaves every unit test green
+ * and fails here.
+ */
+test("a two-line option grows its trigger, and a one-line one stays on the contract's 36px", async ({
+  page,
+}) => {
+  const plain = await page.getByLabel("Geometry").boundingBox();
+  const stacked = await page.getByLabel("Model").boundingBox();
+  expect(plain).not.toBeNull();
+  expect(stacked).not.toBeNull();
+
+  // Unmoved: every select that shipped before the variant is still exactly 36px.
+  expect(plain!.height).toBeCloseTo(36, 0);
+  // Grown, not squashed: the second line is inside the box rather than over it.
+  expect(stacked!.height).toBeGreaterThan(plain!.height);
+
+  // And the identifier is whole — no ellipsis, no clipped end.
+  const id = page.getByLabel("Model").locator("span", { hasText: "facebook/sam2.1-hiera-base-plus" }).first();
+  await expect(id).toHaveCSS("text-overflow", "clip");
+});

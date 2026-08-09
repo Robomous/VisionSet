@@ -35,6 +35,8 @@ const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
 const ASSET = "44444444-4444-4444-8444-444444444444";
+/** The second frame, so "switching assets discards" has somewhere to switch to. */
+const ASSET_TWO = "55555555-5555-4555-8555-555555555555";
 const CONNECTION = "66666666-6666-4666-8666-666666666666";
 const MODEL_REF = "facebook/sam2-hiera-base-plus@main";
 
@@ -47,6 +49,11 @@ const SCHEMA = {
   classes: [
     { name: "vehicle", geometry: "bbox", color: "#3355ff", attributes: [] },
     { name: "lane-area", geometry: "polygon", color: null, attributes: [] },
+    // Drawable, and not suggestible: a mask narrows to a region and a lane is an
+    // open path. It is what parks the tool (#472), and it is a `polyline` rather
+    // than a tag on purpose — a class that can still be drawn on is the case where
+    // a parked tool swallowing presses would be a bug rather than a nuisance.
+    { name: "lane", geometry: "polyline", color: null, attributes: [] },
   ],
 };
 
@@ -81,6 +88,26 @@ function connectionRow(setup: "ready" | "not_set_up"): Record<string, unknown> {
   };
 }
 
+function assetRow(id: string, hash: string): Record<string, unknown> {
+  return {
+    id,
+    project_id: PROJECT,
+    modality: "image",
+    content_hash: hash.padEnd(64, "0"),
+    width: 640,
+    height: 480,
+    format: "png",
+    thumbnail_hash: null,
+    frame_index: null,
+    frame_timestamp: null,
+    source_id: null,
+    ingested_at: null,
+    job_id: JOB,
+    progress: "unannotated",
+    allowed_actions: assetActions("unannotated", { batchState: "in_annotation" }),
+  };
+}
+
 function answer(path: string): unknown {
   if (path === "/inference/connections") {
     return { items: connections, total: connections.length };
@@ -90,7 +117,7 @@ function answer(path: string): unknown {
       id: JOB,
       batch_id: BATCH,
       state: "in_progress",
-      asset_count: 1,
+      asset_count: 2,
       allowed_actions: jobActions("in_progress", { settled: false }),
     };
   }
@@ -101,44 +128,23 @@ function answer(path: string): unknown {
       name: "drive-01",
       state: "in_annotation",
       schema_version: 1,
-      asset_count: 1,
+      asset_count: 2,
       allowed_actions: batchActions("in_annotation"),
       promoted_asset_count: 0,
       parent_batch_id: null,
       progress: {
-        unannotated: 1,
+        unannotated: 2,
         annotated: 0,
         skipped: 0,
         review_pending: 0,
         accepted: 0,
-        total: 1,
+        total: 2,
       },
     };
   }
   if (path.endsWith("/schema/versions/1") || path.endsWith("/schema")) return SCHEMA;
   if (path.endsWith("/assets")) {
-    return {
-      items: [
-        {
-          id: ASSET,
-          project_id: PROJECT,
-          modality: "image",
-          content_hash: "abcdef0".padEnd(64, "0"),
-          width: 640,
-          height: 480,
-          format: "png",
-          thumbnail_hash: null,
-          frame_index: null,
-          frame_timestamp: null,
-          source_id: null,
-          ingested_at: null,
-          job_id: JOB,
-          progress: "unannotated",
-          allowed_actions: assetActions("unannotated", { batchState: "in_annotation" }),
-        },
-      ],
-      total: 1,
-    };
+    return { items: [assetRow(ASSET, "abcdef0"), assetRow(ASSET_TWO, "1234560")], total: 2 };
   }
   return { items: [], total: 0 };
 }
@@ -265,11 +271,123 @@ describe("arming the tool", () => {
     expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
   });
 
-  it("disarms when another tool moves the active class (D2)", async () => {
+  it("disarms when it is pressed again", async () => {
     await open();
     await arm();
-    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+    await userEvent.click(screen.getByTestId("tool-suggest"));
     expect(screen.queryByTestId("suggest-panel")).toBeNull();
+  });
+});
+
+/**
+ * The class moving under an armed tool (#472).
+ *
+ * **This describe block is the reversal.** #451 shipped "moving the active class
+ * disarms", and the test that encoded it lived where the first one below now
+ * does. Reverting `withClass` in the page's effect to `setSession(null)` turns
+ * every test here red, starting with the first.
+ */
+describe("the active class moves and the tool stays armed", () => {
+  it("stays armed on a class switch, and asks under the new class", async () => {
+    await open();
+    await arm();
+
+    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+
+    // Armed still — the panel is the tool's one voice, so its presence is the
+    // armed state and its absence is the tool put away.
+    expect(screen.getByTestId("suggest-panel")).toBeTruthy();
+    clickCanvas();
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    // The new class's geometry, not the one the session was armed with.
+    expect(asks()[0]["allowed_geometries"]).toEqual(["polygon"]);
+  });
+
+  it("discards a preview the new class may not be able to hold", async () => {
+    await open();
+    await arm();
+    clickCanvas();
+    await screen.findByTestId("suggestion-shape");
+
+    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+
+    // The shape was answered under `vehicle`'s allowed kinds; accepting it as a
+    // `lane-area` could write a geometry that class does not admit.
+    expect(screen.queryByTestId("suggestion-shape")).toBeNull();
+    expect(screen.getByTestId("suggest-panel")).toBeTruthy();
+    // And nothing reached the document on the way past.
+    expect(screen.getByTestId("tool-undo").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("object-total").textContent).toBe("0 objects");
+  });
+
+  it("parks on a class that can hold nothing, and says why", async () => {
+    await open();
+    await arm();
+
+    await userEvent.click(screen.getByTestId("class-row-lane"));
+
+    const parked = await screen.findByTestId("suggest-parked");
+    expect(parked.textContent).toContain("lane");
+    // Principle 9: dimmed with the reason readable, never a bare disabled state.
+    const button = screen.getByTestId("tool-suggest");
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.getAttribute("aria-label")).toContain("lane");
+    // Still lit, because it is still armed. Both halves are true at once.
+    expect(button.getAttribute("data-active")).toBe("true");
+  });
+
+  it("leaves the canvas alone while parked, so the class can still be drawn", async () => {
+    await open();
+    await arm();
+    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await screen.findByTestId("suggest-parked");
+
+    clickCanvas();
+
+    // The press reached the interaction machine — a lane is being drawn — and no
+    // request left for a suggestion nobody can hold.
+    expect(screen.getByTestId("pending-polygon")).toBeTruthy();
+    expect(asks()).toHaveLength(0);
+  });
+
+  it("re-arms on the way back, with no second press", async () => {
+    await open();
+    await arm();
+    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await screen.findByTestId("suggest-parked");
+
+    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+
+    // Nobody pressed the tool again; the armed intent was remembered.
+    await screen.findByTestId("suggest-idle");
+    expect(screen.getByTestId("tool-suggest").getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("offers a way out of the parked state, since the strip button is dimmed", async () => {
+    await open();
+    await arm();
+    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await screen.findByTestId("suggest-parked");
+
+    await userEvent.click(screen.getByTestId("suggest-discard"));
+
+    expect(screen.queryByTestId("suggest-panel")).toBeNull();
+    expect(screen.getByTestId("tool-suggest").getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("still disarms and discards when the asset changes, which is unchanged", async () => {
+    await open();
+    await arm();
+    clickCanvas();
+    await screen.findByTestId("suggestion-shape");
+
+    await userEvent.click(screen.getByTestId("next-asset"));
+
+    // D2's other discard, enforced by the per-asset remount rather than by an
+    // effect — and the one a class switch was wrongly grouped with.
+    await waitFor(() => expect(screen.queryByTestId("suggest-panel")).toBeNull());
+    expect(screen.queryByTestId("suggestion-shape")).toBeNull();
   });
 });
 

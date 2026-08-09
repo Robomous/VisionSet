@@ -498,6 +498,14 @@ market segment and the domain does not hold one. The single map is
 quietly out of a list; headings are non-selectable `SelectLabel`s and a category with
 nothing under it renders none.
 
+**An option that is an identifier plus the facts about it takes two lines** (#472,
+2026-08-09) — the identifier at the label role, the facts beneath it at the meta role in
+`muted-foreground`. It is `SelectItem`'s `meta` prop, so the closed trigger shows the same
+two lines the open list does; the trigger is `min-h-9` rather than `h-9` and grows to fit,
+which leaves every one-line select on the contract's 36px. **Nothing truncates**: an
+identifier cut off in the middle is not an identifier, so a long one wraps. The specimen is
+on the styleguide page.
+
 ### Lists and filtering
 
 Any list that can exceed ~20 rows carries a filter input. Filtering is client-side and
