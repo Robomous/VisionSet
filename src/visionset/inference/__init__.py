@@ -12,7 +12,9 @@ moves *down*, never sideways. One package above the kernel and beside the other
 three is the only place left, and the import-linter contracts say so out loud.
 
 **Importing this package imports nothing heavy.** Every reference to torch,
-transformers, accelerate and huggingface_hub is inside a function — see
+transformers, accelerate and huggingface_hub is inside a function, and
+torchvision — which nothing here names, and ``transformers`` imports for us — is
+held to the same line — see
 ``_extra`` for why that is load-bearing rather than tidy — so a base install
 starts a server, runs a worker and imports this module without the optional
 runtime present. ``tests/architecture/test_optional_runtime.py`` proves it in a

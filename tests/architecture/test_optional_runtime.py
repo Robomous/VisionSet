@@ -1,8 +1,10 @@
 """The optional runtime stays optional, proved in a fresh interpreter.
 
-`pyproject.toml` puts torch, transformers, accelerate and huggingface_hub in the
-`local-inference` extra, and `visionset/inference/_extra.py` reaches every one of
-them from inside a function. Neither of those is self-enforcing: a single
+`pyproject.toml` puts torch, torchvision, transformers, accelerate and
+huggingface_hub in the `local-inference` extra, and `visionset/inference/_extra.py`
+reaches every one of them from inside a function — torchvision by never naming it
+at all, since it is `transformers` that imports it. Neither of those is
+self-enforcing: a single
 module-level `import torch` anywhere under `visionset.inference` would leave the
 metadata unchanged and make roughly two gigabytes of CUDA wheels a condition of
 starting the server.

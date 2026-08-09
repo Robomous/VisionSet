@@ -69,8 +69,8 @@ The auto-labeling feature is always present. What is optional is the runtime tha
 pip install "visionset[local-inference]"
 ```
 
-It brings torch, transformers, accelerate and huggingface_hub — roughly two gigabytes, most of it
-CUDA — which is why it is not in the base install. Without it you can create a local connection,
+It brings torch, torchvision, transformers, accelerate and huggingface_hub — roughly two
+gigabytes, most of it CUDA — which is why it is not in the base install. Without it you can create a local connection,
 list it, edit it and see exactly what it is configured for. What you cannot do is fetch its weights
 or ask it to predict, and both refusals print the command above rather than saying "unavailable".
 
