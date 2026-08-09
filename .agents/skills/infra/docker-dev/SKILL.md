@@ -47,6 +47,59 @@ docker compose -f docker/compose.yaml --profile postgres up
 docker compose -f docker/compose.yaml --profile minio up      # console on 9001
 ```
 
+## The GPU, and why it is not a profile
+
+Local inference in this stack is CPU-only by default. To give the api container the
+host's NVIDIA GPU **and** the `local-inference` runtime that can use it:
+
+```bash
+docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build
+```
+
+A second `-f`, not `--profile gpu`, and the distinction is worth holding on to when
+adding the next optional thing. **`profiles:` selects whole services** — a profiled
+service joins the run or is absent from it. It cannot amend a service that is
+already present, so the nearest profile-shaped attempt (an `api-gpu` beside `api`)
+starts *both* and they collide on 127.0.0.1:8000. `postgres` and `minio` are
+profiles because they are genuinely extra services; a GPU is a property of a service
+that already exists, and merging a second file is Compose's mechanism for that.
+
+Two things follow from what that file sets:
+
+- **It needs the NVIDIA Container Toolkit on the host** — that is what teaches Docker
+  the `nvidia` device driver and injects the driver libraries and `nvidia-smi` into
+  the container. Install it from
+  [NVIDIA's instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html);
+  the steps are per-distribution and are not worth a stale copy here.
+  `docker info --format '{{json .Runtimes}}'` naming an `nvidia` runtime is the check.
+  Without it, `up` fails at container creation with `could not select device driver
+  "nvidia" with capabilities: [[gpu]]` — and the plain compose file still works.
+- **`--build` is not optional when switching either way.** The two stacks are two
+  different api images — `docker/api.Dockerfile` and `docker/api-gpu.Dockerfile`,
+  with different bases — so without it Compose reuses whichever it already has. The
+  symptom is a stack that has the card but answers `LOCAL_INFERENCE_UNAVAILABLE`, or
+  one with the runtime and no device.
+- **The GPU image starts from `pytorch/pytorch`, and does not install torch from the
+  lockfile.** Installing the `local-inference` extra from `uv.lock` means ~4 GB of
+  `nvidia-*` wheels resolved and unpacked on every cache miss; the pinned base
+  already contains them, and its `torch==2.13.0` on cu13 is the version uv.lock
+  resolves to anyway. Two consequences: the three remaining packages are requested by
+  the floors written in `pyproject.toml`'s extra rather than read from the lock, **so
+  those floors have to stay in step with it**; and the image has no venv, because uv
+  does not count a venv's inherited system site-packages as installed and would
+  reinstall torch and every CUDA wheel beside it.
+
+Verify inside the running container:
+
+```bash
+docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml exec api nvidia-smi
+docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml exec api \
+  python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+Dev only, like the rest of this file. Nothing here reaches the wheel: the release
+artifact is `pip install "visionset[local-inference]"` and it involves no Docker.
+
 ## What is mounted, and what reloads
 
 **Only what a running service reads is mounted.** The checkout as a whole is not; a path missing
