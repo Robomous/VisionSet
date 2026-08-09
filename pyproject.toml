@@ -65,9 +65,22 @@ dependencies = [
 # `autolabel` framing. Version floors rather than pins: this is a user's
 # environment and their CUDA build decides most of it. `uv.lock` does not carry
 # extras, so nothing here is resolved by a `uv sync` in this repository.
+#
+# `torchvision` is here because SAM 2's image processor imports it, and nothing
+# else in this list brings it: `Sam2ImageProcessor` refuses to construct without
+# it, so the point-prompt adapter could not load a processor at all on an
+# environment carrying the extra exactly as it used to be declared (#457). No
+# code in this repository imports it — it is a dependency of the runtime rather
+# than of the product, which is why it is declared here and nowhere else.
+#
+# Its floor is `torch`'s floor, restated: torchvision pins torch *exactly*
+# (0.19.0 requires `torch==2.4.0`, 0.28.0 requires `torch==2.13.0`), so the pair
+# has to move together or a resolver is handed two floors it cannot satisfy at
+# once. Whichever one it picks, it decides the other.
 [project.optional-dependencies]
 local-inference = [
     "torch>=2.4",
+    "torchvision>=0.19",
     "transformers>=4.44",
     "accelerate>=0.33",
     "huggingface-hub>=0.24",

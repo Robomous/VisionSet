@@ -75,8 +75,8 @@ auto-labeling feature is always present; what is optional is the runtime that ex
 pip install "visionset[local-inference]"
 ```
 
-That brings torch, transformers, accelerate and huggingface_hub — roughly two gigabytes, most of
-it CUDA — which is exactly why it is not in the base install. Without it you can still create a
+That brings torch, torchvision, transformers, accelerate and huggingface_hub — roughly two
+gigabytes, most of it CUDA — which is exactly why it is not in the base install. Without it you can still create a
 local connection, list it, and see what it is configured for; what you cannot do is fetch its
 weights or ask it to predict. Both refusals name the command above rather than saying
 "unavailable", the way a missing `ffmpeg` does.

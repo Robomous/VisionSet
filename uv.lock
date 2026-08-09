@@ -2599,6 +2599,7 @@ local-inference = [
     { name = "accelerate" },
     { name = "huggingface-hub" },
     { name = "torch" },
+    { name = "torchvision" },
     { name = "transformers" },
 ]
 
@@ -2630,6 +2631,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'local-inference'", specifier = ">=2.4" },
+    { name = "torchvision", marker = "extra == 'local-inference'", specifier = ">=0.19" },
     { name = "transformers", marker = "extra == 'local-inference'", specifier = ">=4.44" },
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", specifier = ">=0.52.0" },
