@@ -651,7 +651,14 @@ it("runs the same request for the completeness check as for Download weights", a
 
 // --- the integrity check, and keeping it apart from the other one (#471) --------
 
-const READY_BOTH = ["download_weights", "check_integrity", "update", "delete"];
+/** Everything a ready local connection declares. Typed off `Connection`, so a
+ *  renamed action is a type error here rather than a string that still compiles. */
+const READY_BOTH: Connection["allowed_actions"] = [
+  "download_weights",
+  "check_integrity",
+  "update",
+  "delete",
+];
 
 it("names the two checks by what each one proves", async () => {
   // The bug being closed is a labelling one: **Verify weights** covered both
@@ -707,7 +714,10 @@ it("lands the row at Not set up when a check finds damage, and says what was don
   handlers.push((request) => {
     if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
     const row = damaged
-      ? connection({ setup_state: "not_set_up", allowed_actions: ["download_weights", "update", "delete"] })
+      ? connection({
+          setup_state: "not_set_up",
+          allowed_actions: ["download_weights", "update", "delete"],
+        })
       : connection({ setup_state: "ready", allowed_actions: READY_BOTH });
     return { status: 200, body: { items: [row], total: 1 } };
   });
