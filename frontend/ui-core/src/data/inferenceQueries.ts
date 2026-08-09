@@ -95,6 +95,7 @@ export interface SuggestionOut {
 
 export type ConnectionType = components["schemas"]["ConnectionType"];
 export type ConnectionSetupState = components["schemas"]["ConnectionSetupState"];
+export type Precision = components["schemas"]["Precision"];
 export type DownloadSizeOut = components["schemas"]["DownloadSizeOut"];
 
 export const inferenceKeys = {
@@ -134,7 +135,7 @@ export interface ConnectionInput {
   readonly modelId: string;
   readonly modelRevision: string;
   readonly device?: string | null;
-  readonly precision?: string | null;
+  readonly precision?: Precision | null;
   readonly endpointUrl?: string | null;
 }
 
@@ -207,6 +208,27 @@ export function useDownloadWeights() {
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: inferenceKeys.connections() }),
   });
+}
+
+/**
+ * Re-read every connection, because something that changes one has finished.
+ *
+ * The mutations above invalidate the list themselves; this is for the change
+ * that does not arrive as a mutation's response. A weights download answers
+ * `202` and finishes later, in a background job — and when it finishes it has
+ * moved `setup_state` and, with it, what the row may be asked to do. Nothing
+ * re-reads the list at that moment unless somebody says so, which is why the row
+ * used to sit at `Not set up` until the page was reloaded.
+ *
+ * Lives here rather than beside the screen for this module's stated reason: the
+ * list, its key and its invalidation are one fact, and a second spelling of the
+ * key under a screen is how two callers come to disagree about what is stale.
+ */
+export function useRefreshConnections(): () => void {
+  const queries = useQueryClient();
+  return () => {
+    void queries.invalidateQueries({ queryKey: inferenceKeys.connections() });
+  };
 }
 
 /**

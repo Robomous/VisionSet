@@ -806,7 +806,7 @@ def _connection_in(
             model_id="some/model",
             model_revision="abc123",
             device="cpu",
-            precision="fp16",
+            precision="fp32",
         )
         if setup_state is ConnectionSetupState.READY:
             made = connections.record_weights_ready(made.id)
@@ -914,18 +914,19 @@ def test_a_connections_declaration_is_read_from_the_kernels_own_gate() -> None:
     the same edit. Spelling the answers out here instead would be the hand-mirror
     this module exists to remove.
 
-    `download_weights` is the one entry that names its own members, because
-    "the state weights are missing in" and "the kind that has weights" are not
-    sets the domain had already. So the check on it is the *rule*: local and
-    not-set-up, and nothing else — which is what turns red if either table stops
-    gating it.
+    Every gate is unconditional in *state* since #469 — `download_weights` at
+    `ready` is the verification of a cache the download already filled — so all
+    three name the set itself. The one conditional entry left is the kind half,
+    and the check on it is the rule: `download_weights` is local and nothing
+    else, which is what turns red if that table is widened or dropped.
     """
+    for action in ConnectionAction:
+        assert CONNECTION_GATES[action] is EVERY_SETUP_STATE
+
     unconditional = set(ConnectionAction) - {ConnectionAction.DOWNLOAD_WEIGHTS}
     for action in unconditional:
-        assert CONNECTION_GATES[action] is EVERY_SETUP_STATE
         assert CONNECTION_KINDS[action] is EVERY_CONNECTION_TYPE
 
-    assert CONNECTION_GATES[ConnectionAction.DOWNLOAD_WEIGHTS] == {ConnectionSetupState.NOT_SET_UP}
     assert CONNECTION_KINDS[ConnectionAction.DOWNLOAD_WEIGHTS] == {ConnectionType.LOCAL}
 
     for kind in ConnectionType:
@@ -936,13 +937,16 @@ def test_a_connections_declaration_is_read_from_the_kernels_own_gate() -> None:
                 )
 
 
-def test_download_weights_is_declared_on_exactly_one_square() -> None:
-    """Local and not set up, and nowhere else.
+def test_download_weights_is_declared_on_both_local_squares_and_no_others() -> None:
+    """Local in either state, and no `http` square in any state.
 
-    The mutation gate for the download capability, stated as the one sentence a
-    reader can check: this fails if either table is widened, if either is
-    dropped from `connection_actions`, or if the action is quietly gated on
-    something else instead.
+    The pinned action set for the download capability, stated as the one
+    sentence a reader can check, and **deliberately moved** by #469: it used to
+    read `{(local, not_set_up)}` and now reads both local squares, because a
+    `ready` connection can be asked to verify the cache it already has. This
+    file is where that becomes a decision rather than a drift — widening the
+    kind table, or gating the action on something other than these two, still
+    turns it red.
     """
     declared = {
         (kind, state)
@@ -950,7 +954,10 @@ def test_download_weights_is_declared_on_exactly_one_square() -> None:
         for state in ConnectionSetupState
         if ConnectionAction.DOWNLOAD_WEIGHTS in connection_actions(state, connection_type=kind)
     }
-    assert declared == {(ConnectionType.LOCAL, ConnectionSetupState.NOT_SET_UP)}
+    assert declared == {
+        (ConnectionType.LOCAL, ConnectionSetupState.NOT_SET_UP),
+        (ConnectionType.LOCAL, ConnectionSetupState.READY),
+    }
 
 
 def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> None:

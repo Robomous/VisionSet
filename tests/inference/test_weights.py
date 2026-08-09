@@ -189,15 +189,25 @@ def test_reporting_is_optional(
 # --- the gate -----------------------------------------------------------------
 
 
-def test_a_connection_that_is_already_set_up_is_refused(
+def test_a_connection_that_is_already_set_up_is_verified_rather_than_refused(
     connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
 ) -> None:
-    made = a_local(connections)
-    fetch_weights(workspace, made.id)
+    """The second run is the repair action, not a mistake to catch (#469).
 
-    with pytest.raises(InferenceConnectionNotDownloadable, match="already set up"):
-        fetch_weights(workspace, made.id)
-    assert len(fetched) == 1
+    `download_weights` is legal at `ready`, so this reaches the download again
+    — and the download against a full cache is a hash check rather than a
+    transfer, which is what makes running it the way to answer "are the weights
+    still there?" on a machine where a disk filled or a cache was pruned.
+    """
+    made = a_local(connections)
+    ready = fetch_weights(workspace, made.id)
+
+    verified = fetch_weights(workspace, made.id)
+    assert verified.setup_state is ConnectionSetupState.READY
+    # Nothing moved: the record is a no-op on a row that is already ready, so a
+    # verification does not age the connection it verified.
+    assert verified.updated_at == ready.updated_at
+    assert len(fetched) == 2
 
 
 def test_an_http_connection_is_refused_before_anything_is_fetched(

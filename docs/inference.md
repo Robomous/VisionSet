@@ -36,7 +36,7 @@ with WorkspaceService.open("./road-signs") as workspace:
         model_id="some/model",
         model_revision="abc123",
         device="cuda",
-        precision="fp16",
+        precision="fp16",  # fp16 needs a cuda device; a cpu connection is fp32
     )
     for one in connections.list():
         print(one.name, one.connection_type.value, one.setup_state.value)
@@ -149,12 +149,16 @@ misdescribes.
 **A failure changes nothing.** The connection is marked ready as the last step, after every file is
 present — so a download that dies partway leaves it exactly as it was, at `not_set_up`, with the
 error on the job. There is no half-ready state to recover from because there is no moment at which
-one could be written. Ask again; a partial cache is verified and resumed rather than restarted.
+one could be written. Ask again: an interrupted transfer resumes from what it had, and each file
+that arrives is checked against the size the hub published for it before it is put in place.
 
-**Asking twice is refused, not repeated.** Once a connection is ready there is nothing left to
-fetch, so `download_weights` stops being offered and the request is answered with
-`INFERENCE_CONNECTION_NOT_DOWNLOADABLE`. An `http` connection is refused with the same code for the
-other reason: its model runs elsewhere, so it has no weights of its own in any state.
+**Asking again checks rather than repeats.** `download_weights` stays available once a connection
+is `ready`, where the same call re-checks that the snapshot is still complete and fetches only what
+is missing — the browser labels it **Verify weights** and puts it in the row's overflow menu. That
+is worth doing on a machine where a disk filled or a cache was pruned; it is *completeness* and not
+integrity, because a file already in the cache under this revision is found rather than re-read. An
+`http` connection is refused with `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` in any state, for the
+other reason: its model runs elsewhere, so it has no weights of its own.
 
 ## Running on the CPU
 
@@ -163,9 +167,17 @@ with a warning in the log. It is a fallback rather than a preference — a works
 workstation should still open on a laptop — but it is slower by a large factor, which is why it is
 said out loud rather than silently done.
 
-Half precision (`fp16`, `float16`, `half` — the spelling is yours) applies on CUDA only. On a CPU
-it is not the conservative choice it looks like: `float16` arithmetic outside CUDA's autocast is
-slower than the `float32` it was avoiding.
+Half precision applies on CUDA only, and the kernel now says so rather than absorbing it: a `cpu`
+connection asking for `fp16` is refused at creation. On a CPU it was never the conservative choice
+it looks like — `float16` arithmetic outside CUDA's autocast is slower than the `float32` it was
+avoiding — and a setting the adapters drop is one the row would otherwise go on displaying as
+though it had an effect.
+
+**Both fields are closed vocabularies.** `device` is `cpu`, `cuda`, or `cuda:N` for the second GPU
+on a machine that has one; `precision` is `fp16` or `fp32`, and `float16`, `half`, `float32` and
+`full` are accepted as spellings of those two. Anything else is refused with a sentence naming the
+members. What this closes is a gap rather than a freedom: `gpu` used to be accepted and then
+resolved onto the CPU, so the connection described a run that never happened.
 
 ## Suggesting a shape from a click
 
@@ -268,22 +280,31 @@ A workspace with none says so and offers one thing — **Add connection**. Creat
 steps, because the two kinds share almost no fields: first where the model runs, then that kind's
 form.
 
-- **Local** opens pre-filled with the suggested model, `facebook/sam2-hiera-base-plus` at `main`,
-  a `cpu` device and `fp16` precision. Every one of those is a starting point you can type over.
-  Underneath the fields is what fetching that revision would cost — the size described above, read
-  while you are still deciding. If this machine has no `local-inference` extra the size cannot be
-  read, and the form says so, in the server's own words, with the install command. **It stays
-  usable**: creating a connection downloads nothing, so not knowing the size is information rather
-  than a barrier.
+- **Local** opens on a curated model, a `cpu` device and `fp32` precision. The model field is a
+  grouped list — the SAM 2.1 ladder under *Interactive segmentation*, Grounding DINO under
+  *Text-prompt detection* — showing each entry's download size and a line on what it is for, and
+  each one is pinned to a revision this build was checked against. **Custom model…** is the last
+  entry and reveals the free model id and revision fields: the list guides, it does not restrict,
+  and any model this build has an adapter for remains typeable. Device and precision are lists too,
+  and the precision list follows the device, because half precision applies on CUDA only. Underneath
+  is what fetching that revision would cost — the size described above, read while you are still
+  deciding. If this machine has no `local-inference` extra the size cannot be read, and the form
+  says so, in the server's own words, with the install command. **It stays usable**: creating a
+  connection downloads nothing, so not knowing the size is information rather than a barrier.
 - **HTTP** asks for the endpoint URL. There is no credential field; where a secret would live is
   still open (`cf. #421`), and a field added ahead of that answer would be answering it.
 
 Each row shows its name, its kind, `model @ revision`, and its status as a word — **Ready** or
 **Not set up** — beside a colour, never as a colour alone. A local row that is not set up carries
 **Download weights**, which launches the background job described above and reports its progress
-in place; the row becomes **Ready** when the job finishes. A machine without the extra still shows
-the control, and pressing it answers with the install command — a control that vanished would take
-the remedy with it.
+in place; the row becomes **Ready** when the job finishes, without a reload. A row that is already
+ready carries **Verify weights** in its overflow menu instead — the same request, re-checking the
+snapshot. A machine without the extra still shows the control, and pressing it answers with the
+install command — a control that vanished would take the remedy with it.
+
+A failed download leaves the row at **Not set up**, because weights arrive or they do not, and says
+what happened in the job's own words with what to do about it. There is no separate retry button:
+**Download weights** is the retry.
 
 Editing does not offer to change the kind, because the kind is not editable. Deleting asks once
 and says exactly what it destroys: *annotations keep their model provenance; only this
@@ -304,6 +325,7 @@ control.
 visionset inference size some/model --revision abc123
 visionset inference create local-detector \
     --type local --model some/model --revision abc123 --device cuda --precision fp16
+# --device takes cpu, cuda or cuda:N; --precision takes fp16 or fp32, and fp16 needs a cuda device
 visionset inference list
 visionset inference show local-detector --json
 visionset inference update local-detector --revision def456

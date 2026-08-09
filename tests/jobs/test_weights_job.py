@@ -162,10 +162,10 @@ def test_a_second_run_verifies_and_settles_rather_than_failing(
     cannot protect it — a retry does not go through a route — and refusing here
     would fail a job whose work is done.
 
-    So it verifies: the download is entered again (a snapshot download checks a
-    cache it already filled against its hashes rather than re-fetching it) and
-    the write below is a no-op. The result is the same result, which is what the
-    caller polling the row needs it to be.
+    So it re-checks: the download is entered again (a snapshot download finds
+    what the cache already holds and fetches only what is missing) and the write
+    below is a no-op. The result is the same result, which is what the caller
+    polling the row needs it to be.
     """
     calls: list[str] = []
     monkeypatch.setattr(
@@ -184,11 +184,13 @@ def test_a_second_run_verifies_and_settles_rather_than_failing(
 def test_a_retry_is_still_refused_for_a_kind_with_no_weights(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`retrying` relaxes the *state* half of the gate and only that half.
+    """The kind half of the gate is the half that never relaxed.
 
-    A connection with no weights of its own has none on the second attempt
-    either, so the kind stays a refusal — which is what makes the flag narrower
-    than one that skips the gate.
+    #469 made the state half unconditional — a `ready` connection can be asked
+    to re-check its own cache — and left this exactly where it was: a connection
+    with no weights of its own has none on the second attempt either, so the
+    handler refuses rather than reaching a download that would have nothing to
+    do.
     """
     from visionset.kernel.errors import InferenceConnectionNotDownloadable
 
