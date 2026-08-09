@@ -14,6 +14,12 @@ weights the connection downloaded. A connection pointed at a detector and asked
 with points is then refused with the port's own vocabulary rather than dying
 somewhere inside a forward pass on a shape mismatch.
 
+**And a family this build does not serve is refused rather than guessed at.**
+The two sets below are the whole of what resolves; there is no fallback. A
+resolver with one guesses on every model it has not been told about, and the
+guess is invisible until the wrong adapter refuses the request in its own
+vocabulary — a sentence that describes a model the user does not have (#456).
+
 **Loaded models are kept, because the alternative defeats the embedding cache.**
 D5 on #424 budgets =<300 ms for a click. A provider built fresh per request would
 re-read gigabytes of weights every time and would carry an empty embedding cache
@@ -44,14 +50,41 @@ from visionset.kernel.errors import (
 )
 from visionset.kernel.ports import ModelProvider
 
-SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset({"sam2"})
+SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset({"sam2", "sam2_video"})
 """``model_type`` values this build serves with the point-prompted adapter.
 
-A set rather than a single string because the family is what matters and its
-members grow: the video variant of the same architecture is the 0.2.0 door D1
-keeps open, and it arrives here as one more name rather than as a second
-resolution mechanism. Anything not named here is served by the detector adapter,
-which is the older and more common case.
+**Two spellings of one architecture, and the second is not a door held open for
+later.** The published SAM 2 checkpoints — including the one the connection form
+suggests — declare ``sam2_video``, and ``transformers`` loads such a checkpoint
+into the image model deliberately, saying so as it does: *"loading a
+``sam2_video`` checkpoint into ``Sam2Model``"*. Naming only ``sam2`` sent the
+commonest point-prompt model in the product to the detector adapter, which then
+refused a click with a sentence about text prompts (#456).
+
+Whole models only. The locked ``transformers`` also registers
+``sam2_vision_model`` and ``sam2_hiera_det_model``, which are the encoder halves
+a full config nests rather than checkpoints anything can prompt. A connection
+naming one of those is refused below, not handed to an adapter that would look
+for a mask decoder and find none.
+"""
+
+DETECTOR_FAMILIES: Final[frozenset[str]] = frozenset({"grounding-dino", "mm-grounding-dino"})
+"""``model_type`` values this build serves with the text-prompted adapter.
+
+Narrower than "everything ``AutoModelForZeroShotObjectDetection`` accepts", and
+measured rather than assumed. ``transformers_provider`` post-processes with
+``post_process_grounded_object_detection(outputs, input_ids, …, text_threshold=…)``
+— this family's signature. The other zero-shot detectors the locked
+``transformers`` registers take a different one, with no ``input_ids`` and no
+``text_threshold``, so listing them here would claim a support that fails inside
+a post-processor instead of in a refusal a reader can act on.
+"""
+
+SUPPORTED_FAMILIES: Final[frozenset[str]] = SEGMENTER_FAMILIES | DETECTOR_FAMILIES
+"""Every ``model_type`` this build has an adapter for, and what a refusal lists.
+
+Derived rather than written a third time, so a family added to one set above
+cannot be missing from the sentence that tells somebody what they may use.
 """
 
 _Key = tuple[str, str]
@@ -126,7 +159,8 @@ def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> Mo
             here yet. The message names ``download_weights``, because that is the
             action that makes the identical call succeed.
         InferenceConnectionNotRunnable: nothing in this build runs a connection
-            of that kind.
+            of that kind, or of that declared model type. The message names what
+            this build does run.
         LocalInferenceUnavailable: the optional runtime is not installed.
     """
     match connection.connection_type:
@@ -147,6 +181,13 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> ModelPro
     not here" is about something the caller can fix from where they are standing,
     while a missing extra is about the installation and is the same answer for
     every connection in the workspace.
+
+    **A family this build does not serve is refused, never approximated.** There
+    is no fallback adapter, because a fallback answers with the wrong adapter's
+    vocabulary: a point-prompt model read as a detector refuses a click by saying
+    the model "answers text prompts", which is a confident sentence about some
+    other model (#456). An honest "this build has no adapter for that model type"
+    is worth more than a guess that is right most of the time.
     """
     if connection.setup_state is not ConnectionSetupState.READY:
         raise InferenceConnectionNotSetUp(
@@ -165,9 +206,36 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> ModelPro
         "cache_dir": cache_dir,
         "connection_name": connection.name,
     }
-    if family_of(connection, cache_dir=cache_dir) in SEGMENTER_FAMILIES:
+    family = family_of(connection, cache_dir=cache_dir)
+    if family in SEGMENTER_FAMILIES:
         return LocalSamProvider(connection.model_id, connection.model_revision, **common)
-    return LocalTransformersProvider(connection.model_id, connection.model_revision, **common)
+    if family in DETECTOR_FAMILIES:
+        return LocalTransformersProvider(connection.model_id, connection.model_revision, **common)
+    raise InferenceConnectionNotRunnable(_no_adapter_for(connection, family))
+
+
+def _no_adapter_for(connection: InferenceConnection, family: str) -> str:
+    """Why nothing here can answer for that model, and what this build does run.
+
+    Two openings and one remedy. A config that named a type this build has never
+    heard of and a config that named nothing at all are different things to have
+    happened — the first is a model choice, the second is usually damaged files —
+    and a reader who is told which can tell whether to change the connection or
+    to fetch it again.
+    """
+    supported = ", ".join(sorted(SUPPORTED_FAMILIES))
+    if not family:
+        return (
+            f"connection {connection.name!r} names {connection.model_id!r}, whose downloaded "
+            "config does not say what model type it is, so this build cannot tell which adapter "
+            f"would answer for it; this build supports {supported} — point the connection at one "
+            "of those, or run its download_weights action again if those files are damaged"
+        )
+    return (
+        f"connection {connection.name!r} names {connection.model_id!r}, whose config declares "
+        f"model type {family!r}, and this build has no adapter for that model type; it supports "
+        f"{supported} — point the connection at a model of one of those types"
+    )
 
 
 def family_of(connection: InferenceConnection, *, cache_dir: Path) -> str:
@@ -177,11 +245,12 @@ def family_of(connection: InferenceConnection, *, cache_dir: Path) -> str:
     the same reason every other load in this package is: this product downloads
     weights when somebody asks it to and at no other time.
 
-    An unreadable or unrecognised config answers ``""`` rather than raising, and
-    ``""`` resolves to the detector. A connection whose config cannot be parsed
-    is going to fail at load time with the library's own message, which says far
-    more about what is wrong with those files than anything this function could
-    invent from having failed to read one field.
+    An unreadable config answers ``""`` rather than raising: reading the files
+    and deciding what to do about them are separate jobs, and this one only
+    reports. ``""`` is not a family, so :func:`_local` refuses it — the same
+    answer it gives a type nobody here serves, because "the config says nothing"
+    and "the config says something unknown" leave the resolver equally unable to
+    pick an adapter honestly.
     """
     transformers = imported("transformers")
     try:

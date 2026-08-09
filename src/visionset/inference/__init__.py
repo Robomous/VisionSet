@@ -48,7 +48,9 @@ from visionset.inference.cache import (
 from visionset.inference.masks import DEFAULT_DETAIL, narrowed, polygon_from
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
 from visionset.inference.providers import (
+    DETECTOR_FAMILIES,
     SEGMENTER_FAMILIES,
+    SUPPORTED_FAMILIES,
     ProviderPool,
     family_of,
     provider_for,
@@ -75,11 +77,13 @@ __all__ = [
     "DEFAULT_IOU_THRESHOLD",
     "DEFAULT_PROVIDER_CAPACITY",
     "DEFAULT_SIZE_CAPACITY",
+    "DETECTOR_FAMILIES",
     "EXTRA",
     "INSTALL_COMMAND",
     "MODELS_DIRNAME",
     "MODULES",
     "SEGMENTER_FAMILIES",
+    "SUPPORTED_FAMILIES",
     "BoundedCache",
     "DownloadSizes",
     "LocalSamProvider",
