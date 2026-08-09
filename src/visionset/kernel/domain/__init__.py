@@ -66,12 +66,14 @@ from visionset.kernel.domain.geometry import (
     PolylineGeometry,
 )
 from visionset.kernel.domain.inference import (
+    CHECKABLE_STATES,
     CPU,
     CUDA,
     DEVICE_PATTERN,
     EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
     OFFERED_DEVICES,
+    WEIGHT_HOLDING_TYPES,
     ConnectionSetupState,
     ConnectionType,
     DownloadSize,
@@ -207,6 +209,8 @@ __all__ = [
     "CONNECTION_KINDS",
     "EVERY_CONNECTION_TYPE",
     "EVERY_SETUP_STATE",
+    "CHECKABLE_STATES",
+    "WEIGHT_HOLDING_TYPES",
     "CPU",
     "CUDA",
     "DEVICE_PATTERN",

@@ -70,6 +70,7 @@ from visionset.kernel import (
     ExportSourceUnreadable,
     InferenceConnectionInvalid,
     InferenceConnectionNameTaken,
+    InferenceConnectionNotCheckable,
     InferenceConnectionNotDownloadable,
     InferenceConnectionNotFound,
     InferenceConnectionNotRunnable,
@@ -111,6 +112,7 @@ from visionset.kernel import (
     UnsupportedMedia,
     UnsupportedPrompt,
     VisionSetError,
+    WeightsDamaged,
     WorkspaceAlreadyExists,
     WorkspaceBusy,
     WorkspaceCorrupt,
@@ -293,6 +295,17 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # a state change, which is why the *message* separates them and the code does
     # not: both answers say stop asking.
     InferenceConnectionNotDownloadable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
+    # The same shape one action over (#471), and it earns its own code because
+    # the remedies differ: an `http` connection is told to stop asking, while a
+    # `local` one at `not_set_up` is told to download first — a state change that
+    # makes the identical request succeed. Folding it into NOT_DOWNLOADABLE would
+    # give a client one code for two different next steps.
+    InferenceConnectionNotCheckable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_CHECKABLE"),
+    # Raised by the integrity job rather than by a request, and it has a rule
+    # because every declared error does — the table is total by test. 409 is the
+    # honest status if a synchronous surface ever raises it: the resource is in a
+    # state that refuses the request, and the state has already been corrected.
+    WeightsDamaged: ErrorRule(409, "WEIGHTS_DAMAGED"),
     # Change-the-state-and-resubmit in its purest form: the state is
     # `setup_state`, the change is `download_weights`, and the identical request
     # then succeeds. Distinct from INFERENCE_CONNECTION_NOT_RUNNABLE below, which

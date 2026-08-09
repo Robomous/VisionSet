@@ -750,6 +750,53 @@ export interface paths {
         patch: operations["update_inference_connection"];
         trace?: never;
     };
+    "/inference/connections/{connection_id}/check-integrity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Connection Integrity
+         * @description Re-read every cached file and compare it against what the hub published.
+         *
+         *     The `check_integrity` action (`cf. #471`). Distinct from `download_weights`
+         *     over the same files, and the distinction is what each can prove: a download
+         *     against a set-up connection establishes that nothing is **missing**, reading
+         *     an index rather than the files; this establishes that nothing is
+         *     **damaged**, and can only do so by reading every byte.
+         *
+         *     **202, not 200.** A snapshot is gigabytes and this reads all of it, so it
+         *     follows the launch-and-poll contract the download route uses: poll `GET
+         *     /background-jobs/{id}` — the `Location` header names it — where `processed`
+         *     and `total` count files. A successful job's result carries how many files
+         *     were read and how many bytes that came to.
+         *
+         *     **Only for a local connection that is already set up.** An HTTP connection
+         *     has no files here and one whose weights never arrived has none to read;
+         *     both are 409 `INFERENCE_CONNECTION_NOT_CHECKABLE`, the same answer
+         *     `allowed_actions` gave, from the same table. A deployment without the local
+         *     runtime is refused here too, with the install command.
+         *
+         *     **A failed check has already acted.** Damage means the offending files are
+         *     purged and the connection is back to `not_set_up` by the time the job row
+         *     says so — purged first, because a cache hit is returned unread and a
+         *     download over damaged bytes would otherwise hand them straight back. So the
+         *     remedy is the `download_weights` the connection now declares, and it is a
+         *     real transfer. A check that could not reach the hub changes nothing and
+         *     purges nothing: no digests to compare against is an absence of evidence, not
+         *     a verdict.
+         */
+        post: operations["check_connection_integrity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/inference/connections/{connection_id}/download": {
         parameters: {
             query?: never;
@@ -2571,7 +2618,7 @@ export interface components {
          * @description What can be asked of an inference connection. Order is display order.
          * @enum {string}
          */
-        ConnectionAction: "download_weights" | "update" | "delete";
+        ConnectionAction: "download_weights" | "check_integrity" | "update" | "delete";
         /**
          * ConnectionCreate
          * @description What a caller supplies to configure a connection.
@@ -5654,6 +5701,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_connection_integrity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

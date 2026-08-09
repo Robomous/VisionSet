@@ -166,6 +166,35 @@ so by naming this set rather than by spelling the members out a second time.
 """
 
 
+WEIGHT_HOLDING_TYPES: Final[frozenset[ConnectionType]] = frozenset({ConnectionType.LOCAL})
+"""The kinds that keep weights of their own on this machine.
+
+What both weight actions gate on, and the reason they can share one set: an
+``http`` connection has nothing to fetch and therefore nothing to re-read, which
+is a fact about what it *is* rather than about where it has got to. Named once
+since #471 gave the fact a second reader — two actions each spelling
+``frozenset({ConnectionType.LOCAL})`` would be two places to edit on the day a
+third kind arrives with weights.
+"""
+
+
+CHECKABLE_STATES: Final[frozenset[ConnectionSetupState]] = frozenset({ConnectionSetupState.READY})
+"""The setup states in which a snapshot is there to be checked (#471).
+
+The first connection gate that is **not** total in state, and the narrowing is
+the point rather than an oversight. ``check_integrity`` re-reads the files a
+download left behind; a connection at ``not_set_up`` has no snapshot to read, so
+the action is not merely pointless there but unanswerable — it would have to
+invent a verdict about bytes that were never fetched.
+
+Named here, beside the states it is a subset of, for
+:data:`EVERY_SETUP_STATE`'s reason: ``CONNECTION_GATES`` names this set and
+``InferenceConnectionService.require_checkable`` reaches the same answer through
+``connection_actions``, so there is one encoding of "when is this legal" and a
+later widening moves the declaration and the refusal together.
+"""
+
+
 EVERY_SETUP_STATE: Final[frozenset[ConnectionSetupState]] = frozenset(ConnectionSetupState)
 """The setup states that refuse nothing — which today is all of them.
 

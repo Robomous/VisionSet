@@ -39,6 +39,7 @@ from visionset.kernel import (
     BatchNotEditable,
     BatchNotFound,
     BatchNotInAnnotation,
+    InferenceConnectionNotCheckable,
     InferenceConnectionNotDownloadable,
     InvalidTransition,
     JobFinished,
@@ -50,6 +51,7 @@ from visionset.kernel.domain import (
     BATCH_GATES,
     BATCH_MOVES,
     BATCH_TRANSITIONS,
+    CHECKABLE_STATES,
     CONNECTION_GATES,
     CONNECTION_KINDS,
     DELETABLE_STATES,
@@ -59,6 +61,7 @@ from visionset.kernel.domain import (
     JOB_TRANSITIONS,
     OPEN_JOB_STATES,
     UNNAMED_EDGES,
+    WEIGHT_HOLDING_TYPES,
     Annotation,
     AnnotationJobState,
     Asset,
@@ -842,8 +845,12 @@ def _invoke_connection(
         connections.delete(connection_id)
         assert all(one.id != connection_id for one in connections.list())
 
+    def check_integrity() -> None:
+        assert connections.require_checkable(connection_id).id == connection_id
+
     return {
         ConnectionAction.DOWNLOAD_WEIGHTS: download_weights,
+        ConnectionAction.CHECK_INTEGRITY: check_integrity,
         ConnectionAction.UPDATE: update,
         ConnectionAction.DELETE: delete,
     }[action]
@@ -855,17 +862,31 @@ def _refuse_connection(
     """The same call for an action that is *not* declared, where one exists.
 
     The strong half of the capability claim — an undeclared action is refused —
-    and it is only assertable for `download_weights`, because the other two are
-    declared everywhere and so have no undeclared square to be refused in.
+    and it is assertable for the two weight actions, because `update` and
+    `delete` are declared everywhere and so have no undeclared square to be
+    refused in.
+
+    `check_integrity` has the most undeclared squares of anything here (#471):
+    it is the first connection action narrow in *state* as well as in kind, so
+    it is refused on three of the four the domain can hold.
     """
-    if action is not ConnectionAction.DOWNLOAD_WEIGHTS:
-        return None
+    if action is ConnectionAction.DOWNLOAD_WEIGHTS:
 
-    def refused() -> None:
-        with pytest.raises(InferenceConnectionNotDownloadable):
-            connections.require_downloadable(connection_id)
+        def refused_download() -> None:
+            with pytest.raises(InferenceConnectionNotDownloadable):
+                connections.require_downloadable(connection_id)
 
-    return refused
+        return refused_download
+
+    if action is ConnectionAction.CHECK_INTEGRITY:
+
+        def refused_check() -> None:
+            with pytest.raises(InferenceConnectionNotCheckable):
+                connections.require_checkable(connection_id)
+
+        return refused_check
+
+    return None
 
 
 @pytest.mark.parametrize("action", list(ConnectionAction), ids=lambda a: a.value)
@@ -914,20 +935,26 @@ def test_a_connections_declaration_is_read_from_the_kernels_own_gate() -> None:
     the same edit. Spelling the answers out here instead would be the hand-mirror
     this module exists to remove.
 
-    Every gate is unconditional in *state* since #469 — `download_weights` at
-    `ready` is the verification of a cache the download already filled — so all
-    three name the set itself. The one conditional entry left is the kind half,
-    and the check on it is the rule: `download_weights` is local and nothing
-    else, which is what turns red if that table is widened or dropped.
+    **The state half stopped being unconditional in #471**, and that is the one
+    line of this test worth reading. Every gate was total in state since #469 —
+    `download_weights` at `ready` is the verification of a cache the download
+    already filled — and `check_integrity` is the first that is not: it needs a
+    snapshot to re-read, which `not_set_up` does not have. Each entry still
+    *names* a set the domain keeps rather than spelling one out here, which is
+    what makes a later widening one edit rather than two.
     """
-    for action in ConnectionAction:
+    narrow_in_state = {ConnectionAction.CHECK_INTEGRITY}
+    for action in set(ConnectionAction) - narrow_in_state:
         assert CONNECTION_GATES[action] is EVERY_SETUP_STATE
+    assert CONNECTION_GATES[ConnectionAction.CHECK_INTEGRITY] is CHECKABLE_STATES
+    assert {ConnectionSetupState.READY} == CHECKABLE_STATES
 
-    unconditional = set(ConnectionAction) - {ConnectionAction.DOWNLOAD_WEIGHTS}
-    for action in unconditional:
+    weight_actions = {ConnectionAction.DOWNLOAD_WEIGHTS, ConnectionAction.CHECK_INTEGRITY}
+    for action in set(ConnectionAction) - weight_actions:
         assert CONNECTION_KINDS[action] is EVERY_CONNECTION_TYPE
-
-    assert CONNECTION_KINDS[ConnectionAction.DOWNLOAD_WEIGHTS] == {ConnectionType.LOCAL}
+    for action in weight_actions:
+        assert CONNECTION_KINDS[action] is WEIGHT_HOLDING_TYPES
+    assert {ConnectionType.LOCAL} == WEIGHT_HOLDING_TYPES
 
     for kind in ConnectionType:
         for state in ConnectionSetupState:
@@ -971,6 +998,13 @@ def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> 
     used to bring one back.
 
     This fails the moment somebody adds the remaining name without the slice
-    behind it.
+    behind it. `check_integrity` joined it deliberately in #471, in the same
+    change as its route, its command, its job and its menu item — the set is
+    updated by hand precisely so that arriving here is a decision.
     """
-    assert {a.value for a in ConnectionAction} == {"download_weights", "update", "delete"}
+    assert {a.value for a in ConnectionAction} == {
+        "download_weights",
+        "check_integrity",
+        "update",
+        "delete",
+    }
