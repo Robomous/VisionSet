@@ -15,7 +15,9 @@ import pytest
 
 from visionset.inference import providers as providers_module
 from visionset.inference.providers import (
+    DETECTOR_FAMILIES,
     SEGMENTER_FAMILIES,
+    SUPPORTED_FAMILIES,
     ProviderPool,
     family_of,
     provider_for,
@@ -121,20 +123,74 @@ def test_a_segmenter_config_resolves_to_the_point_prompt_adapter(
     assert isinstance(provider_for(a_local(connections), workspace_root=tmp_path), LocalSamProvider)
 
 
-def test_anything_else_resolves_to_the_detector(
+def test_the_video_variant_of_the_architecture_resolves_to_the_point_prompt_adapter(
     connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The older and more common case, and the fallback for a config nothing could read."""
+    """#456, and it is the spelling the suggested default actually declares.
+
+    The published SAM 2 checkpoints — the connection form's own pre-filled model
+    among them — say ``sam2_video``. Reading that as a detector refused a click
+    with a sentence about text prompts, which is not merely unhelpful: it
+    describes some other model.
+    """
+    no_extra_needed(monkeypatch, "sam2_video")
+    assert isinstance(provider_for(a_local(connections), workspace_root=tmp_path), LocalSamProvider)
+
+
+def test_a_detector_config_resolves_to_the_text_prompt_adapter(
+    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The older and more common case — and now a named family rather than the fallback."""
     no_extra_needed(monkeypatch, "grounding-dino")
     assert isinstance(
         provider_for(a_local(connections), workspace_root=tmp_path), LocalTransformersProvider
     )
 
 
+def test_an_unknown_model_type_is_refused_rather_than_handed_to_a_family(
+    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#456's second half: a guess produces a message that lies about the model.
+
+    The refusal names the type that was declared — so a reader can see what their
+    config says — and lists what this build does run, which is the only thing
+    they can act on.
+    """
+    no_extra_needed(monkeypatch, "totally-unknown-net")
+    with pytest.raises(InferenceConnectionNotRunnable) as raised:
+        provider_for(a_local(connections), workspace_root=tmp_path)
+
+    message = str(raised.value)
+    assert "totally-unknown-net" in message
+    assert all(family in message for family in SUPPORTED_FAMILIES)
+
+
+def test_a_config_that_declares_no_type_is_refused_too(
+    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The unreadable-config case reaches the same rule by the same route.
+
+    ``family_of`` answers ``""`` when it cannot read a config, and ``""`` is not
+    a family. Resolving it to one would pick an adapter by coin toss and report
+    the loss as that adapter's prompt kind.
+    """
+    no_extra_needed(monkeypatch, "")
+    with pytest.raises(InferenceConnectionNotRunnable) as raised:
+        provider_for(a_local(connections), workspace_root=tmp_path)
+
+    message = str(raised.value)
+    assert "some/segmenter" in message
+    assert all(family in message for family in SUPPORTED_FAMILIES)
+
+
 def test_an_unreadable_config_answers_empty_rather_than_raising(
     connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A load that is going to fail should fail with the library's message, not this one's."""
+    """Reading the config and deciding what to do about it stay separate.
+
+    This function's job is to report what the files say; the refusal for "they
+    say nothing" is the resolver's, one level up.
+    """
 
     class Broken:
         class AutoConfig:
@@ -146,9 +202,28 @@ def test_an_unreadable_config_answers_empty_rather_than_raising(
     assert family_of(a_local(connections), cache_dir=tmp_path) == ""
 
 
-def test_the_family_names_are_a_set_so_the_video_variant_is_one_more_member() -> None:
-    """D1 keeps the 0.2.0 door open; it opens as a name here, not a second mechanism."""
-    assert "sam2" in SEGMENTER_FAMILIES
+def test_both_spellings_of_the_one_architecture_are_named() -> None:
+    """A set rather than a string, and both members are load-bearing today."""
+    assert {"sam2", "sam2_video"} <= SEGMENTER_FAMILIES
+
+
+def test_the_two_families_are_disjoint_and_are_the_whole_of_what_is_supported() -> None:
+    """What the refusal lists is derived, so a family cannot be added to one set
+    and forgotten in the message."""
+    assert not SEGMENTER_FAMILIES & DETECTOR_FAMILIES
+    assert SUPPORTED_FAMILIES == SEGMENTER_FAMILIES | DETECTOR_FAMILIES
+
+
+def test_an_unsupported_model_leaves_nothing_behind_for_the_next_request(
+    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pool's rule holds for this refusal as it does for the others."""
+    no_extra_needed(monkeypatch, "totally-unknown-net")
+    pool = ProviderPool()
+    with pytest.raises(InferenceConnectionNotRunnable):
+        pool.get(a_local(connections), workspace_root=tmp_path)
+    assert len(pool) == 0
+    assert pool.builds == 0
 
 
 # --- residency ----------------------------------------------------------------
