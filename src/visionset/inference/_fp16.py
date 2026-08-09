@@ -39,9 +39,12 @@ from typing import Any
 HALF_PRECISION_NAMES = frozenset({"fp16", "float16", "half"})
 """What a connection's ``precision`` may say to mean half.
 
-A set rather than one spelling because the field is free text by design —
-``InferenceConnection.precision`` documents that — and refusing ``float16`` from
-somebody who wrote what torch calls it would be a trap rather than a rule.
+Wider than the vocabulary that can now reach it. ``Precision`` closed the field
+around ``fp16``/``fp32`` (#469) and the domain normalizes the other two spellings
+onto it, so this set's extra members are what stops a *direct* caller — a test
+holding a stand-in, a future adapter reading a value from somewhere else — from
+having to know which spelling won. Keeping them costs a frozenset lookup and
+removes a way for two modules to disagree about what ``float16`` means.
 """
 
 

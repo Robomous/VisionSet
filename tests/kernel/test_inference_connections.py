@@ -26,9 +26,13 @@ from visionset.kernel import (
 from visionset.kernel.adapters import _mappers as m
 from visionset.kernel.adapters import _tables as t
 from visionset.kernel.domain import (
+    CPU,
+    CUDA,
     ConnectionSetupState,
     ConnectionType,
     InferenceConnection,
+    Precision,
+    precisions_for,
 )
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
@@ -37,7 +41,7 @@ LOCAL = dict(
     model_id="some/model",
     model_revision="abc123",
     device="cpu",
-    precision="fp16",
+    precision="fp32",
 )
 
 HTTP = dict(
@@ -122,6 +126,119 @@ def test_the_service_refuses_in_the_kernels_own_vocabulary(connections) -> None:
     assert not isinstance(refusal.value, ValidationError)
     # The domain's own sentence, without pydantic's frame around it.
     assert str(refusal.value) == "a local connection needs device"
+
+
+# --- the two closed vocabularies (#469) ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("written", "stored"),
+    [("cpu", "cpu"), ("cuda", "cuda"), ("cuda:1", "cuda:1"), (" CUDA ", "cuda")],
+)
+def test_a_device_this_build_can_address_is_kept_and_normalized(written: str, stored: str) -> None:
+    """Case and surrounding space are forgiven; `cuda:N` is a device, not a typo."""
+    made = InferenceConnection(name="x", **(dict(LOCAL) | {"device": written, "precision": "fp32"}))
+    assert made.device == stored
+
+
+@pytest.mark.parametrize("written", ["gpu", "mps", "cuda:", "cuda:x", "cuda 1", "", "cpu0"])
+def test_a_device_nothing_here_could_address_is_refused(written: str) -> None:
+    """The gap this closes: every one of these was accepted and then ignored.
+
+    The adapters resolve anything that is not CUDA onto the CPU in full
+    precision, so a connection saying `gpu` used to describe a run that never
+    happened and went on displaying `gpu` while it did not happen.
+    """
+    with pytest.raises(ValidationError, match="not a device this build can run on"):
+        InferenceConnection(name="x", **(dict(LOCAL) | {"device": written}))
+
+
+@pytest.mark.parametrize(
+    ("written", "stored"),
+    [
+        ("fp16", Precision.FP16),
+        ("FP16", Precision.FP16),
+        (" float16 ", Precision.FP16),
+        ("half", Precision.FP16),
+        ("fp32", Precision.FP32),
+        ("float32", Precision.FP32),
+        ("full", Precision.FP32),
+    ],
+)
+def test_the_spellings_this_build_has_honoured_normalize_onto_the_vocabulary(
+    written: str, stored: Precision
+) -> None:
+    """A row written under the free-text field stays readable.
+
+    `_fp16.HALF_PRECISION_NAMES` has accepted `float16` and `half` for as long as
+    the field has existed, so those rows were written by somebody following the
+    product. A vocabulary that closed around them by refusing them would refuse
+    them on the way *out* of the store, which is a workspace that will not list.
+    """
+    made = InferenceConnection(name="x", **(dict(LOCAL) | {"device": "cuda", "precision": written}))
+    assert made.precision is stored
+
+
+@pytest.mark.parametrize("written", ["fp8", "bf16", "float64", "int8", "auto", ""])
+def test_a_precision_outside_the_vocabulary_is_refused(written: str) -> None:
+    with pytest.raises(ValidationError):
+        InferenceConnection(name="x", **(dict(LOCAL) | {"precision": written}))
+
+
+def test_half_precision_is_refused_on_a_cpu_and_offered_on_a_gpu() -> None:
+    """The cross-field rule, which is the one neither vocabulary can state alone.
+
+    Both local adapters resolve half precision as *this device is CUDA and the
+    connection asked for fp16*, so `cpu` + `fp16` is not a slow run: it is a
+    setting with no effect that the row would go on displaying as though it had
+    one.
+    """
+    with pytest.raises(ValidationError, match="fp16 is not available on cpu"):
+        InferenceConnection(name="x", **(dict(LOCAL) | {"device": "cpu", "precision": "fp16"}))
+
+    for device in ("cuda", "cuda:1"):
+        made = InferenceConnection(
+            name="x", **(dict(LOCAL) | {"device": device, "precision": "fp16"})
+        )
+        assert made.precision is Precision.FP16
+
+
+def test_the_conditioning_rule_has_one_owner() -> None:
+    """The validator above and every form that offers a choice read this function.
+
+    Two copies of "fp16 needs CUDA" is how a form comes to offer what the kernel
+    refuses, which is the shape `ui-capabilities` bans one layer up.
+    """
+    assert precisions_for(CPU) == (Precision.FP32,)
+    assert precisions_for(CUDA) == (Precision.FP16, Precision.FP32)
+    assert precisions_for("cuda:3") == (Precision.FP16, Precision.FP32)
+
+
+def test_the_service_refuses_a_bad_vocabulary_in_the_kernels_own_words(connections) -> None:  # noqa: ANN001
+    """Not a `ValidationError`, and not a 500 on a request whose fault is a typo."""
+    with pytest.raises(InferenceConnectionInvalid) as refusal:
+        connections.create("x", **(dict(LOCAL) | {"device": "gpu"}))
+    assert not isinstance(refusal.value, ValidationError)
+    assert "not a device this build can run on" in str(refusal.value)
+
+    made = connections.create("y", **LOCAL)
+    with pytest.raises(InferenceConnectionInvalid, match="fp16 is not available on cpu"):
+        connections.update(made.id, precision="fp16")
+
+
+def test_editing_a_device_alone_can_leave_a_pair_the_kernel_refuses(connections) -> None:  # noqa: ANN001
+    """The half of the rule an edit could otherwise walk around.
+
+    `update` rebuilds and revalidates rather than patching a column, so moving a
+    `cuda` + `fp16` connection onto the CPU is refused as the pair it would
+    produce — a partial edit cannot leave a row the create path would not accept.
+    """
+    made = connections.create("z", **(dict(LOCAL) | {"device": "cuda", "precision": "fp16"}))
+    with pytest.raises(InferenceConnectionInvalid, match="fp16 is not available on cpu"):
+        connections.update(made.id, device="cpu")
+
+    moved = connections.update(made.id, device="cpu", precision="fp32")
+    assert (moved.device, moved.precision) == ("cpu", Precision.FP32)
 
 
 # --- workspace scoping --------------------------------------------------------

@@ -259,14 +259,31 @@ and this set can only grow if the domain's own derivation rule does.
 
 
 CONNECTION_GATES: Final[Mapping[ConnectionAction, frozenset[ConnectionSetupState]]] = {
-    ConnectionAction.DOWNLOAD_WEIGHTS: frozenset({ConnectionSetupState.NOT_SET_UP}),
+    ConnectionAction.DOWNLOAD_WEIGHTS: EVERY_SETUP_STATE,
     ConnectionAction.UPDATE: EVERY_SETUP_STATE,
     ConnectionAction.DELETE: EVERY_SETUP_STATE,
 }
 """Which setup states each connection action is legal in.
 
+**``download_weights`` is legal in both, and that is a decision rather than a
+widening for convenience (#469).** The work behind it is idempotent by the
+download library's own design: files already in the cache under this revision
+are found rather than re-fetched, and ``record_weights_ready`` returns a
+``ready`` connection unchanged. So the same request against a ``ready``
+connection answers "is this snapshot still complete?" — a real question on a
+machine where a disk filled or a cache was pruned mid-download — and it had no
+action at all before. It is completeness rather than integrity, and
+``visionset.inference.weights`` says why that distinction is worth keeping. A
+client renders it under its own label; the wire keeps one name, because it is
+one call doing one thing.
+
+That leaves this table unconditional in every row, and the conditionality
+entirely in :data:`CONNECTION_KINDS`. The table stays rather than folding away:
+two maps read together is what makes a later narrowing a one-line edit here
+instead of a new dimension, and ``connection_actions`` requires both.
+
 There is still no ``CONNECTION_MOVES`` and no transition table beside this,
-even though ``download_weights`` now moves ``setup_state``. A transition table
+even though ``download_weights`` can move ``setup_state``. A transition table
 earns its place when a state has more than one way out and the edges need naming
 — ``BATCH_TRANSITIONS`` has eight. Here there is exactly one edge, ``not_set_up
 -> ready``, and it is not a move somebody *performs*: it is what a finished
@@ -275,11 +292,9 @@ moves an asset to ``annotated`` without anybody clicking it. So the gate answers
 the question a client actually asks — may this be downloaded — and the single
 edge lives in the service that writes it.
 
-``update`` and ``delete`` name
+Every entry names
 :data:`~visionset.kernel.domain.inference.EVERY_SETUP_STATE` itself rather than a
 frozenset spelled out here, the discipline ``DELETABLE_STATES`` gets above.
-``download_weights`` spells its one member out because that *is* the rule, and
-there is no existing set for "the state weights are missing in" to name instead.
 """
 
 
@@ -311,15 +326,19 @@ def connection_actions(
 ) -> list[ConnectionAction]:
     """Everything this connection does not refuse, in declaration order.
 
-    Both dimensions, and neither is optional. A local connection that has not
-    fetched its weights declares ``download_weights``; the same connection once
-    ready does not, because there is nothing left to fetch; and an ``http``
-    connection never does in any state, because it has no weights of its own.
-    That is the whole of :data:`CONNECTION_GATES` and :data:`CONNECTION_KINDS`
-    read together, and `InferenceConnectionService.require_downloadable` gates on
-    this same function rather than restating either table — the hand-mirror this
-    module exists to prevent, and the antipattern this repository has paid for
-    twice.
+    Both dimensions, and neither is optional. A local connection declares
+    ``download_weights`` in either state — fetching what is missing, verifying
+    what is there — and an ``http`` connection never does in any state, because
+    it has no weights of its own. That is the whole of :data:`CONNECTION_GATES`
+    and :data:`CONNECTION_KINDS` read together, and
+    `InferenceConnectionService.require_downloadable` gates on this same function
+    rather than restating either table — the hand-mirror this module exists to
+    prevent, and the antipattern this repository has paid for twice.
+
+    A client that wants to *label* the two readings differently reads
+    ``setup_state``, which is a field of the resource and not a second capability
+    table. Deriving the word on a control from a state the wire states is not the
+    banned mirror; computing whether the control may exist would be.
 
     ``download_weights`` being declared says the *connection* is ready to be
     asked, never that this installation can carry it out: whether the local

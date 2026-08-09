@@ -194,7 +194,7 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
             model_id="some/model",
             model_revision="abc123",
             device="cpu",
-            precision="fp16",
+            precision="fp32",
             created_at=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
             updated_at=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
         )

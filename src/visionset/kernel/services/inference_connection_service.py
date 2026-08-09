@@ -33,7 +33,6 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from visionset.kernel.domain import (
-    CONNECTION_KINDS,
     ConnectionAction,
     ConnectionSetupState,
     ConnectionType,
@@ -110,7 +109,8 @@ class InferenceConnectionService:
         Raises:
             InvalidName: the name is blank once stripped.
             InferenceConnectionNameTaken: another connection holds that name.
-            InferenceConnectionInvalid: the parameters do not match the kind.
+            InferenceConnectionInvalid: the parameters do not match the kind, or
+                the device or precision is outside what this build offers.
         """
         try:
             with self._workspace.unit_of_work() as uow:
@@ -153,7 +153,8 @@ class InferenceConnectionService:
             InferenceConnectionNotFound: no such connection in this workspace.
             InvalidName: a supplied name is blank once stripped.
             InferenceConnectionNameTaken: another connection holds that name.
-            InferenceConnectionInvalid: the result would not match the kind.
+            InferenceConnectionInvalid: the result would not match the kind, or
+                the device or precision is outside what this build offers.
         """
         try:
             with self._workspace.unit_of_work() as uow:
@@ -177,9 +178,7 @@ class InferenceConnectionService:
         except ConstraintViolated as exc:
             raise self._as_name_collision(exc, name or "") from exc
 
-    def require_downloadable(
-        self, connection_id: UUID, *, retrying: bool = False
-    ) -> InferenceConnection:
+    def require_downloadable(self, connection_id: UUID) -> InferenceConnection:
         """The connection, if fetching weights for it is something to do.
 
         The gate every download surface calls before it commits to anything —
@@ -195,30 +194,25 @@ class InferenceConnectionService:
         refusal the same answer: a client that saw ``download_weights`` in the
         declaration can call, and one that did not will be told why.
 
-        **``retrying`` is what a re-run of already-accepted work passes**, and it
-        is the state half of the gate and only that half. The question this
-        answers is normally "may this be *started*?", and a retry was started
-        already: ``sweep_orphans`` re-enqueues an idempotent orphan as a new job,
-        so a crash between the state flip committing and the row settling
-        produces a second run against a connection that is now ``ready``.
-        Refusing that would fail a job whose work is done. The **kind** half is
-        not relaxed by it — a connection with no weights of its own has none on
-        the second attempt either — so this is narrower than a flag that skips
-        the gate.
+        **A ``ready`` connection passes, and there is no ``retrying`` flag any
+        more (#469).** The flag existed because the gate refused ``ready``, while
+        two callers legitimately arrive there: ``sweep_orphans`` re-enqueues an
+        idempotent orphan whose previous attempt may have finished, and somebody
+        asking a set-up connection to check its own weights. Both are the same
+        call doing the same idempotent work, so the table says so and the
+        exception disappears — a parameter that relaxes a rule is worse than a
+        rule that was drawn correctly.
 
         Raises:
             InferenceConnectionNotFound: no such connection in this workspace.
-            InferenceConnectionNotDownloadable: it is already set up, or it is a
-                kind with no weights of its own.
+            InferenceConnectionNotDownloadable: it is a kind with no weights of
+                its own.
         """
         with self._workspace.unit_of_work() as uow:
             connection = self.require_connection(uow, connection_id)
         if ConnectionAction.DOWNLOAD_WEIGHTS in connection_actions(
             connection.setup_state, connection_type=connection.connection_type
         ):
-            return connection
-        kinds = CONNECTION_KINDS[ConnectionAction.DOWNLOAD_WEIGHTS]
-        if retrying and connection.connection_type in kinds:
             return connection
         raise InferenceConnectionNotDownloadable(_why_not_downloadable(connection))
 
@@ -379,21 +373,16 @@ def _first_reason(exc: ValidationError) -> str:
 
 
 def _why_not_downloadable(connection: InferenceConnection) -> str:
-    """Which of the two refusals this is, in a sentence somebody can act on.
+    """The one remaining refusal, in a sentence somebody can act on.
 
-    The *message* distinguishes them and the code does not, deliberately: a
-    client branches on ``INFERENCE_CONNECTION_NOT_DOWNLOADABLE`` to decide
-    whether to stop asking, and both readings say stop. Splitting the code would
-    publish a distinction no caller behaves differently on.
+    There were two until ``download_weights`` became legal at ``ready`` (#469),
+    where it verifies rather than refuses. What is left is a fact about the kind
+    and never about where a connection has got to, which is why the sentence
+    names the kind.
     """
-    if connection.connection_type is not ConnectionType.LOCAL:
-        return (
-            f"connection {connection.name!r} is an {connection.connection_type.value} connection; "
-            "its model runs elsewhere, so there are no weights here to fetch"
-        )
     return (
-        f"connection {connection.name!r} is already set up; "
-        "its weights are present and there is nothing to fetch"
+        f"connection {connection.name!r} is an {connection.connection_type.value} connection; "
+        "its model runs elsewhere, so there are no weights here to fetch"
     )
 
 

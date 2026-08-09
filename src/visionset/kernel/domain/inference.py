@@ -29,6 +29,8 @@ saying which workspace that is.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Final
@@ -67,6 +69,92 @@ class ConnectionSetupState(StrEnum):
 
     NOT_SET_UP = "not_set_up"
     READY = "ready"
+
+
+class Precision(StrEnum):
+    """The numeric precision a local connection asks its weights to be loaded in.
+
+    A closed vocabulary rather than the free text this field started as, on
+    ``ConnectionType``'s test: the set is small, the kernel is what decides
+    whether a member is usable on a given device, and it grows only by a
+    deliberate kernel change — bf16 arriving later is exactly that change.
+
+    Free text here was not neutrality but a gap. ``fp32x`` was accepted and then
+    ignored; so was ``fp16`` beside ``cpu``, which the adapters silently drop
+    (see :func:`precisions_for`). A field whose wrong values are absorbed rather
+    than refused is a field that cannot tell somebody they are configuring a run
+    that will not happen.
+    """
+
+    FP16 = "fp16"
+    FP32 = "fp32"
+
+
+_PRECISION_ALIASES: Final[Mapping[str, Precision]] = {
+    "float16": Precision.FP16,
+    "half": Precision.FP16,
+    "float32": Precision.FP32,
+    "full": Precision.FP32,
+}
+"""Spellings this build has honoured, mapped onto the vocabulary rather than refused.
+
+``visionset.inference._fp16.HALF_PRECISION_NAMES`` has accepted ``float16`` and
+``half`` for as long as the field has existed, so a row already carrying one was
+written by somebody following the product rather than by somebody guessing. The
+vocabulary closing around it must not make that row unreadable — a value the
+domain refuses is refused on the way *out* of the store as well as into it — so
+the alias is normalized at the boundary and the closed set is what everything
+downstream sees. The full-precision pair is here for symmetry: honouring one
+spelling of half and none of full is the kind of asymmetry nobody can remember.
+
+Anything outside this map and the vocabulary is refused, which is the point.
+"""
+
+
+CPU: Final = "cpu"
+"""The device every machine has, and the only one that needs no vocabulary escape."""
+
+CUDA: Final = "cuda"
+"""The default GPU. A machine with several addresses the rest as ``cuda:1``, ``cuda:2``…"""
+
+OFFERED_DEVICES: Final[tuple[str, ...]] = (CPU, CUDA)
+"""The devices a form offers, in the order it offers them.
+
+Not the whole of what :data:`DEVICE_PATTERN` accepts, and the difference is
+deliberate: ``cuda:N`` is an escape for the machine with more than one GPU, which
+is a fact about *that* machine and not a choice a form can enumerate. A client
+holding a connection whose device is outside this tuple shows it as it is rather
+than silently rewriting it to the nearest member.
+"""
+
+DEVICE_PATTERN: Final = re.compile(r"^(?:cpu|cuda(?::\d+)?)$")
+"""Every device string this build can honestly run on.
+
+A pattern rather than an enum because of the one member that is not a fixed
+word. What is *not* here is the point: ``gpu``, ``mps``, ``auto`` and every
+typo were accepted before and then quietly fell back to the CPU in full
+precision — a connection that names a runtime it never gets. The adapters still
+fall back when a *valid* device turns out to be absent at run time, which is a
+fact about the machine at the moment of the call and belongs there; a device
+nothing could ever address is a fact about the configuration and belongs here.
+"""
+
+
+def precisions_for(device: str) -> tuple[Precision, ...]:
+    """The precisions that are honoured on that device, in offering order.
+
+    The conditioning rule, stated once, where the validator below and every
+    surface that offers a choice can read the same answer. Half precision is
+    CUDA-only: both local adapters resolve ``half`` as *this device is CUDA and
+    the connection asked for fp16*, so ``cpu`` + ``fp16`` is not a slow run but a
+    setting that has no effect at all — and one the row would go on displaying as
+    though it did.
+
+    Takes the string rather than a member because ``cuda:1`` is a device and not
+    an enum, and returns a tuple rather than a set because a caller offering a
+    choice needs an order and a caller checking membership does not care.
+    """
+    return (Precision.FP32,) if device == CPU else (Precision.FP16, Precision.FP32)
 
 
 EVERY_CONNECTION_TYPE: Final[frozenset[ConnectionType]] = frozenset(ConnectionType)
@@ -154,11 +242,14 @@ class InferenceConnection(BaseModel):
     #: model produced this label" is unanswerable if the answer is a name that
     #: means something different next month.
     model_revision: str
-    #: ``local`` only. Free text — ``cuda``, ``cuda:1``, ``cpu`` — because what is
-    #: addressable is a property of the machine at run time, not of this domain.
+    #: ``local`` only. ``cpu``, ``cuda``, or ``cuda:N`` on a machine with more
+    #: than one — :data:`DEVICE_PATTERN` is the whole of it. Whether the named
+    #: device is *present* is a property of the machine at run time and stays
+    #: there; whether it is a device at all is a property of the configuration
+    #: and is settled here.
     device: str | None = None
-    #: ``local`` only. Free text — ``fp16``, ``fp32`` — for the same reason.
-    precision: str | None = None
+    #: ``local`` only, and conditioned on the device — see :func:`precisions_for`.
+    precision: Precision | None = None
     #: ``http`` only.
     endpoint_url: str | None = None
     setup_state: ConnectionSetupState = ConnectionSetupState.NOT_SET_UP
@@ -179,6 +270,39 @@ class InferenceConnection(BaseModel):
             raise ValueError(f"{field} must contain at least one non-blank character")
         return value
 
+    @field_validator("device", mode="before")
+    @classmethod
+    def _is_a_device_this_build_can_address(cls, value: object) -> object:
+        """Case and surrounding space are forgiven; the vocabulary is not.
+
+        ``before`` because the normalization has to happen for the pattern to
+        judge the same string the adapters will read — ``  CUDA `` and ``cuda``
+        are one device written two ways, while ``gpu`` is not a device.
+        """
+        if not isinstance(value, str):
+            return value
+        device = value.strip().casefold()
+        if not DEVICE_PATTERN.match(device):
+            raise ValueError(
+                f"{value!r} is not a device this build can run on; use "
+                f"{', '.join(OFFERED_DEVICES)}, or cuda:N for a second GPU"
+            )
+        return device
+
+    @field_validator("precision", mode="before")
+    @classmethod
+    def _is_a_precision_this_build_offers(cls, value: object) -> object:
+        """The vocabulary, plus the spellings of it this build already honoured.
+
+        Returns the raw string when it is neither, so that the enum itself
+        writes the refusal and there is one sentence listing the members rather
+        than two that could disagree.
+        """
+        if not isinstance(value, str):
+            return value
+        precision = value.strip().casefold()
+        return _PRECISION_ALIASES.get(precision, precision)
+
     @field_validator("created_at", "updated_at")
     @classmethod
     def _is_timezone_aware(cls, value: datetime) -> datetime:
@@ -194,6 +318,12 @@ class InferenceConnection(BaseModel):
         connection holding an ``endpoint_url`` is the shape that makes a later
         reader ask which field the adapter should believe, and ``Source`` pays
         for the same rule with ``validate_assignment``.
+
+        The device and the precision are then checked *against each other*,
+        which no field validator can do: each is a member of its own vocabulary
+        and the pair is what is legal or not. :func:`precisions_for` owns that
+        rule, so a surface offering a choice and the kernel refusing one are
+        reading the same function rather than two copies of one sentence.
         """
         local = self.connection_type is ConnectionType.LOCAL
         required = ("device", "precision") if local else ("endpoint_url",)
@@ -205,4 +335,12 @@ class InferenceConnection(BaseModel):
         for field in forbidden:
             if getattr(self, field) is not None:
                 raise ValueError(f"a {self.connection_type.value} connection cannot carry {field}")
+        if local:
+            assert self.device is not None and self.precision is not None  # the loop above
+            offered = precisions_for(self.device)
+            if self.precision not in offered:
+                raise ValueError(
+                    f"{self.precision.value} is not available on {self.device}; "
+                    f"{self.device} runs in {', '.join(one.value for one in offered)}"
+                )
         return self
