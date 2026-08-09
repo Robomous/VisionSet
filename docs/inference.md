@@ -78,6 +78,11 @@ The action stays **offered** on a machine that lacks the extra, deliberately. Wh
 installation has torch is not a fact about your connection, and a control that quietly vanished
 would leave the install command with nowhere to be shown.
 
+Working inside the Docker dev stack instead? It is CPU-only by default and its api image does not
+carry the extra at all. `docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up
+--build` gives it both the runtime and the host's NVIDIA GPU; `docker/compose.gpu.yaml` says what
+the host needs first. That stack is for development and changes nothing about the wheel above.
+
 ## Knowing what a download costs, before agreeing to it
 
 A decision you cannot see the price of is not a decision, so the size is readable on its own,
