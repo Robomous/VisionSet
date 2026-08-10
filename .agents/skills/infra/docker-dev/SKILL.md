@@ -47,6 +47,12 @@ docker compose -f docker/compose.yaml --profile postgres up
 docker compose -f docker/compose.yaml --profile minio up      # console on 9001
 ```
 
+If `postgres` exits 1 before printing a single server line, and the message names
+`pg_ctlcluster` and a major-version directory, the volume was written by an older major
+version. Postgres 18 keeps its cluster under `/var/lib/postgresql/18/` and will not adopt
+one left by 16. `docker volume rm visionset_postgres-data` clears it; nothing reads this
+service, so there is nothing in there to keep.
+
 ## The three ways to run it
 
 The stack has three permanent, mutually compatible configurations. They differ in one
