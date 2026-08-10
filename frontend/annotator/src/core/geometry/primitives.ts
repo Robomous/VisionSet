@@ -79,3 +79,26 @@ export function closestPointOnSegment(p: Point, a: Point, b: Point): Point {
 export function clampPoint(p: Point, bounds: Bounds): Point {
   return [clamp(p[0], 0, bounds.width), clamp(p[1], 0, bounds.height)];
 }
+
+/**
+ * Whether `p` is inside the frame at all — the question `clampPoint` answers by
+ * moving the point instead.
+ *
+ * The two are for different callers, and the difference is whether a stray
+ * coordinate is *work to be salvaged* or *an instruction that was never given*.
+ * A drag that left the picture still means "make the box this big", so it
+ * clamps; a click in the margin around the picture is not a click on anything,
+ * and clamping it would put a prompt point on the asset's edge that nobody
+ * placed there.
+ *
+ * Inclusive at both ends, matching `clampPoint`'s own range: the last row of
+ * pixels is part of the asset, and a rule that excluded `width` would make the
+ * edge a place where a press silently stopped working.
+ *
+ * `false` for a non-finite coordinate, which falls out of the comparisons rather
+ * than being tested for — the module note above says why nothing here guards
+ * against `NaN`, and here the honest answer for one happens to be "not inside".
+ */
+export function withinBounds(p: Point, bounds: Bounds): boolean {
+  return p[0] >= 0 && p[0] <= bounds.width && p[1] >= 0 && p[1] <= bounds.height;
+}

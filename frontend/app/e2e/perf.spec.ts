@@ -107,14 +107,19 @@ test("the benchmark scene is 220 annotations, and the committed layer is one gro
   // What 220 annotations cost in SVG elements, itemised. A deliberate rendering
   // change moves these numbers and should; an accidental one — a wrapper added
   // per shape, a label drawn twice — shows up here rather than in a frame time
-  // nobody ran. Three elements per annotation is also the number the zoom
-  // scenario below multiplies by.
+  // nobody ran.
+  //
+  // **No labels, because nothing is selected.** The class label is part of what
+  // selection looks like, so a frame nobody has picked a shape on draws two
+  // elements per annotation rather than three: 660 → 440, measured. That is a
+  // legibility decision that happens to pay here — the `<text>` was the most
+  // expensive of the three, carrying a stroke, a paint order and a translate.
   expect(nodes).toEqual({
-    all: 660,
+    all: 440,
     groups: BENCH_ANNOTATIONS,
     rects: 200,
     polygons: 20,
-    labels: BENCH_ANNOTATIONS,
+    labels: 0,
   });
 });
 

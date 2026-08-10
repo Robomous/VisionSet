@@ -64,7 +64,7 @@ import type {
   PolygonGeometry,
   PolylineGeometry,
 } from "../../core/types";
-import { confidencePercent, screenPx } from "./paint";
+import { screenPx } from "./paint";
 import type { PaintedAnnotation } from "./paint";
 
 /** Stroke thickness, in screen pixels, for an unselected shape. */
@@ -274,27 +274,14 @@ export function Vertices({ points, color, zoom, hotIndex }: {
 }
 
 /**
- * What a label says: the class, and for a model's work what the model claimed.
- *
- * A suffix rather than a second element, so the shipped label metrics are
- * untouched — same size, same weight, same anchor, same lift. The label only
- * gets longer, and only on a selected shape, which is the one place it renders
- * at all.
- *
- * A model-produced annotation always carries the separator, because
- * `confidence` is optional on one and a shape marked only when the model
- * happened to score itself is not a mark a reviewer can trust the absence of.
- * `import` provenance reads as a person's for now — the importers that would
- * make that distinction mean something are not built.
- */
-export function labelText(shape: PaintedAnnotation): string {
-  if (shape.provenance !== "model") return shape.labelClass;
-  const score = shape.confidence === null ? "model" : confidencePercent(shape.confidence);
-  return `${shape.labelClass} · ${score}`;
-}
-
-/**
  * The class name, above the shape.
+ *
+ * **The class and nothing else.** A confidence is a decision aid for
+ * accept-or-reject and stops being one the moment a shape is accepted, so the
+ * number lives on the live suggestion preview and nowhere else in the editor;
+ * which model produced a stored shape is the side panel's mark. A canvas that
+ * wrote either would be answering, on every selected shape, a question a
+ * reviewer asks about one.
  *
  * `y` is the anchor itself — a plain asset coordinate — and the screen-pixel lift
  * above it rides on the CSS `translate` property instead of being subtracted here.
@@ -318,7 +305,7 @@ export function ShapeLabel({ shape }: { readonly shape: PaintedAnnotation }): JS
         translate: "0 var(--vs-label-lift)",
       }}
     >
-      {labelText(shape)}
+      {shape.labelClass}
     </text>
   );
 }
@@ -352,7 +339,14 @@ export function PolylineShape({ geometry, color, hot, selected }: {
 }
 
 /**
- * One committed annotation: its shape, its label, and its grips when selected.
+ * One committed annotation: its shape, and — while it is selected — its label
+ * and its grips.
+ *
+ * **The label is part of what selection looks like.** A frame carrying forty
+ * boxes drew forty class names over the picture at all times, which hid the
+ * asset behind the annotations of it; the panel is the full inventory, and the
+ * canvas answers "what is *this* one" for the shape somebody picked. It is also
+ * how a viewer's selection reads, since a read-only frame paints no grips.
  *
  * Grips and vertices are drawn only for a selected shape, which mirrors
  * `resolveTarget` — it looks for a handle or a vertex only among the *selected*
@@ -386,7 +380,7 @@ export function AnnotationShape({ shape, zoom, handles }: ShapeProps): JSX.Eleme
           selected={shape.selected}
         />
       )}
-      <ShapeLabel shape={shape} />
+      {shape.selected && <ShapeLabel shape={shape} />}
       {handles && shape.selected && shape.geometry.type === "bbox" && (
         <Grips geometry={shape.geometry} color={shape.color} zoom={zoom} hotHandle={null} />
       )}

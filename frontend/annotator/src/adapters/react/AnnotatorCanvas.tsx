@@ -128,6 +128,7 @@ import type {
 } from "react";
 
 import { topmostAnnotationAt } from "../../core/geometry/hitTest";
+import { withinBounds } from "../../core/geometry/primitives";
 import { assetTolerances } from "../../core/geometry/tolerance";
 import { affordanceAt, viewerAffordanceAt } from "../../core/interaction/affordance";
 import { transition } from "../../core/interaction/machine";
@@ -825,6 +826,20 @@ export function AnnotatorCanvas({
     // A session with no handler swallows the press rather than falling through,
     // for the reason the prop's docstring gives.
     if (suggestion !== null) {
+      // The stage surround is not the asset. The pane spans the whole viewport
+      // on purpose (see the input surface's note below), so `point` here can be
+      // negative or past the edge — which a *drag* wants, because "make the box
+      // this big" survives leaving the picture, and which a prompt point cannot
+      // use: there is nothing under the margin for a segmenter to segment. So
+      // an out-of-frame press is dropped whole rather than clamped onto the
+      // edge, and dropped **here**, before the host is told: a point the host
+      // never hears about records no click, sends no request and moves no
+      // preview, which is one guarantee instead of three.
+      //
+      // Asked in asset pixels rather than in screen ones, so zoom and pan are
+      // already accounted for by `imagePoint` and there is no second transform
+      // to keep in step with the first.
+      if (!withinBounds(point, asset)) return;
       onSuggestPoint?.(point, event.altKey ? "negative" : "positive");
       return;
     }

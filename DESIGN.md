@@ -1008,22 +1008,36 @@ gallery badges (#55) — and it **already exists, shipped and unit-tested**:
   outline; the class label renders only while selected, 11px / 700, anchored at the
   first vertex, never a pointer target.
 
-**A model's work is marked; a person's is not.** `provenance: "model"` earns a mark on the
-canvas label (`class · 62%`, and `class · model` where the model recorded no score) and a
-`Sparkles` glyph with the score on the side-panel row, whose accessible name carries the
-claim in words and whose tooltip carries the full `model_ref`. Never colour alone — class
-colour is already user data and cannot also mean provenance. **Absence is the human case**:
-no "manual" badge, no mark on the common path, because the row a reviewer sees a thousand
-times is the one that must stay quiet. `import` provenance is unmarked until there is an
-importer whose mark would mean something.
+**The canvas label is part of what selection looks like.** A frame carrying forty boxes drew
+forty class names over the picture at all times, which hides the asset behind the annotations
+of it. The panel is the full inventory; the canvas answers *what is this one* for the shape
+somebody picked, and an unselected shape is its box alone. This is also how a viewer's
+selection reads, since a read-only frame paints no grips.
 
-**Confidence has one spelling, and it is whole percent.** `confidencePercent` in
-`frontend/annotator/src/adapters/react/paint.ts` — the same shared-helper rule as
-`classColor` directly above, and for the same reason: a live suggestion, a committed
-annotation's canvas label and its panel row all show the same number, and two notations for
-it is a number that disagrees with itself. Two decimals would claim a precision a
-confidence does not have. A `null` confidence reads as absent — never as `0`, never as a
-low score.
+**A model's work is marked; a person's is not.** `provenance: "model"` earns a `Sparkles`
+glyph on the side-panel row, whose accessible name carries the claim in words and whose
+tooltip carries the full `model_ref`. That glyph is the *only* provenance signal in the
+editor — the canvas label is the class and nothing else. Never colour alone — class colour is
+already user data and cannot also mean provenance. **Absence is the human case**: no "manual"
+badge, no mark on the common path, because the row a reviewer sees a thousand times is the one
+that must stay quiet. `import` provenance is unmarked until there is an importer whose mark
+would mean something.
+
+**Confidence renders on the live suggestion preview and nowhere else in the editor.** The
+number tells somebody whether to accept a proposal; once accepted, the shape is a label like
+any other and the score is decoration on every subsequent reading of it. So no percentage on a
+canvas box, on a panel row, or in a tooltip. It is not discarded — `confidence` and
+`model_ref` are stored unchanged — and its home is the batch review loop, where a surface
+showing it must also name *what it measures*: a point-prompted mask score and a detection's
+prompt affinity are different quantities on different scales and cannot be pooled, thresholded
+or sorted together.
+
+**Where it is shown, it has one spelling, and that is whole percent.** `confidencePercent` in
+`frontend/annotator/src/adapters/react/paint.ts` — the same shared-helper rule as `classColor`
+above: whoever shows the number imports it rather than respelling it, because two notations
+for one quantity is a number that disagrees with itself. Two decimals would claim a precision
+a confidence does not have. A `null` confidence reads as absent — never as `0`, never as a low
+score.
 
 ## Libraries
 

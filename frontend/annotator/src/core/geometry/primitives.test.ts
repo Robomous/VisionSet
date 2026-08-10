@@ -1,6 +1,6 @@
 /**
- * The four primitives, and the one claim about `Bounds` a reader should not have
- * to take on faith: that an `AssetDescriptor` is already a frame.
+ * The primitives, and the one claim about `Bounds` a reader should not have to
+ * take on faith: that an `AssetDescriptor` is already a frame.
  */
 
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import {
   clampPoint,
   closestPointOnSegment,
   distance,
+  withinBounds,
   type Bounds,
 } from "./primitives";
 
@@ -55,6 +56,46 @@ describe("a point pushed back inside the frame", () => {
   it("keeps the edges themselves, which are inside", () => {
     expect(clampPoint([0, 0], frame)).toEqual([0, 0]);
     expect(clampPoint([100, 50], frame)).toEqual([100, 50]);
+  });
+});
+
+/**
+ * The other question about a frame: not *where does this point go* but *was it
+ * in there at all*. A caller that must not salvage a stray coordinate asks this
+ * one — see the docstring for why the two exist side by side.
+ */
+describe("whether a point is inside the frame", () => {
+  const frame: Bounds = { width: 100, height: 50 };
+
+  it("says yes for a point in the middle", () => {
+    expect(withinBounds([40, 20], frame)).toBe(true);
+  });
+
+  it("counts the edges and the corners as inside, exactly as the clamp does", () => {
+    // The same range, stated twice: a point `clampPoint` would leave untouched
+    // is a point this must call inside, or the last row of pixels becomes a
+    // place where a press silently stops working.
+    for (const corner of [[0, 0], [100, 0], [0, 50], [100, 50]] as const) {
+      expect(withinBounds(corner, frame)).toBe(true);
+      expect(clampPoint(corner, frame)).toEqual([...corner]);
+    }
+  });
+
+  it("says no past each of the four edges, one axis at a time", () => {
+    expect(withinBounds([-0.001, 20], frame)).toBe(false);
+    expect(withinBounds([100.001, 20], frame)).toBe(false);
+    expect(withinBounds([40, -0.001], frame)).toBe(false);
+    expect(withinBounds([40, 50.001], frame)).toBe(false);
+  });
+
+  it("says no for a coordinate that is not a number", () => {
+    expect(withinBounds([Number.NaN, 20], frame)).toBe(false);
+    expect(withinBounds([40, Number.NaN], frame)).toBe(false);
+  });
+
+  it("takes an asset descriptor as its frame, like everything else here", () => {
+    expect(withinBounds([ASSET.width, ASSET.height], ASSET)).toBe(true);
+    expect(withinBounds([ASSET.width + 1, ASSET.height], ASSET)).toBe(false);
   });
 });
 
