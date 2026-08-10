@@ -95,10 +95,18 @@ def test_an_asset_is_readable_by_id_under_its_project(
     assert len(body["content_hash"]) == 64
 
 
-def test_an_unknown_asset_is_404_with_its_own_code(client: TestClient) -> None:
+@pytest.mark.parametrize(
+    "suffix", ["", "/content", "/thumbnail"], ids=["the-asset", "its-content", "its-thumbnail"]
+)
+def test_an_unknown_asset_is_404_with_its_own_code(client: TestClient, suffix: str) -> None:
+    """All three reads of one asset refuse the same way.
+
+    The suffix is the only thing that varies, and the table is what makes a fourth
+    read added without its refusal visible by its absence.
+    """
     project_id = project_with_schema(client)
 
-    response = client.get(f"/projects/{project_id}/assets/{uuid4()}")
+    response = client.get(f"/projects/{project_id}/assets/{uuid4()}{suffix}")
 
     assert response.status_code == 404
     assert response.json()["code"] == "ASSET_NOT_FOUND"
@@ -157,15 +165,6 @@ def test_the_content_url_is_immutable_and_tagged_with_the_content_hash(
 
     assert headers["etag"] == f'"{content_hash}"'
     assert headers["cache-control"] == "public, max-age=31536000, immutable"
-
-
-def test_the_content_of_an_unknown_asset_is_404(client: TestClient) -> None:
-    project_id = project_with_schema(client)
-
-    response = client.get(f"/projects/{project_id}/assets/{uuid4()}/content")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "ASSET_NOT_FOUND"
 
 
 def test_a_content_blob_that_is_gone_is_damage_rather_than_a_404(
@@ -239,15 +238,6 @@ def test_an_asset_with_no_cached_preview_is_refused_by_its_own_code(
     assert response.status_code == 404
     assert response.json()["code"] == "THUMBNAIL_NOT_CACHED"
     assert "backfill" in response.json()["message"]
-
-
-def test_the_thumbnail_of_an_unknown_asset_is_404(client: TestClient) -> None:
-    project_id = project_with_schema(client)
-
-    response = client.get(f"/projects/{project_id}/assets/{uuid4()}/thumbnail")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "ASSET_NOT_FOUND"
 
 
 # --- the contract these routes declare ----------------------------------------

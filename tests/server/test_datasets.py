@@ -76,8 +76,27 @@ def test_an_unknown_project_has_no_dataset(client: TestClient) -> None:
     assert response.json()["code"] == "PROJECT_NOT_FOUND"
 
 
-def test_an_unknown_dataset_is_404_with_its_own_code(client: TestClient) -> None:
-    response = client.get(f"/datasets/{uuid4()}")
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        pytest.param("get", "/datasets/{id}", id="the-dataset"),
+        pytest.param("get", "/datasets/{id}/stats", id="its-stats"),
+        pytest.param("get", "/datasets/{id}/changes", id="its-log"),
+        pytest.param("delete", "/datasets/{id}/assets/{other}", id="removing-from-it"),
+    ],
+)
+def test_an_unknown_dataset_is_404_with_its_own_code(
+    client: TestClient, method: str, path: str
+) -> None:
+    """Every route that takes a dataset id refuses with the dataset's own code.
+
+    The removal row is a ``delete`` rather than a ``get`` on purpose: a write that
+    answered 404 under some other code would be the same bug wearing a different
+    verb, and only a row that writes can see it.
+    """
+    url = path.format(id=uuid4(), other=uuid4())
+
+    response = getattr(client, method)(url)
 
     assert response.status_code == 404
     assert response.json()["code"] == "DATASET_NOT_FOUND"
@@ -296,13 +315,6 @@ def test_a_class_the_schema_declares_but_nobody_used_is_absent(
     assert [row["label_class"] for row in classes] == ["sign"]
 
 
-def test_stats_of_an_unknown_dataset_are_404(client: TestClient) -> None:
-    response = client.get(f"/datasets/{uuid4()}/stats")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "DATASET_NOT_FOUND"
-
-
 # --- curating -----------------------------------------------------------------
 
 
@@ -331,13 +343,6 @@ def test_removing_an_asset_that_was_never_a_member_is_still_a_204(
     dataset_id = dataset_of(client, project_id)
 
     assert client.delete(f"/datasets/{dataset_id}/assets/{uuid4()}").status_code == 204
-
-
-def test_removing_from_an_unknown_dataset_is_404(client: TestClient) -> None:
-    response = client.delete(f"/datasets/{uuid4()}/assets/{uuid4()}")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "DATASET_NOT_FOUND"
 
 
 def test_removal_destroys_nothing_but_the_membership(
@@ -433,10 +438,3 @@ def test_a_removal_that_changed_nothing_writes_no_entry(
     client.delete(f"/datasets/{dataset_id}/assets/{uuid4()}")
 
     assert client.get(f"/datasets/{dataset_id}/changes").json()["total"] == 0
-
-
-def test_the_log_of_an_unknown_dataset_is_404(client: TestClient) -> None:
-    response = client.get(f"/datasets/{uuid4()}/changes")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "DATASET_NOT_FOUND"
