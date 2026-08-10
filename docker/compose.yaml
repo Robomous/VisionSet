@@ -265,7 +265,7 @@ services:
   # why they sit behind profiles and are off by default.
   postgres:
     profiles: ["postgres"]
-    image: postgres:16
+    image: postgres:18
     environment:
       POSTGRES_DB: visionset
       POSTGRES_USER: visionset
@@ -273,7 +273,14 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # The whole directory, not the `data/` beneath it. From 18 the image keeps its
+      # cluster in a major-version subdirectory and refuses to start at all — exit 1
+      # before any server — when it finds a mount on the old path, so bumping the tag
+      # without moving this line takes the profile down. A cluster written by 16 is
+      # unreadable to 18 wherever it is mounted: `docker volume rm
+      # visionset_postgres-data` is the way through, and costs nothing while nothing
+      # is wired to this service.
+      - postgres-data:/var/lib/postgresql
 
   minio:
     profiles: ["minio"]
