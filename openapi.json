@@ -1625,6 +1625,16 @@
             "title": "Id",
             "type": "string"
           },
+          "integrity_check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntegrityCheckOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "model_id": {
             "title": "Model Id",
             "type": "string"
@@ -1669,6 +1679,7 @@
           "allowed_actions",
           "capabilities",
           "download",
+          "integrity_check",
           "created_at",
           "updated_at"
         ],
@@ -2355,6 +2366,54 @@
         ],
         "title": "IngestState",
         "type": "string"
+      },
+      "IntegrityCheckOut": {
+        "description": "A connection's snapshot re-read: which job, how far, and how it ended.\n\n`WeightDownloadOut`'s sibling over the same files, and present on the same\nterms: whenever a check has ever been asked for on this connection, describing\nthe most recent one. It is how a client shows a run it did not itself start \u2014\na reload, a second tab, another machine, or `visionset inference\ncheck-integrity` in a terminal \u2014 rather than a job id somebody happened to\nkeep.\n\nPolling it never affects the run. The job is dispatched to a worker process\nthe server owns; no client disconnect cancels or pauses it.\n\n**Files, where a download counts bytes.** A check owns its loop and knows how\nmany files the revision names before it opens the first one, so it reports\nwhat it actually counts. Neither borrows the other's name.\n\n**The verdict is not here.** A pass leaves `setup_state` at `ready`; a failure\nhas already purged the damaged files and stood the connection down by the time\n`state` says `failed`. So what a reader acts on is the connection's own state\nand the actions it now declares, and what this adds is the sentence saying\nwhy.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "files_read": {
+            "title": "Files Read",
+            "type": "integer"
+          },
+          "files_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files Total"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/BackgroundJobState"
+          }
+        },
+        "required": [
+          "job_id",
+          "state",
+          "files_read",
+          "files_total",
+          "error"
+        ],
+        "title": "IntegrityCheckOut",
+        "type": "object"
       },
       "ItemFailureOut": {
         "description": "One item a job could not process, and why.",
@@ -6021,7 +6080,7 @@
     },
     "/inference/connections": {
       "get": {
-        "description": "Every configured connection in this workspace, in the order they were made.\n\nEach row carries its most recent weight download, so a client sees a transfer\nit did not start \u2014 after a reload, in a second tab, on another machine. This\nis therefore the read a screen polls while a download is live, and the reason\nit can stop polling the moment none is.\n\nA set-up connection that has never been asked what kind of model it holds is\nasked here, once, from files already on this disk \u2014 see\n``visionset.inference.weights.with_families``. It is the backfill for rows\nwritten before a connection recorded that, and it is on the read path because\nthe kernel cannot reach a model cache and a migration runs in the kernel.",
+        "description": "Every configured connection in this workspace, in the order they were made.\n\nEach row carries its most recent weight download **and its most recent\nintegrity check**, so a client sees a run it did not start \u2014 after a reload,\nin a second tab, on another machine, or from a terminal. This is therefore the\nread a screen polls while either is live, and the reason it can stop polling\nthe moment neither is.\n\nA set-up connection that has never been asked what kind of model it holds is\nasked here, once, from files already on this disk \u2014 see\n``visionset.inference.weights.with_families``. It is the backfill for rows\nwritten before a connection recorded that, and it is on the read path because\nthe kernel cannot reach a model cache and a migration runs in the kernel.",
         "operationId": "list_inference_connections",
         "responses": {
           "200": {
@@ -6253,7 +6312,7 @@
         ]
       },
       "get": {
-        "description": "The connection with that id.\n\nCarries the same backfill the listing does, and the same weight download, so\nthat reading one connection and reading the list never disagree about what it\ncan be asked for or about what is happening to it.",
+        "description": "The connection with that id.\n\nCarries the same backfill the listing does, and the same runs, so that reading\none connection and reading the list never disagree about what it can be asked\nfor or about what is happening to it.",
         "operationId": "get_inference_connection",
         "parameters": [
           {
@@ -6449,7 +6508,7 @@
     },
     "/inference/connections/{connection_id}/check-integrity": {
       "post": {
-        "description": "Re-read every cached file and compare it against what the hub published.\n\nThe `check_integrity` action. Distinct from `download_weights`\nover the same files, and the distinction is what each can prove: a download\nagainst a set-up connection establishes that nothing is **missing**, reading\nan index rather than the files; this establishes that nothing is\n**damaged**, and can only do so by reading every byte.\n\n**202, not 200.** A snapshot is gigabytes and this reads all of it, so it\nfollows the launch-and-poll contract the download route uses: poll `GET\n/background-jobs/{id}` \u2014 the `Location` header names it \u2014 where `processed`\nand `total` count files. A successful job's result carries how many files\nwere read and how many bytes that came to.\n\n**Only for a local connection that is already set up.** An HTTP connection\nhas no files here and one whose weights never arrived has none to read;\nboth are 409 `INFERENCE_CONNECTION_NOT_CHECKABLE`, the same answer\n`allowed_actions` gave, from the same table. A deployment without the local\nruntime is refused here too, with the install command.\n\n**A failed check has already acted.** Damage means the offending files are\npurged and the connection is back to `not_set_up` by the time the job row\nsays so \u2014 purged first, because a cache hit is returned unread and a\ndownload over damaged bytes would otherwise hand them straight back. So the\nremedy is the `download_weights` the connection now declares, and it is a\nreal transfer. A check that could not reach the hub changes nothing and\npurges nothing: no digests to compare against is an absence of evidence, not\na verdict.",
+        "description": "Re-read every cached file and compare it against what the hub published.\n\nThe `check_integrity` action. Distinct from `download_weights`\nover the same files, and the distinction is what each can prove: a download\nagainst a set-up connection establishes that nothing is **missing**, reading\nan index rather than the files; this establishes that nothing is\n**damaged**, and can only do so by reading every byte.\n\n**202, not 200.** A snapshot is gigabytes and this reads all of it, so it\nfollows the launch-and-poll contract the download route uses. The run is then\non the connection itself as `integrity_check`, which is what lets a client\nthat never made this request \u2014 after a reload, in another tab, or beside a\nterminal that started it \u2014 see one in flight and how it ended. `GET\n/background-jobs/{id}` answers the same run, and the `Location` header names\nit; a successful job's result carries how many files were read and how many\nbytes that came to.\n\n**Only for a local connection that is already set up.** An HTTP connection\nhas no files here and one whose weights never arrived has none to read;\nboth are 409 `INFERENCE_CONNECTION_NOT_CHECKABLE`, the same answer\n`allowed_actions` gave, from the same table. A deployment without the local\nruntime is refused here too, with the install command.\n\n**A failed check has already acted.** Damage means the offending files are\npurged and the connection is back to `not_set_up` by the time the job row\nsays so \u2014 purged first, because a cache hit is returned unread and a\ndownload over damaged bytes would otherwise hand them straight back. So the\nremedy is the `download_weights` the connection now declares, and it is a\nreal transfer. A check that could not reach the hub changes nothing and\npurges nothing: no digests to compare against is an absence of evidence, not\na verdict.",
         "operationId": "check_connection_integrity",
         "parameters": [
           {

@@ -45,9 +45,22 @@ from pydantic import JsonValue
 from visionset.inference import check_integrity
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
+from visionset.kernel.domain import (
+    CONNECTION_JOB_KEY,
+    INTEGRITY_CHECK_JOB_TYPE,
+    connection_job_payload,
+)
 from visionset.kernel.ports import ProgressReporter
 
-JOB_TYPE = "inference.check_integrity"
+JOB_TYPE = INTEGRITY_CHECK_JOB_TYPE
+"""This handler's type, taken from the domain rather than spelled here.
+
+The type has a second reader: a connection finds its own check by it, so that a
+screen can show a run it did not start. The kernel may not import this package,
+so the constant lives there and this names it — one spelling, and a handler
+registered under a type nothing can look up becomes impossible rather than merely
+unlikely.
+"""
 
 HANDLER = register(HandlerRef(type=JOB_TYPE, func=f"{__name__}:run", idempotent=True))
 
@@ -58,8 +71,12 @@ def payload_for(connection_id: UUID) -> dict[str, JsonValue]:
     ``weights.payload_for``'s rule and its reason: the one place naming the key
     is the one place that reads it, so a route spelling it by hand cannot spell
     it differently and surface the mismatch as a ``KeyError`` inside a worker.
+
+    The shape itself comes from the domain, shared with the download: both jobs
+    are about exactly one connection, and the lookup that finds either matches on
+    this key.
     """
-    return {"connection_id": str(connection_id)}
+    return connection_job_payload(connection_id)
 
 
 def run(
@@ -88,7 +105,7 @@ def run(
     """
     if reporter.is_cancelled():
         return {}
-    connection_id = UUID(str(payload["connection_id"]))
+    connection_id = UUID(str(payload[CONNECTION_JOB_KEY]))
     # Never a ``with``: the handle belongs to the worker and outlives this task.
     # See ``jobs/context.py``.
     workspace = workspace_for(workspace_root)
@@ -97,4 +114,4 @@ def run(
         connection_id,
         on_file=lambda checked, total: reporter.report(processed=checked, total=total),
     )
-    return {"connection_id": str(connection_id), **report.counts()}
+    return {CONNECTION_JOB_KEY: str(connection_id), **report.counts()}

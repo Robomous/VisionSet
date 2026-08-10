@@ -27,18 +27,24 @@ Composition follows ``docs/workspaces.md``: this service takes an open
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import ValidationError
 
 from visionset.kernel.domain import (
+    INTEGRITY_CHECK_JOB_TYPE,
     WEIGHT_DOWNLOAD_JOB_TYPE,
     WEIGHT_HOLDING_TYPES,
+    BackgroundJob,
     ConnectionAction,
+    ConnectionJob,
+    ConnectionJobs,
     ConnectionSetupState,
     ConnectionType,
     InferenceConnection,
+    IntegrityCheck,
     WeightDownload,
     connection_actions,
     normalize_name,
@@ -77,41 +83,42 @@ class InferenceConnectionService:
         with self._workspace.unit_of_work() as uow:
             return self.require_connection(uow, connection_id)
 
-    def downloads(self) -> dict[UUID, WeightDownload]:
-        """The latest weight download for every connection that has had one.
+    def connection_jobs(self) -> ConnectionJobs:
+        """The latest download and the latest integrity check for every connection.
 
-        **The answer that makes a transfer observable by somebody who did not
-        start it.** A download outlives the request that launched it and the page
-        that asked, so the only way a screen can show one it has no job id for —
-        a reload, a second tab, a colleague's browser — is for the connections it
-        lists to carry it. A client holding a job id in component state loses the
-        download to the first navigation, which is how a running transfer came to
-        render as *Not set up*.
+        **The answer that makes a run observable by somebody who did not start
+        it.** Either job outlives the request that launched it and the page that
+        asked, so the only way a screen can show one it has no job id for — a
+        reload, a second tab, a colleague's browser, a run started from the
+        terminal — is for the connections it lists to carry it. A client holding a
+        job id in component state loses the run to the first navigation, which is
+        how a running download came to render as *Not set up* and a running check
+        as though nothing were happening.
 
         **The latest rather than only the live one**, because the two questions a
         reader has are *is something running* and *what happened last time*, and
-        dropping a download the moment it settles answers the first while making
-        the second unanswerable — a transfer that failed while nobody was looking
-        would leave a connection at ``not_set_up`` with no sentence saying why.
+        dropping a run the moment it settles answers the first while making the
+        second unanswerable — a check that failed while nobody was looking would
+        leave a connection at ``not_set_up`` with no sentence saying why.
         The queue answers newest-first, so the first job seen for a connection is
         that connection's.
 
-        Every connection at once rather than one at a time, because the caller is
-        a listing: an ``InferenceConnection`` per query would put one queue read
-        per row on the screen's poll path.
+        **One queue read for both kinds and every connection**, because the caller
+        is a listing that polls: a read per kind, or worse per row, would put that
+        cost on the screen's own interval. ``JobQueue.list`` narrows by type in the
+        query and this splits what comes back.
 
         A job whose payload does not name a connection is skipped rather than
-        raised over. It cannot be a download this method is about, and a listing
-        of connections is the wrong place to discover a malformed row.
+        raised over. It cannot be a run this method is about, and a listing of
+        connections is the wrong place to discover a malformed row.
         """
-        latest: dict[UUID, WeightDownload] = {}
-        for job in self._workspace.job_queue.list(types={WEIGHT_DOWNLOAD_JOB_TYPE}):
-            try:
-                download = WeightDownload.of(job)
-            except ValueError:
-                continue
-            latest.setdefault(download.connection_id, download)
-        return latest
+        jobs = self._workspace.job_queue.list(
+            types={WEIGHT_DOWNLOAD_JOB_TYPE, INTEGRITY_CHECK_JOB_TYPE}
+        )
+        return ConnectionJobs(
+            downloads=_newest_by_connection(jobs, WeightDownload),
+            checks=_newest_by_connection(jobs, IntegrityCheck),
+        )
 
     def get_by_name(self, name: str) -> InferenceConnection:
         """The connection somebody would name, resolved case-insensitively.
@@ -492,6 +499,26 @@ class InferenceConnectionService:
         """Every connection in this workspace, in the order they were made."""
         with self._workspace.unit_of_work() as uow:
             return uow.inference_connections.list()
+
+
+def _newest_by_connection[J: ConnectionJob](
+    jobs: Iterable[BackgroundJob], kind: type[J]
+) -> dict[UUID, J]:
+    """That kind's most recent job per connection, out of a newest-first list.
+
+    Generic over the kind rather than written twice, because the two differ only
+    in which counts they name: ``ConnectionJob.of`` refuses a row of the wrong
+    type, so passing the whole list twice is also the filter. Two passes over a
+    handful of rows already in memory, against one query.
+    """
+    latest: dict[UUID, J] = {}
+    for job in jobs:
+        try:
+            found = kind.of(job)
+        except ValueError:
+            continue
+        latest.setdefault(found.connection_id, found)
+    return latest
 
 
 def _built(**fields: object) -> InferenceConnection:

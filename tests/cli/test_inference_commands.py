@@ -21,10 +21,11 @@ from visionset.cli.main import app
 from visionset.inference import weights as weights_module
 from visionset.inference.integrity import IntegrityReport
 from visionset.kernel.domain import (
+    INTEGRITY_CHECK_JOB_TYPE,
     WEIGHT_DOWNLOAD_JOB_TYPE,
     BackgroundJobSpec,
     DownloadSize,
-    weight_download_payload,
+    connection_job_payload,
 )
 from visionset.kernel.errors import WeightsDamaged
 from visionset.kernel.services import (
@@ -551,7 +552,7 @@ def test_a_terminal_can_watch_a_transfer_the_server_is_running(
         job = service.job_queue.enqueue(
             BackgroundJobSpec(
                 type=WEIGHT_DOWNLOAD_JOB_TYPE,
-                payload=weight_download_payload(made.id),
+                payload=connection_job_payload(made.id),
                 idempotent=True,
             )
         )
@@ -573,4 +574,39 @@ def test_a_connection_nobody_downloaded_publishes_a_null_download(root: Path) ->
     """`null` rather than a zeroed record: *nobody asked* is not *nothing has
     arrived yet*, and only the first is true here."""
     ok(root, *LOCAL)
-    assert payload(root, "inference", "show", "local-gd")["download"] is None
+    shown = payload(root, "inference", "show", "local-gd")
+    assert shown["download"] is None
+    assert shown["integrity_check"] is None
+
+
+def test_a_terminal_can_watch_a_check_the_server_is_running(root: Path) -> None:
+    """The check joins the download on the wire, from the same projection.
+
+    A run started anywhere is visible everywhere, which is the whole point: before
+    this, the only thing that could see a check was the tab that received its
+    `202`.
+    """
+    ok(root, *LOCAL)
+    with WorkspaceService.open(root) as service:
+        made = InferenceConnectionService(service).list()[0]
+        job = service.job_queue.enqueue(
+            BackgroundJobSpec(
+                type=INTEGRITY_CHECK_JOB_TYPE,
+                payload=connection_job_payload(made.id),
+                idempotent=True,
+            )
+        )
+
+    shown = payload(root, "inference", "show", "local-gd")["integrity_check"]
+    (listed,) = payload(root, "inference", "list")["items"]
+
+    assert shown == listed["integrity_check"]
+    assert shown == {
+        "job_id": str(job.id),
+        "state": "queued",
+        "files_read": 0,
+        "files_total": None,
+        "error": None,
+    }
+    # Files, never bytes: the two runs count different things and say so.
+    assert listed["download"] is None

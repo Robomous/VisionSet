@@ -97,9 +97,10 @@ export type ConnectionSetupState = components["schemas"]["ConnectionSetupState"]
 export type Precision = components["schemas"]["Precision"];
 export type DownloadSizeOut = components["schemas"]["DownloadSizeOut"];
 export type WeightDownload = components["schemas"]["WeightDownloadOut"];
+export type IntegrityCheck = components["schemas"]["IntegrityCheckOut"];
 
 /**
- * Whether this connection's weights are arriving right now.
+ * Whether a run has not finished yet.
  *
  * Named for the *live* states rather than for the settled ones, which is the
  * opposite of `usePollingQuery`'s rule and is deliberate: there, the terminal
@@ -108,20 +109,24 @@ export type WeightDownload = components["schemas"]["WeightDownloadOut"];
  * the domain enumerates — a job is `queued` then `running` and everything else is
  * an ending — so this is the set that cannot grow without a kernel change.
  */
-export function isDownloading(connection: Connection): boolean {
-  const state = connection.download?.state;
-  return state === "queued" || state === "running";
+export function isLive(run: { readonly state: string } | null | undefined): boolean {
+  return run?.state === "queued" || run?.state === "running";
+}
+
+/** Whether anything the server owns is working on this connection right now. */
+export function isBusy(connection: Connection): boolean {
+  return isLive(connection.download) || isLive(connection.integrity_check);
 }
 
 /**
- * How often the connection list is re-read while a transfer is in flight.
+ * How often the connection list is re-read while a run is in flight.
  *
  * The same two seconds `DEFAULT_POLL_MS` uses, and for its stated reason: under
  * the threshold where a person decides nothing is happening, and slow enough not
  * to compete with the work being measured. The worker writes progress at most
  * twice this often, so a faster poll would read the same number twice.
  */
-export const DOWNLOAD_POLL_MS = 2_000;
+export const CONNECTION_POLL_MS = 2_000;
 
 export const inferenceKeys = {
   connections: () => ["inference", "connections"] as const,
@@ -145,15 +150,17 @@ export const inferenceKeys = {
  *
  * ## Why this polls, and only sometimes
  *
- * A weight download is a background job the server owns, and the wire says how
- * far it has got — so a screen showing one has to re-read something. It re-reads
- * *this*, because the connection is where the download lives: nothing has to
- * remember a job id, and a page that arrives mid-transfer sees it on its first
- * fetch. Recovery after a navigation, a reload or a fresh tab is then a property
- * of the shape rather than a feature anybody wrote.
+ * A weight download and an integrity check are both background jobs the server
+ * owns, and the wire says how far each has got — so a screen showing one has to
+ * re-read something. It re-reads *this*, because the connection is where both
+ * live: nothing has to remember a job id, and a page that arrives mid-run sees it
+ * on its first fetch. Recovery after a navigation, a reload or a fresh tab — or
+ * arriving beside a terminal that started the run — is then a property of the
+ * shape rather than a feature anybody wrote.
  *
  * The interval is a function of the answer, which is what stops it: `false` the
- * moment no row reports a live transfer, and `false` before the first one lands.
+ * moment no row reports a live run of either kind, and `false` before the first
+ * one lands.
  * That last part is where this departs from `usePollingQuery`, which keeps asking
  * when it has no data — the right rule for a job somebody is waiting on, and the
  * wrong one here, because this list is also the annotator's read and a broken
@@ -169,7 +176,7 @@ export function useConnections(enabled = true): UseQueryResult<ConnectionPage, E
     refetchInterval: (query) => {
       const page = query.state.data;
       if (page === undefined) return false;
-      return page.items.some(isDownloading) ? DOWNLOAD_POLL_MS : false;
+      return page.items.some(isBusy) ? CONNECTION_POLL_MS : false;
     },
     // A download started and left to run is the ordinary way this is used, so a
     // backgrounded tab must not come back to a bar frozen where it was hidden.

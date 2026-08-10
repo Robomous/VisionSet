@@ -82,6 +82,7 @@ from visionset.kernel.domain import (
     InferenceConnection,
     IngestFailure,
     IngestJob,
+    IntegrityCheck,
     LabelClass,
     PolygonGeometry,
     PolylineGeometry,
@@ -606,8 +607,26 @@ def weight_download(value: WeightDownload) -> dict[str, Any]:
     }
 
 
+def integrity_check(value: IntegrityCheck) -> dict[str, Any]:
+    """A connection's snapshot re-read: which job, how far, and how it ended.
+
+    Files rather than bytes, on ``weight_download``'s terms and for the opposite
+    half of the same rule: each names the unit its handler actually counted, so a
+    machine reading either knows what it has without looking up a job type.
+    """
+    return {
+        "job_id": str(value.job_id),
+        "state": value.state.value,
+        "files_read": value.files_read,
+        "files_total": value.files_total,
+        "error": value.error,
+    }
+
+
 def connection(
-    value: InferenceConnection, download: WeightDownload | None = None
+    value: InferenceConnection,
+    download: WeightDownload | None = None,
+    check: IntegrityCheck | None = None,
 ) -> dict[str, Any]:
     """One configured place a model can be asked to predict.
 
@@ -615,11 +634,11 @@ def connection(
     connection's secret lives is still open, and a key published here would be one
     every consumer starts parsing.
 
-    ``download`` is the transfer this connection most recently asked for, and it
-    is a parameter rather than something read here for the reason nothing in this
-    module reads anything: a projection takes what it publishes. A caller with no
-    view of the queue passes nothing and the key is null, which is also what a
-    connection nobody has ever downloaded publishes.
+    ``download`` and ``check`` are the runs this connection most recently asked
+    for, and they are parameters rather than something read here for the reason
+    nothing in this module reads anything: a projection takes what it publishes. A
+    caller with no view of the queue passes nothing and the keys are null, which is
+    also what a connection nobody has ever downloaded or checked publishes.
     """
     return {
         "id": str(value.id),
@@ -640,6 +659,7 @@ def connection(
         # ``InferenceConnection.model_family``.
         "capabilities": [c.value for c in capabilities_of(value.model_family)],
         "download": None if download is None else weight_download(download),
+        "integrity_check": None if check is None else integrity_check(check),
         "created_at": _moment(value.created_at),
         "updated_at": _moment(value.updated_at),
     }
