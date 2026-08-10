@@ -4,13 +4,11 @@ The fourth client of the kernel SDK, beside the REST API, the CLI and the SDK
 itself. Every tool is a thin mapping onto one or two service calls; nothing is
 decided here that the kernel has not already decided.
 
-**These tools, out of fifty candidates.** Each REST task from #27 to #30
-recorded which MCP tools its capability implied, and this is the sweep that
-settled them one by one. The parity rule means *evaluated*, not *implemented*:
-tool-selection accuracy degrades with count, so a tool ships only when an agent
-has a reason to reach for it that no neighbouring tool already covers. What
-folded, what was dropped and why is argued in ``docs/mcp.md`` and in each
-module's own docstring.
+**These tools, out of fifty candidates.** Every REST capability was evaluated for
+the MCP tool it implied, and *evaluated* is not *implemented*: tool-selection
+accuracy degrades with count, so a tool ships only when an agent has a reason to
+reach for it that no neighbouring tool already covers. What folded, what was
+dropped and why is argued in ``docs/mcp.md`` and in each module's own docstring.
 
 **Registration is this table, not a decorator at each definition site.** The CLI's
 rule, for the CLI's reason: ``@server.tool()`` inside ``projects.py`` would make
@@ -134,15 +132,15 @@ DESTRUCTIVE_TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]]
 )
 """Tools that destroy something, registered **only on request**.
 
-#108, and the reason is measured rather than theoretical. Four real agent runs
-were asked to tidy a schema and then delete a project; in **four of four** the
-model sent ``confirm=True`` on the *first* call, having read the parameter in the
-tool description. ``ConfirmationRequired`` never fired once, because nothing ever
-made the un-gated call.
+The reason is measured rather than theoretical. Four real agent runs were asked
+to tidy a schema and then delete a project; in **four of four** the model sent
+``confirm=True`` on the *first* call, having read the parameter in the tool
+description. ``ConfirmationRequired`` never fired once, because nothing ever made
+the un-gated call.
 
-That is not the flag failing. Over HTTP or at a terminal it works exactly as #30
-and #35 specify, because a *person* is the one adding it. What the runs settle is
-narrower: **when the caller is a model, ``confirm`` is not a human in the loop.**
+That is not the flag failing. Over HTTP or at a terminal it works, because a
+*person* is the one adding it. What the runs settle is narrower: **when the
+caller is a model, ``confirm`` is not a human in the loop.**
 It is a parameter documented in the same listing the caller reads before choosing,
 so the description that exists to explain the gate is also the instruction for
 clearing it. There is no version of a self-describing tool schema where that is
@@ -201,9 +199,9 @@ def build_server(*, allow_destructive: bool | None = None) -> MCPServer:
 
     A factory rather than a module-level registration, and the reason is the same
     one that made ``static_root()`` a function in ``server/main.py``: the
-    alternative freezes the answer at import, where no test can reach it. #108's
-    posture is a *startup* decision, so something has to be able to start a server
-    twice with two answers.
+    alternative freezes the answer at import, where no test can reach it. Whether
+    destructive tools are offered is a *startup* decision, so something has to be
+    able to start a server twice with two answers.
 
     ``allow_destructive`` overrides the environment for one call, and ``None``
     means "ask it". Nothing in production passes it; the module-level

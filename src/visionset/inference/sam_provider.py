@@ -8,16 +8,16 @@ do the other job.
 
 **The whole design is one split.** A segmenter of this family reads the image
 once into an embedding — the expensive half — and then answers any number of
-clicks from that embedding almost for free. D5 on #424 budgets =<300 ms for the
-perceived cost of a click, and that number is only reachable if refining a
+clicks from that embedding almost for free. The design budget for the perceived
+cost of a click is =<300 ms, and that is only reachable if refining a
 suggestion never re-reads the image. ``transformers`` draws the same line the
 design does: :meth:`get_image_embeddings` is the encode, and the processor
 accepts ``original_sizes`` *without* ``images``, so the decode never touches a
 pixel. The cache sits exactly on that seam.
 
 **Nothing about the cache is visible through the port.** ``ModelProvider`` must
-stay implementable by something running in another building (the recorded
-decision on #418), so the caching is an adapter's private business: the protocol
+stay implementable by something running in another building, so the caching is an
+adapter's private business: the protocol
 gets ``predict``, and a hosted segmenter is free to cache in whatever way its
 own deployment allows, or not at all.
 
@@ -243,7 +243,7 @@ class LocalSamProvider:
         **The prompt's positive points travel with the mask.** A mask can hold
         more than one blob, and which of them the caller meant is a question only
         the points can answer; without them the outline is whichever blob the
-        speckle put nearest the top-left (#461). Negatives stay behind — they
+        speckle put nearest the top-left. Negatives stay behind — they
         shape the mask, and by here the mask is already made.
 
         **The label is deliberately empty.** Pointing says *where*, not *what*:

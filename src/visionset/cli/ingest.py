@@ -168,7 +168,7 @@ def ingest(
                 # A separate count from ``failed`` rather than a subset of it: a
                 # clip that put frames in the batch is not a file the run could
                 # not use, and a script branching on ``failed`` should not see
-                # one (#452).
+                # one.
                 "partial": result.partial,
                 "failures": [wire.ingest_failure(f) for f in result.failures],
             }

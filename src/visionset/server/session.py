@@ -11,13 +11,12 @@ whole mechanism is a cookie handed out by ``GET /session``, and one extra place
 :func:`~visionset.server.dependencies.require_token` is willing to look.
 
 **Why a route rather than a ``Set-Cookie`` on the page itself.** Attaching it to
-``/app/`` is what #179 described, and it works in exactly one of the three
-topologies this project ships. The compose stack's API never serves the bundle at
-all — vite does, and nginx puts them on one origin — so a cookie set while
-serving ``index.html`` would never be set there, and the docker half of #179's own
-acceptance criteria could not pass. One route is asked for the credential by the
-page after it loads, which is identical in all three, and costs one request on a
-cold start. It is deliberately **not** a login endpoint: it trades nothing, takes
+``/app/`` works in exactly one of the three topologies this project ships. The
+compose stack's API never serves the bundle at all — vite does, and nginx puts
+them on one origin — so a cookie set while serving ``index.html`` would never be
+set there. One route is asked for the credential by the page after it loads,
+which is identical in all three, and costs one request on a cold start. It is
+deliberately **not** a login endpoint: it trades nothing, takes
 no input, and cannot be talked into issuing a session to a client that was not
 already going to be given one.
 

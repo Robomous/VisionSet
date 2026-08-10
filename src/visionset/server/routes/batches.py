@@ -9,14 +9,13 @@ hangs off *it* (its assets, its jobs) does not sit four segments deep.
 comment on the handler.
 
 **A batch is born from an ingest** in the ordinary case, and creation and
-membership editing are both here now because the gallery is the caller #29 was
-waiting for. Both are ``draft``-only: approval freezes membership, and that
-refusal is the batch's own (``BATCH_NOT_EDITABLE``), never a rule this module
-restates. **Delete** is here too since #376, and it is the one route that ends a
-batch rather than moving it: ``DELETABLE_STATES`` is everything except
-``completed``, the refusal is ``BATCH_IMMUTABLE`` and no flag lifts it, and
-``BatchAction.DELETE`` is declared again in the same change — which is the
-condition #331 set when it withdrew the member rather than route it.
+membership editing are here for the gallery. Both are ``draft``-only: approval
+freezes membership, and that refusal is the batch's own
+(``BATCH_NOT_EDITABLE``), never a rule this module restates. **Delete** is the
+one route that ends a batch rather than moving it: ``DELETABLE_STATES`` is
+everything except ``completed``, the refusal is ``BATCH_IMMUTABLE`` and no flag
+lifts it, and ``BatchAction.DELETE`` is declared beside it — a capability and the
+route that honours it always land together.
 
 The lifecycle *is* here, because without it nothing downstream is reachable: an
 annotation may only be written into a batch that is ``in_annotation``, and a
@@ -86,7 +85,7 @@ def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -
     not change that: an ingest run puts what it gathered into one, which is where
     almost every batch comes from. What had no surface at all was curating one
     out of an arbitrary subset — the shape a correction batch is, and the shape
-    anybody re-cutting work by hand needs (cf. #281).
+    anybody re-cutting work by hand needs.
 
     The batch is a `draft`, so its membership stays editable and approval is what
     freezes it and pins the schema. `asset_ids` may be empty: a batch nobody has
@@ -305,7 +304,7 @@ def list_batch_assets(
     for asset in window(found, limit=limit, offset=offset):
         # The job's *state* travels beside its id because what an asset allows
         # depends on it: a completed job's frames are settled and declare nothing,
-        # and the job it belongs to is the only thing that knows (#439).
+        # and the job it belongs to is the only thing that knows.
         job_id, job_state, progress = placement.get(asset.id, (None, None, None))
         items.append(
             BatchAssetOut.in_batch(

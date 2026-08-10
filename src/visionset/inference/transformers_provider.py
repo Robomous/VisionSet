@@ -1,10 +1,9 @@
 # usage: from visionset.inference import LocalTransformersProvider
 """A ``ModelProvider`` that runs a zero-shot detector in this process.
 
-**Neutral foundations, per the decision recorded on #418.** This adapter is
-written against ``transformers`` and takes its weights from their original
-source. It is not written against any third-party inference framework, and none
-is a dependency of this distribution.
+**Neutral foundations.** This adapter is written against ``transformers`` and
+takes its weights from their original source. It is not written against any
+third-party inference framework, and none is a dependency of this distribution.
 
 **The model is loaded once, lazily, and never at construction.** Building a
 provider is what a composition root does while deciding whether it needs one;
@@ -19,9 +18,9 @@ post-processor takes, the fact that its boxes arrive as corners rather than as a
 corner and a size. The port carries none of it, and the kernel does not know this
 file exists.
 
-Two findings from the Phase 0 spike on #418 are implemented rather than
-remembered: half precision needs shims (``_fp16``), and raw output needs
-cross-box suppression (``nms``). Both have tests that fail if they are removed.
+Two measured findings are implemented rather than remembered: half precision
+needs shims (``_fp16``), and raw output needs cross-box suppression (``nms``).
+Both have tests that fail if they are removed.
 """
 
 from __future__ import annotations
@@ -65,8 +64,8 @@ CPU_FALLBACK_WARNING: Final = (
     "running on the CPU in full precision instead"
 )
 """Said out loud, once, at WARNING. A fallback that happens silently is a
-fifty-times-slower run somebody spends an afternoon not understanding — and the
-throughput figure on #418 (~115 ms an image) is a GPU figure."""
+fifty-times-slower run somebody spends an afternoon not understanding — the
+~115 ms an image this adapter is measured at is a GPU figure."""
 
 
 def regions_from(
@@ -169,7 +168,7 @@ class LocalTransformersProvider:
 
         ``id@revision``, the same spelling the CLI's listing prints, because the
         revision is half of the identity: "which model produced this label" is
-        unanswerable if the answer names a moving pointer (`cf. #421`).
+        unanswerable if the answer names a moving pointer.
         """
         return f"{self._model_id}@{self._model_revision}"
 

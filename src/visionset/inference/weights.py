@@ -1,8 +1,8 @@
 # usage: from visionset.inference import fetch_weights, MODELS_DIRNAME
 """Fetching the weights a local connection names, into the workspace.
 
-**VisionSet never downloads a model on its own** — the decision recorded on #418,
-and this module is the only place in the distribution that downloads one at all.
+**VisionSet never downloads a model on its own**, and this module is the only
+place in the distribution that downloads one at all.
 It runs when somebody asks: a route, a command, or a background job started by
 one of those. Nothing calls it at install time, at startup, or on the way to
 anything else.
@@ -26,8 +26,8 @@ which is why nothing in the domain has to encode it.
 re-checked — every file the revision names is looked for, and anything missing is
 fetched — and then left alone. That is not only a convenience for people typing
 twice: the download job is registered idempotent, an orphan re-queued after a
-crash arrives at a connection a previous attempt already finished, and since #469
-so does somebody asking a set-up connection to check itself.
+crash arrives at a connection a previous attempt already finished, and so does
+somebody asking a set-up connection to check itself.
 
 **What that check is, precisely.** ``huggingface_hub`` addresses its cache by the
 revision's commit hash and each file's etag, so a re-run at a pinned revision
@@ -94,7 +94,7 @@ def fetch_weights(
     "set up" means.
 
     **A run against a connection that is already ``ready`` is a re-check, and it
-    needs no flag to be one (#469).** The snapshot download finds what the cache
+    needs no flag to be one.** The snapshot download finds what the cache
     already holds and fetches only what is missing, and the write below is a
     no-op on a connection that is already ready — so the orphan the queue
     re-enqueues after a crash and the person asking a set-up connection to check
@@ -128,8 +128,8 @@ def fetch_weights(
 def download(connection: InferenceConnection, *, into: Path) -> Path:
     """Put this connection's weights in that cache, and say where they landed.
 
-    Original sources, per the neutral-foundations decision on #418: the model id
-    and the revision the connection pinned, resolved by ``huggingface_hub``
+    Original sources: the model id and the revision the connection pinned,
+    resolved by ``huggingface_hub``
     against the hub the weights are published on. No mirror, no rewriting of
     what somebody typed.
 

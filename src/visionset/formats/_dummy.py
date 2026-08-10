@@ -24,7 +24,7 @@ class DummyExporter:
 
     #: Everything, and it costs nothing to say so: this exporter writes no files,
     #: so there is no geometry it could fail to express. Declaring a narrower set
-    #: would make #65's report describe a loss that never happens.
+    #: would make the compatibility report describe a loss that never happens.
     #:
     #: Read off ``GeometryType`` rather than listed, so the eight names live in
     #: one place — the same reason ``IMPLEMENTED_GEOMETRIES`` is derived from the
@@ -32,8 +32,8 @@ class DummyExporter:
     supported_geometries = frozenset(GeometryType)
 
     #: Empty, for the second of the two reasons an exporter's can be: this one
-    #: writes no files, so there is no geometry it could reduce either. A format
-    #: that converts silently is what #158's field exists to make visible.
+    #: writes no files, so there is no geometry it could reduce either. This field
+    #: exists to make a format that converts silently visible.
     degraded_geometries: frozenset[GeometryType] = frozenset()
 
     #: Likewise. ``image`` is the only modality anything produces today; a set

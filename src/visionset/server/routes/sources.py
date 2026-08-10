@@ -83,9 +83,9 @@ def register_image_source(
     Nothing is decoded here — what the files turn out to be is read at ingest,
     and a file that is not an image is reported there rather than refused now.
 
-    `name` exists because the staged path's basename is a digest (#245); a blank
-    one is refused by the kernel's own `InvalidName` (422), the #28 rule — the
-    domain already refuses with a mapped error, so no wire validator restates it.
+    `name` exists because the staged path's basename is a digest; a blank one is
+    refused by the kernel's own `InvalidName` (422) — the domain already refuses
+    with a mapped error, so no wire validator restates it.
     """
     # ``capture_params`` is not on the wire. It is an opaque operator-supplied
     # mapping, and threading a JSON object through a multipart form is a
