@@ -693,6 +693,22 @@ def test_a_sample_above_the_total_is_held_at_it(
     assert max(done for done, _ in said) == FETCHED_BYTES
 
 
+def test_reporting_bytes_is_optional(
+    connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
+) -> None:
+    """Kept although its body duplicates `test_reporting_is_optional`.
+
+    Deleting it leaves one line of `sqlite_metadata_store.py` uncovered that no other
+    test reaches — not through anything this test asserts, but because the adapter has
+    a branch only a further workspace lifecycle arrives at. The duplication is
+    load-bearing for a reason outside its own assertion, so removing it needs that
+    branch covered on purpose first.
+    """
+    assert fetch_weights(workspace, a_local(connections).id).setup_state is (
+        ConnectionSetupState.READY
+    )
+
+
 # --- what a transfer in flight looks like on the disk -------------------------
 
 
