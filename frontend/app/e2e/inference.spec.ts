@@ -1,5 +1,11 @@
 /**
- * The Inference section in a real browser: a weight download somebody watches.
+ * The Inference section in a real browser: a dashboard of abilities, and a weight
+ * download somebody watches inside one of them.
+ *
+ * The sections are asserted here as well as in `inference.test.tsx` because the
+ * two claims differ: jsdom proves the grouping is total over what the wire can
+ * say, and this proves a real workspace opens on it — and that a run in flight is
+ * still found, after a reload, in the section its connection belongs to.
  *
  * ## Why this is not `inference.test.tsx`
  *
@@ -49,11 +55,19 @@ interface Check {
   readonly error?: string | null;
 }
 
-/** What the server answers for one local connection, in the state a test wants. */
+/**
+ * What the server answers for one local connection, in the state a test wants.
+ *
+ * `capabilities` defaults the way the server derives it: nothing until the
+ * weights are here, because the ability is read out of the model's own config.
+ * That is also why a download in flight is watched from the *undeclared* section
+ * below — the connection cannot say what it answers until the transfer lands.
+ */
 function connection(
   setup: "not_set_up" | "ready",
   download: Download | null,
   check: Check | null = null,
+  capabilities: readonly string[] = setup === "ready" ? ["point_suggest"] : [],
 ): unknown {
   return {
     id: CONNECTION,
@@ -66,7 +80,7 @@ function connection(
     endpoint_url: null,
     setup_state: setup,
     allowed_actions: ["download_weights", "update", "delete"],
-    capabilities: setup === "ready" ? ["point_suggest"] : [],
+    capabilities,
     download: download === null ? null : { job_id: JOB, error: null, ...download },
     integrity_check: check === null ? null : { job_id: CHECK_JOB, error: null, ...check },
     created_at: "2026-08-08T00:00:00Z",
@@ -102,6 +116,39 @@ async function openInference(page: Page): Promise<void> {
   await expect(page.getByTestId("inference-screen")).toBeVisible();
 }
 
+test("the screen is a list of abilities, and a connection sits under the one it declares", async ({
+  page,
+}) => {
+  await serveApi(page, () => connection("ready", null));
+  await openInference(page);
+
+  const suggest = page.getByTestId("section-point_suggest");
+  await expect(suggest.getByTestId("connection-sam2-local")).toBeVisible();
+  // The heading answers what the connection is *for*, which the flat table of
+  // names, kinds and model ids never did.
+  await expect(suggest).toContainText("suggest tool");
+
+  // And the ability nothing consumes yet says so, with nothing to press: the
+  // missing half is the surface that would ask, not the connection.
+  const detect = page.getByTestId("section-text_detect");
+  await expect(detect.getByTestId("section-nothing")).toBeVisible();
+  await expect(detect.locator("button")).toHaveCount(0);
+});
+
+test("a section nothing serves invites a first connection for it", async ({ page }) => {
+  await serveApi(page, () => connection("ready", null, null, ["text_detect"]));
+  await openInference(page);
+
+  await expect(
+    page.getByTestId("section-point_suggest").getByRole("button", {
+      name: "Add a point-prompt connection",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("section-text_detect").getByTestId("connection-sam2-local"),
+  ).toBeVisible();
+});
+
 test("a page that never started the download still shows it", async ({ page }) => {
   // The shipped bug, in the one shape that could not be tested without a browser:
   // the job id lived in a component, so only the mount that pressed the button
@@ -119,8 +166,17 @@ test("a page that never started the download still shows it", async ({ page }) =
   await page.reload();
   await expect(page.getByTestId("inference-screen")).toBeVisible();
 
-  await expect(page.getByTestId("download-progress-prose")).toHaveText("400.0 MB of 1.6 GB · 25%");
-  await expect(page.getByTestId("download-progress-bar")).toHaveAttribute("aria-valuenow", "25");
+  // Inside the section the row belongs to, which is the one for a connection that
+  // cannot yet say what it answers — the transfer being watched is the thing that
+  // will let it.
+  const waiting = page.getByTestId("section-undeclared");
+  await expect(waiting.getByTestId("download-progress-prose")).toHaveText(
+    "400.0 MB of 1.6 GB · 25%",
+  );
+  await expect(waiting.getByTestId("download-progress-bar")).toHaveAttribute(
+    "aria-valuenow",
+    "25",
+  );
 });
 
 test("a transfer left running is where it got to when you come back", async ({ page }) => {

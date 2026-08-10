@@ -548,6 +548,35 @@ Any list that can exceed ~20 rows carries a filter input. Filtering is client-si
 instant, matches a name substring case-insensitively, and never hides the count of what it
 filtered out.
 
+### A list sectioned by what its rows enable
+
+Where the rows of a list are things a person configures so that *something else* becomes
+possible, the list is sectioned by the ability rather than sorted by the row — a heading
+naming the ability in a user's words, one line of prose naming the surface that consumes
+it, the rows serving it, and the section's own empty state. The Inference dashboard is the
+specimen: a flat table of names, kinds and model ids showed real data and answered none of
+*what can I do in the app with this?*
+
+Four rules make it honest, and each one exists because its opposite is a lie a screen can
+tell:
+
+- **The sections come from the data's own vocabulary**, never from a client-side reading of
+  what a row is. On Inference that is `capabilities`, which the server derives from the
+  model's weights.
+- **A section with a consuming surface invites; one without it only describes.** An ability
+  the product cannot yet use gets its heading, its prose and no control at all — a CTA
+  there is principle 9's dead button wearing a friendlier label, because what is missing is
+  the surface rather than the row.
+- **Nothing declared is invisible.** A value the build has no copy for gets a generic
+  section built from the value, and a row declaring no ability at all gets one too. A row
+  under no heading is a row nobody can act on.
+- **Section CTAs are `secondary`.** The view's one filled button stays in the header;
+  otherwise a page of empty sections is a page of competing primaries.
+
+A filter crossing such a list empties sections it does not match, and an emptied section
+says *nothing here matches* rather than showing its invitation — what somebody typed is not
+an occasion to invite them to configure something.
+
 ### Copy
 
 - No exclamation marks. No "successfully". No "please".
