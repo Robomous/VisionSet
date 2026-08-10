@@ -159,6 +159,36 @@ def test_a_finished_download_records_what_kind_of_model_arrived(
     assert connections.get(made.id).model_family == DOWNLOADED_FAMILY
 
 
+def test_a_build_that_cannot_read_a_config_still_finishes_the_download(
+    connections: InferenceConnectionService,
+    workspace: WorkspaceService,
+    fetched: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bytes are here; a question about them must not undo the transfer.
+
+    Letting the config read's refusal out left the connection `not_set_up` beside
+    a full cache — and the remedy on offer was the download that had just
+    succeeded. It shipped green locally and failed on CI, where the optional
+    runtime genuinely is absent: every test that downloads through a faked
+    `download` reached the *real* config read.
+
+    Not knowing is recoverable. The row records nothing rather than nothing-found,
+    and the next read of the connection asks again.
+    """
+
+    def _no_runtime(*_: object, **__: object) -> str:
+        raise LocalInferenceUnavailable("'transformers' is not installed here")
+
+    monkeypatch.setattr(weights_module, "family_of", _no_runtime)
+    made = a_local(connections)
+
+    ready = fetch_weights(workspace, made.id)
+    assert ready.setup_state is ConnectionSetupState.READY
+    assert ready.model_family is None
+    assert connections.get(made.id).setup_state is ConnectionSetupState.READY
+
+
 def test_a_re_download_records_a_family_a_row_was_missing(
     connections: InferenceConnectionService,
     workspace: WorkspaceService,

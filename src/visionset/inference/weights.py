@@ -140,9 +140,31 @@ def fetch_weights(
     # here is what lets a client be told what this connection can be asked for
     # instead of finding out one refusal at a time — see ``families``.
     say("reading what kind of model arrived")
-    family = family_of(connection, cache_dir=cache)
+    family = _family_if_it_can_be_read(connection, cache_dir=cache)
     say("recording the connection as ready")
     return connections.record_weights_ready(connection.id, model_family=family)
+
+
+def _family_if_it_can_be_read(connection: InferenceConnection, *, cache_dir: Path) -> str | None:
+    """What the config declares, or ``None`` where nothing here could read it.
+
+    **A download that worked must not be undone by a question about it.** The
+    bytes are on the disk by the time this is asked; letting the read's refusal
+    out would leave the connection ``not_set_up`` beside a full cache, and the
+    remedy on offer would be the transfer that already happened. So a build that
+    cannot read a config records that it does not know, which is recoverable —
+    the next read of the connection asks again (:func:`with_families`).
+
+    Only :class:`LocalInferenceUnavailable` is caught, and only that. Anything
+    the read itself could not survive is already ``""`` by ``family_of``'s own
+    contract, so what is left here is exactly one condition: nothing on this
+    machine can parse a config at all.
+    """
+    try:
+        return family_of(connection, cache_dir=cache_dir)
+    except LocalInferenceUnavailable:
+        _logger.info("no runtime here to read %s's config", connection.name)
+        return None
 
 
 def with_families(
@@ -170,6 +192,8 @@ def with_families(
     installs the runtime resolves it then. Writing the empty string there would
     record "this model declares nothing" on the strength of never having
     checked — and every client filtering on the declaration would believe it.
+    That is :func:`_family_if_it_can_be_read`'s rule, shared with the download so
+    there is one answer to "what does a build that cannot look record".
     """
     service = InferenceConnectionService(workspace)
     cache = cache_root(workspace.root)
@@ -178,9 +202,8 @@ def with_families(
         if not _awaiting_a_family(connection):
             resolved.append(connection)
             continue
-        try:
-            family = family_of(connection, cache_dir=cache)
-        except LocalInferenceUnavailable:
+        family = _family_if_it_can_be_read(connection, cache_dir=cache)
+        if family is None:
             resolved.append(connection)
             continue
         _logger.info("resolved %s as model type %r", connection.name, family)
