@@ -108,6 +108,16 @@ interface Lifecycle {
   refuseJobStart?: string;
   /** When set, every `PUT .../progress` refuses 409 with this code instead. */
   refuseProgress?: string;
+  /**
+   * When set, every write to `/annotations` refuses 409 with this code and this
+   * message.
+   *
+   * The message is the interesting half: a code with no entry in `REFUSAL_PROSE`
+   * falls through to the server's own wording, which is how an install command —
+   * or a model reference — reaches a person verbatim. It is also the only way to
+   * put an arbitrarily long unbroken token on screen.
+   */
+  refuseSave?: { code: string; message: string };
   /** When set, `POST /jobs/{id}/complete` refuses 409 with this code instead. */
   refuseJobComplete?: string;
   /**
@@ -257,6 +267,9 @@ async function serveApi(
       const assetId = path.split("/").at(-2) ?? "";
       const mine = stored.filter((one) => one.asset_id === assetId);
       return route.fulfill({ json: { items: mine, total: mine.length } });
+    }
+    if (path.endsWith("/annotations") && request.method() !== "GET" && lifecycle.refuseSave !== undefined) {
+      return route.fulfill({ status: 409, json: lifecycle.refuseSave });
     }
     if (path.endsWith("/annotations") && request.method() === "POST") {
       // Kept, and stamped with a server id — the kernel mints its own and the page
@@ -2372,8 +2385,9 @@ test("a refusal on the bar is a sentence now, not a kernel identifier", async ({
   });
 
   // A raw code rendered as a destructive badge is a kernel identifier in front of
-  // a user. This is an *opening* refusal, which has its own badge beside the save
-  // state. Both render through `refusalProse`, so both carry the prose.
+  // a user. This is an *opening* refusal, which takes its own notice at the top
+  // of the stage's column. Every refusal renders through `refusalProse`, so all
+  // of them carry the prose and keep the code in `title`.
   const state = page.getByTestId("opening-refusal");
   await expect(state).toContainText(/not open for annotation/i);
   await expect(state).not.toContainText("BATCH_NOT_IN_ANNOTATION");
@@ -2706,4 +2720,114 @@ test("the no-connection panel now has somewhere to send you (#424 D6)", async ({
   await page.getByTestId("suggest-configure").click();
   await expect(page).toHaveURL(/\/inference$/);
   await expect(page.getByTestId("inference-screen")).toBeVisible();
+});
+
+/**
+ * The notice surface, measured — which is the only way any of it can be claimed.
+ *
+ * Every assertion below is about geometry, and jsdom has none:
+ * `getBoundingClientRect` answers all zeros, and `scrollWidth` / `clientWidth`
+ * answer zero with it. A component test asserting "the notice does not overflow"
+ * would pass with the wrap rule deleted, the width halved and the anchor moved
+ * back to the corner the zoom widget lives in.
+ *
+ * A save refusal is the vehicle because it is the one refusal whose *text* the
+ * stub controls: a code with no entry in `REFUSAL_PROSE` falls through to the
+ * server's own message, so an arbitrarily long unbroken token can be put on
+ * screen the way a real model reference arrives.
+ */
+
+/** 120 characters, no break opportunity anywhere in it. */
+const LONG_MODEL_REF = `IDEA-Research/grounding-dino-tiny@${"0123456789abcdef".repeat(6).slice(0, 86)}`;
+
+/** A job whose every write refuses, carrying `message` back verbatim. */
+async function openRefusingSave(page: Page, sent: Request[], message: string): Promise<void> {
+  await openJob(page, sent, undefined, {
+    ...openedWorld(),
+    refuseSave: { code: "STUB_UNMAPPED_REFUSAL", message },
+  });
+  await drawOneUnsavedBox(page);
+  await page.getByTestId("save-and-stay").click();
+  await expect(page.getByTestId("save-refusal")).toBeVisible();
+}
+
+test("an in-editor notice anchors top-right of the stage, clear of both corners", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openRefusingSave(page, sent, "the kernel's own wording");
+
+  const stage = (await page.getByTestId("canvas-stage").boundingBox())!;
+  const card = (await page.getByTestId("save-refusal").boundingBox())!;
+  // The stage's hairline, subtracted rather than absorbed into the number: an
+  // absolutely positioned child is offset from the padding edge, so a bare
+  // `boundingBox` comparison reads 17 and would have to be explained as 16 + 1
+  // every time somebody changed the border.
+  const border = await page
+    .getByTestId("canvas-stage")
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopWidth));
+
+  // 16px — the `md` step — in from the stage's top and right edges. Measured
+  // against the *stage*, which is the surface the notice floats over; the top bar
+  // is above it and is not what the inset is relative to.
+  expect(Math.round(card.y - stage.y - border)).toBe(16);
+  expect(Math.round(stage.x + stage.width - border - (card.x + card.width))).toBe(16);
+
+  // The two occupied corners, and the whole reason this one was chosen. The
+  // suggest card used to clear the zoom widget with a hard-coded `bottom-16`,
+  // and before that sat *under* it, where the widget's subtree swallowed the
+  // presses meant for the card's own buttons.
+  const strip = (await page.getByTestId("tool-palette").boundingBox())!;
+  expect(card.x).toBeGreaterThan(strip.x + strip.width);
+  const zoom = (await page.getByTestId("zoom-widget").boundingBox())!;
+  expect(card.y + card.height).toBeLessThan(zoom.y);
+});
+
+test("a notice wraps a model reference no fixed width could have fitted", async ({ page }) => {
+  const sent: Request[] = [];
+  await openRefusingSave(page, sent, `Could not reach ${LONG_MODEL_REF} on this machine.`);
+
+  const notice = page.getByTestId("save-refusal");
+  // The whole token is on screen, not an elided prefix.
+  await expect(notice).toContainText(LONG_MODEL_REF);
+
+  // Nothing to scroll sideways: the token broke mid-word rather than pushing the
+  // card's content past its own edge. Widening alone would not have done this —
+  // `wrap-anywhere` is the invariant and the width is comfort.
+  const overflow = await notice.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  // And the card itself did not grow out of the stage to make room.
+  const stage = (await page.getByTestId("canvas-stage").boundingBox())!;
+  const card = (await notice.boundingBox())!;
+  expect(card.x).toBeGreaterThanOrEqual(stage.x);
+  expect(card.x + card.width).toBeLessThanOrEqual(stage.x + stage.width);
+  // The page never scrolls sideways for a message.
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true);
+});
+
+/**
+ * The chip's replacement, and it is only provable here.
+ *
+ * Radix opens a tooltip on hover and on focus, and jsdom runs neither for real —
+ * so "the chord is still taught" is a claim about a real pointer over a real
+ * button, on the one control that used to print `⌘S` inside itself.
+ */
+test("Save and stay teaches its chord in a tooltip now the keycap is gone", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  await drawOneUnsavedBox(page);
+
+  const stay = page.getByTestId("save-and-stay");
+  await expect(stay.locator("kbd")).toHaveCount(0);
+
+  await stay.hover();
+
+  const tip = page.getByTestId("save-and-stay-shortcut").first();
+  await expect(tip).toBeVisible();
+  // `modKey()` spells the platform's own modifier, so the assertion is on the
+  // half that does not move.
+  await expect(tip).toContainText(/Save and stay \((⌘|Ctrl)S\)/);
 });
