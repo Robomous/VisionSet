@@ -7,6 +7,7 @@ walked to a progress state through `JobService`'s real moves, never by writing r
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC
 from io import BytesIO
 from pathlib import Path
@@ -523,10 +524,28 @@ def test_deleting_some_other_batch_leaves_the_trunk_and_its_log_alone(tmp_path: 
 # --- scoping ------------------------------------------------------------------
 
 
-def test_a_dataset_id_that_is_not_stored_reads_as_missing(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "call",
+    [
+        pytest.param(lambda fx: fx.datasets.get(uuid4()), id="getting-an-unknown-dataset"),
+        pytest.param(lambda fx: fx.datasets.stats(uuid4()), id="stats-of-an-unknown-dataset"),
+        pytest.param(
+            lambda fx: fx.datasets.member_asset_ids(uuid4()),
+            id="members-of-an-unknown-dataset",
+        ),
+    ],
+)
+def test_naming_a_dataset_that_does_not_exist_is_refused(
+    tmp_path: Path, call: Callable[[Fixture], object]
+) -> None:
+    """Every read that takes a dataset id refuses the same way.
+
+    A read that answered emptily instead would be indistinguishable from a real
+    dataset nobody has promoted into.
+    """
     fixture = Fixture(tmp_path)
     with pytest.raises(DatasetNotFound):
-        fixture.datasets.get(uuid4())
+        call(fixture)
     fixture.close()
 
 
@@ -726,13 +745,6 @@ def test_removing_an_asset_takes_its_labels_out_of_the_counts(tmp_path: Path) ->
     fixture.close()
 
 
-def test_stats_of_an_unknown_dataset_are_refused(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(DatasetNotFound):
-        fixture.datasets.stats(uuid4())
-    fixture.close()
-
-
 # --- who is in the trunk, asked cheaply ---------------------------------------
 #
 # `member_asset_ids` exists because promotion was unobservable: the batch stays
@@ -799,9 +811,3 @@ def test_promoting_twice_does_not_double_the_membership(tmp_path: Path) -> None:
 
     assert again == []
     assert fixture.datasets.member_asset_ids(fixture.dataset.id) == first
-
-
-def test_an_unknown_dataset_is_refused(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(DatasetNotFound):
-        fixture.datasets.member_asset_ids(uuid4())

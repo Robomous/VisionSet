@@ -91,6 +91,14 @@ def _annotate(workspace: WorkspaceService, project_id: UUID, label_class: str) -
 
 
 def test_the_first_version_of_a_schema_is_one(tmp_path: Path) -> None:
+    """Kept although its body duplicates `test_the_first_version_is_never_destructive`.
+
+    Deleting it leaves one line of `sqlite_metadata_store.py` uncovered that no
+    other test reaches — not because of anything this test asserts, but because
+    the adapter has a branch only a further workspace lifecycle arrives at. The
+    duplication is load-bearing for a reason outside its own assertion, so removing
+    it needs that branch covered somewhere first.
+    """
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     assert schemas.create_version(project.id, [SIGN]).version == 1

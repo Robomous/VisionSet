@@ -6,6 +6,7 @@ rather than restating them, so neither test can drift from the table it guards.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -485,10 +486,21 @@ def test_a_project_with_no_batches_reports_all_zeros(tmp_path: Path) -> None:
 # --- refusals -----------------------------------------------------------------
 
 
-def test_an_unknown_job_is_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("call", "match"),
+    [
+        pytest.param(lambda fx: fx.jobs.get(uuid4()), "no job", id="getting-an-unknown-job"),
+        pytest.param(lambda fx: fx.jobs.batch(uuid4()), None, id="the-batch-of-an-unknown-job"),
+    ],
+)
+def test_naming_a_job_that_does_not_exist_is_refused(
+    tmp_path: Path, call: Callable[[Fixture], object], match: str | None
+) -> None:
+    """Asking for a job and asking which batch it belongs to fail the same way — the
+    second is a missing *job*, not a missing batch."""
     fixture = Fixture(tmp_path)
-    with pytest.raises(JobNotFound, match="no job"):
-        fixture.jobs.get(uuid4())
+    with pytest.raises(JobNotFound, match=match):
+        call(fixture)
     fixture.close()
 
 
@@ -627,11 +639,4 @@ def test_a_job_id_alone_resolves_to_the_batch_it_is_a_segment_of(tmp_path: Path)
 
     for job in fixture.batches.jobs(fixture.batch.id):
         assert fixture.jobs.batch(job.id).id == fixture.batch.id
-    fixture.close()
-
-
-def test_the_batch_of_an_unknown_job_is_a_missing_job(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(JobNotFound):
-        fixture.jobs.batch(uuid4())
     fixture.close()
