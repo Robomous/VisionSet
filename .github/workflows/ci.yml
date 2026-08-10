@@ -336,17 +336,6 @@ jobs:
           path: frontend/app/playwright-report/
           retention-days: 7
 
-  # #49's performance benchmark: frame times during pan, zoom and drag over 200
-  # boxes and 20 polygons of 32 vertices on a 4K asset, plus a CPU-throttling
-  # ladder that says how much headroom each gesture has.
-  #
-  # Manual only, which the issue explicitly blesses ("regression check kept cheap;
-  # manual trigger is fine for the beta"). Two reasons it is not on the PR path:
-  # the numbers are a property of the machine, and the run takes about a minute of
-  # deliberately serialized work — one worker, no retries, because a benchmark
-  # sharing a runner with itself is not measuring anything.
-  #
-  # The recorded baseline lives in `docs/annotations.md` and was taken on a
   # #66: the delivery thesis, built and then checked as an artifact. pip is the
   # vehicle and the compiled UI travels inside the single wheel, and three things
   # can be wrong with that wheel which no source test can see — the bundle is not
@@ -588,9 +577,23 @@ jobs:
       - name: Sync environment with the format groups
         run: uv sync --locked --group yolo --group coco
 
+      # No `-q`: `addopts` in pyproject.toml already carries one, and a second
+      # suppresses the count line — which is the line that would show this job
+      # quietly shrinking to nothing.
       - name: The reference readers load the exports
-        run: uv run pytest tests/formats/test_yolo_smoke.py tests/formats/test_coco_smoke.py -q
+        run: uv run pytest tests/formats/test_yolo_smoke.py tests/formats/test_coco_smoke.py
 
+  # #49's performance benchmark: frame times during pan, zoom and drag over 200
+  # boxes and 20 polygons of 32 vertices on a 4K asset, plus a CPU-throttling
+  # ladder that says how much headroom each gesture has.
+  #
+  # Manual only, which the issue explicitly blesses ("regression check kept cheap;
+  # manual trigger is fine for the beta"). Two reasons it is not on the PR path:
+  # the numbers are a property of the machine, and the run takes about a minute of
+  # deliberately serialized work — one worker, no retries, because a benchmark
+  # sharing a runner with itself is not measuring anything.
+  #
+  # The recorded baseline lives in `docs/annotations.md` and was taken on a
   # developer machine, which is what the acceptance criterion asks for. A run here
   # answers a different question — "did this change make it worse on the same
   # hardware as last time" — so compare a dispatch against a dispatch, never
