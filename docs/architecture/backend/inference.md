@@ -95,8 +95,10 @@ halves of that matrix, and the environment variable that keeps the with-runtime
 half honest, are described in
 [CONTRIBUTING](../../../CONTRIBUTING.md#the-two-halves-of-the-inference-matrix).
 
-The optional dependency group is `local-inference`; `_extra.py` names what it
-brings and turns a missing one into a sentence carrying the install command.
+The optional **extra** is `local-inference` — an extra rather than a dependency
+group, because a group is for developing this repository and this is something a
+user installs. `_extra.py` names what it brings and turns a missing one into a
+sentence carrying the install command.
 
 ## Where it sits
 

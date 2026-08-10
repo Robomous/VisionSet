@@ -25,8 +25,8 @@ without a server, an account, or your pixels leaving the machine.
 | **Annotate** | boxes, polygons and classification tags in the browser, with undo/redo, keyboard-first tools, and a headless engine underneath that the UI is only one renderer of. |
 | **Version** | schema versions are immutable and every label records the one it was judged against. A release freezes the whole thing into a manifest; publish twice from unchanged data and the bytes are identical. |
 | **Split** | a stored recipe rather than a materialised assignment, keyed on **content hash** — so two copies of one image cannot straddle a train/test boundary. |
-| **Export** | YOLO, COCO and Pascal VOC, each declaring what it can carry. VisionSet works out exactly what a format would drop *before* writing anything, and refuses to drop it silently. |
-| **Automate** | one SDK under everything, reachable as a Python API, a REST API, a CLI, and 39 MCP tools an agent can drive. |
+| **Export** | YOLO, COCO, Pascal VOC and [the lane family](docs/releases.md#the-lane-formats), each declaring what it can carry. VisionSet works out exactly what a format would drop *before* writing anything, and refuses to drop it silently. |
+| **Automate** | one SDK under everything, reachable as a Python API, a REST API, a CLI, and an MCP server an agent can drive. |
 
 ## Quickstart
 
@@ -57,9 +57,9 @@ labelling:
     "env": { "VISIONSET_WORKSPACE": "/path/to/workspace" } } } }
 ```
 
-The whole cycle as tools, plus one that is offered only when the server is started with
-`--allow-destructive` — because a `confirm` parameter is documented in the same listing an agent
-reads before choosing, and four of four measured runs sent it on the first call. See
+The whole cycle as tools, plus the two deletions that are offered only when the server is started
+with `--allow-destructive` — because a `confirm` parameter is documented in the same listing an
+agent reads before choosing, and four of four measured runs sent it on the first call. See
 [docs/mcp.md](docs/mcp.md) for how a client is configured and why each tool exists,
 [docs/mcp-tools.md](docs/mcp-tools.md) for the generated reference, or
 [docs/mcp-walkthrough.md](docs/mcp-walkthrough.md) for a session start to finish — including what
