@@ -70,11 +70,11 @@ const TAG = "v1";
  * about ninety seconds of rebuild each.
  *
  * `repeatEachIndex` **and `retry`**, because a retry is the same repetition run
- * again into the same workspace. #314 scoped only the first, and #281's run is
- * where that showed: a genuine failure left its project behind, the retry died
- * on `POST /projects → 409`, and the report named the 409 — turning one readable
- * failure into two unreadable ones, which is the exact wall the scoping was
- * added to remove. The workspace really is fresh per invocation (the script
+ * again into the same workspace. Scoping only the first turns one readable
+ * failure into two unreadable ones: a genuine failure leaves its project behind,
+ * the retry dies on `POST /projects → 409`, and the report names the 409 — which
+ * is the exact wall the scoping exists to remove. The workspace really is fresh
+ * per invocation (the script
  * `rm -rf`s it before `init`) and `workers: 1` means two repetitions never
  * overlap, so those two indices are the whole of the uniqueness needed.
  *
@@ -97,7 +97,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
   const PROJECT = projectFor(info);
 
-  // #161's first acceptance criterion, collected across the whole walk rather than
+  // Collected across the whole walk rather than
   // asserted at one moment: a clean load should produce **zero** console errors and
   // no failed request, and the only one there had been was the browser asking for
   // `/favicon.ico` unprompted and the API root correctly answering 404.
@@ -113,7 +113,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   // has no schema yet, which is how the editor knows to open on an empty draft —
   // and Chrome logs a console error for each. Collected so those can be told from
   // a resource the *browser* went looking for on its own, which is the only kind
-  // #161 is about and the only kind nothing else would notice.
+  // nothing else would notice.
   const apiRefusals = new Set<string>();
   // Requests the *app* issued that the network stack reported as aborted.
   // Asserted rather than ignored — see the final step for why they are not
@@ -147,7 +147,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
   await test.step("open the app, which asks for nothing", async () => {
     await page.goto("./");
-    // #179's first acceptance criterion, against the real thing: `visionset server`
+    // The browser session against the real thing: `visionset server`
     // on this machine, a browser, and the product — nothing typed, nothing
     // pasted, no token anywhere in this step.
     await expect(page.getByTestId("app-rail")).toBeVisible();
@@ -171,7 +171,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("project-name").fill(PROJECT);
     await page.getByTestId("project-description").fill("Driven by #59");
     await page.getByTestId("create-submit").click();
-    // Straight into it (#387): a project is made in order to do something with
+    // Straight into it: a project is made in order to do something with
     // it, so the list it was made from is never the destination. The route is
     // asserted as well as the screen, because "the callback fired" and "the app
     // turned it into a URL" are two claims and only the second survives a
@@ -183,8 +183,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
   await test.step("declare a schema with all four geometries", async () => {
     /*
-     * A brand-new project opens on Overview since #210, and since #388 it opens
-     * on **one** invitation chosen from its real state — no schema and no
+     * A brand-new project opens on Overview, on **one** invitation chosen from
+     * its real state — no schema and no
      * images, so the invitation is the classes one and it is the page's only
      * filled button. This is the first-run path a person actually walks, so the
      * run walks it: the CTA, not the tab bar.
@@ -216,7 +216,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
         ["vehicle", "bbox"],
         ["lane", "polygon"],
         ["daytime", "classification_tag"],
-        // #223. The picker offers it because the API accepts it and the lane
+        // The picker offers it because the API accepts it and the lane
         // exporters need it — not because anything draws one. Declaring it here
         // is the schema editor's half of that, against a real `create_version`
         // that would answer `UnsupportedGeometry` if the kernel disagreed.
@@ -232,7 +232,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     }
 
     /*
-     * The draft survives leaving the tab, in a real DOM (#389).
+     * The draft survives leaving the tab, in a real DOM.
      *
      * jsdom cannot carry this claim on its own: the mechanism is Radix
      * unmounting inactive `TabsContent`, and "the component really was destroyed
@@ -276,37 +276,32 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("the finished run names the batch it filled, and opens it", async () => {
-    // **#181, and this is the only test anywhere that drives the route the fix
-    // wires.** The run used to reach `completed` and end the page: this step
-    // walked back through the project to find the batch, which is the same shape
-    // as the `jobIdOf` helper #160 deleted — a suite that finds the batch by
-    // another road cannot notice that the screen offers none.
+    // **The only test anywhere that drives the settled run's own route onward.**
+    // Walking back through the project to find the batch instead would be a suite
+    // finding it by another road, which cannot notice that the screen offers none.
     await expect(page.getByTestId("run-outcome")).toContainText("cycle-batch");
     await page.getByTestId("open-batch").click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
   });
 
   await test.step("a draft batch's tiles have nowhere to go, and say why", async () => {
-    // Before approval there are no jobs, so `BatchAsset.job_id` is null (#29) and
-    // an asset has nowhere to go. #160's third criterion still holds and its
-    // spelling changed with #284: the tile is no longer one big disabled button,
+    // Before approval there are no jobs, so `BatchAsset.job_id` is null and
+    // an asset has nowhere to go. The tile is not one big disabled button,
     // because selecting a frame in a draft is legitimate — it is opening one that
     // is not. So what is asserted is the *capability*, not the control's tag.
     await expect(page.getByTestId("gallery")).toBeVisible();
     const first = page.getByTestId(/^tile-/).first();
     await expect(first).toHaveAttribute("data-pending", "true");
     // No route into the annotator, and the reason on the card itself — which is
-    // the element a pointer is over wherever it lands. That last assertion is the
-    // pre-#284 spelling, restored: the explanation went back onto the tile when
-    // the caption row that had been carrying it went away.
+    // the element a pointer is over wherever it lands. The explanation lives on
+    // the tile rather than in a caption row beside it.
     await expect(first.getByTestId(/^open-/)).toHaveCount(0);
     await expect(first).toHaveAttribute("title", /draft/i);
 
-    // **Selection is offered, and it was not until #281.** A draft is the one
+    // **Selection is offered.** A draft is the one
     // state where `edit_membership` is legal, so "every action one could offer is
-    // unavailable before jobs exist" stopped being true the moment membership
-    // editing reached the wire — and the gate that hid the bar was hiding the one
-    // state it is for. Against a real server, so the batch's own
+    // unavailable before jobs exist" is false — and a gate that hid the bar would
+    // be hiding the one state it is for. Against a real server, so the batch's own
     // `allowed_actions` is the kernel's answer rather than a fixture's.
     await first.getByTestId(/^select-/).click();
     await expect(page.getByTestId("bulk-remove")).toBeEnabled();
@@ -317,12 +312,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("the grid fills the pane, and re-flows when the window narrows", async () => {
-    // **#159, and it can only be asserted here.** The gallery rendered one tile per
-    // row at every width because `useColumns`' `ResizeObserver` was attached in an
-    // effect that ran once, while the scroller was still inside `<Async>`'s loading
-    // branch and therefore null. jsdom cannot see any of this: it reports every
-    // element as 0×0, so the virtualizer renders no rows at all there and the
-    // screen's own unit tests passed in exactly the state the bug produced.
+    // **The column count, and it can only be asserted here.** A gallery renders
+    // one tile per row at every width if `useColumns`' `ResizeObserver` is attached
+    // in an effect that runs once, while the scroller is still inside `<Async>`'s
+    // loading branch and therefore null. jsdom cannot see any of this: it reports
+    // every element as 0×0, so the virtualizer renders no rows at all there and the
+    // screen's own unit tests pass in exactly the state the bug produces.
     //
     // Measured rather than pinned to a number: the pane's width depends on the
     // rail, the padding and the scrollbar, so the claim is that the rendered
@@ -365,10 +360,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("reach the annotator by clicking, on the asset that was clicked", async () => {
-    // **#160's fourth acceptance criterion, and the reason this step exists.**
-    // Until this fix the only way in was `page.goto('./jobs/' + id)` with the id
-    // read out of the API — which is exactly what this spec used to do, and what
-    // made a defect that blocked the whole product invisible to a green suite.
+    // **The annotator is reached by clicking, and that is the reason this step
+    // exists.** `page.goto('./jobs/' + id)` with the id read out of the API makes
+    // a defect that blocks the whole product invisible to a green suite.
     // Nothing here types a URL.
     await openProject(page, PROJECT, "batches");
     await page.getByTestId("open-batch-cycle-batch").click();
@@ -377,13 +371,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // The **third** tile, so "it opened the job" and "it opened this asset" cannot
     // be confused: a page that ignored the click would show 1/3.
     //
-    // The control changed with #284 and the criterion did not. A press on the
-    // thumbnail now *selects* — the grid grew shift-ranges and a bulk bar, and a
-    // gallery where the only click opens cannot express a multi-frame action — so
-    // opening moved to its own labelled control on the tile. It is always visible
-    // rather than hover-gated, which a touch device would never reach. What #160
-    // asked for is that the annotator is reachable **by clicking**, with no id
-    // read out of the API and no URL typed, and that is what this does.
+    // A press on the thumbnail *selects* — the grid has shift-ranges and a bulk
+    // bar, and a gallery where the only click opens cannot express a multi-frame
+    // action — so opening has its own labelled control on the tile. It is always
+    // visible rather than hover-gated, which a touch device would never reach.
+    // What matters is that the annotator is reachable **by clicking**, with no id
+    // read out of the API and no URL typed.
     const tiles = page.getByTestId(/^tile-/);
     await expect(tiles).toHaveCount(3);
     const third = tiles.nth(2);
@@ -395,16 +388,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page).toHaveURL(new RegExp(`/jobs/[0-9a-f-]+\\?asset=${openedAsset}$`));
     await expect(page.getByTestId("asset-position")).toContainText("3/3");
 
-    // #160's fifth criterion, and the only honest way to check it here: reload the
+    // The only honest way to check the deep link: reload the
     // URL **the app itself produced**, which is a fresh `GET /app/jobs/<id>?asset=`
-    // at the server and therefore drives #58's SPA deep-link fallback for real. A
+    // at the server and therefore drives the SPA deep-link fallback for real. A
     // typed `page.goto('./jobs/…')` would assert the same thing while reopening
     // the door this task closed.
     await page.reload();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.getByTestId("asset-position")).toContainText("3/3");
 
-    // The grid button switches frames without leaving (#390): an overlay over the
+    // The grid button switches frames without leaving: an overlay over the
     // workspace, the URL unmoved, and Escape returning to exactly the frame that
     // was on screen.
     const inTheEditor = page.url();
@@ -415,10 +408,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("frame-gallery")).toHaveCount(0);
     await expect(page.getByTestId("asset-position")).toContainText("3/3");
 
-    // And back to the gallery, from the arrow — the other half of #160, which
-    // rendered disabled because nothing passed the callback. Leaving is still a
-    // thing you can do; it just stopped being the only way to look at your own
-    // frames.
+    // And back to the gallery, from the arrow. Leaving is still a thing you can
+    // do; it is not the only way to look at your own frames.
     await page.getByTestId("back").click();
     await expect(page.getByTestId("gallery")).toBeVisible();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/batches\/[0-9a-f-]+$/);
@@ -427,19 +418,19 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   await test.step("annotate all three assets", async () => {
     // Back in through the first tile, because the drawing below walks 1 → 2 → 3.
     // Through its `Open` control, for the reason above: a press on the thumbnail
-    // selects since #284.
+    // selects.
     const firstTile = page.getByTestId(/^tile-/).first();
     const firstAsset = (await firstTile.getAttribute("data-testid"))!.replace("tile-", "");
     await firstTile.getByTestId(`open-${firstAsset}`).click();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.getByTestId("asset-position")).toContainText("1/3");
-    // The batch's pin, named on the screen (#232). Not the project's active
+    // The batch's pin, named on the screen. Not the project's active
     // version — they are the same number here because nothing has published
     // since approval, and the point is that the annotator says which one it is
-    // judged against, since #229 made the pin movable.
+    // judged against, because the pin is movable.
     await expect(page.getByTestId("pinned-schema")).toHaveText("v1");
 
-    // And it answers the question it raises (#368). Nothing about the project's
+    // And it answers the question it raises. Nothing about the project's
     // active version is fetched until this is pressed — the rule
     // `annotate.spec.ts` pins from the other side — so the popover is the only
     // place in the editor where that read is legitimate. Here the pin *is* the
@@ -471,11 +462,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
-    // 3a — a lane, written the way lanes are actually written (#223).
+    // 3a — a lane, written the way lanes are actually written.
     //
-    // **This is the whole point of shipping the geometry without a tool.** There
-    // is no polyline drawing tool (#342), and the workflow the geometry exists
-    // for is *an agent pre-labels lanes and a person reviews them here*. So the
+    // **This is the point of shipping a geometry an agent writes.** The workflow
+    // it exists for is *an agent pre-labels lanes and a person reviews them
+    // here*. So the
     // lane arrives over the REST API, with the same credential the app is
     // holding, and everything after this line is the person's half of that.
     //
@@ -537,9 +528,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     // 3c — the lane tool is live, and it is live off a schema this server sent.
     //
-    // The strip carried a **disabled** polyline button here until #342, with the
-    // sentence explaining why lanes could only be written by an agent. That is the
-    // assertion this replaces, and it is worth keeping at this level rather than
+    // A **disabled** polyline button with a sentence explaining why lanes can only
+    // be written by an agent is what this replaces, and it is worth keeping at this
+    // level rather than
     // only in `e2e/polyline.spec.ts`: the strip is built from `drawableGeometry`
     // over the *pinned* schema, so what is asserted here is that a real
     // `SchemaVersionOut` — round-tripped through the API and the generated client —
@@ -570,7 +561,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("accept").click();
     await expect(page.getByTestId("asset-progress")).toHaveAttribute("data-progress", "accepted");
 
-    // The chain nothing in the browser closed before #59 found it: a batch cannot
+    // The chain the browser has to close: a batch cannot
     // complete while a job is outstanding, and a job cannot while an asset is
     // unsettled. Saving annotations settles the assets; this closes the job.
     //
@@ -582,7 +573,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("finish-job")).toHaveText("Finished");
 
     /*
-     * #439, against the real kernel and in place — no reload, no navigation.
+     * The job's own gate, against the real kernel and in place — no reload, no
+     * navigation.
      *
      * The batch is still `in_annotation` here (the next step is what completes
      * it), which is exactly the case the batch gate cannot cover: `JobService`
@@ -621,8 +613,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
   await test.step("the completed batch reopens as a viewer, from the tile and the address bar", async () => {
     /*
-     * The step the walk never took (#423): every earlier read-only claim ran
-     * against stubs, so nothing proved that a *real* completed batch — whose
+     * The step a stubbed run cannot take: every earlier read-only claim runs
+     * against stubs, so nothing proves that a *real* completed batch — whose
      * asset declarations the kernel computes — reopens as a viewer. The two
      * entries below are the two roads in: the gallery tile, and a reload of the
      * job URL with no cache to inherit.
@@ -638,8 +630,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
     await expect(page.getByTestId("banner-create-correction")).toBeVisible();
     await expect(page.getByTestId("tool-palette")).toHaveCount(0);
-    // The classes region leaves the viewer entirely (#426) — with it go the
-    // add-a-class doors #423 first closed by disabling.
+    // The classes region leaves the viewer entirely — and the add-a-class doors
+    // go with it rather than being disabled.
     await expect(page.getByTestId("class-region")).toHaveCount(0);
 
     // A full draw gesture writes nothing and dirties nothing.
@@ -732,7 +724,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
   await test.step("delete a batch, and watch the trunk not move", async () => {
     /*
-     * **#376, against the real kernel** — the half a stubbed run cannot make.
+     * **Deleting a batch, against the real kernel** — the half a stubbed run
+     * cannot make.
      *
      * Two claims, and both are about the server's own answer rather than about
      * this client's rendering. First: what the overflow offers is
@@ -785,7 +778,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("dataset-stats")).toContainText("3");
     await expect(page.getByTestId("dataset-screen")).toBeVisible();
 
-    // #223: a lane is counted like any other annotation. `DatasetStats.per_class`
+    // A lane is counted like any other annotation. `DatasetStats.per_class`
     // is derived per call from what the trunk actually holds, so a geometry the
     // counter did not know about would simply be absent — and absent reads as "no
     // lanes were labelled", which is the failure mode worth an assertion.
@@ -881,7 +874,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
-    // Out to the end of the job, because since #416 **Finish job renders on the
+    // Out to the end of the job, because **Finish job renders on the
     // last frame only** — it is the filled slot there, and `Save and next` is the
     // filled slot everywhere else. Walking there is not incidental to this step:
     // it is the same save-first advance a person makes, over frames this
@@ -936,7 +929,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId(`export-${TAG}`).click();
     await page.getByTestId("export-format").click();
 
-    // #223's five lane plugins, discovered by the *running server* through the
+    // The five lane plugins, discovered by the *running server* through the
     // real entry-point group rather than by an import in a test — and each
     // declaring itself lossy, which is the one thing the picker shows about a
     // format before you choose it. A lane format that arrived silently unmarked
@@ -947,7 +940,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     await page.getByRole("option", { name: /dummy/ }).click();
 
-    // **Three requests behind one click, since #328.** The launch answers 202 with
+    // **Three requests behind one click.** The launch answers 202 with
     // a job id, the screen polls `/background-jobs/{id}` until it succeeds, and
     // only then fetches the artifact and saves it. The assertion is unchanged
     // because the *outcome* is unchanged — which is the point of waiting on the
@@ -965,14 +958,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("the whole walk produced a clean console", async () => {
-    // #161. Last, so it covers everything above rather than one screen: eleven
+    // Last, so it covers everything above rather than one screen: eleven
     // navigations, a reload, two viewport changes and a download, and the browser
     // should have had nothing to say about any of it.
     //
     // **Stated rather than implied: headless chromium does not request
-    // `/favicon.ico` on its own**, so this assertion cannot reproduce #161's
-    // original symptom — a headed browser asks, a headless one does not, and
-    // removing the `<link>` again leaves this passing. Verified, not assumed.
+    // `/favicon.ico` on its own**, so this assertion cannot reproduce the original
+    // symptom — a headed browser asks, a headless one does not, and
+    // removing the `<link>` leaves this passing. Verified, not assumed.
     //
     // What it does hold is the property the issue is actually after: the walk
     // produces no console error and no failed resource load, so a *new* one has
@@ -994,7 +987,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * fires after the DELETE's `await` resolves. It is bookkeeping, not a
      * failure.
      *
-     * `DELETE /batches/{id}` is #376's route and the second `204` this client
+     * `DELETE /batches/{id}` is the second `204` this client
      * sends; the step that calls it asserts the batch is gone from the table and
      * the trunk did not move, which is what "committed" means there. The
      * annotation delete had no coverage before this walk at all, because nothing
@@ -1010,7 +1003,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     ]);
     // And the icon is genuinely served under the mount, rather than absent and
     // unnoticed: `vite preview` would answer 200 with `index.html` here, which is
-    // #49's trap and the reason this is checked against the real server.
+    // the reason this is checked against the real server.
     const icon = await page.request.get("/app/favicon.svg");
     expect(icon.status()).toBe(200);
     expect(icon.headers()["content-type"]).toContain("image/svg+xml");
@@ -1024,18 +1017,18 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
  * Both read off the live DOM: `rendered` counts the children of the first row, and
  * `fits` recomputes the screen's own arithmetic from the scroller's measured width.
  * Comparing the two is what makes this a check on the *measurement* rather than on
- * a number somebody typed — #159's arithmetic was correct throughout and the
- * measurement never happened.
+ * a number somebody typed. The arithmetic is never the part that breaks; the
+ * measurement is.
  */
 async function columnsOf(page: Page): Promise<{ rendered: number; expected: number }> {
   await expect(page.getByTestId("gallery-row-0")).toBeVisible();
   return await page.evaluate(() => {
     const GAP = 12;
-    // #284 removed the nested scroller — the document scrolls now — so the pane
+    // There is no nested scroller — the document scrolls — so the pane
     // is the grid itself, and the tile size is the density slider's rather than a
     // constant. `data-min-column` is the layout's *input*; `rendered` is its
     // output. Reading the count off `data-columns` would assert the value against
-    // itself, which is #159's mistake in a new costume.
+    // itself.
     const grid = document.querySelector('[data-testid="gallery-grid"]')!;
     const tile = Number(grid.getAttribute("data-min-column"));
     const rows = [...document.querySelectorAll('[data-testid^="gallery-row-"]')];
@@ -1055,8 +1048,8 @@ async function columnsOf(page: Page): Promise<{ rendered: number; expected: numb
 /**
  * The walk back to a project, and to one of its sections.
  *
- * #171 put the schema, the batches and the version history behind tabs, so
- * "reach the batch table" is now two clicks rather than one. It is clicked rather
+ * The schema, the batches and the version history are behind tabs, so
+ * "reach the batch table" is two clicks rather than one. It is clicked rather
  * than reached by `?tab=`, for the same reason nothing here types a URL: a step
  * that navigates by address cannot notice that the control is missing.
  */
@@ -1073,11 +1066,10 @@ async function openProject(
 }
 
 /*
- * `jobIdOf` used to live here: it read the job id out of the API through the
- * browser's session so the spec could `page.goto('./jobs/' + id)`. #160 deleted it
- * along with the navigation, because that helper *was* the workaround — a suite
- * that fetches an id the product never shows cannot notice that the product never
- * shows it. The annotator is now reached the way a person reaches it.
+ * There is deliberately no `jobIdOf` helper reading the job id out of the API so
+ * the spec can `page.goto('./jobs/' + id)`. That helper *is* the workaround — a
+ * suite that fetches an id the product never shows cannot notice that the product
+ * never shows it. The annotator is reached the way a person reaches it.
  */
 
 /**
@@ -1091,8 +1083,8 @@ async function openProject(
  *
  * The cycle lost a run to exactly this before the wait existed.
  *
- * The list moved out of the top bar with #420; what it is doing here did not
- * change, and neither did the reason for the wait.
+ * The list lives in the side panel; the reason for the wait is the same wherever
+ * it is.
  */
 async function activate(page: Page, name: string): Promise<void> {
   await page.getByTestId(`class-row-${name}`).click();

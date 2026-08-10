@@ -58,6 +58,7 @@ Read the skill **before** writing code in that area.
 | Rendering a state-gated action, a mutation hook, or error/success feedback | `ui-capabilities` |
 | Adding, moving, or removing a route, tab, screen, nav entry, or cross-screen link | `information-architecture` |
 | Writing an issue, an issue comment, a PR body, or a doc — before posting | `public-communications` |
+| Writing a code comment or a docstring | **Comments and docstrings** under `Rules` below |
 
 ## Project overview
 
@@ -103,6 +104,26 @@ contract to make a build pass.
 Report failures verbatim. Never claim a check passed without running it.
 
 ## Rules
+
+### Comments and docstrings
+
+- **Be brief.** One to three sentences for a rationale comment. A docstring says what the
+  thing does and why it exists — not how it came to be, and not a narrative of the work that
+  produced it. Length is not thoroughness; a comment nobody finishes explains nothing.
+- **Never explain with an issue or PR number.** `#160`, `see #212`, `fixed in #323` are
+  pointers rather than explanations, and a reader in an editor, a vendored copy or a fork
+  cannot follow one. Write the reason itself, in the present tense, as a property of the
+  code: *what breaks without this*, not *which ticket found it*.
+- A reference survives only where the history is genuinely load-bearing **and** the comment
+  already stands on its own without it — rare. `cf. #N` is the spelling. Never a close
+  keyword (`Closes`, `Fixes`, `Resolves`) anywhere but a PR body: GitHub acts on one
+  wherever it appears, including inside quoted text.
+- **Never delete a comment that carries an invariant, a non-obvious constraint, or a "why"
+  the code cannot express.** Rewrite it shorter. When torn between deleting and rewriting,
+  rewrite.
+- A pydantic model's or FastAPI route's docstring is **published**: FastAPI copies it
+  verbatim into `openapi.json` and it reaches the generated TypeScript client. Write those
+  for a client reading the contract, and regenerate both artifacts in the same change.
 
 ### Commits and PRs
 

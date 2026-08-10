@@ -25,7 +25,7 @@ DEFAULT_IMAGE_SIZE = (32, 24)
 """Non-square on purpose: an EXIF orientation swap is invisible on a square image."""
 
 JPEG_ENCODER_ARGS: dict[str, object] = {"quality": 90, "subsampling": 0, "optimize": False}
-"""Pinned, because #16 content-addresses thumbnails and a drifting encoder moves the hash."""
+"""Pinned: thumbnails are content-addressed, so a drifting encoder moves the hash."""
 
 _FORMAT_BY_SUFFIX = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG"}
 
@@ -99,7 +99,7 @@ def write_exif_rotated_image(
     seed: int = 0,
     orientation: int = 6,
 ) -> Path:
-    """Orientation 6 is a 90° turn, so a 32x24 file must be *reported* as 24x32 (#16)."""
+    """Orientation 6 is a 90° turn, so a 32x24 file must be *reported* as 24x32."""
     return write_image(path, size=size, seed=seed, orientation=orientation)
 
 
@@ -130,7 +130,7 @@ def write_image_in_unsupported_format(
     seed: int = 0,
     image_format: str = "BMP",
 ) -> Path:
-    """A valid, decodable image in a format VisionSet deliberately does not accept (#16).
+    """A valid, decodable image in a format VisionSet deliberately does not accept.
 
     The third refusal, and the one that is easiest to forget exists. Pillow reads
     BMP, GIF, TIFF and WEBP perfectly well, so "we decline this format" is a real
@@ -149,7 +149,7 @@ def write_multi_picture_jpeg(
     size: tuple[int, int] = DEFAULT_IMAGE_SIZE,
     seed: int = 0,
 ) -> Path:
-    """A two-frame MPO — what a phone writes in portrait and burst modes (#16).
+    """A two-frame MPO — what a phone writes in portrait and burst modes.
 
     Pillow reports the container as `MPO`, not `JPEG`, so a decoder that matched on
     the format name alone would refuse a very large share of real camera output. The

@@ -20,7 +20,7 @@
  * `counts` is the settled-state barrier every spec in `e2e/` already waits on,
  * and `bench-ready` says the 4K raster has been built. Nothing here is styled
  * beyond what makes the pane large, which is the point — this page is an
- * instrument, and #50 polishes the *demo*, not this.
+ * instrument, and the showcase's chrome belongs to the *demo*, not to this.
  *
  * ## The picture arrives after the document
  *

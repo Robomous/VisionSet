@@ -45,17 +45,14 @@ _PROBE_ARGS: Final = (
 #: Every ffmpeg argument that decides what comes out, pinned. Each one earns it:
 #:
 #: **There is deliberately no ``-xerror``**, and its absence is the least obvious
-#: thing here. It reads as the obvious way to make a damaged clip fail loudly —
-#: exit non-zero the moment the decoder reports an error — and it was in the
-#: command until #444. What it also does is abort *in place*, without flushing the
-#: frames already queued for the muxer, and the depth of that queue is the
-#: decoder's thread count, which ffmpeg picks from the host's core count when
-#: nobody says otherwise. One truncated clip therefore salvaged 46 frames on four
-#: cores, 34 on sixteen and 30 on twenty; the suite's own fixture salvaged 4 and
-#: 0. Letting the run finish instead makes the output byte-identical at every
-#: thread count, and loses nothing: the error still arrives, on stderr, which is
-#: where :func:`_extract` now reads it. ``-err_detect explode`` is not here
-#: either, for the older reason — it rejects perfectly good files.
+#: thing here. It looks like the way to make a damaged clip fail loudly, but it
+#: aborts *in place* without flushing the frames already queued for the muxer,
+#: and that queue's depth is the decoder's thread count — which ffmpeg picks from
+#: the host's core count. One truncated clip therefore salvaged 46 frames on four
+#: cores, 34 on sixteen and 30 on twenty. Letting the run finish makes the output
+#: byte-identical at every thread count and loses nothing: the error still
+#: arrives on stderr, where :func:`_extract` reads it. ``-err_detect explode`` is
+#: not here either — it rejects perfectly good files.
 #:
 #: ``fps=...:round=up`` is the extraction grid *and* the reason
 #: ``timestamp = index / fps`` is honest. The filter maps each input frame onto an

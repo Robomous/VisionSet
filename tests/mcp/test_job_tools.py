@@ -111,7 +111,7 @@ def test_a_job_cannot_be_completed_while_an_asset_is_unsettled(
 def test_a_job_nobody_started_completes_anyway_because_the_first_write_started_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The friction #36 found, made unreachable rather than warned about (#109).
+    """The friction real agent runs found, made unreachable rather than warned about.
 
     Two of twelve real agent runs wrote every label and then called
     `complete_job` on a job still `pending`, because writing is gated on the
@@ -135,7 +135,7 @@ def test_the_first_write_reports_the_start_and_a_later_one_does_not(
     """Both facts, never an invisible one: the agent is told the state moved.
 
     A start that happened silently would be a call doing something the caller
-    did not ask for and cannot see, which is the objection #109 records against
+    did not ask for and cannot see, which is the standing objection to
     doing it in the kernel. Publishing it is what makes it adapter *policy*
     rather than a hidden side effect.
     """
@@ -207,7 +207,7 @@ def test_deleting_a_seeded_label_starts_the_pending_job_it_belongs_to(
 def test_a_fully_seeded_job_can_be_closed_with_no_edits_at_all(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The case that decided `complete_job` auto-starts too (#109).
+    """The case that decided `complete_job` auto-starts too.
 
     A correction batch over labeled assets opens fully *settled* — every asset
     done, nothing to write, and `BatchService.approve`'s own docstring says it
@@ -235,7 +235,7 @@ def test_a_write_into_a_completed_job_is_refused_and_starts_nothing(
     auto-start guard never asks it to: it checks for `pending` rather than
     catching an `InvalidTransition` and carrying on.
 
-    **The write itself no longer lands** (#439). Until then the gate was the
+    **The write itself no longer lands**. Until then the gate was the
     batch alone, and this batch is still `in_annotation` — so a label written
     here was accepted into a job whose own record already said every asset was
     dealt with. `JobFinished` is the refusal, and the two halves are asserted
@@ -267,14 +267,14 @@ def test_a_write_into_a_completed_job_is_refused_and_starts_nothing(
 
 
 def test_the_retired_start_job_is_not_advertised() -> None:
-    """#109: the ceremony is absorbed, so the verb is gone rather than optional."""
+    """The ceremony is absorbed, so the verb is gone rather than optional."""
     assert "start_job" not in tool_schemas()
 
 
 def test_complete_job_no_longer_tells_an_agent_to_start_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """What #36's two-way test protected, held by the description that survives.
+    """What the agent runs protected, held by the description that survives.
 
     That test asserted `start_job` and `complete_job` each named the other, so an
     agent reaching either first learned the loop had two ends. There is one end
@@ -341,7 +341,7 @@ def test_an_illegal_progress_move_is_refused(
 def test_nothing_may_be_written_into_a_batch_nobody_opened(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """And the auto-start does not get in front of that gate (#109).
+    """And the auto-start does not get in front of that gate.
 
     A job in an `approved` batch is `pending`, which is the state the auto-start
     moves — so the batch gate is the one thing standing between a closed batch

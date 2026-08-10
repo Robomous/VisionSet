@@ -618,7 +618,7 @@ def test_classes_are_counted_from_the_schema_not_from_what_anybody_labeled(
 
 
 def test_a_project_with_no_schema_reports_no_classes_rather_than_raising(tmp_path: Path) -> None:
-    """Schema-less is the state every project starts in, not a failure (#6)."""
+    """Schema-less is the state every project starts in, not a failure."""
     workspace, projects = _service(tmp_path)
     project = projects.create("signs")
     _labeled(workspace, project.id, assets=1, classes={"sign": 1})
@@ -659,7 +659,7 @@ def test_stats_for_an_unknown_project_is_project_not_found(tmp_path: Path) -> No
     workspace.close()
 
 
-# --- stats: when data last arrived (#216) --------------------------------------
+# --- stats: when data last arrived --------------------------------------------
 
 
 def _arrived(workspace: WorkspaceService, project_id: UUID, *when: datetime | None) -> None:

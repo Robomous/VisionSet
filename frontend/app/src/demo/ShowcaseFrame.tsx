@@ -1,11 +1,11 @@
 /**
- * The frame around the annotator showcase and around #49's benchmark.
+ * The frame around the annotator showcase and around the benchmark.
  *
  * This is the old `App.tsx`, moved rather than rewritten. Fifty-four Playwright
  * scenarios measure the page inside it — `e2e/_frame.ts` derives every coordinate
  * from the real layout, `polygon.spec.ts` asserts the heading text, and
  * `perf.spec.ts` counts DOM mutations — so the markup and the inline styling are
- * deliberately byte-for-byte what they were. #58 moved the *route*; it did not
+ * deliberately byte-for-byte what they were. The *route* moved; the pixels did not
  * touch the page.
  *
  * ## Why it still uses inline styles under a design system
@@ -18,7 +18,7 @@
  * imported from `@visionset/ui-core` either way, so the contract has one home.
  *
  * The benchmark keeps the older dark chrome on purpose: it is an instrument, and
- * #49's recorded numbers were taken against it as it stands.
+ * the benchmark's recorded numbers were taken against it as it stands.
  */
 
 import type { JSX, ReactNode } from "react";
@@ -26,7 +26,7 @@ import type { JSX, ReactNode } from "react";
 import { COLOR, FONT_STACK, SPACE, TEXT } from "./theme";
 
 export interface ShowcaseFrameProps {
-  /** #49's 220-annotation 4K scene, which takes none of the light chrome. */
+  /** The 220-annotation 4K scene, which takes none of the light chrome. */
   readonly bench: boolean;
   readonly children: ReactNode;
 }

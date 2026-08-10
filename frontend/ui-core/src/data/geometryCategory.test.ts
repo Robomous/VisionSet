@@ -50,8 +50,8 @@ describe("the category map", () => {
   });
 
   it("puts the reserved 3D members with the lanes they will ship beside", () => {
-    // The two the kernel names and nothing implements. #375's whole reason for
-    // categorising before a geometry reaches a picker: the category is decided
+    // The two the kernel names and nothing implements. The reason for categorising
+    // before a geometry reaches a picker: the category is decided
     // where the name is, so the map is never total only by coincidence.
     expect(GEOMETRY_CATEGORY.cuboid_3d).toBe("Robotics and AD");
     expect(GEOMETRY_CATEGORY.polyline_3d).toBe("Robotics and AD");

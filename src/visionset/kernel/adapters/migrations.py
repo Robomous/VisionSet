@@ -6,14 +6,9 @@ whatever is missing. There is no alembic here — a local-first, single-file,
 single-writer store does not need a migration framework, and ``format_version``
 would then have to be kept in sync with a second ledger by hand.
 
-**Generation 1 is the baseline; everything after it is an ordinary migration.** A
-long chain of generations got the schema to its present shape while VisionSet was
-unreleased; every database they could have upgraded was disposable test data in
-this repository. Keeping them meant carrying an idempotency argument and an undo
-line per generation, plus the scaffolding that proves each one actually ran — all
-to protect files that do not exist. So today's ``_tables`` *is* generation 1, and
-a fresh database is created directly at it. The chain restarted from there, and
-the three rules below are in force again for every entry appended since.
+**Generation 1 is the baseline; everything after it is an ordinary migration.**
+Today's ``_tables`` *is* generation 1, and a fresh database is created directly
+at it. The three rules below hold for every entry appended since.
 
 **There are no downgrade paths, deliberately.** Nothing here walks a file
 backwards and the tests no longer do either. A downgrade is a compatibility
@@ -25,10 +20,8 @@ an ``upgrade`` that takes a live connection. Do NOT edit an existing one — a
 workspace already stamped at that version will never run it again.
 ``FORMAT_VERSION`` is derived from the list, so it cannot drift from reality.
 
-Three rules, back in force since migration 2. They are written down here rather
-than left in the deleted code's history, because this is where the next person
-will look. A fourth lives in the tests and belongs beside them: a migration that
-adds a **column** must also have that column dropped in
+Three rules, plus a fourth that lives in the tests: a migration that adds a
+**column** must also have that column dropped in
 ``tests/kernel/test_migrations.py``'s ``_at_generation_one``, or it finds the
 column already present, returns early, and the fresh-versus-migrated comparison
 passes while exercising nothing.
@@ -57,17 +50,15 @@ passes while exercising nothing.
 Migrations only run forward. A workspace stamped ahead of this build is
 rejected (``WorkspaceFormatTooNew``) rather than silently downgraded.
 
-**The rules above are checked rather than trusted, and it took a bug to get
-there.** Every one of them exists so that ``format_version`` means something,
-and with a single generation every workspace anybody creates carries the same
-number forever — so a file that missed a change is stamped exactly like one that
-did not, and nothing about the number can tell them apart. Migration 1 will not
-repair it either: ``create_all`` leaves an existing table as it found it, and it
-only runs while something is pending, which on a stamped file is nothing. That
-file then opens as current and fails at the first statement naming what it
-lacks, deep inside a request (#277). So ``SqliteMetadataStore.initialize``
-compares the schema it found against the one declared here and raises
-``WorkspaceSchemaMismatch`` at the door instead.
+**The rules above are checked rather than trusted.** With a single generation
+every workspace carries the same ``format_version`` forever, so a file that
+missed a change is stamped exactly like one that did not and the number cannot
+tell them apart. Migration 1 will not repair it either: ``create_all`` leaves an
+existing table as it found it, and it only runs while something is pending. Such
+a file opens as current and fails at the first statement naming what it lacks,
+deep inside a request — so ``SqliteMetadataStore.initialize`` compares the schema
+it found against the one declared here and raises ``WorkspaceSchemaMismatch`` at
+the door instead.
 """
 
 from __future__ import annotations

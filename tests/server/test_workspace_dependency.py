@@ -158,7 +158,7 @@ def test_the_server_finds_a_workspace_above_its_working_directory(
 ) -> None:
     """The one behaviour the promotion gave the server, and it is deliberate.
 
-    Before #26 this answered 500 ``NOT_A_WORKSPACE``. One resolver means the
+    Without a shared resolver this answers 500 ``NOT_A_WORKSPACE``. One resolver means the
     server discovers a workspace the same way the CLI does; the asymmetry that
     keeps it safe is that a *stated* root — the variable here, ``--workspace``
     there — never walks.

@@ -4,7 +4,7 @@
  * Separate from `AnnotatorCanvas.tsx` because a host uses them *outside* the
  * canvas: the demo's undo button, its class palette and its tag panel all read
  * the same store the canvas draws, and a component that had to be rendered to
- * expose its state would not be embeddable in the sense #47 means.
+ * expose its state would not be embeddable.
  */
 
 import { useMemo, useState, useSyncExternalStore } from "react";

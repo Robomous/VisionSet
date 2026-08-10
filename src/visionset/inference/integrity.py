@@ -8,7 +8,7 @@ cache is addressed by commit hash and etag, so a re-run finds what it already
 has and hands back the path. What it therefore cannot see is a file that is
 present and **damaged**: truncated by a filesystem error, rotted on a failing
 disk, edited in place. That one surfaces much later, inside an adapter, in a
-sentence about tensors, on a connection the row still calls ``Ready`` (#471).
+sentence about tensors, on a connection the row still calls ``Ready``.
 
 **So this reads every byte.** There is no cheaper mechanism that answers the
 question: a size check would pass a file whose length is right and whose middle
@@ -63,10 +63,9 @@ commit; nothing brackets them. What matters is which side is safe to fail on:
   **corrupt** file still cached, and the download somebody then runs restores it
   to ``ready``. Silent, and unrecoverable by any control this product offers.
 
-The first is the one this module does, and it is the ordering the decision on
-#471 states. Never-half-ready is untouched either way: ``setup_state`` has two
-values, this writes one of them, and there is no moment at which a reader finds
-a third.
+The first is the one this module does. Never-half-ready is untouched either way:
+``setup_state`` has two values, this writes one of them, and there is no moment
+at which a reader finds a third.
 
 **A crash before the verdict changes nothing at all.** Every read above happens
 before the first unlink, so a run that dies while hashing leaves the connection

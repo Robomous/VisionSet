@@ -5,8 +5,8 @@ These are the shapes :class:`~visionset.kernel.ports.ModelProvider` is written
 over, and every one of them exists to keep a *tensor* out of that port's
 signatures. A provider running in this process and a provider behind an HTTP
 endpoint must be implementable against the identical protocol, so nothing here
-may name a file, a device, a process, or an array library — the dual test #418
-sets, applied to the data rather than to the methods.
+may name a file, a device, a process, or an array library. That dual test applies
+to the data here as much as to the port's methods.
 
 **A request carries bytes, not a path.** The obvious spelling — hand the provider
 an ``Asset`` and let it read the file — is exactly the one that fails the dual
@@ -20,10 +20,9 @@ right cost: it is what makes the same call work in both places.
 asset, which is simplest locally and worst remotely — a hosted service would pay
 one round trip per image. A batch is the shape that serves both, and a local
 provider is free to loop inside it. What size a batch should be is the caller's
-question, not the port's: the Phase 0 measurement on #418 found throughput
-*decreasing* with batch size on mixed-size images, so a caller on that profile
-sends one at a time, and one that later measures otherwise sends more without any
-port change.
+question, not the port's: throughput was measured *decreasing* with batch size on
+mixed-size images, so a caller on that profile sends one at a time, and one that
+later measures otherwise sends more without any port change.
 
 **Two ways to ask, and neither is a model's API.** A prompt is either words
 (:class:`TextPrompt`) or a place on the image (:class:`PointPrompt`). That split
@@ -158,7 +157,7 @@ class AssetPrediction(BaseModel):
 
     That string is the one an annotation carries: ``Annotation.model_ref``, copied
     onto the label at write time and denormalised on purpose, so deleting the
-    connection it came from never breaks provenance (`cf. #417`, `#421`). It is
+    connection it came from never breaks provenance. It is
     **not** an ``InferenceConnection.model_id`` — the connection names *which
     weights are configured*, and this names *what actually answered*.
     """

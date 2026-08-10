@@ -4,12 +4,11 @@
 Six commands, each one service call: ``list``, ``next``, ``progress``, ``start``,
 ``mark``, ``complete``.
 
-``next`` and ``mark`` are not in #34's own list of deliverables, and without them
-"the full cycle without touching Python" is not true — a batch cannot be
-completed until every asset has settled, and nothing else here settles one.
-``JobService.mark``'s docstring invites the second by name; the first is how a
-shell learns which asset ids are still outstanding without this module rebuilding
-the job-to-asset join the API does server-side.
+``next`` and ``mark`` are what make "the full cycle without touching Python"
+true: a batch cannot be completed until every asset has settled, and nothing else
+here settles one. ``next`` is how a shell learns which asset ids are still
+outstanding without this module rebuilding the job-to-asset join the API does
+server-side.
 
 **Say the wart out loud.** ``--progress annotated`` records that somebody labeled
 an asset, and the CLI writes no labels — geometry comes from a canvas or a model,

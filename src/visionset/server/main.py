@@ -108,9 +108,8 @@ async def browser_session(request: Request, response: Response) -> dict[str, boo
     **Out of ``openapi.json``, like ``/`` and the bundle mount.** The spec is the
     contract for a *program*, and a program authenticates with
     ``Authorization: Bearer``: it should never be handed a credential it did not
-    mint and cannot revoke. Keeping the route out of the schema is also what keeps
-    the committed spec and the generated client byte-identical across this change,
-    which is one of #179's acceptance criteria.
+    mint and cannot revoke. Keeping the route out of the schema is also what left
+    the committed spec and the generated client untouched when it was added.
     """
     return {"issued": session.issue(request, response)}
 
@@ -174,8 +173,7 @@ def _install_ui(app: FastAPI, root: Path) -> None:
     contract, and where a browser finds HTML is not part of it. That is also what
     keeps the CI drift gate and ``pnpm generate:client`` still.
 
-    **The single-page deep-link fallback**, which #33 deferred to "the milestone
-    that owns a client-side router" and #58 is. ``/app/projects/abc`` is a client
+    **The single-page deep-link fallback.** ``/app/projects/abc`` is a client
     route the router resolves in the browser, but a *reload* on it is a real
     request for a path no file backs — so without a fallback, refreshing any page
     but the index is a 404, and so is every bookmark and every link somebody
@@ -230,13 +228,12 @@ def _install_ui(app: FastAPI, root: Path) -> None:
 
     # After install_error_handlers, and the order is the mechanism.
     #
-    # Keyed on **Starlette's** ``HTTPException``, not FastAPI's — #31's trap, hit
-    # again from the other side. The router raises the Starlette class for an
-    # unknown path and ``StaticFiles`` raises it for a missing file, and FastAPI's
-    # is a *subclass*: registering the subclass leaves both of those falling
-    # through to the handler installed a moment ago, so the fallback never fires
-    # for the only two things that produce the 404 it exists for. Three tests
-    # failed on exactly that before this line said ``Starlette``.
+    # Keyed on **Starlette's** ``HTTPException``, not FastAPI's. The router raises
+    # the Starlette class for an unknown path and ``StaticFiles`` raises it for a
+    # missing file, and FastAPI's is a *subclass*: registering the subclass leaves
+    # both of those falling through to the handler installed a moment ago, so the
+    # fallback never fires for the only two things that produce the 404 it exists
+    # for.
     app.add_exception_handler(StarletteHTTPException, spa_or_error)
 
     @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)

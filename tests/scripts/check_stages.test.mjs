@@ -1,8 +1,8 @@
 /**
  * `scripts/check.sh` says on **stdout** what it covered, and this is what keeps it
- * saying so (#336).
+ * saying so.
  *
- * The script has always aborted correctly on a missing prerequisite — PR #249 made
+ * The script aborts correctly on a missing prerequisite — that was made
  * `require_node_modules` exit 2 rather than limp on. What it did not do is leave
  * any trace of that on the stream a caller captures: the message goes to stderr,
  * `All checks passed.` is structurally unreachable, and stdout carries some green
@@ -51,7 +51,7 @@ const GROUPS = ["python", "frontend", "generated", "browser"];
  *
  * `root` is derived from `BASH_SOURCE`, so a copy two directories deep in a temp
  * dir *is* a workspace with nothing in it — no `node_modules`, no `pyproject.toml`,
- * nothing to check. Which is the state #336 measured, and the one a fresh worktree
+ * nothing to check. Which is the state worth measuring, and the one a fresh worktree
  * is in before `pnpm install`.
  */
 function runCopied(...args) {
@@ -134,7 +134,7 @@ test("every group the script knows is dispatched, and every arm belongs to a gro
   // The way this rots is not a deleted line: it is a group that quietly stops
   // being dispatched. Coverage shrinks, every remaining stage passes, and the
   // verdict says PASSED about a smaller run than the reader believes — the exact
-  // shortened-run-that-looks-complete #336 is about, one level up from stdout.
+  // shortened-run-that-looks-complete failure, one level up from stdout.
   const roster = SOURCE.match(/declare -a ALL_GROUPS=\(([^)]*)\)/);
   assert.ok(roster, "ALL_GROUPS is the roster the verdict line measures coverage against");
   assert.deepEqual(roster[1].trim().split(/\s+/), GROUPS);

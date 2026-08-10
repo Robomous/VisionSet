@@ -26,14 +26,14 @@
  *
  * Nothing in `core/` stores it. It arrives as `InteractionContext.labelClass` on
  * every turn, and `finishDrawing` stamps it onto the annotation the gesture
- * produced — which is the whole of #43's "class assignment from the active class".
- * Moving it into `AnnotatorStore` was considered when #43 landed and declined: the
+ * produced, which is how a drawn shape gets its class.
+ * Moving it into `AnnotatorStore` was considered and declined: the
  * store is the *document* and its history, and an active class is neither. It is
  * not undoable, it survives no reload, and putting it in the history would make
- * Ctrl+Z step through palette clicks. A palette is a host concern; #47 holds one
- * piece of React state and passes it down.
+ * Ctrl+Z step through palette clicks. A palette is a host concern; the adapter
+ * holds one piece of React state and passes it down.
  *
- * What the host owes in exchange is one line, stated here so #47 inherits it
+ * What the host owes in exchange is one line, stated here so an adapter inherits it
  * rather than rediscovering it: **when the class changes such that `toolFor`
  * returns a different tool, send `tool-changed`.** Not on every class change — a
  * switch from one bbox class to another leaves a half-drawn box perfectly valid,
@@ -43,16 +43,16 @@
  *
  * ## `select` has four causes, and they are not one fallthrough
  *
- * 1. **No active class.** Explicit select mode; #46 binds a key to it (v1's `v`).
+ * 1. **No active class.** Explicit select mode, with a key bound to it (v1's `v`).
  * 2. **A class the schema does not declare.** A real state, not a typo —
  *    `classNamed` returns `undefined` for exactly the case
  *    `SCHEMA_CHANGE_WOULD_ORPHAN` is about.
  * 3. **A `classification_tag` class.** Whole-asset tags have no coordinates;
- *    v1's classification never entered its canvas machine either, and #45 is a
- *    panel — `tags.ts`, beside this file, is that panel's engine.
+ *    v1's classification never entered its canvas machine either, and this belongs
+ *    to a panel — `tags.ts`, beside this file, is that panel's engine.
  * 4. **A class declaring `keypoints`, `mask`, `cuboid_3d` or `polyline_3d`.**
  *    Legal in a schema, refused at the annotation — the eight-names/four-variants
- *    split `types.ts` keeps. `polyline` was in this list until #342 gave it a tool;
+ *    split `types.ts` keeps. `polyline` is not in this list, because it has a tool;
  *    the ones left are the ones with no `Geometry` variant to carry.
  *
  * `drawableGeometry` is exported separately so a class palette can distinguish

@@ -89,7 +89,7 @@ def test_a_ready_local_connection_resolves_to_a_provider(
     documents — so this is the strongest form the check can take.
 
     The declared family is stubbed because `tmp_path` holds no weights and there
-    is nothing to read one from. Since #456 that is refused rather than resolved
+    is nothing to read one from. That is refused rather than resolved
     to a fallback, so a real config is now the difference between this test
     building a provider and it exercising the refusal that has its own test.
     """
@@ -119,7 +119,7 @@ def test_the_model_ref_pairs_the_id_with_the_revision(tmp_path: Path) -> None:
 
     A bare id would make "which model produced this label" unanswerable the
     moment the pointer moved, which is the whole reason the revision is required
-    on the connection (`cf. #421`).
+    on the connection.
     """
     built = LocalTransformersProvider(
         "IDEA-Research/grounding-dino-base",
@@ -225,7 +225,7 @@ def test_duplicate_detections_are_suppressed_before_they_leave_the_adapter() -> 
     """**The mutation gate for the second spike finding.**
 
     Three boxes over one instance is what the Phase 0 run measured at usable
-    thresholds (#418, findings comment). This test goes red the moment the
+    thresholds, measured. This test goes red the moment the
     suppression call is dropped from `regions_from` — which is the failure that
     would otherwise reach a write gate as three labels on one dog and be noticed
     only in a count somebody did not trust.

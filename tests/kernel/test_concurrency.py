@@ -222,7 +222,7 @@ def test_contention_and_damage_are_different_errors() -> None:
     assert not issubclass(WorkspaceCorrupt, WorkspaceBusy)
 
 
-# --- two writers on one job (#302) --------------------------------------------
+# --- two writers on one job ---------------------------------------------------
 #
 # The defect this closes is a lost update, and a lost update lives in the gap
 # between a read and the write it justifies. In `JobService.mark` that gap is a
@@ -344,7 +344,7 @@ def _stored(root: Path, job_id: UUID) -> dict[UUID, AssetProgress]:
 
 
 def test_two_writers_moving_different_assets_of_one_job_both_land(tmp_path: Path) -> None:
-    """The #302 report, in the smallest arrangement that produced it.
+    """The lost update, in the smallest arrangement that produces it.
 
     Three concurrent moves over one job answered `200`, `200`, `200` and moved
     one asset. Two of them are enough to show it: both read the same progress

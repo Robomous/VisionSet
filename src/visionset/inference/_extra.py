@@ -30,9 +30,8 @@ from typing import Final
 from visionset.kernel.errors import LocalInferenceUnavailable
 
 EXTRA: Final = "local-inference"
-"""The canonical spelling, per the decision recorded on #418. Not ``autolabel``,
-which it supersedes, and not ``local_inference``: an extra is named the way it is
-typed."""
+"""The canonical spelling. Not ``autolabel``, which it supersedes, and not
+``local_inference``: an extra is named the way it is typed."""
 
 INSTALL_COMMAND: Final = f'pip install "visionset[{EXTRA}]"'
 """What to run. Quoted, because a bare ``visionset[local-inference]`` is a glob
@@ -51,7 +50,7 @@ Declared here rather than only in ``pyproject.toml`` because the two say
 different things: the metadata says what gets installed, and this says what the
 base import graph must stay clear of.
 
-``torchvision`` is the one nothing in this package ever imports by name (#457).
+``torchvision`` is the one nothing in this package ever imports by name.
 It is here because ``transformers`` imports it for us — ``Sam2ImageProcessor``
 refuses to construct without it — and because both jobs this tuple does still
 want it: it is as heavy as the rest and must stay off the base import graph, and

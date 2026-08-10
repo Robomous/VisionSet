@@ -1,5 +1,5 @@
 /**
- * The batch delete control (#376): one component, two anchors, one gate.
+ * The batch delete control: one component, two anchors, one gate.
  *
  * Three claims here that nothing else in the suite makes:
  *
@@ -132,7 +132,7 @@ describe("what the overflow offers", () => {
     const item = await openMenu();
 
     // Shown, because there is an operation behind it and a state that would
-    // enable it — the distinction #354 drew when it removed a control instead.
+    // enable it — the distinction between this and removing the control.
     expect(item.hasAttribute("data-disabled")).toBe(true);
     expect(screen.getByTestId("delete-withheld-drive-01").textContent).toContain(
       "correction batch",

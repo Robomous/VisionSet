@@ -99,7 +99,7 @@ def test_the_same_clip_at_another_rate_is_a_new_source_of_known_frames(summary: 
     One clip registered at two rates is two sources — and the coarser one's ten
     frames land exactly on grid points the finer run already produced, so the
     project gains nothing. That alignment holds because the fps filter rounds
-    *up* onto the grid (#17); it is a property of this extractor, not a promise
+    *up* onto the grid; it is a property of this extractor, not a promise
     the port makes about every rate pair.
     """
     assert summary.coarse_source_id != summary.clip_source_id
@@ -127,7 +127,7 @@ def test_a_directory_states_its_total_and_reports_what_it_could_not_read(summary
 
 
 def test_every_asset_carries_a_cached_preview(summary: Any) -> None:
-    """#21's thumbnails, filled at ingest on both paths — frames included."""
+    """Thumbnails, filled at ingest on both paths — frames included."""
     assert summary.asset_count == 53  # 50 frames + 3 stills, counted once each
     assert summary.thumbnailed == summary.asset_count
 

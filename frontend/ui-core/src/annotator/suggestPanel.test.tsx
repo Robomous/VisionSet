@@ -1,9 +1,9 @@
 /**
  * The suggest tool's panel: the six things it can be saying, and the one rule
- * about its action (#424, D6; the sixth is #472's parked reading).
+ * about its action.
  *
- * The three *blocked* readings are the issue's own list — none configured, none
- * ready, and the server refusing because this build cannot run the model — and
+ * The three *blocked* readings — none configured, none
+ * ready, and the server refusing because this build cannot run the model — are
  * each is asserted to carry a remedy rather than a state. The fourth claim is the
  * structural one: with no callback there is an explanation and **no control**,
  * never a dead button.

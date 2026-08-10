@@ -1,5 +1,5 @@
 /**
- * The banner that says labels are coming due — before the refusal does (#290).
+ * The banner that says labels are coming due — before the refusal does.
  *
  * The schema gate is deliberately server-side: approving a batch in a
  * schema-less project is refused with `SchemaNotFound` at approval time, and

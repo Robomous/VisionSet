@@ -1,6 +1,6 @@
 """The acceptance walk: a third-party client drives the whole cycle over HTTP.
 
-Its own module, the way `test_openapi_contract.py` is #25's, and it deliberately
+Its own module, the way `test_openapi_contract.py` is the spec's, and it deliberately
 uses **none** of `tests/server/_flow.py`. The helpers exist so the other modules
 can get to the interesting part; the point of this one is that the whole walk is
 visible in a single function, with nothing shortened and nothing reached for
@@ -11,7 +11,7 @@ no private endpoints.** Every line below is something the medical-app scenario
 does over HTTP with a bearer token, and if any step needed the SDK the contract
 would be incomplete.
 
-#29 took the walk as far as a closed batch. #30 carries it to the end of the
+The walk goes past a closed batch, to the end of the
 cycle — curate, freeze, verify, export, and reach the pixels — because those were
 the steps that made "the client can do everything" false.
 """
@@ -53,7 +53,7 @@ def ok(response: Any, *expected: int) -> Any:
     happened not to need it.
 
     Parsing is conditional on the content type rather than on there being a body,
-    because since #30 the walk also fetches an archive and two images — and those
+    because the walk also fetches an archive and two images — and those
     still deserve the status assertion even though there is no JSON to hand back.
     """
     assert response.status_code in expected, (
@@ -254,7 +254,7 @@ def test_an_external_client_drives_the_cycle_from_ingest_to_an_exported_release(
     installed = ok(client.get("/formats"), 200)
     assert "dummy" in {row["name"] for row in installed["items"]}
 
-    # Launch-and-poll, since #328. The walk keeps doing it the way a real client
+    # Launch-and-poll. The walk does it the way a real client
     # would — read the 202's `Location`, poll the job, then take the artifact —
     # because that is now the contract, and the point of this module is that the
     # whole cycle is visible in one function.

@@ -16,7 +16,7 @@
  * When a sleep looks necessary, the demo has stopped exposing the state the
  * scenario needs. The fix is a `data-testid`, not a timeout.
  *
- * #49 brought `frontend/app/bench/` under the same rule. That directory times
+ * `frontend/app/bench/` is under the same rule. That directory times
  * things, so it is the one place where "wait a moment for it to settle" reads as
  * reasonable — and the one place a fixed wait does the most damage, since it
  * lands inside the window being measured. The benchmark waits on
@@ -32,7 +32,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-// Both browser-driven suites. `bench/` joined the rule with #49 rather than being
+// Both browser-driven suites. `bench/` is under the rule rather than being
 // exempted from it: a benchmark is the file most tempted to sleep — "give it a
 // moment to settle" is the obvious way to write one — and it is also the file a
 // sleep corrupts most, because a fixed wait lands inside the window being timed.

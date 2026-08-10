@@ -158,7 +158,7 @@ def test_a_model_less_sure_than_the_caller_asked_answers_nothing(
 def test_the_polygon_is_the_blob_under_the_click_and_not_a_speck(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#461 through the adapter: the positive points have to actually reach the tracer.
+    """Through the adapter: the positive points have to actually reach the tracer.
 
     A speck in the topmost row owns the topmost-leftmost lit pixel, so without
     the points this answers ``()`` — the speck traces to one point and a polygon

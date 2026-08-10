@@ -1,5 +1,5 @@
 /**
- * The way out of a sub-view — one control, one rule, every screen (#199).
+ * The way out of a sub-view — one control, one rule, every screen.
  *
  * ## Why it is structural and never `navigate(-1)`
  *
@@ -25,7 +25,7 @@
  *
  * ## It is not on the app rail
  *
- * The rail is top-level destinations (`DESIGN.md`, and #58's thin-app rule). A back
+ * The rail is top-level destinations (`DESIGN.md`, and the thin-app rule). A back
  * affordance is per screen, so it lives with the screen — which is also what lets
  * it name where it goes.
  */

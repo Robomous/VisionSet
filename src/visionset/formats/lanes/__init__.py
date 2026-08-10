@@ -20,8 +20,8 @@ plugins is five while the count of ported exporters is six.
 Four write the vertices they were given. Only TuSimple does not, and the
 difference is declared rather than described: TuSimple's file format *is* "the X
 where the lane crosses each of these rows", so a lane goes in as vertices and
-comes out as samples on a fixed grid. That is #158's third state — carried, but
-reduced — so ``polyline`` is in ``degraded_geometries`` there and in
+comes out as samples on a fixed grid. That is the third export state — carried,
+but reduced — so ``polyline`` is in ``degraded_geometries`` there and in
 ``supported_geometries`` in the other four.
 
 ``lossy`` is ``True`` for all five anyway, and the reason is the one YOLO has: a
@@ -35,10 +35,8 @@ format's own vocabulary where one exists (:data:`._core.BDD100K_CATEGORIES`,
 2D marks each vertex visible or not, and VisionSet has nowhere to store that:
 ``PolylineGeometry.points`` is a list of coordinates, and per-vertex data would be
 a change to the annotation model rather than to a format. So the ``visibility``
-array is written all-visible. v1 had the same field and the same default; the
-difference is that v1's dict-shaped annotations could in principle have carried
-it, and this records that extending the domain for one format was declined. See
-#223's port inventory.
+array is written all-visible: extending the annotation model for one format was
+declined.
 """
 
 from __future__ import annotations

@@ -26,7 +26,7 @@
  *
  *    The two answers are `null` for different reasons, and the product strip in
  *    `@visionset/ui-core` distinguishes them: a tag has nothing to draw and never
- *    will, while `polyline` has a geometry and no tool *yet* (#342), so there it
+ *    will, while a geometry with no tool *yet* is a different case, so there it
  *    is a disabled button carrying the reason. This showcase keeps the plain
  *    omission on purpose — it demonstrates that the engine ships headless, and
  *    "what a product does about a missing tool" is a product decision it is not
@@ -34,7 +34,8 @@
  *
  * ## The icons are hand-drawn, and that is a deferral rather than a preference
  *
- * `DESIGN.md` pins lucide-react (MousePointer2 / Square / Spline) and #128 is the
+ * `DESIGN.md` pins lucide-react (MousePointer2 / Square / Spline) and the design
+ * system is the
  * task that installs it. Adding a dependency to `@visionset/app` so a demo can
  * draw three glyphs would put the choice in the wrong milestone, so these are
  * three inline paths at lucide's 24-unit grid and 2px stroke. They are replaced,
@@ -52,7 +53,7 @@ import { COLOR, RADIUS, SHADOW, SPACE, TEXT } from "./theme";
 /**
  * What each drawing tool is called. Total over what `drawableGeometry` answers, so
  * a fourth geometry gaining a tool cannot reach the strip unnamed — which is what
- * the ternary this replaced let `polyline` do, silently reading "Polygon" (#342).
+ * a ternary would let `polyline` do, silently reading "Polygon".
  *
  * The showcase keeps its own strip on purpose (see `ToolPalette.tsx`), so this is
  * a second table rather than an import; what it must not be is a second *rule*,
@@ -259,7 +260,7 @@ function HelpIcon(): JSX.Element {
   );
 }
 
-/** The zoom readout. `DESIGN.md` puts a percent between −/+; #56 adds the pair. */
+/** The zoom readout. `DESIGN.md` puts a percent between −/+. */
 export function ZoomBadge({ zoom }: { readonly zoom: number }): JSX.Element {
   return (
     <div

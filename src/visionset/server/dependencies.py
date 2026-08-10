@@ -50,16 +50,15 @@ from visionset.server.settings import job_settings
 # rather than defined here — the redundant ``as`` aliases are the explicit
 # re-export form, and are what keeps the unreferenced constant off ruff's F401.
 #
-# #26 promoted the rule into the kernel, beside ``DB_FILENAME``: import-linter
-# forbids ``visionset.server`` importing ``visionset.cli``, so the one resolver
-# the server and the CLI share can live in neither of them. Both names stay
-# importable from this module because this is where the server's "which
-# workspace do I serve?" question is documented, and a reader of the server
-# should not have to know the answer moved.
+# The rule lives in the kernel, beside ``DB_FILENAME``: import-linter forbids
+# ``visionset.server`` importing ``visionset.cli``, so the one resolver the server
+# and the CLI share can live in neither of them. Both names stay importable from
+# this module because this is where the server's "which workspace do I serve?"
+# question is documented, and a reader of the server should not have to know the
+# answer lives elsewhere.
 #
-# The rule the server inherited along with the promotion: with no
-# ``VISIONSET_WORKSPACE`` set, a server started *below* a workspace now serves
-# that workspace instead of answering 500 ``NOT_A_WORKSPACE``. See
+# With no ``VISIONSET_WORKSPACE`` set, a server started *below* a workspace serves
+# that workspace rather than answering 500 ``NOT_A_WORKSPACE``. See
 # ``docs/workspaces.md`` for the precedence and for why only that case walks.
 
 _logger: Final = logging.getLogger(__name__)

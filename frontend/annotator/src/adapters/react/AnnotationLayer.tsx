@@ -1,8 +1,8 @@
 /**
  * The committed annotations. The layer that must **not** re-render during a drag.
  *
- * Acceptance criterion 2 of #47 is "dragging re-renders only the transient
- * layer", and this is the half that has to bail out for it to be true. It is
+ * Dragging must re-render only the transient layer, and this is the half that
+ * has to bail out for that to be true. It is
  * `memo`'d, and every one of its props is chosen to be identical across a whole
  * gesture:
  *
@@ -45,7 +45,7 @@ export interface AnnotationLayerProps {
   readonly zoom: number;
   /**
    * Whether a selected shape grows grips and vertex dots. `false` in the
-   * read-only mode (#426): selection there highlights — stroke and label — and
+   * read-only mode: selection there highlights — stroke and label — and
    * must not advertise a resize or a vertex drag that no press can start. A
    * boolean constant per mode, so it never moves mid-gesture and the `memo`
    * above keeps its bail-out.

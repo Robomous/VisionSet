@@ -3,7 +3,7 @@
  * tolerance, and the only one that sees an `Annotation`.
  *
  * Nothing in this file changes a shape; everything in `bbox.ts` and `polygon.ts`
- * does. That is the cut, and it is why #41's clamping criterion applies to no
+ * does. That is the cut, and it is why the clamping criterion applies to no
  * function below.
  *
  * ## Tolerances arrive in asset pixels
@@ -17,8 +17,8 @@
  * ## This is where v1 had the least to port
  *
  * v1's only hit-testing *function* was `findNearestEdgeIndex`, which `nearestEdge`
- * and `nearestPolylineEdge` are — v1 had the open branch too, dropped by #73 when
- * `polyline` was out of scope and restored by #342. Everything else was the
+ * and `nearestPolylineEdge` are — v1 had the open branch too, dropped while
+ * `polyline` was out of scope and restored with it. Everything else was the
  * browser's: a resize grip was a real SVG `<circle>`
  * with its own `onPointerDown`, and picking a shape was `<polygon>`'s own hit
  * testing plus React event bubbling. A headless engine has neither, so
@@ -34,8 +34,8 @@
  *
  * No document-shaped overload. `topmostAnnotationAt` takes the array so that
  * `geometry/` imports nothing from `state/` and stays a leaf — and so that a caller
- * can hand it a subset, which #42 wants when it tests the selected annotations'
- * grips before testing anything's body — `interaction/target.ts` is that caller.
+ * can hand it a subset, which is what `interaction/target.ts` does when it tests the
+ * selected annotations' grips before testing anything's body.
  * A convenience taking an
  * `AnnotationDocument` would cost that for one line at the call site.
  */
@@ -80,13 +80,13 @@ export interface HandleHit {
  * The vertex nearest `point` within `tolerance`, or `null`.
  *
  * Strictly-nearest wins and a tie goes to the lower index — v1's `d < minDist`.
- * It takes a bare point list rather than a polygon so that #44's half-drawn one,
- * which is not a `PolygonGeometry` yet, can be tested with the same function.
+ * It takes a bare point list rather than a polygon so that a half-drawn one, which
+ * is not a `PolygonGeometry` yet, could be tested with the same function.
  *
- * That prediction landed one function over. #44 does test a half-drawn buffer, but
- * against a vertex it can already name — the first — so it is `polygonCloseAttempt`
- * below, calling `distance` directly. Searching a list for a vertex you have the
- * index of is a slower way to get the same answer.
+ * In practice the half-drawn case is answered one function over: it needs a vertex
+ * it can already name — the first — so it is `polygonCloseAttempt` below, calling
+ * `distance` directly. Searching a list for a vertex you have the index of is a
+ * slower way to get the same answer.
  */
 export function nearestVertex(
   points: readonly Point[],
@@ -120,9 +120,9 @@ export function nearestVertex(
  * name, instead of a shape that falls out of the order two `if`s happen to sit in.
  *
  * One function because two callers ask: the transition table decides what the press
- * does, and `affordanceAt` decides what the cursor promises. #43's rule — those two
- * must not be able to disagree — and the reason the affordance layer mirrors
- * `IDLE_ROW` rather than re-deriving it.
+ * does, and `affordanceAt` decides what the cursor promises. Those two must not be
+ * able to disagree, which is also why the affordance layer mirrors `IDLE_ROW`
+ * rather than re-deriving it.
  *
  * `tolerance` is `Tolerances.closePolygon`, in asset pixels like every other
  * tolerance here.
@@ -161,11 +161,10 @@ export function nearestEdge(
 }
 
 /**
- * The same, for an **open** path: no closing edge (#342).
+ * The same, for an **open** path: no closing edge.
  *
- * The one thing #342 said had to be solved beside the tool that edits the result,
- * and it turned out to be one boolean rather than a new algorithm — the segment
- * walk was already right, and only the wrap-around was wrong for a path. Two doors
+ * One boolean rather than a new algorithm — the segment walk is already right, and
+ * only the wrap-around is wrong for a path. Two doors
  * over one implementation, `polygon.ts`'s pattern, because the closed/open answer
  * belongs to the caller's geometry and not to a flag it has to remember.
  *
@@ -254,9 +253,8 @@ export function geometryContains(
   // An open path has **no inside** — that is the whole of what makes it open, and
   // it is why a lane is reached by its outline where a polygon is reached by its
   // area. The tolerance is the same `Tolerances.shape` every other shape gets, so
-  // the band is the same width on screen at every zoom; #342 asked for a tolerance
-  // in screen pixels and this is that one, rather than a fourth constant answering
-  // a question nobody else is answering (`machine.ts`'s rule).
+  // the band is the same width on screen at every zoom, rather than a fourth
+  // constant answering a question nobody else is answering (`machine.ts`'s rule).
   if (geometry.type === "polyline") {
     if (geometry.points.length === 1) {
       return distance(point, geometry.points[0]) <= tolerance;

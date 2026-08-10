@@ -282,9 +282,9 @@ class SchemaService:
     def active(self, uow: UnitOfWork, project_id: UUID) -> AnnotationSchema | None:
         """The version in force, or ``None`` for a project that has no schema yet.
 
-        Public — promoted from a private helper by #207 rather than copied,
-        because "active is the highest version" is a doctrine and a second
-        spelling of it is free to drift. ``ProjectService.stats`` needs the
+        Public rather than copied into its callers, because "active is the
+        highest version" is a doctrine and a second spelling of it is free to
+        drift. ``ProjectService.stats`` needs the
         *count* of declared classes for a project that may legitimately have
         none, and :meth:`require_active` answers that ordinary state with an
         exception. Taking a ``uow`` for :meth:`require_active`'s reason: the

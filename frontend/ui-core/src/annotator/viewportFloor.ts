@@ -1,5 +1,5 @@
 /**
- * The annotator's minimum viewport, and how the page follows it (#184).
+ * The annotator's minimum viewport, and how the page follows it.
  *
  * ## There is a floor, and saying so is the feature
  *

@@ -11,12 +11,11 @@ torch — so it lives here, beside the adapters, exactly as ``fetch_weights`` do
 **Nothing is written.** A suggestion is a proposal: this returns it and forgets
 it, and the annotation it may become is created later through the ordinary write
 path, by a caller that carries the ``provenance``, ``model_ref`` and
-``confidence`` an accepted suggestion earns (D4 on #424). The only thing that
-outlives the call is the cached embedding, which is an optimisation and not a
-record.
+``confidence`` an accepted suggestion earns. The only thing that outlives the
+call is the cached embedding, which is an optimisation and not a record.
 
-**One asset, one prompt set.** Batch invocation is #425's, and the shape here
-says so: a single target in, a single answer out.
+**One asset, one prompt set.** Batch prediction is a separate path, and the shape
+here says so: a single target in, a single answer out.
 """
 
 from __future__ import annotations

@@ -131,7 +131,8 @@ def test_every_service_that_should_announce_itself_did(summary: Any) -> None:
 
 
 def test_the_example_ingests_rather_than_writing_assets_by_hand(summary: Any) -> None:
-    """#20 closed the one place this example reached below a service.
+    """This example reaches below no service.
+
 
     The assets exist because a directory was registered and read, not because
     the example wrote the rows itself — so there is a source and an ingest job

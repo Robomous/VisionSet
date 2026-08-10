@@ -277,7 +277,7 @@ def test_the_binary_routes_are_protected_like_every_other(client: TestClient) ->
     assert response.status_code == 401
 
 
-# --- the project's own asset listing (#208) ------------------------------------
+# --- the project's own asset listing ------------------------------------------
 #
 # The third asset listing, and the one that had been missing: the other two
 # window a batch and the curated trunk. What is asserted here is the wire — the
@@ -325,7 +325,7 @@ def test_the_order_is_the_same_on_every_call(
 ) -> None:
     """Stability is the property the gallery actually needs.
 
-    Nothing records arrival order (#216), so this cannot assert recency — but a
+    Nothing records arrival order, so this cannot assert recency — but a
     listing that reshuffled between polls would make the tiles jump under a
     cursor, which is worse than an arbitrary six.
     """

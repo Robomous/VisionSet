@@ -34,7 +34,7 @@ different names. A hash is stable across machines and runs, cannot collide, and
 matches the manifest's own canonical ordering. The cost is that the names are not
 human-readable, which an export destined for a trainer does not need.
 
-Two things this format cannot carry, both reported by #65's compatibility check
+Two things this format cannot carry, both reported by the compatibility check
 before anything is written:
 
 - **Attributes, confidence and provenance.** A YOLO label row is five numbers.
@@ -45,8 +45,8 @@ before anything is written:
   axis-aligned bounding box, which is what a detection dataset can use — but its
   shape is gone, so the report counts it as **degraded** and says so by class. A
   classification tag has no box at all and is **dropped**: a detection format has
-  nowhere to put a label with no location. Those two used to share one word, and
-  #158 is what that cost.
+  nowhere to put a label with no location. One word covering both would report a
+  polygon as absent while writing it.
 """
 
 from __future__ import annotations
@@ -110,11 +110,9 @@ class YoloDetectionExporter:
 
     #: Polygons, because ``_as_box`` writes one as its axis-aligned bounds.
     #:
-    #: #158's fix, and the shape of it is worth keeping in view: this was always
-    #: what the exporter did — the module docstring above said so — but the report
-    #: had no word for it and called the conversion a removal. A caller consented
-    #: to losing two annotations and received two boxes. The behaviour did not
-    #: change here; the declaration caught up with it.
+    #: Declared rather than left to the reader: without this set the report has no
+    #: word for the conversion and calls it a removal, so a caller consents to
+    #: losing two annotations and receives two boxes.
     degraded_geometries = frozenset({GeometryType.POLYGON})
 
     #: A YOLO dataset is a directory of pictures.
@@ -179,8 +177,8 @@ def _rows(asset: ManifestAsset, index_of: Mapping[str, int]) -> Iterable[str]:
 def _as_box(annotation: ManifestAnnotation) -> BboxGeometry | None:
     """The box this annotation contributes, or ``None`` if it contributes none.
 
-    A polygon becomes its axis-aligned bounding box — the conversion #62 asks for,
-    reachable only under consent because ``lossy`` is true. A classification tag
+    A polygon becomes its axis-aligned bounding box, reachable only under consent
+    because ``lossy`` is true. A classification tag
     has no location at all, so a detection dataset has nowhere to put it and it is
     dropped rather than given an invented box covering the whole image.
     """

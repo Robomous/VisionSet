@@ -1,16 +1,16 @@
 /**
- * The way out of every sub-view (#199).
+ * The way out of every sub-view.
  *
- * Four screens shipped with no return edge at all, and each was complete against
- * its own contract — a prop that does not exist cannot be missing, which is why no
- * existing test noticed. So the claim here is deliberately uniform and asserted
+ * A screen with no return edge is complete against its own contract — a prop that
+ * does not exist cannot be missing, which is why no other test notices. So the
+ * claim here is deliberately uniform and asserted
  * once per screen: **passed a parent, the screen renders one control that names it
  * and calls back; passed none, it renders nothing rather than a dead one.**
  *
  * That the control reaches the *right* URL is not knowable here — a parent is a
  * fact about the route table, which lives in `@visionset/app`. `e2e/navigation.spec.ts`
  * asserts it, and it navigates **by URL** so history is empty, because history is
- * exactly what this issue found the product relying on.
+ * exactly what a back affordance must not rely on.
  */
 
 import { QueryClient } from "@tanstack/react-query";
@@ -145,7 +145,7 @@ describe("the control itself", () => {
   });
 });
 
-/** Every sub-view in #199's audit, and the parent each names. */
+/** Every sub-view, and the parent each names. */
 const SUBVIEWS = [
   {
     name: "the project",

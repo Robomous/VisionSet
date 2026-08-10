@@ -4,8 +4,9 @@
  *
  * v1 modelled this well and then kept it inside a 1413-line React component,
  * where the union was one `useState` among a dozen and half of what belonged in
- * it lived in a parent hook instead. Moving it here is the whole of #42; the
- * reconciliation below is the part that is a decision rather than a transcription.
+ * it lived in a parent hook instead. Moving it here is the point of this module;
+ * the reconciliation below is the part that is a decision rather than a
+ * transcription.
  *
  * ## v1's nine, and what became of each
  *
@@ -19,8 +20,8 @@
  * | `moving-polygon-vertex {index, vertexIndex}` | `moving-vertex` | `vertexIndex` stays. |
  * | `resizing-bbox {index, handle, startBbox}` | `resizing` | v1 got this one right. |
  * | `moving-keypoint` | — | `keypoints` has no `Geometry` variant. |
- * | `moving-polyline` | `moving` | Folded, with #342. |
- * | `moving-polyline-vertex` | `moving-vertex` | Folded, with #342. |
+ * | `moving-polyline` | `moving` | Folded. |
+ * | `moving-polyline-vertex` | `moving-vertex` | Folded. |
  * | `panning-canvas {intent, …}` | `pressing-empty` | Split; the pan half left core. |
  *
  * ## `idle` is a variant, not `null`
@@ -59,15 +60,15 @@
  * v1's `moving-polygon` and `moving-polyline` carried `captured: boolean`,
  * tracking whether `svg.setPointerCapture` had been called yet — deferred,
  * because acquiring capture on pointer-down suppresses the native `dblclick`.
- * Pointer capture is the adapter's (#47). Nothing here knows the pointer has an
+ * Pointer capture is the adapter's. Nothing here knows the pointer has an
  * id, let alone that it can be captured.
  *
- * ## There is no `panning`, and #47 owes a contract for it
+ * ## There is no `panning`, and the adapter owes a contract for it
  *
  * Four of v1's five `panning-canvas` fields were `startClientX/Y` and
  * `startScrollLeft/Top` — viewport coordinates and DOM scroll state — and its
  * pointer-move wrote `scrollLeft` straight to a node. Pan and zoom belong to the
- * adapter by #47's own issue body, and `tolerance.ts` is the only module in
+ * adapter, and `tolerance.ts` is the only module in
  * `src/core/` allowed to name a zoom. A `panning` marker carrying nothing would
  * exist solely so an adapter could suppress hit-testing during a pan, which it
  * achieves by **not forwarding the events**.
@@ -81,13 +82,12 @@
  * `intent: "tentative-deselect"` deferred the click-to-deselect to pointer-up so
  * that a *drag* starting on empty canvas did not deselect, and that is
  * `pressing-empty`. Deselecting on pointer-down instead would be a visible
- * regression the moment #47 maps left-drag on empty canvas to a pan.
+ * regression the moment an adapter maps left-drag on empty canvas to a pan.
  *
  * ## There is no `selecting` either
  *
- * The issue's list names a marquee. v1 has none, no M4 issue asks for one, and
- * building one here would be inventing a feature inside a chassis task. It is
- * named rather than omitted: it would be `pressing-empty` grown a `current:
+ * A marquee is the obvious missing state. v1 has none and nothing asks for one,
+ * so it is named rather than built: it would be `pressing-empty` grown a `current:
  * Point` and a `select` effect over everything the rectangle intersects, and the
  * state it grows from is already here.
  *
@@ -106,10 +106,9 @@ import type { BboxGeometry, Point, PolygonGeometry, PolylineGeometry } from "../
 /**
  * Every shape a drag can be moving. A tag has no coordinates to move.
  *
- * `polyline` joined with #342. It was out until then not because a path is hard to
- * translate — `translatePolyline` has existed since #123 — but because a lane you
- * could drag and not draw would have been the only way to change one, with no way
- * to make the one you changed.
+ * `polyline` is here because it has a drawing tool. Before that a lane you could
+ * drag and not draw would have been the only way to change one, with no way to
+ * make the one you changed.
  */
 export type MovableGeometry = BboxGeometry | PolygonGeometry | PolylineGeometry;
 
@@ -147,7 +146,7 @@ export type InteractionState =
    * has moved.
    *
    * **`points` is never empty.** The state is only ever entered carrying the vertex
-   * that opened it, and #44's take-back gesture returns to `idle` on the last one
+   * that opened it, and the take-back gesture returns to `idle` on the last one
    * rather than leaving an empty buffer behind. That is load-bearing rather than
    * incidental: `points[0]` is what the close ring is measured from, in the
    * transition table and in `affordanceAt` alike, and a representable-but-unreachable
@@ -160,7 +159,7 @@ export type InteractionState =
       readonly cursor: Point | null;
     }
   /**
-   * A path being built click by click (#342). `drawing-polygon` without the ring.
+   * A path being built click by click: `drawing-polygon` without the ring.
    *
    * Its own variant rather than a `closed: boolean` on that one, because the two
    * differ in what a press *means*: a press near the first vertex closes a polygon

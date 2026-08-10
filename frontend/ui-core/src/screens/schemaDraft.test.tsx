@@ -1,5 +1,5 @@
 /**
- * The schema draft, and the two ways it used to be destroyed (#389).
+ * The schema draft, and the two ways it can be destroyed.
  *
  * The two mechanisms are independent and need separate proof, because a fix for
  * either one leaves the other alive:
@@ -10,7 +10,7 @@
  *    guard could have reached it.
  * 2. **The re-seed.** The active version moving underneath overwrote whatever
  *    had been typed. Reachable in ordinary use since the annotator publishes
- *    versions (#233, #368 WS4): a second tab or a teammate moves it, and the
+ *    versions: a second tab or a teammate moves it, and the
  *    drafter's next window-focus refetch discarded their work without a word.
  *
  * What is *not* the mechanism is worth writing down, because the going-in

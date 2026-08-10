@@ -99,7 +99,7 @@ class Fixture:
         return batch.id
 
     def finish_jobs(self, batch_id: UUID) -> None:
-        """Mark every job of the batch completed, the way #9 eventually will."""
+        """Mark every job of the batch completed, the way ``JobService`` does."""
         with self.workspace.unit_of_work() as uow:
             for job in self.batches.jobs(batch_id):
                 uow.annotation_jobs.update(

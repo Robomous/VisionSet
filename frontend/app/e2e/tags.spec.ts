@@ -2,11 +2,11 @@
  * Classification tags: the tool with no canvas, and the uniqueness the kernel does
  * not keep.
  *
- * v1 had nothing like this. The scenarios matter because #45 found that
+ * v1 had nothing like this. The scenarios matter because
  * `AnnotationService._validate` judges an annotation against the pinned schema alone
  * and never reads the store, `AnnotationRow` carries no unique index, and nothing
  * deduplicates — so **the kernel enforces no `(asset, class)` uniqueness for a
- * classification tag** (filed as #121). The annotator holds it structurally instead:
+ * classification tag**. The annotator holds it structurally instead:
  * an already-tagged `tagCommand` returns a command that changes nothing, `CommandLog`
  * records nothing when the document did not move, and `mint` is never reached, so no
  * second tag can exist and no id is burned.
@@ -112,10 +112,10 @@ test("only the taggable class has a tag control", async ({ page }) => {
 });
 
 /**
- * Pasting a tag the asset already carries (#123), which is the deferral's fourth
+ * Pasting a tag the asset already carries, which is the fourth
  * reason and the one that changed while it waited.
  *
- * It used to read *"the kernel does not enforce this"*; **#121 closed**, so the
+ * The kernel now enforces uniqueness, so the
  * kernel now refuses a duplicate outright with `DuplicateClassificationTag`. That
  * makes the local rule matter more rather than less: without it a paste would
  * look like it worked and the whole save would refuse minutes later, blaming an

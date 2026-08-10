@@ -13,7 +13,7 @@ complete listing, exactly as served.
 
 The destructive tools are included and marked, because a reference that omitted
 them would be a reference to something nobody runs — but the default posture is
-stated on every one of them. See #108.
+stated on every one of them.
 
 Usage:
 

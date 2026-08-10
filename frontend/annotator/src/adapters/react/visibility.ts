@@ -1,7 +1,7 @@
 /**
  * Hiding an annotation, which is a **view** decision and never a document one.
  *
- * #126 puts an eye on every row of the objects panel. The core document has no
+ * The objects panel puts an eye on every row. The core document has no
  * `hidden` flag and must not grow one: hiding is per viewer, per session, undoable
  * by nothing, and a field in the document would travel to the API, land in a
  * release manifest and change a hash. It lives beside the store the way the
@@ -17,8 +17,8 @@
  *
  * ## Returning the same object when nothing is hidden is the whole performance story
  *
- * #49 measured that a drag costs the committed layer **3 DOM writes whatever its
- * length**, and that holds because `AnnotationLayer` is `memo`'d on inputs that do
+ * A drag costs the committed layer **3 DOM writes whatever its length**, measured,
+ * and that holds because `AnnotationLayer` is `memo`'d on inputs that do
  * not change during a gesture. A projection that allocated a new document on every
  * render would defeat that bail-out before it was consulted — the same trap as
  * passing a freshly built `Set` — so the empty case is identity, and a caller

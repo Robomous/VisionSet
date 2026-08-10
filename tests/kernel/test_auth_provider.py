@@ -136,7 +136,7 @@ def test_an_unreadable_store_raises_rather_than_refusing(tmp_path: Path) -> None
     """Reporting an outage as a bad token sends an operator hunting the wrong bug.
 
     ``db_path`` is a *directory*, which SQLite answers with ``SQLITE_CANTOPEN`` —
-    #80's portable way to force a non-lock ``OperationalError``, which the
+    The portable way to force a non-lock ``OperationalError``, which the
     adapter translates to ``WorkspaceCorrupt``.
     """
     broken = tmp_path / "not-a-file.db"

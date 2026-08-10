@@ -202,16 +202,15 @@ class UnitOfWork(Protocol):
     ) -> AssetProgress | None:
         """Move one asset's progress, and only if it is still where it was read.
 
-        **The first write here that is not a repository** — :meth:`claim_job` is
-        the second, and it is here for the same reason — for the reason
-        :meth:`batches_holding` is not a read: ``Repository`` replaces a whole
-        entity by id, and an ``AnnotationJob`` carries every asset's progress. Two
-        annotators moving *different* assets of one job therefore write the same
-        entity, and the second write puts back the copy of the map the first one
-        had already changed — the lost update in #302, answered ``200`` on the
-        wire. Narrowing the write to one asset makes those two disjoint by
-        construction, and there is no way to say that in terms of ``Repository``
-        without giving projects and tokens a per-asset method as well.
+        **A write that is not a repository**, like :meth:`claim_job`, and for the
+        same reason: ``Repository`` replaces a whole entity by id, and an
+        ``AnnotationJob`` carries every asset's progress. Two annotators moving
+        *different* assets of one job would therefore write the same entity, and
+        the second would put back the copy of the map the first had already
+        changed — a lost update that answers ``200`` on the wire. Narrowing the
+        write to one asset makes those two disjoint by construction, and there is
+        no way to say that in terms of ``Repository`` without giving projects and
+        tokens a per-asset method as well.
 
         ``expected`` is what the caller read before it decided, and it is checked
         **in the same statement that writes**, so nothing can move in between. It
@@ -236,10 +235,10 @@ class UnitOfWork(Protocol):
         the identical reason.** ``batch_asset`` is keyed ``(batch_id,
         asset_id)`` — one row per member, which is exactly the shape a disjoint
         write wants — but a ``Batch`` carries every member, so two callers
-        adding *different* assets to one draft wrote the same entity through
-        ``Repository.update`` and the second put back the membership the first
-        had already changed. Same lost update as #302, answered ``200`` twice.
-        Narrowing the write to one row makes those two disjoint by construction.
+        adding *different* assets to one draft would write the same entity
+        through ``Repository.update`` and the second would put back the membership
+        the first had already changed, both answering ``200``. Narrowing the write
+        to one row makes those two disjoint by construction.
 
         There is **no ``expected``** here, and that is the difference from
         ``set_asset_progress`` rather than an omission: progress is a value that

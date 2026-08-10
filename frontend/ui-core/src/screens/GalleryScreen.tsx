@@ -1,5 +1,5 @@
 /**
- * A batch's frames — the screen the work is actually done from (#284).
+ * A batch's frames — the screen the work is actually done from.
  *
  * ## What changed, and the one that was risky
  *
@@ -11,13 +11,12 @@
  * element is the grid. `useWindowVirtualizer` reads the first, `useColumns` reads
  * the second, and neither can be inferred from the other.
  *
- * That split is exactly the shape of **#159**, where the `ResizeObserver` was
- * never attached and every row held one tile forever, at every width, for the life
- * of the screen — arithmetic that was right the whole time, measurement that never
- * happened. So the callback ref survives verbatim (see `useColumns`), and the
- * column count is asserted **in a browser**: jsdom reports every element as 0×0,
- * so a never-attached observer passes green there indefinitely. That is not a
- * hypothetical; it is what let #159 ship past a suite that tested `columnsFor`.
+ * That split is exactly the shape a never-attached `ResizeObserver` has: every row
+ * holds one tile forever, at every width, for the life of the screen — arithmetic
+ * that is right the whole time, measurement that never happens. So the callback ref
+ * is written carefully (see `useColumns`), and the column count is asserted **in a
+ * browser**: jsdom reports every element as 0×0, so a never-attached observer passes
+ * green there indefinitely, past any suite that tests `columnsFor` alone.
  *
  * ## Paging and virtualization are still two problems
  *
@@ -150,13 +149,13 @@ export interface GalleryScreenProps {
    * The callback is handed the whole `BatchAsset` rather than an id because the
    * annotator is keyed on a **job** while this screen lists **assets**: only
    * `asset.job_id` closes that gap, and it is null exactly while the batch is a
-   * draft (#29's shape). A tile whose asset has no job stays inert whether or not
+   * draft. A tile whose asset has no job stays inert whether or not
    * this prop is passed — see `Tile`.
    */
   readonly onOpenAsset?: (asset: BatchAsset) => void;
-  /** Up to the project this batch belongs to (#199). */
+  /** Up to the project this batch belongs to. */
   readonly onBack?: () => void;
-  /** The project's schema tab, for the approve dialog's `SCHEMA_NOT_FOUND` remedy (#291). */
+  /** The project's schema tab, for the approve dialog's `SCHEMA_NOT_FOUND` remedy. */
   readonly onOpenSchema?: () => void;
   /**
    * Another batch of the same project — a correction just cut, or this one's
@@ -172,7 +171,7 @@ export interface GalleryScreenProps {
    */
   readonly onOpenDataset?: () => void;
   /**
-   * Where to go once this batch has been deleted (#376).
+   * Where to go once this batch has been deleted.
    *
    * The gallery is the one mount of the delete control whose *subject* is what
    * goes: the Batches row loses a row and the table is still the answer, while
@@ -335,10 +334,9 @@ export function GalleryScreen({
   // than the screen refusing to let anything be picked.
   const showsProgress = hasJobs(batch.data?.state);
 
-  // ...and it is on for a **draft** too, since #281. `showsProgress` gated
-  // selection as well until membership editing had a wire surface, which put the
-  // one state where `edit_membership` is legal behind the one gate that hid the
-  // bar. Progress badges and the segmented filter still hang off
+  // ...and it is on for a **draft** too. Gating selection on `showsProgress`
+  // would put the one state where `edit_membership` is legal behind the one gate
+  // that hides the bar. Progress badges and the segmented filter still hang off
   // `showsProgress` — a draft has no jobs, so it genuinely has no progress to
   // show — but what may be *picked* is now a separate question from what may be
   // *displayed*, which is the same split the batch-state mirror got wrong in the
@@ -388,7 +386,7 @@ export function GalleryScreen({
           : {
               // Where the annotator opens: the first frame still waiting, and
               // failing that the first frame at all. Falling back rather than
-              // giving up is #301's third half — a batch whose every frame is
+              // giving up is the point — a batch whose every frame is
               // settled is the one somebody most wants to go back into, to check
               // a box, add one, or take back a skip.
               onStartAnnotating: () => {
@@ -438,7 +436,7 @@ export function GalleryScreen({
             data-columns={columns}
             // The *input* to the layout, published beside its output so a browser
             // spec can compute what ought to fit and compare. Asserting
-            // `data-columns` against itself is the #159 mistake in a new costume.
+            // `data-columns` against itself would assert nothing at all.
             data-min-column={minColumn}
           >
             {shown.length === 0 ? (
@@ -532,7 +530,7 @@ export function GalleryScreen({
  * `BatchOut` is seven fields and none of them is a source, a resolution or a
  * moment. So the source name and sampling rate come from `assets[0].source_id`
  * resolved through `GET /sources/{id}`, the resolution from the first asset's own
- * dimensions, and the age from the earliest `ingested_at` (#283). Each part is
+ * dimensions, and the age from the earliest `ingested_at`. Each part is
  * omitted when its input is missing rather than rendered as a placeholder — a
  * batch that has loaded no page yet says less, which is true, instead of saying
  * "unknown" three times, which is noise.
@@ -569,7 +567,7 @@ function BatchHeader({
   readonly showsProgress: boolean;
   readonly onApprove: () => void;
   readonly onStartAnnotating?: () => void;
-  /** Where to go when this screen's subject stops existing (#376). */
+  /** Where to go when this screen's subject stops existing. */
   readonly onDeleted?: () => void;
 }): JSX.Element {
   const first = assets[0];
@@ -579,15 +577,14 @@ function BatchHeader({
   /**
    * Whether there is a frame to open, and whether any of them is still waiting.
    *
-   * **Two questions, and #301 found them conflated into one.** The button used to
-   * be drawn only while some frame was `unannotated`, so a batch whose work was
-   * finished — annotated, skipped, or both — had its way into the annotator
-   * disappear, while its badge went on saying `in progress`. Nothing else in the
-   * header offered one, so an `in_annotation` batch rendered no action at all.
+   * **Two questions, easily conflated into one.** Drawing the button only while
+   * some frame is `unannotated` makes a batch whose work is finished — annotated,
+   * skipped, or both — lose its way into the annotator while its badge goes on
+   * saying `in progress`, and nothing else in the header offers one.
    *
    * A job exists from approval onwards, and every frame in one can be opened
    * whatever its state: the annotator lists a job's assets with no progress filter
-   * and carries `Un-skip` on its toolbar (#187). So *can I open one* is
+   * and carries `Un-skip` on its toolbar. So *can I open one* is
    * `job_id !== null`, and *is any waiting* only decides which frame and what the
    * button is called.
    */
@@ -683,9 +680,9 @@ function BatchHeader({
             </Button>
           )}
           {/*
-            The closing move, on the screen the work is done from (#301). It used
-            to live only on the batch table one tab away, which is how a person
-            could settle forty-eight frames here and have nowhere to say so. The
+            The closing move, on the screen the work is done from. Living only on
+            the batch table one tab away is how a person settles forty-eight frames
+            here and has nowhere to say so. The
             control is shared with that table rather than spelled twice, and it
             withholds the press — with the count — while anything is outstanding.
           */}
@@ -730,7 +727,7 @@ function BatchHeader({
             <CompleteBatchButton batch={batch} className="flex flex-col items-end gap-1" />
           )}
           {/*
-            The overflow, and it holds exactly one thing (#376). Rename, re-sample
+            The overflow, and it holds exactly one thing. Rename, re-sample
             and per-batch export were all asked for alongside it and **none has an
             operation behind it** — there is no batch rename, no re-sample and no
             per-batch export anywhere in the published routes, so a menu item for
@@ -909,11 +906,11 @@ function Timeline({
  * A timeline cell, from the same vocabulary the cards use.
  *
  * One vocabulary for both, so a colour on the strip and a dot on a card cannot
- * come to mean different things — and since #391 that vocabulary is *semantic*
- * rather than a monochrome ramp off `primary`. The ramp was a quantity: it said
- * how far along a frame was and could not say what kind of state it was in, so
- * `accepted` and `annotated` were the same near-black as each other and
- * `review_pending` was that near-black at 40%, which reads as "less annotated"
+ * come to mean different things — and that vocabulary is *semantic*
+ * rather than a monochrome ramp off `primary`. A ramp is a quantity: it says
+ * how far along a frame is and cannot say what kind of state it is in, so
+ * `accepted` and `annotated` come out the same near-black and
+ * `review_pending` is that near-black at 40%, which reads as "less annotated"
  * rather than as "waiting on somebody".
  *
  * The colour lives in `batchState.ts`; what stays here is the geometry and the
@@ -930,14 +927,14 @@ function cellClass(progress: AssetProgress | null | undefined, isHighlighted: bo
  * One frame, and it is two different cards either side of approval.
  *
  * **Before approval it is a picture with a number on it, and nothing else.** No
- * selection, because `BatchService.remove_assets` is not on the wire (#281) and
- * `Mark skipped` needs a job that does not exist — a checkbox whose every action
+ * selection, because `Mark skipped` needs a job that does not exist — a checkbox
+ * whose every action
  * is unavailable is worse than no checkbox. No status line either: `progress` is
  * null for every asset in a draft, so "unannotated" is true of all forty-eight
  * and tells you nothing, and repeating "draft" under each tile says what the
  * header's badge already said once.
  *
- * What survives is #160's third criterion — the tile must read as *not yet*
+ * What survives is the rule that a tile must read as *not yet*
  * rather than as a broken control — carried by `data-pending` and by a `title`
  * on the card itself, which is the element a person's pointer is over.
  */
@@ -957,7 +954,8 @@ function Tile({
   /** Absent before approval: there is no action a selection could take. */
   readonly onSelect?: (modifiers: Modifiers) => void;
 }): JSX.Element {
-  // Two different inertias, and #160 is what conflating them cost. `onOpen`
+  // Two different inertias, and conflating them is what makes a tile read as a
+  // broken control. `onOpen`
   // absent means *this host does not navigate* — the gallery embedded somewhere
   // read-only. A null `job_id` means *this asset has nowhere to go yet*, which is
   // the ordinary state of a draft batch: jobs are cut at approval, so before then
@@ -1112,32 +1110,31 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
 // --- bulk actions ------------------------------------------------------------
 
 /**
- * What to do with a selection — and, since #301, only what it can actually do.
+ * What to do with a selection — and only what it can actually do.
  *
  * ## Two actions, because a skip is a decision and decisions get reversed
  *
- * `Mark skipped` shipped alone, and `skipped → unannotated` — which the kernel
- * calls "the decision was reversed while the job is open" — had **no spelling
- * anywhere in the browser**. A mis-aimed shift-click over forty frames was
- * unrecoverable without opening each one in the annotator. `Restore` is that edge.
+ * Without `Restore`, `skipped → unannotated` — which the kernel calls "the
+ * decision was reversed while the job is open" — has **no spelling anywhere in the
+ * browser**, and a mis-aimed shift-click over forty frames is unrecoverable
+ * without opening each one in the annotator.
  *
  * `Remove from batch` is the third, and it is **not** called `Delete frames`
- * anywhere — control, dialog or report. The issue's phrasing was the founder's,
- * and it is the wrong word by exactly the amount the confirmation would have had
- * to un-teach: this removes membership, and the frame stays in its project, keeps
- * its annotations and stays in every other batch that carries it. A label whose
- * own dialog has to say "this does not really delete anything" is a label that
- * already misled somebody. `Assign` was cut with #282: jobs are cut once at
- * approval by an exact partition, and there is no annotator identity to assign to.
+ * anywhere — control, dialog or report. "Delete" is the wrong word by exactly the
+ * amount the confirmation would have to un-teach: this removes membership, and the
+ * frame stays in its project, keeps its annotations and stays in every other batch
+ * that carries it. A label whose own dialog has to say "this does not really delete
+ * anything" is a label that already misled somebody. There is no `Assign`: jobs are
+ * cut once at approval by an exact partition, and there is no annotator identity to
+ * assign to.
  *
  * ## Each button counts the frames its move is legal for, and sends only those
  *
- * The defect that made the bar read as broken: `JobService.mark` treats re-stating
- * a state as a **documented no-op**, answered `200` with nothing changed. So
- * selecting three already-skipped frames and pressing `Mark skipped` sent three
- * requests, got three successes, reported "moved", and changed nothing — the
- * screen agreeing it had worked while the person watched it not work. Selection
- * was never the broken part.
+ * `JobService.mark` treats re-stating a state as a **documented no-op**, answered
+ * `200` with nothing changed. So selecting three already-skipped frames and
+ * pressing `Mark skipped` would send three requests, get three successes, report
+ * "moved", and change nothing — the screen agreeing it had worked while the person
+ * watched it not work.
  *
  * Counting each button's targets from `allowed_actions` fixes both halves at
  * once: no request is sent that cannot change anything, so `moved` means moved;
@@ -1147,16 +1144,16 @@ function ProgressDot({ asset }: { readonly asset: BatchAsset }): JSX.Element {
  *
  * ## Where the counts come from, and why that changed
  *
- * They came from `canSkip`/`canRestore` — client-side mirrors of two rows of
- * `ASSET_PROGRESS_TRANSITIONS` that reproduced the *progress* dimension and
- * dropped the *batch-state* one. `JobService.mark` checks the batch first, so on
- * an `approved` or `completed` batch every button here was enabled, every request
- * was refused, and the bar reported "0 moved, N refused" with the reason gone.
+ * Client-side mirrors of two rows of `ASSET_PROGRESS_TRANSITIONS` would reproduce
+ * the *progress* dimension and drop the *batch-state* one. `JobService.mark` checks
+ * the batch first, so on an `approved` or `completed` batch every button here would
+ * be enabled, every request refused, and the bar would report "0 moved, N refused"
+ * with the reason gone.
  *
- * Now each target is a frame whose own `allowed_actions` names the move, which
- * the kernel derived from the batch's state, the job's and the frame's alike. On
- * a batch that is not open — or, since #439, in a job that has finished — the
- * lists are empty by construction — so instead of two zeroed buttons the bar states the
+ * So each target is a frame whose own `allowed_actions` names the move, which
+ * the kernel derives from the batch's state, the job's and the frame's alike. On
+ * a batch that is not open — or in a job that has finished — the
+ * lists are empty by construction, so instead of two zeroed buttons the bar states the
  * batch-level reason once, and the buttons are **disabled with it**. The
  * selection survives, because choosing a set of frames is the first half of
  * making a correction batch out of them.
@@ -1349,9 +1346,8 @@ function BulkBar({
         <span className="text-meta text-muted-foreground" data-testid="bulk-unavailable">
           {withheld ?? "Nothing here can be skipped or restored."}
           {/*
-            The sentence has said "corrections happen in a correction batch"
-            since #305, pointing at something that did not exist. It points at
-            the header's control now (audit G6), and the selection this bar is
+            The sentence says "corrections happen in a correction batch" and
+            points at the header's control, and the selection this bar is
             already holding is what that control offers as a scope — so "these
             three frames are wrong" is two presses rather than a second pass.
           */}
@@ -1457,10 +1453,9 @@ function RemoveFromBatchDialog({
 /**
  * How many tiles fit across a pane of this width, at this minimum column.
  *
- * Pure and exported so it can be checked without a browser. The arithmetic was
- * never the problem — which is exactly why #159 survived a suite that asserted
- * things like this: the defect was that the measurement never happened, and no
- * amount of testing the formula sees it.
+ * Pure and exported so it can be checked without a browser. The arithmetic is
+ * never the part that breaks: a suite asserting this passes while the measurement
+ * never happens, and no amount of testing the formula sees that.
  */
 export function columnsFor(width: number, minColumn: number): number {
   return Math.max(1, Math.floor((width + GAP) / (minColumn + GAP)));
@@ -1471,34 +1466,34 @@ export function columnsFor(width: number, minColumn: number): number {
  *
  * ## The bug this is written against
  *
- * #159: the gallery rendered one tile per row at every width, at every viewport,
- * for the life of the screen. The arithmetic was right; the observer was never
+ * A gallery that renders one tile per row at every width, at every viewport, for
+ * the life of the screen: the arithmetic is right and the observer is never
  * attached.
  *
- * The previous version took a `RefObject` and attached its `ResizeObserver` in an
- * effect that began `if (element === null) return`. The measured element lives
+ * A `RefObject` version attaches its `ResizeObserver` in an
+ * effect that begins `if (element === null) return`. The measured element lives
  * **inside `<Async>`'s children render-prop**, so on mount it does not exist yet
- * and `ref.current` is null — the effect took the early return. Both of its
- * dependencies were stable, so it never ran again once the real element arrived.
- * `columns` stayed at its initial `1` forever.
+ * and `ref.current` is null — the effect takes the early return. Both of its
+ * dependencies are stable, so it never runs again once the real element arrives,
+ * and `columns` stays at its initial `1` forever.
  *
  * A ref object mutating is invisible to React. **A callback ref is not**: React
  * calls it with the node on attach and with `null` on detach, so an effect keyed
  * on that state re-runs by construction at exactly the two moments that matter.
  *
- * ## What #284 changed, and why the risk went *up*
+ * ## The scroller is the window, which raises the risk
  *
- * The scroller used to be this same node, so a virtualizer that worked was
- * evidence the node existed and had been handed over. It is now the window, and
- * the two are separate: `useWindowVirtualizer` would virtualize perfectly against
- * a grid that had never been measured once. The tell #159 left behind is gone,
- * which is why the browser assertion below is not optional.
+ * When the scroller was this same node, a virtualizer that worked was evidence the
+ * node existed and had been handed over. The two are separate now:
+ * `useWindowVirtualizer` virtualizes perfectly against a grid that has never been
+ * measured once, so that tell is gone and the browser assertion below is not
+ * optional.
  *
  * ## The fallback is still one column, and it still has to be reachable
  *
  * An environment with no `ResizeObserver` measures once and stops, which is
- * correct-but-static rather than wrong. jsdom is that environment, and #159's
- * lesson is that a test running in it was asserting the broken value as if it were
+ * correct-but-static rather than wrong. jsdom is that environment, and a test
+ * running in it would assert the broken value as if it were
  * the intended one — so the count a *browser* renders is checked in a browser
  * (`frontend/app/e2e/gallery.spec.ts`), and what is pinned here is only that the
  * fallback is taken when the observer is genuinely absent.

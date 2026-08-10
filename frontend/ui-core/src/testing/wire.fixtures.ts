@@ -70,7 +70,7 @@ export function jobActions(
 /**
  * An asset's actions. `progress` is null exactly while the batch is a draft.
  *
- * `jobState` is the third dimension (#439) and defaults to `in_progress`, the
+ * `jobState` is the third dimension and defaults to `in_progress`, the
  * state a job is in while somebody is working it — which is what every caller
  * here means. A `completed` job declares nothing on any of its frames, in an
  * open batch as much as in a closed one: completing a job does not complete its

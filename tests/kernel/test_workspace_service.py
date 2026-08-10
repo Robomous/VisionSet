@@ -368,7 +368,7 @@ def test_open_refuses_a_workspace_from_the_future(tmp_path: Path) -> None:
 def test_open_refuses_a_workspace_whose_schema_is_not_the_one_it_is_stamped_at(
     tmp_path: Path,
 ) -> None:
-    """#277 at the door, which is the only place a caller ever meets it.
+    """The mismatch at the door, which is the only place a caller ever meets it.
 
     ``open`` is what every surface goes through, and the failure this replaces
     reached none of them: the file opened cleanly and the first statement naming

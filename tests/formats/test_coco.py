@@ -254,7 +254,7 @@ def test_a_classification_tag_makes_the_release_need_consent(tmp_path: Path) -> 
 def test_under_consent_the_tag_is_dropped_and_the_report_enumerates_it(
     tmp_path: Path,
 ) -> None:
-    """#63's third acceptance criterion: the excluded annotations are named."""
+    """The excluded annotations are named."""
     fixture = Fixture(tmp_path, images=2)
     fixture.label({0: [_box(x=1, y=1, width=4, height=4)], 1: [_tag()]})
     out = _export(fixture, fixture.publish(), tmp_path / "out", allow_lossy=True)

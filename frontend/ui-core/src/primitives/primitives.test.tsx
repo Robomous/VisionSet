@@ -2,15 +2,14 @@
  * The component harness, proved on the primitives that carry a decision.
  *
  * Not a snapshot of every class string — that would pin the design system to
- * whatever it happened to be on the day, which is the mistake #50 had to undo in
- * `keyboard.spec.ts`. What is asserted here is the handful of behaviours a screen
+ * whatever it happened to be on the day. What is asserted here is the handful of behaviours a screen
  * would silently lose: the merge that makes `className` a real override, the
  * button type that stops a "Cancel" submitting a form, the `asChild` that keeps a
  * link a link, and the role an error is announced with.
  *
- * This file is also the reason the jsdom harness exists at all — #53's schema
- * editor asks for component tests, and standing the environment up once here is
- * cheaper than the screen that needs it first doing it under deadline.
+ * This file is also the reason the jsdom harness exists at all: standing the
+ * environment up once here is cheaper than the first screen that needs it doing so
+ * under deadline.
  */
 
 import { render, screen } from "@testing-library/react";
@@ -111,8 +110,8 @@ describe("fields", () => {
 });
 
 /**
- * The two-line option (#472) — a primitive variant rather than one screen's
- * styling, which is why it is asserted here.
+ * The two-line option — a primitive variant rather than one screen's styling,
+ * which is why it is asserted here.
  *
  * The claim worth a test is the one that is easy to lose: the trigger shows the
  * *same* two lines the list does, because Radix renders the selected item's own
@@ -191,8 +190,7 @@ describe("Card and Table", () => {
 });
 
 /**
- * The tab bar, asserted on what it *means* rather than on what it looks like
- * (#182).
+ * The tab bar, asserted on what it *means* rather than on what it looks like.
  *
  * The distinction between the open section and the other two has to survive a
  * restyling, so nothing here matches a class string — a test that pinned
@@ -201,9 +199,8 @@ describe("Card and Table", () => {
  * is the part a screen reader and the keyboard both read: the roles, `aria-selected`,
  * Radix's `data-state`, and that only the open panel is in the tree at all.
  *
- * There is nothing here about the variant cascade any more: #368 retired
- * `segmented` along with the panel that was its only caller, so `TabsList` has one
- * shape and no context to hand down.
+ * There is nothing here about a variant cascade: `TabsList` has one shape and no
+ * context to hand down.
  */
 describe("Tabs", () => {
   function bar(): JSX.Element {

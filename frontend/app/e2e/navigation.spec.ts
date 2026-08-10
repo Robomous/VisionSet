@@ -1,5 +1,5 @@
 /**
- * The way back out of every sub-view (#199).
+ * The way back out of every sub-view.
  *
  * ## Every scenario navigates by URL, and that is the whole method
  *
@@ -135,7 +135,7 @@ async function serveApi(page: Page): Promise<void> {
         },
       });
     }
-    // The project's own counts (#207). The catch-all below answers every
+    // The project's own counts. The catch-all below answers every
     // *collection* with an empty page, which is the wrong document for this one —
     // and a stub answering a shape the endpoint never sends tests nothing.
     if (path === `/projects/${PROJECT}/stats`) {
@@ -174,7 +174,7 @@ async function openCold(page: Page, url: string): Promise<void> {
   await page.getByTestId("token-submit").click();
 }
 
-/** #199's audit table, as data. The control is one testid on every padded screen. */
+/** Every sub-view and its parent, as data. One testid on every padded screen. */
 const SUBVIEWS = [
   {
     name: "the project",
@@ -232,7 +232,7 @@ test("the annotator returns to its batch from a cold open, not into an empty his
 test("the annotator's grid button stays in the editor and the URL does not move", async ({
   page,
 }) => {
-  // Two controls, two meanings (#390): the arrow means *up* and goes to the
+  // Two controls, two meanings: the arrow means *up* and goes to the
   // batch; the grid means *show me the other frames* and opens an overlay over
   // the workspace. They used to share a destination, which made looking at your
   // own frames an exit — the trip `DESIGN.md` principle 10 exists to prevent.
@@ -258,7 +258,7 @@ test("the annotator's grid button stays in the editor and the URL does not move"
 });
 
 test("the batch gallery says which batch it is showing", async ({ page }) => {
-  // The one page in the product with no header at all before #199: a grid of
+  // A page with no header at all is a grid of
   // thumbnails and a count, legible only if you remembered which tile you pressed
   // — and unreadable entirely on a pasted link.
   await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
@@ -304,7 +304,7 @@ test("a bookmarked ?tab=versions lands on Schema, with the history under the edi
 }) => {
   // The history was a fourth tab — a read-only view *of* the second, offered as
   // a peer of it, which is how "Schema history" and "Releases" became confusable
-  // enough that #292 had to rename one. It nests inside Schema now.
+  // enough that one of them had to be renamed. It nests inside Schema.
   await openCold(page, `/projects/${PROJECT}?tab=versions`);
 
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}\\?tab=schema$`));

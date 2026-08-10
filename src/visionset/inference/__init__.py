@@ -19,10 +19,10 @@ tidy: a base install starts a server, runs a worker and imports this module
 without the optional runtime present, and
 ``tests/architecture/test_optional_runtime.py`` proves it in a fresh interpreter.
 
-**There is no plugin registry, and resolution happens in two steps.** #418's
-recorded decision is that adapters are instantiated from user-created model
-connections and never from a bundled default, which makes ``InferenceConnection``
-the registry: a row somebody wrote, naming a kind, a model and where it runs. A
+**There is no plugin registry, and resolution happens in two steps.** Adapters
+are instantiated from user-created model connections and never from a bundled
+default, which makes ``InferenceConnection`` the registry: a row somebody wrote,
+naming a kind, a model and where it runs. A
 provider discovered by entry point would have nothing to be instantiated *from*,
 and a workspace could acquire the ability to predict through an unrelated ``pip
 install`` — which is exactly what "VisionSet never downloads a model on its own"
@@ -32,11 +32,11 @@ connection may hold a detector that answers words or a segmenter that answers
 places and those are not interchangeable.
 
 **What each surface reaches for.** ``fetch_weights`` is the download,
-``check_integrity`` is the full re-read that tells damage from completeness
-(#471), ``suggest`` is one click's worth of interactive segmentation, and ``provider_for``
+``check_integrity`` is the full re-read that tells damage from completeness,
+``suggest`` is one click's worth of interactive segmentation, and ``provider_for``
 is the raw resolution underneath both. A surface serving clicks wants ``suggest``
-and the pool behind it; anything building a provider per call is paying a model
-load per request, which is the latency failure D5 on #424 exists to prevent.
+and the pool behind it; anything building a provider per call pays a model load
+per request, which is the latency failure the caching exists to prevent.
 """
 
 from __future__ import annotations

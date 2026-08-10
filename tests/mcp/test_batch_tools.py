@@ -196,7 +196,7 @@ def test_a_malformed_batch_id_is_refused_before_the_kernel_sees_it(
 def test_a_class_created_mid_batch_reaches_it_through_repin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The agent-shaped sequence #229 exists for: create the class, then re-pin."""
+    """The agent-shaped sequence re-pinning exists for: create the class, then re-pin."""
     project, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
     payload(
         call(
@@ -271,7 +271,7 @@ def test_a_repin_that_would_orphan_this_batchs_labels_offers_no_retry(
     assert payload(call("get_batch", batch_id=batch_id))["schema_version"] == 1
 
 
-# --- membership editing (#281) ------------------------------------------------
+# --- membership editing -------------------------------------------------------
 
 
 def _members(batch_id: str) -> list[str]:
@@ -341,7 +341,7 @@ def test_the_batch_declares_the_capability_the_tools_enforce(
     assert "edit_membership" not in payload(call("get_batch", batch_id=batch_id))["allowed_actions"]
 
 
-# --- delete (#376), behind the destructive gate -------------------------------
+# --- delete, behind the destructive gate --------------------------------------
 
 
 def test_deleting_a_batch_reports_what_went_and_then_it_is_gone(
@@ -392,7 +392,7 @@ def test_a_completed_batch_refuses_and_names_no_flag_that_would_work(
 def test_the_tool_is_absent_from_the_default_listing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """#108: a tool an agent is never shown cannot be called with a flag."""
+    """A tool an agent is never shown cannot be called with a flag."""
     _, batch_id = ingested(monkeypatch, tmp_path, count=1)
 
     refused = call("delete_batch", batch_id=batch_id, confirm=True)

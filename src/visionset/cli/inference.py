@@ -8,8 +8,8 @@ configured row, so it opens no workspace at all. Three reach a network:
 ``download``, which fetches, ``size``, which reads a listing so that
 ``download`` can be an informed decision, and ``check-integrity``, which reads
 the digests a snapshot on disk is compared against. Contacting a configured
-endpoint is still absent (`cf. #421`): a command that cannot work is worse than
-one that is not there yet.
+endpoint is still absent: a command that cannot work is worse than one that is
+not there yet.
 
 **``download`` and ``check-integrity`` block, and that is ``ingest``'s pattern
 rather than a shortcut.**
@@ -20,7 +20,7 @@ with the job handler — ``visionset.inference.fetch_weights`` is the sequence
 both call, because two implementations of "what downloading means" is how a
 terminal and an API come to disagree about what "set up" means.
 ``check-integrity`` shares ``visionset.inference.check_integrity`` with its own
-job handler for the same reason (#471).
+job handler for the same reason.
 """
 
 from __future__ import annotations

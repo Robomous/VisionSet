@@ -1,16 +1,16 @@
 /**
- * The work a gesture costs, counted rather than timed — #49's regression check.
+ * The work a gesture costs, counted rather than timed.
  *
- * M4's exit criterion is "60fps with 200+ annotations". A frame time is the
+ * The claim is "60fps with 200+ annotations". A frame time is the
  * honest way to state that and the dishonest way to *gate* it: it depends on the
- * machine, the browser build and whatever else the runner is doing, which is why
- * #48 recorded its own runtime as measured rather than asserted. `bench/` does
+ * machine, the browser build and whatever else the runner is doing, which is why a
+ * runtime is measured rather than asserted. `bench/` does
  * the timing and writes the numbers down. This file asserts the half that is a
  * property of the code — how much work each gesture asks the browser to do —
  * which is deterministic, hardware independent, and where a performance
  * regression actually originates.
  *
- * The unit is a `MutationObserver` record, the same instrument #47 used to prove
+ * The unit is a `MutationObserver` record, the same instrument that proves
  * `pointer-events: none` and the memoized layer were load-bearing. It survives
  * the scale-up: what was 1 record against 601 with twelve boxes on a 1280x720
  * asset is asserted here over **220 annotations and 640 polygon vertices on a
@@ -45,7 +45,7 @@
  * ## Why these run on the dev server like every other spec
  *
  * They live in `e2e/`, so the existing `annotator e2e (chromium)` job runs them
- * for free — the cheap regression check #49 asks for. That server is `vite` in
+ * for free — a cheap regression check. That server is `vite` in
  * development mode, where `StrictMode` double-invokes every render, and it does
  * **not** move these numbers: React double-*renders* and commits once, and a
  * mutation record comes from the commit. Verified rather than assumed — the
@@ -182,7 +182,7 @@ test("a pan writes the stage transform and touches neither render layer", async 
   await watchLayers(page);
   await page.mouse.down({ button: "right" });
   // `handlePointerDown` answers every non-primary press with a pan before the
-  // machine is told, which is #129.
+  // machine is told.
   await page.mouse.move(to.x, to.y, { steps: MOVES });
   await page.mouse.up({ button: "right" });
 
@@ -209,7 +209,7 @@ test("one wheel notch writes the stage and touches no annotation at all", async 
   await expect.poll(async () => (await layerCounts(page)).stage).toBeGreaterThan(0);
   const counts = await layerCounts(page);
 
-  // #131. This assertion used to read `4 * BENCH_ANNOTATIONS` — **880 records for
+  // Written as `4 * BENCH_ANNOTATIONS` this would be **880 records for
   // one notch** — because every stroke width, label size and label lift went
   // through `screenPx(…, zoom)`, so `zoom` was an input to every shape,
   // `AnnotationLayer`'s `memo` correctly failed to bail out, and React rewrote
@@ -237,7 +237,7 @@ test("one wheel notch writes the stage and touches no annotation at all", async 
 test("a zoom still leaves a stroke two screen pixels wide, which is what it was for", async ({
   page,
 }) => {
-  // The other half of #131, and the reason the count above is allowed to be zero:
+  // The other half, and the reason the count above is allowed to be zero:
   // a layer that never redraws would also score 0, and would be wrong. `stroke-width`
   // is resolved in SVG user units — asset pixels here — so a constant *screen* width
   // means the computed value tracks 1/zoom.

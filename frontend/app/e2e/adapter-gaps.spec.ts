@@ -1,9 +1,9 @@
 /**
- * The secondary press, and what #129 decided about it.
+ * The secondary press, and the decision about it.
  *
- * This file was written by #48 as a pinned *gap*: two rows of the interaction table
- * that no browser could reach. #129 settled it — **the pan stays** — so the file is
- * now a pinned *decision*, and one of its two scenarios has grown the answer.
+ * Two rows of the interaction table are unreachable from a browser, and the
+ * decision is that **the pan stays** — so this file pins a decision rather than a
+ * gap.
  *
  * `AnnotatorCanvas.handlePointerDown` answers **every** non-primary press with a pan
  * and returns before the machine is told anything:
@@ -27,8 +27,8 @@
  *   vertices happen to be — which the user cannot see before pressing.
  * - **On macOS, ctrl-click *is* a secondary press.** The toggle modifier is
  *   `ctrl` or `meta`, so routing the secondary press would make one ctrl-click
- *   raise **both** spellings of the vertex delete. That is v1's own bug, and #44
- *   closed it deliberately: `machine.test.ts` still asserts the double gesture
+ *   raise **both** spellings of the vertex delete. That is v1's own bug, and the
+ *   machine closes it deliberately: `machine.test.ts` asserts the double gesture
  *   cannot throw.
  *
  * So the two rows stay unreachable *by that gesture*, and the question becomes what
@@ -39,7 +39,7 @@
  *    gesture is gone.
  * 2. `DRAWING_POLYGON_ROW`'s take-back had **no other spelling at all**, and
  *    `mod+z` cannot serve because a pending polygon is not in the command log. So
- *    #129 gave it one: **`Backspace`**, a `take-back-point` intent the machine
+ *    it has one of its own: **`Backspace`**, a `take-back-point` intent the machine
  *    answers only while drawing. The scenario below asserts both halves — the press
  *    still pans, and the keyboard does the work.
  *
@@ -117,7 +117,7 @@ test("a secondary press while drawing pans, and Backspace is what takes a point 
 
   // Both points survived the pan, which is the pinned half.
   //
-  // Now #129's answer: `Backspace` takes the second one back, so the ring is one
+  // Now the take-back: `Backspace` removes the second one, so the ring is one
   // point again — and the shape below is drawn from a *different* second point,
   // which is what proves the take-back happened rather than being ignored.
   await focusCanvas(page);

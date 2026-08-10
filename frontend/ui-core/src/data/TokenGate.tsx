@@ -5,7 +5,7 @@
  * whole job is to notice which one applies before showing anybody a form.
  *
  * **A browser session.** The server signs in the page it served itself, over an
- * `HttpOnly` cookie (#179). Opening `visionset server` on the machine it runs on
+ * `HttpOnly` cookie. Opening `visionset server` on the machine it runs on
  * reaches the product with nothing typed and nothing copied, because asking
  * somebody to paste a credential to read their own files off their own disk is
  * ceremony with no threat model behind it. This component is what asks — once, on

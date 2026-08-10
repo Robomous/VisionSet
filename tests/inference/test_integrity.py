@@ -380,7 +380,7 @@ def test_the_purge_happens_before_the_connection_is_stood_down(
     cached: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The ordering the decision on #471 turns on, observed rather than assumed.
+    """The ordering the whole check turns on, observed rather than assumed.
 
     A crash between the two writes has to fall on the side that leaves a
     *missing* file rather than a cached corrupt one, because the second is what

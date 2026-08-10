@@ -134,8 +134,7 @@ describe("which classes the tool is offered for", () => {
 });
 
 /**
- * The class moving under an armed session (#472) — the behaviour #451 shipped, and
- * the direction it was deliberately turned around in.
+ * The class moving under an armed session: the session survives it.
  */
 describe("the active class moves and the session goes with it", () => {
   it("returns the state by identity when the class did not really move", () => {

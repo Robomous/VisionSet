@@ -78,8 +78,8 @@ from visionset.kernel.services import (
 #: should be nowhere near that, so ten minutes is loose enough that a shared CI
 #: runner under load never trips it and tight enough that something structurally
 #: slow — a decode moved inside a transaction, an N+1 read over every annotation
-#: — cannot hide. #49's rule applies: assert a wall clock only where the number
-#: is a *shape* rather than a measurement.
+#: — cannot hide. Assert a wall clock only where the number is a *shape* rather
+#: than a measurement.
 WALL_CLOCK_CEILING_SECONDS = 600.0
 
 #: Ten seconds at 5 fps: fifty frames, one box each.
@@ -293,7 +293,7 @@ def main(dest: Path) -> Summary:
                 # Both numbers, because they are different answers: `excluded` is
                 # what will not be in the output at all and `degraded` is what
                 # will be there having lost something. Printing only the first
-                # was #158.
+                # would describe half of what a caller is consenting to.
                 f"excluded={compatibility.excluded_annotations}, "
                 f"degraded={compatibility.degraded_annotations}",
                 flush=True,
@@ -370,7 +370,8 @@ def _ultralytics_loads(export: Path) -> bool:
 
     Optional so the script runs on a machine without two gigabytes of torch, and
     **not optional in CI**, where ``VISIONSET_REQUIRE_ULTRALYTICS=1`` turns the
-    skip into a failure — the ffmpeg rule from #22. The whole point of the flow
+    skip into a failure, the way every optional-binary check here works. The
+    whole point of the flow
     is that somebody else can train on what came out.
     """
     try:

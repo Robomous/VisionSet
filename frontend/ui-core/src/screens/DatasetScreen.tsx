@@ -15,8 +15,8 @@
  * `confirm=` guards destroying data, `allow_destructive=` guards narrowing a
  * contract, and **`allow_lossy=` guards emitting an incomplete copy** of something
  * that stays intact. The kernel is emphatic that they are never caught together,
- * and the UI keeps them apart too: the delete dialog is #53's, the schema dialog is
- * #53's, and this one is its own.
+ * and the UI keeps them apart too: the delete dialog, the schema dialog and this
+ * one are three.
  *
  * There is no pre-export validation route, so consent is the schema editor's shape:
  * attempt, read `LOSSY_EXPORT_NOT_CONSENTED` off the 409, ask, retry with the flag.
@@ -26,10 +26,9 @@
  *
  * ## The trunk's membership is on the screen now, and so is curation
  *
- * `DELETE /datasets/{id}/assets/{id}` had been on the wire since M3 and no screen
- * called it — the API's only curation operation, unreachable from the product
- * (#316). It could not simply be added to a listing, because this screen showed
- * the counts and never the membership those counts are *of*. `TrunkAssets` below
+ * `DELETE /datasets/{id}/assets/{id}` is the API's only curation operation, and it
+ * cannot simply be added to a listing, because this screen shows
+ * the counts and not the membership those counts are *of*. `TrunkAssets` below
  * is both halves. Removal is curation and not deletion, which is why
  * `DatasetService.remove_asset` is one of exactly two service methods with no
  * `confirm=` gate — see `RemoveAssetDialog` for what that means for the copy.
@@ -99,7 +98,7 @@ const LOSSY = "LOSSY_EXPORT_NOT_CONSENTED";
 
 export interface DatasetScreenProps {
   readonly projectId: string;
-  /** Up to the project this trunk belongs to (#199). */
+  /** Up to the project this trunk belongs to. */
   readonly onBack?: () => void;
 }
 
@@ -124,7 +123,7 @@ export function DatasetScreen({ projectId, onBack }: DatasetScreenProps): JSX.El
         {/*
          * `secondary`: this header renders as a *panel* under `ProjectScreen`'s
          * own header on the dataset tab, whose "Annotate" is the page's forward
-         * action. One filled action per view (#323).
+         * action. One filled action per view.
          */}
         <Button
           variant="secondary"
@@ -326,9 +325,9 @@ function TrunkAssets({
                     />
                   </TableCell>
                   <TableCell className="font-mono text-meta">{assetLabel(asset)}</TableCell>
-                  {/* Null means *unknown*, not "never": rows written before #216
-                      are legitimately unstamped, and rendering that as a date
-                      would invent one. */}
+                  {/* Null means *unknown*, not "never": rows written before the
+                      column existed are legitimately unstamped, and rendering that
+                      as a date would invent one. */}
                   <TableCell className="text-muted-foreground">
                     {asset.ingested_at == null ? "—" : formatWhen(asset.ingested_at)}
                   </TableCell>
@@ -755,13 +754,12 @@ function isSettled(job: BackgroundJob): boolean {
 }
 
 /**
- * `BackgroundJobState`, in a person's words and in a token (#391).
+ * `BackgroundJobState`, in a person's words and in a token.
  *
- * These five states existed **only as a polling predicate** — `isSettled` above
- * — so the one genuinely long-running operation in this product answered "how is
- * it going?" with a button label and nothing else, and answered "did it work?"
- * with a download that either happened or did not. A failure had prose; a
- * success had no rendering at all.
+ * Without a rendering these five states are **only a polling predicate** —
+ * `isSettled` above — so the one genuinely long-running operation in this product
+ * answers "how is it going?" with a button label and nothing else, and "did it
+ * work?" with a download that either happens or does not.
  *
  * `cancelled` is **neutral, not `destructive`**: somebody asked for it. It is the
  * same call `skipped` gets one file over — a decision is not an error.
@@ -836,9 +834,8 @@ function ExportDialog({
   // An effect rather than a `usePollingQuery` callback because the *transition*
   // is what matters: the poll answers `succeeded` on every subsequent tick too,
   // and a browser asked to save the same archive four times does it four times.
-  // `saved` is the guard, and it is state rather than a ref because #299 found
-  // that a ref-guarded effect under `<StrictMode>` loses the very error it was
-  // guarding.
+  // `saved` is the guard, and it is state rather than a ref because a ref-guarded
+  // effect under `<StrictMode>` loses the very error it was guarding.
   useEffect(() => {
     if (saved || jobId === null || job.data?.state !== "succeeded") return;
     setSaved(true);
@@ -868,15 +865,15 @@ function ExportDialog({
             <Label htmlFor="export-format">Format</Label>
             {/*
               Three renderings for three answers, because `?? []` above used to
-              give the first two the same one (audit's swallowed-refusal pattern,
-              #440). A failed `GET /formats` is not an answer at all; a
+              give the first two the same one — the swallowed-refusal pattern.
+              A failed `GET /formats` is not an answer at all; a
               successful empty page is an answer about this server's plugins;
               and the combobox is for when there is something to choose. Rolling
-              the first two together produced a control offering nothing and
-              saying nothing — which is also the whole visible signature of the
-              packaging defect fixed in #436 (cf. #437), so the screen that
-              should have told a broken install from a broken request was the
-              reason the two were indistinguishable.
+              the first two together produces a control offering nothing and
+              saying nothing, which is also the visible signature of an install
+              whose exporters are not discoverable — so the screen that should
+              tell a broken install from a broken request is what makes the two
+              indistinguishable.
 
               Loading is deliberately not a fourth branch: `formats.data ===
               undefined` while pending, so the combobox stands empty for the one
@@ -923,7 +920,7 @@ function ExportDialog({
             )}
           </div>
 
-          {/* The status itself, which had no rendering before #391. The word is
+          {/* The status itself. The word is
               on the badge rather than only in its colour, and the sentences
               below stay: a badge is the glance, prose is the answer. */}
           {shownState !== null && (

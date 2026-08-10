@@ -1,13 +1,13 @@
 /**
- * #49's benchmark: frame times during pan, zoom and drag over 200 boxes and 20
- * polygons of 32 vertices on a 4K asset.
+ * Frame times during pan, zoom and drag over 200 boxes and 20 polygons of 32
+ * vertices on a 4K asset.
  *
  * ## Measured, and only loosely gated
  *
  * The acceptance criterion is 60fps "on a dev machine (document the machine)",
  * which is a statement about a measurement and not about a threshold that can
- * live in CI. #48 settled the precedent when it recorded its own runtime rather
- * than asserting it: a wall-clock assertion on a shared runner fails for reasons
+ * live in CI, so the runtime is recorded rather than asserted: a wall-clock
+ * assertion on a shared runner fails for reasons
  * nobody chose. So every row below is printed, written to `bench-results.json`
  * and copied into `docs/annotations.md`, and the only assertion is a floor —
  * `p95` under **33 ms**, half the frame rate — which no working build can fail
@@ -27,7 +27,7 @@
  *
  * ## The rows, and why each is there
  *
- * The four gestures are #49's own list. The two extra rows are controls, and
+ * The four gestures are the ones a person makes. The two extra rows are controls, and
  * they are what make the four interpretable:
  *
  * - **the demo scene** isolates the cost of the *document* from the cost of the

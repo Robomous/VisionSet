@@ -112,7 +112,7 @@ def test_the_geometry_must_match_the_one_its_class_is_bound_to(
 
 
 def test_an_agent_can_write_a_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """#223's whole point, over the surface the story is about.
+    """The lane geometry's whole point, over the surface the story is about.
 
     The lane workflow is *agent pre-labels, human reviews*, so the polyline has to
     be writable by a tool call and nothing else. Nothing about the tool changed to

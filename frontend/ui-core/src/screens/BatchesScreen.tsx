@@ -17,8 +17,8 @@
  * later `create_version` does not touch it. And `complete` is *derived* at two
  * levels rather than automatic at either: `BatchService.complete` refuses while
  * any **job** is outstanding, and `JobService.complete` refuses while any asset
- * is. Until #301 this screen sent only the outer one, so a batch whose every frame
- * was settled answered `BATCH_NOT_COMPLETE` for ever — see `CompleteBatchButton`.
+ * is. A screen sending only the outer one leaves a batch whose every frame is
+ * settled answering `BATCH_NOT_COMPLETE` for ever — see `CompleteBatchButton`.
  *
  * ## The partition is exact, and the third strategy is not offered
  *
@@ -75,7 +75,7 @@ export function BatchesScreen({
     <div className="flex flex-col gap-4" data-testid="batches-screen">
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div>
-          {/* The tab is the heading (#171). What is left is the sentence that
+          {/* The tab is the heading. What is left is the sentence that
               explains where a batch comes from, which the tab cannot say. */}
           <p className="text-meta text-muted-foreground">
             A batch is born from an ingest. Approving it pins the schema and cuts the jobs.
@@ -83,7 +83,7 @@ export function BatchesScreen({
         </div>
       </header>
 
-      {/* Approval is where the schema gate refuses (#290) — this is the same
+      {/* Approval is where the schema gate refuses — this is the same
           fact, said while there is still time to act on it cheaply. */}
       <SchemaForeshadow
         projectId={projectId}
@@ -137,9 +137,8 @@ export function BatchesScreen({
                     </div>
                   </TableCell>
                   <TableCell>
-                    {/* The label the gallery header already uses (#292) — the
-                        helper sat thirty lines away while this rendered the raw
-                        kernel identifier. */}
+                    {/* The label the gallery header already uses, rather than the
+                        raw kernel identifier. */}
                     <Badge variant={BATCH_STATE_VARIANT[batch.state] ?? "neutral"} data-testid={`state-${batch.name}`}>
                       {batchStateLabel(batch.state)}
                     </Badge>
@@ -227,8 +226,8 @@ function Lifecycle({
     // current membership, with no log entry when nothing changed — so pressing it
     // twice is safe and a curator's earlier removal is restored rather than
     // remembered. Which is exactly why the control has to *say* what it did:
-    // "safe to press twice" and "you cannot tell whether it worked" were the
-    // same button until #307's successor. See `PromoteButton`.
+    // "safe to press twice" and "you cannot tell whether it worked" are otherwise
+    // the same button. See `PromoteButton`.
     return (
       <div className="flex flex-col items-end gap-1">
         <PromoteButton
@@ -257,7 +256,7 @@ function Lifecycle({
       // correct, complete). A table row's action belongs to one row, not to the
       // view — and a table holding a draft beside a queued batch used to render
       // several filled buttons down the same column, under a page header whose
-      // "Annotate" is the actual forward action (#323).
+      // "Annotate" is the actual forward action.
       <Button variant="secondary" size="sm" data-testid={`approve-${batch.name}`} onClick={onApprove}>
         <Layers className="size-4" aria-hidden="true" />
         Approve
@@ -288,8 +287,8 @@ function Lifecycle({
   if (declares(batch, BATCH_ACTION.complete)) {
     // Completion is derived at two levels and neither is implicit, so closing a
     // batch means closing its jobs first — which nothing in the browser did
-    // outside the annotator. `CompleteBatchButton` owns the chain and the reason
-    // (#301); the gallery header renders the same control.
+    // outside the annotator. `CompleteBatchButton` owns the chain and the reason;
+    // the gallery header renders the same control.
     return <CompleteBatchButton batch={batch} />;
   }
   // Nothing declared, so nothing offered. Reached while the batch is loading (no

@@ -2,7 +2,7 @@
  * Copy and paste: the annotator's own clipboard, and the two transformations that
  * turn a selection into it and it back into annotations.
  *
- * #123's four deferral reasons are answered here, in order, because three of them
+ * Four questions had to be answered before this could exist, and three of them
  * were about *where a decision lives* rather than about difficulty.
  *
  * ## 1. Who owns a clipboard — not the store, and that is still true
@@ -42,15 +42,15 @@
  * `PASTE_OFFSET_PX` is 20 screen pixels, v1's number, and it reaches this file as
  * `Tolerances.pasteOffset` — already divided by the zoom, already in asset
  * pixels. Nothing here names a viewport. The argument for screen rather than
- * asset pixels is in `tolerance.ts`, and it is the one the deferral asked for.
+ * asset pixels is in `tolerance.ts`.
  *
  * ## 4. Pasting a tag — refused locally, structurally, and before the wire
  *
  * `tags.ts` holds *at most one tag per class* by making a second tag
  * unrepresentable rather than by refusing one. This does the same: an entry whose
  * class the asset already carries as a tag is **dropped**, so pasting a selection
- * of three boxes and an already-present tag pastes the three boxes. The kernel now
- * refuses a duplicate outright (`DuplicateClassificationTag`, #121), which makes
+ * of three boxes and an already-present tag pastes the three boxes. The kernel
+ * refuses a duplicate outright (`DuplicateClassificationTag`), which makes
  * the local rule matter *more* rather than less — without it a paste would look
  * like it worked and the whole save would refuse minutes later, blaming an index.
  *

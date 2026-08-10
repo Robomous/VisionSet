@@ -297,7 +297,7 @@ def test_every_schema_route_refuses_a_request_without_a_token(
     assert response.json()["code"] == "UNAUTHORIZED"
 
 
-# --- the commit message, and when it was written (#230) -----------------------
+# --- the commit message, and when it was written ------------------------------
 
 
 def test_a_version_carries_its_description_and_a_server_stamped_moment(
@@ -367,7 +367,7 @@ def test_there_is_no_route_that_edits_a_published_description(
         assert response.status_code in (404, 405), response.status_code
 
 
-# --- comparing two versions (#231) -------------------------------------------
+# --- comparing two versions ---------------------------------------------------
 
 
 def compare(client: TestClient, project: str, **query: Any) -> Any:
@@ -479,7 +479,7 @@ def test_both_query_parameters_are_required(client: TestClient, project: str) ->
     assert compare(client, project, **{"to": 1}).status_code == 422
 
 
-# --- provenance: which kind of work published a version (#368) ----------------
+# --- provenance: which kind of work published a version -----------------------
 
 
 @pytest.mark.parametrize("stated", ["curated", "annotation"])

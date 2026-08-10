@@ -386,11 +386,11 @@ def _decoded_with_threads(source: Path, *, threads: int, fps: float) -> list[Vid
 def test_a_truncated_clip_yields_the_same_frames_however_many_threads_decode_it(
     tmp_path: Path,
 ) -> None:
-    """#444: what survives a damaged clip must not depend on the hardware that opened it.
+    """What survives a damaged clip must not depend on the hardware that opened it.
 
     Sixteen is not an arbitrary large number — it is ffmpeg's own cap on the thread count it
     picks for itself, so it is literally what any host with sixteen cores or more runs. This is
-    the half of #444 a four-core runner cannot see: there, the unforced number *is* four.
+    the half a four-core runner cannot see: there, the unforced number *is* four.
     """
     broken = write_corrupt_video(tmp_path / "broken.mp4")
 

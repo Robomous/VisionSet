@@ -1,6 +1,5 @@
 /**
- * Acceptance criterion 1 of #39: random command sequences, then a full undo
- * returns the initial document.
+ * Random command sequences, then a full undo returns the initial document.
  *
  * Each seed drives forty steps of arbitrary edits — adds, replacements, deletes,
  * nested groups, staged drags and the occasional undo or redo mid-run — and then

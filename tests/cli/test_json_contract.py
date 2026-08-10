@@ -128,7 +128,7 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         models.ReleaseVerificationOut,
     ),
     ("export_format", wire.export_format(DummyExporter()), models.FormatOut),
-    # #65's report is published by all three surfaces, so it is gated like every
+    # The compatibility report is published by all three surfaces, so it is gated like every
     # other shared shape — and the on-disk copy is checked against the wire
     # projection in `tests/kernel/test_release_service.py`, which closes the loop.
     (

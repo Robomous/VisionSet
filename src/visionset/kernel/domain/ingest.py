@@ -81,10 +81,10 @@ class IngestFailureKind(StrEnum):
     operator noise, and a reason sentence cannot be grouped on.
 
     ``PARTIAL`` is the third member and the only one that is not a total loss.
-    It was added by #452, and what earned it is that the two below could not say
-    the thing an operator most needs to hear about a damaged clip: *some of it is
-    in your batch*. A truncated video was filed as ``CORRUPT`` — true of the
-    file, and misleading about the run, which had just created assets from it.
+    It exists because the two below cannot say the thing an operator most needs
+    to hear about a damaged clip: *some of it is in your batch*. Filing a
+    truncated video as ``CORRUPT`` is true of the file and misleading about the
+    run, which had just created assets from it.
     """
 
     #: Intact, and not something VisionSet accepts. Operator noise, usually.
@@ -110,8 +110,8 @@ class IngestFailure(BaseModel):
     arrangement. That is not tidiness: a report entry has to be groupable on its
     kind, so an ``UNSUPPORTED`` entry allowed to carry ``frames_produced=0``
     would give the report two ways to say "nothing arrived" and force every
-    reader to check both. The invariant runs the other way too — ``PARTIAL``
-    without a count would be exactly the prose sentence #452 replaced.
+    reader to check both. The invariant runs the other way too: ``PARTIAL``
+    without a count is a prose sentence where a number belongs.
 
     A **positive** count, specifically. Zero frames out of a clip is not a
     partial read of it; it is a clip that did not read, which the adapter already
@@ -152,10 +152,9 @@ def report_name(item: Path | str, *, root: Path | None = None) -> str:
     ``Source.path`` and ``Asset.uri`` are deliberately unpublished — an absolute
     path is useless to a client and needlessly disclosive, which is why
     ``SourceOut.name`` carries a basename and reaching bytes goes through a
-    route keyed on an asset id. ``IngestFailure.name`` was the one field that
-    carried one anyway, and by accident rather than by decision: it is whatever
-    the run's own loop happened to be holding, so a directory ingest published a
-    path and a clip published another (#317).
+    route keyed on an asset id. ``IngestFailure.name`` used to carry one anyway,
+    by accident: it was whatever the run's own loop happened to be holding, so a
+    directory ingest published one path spelling and a clip published another.
 
     ``root`` is the directory the run was reading, when it has one. The answer
     is then the path **relative to** it, so a file stays distinguishable from a
@@ -215,8 +214,8 @@ class IngestJob(BaseModel):
     #: The per-file report of the **current** attempt. A resumed run starts a
     #: fresh one rather than accumulating across attempts.
     #:
-    #: It holds every item that was not simply read, which since #452 includes
-    #: the ones that were read *in part*. An item read whole is absent: silence
+    #: It holds every item that was not simply read, including the ones that were
+    #: read *in part*. An item read whole is absent: silence
     #: is the ok-state, and a run that reported one line per healthy file would
     #: be five thousand lines of nothing on a directory ingest.
     failures: tuple[IngestFailure, ...] = ()
@@ -264,11 +263,9 @@ class IngestResult(BaseModel):
     def failed(self) -> int:
         """How many items could not be read at all.
 
-        A ``PARTIAL`` entry is deliberately **not** one of them, and that is the
-        one place #452 changes a number rather than adding one. Counting a clip
-        that put eight frames in the batch as a file the run could not read is
-        the same claim the ingest screen used to make in prose, and no surface
-        wants both spellings of it.
+        A ``PARTIAL`` entry is deliberately **not** one of them: counting a clip
+        that put eight frames in the batch as a file the run could not read would
+        contradict the assets it just created.
         """
         return len(self.failures) - self.partial
 

@@ -12,7 +12,7 @@
  * | 2 | `lane` (polygon) | the polygon tool, and a real tool change from 1 |
  * | 3 | `daytime` (tag) | `toggle-tag` — a panel row, never the canvas |
  * | 4 | `pedestrian` (bbox) | a **second** bbox class: 1 → 4 must not abandon a half-drawn box |
- * | 5 | `centerline` (polyline) | the polyline tool (#342) |
+ * | 5 | `centerline` (polyline) | the polyline tool |
  * | 6 | `pose` (keypoints) | a geometry no annotation can carry — `select`, and nothing drawable |
  *
  * The sixth is the one that looks like a mistake and is not. `keypoints` is a legal
@@ -21,7 +21,7 @@
  * Keeping it here is what makes the demo show that state rather than pretend it
  * cannot happen.
  *
- * `centerline` held that role until #342 gave `polyline` a tool. The role moved
+ * `centerline` cannot hold that role, because `polyline` has a tool. The role sits
  * rather than being deleted with the case — the same move `core/input/_palette.ts`
  * made, one package over, and for the same reason: it is a real state a schema can
  * be in, and the demo exists to show the states.

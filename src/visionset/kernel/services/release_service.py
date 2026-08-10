@@ -23,8 +23,8 @@ Four things shape this module:
 - **Nothing that is not a ``VisionSetError`` escapes.** A manifest blob that is
   gone, a document that will not parse, a document that parses into something
   that is not a manifest: all of those are a release pointing at something the
-  workspace should have kept, which is ``WorkspaceCorrupt`` — the reading #9
-  established for a broken parent link.
+  workspace should have kept, which is ``WorkspaceCorrupt`` — the same reading a
+  broken parent link gets.
 
 There is deliberately no ``delete``. A release is the immutable artifact, and the
 only thing that removes one is deleting its project, whose cascade takes it. Even
@@ -338,8 +338,8 @@ class ReleaseService:
         export describes a release, and a release is a snapshot. Two runs against
         one release therefore agree forever, which is what lets one document be
         shown in a consent dialog, attached to a refusal and written into the
-        output — the three places #65 asks for it, and three chances for them to
-        disagree if it were derived from anything that moves.
+        output — three chances for them to disagree if it were derived from
+        anything that moves.
 
         Every class the manifest declares appears, including ones nobody used.
         That is the report's most useful property and the least obvious: a class
@@ -533,8 +533,8 @@ class ReleaseService:
         The dataset is resolved anyway, and not out of caution about that: it is
         what turns a release whose dataset row is *gone* into ``WorkspaceCorrupt``
         rather than a release that reads fine and cannot be explained. ``release``
-        cascades from ``dataset``, so that is a guarantee failing, which is the
-        reading #9 settled on for a broken parent link.
+        cascades from ``dataset``, so that is a guarantee failing — the reading a
+        broken parent link gets.
         """
         release = uow.releases.get(release_id)
         if release is None:
@@ -704,8 +704,8 @@ def _parse_manifest(raw: bytes, subject: str) -> Manifest:
     JSON, or it is JSON that is not a manifest — including a manifest written in
     a format this build does not read, which ``extra='forbid'`` refuses on
     purpose. Either way a release names something the workspace was supposed to
-    keep intact and did not, which is corruption rather than a missing entity,
-    the reading #9 settled for a broken parent link. Letting a
+    keep intact and did not, which is corruption rather than a missing entity —
+    the reading a broken parent link gets. Letting a
     ``JSONDecodeError`` or a pydantic ``ValidationError`` out would also break
     the rule that no exception from outside the kernel's vocabulary escapes it.
     """
@@ -725,9 +725,9 @@ def _asset_subject(asset: ManifestAsset) -> str:
 
 #: Where the report lands inside an export directory.
 #:
-#: A fixed name at the root, because #65 asks for the report to be *attached to
-#: the export output* and the output is a directory a format lays out however it
-#: likes. A dotfile would be invisible to the archive a caller downloads, and a
+#: A fixed name at the root, because the report is *attached to the export
+#: output* and the output is a directory a format lays out however it likes.
+#: A dotfile would be invisible to the archive a caller downloads, and a
 #: name derived from the format would be one more thing two exporters could
 #: spell differently.
 EXPORT_REPORT_FILENAME: Final = "visionset-export-report.json"
@@ -749,8 +749,8 @@ def _write_report(dest: Path, compatibility: ExportCompatibility) -> None:
         json.dumps(
             # ``by_alias`` is the whole point: this file has to be key-for-key the
             # document ``wire.export_compatibility`` and ``ExportCompatibilityOut``
-            # publish, or #65's "report format stable across three surfaces" would
-            # be true of the surfaces and false of the artifact.
+            # publish. The report format is stable across all three surfaces, and
+            # the artifact is one of them.
             compatibility.model_dump(mode="json", by_alias=True),
             indent=2,
             sort_keys=True,
@@ -768,11 +768,11 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     cannot disagree about what a release contains.
 
     **Three outcomes, not two.** Each class is written whole, written reduced, or
-    not written, read off the format's two declared geometry sets. #65 had only
-    the boolean, so ``_compatibility`` counted a converted polygon as an absent
-    one while the YOLO and VOC exporters went on writing it as a box — the report
-    and the output disagreed about the same annotations, and neither was wrong on
-    its own terms. ``excluded_annotations`` now counts what disappears and
+    not written, read off the format's two declared geometry sets. With only a
+    boolean, this would count a converted polygon as an absent one while the YOLO
+    and VOC exporters wrote it as a box — the report and the output disagreeing
+    about the same annotations, neither wrong on its own terms.
+    ``excluded_annotations`` counts what disappears and
     ``degraded_annotations`` counts what survives coarser; ``compatible`` is false
     for either, so nothing about consent moved.
 
@@ -832,9 +832,8 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
         release_id=release.id,
         format_name=exporter.format_name,
         # Degraded counts against `compatible` exactly as dropped does: a polygon
-        # arriving as a box has lost its shape, and #65's whole point is that the
-        # caller is asked before that happens rather than told after. The
-        # `allow_lossy` gate does not move; only the numbers beside it get honest.
+        # arriving as a box has lost its shape, and the caller is asked before
+        # that happens rather than told after.
         compatible=dropped == 0 and degraded == 0,
         format_is_lossy=exporter.lossy,
         excluded_annotations=dropped,
@@ -867,9 +866,9 @@ def _reason_for(
     """One sentence saying what happens to this class, or ``None`` if nothing does.
 
     A degraded reason says the class **is** written and what it costs; a dropped
-    one says it is not written. #158's third acceptance criterion, and the whole
-    reason the two are separate values: one string that has to cover both ends up
-    saying "cannot write", which is false for half of what it describes.
+    one says it is not written. That is the whole reason the two are separate
+    values: one string covering both ends up saying "cannot write", which is
+    false for half of what it describes.
 
     The kernel does not know *how* a plugin reduces a geometry — the port
     declares that something is lost, not what the remains look like — so the

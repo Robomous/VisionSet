@@ -1,14 +1,13 @@
 # usage: from visionset.mcp._autostart import autostarted
 """Taking a job to ``in_progress`` on the first write, so an agent never has to say so.
 
-#109, and the evidence is #36's twelve real agent runs: two of them wrote every
-label in a job and then had ``complete_job`` refuse, because writing was gated on
-the **batch** being ``in_annotation`` and not on the job, so nothing in the loop
-forced a start until the very last call. Both recovered — the kernel's sentence
-names the reachable state — but the round trip was wasted, and the description
-fix #36 shipped could only warn about the ceremony, not remove it.
+Measured on real agent runs: without this, an agent writes every label in a job
+and then has ``complete_job`` refuse, because nothing in its loop forced a start
+until the very last call. It recovers — the kernel's sentence names the reachable
+state — but the round trip is wasted, and a tool description can only warn about
+the ceremony, not remove it.
 
-#439 has since given writes a job gate too, and it leaves that reasoning intact:
+Writes have a job gate of their own, and it leaves that reasoning intact:
 ``OPEN_JOB_STATES`` holds ``pending``, so a job nobody started is still a job
 that may be written into.
 
@@ -30,8 +29,8 @@ being worked on by somebody who is working on it.
 
 Only ``pending`` is moved. A job that is already ``in_progress`` reports no start,
 and one that is ``completed`` is left alone for the write's own gate to answer —
-``JobFinished``, since #439 — the guard being a state check rather than a
-swallowed ``InvalidTransition``, so no refusal anybody wrote is hidden.
+``JobFinished`` — the guard being a state check rather than a swallowed
+``InvalidTransition``, so no refusal anybody wrote is hidden.
 """
 
 from __future__ import annotations

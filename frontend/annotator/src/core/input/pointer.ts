@@ -2,8 +2,8 @@
  * The two things the pointer half of the input layer owes: a named button, and a
  * coordinate that is a coordinate.
  *
- * Thin on purpose. #42 already froze the pointer vocabulary in `events.ts`, and
- * the screen↔image transform is the adapter's (#47) — `events.ts` says so:
+ * Thin on purpose. The pointer vocabulary is frozen in `events.ts`, and
+ * the screen↔image transform is the adapter's — `events.ts` says so:
  * *"`point` is always the asset's own frame. The screen↔image transform belongs
  * to the adapter."* What is left is the encoding `events.ts` describes as the
  * adapter's to strip (*"`event.button === 2` is a DOM encoding; `"secondary"` is
@@ -35,8 +35,8 @@
  * test sees, and rounding would make a drag lose sub-pixel precision the geometry
  * was written to keep.
  *
- * There is no pointer-*event* constructor. Designing #47's call sites from
- * inside core, before the adapter exists, is the wrong direction; two primitives
+ * There is no pointer-*event* constructor. Designing an adapter's call sites from
+ * inside core is the wrong direction; two primitives
  * that are each independently testable is the right size.
  */
 

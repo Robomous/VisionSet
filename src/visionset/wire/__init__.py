@@ -14,10 +14,10 @@ the point, and each is already absent from the wire model the server publishes:
   frames must not travel on every read of its name.
 
 **This module is its own package rather than ``cli/_json.py`` because it has two
-callers.** It arrived with the CLI (#34) and #35 gave MCP the same need; a second
-hand-written spelling of the same twenty shapes is exactly what "promoted, not
-copied" exists to prevent, and the two would have been free to drift with only
-prose holding them together. The import direction is one-way and machine-enforced:
+callers**, the CLI and MCP. A second hand-written spelling of the same twenty
+shapes is exactly what "promoted, not copied" exists to prevent, and the two would
+be free to drift with only prose holding them together. The import direction is
+one-way and machine-enforced:
 the surfaces import ``visionset.wire``, and the kernel-purity contract forbids
 ``visionset.kernel`` importing it, alongside the three delivery packages. The
 server keeps its own pydantic models because ``openapi.json`` is generated from
@@ -180,7 +180,7 @@ def schema_change(value: SchemaChange) -> dict[str, Any]:
 def schema_diff(value: SchemaDiff) -> dict[str, Any]:
     """A proposed or actual schema change, classified.
 
-    No longer surface-defined: #231 gave ``SchemaService.compare`` a route, so
+    Not surface-defined: ``SchemaService.compare`` has a route, so
     ``SchemaDiffOut`` is the REST spelling of this and the two are held to each
     other by ``tests/cli/test_json_contract.py``.
 
@@ -214,8 +214,8 @@ def video_provenance(value: VideoProvenance) -> dict[str, Any]:
 def source(value: Source) -> dict[str, Any]:
     """A registered origin. ``path`` is absent; ``name`` is the domain's resolution.
 
-    ``Source.name`` (#245): the stated display name when one exists, else the
-    path's last component — one spelling, shared with ``SourceOut``.
+    ``Source.name`` is the stated display name when one exists, else the path's
+    last component — one spelling, shared with ``SourceOut``.
     """
     return {
         "id": str(value.id),
@@ -272,8 +272,8 @@ def asset(value: Asset) -> dict[str, Any]:
         "frame_index": value.frame_index,
         "frame_timestamp": value.frame_timestamp,
         "thumbnail_hash": value.thumbnail_hash,
-        # Null means *unknown* rather than "never" — a row written before #216
-        # existed is legitimately unstamped. ``_moment`` and not ``isoformat``,
+        # Null means *unknown* rather than "never" — a row written before the
+        # column existed is legitimately unstamped. ``_moment`` and not ``isoformat``,
         # because the parity gate compares this against pydantic's own encoding.
         "ingested_at": None if value.ingested_at is None else _moment(value.ingested_at),
     }
@@ -297,10 +297,9 @@ def batch_asset(
 
     ``batch_state`` and ``job_state`` are arguments and not fields: each belongs
     to the resource that publishes it, but ``allowed_actions`` cannot be answered
-    without both. The batch dimension is the one a client's own copy of these
-    rules dropped; the job dimension is the one this projection dropped, which
-    left a finished job's frames declaring that they could still be annotated
-    (#439).
+    without both. Dropping either has already cost: without the batch dimension a
+    client's own copy of these rules produced two blockers, and without the job
+    dimension a finished job's frames declare that they can still be annotated.
     """
     return {
         **asset(value),
@@ -511,16 +510,16 @@ def release_verification(value: ReleaseVerification) -> dict[str, Any]:
 
 
 def export_format(value: Exporter) -> dict[str, Any]:
-    """One installed exporter, with the capabilities #65 made it declare."""
+    """One installed exporter, with the capabilities it declares."""
     return {
         "name": value.format_name,
         "lossy": value.lossy,
         # Sorted, because a set has no order and a wire shape must: two calls to
         # one build have to agree, and a client diffing them should see nothing.
         "geometries": sorted(one.value for one in value.supported_geometries),
-        # Beside them rather than merged in, for #158's reason at this surface
-        # too: a caller reading `geometries: ["bbox"]` off yolo would conclude a
-        # polygon is not written, and a polygon is written.
+        # Beside them rather than merged in: a caller reading `geometries:
+        # ["bbox"]` off yolo would conclude a polygon is not written, and a
+        # polygon is written.
         "degraded_geometries": sorted(one.value for one in value.degraded_geometries),
         "modalities": sorted(value.supported_modalities),
     }
@@ -531,10 +530,10 @@ def class_compatibility(value: ClassCompatibility) -> dict[str, Any]:
     return {
         "label_class": value.label_class,
         "geometry": value.geometry.value,
-        # `status`, not #65's `supported`: the boolean answered "written intact?"
-        # and was read as "written at all?", which is #158. Three values say which
-        # is which, and the two derived booleans stay off the wire so a client
-        # cannot be handed a pair that disagree.
+        # `status`, not a `supported` boolean: that answers "written intact?" and
+        # reads as "written at all?". Three values say which is which, and the two
+        # derived booleans stay off the wire so a client cannot be handed a pair
+        # that disagree.
         "status": value.status.value,
         "annotations": value.annotations,
         "assets": value.assets,
@@ -545,7 +544,7 @@ def class_compatibility(value: ClassCompatibility) -> dict[str, Any]:
 def export_compatibility(value: ExportCompatibility) -> dict[str, Any]:
     """What a format would drop from a release. The same document on all three
     surfaces — attached to a refusal, carried on a result, written into the
-    output — which is what #65 means by "stable"."""
+    output."""
     return {
         "release_id": str(value.release_id),
         "format": value.format_name,
@@ -583,8 +582,8 @@ def connection(value: InferenceConnection) -> dict[str, Any]:
     """One configured place a model can be asked to predict.
 
     No credential key, because the entity carries no credential — where an HTTP
-    connection's secret lives is still open (`cf. #421`), and a key published
-    here would be one every consumer starts parsing.
+    connection's secret lives is still open, and a key published here would be one
+    every consumer starts parsing.
     """
     return {
         "id": str(value.id),

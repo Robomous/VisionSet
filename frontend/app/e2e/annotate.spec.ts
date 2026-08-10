@@ -1,15 +1,14 @@
 /**
  * The annotation page, against a stubbed API.
  *
- * `#59` drives the whole cycle against a **real server**; this suite is narrower and
- * earlier: it asserts the page's own contract — what it reads, what a save sends,
+ * The cycle suite drives the whole product against a **real server**; this suite is
+ * narrower and earlier: it asserts the page's own contract — what it reads, what a save sends,
  * and what the top bar does — with the API held still, so a failure names the page
  * rather than the stack under it.
  *
  * Everything is routed under `/api/`, which is where the app sends requests in
  * development. Routing the bare paths would also intercept the *document*
- * navigation, and the failure reads as "the shell disappeared" — #53 learned that
- * one the slow way.
+ * navigation, and the failure reads as "the shell disappeared".
  */
 
 import { expect, test, type Page, type Request } from "@playwright/test";
@@ -26,7 +25,7 @@ const SCHEMA = {
   classes: [
     { name: "vehicle", geometry: "bbox", color: "#38bdf8", attributes: [] },
     { name: "lane", geometry: "polygon", color: "#f97316", attributes: [] },
-    // A second **bbox** class, so a reassignment has somewhere to land (#380).
+    // A second **bbox** class, so a reassignment has somewhere to land.
     // It adds no tool — the palette is per geometry — and one hotkey row, which
     // the shortcut-sheet scenario below counts.
     { name: "pedestrian", geometry: "bbox", color: "#22c55e", attributes: [] },
@@ -60,7 +59,7 @@ function asset(
     // completed, whatever the frame's own progress is. Without the first a mock
     // would declare `annotate` on a completed batch; without the second it would
     // declare it on a finished job — and since the job's state is what the
-    // Finish press moves, that is the whole of the live transition below (#439).
+    // Finish press moves, that is the whole of the live transition below.
     allowed_actions: assetActions(progress, { batchState, jobState }),
   };
 }
@@ -75,8 +74,8 @@ const PIXEL = Buffer.from(
  * The stub's progress, which a `PUT` actually moves.
  *
  * Every other piece of this stub is static, and that is right for a suite about
- * what the page *sends*. Progress is the exception because #187 is a claim about
- * what the page *shows afterwards*: a `PUT` the server accepts and a listing that
+ * what the page *sends*. Progress is the exception because the skip claims are
+ * about what the page *shows afterwards*: a `PUT` the server accepts and a listing that
  * keeps answering the old value is exactly the state the defect looked like from
  * the user's side, and a static stub would reproduce the bug rather than the fix.
  */
@@ -85,9 +84,9 @@ function progressStore(seed: Readonly<Record<string, string>>): Map<string, stri
 }
 
 /**
- * The lifecycle half of the stub (#299): batch and job state that the two `start`
+ * The lifecycle half of the stub: batch and job state that the two `start`
  * POSTs actually move, on `progressStore`'s reasoning. The default is everything
- * already open, which is what every scenario before #299 entered with; the
+ * already open; the
  * approved-batch scenarios are claims about the moves the page itself makes on
  * open, and a stub whose state never moved would reproduce the bug rather than
  * the fix.
@@ -100,7 +99,7 @@ interface Lifecycle {
   /**
    * When set, `POST /jobs/{id}/start` refuses 409 with this code instead.
    *
-   * The stale-read case, made deterministic (#319): the client's cached `JobOut`
+   * The stale-read case, made deterministic: the client's cached `JobOut`
    * says `pending` and declares `start`, while the server's job has already been
    * started. In a real browser that window is opened by an invalidation whose
    * refetch has not landed yet, which is why it only ever appeared on a loaded
@@ -113,8 +112,7 @@ interface Lifecycle {
   refuseJobComplete?: string;
   /**
    * Whether every asset is settled, which is what makes the job declare
-   * `complete`. Defaults true, as the older scenarios assumed; the withheld
-   * Finish-job scenarios (#427) set it false.
+   * `complete`. Defaults true; the withheld Finish-job scenarios set it false.
    */
   jobSettled?: boolean;
 }
@@ -195,7 +193,7 @@ async function serveApi(
     const path = new URL(request.url()).pathname.replace(/^\/api/, "");
 
     // Answered before anything is recorded: every page load asks whether this
-    // server will sign the browser in by itself (#179), and here it will not —
+    // server will sign the browser in by itself, and here it will not —
     // this suite is about the annotation page, and it reaches it with a token.
     if (path === "/session") return route.fulfill({ json: { issued: false } });
 
@@ -254,8 +252,8 @@ async function serveApi(
       // and that is what it answers. It used to hand back everything stored, which
       // was harmless only while nothing was saved before navigating — the moment
       // something was, the next frame's document was built from an annotation
-      // belonging to the previous one and `createDocument` refused it outright.
-      // #123's cross-frame paste is what walks that path.
+      // belonging to the previous one and `createDocument` refuses it outright.
+      // Cross-frame paste is what walks that path.
       const assetId = path.split("/").at(-2) ?? "";
       const mine = stored.filter((one) => one.asset_id === assetId);
       return route.fulfill({ json: { items: mine, total: mine.length } });
@@ -288,7 +286,7 @@ async function serveApi(
       // was a literal — `unannotated: 2, annotated: 0` — which meant the counts
       // described a job nobody had touched however far the test had walked it,
       // and any claim about the readout was a claim about the stub. That is the
-      // habit #225 exists to make impossible: a mock that answers something the
+      // habit worth making impossible: a mock that answers something the
       // endpoint would never have sent is worse than no mock.
       const states = [...progress.values()];
       const count = (of: string): number => states.filter((one) => one === of).length;
@@ -315,7 +313,7 @@ async function serveApi(
       if (body.progress !== undefined) progress.set(assetId, body.progress);
       // `AssetProgressOut`, not `{}`. The route answers where the asset now is, and a
       // stub that answered an empty object was describing a response the endpoint has
-      // never sent — the exact habit #225 makes impossible.
+      // never sent.
       return route.fulfill({
         status: 200,
         json: { asset_id: assetId, progress: progress.get(assetId) ?? "unannotated" },
@@ -325,8 +323,8 @@ async function serveApi(
       return route.fulfill({ contentType: "image/png", body: PIXEL });
     }
     if (path === "/projects") return route.fulfill({ json: { items: [], total: 0 } });
-    // The suggest tool's own read (#424 D5/D6). Empty is the interesting answer
-    // here: it is the state D6's panel exists for, and it is what a workspace
+    // The suggest tool's own read. Empty is the interesting answer
+    // here: it is the state the panel's explanation exists for, and it is what a workspace
     // that has never been to the Inference section is in.
     if (path === "/inference/connections") {
       return route.fulfill({ json: { items: [], total: 0 } });
@@ -375,13 +373,12 @@ test("the page loads the job's assets, its pinned schema and its progress", asyn
 });
 
 /**
- * The flow verb's whole claim: it **saves first, then advances** (#383).
+ * The flow verb's whole claim: it **saves first, then advances**.
  *
  * This is the assertion jsdom structurally cannot make. Making a document dirty
  * means drawing, drawing means a canvas with a real size, and jsdom's
- * `getBoundingClientRect` returns all zeros — the finding that kept #47's
- * transform out of component tests and that keeps every ordering claim on this
- * page in a browser. A component test clicking the button over a clean document
+ * `getBoundingClientRect` returns all zeros — which is what keeps every ordering
+ * claim on this page in a browser. A component test clicking the button over a clean document
  * would pass with the commit deleted.
  *
  * The order is read off the request log rather than off the screen, because
@@ -444,7 +441,7 @@ test("the flow verb reads Next on an untouched frame and Save and next once it c
 /**
  * `enter` is two meanings that never overlap, and this is the one the table does
  * not hold: with nothing being drawn, the ring close is dead and the adapter
- * reads the press as the flow verb (#383).
+ * reads the press as the flow verb.
  *
  * Both halves in one scenario on purpose — a test of the substitution alone would
  * pass over an implementation that had stopped closing polygons.
@@ -504,7 +501,7 @@ test("the last frame hands the filled slot to Finish job, and offers no next", a
 });
 
 /**
- * The navigation cluster's geometry (#416).
+ * The navigation cluster's geometry.
  *
  * **In chromium and nowhere else.** jsdom's `getBoundingClientRect` returns all
  * zeros, so every claim below — centred, unmoved, unwrapped — is one a component
@@ -546,12 +543,12 @@ test("the navigation cluster sits on the bar's centre and stays there", async ({
 });
 
 /**
- * The width the class field gave back (#420).
+ * The width the class field gives back.
  *
- * #416 measured the right zone at 460px of demand against 366px offered at 1440
- * and patched it by moving `Save and stay` behind `2xl` and the review move
- * behind `xl` — below those widths they lived only in the overflow. Removing the
- * class field's 192px reservation from the cluster is what pays that back, so
+ * The right zone measures 460px of demand against 366px offered at 1440, which
+ * pushes `Save and stay` behind `2xl` and the review move behind `xl` — below
+ * those widths they live only in the overflow. Keeping the class field out of the
+ * cluster is what pays that back, so
  * this asserts the outcome rather than the patch: both are buttons on the bar at
  * the viewport the suite runs at, and the overflow trigger is at its full size
  * rather than squashed by a zone that had run out of room.
@@ -596,7 +593,7 @@ test("the cluster is the same width whichever resolution verb the frame offers",
 });
 
 /**
- * The side panel's two regions (#420), in a browser because none of it is
+ * The side panel's two regions, in a browser because none of it is
  * visible to jsdom.
  *
  * `getBoundingClientRect` answers zero for everything there, and `scrollHeight`
@@ -742,11 +739,11 @@ function startsSent(sent: Request[]): string[] {
 }
 
 /**
- * #299. The workspace routes into the annotator from an *approved* batch — the
+ * The workspace routes into the annotator from an *approved* batch — the
  * gallery's `Start annotating`, every tile, a pasted URL — and nothing on that
- * path pressed the batch table's own `Start`. So the page makes both opening
- * moves itself, in their one legal order. Before this, the job start was refused
- * `BATCH_NOT_IN_ANNOTATION` silently and the first Save answered the raw code.
+ * path presses the batch table's own `Start`. So the page makes both opening
+ * moves itself, in their one legal order. Without them the job start is refused
+ * `BATCH_NOT_IN_ANNOTATION` silently and the first Save answers the raw code.
  */
 test("opening a job in an approved batch starts the batch, then the job, and a save lands", async ({
   page,
@@ -788,8 +785,8 @@ test("a refused opening move is sent once, never looped, and its code is on the 
 
   // …and the refusal surfaces beside the save state, before anybody has saved —
   // the page must never look inert about a batch it could not open. It moved out
-  // of the save's own slot with #319, where as a fallback it survived every
-  // later save and reported a failure that had not happened.
+  // of the save's own slot, where as a fallback it would survive every
+  // later save and report a failure that had not happened.
   await expect(page.getByTestId("opening-refusal")).toContainText(/not open for annotation/i);
 
   // Force a run of re-renders, then look at the wire. The old effect's bail flags
@@ -814,7 +811,7 @@ test("a refused opening move is sent once, never looped, and its code is on the 
 });
 
 /**
- * #319, and the reason the cycle suite was intermittently red.
+ * The stale-declaration window, and a source of intermittent red.
  *
  * The page fires its opening moves against a *cached* read of the job. An
  * invalidation's refetch is asynchronous, so there is a window where the cache
@@ -823,8 +820,8 @@ test("a refused opening move is sent once, never looped, and its code is on the 
  *
  * Two things were wrong with what happened next, and they are separable.
  *
- * The first is this one: the refusal was written into the slot the **save**
- * reports through, and never cleared. So a save that fully succeeded rendered
+ * The first is this one: writing the refusal into the slot the **save** reports
+ * through, and never clearing it, makes a save that fully succeeded render
  * `INVALID_TRANSITION`'s prose instead of `Saved`, for the life of the mount, for
  * a reason that had nothing to do with the save. A slot that can be filled by an
  * unrelated failure is not a report.
@@ -855,7 +852,7 @@ test("a save reports its own outcome, not an opening move's refusal", async ({ p
 });
 
 /**
- * #319's second half: an opening move refused **because it was already made** is
+ * The second half: an opening move refused **because it was already made** is
  * not a failure, and reporting it is reporting a non-event.
  *
  * `start` moves a job `pending → in_progress`. The only way that is refused
@@ -892,8 +889,8 @@ test("an opening move refused as already-made is not reported, and the page re-r
 /**
  * The slot contract on its own, with a refusal that is **not** suppressed.
  *
- * The two halves of #319 need separating, or reverting either one leaves the
- * other's test green. `INVALID_TRANSITION` never reaches the bar any more, so a
+ * The two halves need separating, or reverting either one leaves the
+ * other's test green. `INVALID_TRANSITION` never reaches the bar, so a
  * scenario built on it cannot tell whether the save's slot still falls back to
  * an opening refusal. This one uses a refusal that does reach the bar — the
  * batch closed under a stale read, which `require_open_batch` answers
@@ -978,7 +975,7 @@ test("the zoom buttons drive the same stage mod+0 resets", async ({ page }) => {
 });
 
 /**
- * The zoom's three settled facts (#228), in the one place all three are visible.
+ * The zoom's three settled facts, in the one place all three are visible.
  *
  * The ceiling is a decision rather than a bug: past 8x the picture has no more
  * information in it, and the browser's raster of a scaled stage is where the frame
@@ -1045,7 +1042,7 @@ test("the zoom stops at 8x, and the control says so rather than going quiet", as
   await wheelOverCanvas(-4000);
   await expect(readout).toHaveText("800%");
 
-  // The floor gets the same treatment — it was the same bare button before #228.
+  // The floor gets the same treatment.
   const zoomOut = page.getByTestId("zoom-out");
   await expect(zoomOut).toHaveAttribute("data-at-bound", "false");
   await wheelOverCanvas(8000);
@@ -1067,23 +1064,22 @@ test("Skip settles the asset and advances", async ({ page }) => {
   const put = sent.find((r) => r.method() === "PUT");
   expect(JSON.parse(put?.postData() ?? "{}")).toEqual({ progress: "skipped" });
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
-  // #353: settling a frame advances, and the address follows that too — the
+  // Settling a frame advances, and the address follows that too — the
   // auto-advance goes through the same `onNavigate` the buttons do.
   await expect(page).toHaveURL(/asset=asset-2/);
 });
 
 /**
- * #353: the address bar names the frame on screen.
+ * The address bar names the frame on screen.
  *
- * `?asset=` used to record where the annotator was *entered* — the next and
- * previous buttons moved through the job in component state and never touched it.
+ * Left alone, `?asset=` records where the annotator was *entered* — the next and
+ * previous buttons move through the job in component state and never touch it.
  * Copy the URL on frame 7, send it, and the reader lands on frame 1 with nothing
  * saying so; worse, they answer about a picture that was never meant.
  *
  * `data-asset` on the page root is the truth these assert against, and it is here
- * for exactly this reason: #223's cycle step read the frame *out of the URL*, wrote
- * a lane against that id, and watched every assertion pass — against frame 1, which
- * was not the frame under test. The URL being wrong made a test lie. So the claim
+ * for exactly this reason: a harness reading the frame *out of the URL* writes
+ * against the wrong id and watches every assertion pass. So the claim
  * worth pinning is not "the URL changes" but "the URL and the screen agree".
  */
 async function frameOnScreen(page: Page): Promise<{ url: string | null; screen: string | null }> {
@@ -1180,14 +1176,14 @@ test("an asset this job does not carry is corrected in the address, not silently
 });
 
 /**
- * #187: a skipped asset used to be a dead end.
+ * A skipped asset must not be a dead end.
  *
- * The kernel is right and was never the problem — `progress_after_annotating`
+ * The kernel is right and is not the problem — `progress_after_annotating`
  * moves an asset only between `unannotated` and `annotated`, because `skipped` is
  * a person's decision and drawing a box does not contradict a decision. What was
- * missing is the door the kernel names: `ASSET_PROGRESS_TRANSITIONS` allows
- * exactly one exit from `skipped`, and nothing in the browser took it. So a user
- * could label a skipped asset, watch `Save` succeed, and lose the work at
+ * needed is the door the kernel names: `ASSET_PROGRESS_TRANSITIONS` allows
+ * exactly one exit from `skipped`. Without it a user
+ * can label a skipped asset, watch `Save` succeed, and lose the work at
  * promotion — `PROMOTABLE_PROGRESS` excludes `skipped`.
  */
 test("a skipped asset says so, and the page offers the kernel's one way out", async ({ page }) => {
@@ -1228,8 +1224,8 @@ test("a skipped asset cannot be drawn on at all, and the page says how to get it
   // **This scenario used to assert the opposite — that drawing on a skipped frame
   // saved.** It did, and that was the hole: `PROMOTABLE_PROGRESS` excludes
   // `skipped`, so the labels were stored and then dropped at promotion, with
-  // every layer agreeing because each half was separately valid. #304 closed it
-  // in the kernel (`WRITABLE_PROGRESS`, 409 `ASSET_NOT_WRITABLE`); this closes it
+  // every layer agreeing because each half is separately valid. The kernel closes
+  // it (`WRITABLE_PROGRESS`, 409 `ASSET_NOT_WRITABLE`); this closes it
   // in the browser, so the work is never drawn rather than drawn and refused.
   const canvas = page.getByTestId("annotator-canvas");
   const box = (await canvas.boundingBox())!;
@@ -1276,7 +1272,7 @@ test("a completed batch opens as a viewer, and says so", async ({ page }) => {
 
   // Every control that writes is out, and the palette is gone entirely — a tool
   // palette over a canvas that cannot be drawn on explains nothing. `skip` is
-  // absent rather than disabled since #439: the pair keeps its slot inside a
+  // absent rather than disabled: the pair keeps its slot inside a
   // working job and loses it once the job is closed, which a completed batch's
   // is.
   await expectNothingToSave(page);
@@ -1308,7 +1304,7 @@ test("a completed batch's canvas cannot be drawn on, however hard it is asked", 
 });
 
 /**
- * The doors #422 left open (#423), closed since by absence (#426): the classes
+ * The add-a-class doors, closed by absence: the classes
  * region does not render in the read-only mode at all, so no create path into
  * the add-a-class dialog exists — the region, its filter, its quick-create and
  * its hotkey badges are gone, and the objects region takes the whole panel.
@@ -1359,7 +1355,7 @@ function storedBox(assetId: string): Record<string, unknown> {
 }
 
 /**
- * Decisions (b) and (c) of #426: read-only selection highlights — stroke and
+ * Read-only selection highlights — stroke and
  * label — and advertises nothing. No move cursor anywhere, no grips or vertex
  * dots on the selected shape. The editor is asserted beside it, so the claim is
  * about the mode and not about the fixture.
@@ -1375,7 +1371,7 @@ test("read-only selection shows no move cursor and no handles; the editor shows 
   ]);
   await expect(page.getByTestId("object-row-0")).toBeVisible();
 
-  // Select on the canvas — the viewer's one pointer gesture (#426 d).
+  // Select on the canvas — the viewer's one pointer gesture.
   const shape = page.locator("[data-annotation-id]").first();
   const box = (await shape.boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -1415,7 +1411,7 @@ test("the editor still offers what the viewer withholds — move cursor and grip
 });
 
 /**
- * Decision (d) of #426: selection is one state, reflected everywhere. A shape
+ * Selection is one state, reflected everywhere. A shape
  * picked on the canvas selects its panel row and scrolls it into view — here
  * with enough objects that the row genuinely starts outside the scroller.
  */
@@ -1456,13 +1452,13 @@ test("selecting on the canvas scrolls the object's row into view", async ({ page
 });
 
 /**
- * #439: **the transition itself**, which is the part that had never worked.
+ * **The transition itself**, which is the part easiest to get wrong.
  *
- * Pressing Finish completed the job and left the workspace a live editor — tool
- * strip, classes panel, Skip, Save and next, on every frame — because the
- * declaration the page reads did not move. Completing a job does not complete
- * its batch (`BatchService` derives that separately), so the batch dimension
- * could not cover it; `asset_actions` now reads the job's state too, and the
+ * Without the job dimension, pressing Finish completes the job and leaves the
+ * workspace a live editor — tool strip, classes panel, Skip, Save and next, on
+ * every frame — because the declaration the page reads does not move. Completing
+ * a job does not complete its batch (`BatchService` derives that separately), so
+ * the batch dimension cannot cover it; `asset_actions` reads the job's state, and the
  * invalidation the mutation already performed does the rest.
  *
  * Asserted **in place**: a sentinel written on `window` before the press is read
@@ -1485,7 +1481,7 @@ test("finishing the job turns the workspace into a viewer in place, on every fra
     [storedBox("asset-2")],
   );
 
-  // Frame 2 of 2 — where Finish job renders, and only there (#416).
+  // Frame 2 of 2 — where Finish job renders, and only there.
   await page.getByTestId("next-asset").click();
   await expect(page.getByTestId("asset-position")).toHaveText("2/2");
 
@@ -1529,14 +1525,14 @@ test("finishing the job turns the workspace into a viewer in place, on every fra
   await expect(finish).toHaveText(/finished/i);
   await expect(finish).toBeDisabled();
 
-  // The objects region takes the whole panel (#426 a), measured after the flip
+  // The objects region takes the whole panel, measured after the flip
   // rather than assumed from the completed-batch scenario.
   const panel = (await page.getByTestId("annotator-panel").boundingBox())!;
   const objects = (await page.getByTestId("objects-region").boundingBox())!;
   expect(objects.y - panel.y).toBeLessThanOrEqual(12);
   expect(panel.y + panel.height - (objects.y + objects.height)).toBeLessThanOrEqual(12);
 
-  // #426 (c) and (d) hold on the far side of the transition: a press selects,
+  // Both read-only rules hold on the far side of the transition: a press selects,
   // the row follows, and the selection grows no handles.
   const shape = page.locator("[data-annotation-id]").first();
   const where = (await shape.boundingBox())!;
@@ -1561,11 +1557,10 @@ test("finishing the job turns the workspace into a viewer in place, on every fra
 });
 
 /**
- * The one frame where the read-only mode said nothing at all (#423): the banner
- * rendered only while the frame was not skipped — a guard older than the
- * correction link that now lives inside it — so a skipped frame in a completed
- * batch showed no "viewing only", no route onward, and a skipped notice whose
- * "Un-skip it" names a move the wire withholds there.
+ * The one frame where the read-only mode could say nothing at all: a banner
+ * that renders only while the frame is not skipped leaves a skipped frame in a
+ * completed batch with no "viewing only", no route onward, and a skipped notice
+ * whose "Un-skip it" names a move the wire withholds there.
  */
 test("a skipped frame in a completed batch still says viewing only, and names the correction path", async ({
   page,
@@ -1585,14 +1580,14 @@ test("a skipped frame in a completed batch still says viewing only, and names th
   // that speaks — two banners saying different things about one frame is how a
   // person learns to trust neither.
   await expect(page.getByTestId("skipped-notice")).toHaveCount(0);
-  // Absent rather than disabled since #439 — the frame's own verbs leave once
+  // Absent rather than disabled — the frame's own verbs leave once
   // the job is closed, and a completed batch's is. Inside an *open* batch this
   // same frame keeps its Un-skip, which is the distinction that rule turns on.
   await expect(page.getByTestId("unskip")).toHaveCount(0);
 });
 
 /**
- * #428: the browser's native image drag must be impossible in every mode. A
+ * The browser's native image drag must be impossible in every mode. A
  * drag on the asset means whatever the active tool means — draw, move, pan —
  * and a gesture that lifts a ghost of the picture instead is one the product
  * never offers. Two `<img>` elements exist product-wide: the canvas image
@@ -1676,8 +1671,8 @@ test("the read-only mode is no more draggable than the editor", async ({ page })
 });
 
 /**
- * The founder's decision in #123, and the half no unit test can reach: **the
- * clipboard survives moving to the next frame.**
+ * The half no unit test can reach: **the clipboard survives moving to the next
+ * frame.**
  *
  * A store is per asset — `Workspace` is remounted with `key={asset.id}` so an
  * undo history cannot walk into the previous picture — so this is a claim about
@@ -1766,10 +1761,9 @@ test("a viewer can still navigate between frames, because a read-only mode you c
 });
 
 /**
- * The inverse of what this used to assert. The version-select and Merge slots were
- * drawn disabled to hold the design's shape; #127 is post-beta and blocked on a
- * decision, so there is nothing to explain them with and principle 9 forbids the
- * bare disabled control that leaves. They are gone until the model is.
+ * The version-select and Merge slots are **absent**. Drawing them disabled to hold
+ * the design's shape leaves nothing to explain them with, and principle 9 forbids a
+ * bare disabled control. They come back when the model behind them does.
  */
 test("the versioning controls are absent, not disabled", async ({ page }) => {
   const sent: Request[] = [];
@@ -1779,7 +1773,7 @@ test("the versioning controls are absent, not disabled", async ({ page }) => {
   // The bar did not lose anything real with them: the controls either side are
   // still there, so this is a removal rather than a header that failed to render.
   await expect(page.getByTestId("open-gallery")).toBeVisible();
-  // The Save button is gone too (#368), so the witness that the bar rendered is
+  // There is no Save button, so the witness that the bar rendered is
   // the save *state*, which stayed — and the overflow, which took its press.
   await expect(page.getByTestId("save")).toHaveCount(0);
   await expect(page.getByTestId("save-state")).toBeVisible();
@@ -1787,7 +1781,7 @@ test("the versioning controls are absent, not disabled", async ({ page }) => {
 });
 
 /**
- * #183: the annotation page owns the viewport.
+ * The annotation page owns the viewport.
  *
  * Every other route in the product is a list or a form, and the shell's padded,
  * `max-w-7xl` container is right for those. The annotator is the one screen
@@ -1848,7 +1842,7 @@ test("collapsing the rail reflows the annotation page to the new width", async (
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  // Expanded first: a fresh session starts collapsed (#200), and this scenario is
+  // Expanded first: a fresh session starts collapsed, and this scenario is
   // about what collapsing gives back. Measuring from the default would measure
   // the same 180px in the other direction and read as the page shrinking.
   await page.getByTestId("rail-collapse").click();
@@ -1898,7 +1892,8 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
  * The rail is continuous across the two panes, whatever the route tree looks like.
  *
  * Splitting a shell into two layout routes is the kind of change that quietly
- * costs local state, and #183 introduced exactly that shape. This asserts the
+ * costs local state, and the annotator's full-bleed route introduces exactly that
+ * shape. This asserts the
  * property rather than the structure — deliberately, because the structure turns
  * out not to decide it: two sibling `<Route element={<AppShell />}>` branches are
  * reconciled into one instance and preserve the state too. What must not regress
@@ -1909,7 +1904,7 @@ test("the rail keeps its collapsed state when the pane changes", async ({ page }
   // Start inside the **full-bleed** pane, so both crossings below are real.
   await openJob(page, sent);
 
-  // Expanded, which since #200 is the state that is *not* the default — so what
+  // Expanded, which is the state that is *not* the default — so what
   // survives the crossing below is a choice somebody made rather than the value
   // a freshly mounted shell would have produced anyway. That makes this a
   // stricter scenario than it was, not a looser one.
@@ -1930,13 +1925,13 @@ test("the rail keeps its collapsed state when the pane changes", async ({ page }
 });
 
 /**
- * #189: `?` used to be *claimed* rather than absent.
+ * `?` must not be *claimed* rather than served.
  *
- * The page passed `onHostAction={(name) => name === TOGGLE_HELP}`. Returning
- * `true` means **the host handled this action**, so pressing `?` — a real binding
- * in `core/input/bindings.ts` — was consumed and then discarded. The user got
- * nothing, and the engine had been told the request was served, so nothing else
- * could pick it up.
+ * `onHostAction={(name) => name === TOGGLE_HELP}` returns
+ * `true`, which means **the host handled this action**, so pressing `?` — a real
+ * binding in `core/input/bindings.ts` — is consumed and then discarded. The user
+ * gets nothing, and the engine has been told the request was served, so nothing
+ * else can pick it up.
  */
 test("? opens the shortcut sheet, and ? closes it again", async ({ page }) => {
   const sent: Request[] = [];
@@ -1987,9 +1982,9 @@ test("the sheet lists the engine's own bindings, and the schema's class hotkeys"
   await expect(classes.locator('[data-chord="2"]')).toContainText("lane");
   await expect(classes.locator('[data-chord="3"]')).toContainText("pedestrian");
 
-  // #123 claimed `mod+c` and `mod+v`, so they are ordinary rows now — they used
-  // to be listed under "left to the browser", and what the sheet states in that
-  // slot instead is the fact that became the surprising one.
+  // `mod+c` and `mod+v` are claimed, so they are ordinary rows — and what the
+  // sheet states in the "left to the browser" slot instead is the fact that is
+  // now the surprising one.
   await expect(sheet.locator('[data-chord="mod+c"]')).toContainText("Copy");
   await expect(sheet.locator('[data-chord="mod+v"]')).toContainText("Paste");
   await expect(sheet.getByTestId("shortcut-text-fields")).toContainText(
@@ -1998,11 +1993,11 @@ test("the sheet lists the engine's own bindings, and the schema's class hotkeys"
 });
 
 /**
- * #185: the surround was the rail's near-black navy.
+ * The surround must not be the rail's near-black navy.
  *
- * The canvas pane was `bg-sidebar-strong` (`#111827`) — the only dark surface in
- * the product outside the rail, so the page read as a different application. It
- * also cost accuracy rather than only looks: a dark surround shifts the perceived
+ * A canvas pane at `bg-sidebar-strong` is the only dark surface in
+ * the product outside the rail, so the page reads as a different application. It
+ * also costs accuracy rather than only looks: a dark surround shifts the perceived
  * contrast and colour of the photograph inside it, on a tool whose whole job is
  * looking closely at pixels.
  */
@@ -2082,11 +2077,11 @@ test("what is drawn on the surround stays legible against it", async ({ page }) 
 });
 
 /**
- * #188: the space between a tab bar and its content was applied twice.
+ * The space between a tab bar and its content must not be applied twice.
  *
- * `AnnotatorPanel` was a `flex flex-col gap-3` and `TabsContent` carries its own
- * `mt-3`. A flex gap and the child's margin add, so the tabs floated 24px above
- * the content they switch — about twice what the rhythm asks for.
+ * A `flex flex-col gap-3` around `TabsContent`, which carries its own
+ * `mt-3`, adds — so the tabs float 24px above
+ * the content they switch, about twice what the rhythm asks for.
  *
  * The rule is now that **the primitive owns it**: `TabsContent`'s margin is the
  * one declaration, and a consumer adds no gap of its own. That direction rather
@@ -2094,7 +2089,7 @@ test("what is drawn on the surround stays legible against it", async ({ page }) 
  * is not a flex column at all still spaces correctly, and a consumer cannot
  * forget something it never had to know.
  *
- * The panel that reported #188 no longer has tabs (#368), so what is left to
+ * The annotator's panel has no tabs, so what is left to
  * measure is the project view — the same doubling is possible wherever a `Tabs`
  * sits in a gapped flex column, and the styleguide holds the specimen's own copy.
  */
@@ -2118,13 +2113,14 @@ test("the project view's tabs use the same one rule", async ({ page }) => {
   await page.getByTestId("token-submit").click();
 
   // This one was already right, and asserting it is what stops a later layout
-  // tidy-up from adding a gap here and rediscovering #188 on a different screen.
+  // tidy-up from adding a gap here and rediscovering the doubling on a different
+  // screen.
   await expect(page.getByTestId("project-tabs")).toBeVisible();
   expect(await tabGap(page, "project-tabs")).toBeCloseTo(12, 0);
 });
 
 /**
- * The tool palette (#198).
+ * The tool palette.
  *
  * The absence these cover is not "a control is missing" but "the primary gesture
  * does nothing": the page opens with no active class, `toolFor` answers `select`,
@@ -2230,8 +2226,8 @@ test("pressing a tool leaves the keyboard alive", async ({ page }) => {
 
   // The claim: the palette refuses the focus a `mousedown` would otherwise take.
   // If it did not, every chord would be dead until the user clicked back on the
-  // picture — and the failure is silent, which is how #47 found the same class of
-  // bug from the other direction.
+  // picture — and the failure is silent, which is what makes this class of bug
+  // expensive.
   await page.getByTestId("annotator-root").focus();
   await page.getByTestId("tool-bbox").click();
 
@@ -2308,7 +2304,7 @@ test("a refused Accept says why", async ({ page }) => {
 });
 
 /**
- * Principle 9 with principle 4 riding on it (#427): the withheld Finish job
+ * Principle 9 with principle 4 riding on it: the withheld Finish job
  * carries its reason as a real tooltip that opens on **focus**, not only on
  * hover — which is only possible because the withheld state is `aria-disabled`
  * rather than natively disabled, and only provable in a real browser, where
@@ -2322,7 +2318,7 @@ test("a withheld Finish job explains itself on focus, with the count", async ({ 
     jobSettled: false,
   });
 
-  // The last frame, the only one Finish job renders on (#416). Frame 1 stays
+  // The last frame, the only one Finish job renders on. Frame 1 stays
   // unannotated behind us — the one unresolved frame the sentence counts.
   await page.getByTestId("next-asset").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
@@ -2355,7 +2351,7 @@ test("a refused Finish job says why, rather than re-enabling in silence", async 
     refuseJobComplete: "JOB_NOT_COMPLETE",
   });
 
-  // The last frame, because that is the only one Finish job renders on (#416).
+  // The last frame, because that is the only one Finish job renders on.
   await page.getByTestId("next-asset").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
 
@@ -2375,10 +2371,9 @@ test("a refusal on the bar is a sentence now, not a kernel identifier", async ({
     refuseBatchStart: "BATCH_NOT_IN_ANNOTATION",
   });
 
-  // `SaveState` rendered the raw code as a destructive badge — the exact class of
-  // rendering #292 removed elsewhere, caught here by F16. The claim is unchanged
-  // and the slot moved: this is an *opening* refusal, and #319 gave those their
-  // own badge. Both render through `refusalProse`, so both carry it.
+  // A raw code rendered as a destructive badge is a kernel identifier in front of
+  // a user. This is an *opening* refusal, which has its own badge beside the save
+  // state. Both render through `refusalProse`, so both carry the prose.
   const state = page.getByTestId("opening-refusal");
   await expect(state).toContainText(/not open for annotation/i);
   await expect(state).not.toContainText("BATCH_NOT_IN_ANNOTATION");
@@ -2386,15 +2381,14 @@ test("a refusal on the bar is a sentence now, not a kernel identifier", async ({
 });
 
 /**
- * The review round-trip — audit finding F24, and the half of the progress
- * machine that had no door.
+ * The review round-trip — the half of the progress machine that is easiest to
+ * leave without a door.
  *
  * `annotated -> review_pending -> accepted | annotated` are three legal kernel
- * edges and the browser offered **none** of them. The gallery's "In review"
- * segment could only be populated through the API or MCP, and `accepted` — the
- * one state that says a human checked the work — was unreachable by any sequence
- * of clicks. #306 made that visible rather than silent by gating Accept on the
- * declaration it actually needs; this is what makes it reachable again.
+ * edges. Without controls for them the gallery's "In review"
+ * segment can only be populated through the API or MCP, and `accepted` — the
+ * one state that says a human checked the work — is unreachable by any sequence
+ * of clicks.
  *
  * Driven end to end on one frame, because the round-trip is the claim: a reviewer
  * sending work back has to leave it in a state the annotator can pick up, and
@@ -2521,17 +2515,16 @@ test("the job counter never goes backwards when a frame is reviewed", async ({ p
 });
 
 /**
- * Principle 10 (#368): the annotation workspace is self-sufficient — no flow may
+ * Principle 10: the annotation workspace is self-sufficient — no flow may
  * force navigation out of the editor, and **no exit may lose work**.
  *
- * The back arrow navigated straight out while `prev`/`next` had gone through the
- * save-first path since #187. So an afternoon's boxes survived walking forward
- * through the job and were lost by pressing Back — the one gesture somebody makes
+ * A back arrow that navigates straight out while `prev`/`next` go through the
+ * save-first path loses an afternoon's boxes to the one gesture somebody makes
  * when they think they have finished.
  *
- * The grid button used to be the second half of this loop. It is not an exit any
- * more (#390): it opens an overlay over the workspace, and the save-first claim
- * moved to the *tile press* below, where the frame actually changes.
+ * The grid button is not an exit: it opens an overlay over the workspace, and the
+ * save-first claim belongs to the *tile press* below, where the frame actually
+ * changes.
  *
  * Asserted in a browser rather than in jsdom on purpose: the claim only exists
  * over a *dirty* document, making one dirty means drawing, and drawing needs a
@@ -2595,7 +2588,7 @@ test("choosing a frame from the gallery saves first, then switches (#390)", asyn
 });
 
 /**
- * The reassignment picker's canvas anchor (#380).
+ * The reassignment picker's canvas anchor.
  *
  * The panel's own half of this is `panel.spec.ts`, against the showcase. What is
  * here is the part jsdom structurally cannot make a claim about: a right-click has

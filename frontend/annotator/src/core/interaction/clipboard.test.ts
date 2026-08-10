@@ -168,8 +168,8 @@ describe("pasting offsets, and the offset is in asset pixels", () => {
   });
 
   it("moves a polyline the same way, though nothing can drag one yet", () => {
-    // `MovableGeometry` is `bbox | polygon` — a polyline has no pointer tool and
-    // vertex editing is `cf. #342`. Pasting one is whole-object and needs neither.
+    // `MovableGeometry` is `bbox | polygon` — a polyline has no pointer move.
+    // Pasting one is whole-object and needs neither.
     const pasted = pastedAnnotations(
       documentOf(),
       [{ label_class: "centerline", geometry: LINE, attributes: {} }],

@@ -10,12 +10,11 @@ the whole state square. Both drive Python, so neither can see whether anything
 an action nothing can perform obliges every client to offer a control that cannot
 work.
 
-That is not hypothetical: `edit_membership` was declared on every draft with no
-route to call (#281), and #331 answered the mirror image by *withdrawing*
-`BatchAction.DELETE` rather than routing it, on the explicit condition that the
-member returns in the same change as its surfaces. #376 is that change, and this
-file is the measurement that makes the condition checkable rather than
-remembered.
+That is not hypothetical: `edit_membership` was once declared on every draft with
+no route to call, and `BatchAction.DELETE` was *withdrawn* rather than routed on
+the explicit condition that the member returns in the same change as its
+surfaces. This file is the measurement that makes such a condition checkable
+rather than remembered.
 
 ## Computed, not asserted
 
@@ -30,8 +29,8 @@ satisfied by editing this file alone.
 ## Batches only, and why
 
 `BatchAction` is the one vocabulary where the correspondence is a clean bijection
-on both surfaces. `JobAction.START` deliberately has **no** MCP tool — #109
-retired `start_job` in favour of auto-starting on the first write, a decision with
+on both surfaces. `JobAction.START` deliberately has **no** MCP tool — a job
+auto-starts on the first write, a decision with
 its own measurement behind it — and `AssetAction` folds five names onto one
 progress route. Extending this gate to those means encoding two exemptions, and
 an exemption written down here is a rule this file no longer proves. They keep
@@ -94,13 +93,12 @@ def _routes() -> set[tuple[str, str]]:
 
 
 def _tool_names() -> set[str]:
-    """Every tool this server can offer, including the ones behind #108's gate.
+    """Every tool this server can offer, including the destructive ones.
 
     ``DESTRUCTIVE_TOOLS`` counts as reachable: those tools are absent from the
     default listing so that a *model* cannot call one it was not shown, and a
     human starting the server with ``--allow-destructive`` is who they are for.
-    Absent-by-configuration is not the same as absent, which is exactly the
-    distinction #108 drew.
+    Absent-by-configuration is not the same as absent.
     """
     return {tool.__name__ for tool, _ in TOOLS + DESTRUCTIVE_TOOLS}
 

@@ -10,7 +10,7 @@
  * — and what a library would bring with it is its own focus management, which is
  * exactly the part that has to cooperate with the annotator canvas's keyboard
  * root. The behaviour is modelled on the hand-built filter + arrow-key list in
- * `screens/SchemaEditor.tsx`, which has shipped since #206.
+ * `screens/SchemaEditor.tsx`.
  *
  * Radix is a dependency already, so `Popover` was available and was declined for
  * the same reason: it owns focus on open and restores it on close, and the one

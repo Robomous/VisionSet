@@ -11,7 +11,7 @@ eventually being wrong about one of them.
 So this loads a real export with the real library and asserts it found the images,
 found the labels, and read the classes in the order the schema declared them.
 
-**Skips locally, fails in CI**, the ffmpeg rule from #22 and for its reason: a
+**Skips locally, fails in CI**, the rule every optional-binary check here follows: a
 silently skipped smoke test looks exactly like a passing one. CI installs the
 ``yolo`` dependency group and sets ``VISIONSET_REQUIRE_ULTRALYTICS=1``, so a
 broken install goes red rather than quietly shrinking the suite.

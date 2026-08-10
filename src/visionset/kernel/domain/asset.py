@@ -76,22 +76,19 @@ class Asset(BaseModel):
     #: *new to this project*, not *touched most recently*. That is the honest
     #: reading, because the second sighting created nothing.
     #:
-    #: NULL means the row predates the column (#216) and **cannot be backfilled**:
-    #: the information exists nowhere. ``Source.registered_at`` is not the proxy
-    #: it looks like, since registration is idempotent on
-    #: ``(kind, path, extraction_fps)`` and is never rewritten — so re-ingesting a
-    #: directory that gained a thousand files does not move it. Any invented
-    #: value would be a plausible-looking wrong answer, which is worse than an
-    #: admitted gap, so every consumer defines what unknown means instead:
-    #: ``ProjectStats.last_ingest_at`` goes NULL and ``IngestService.assets``
-    #: sorts these last.
+    #: NULL means the row predates the column and **cannot be backfilled**: the
+    #: information exists nowhere. ``Source.registered_at`` is not the proxy it
+    #: looks like, since registration is idempotent on
+    #: ``(kind, path, extraction_fps)`` and is never rewritten. Any invented value
+    #: would be a plausible-looking wrong answer, so every consumer defines what
+    #: unknown means instead: ``ProjectStats.last_ingest_at`` goes NULL and
+    #: ``IngestService.assets`` sorts these last.
     #:
-    #: Defaulted to ``None`` and stamped by ``IngestService``, which is
-    #: ``Token.revoked_at``'s shape rather than the ``default_factory`` the four
-    #: non-nullable timestamps use: a factory would make every ``Asset(...)``
-    #: built anywhere claim an arrival, and this column's whole value is that
-    #: NULL stays NULL. Declared last, after ``thumbnail_hash``, because it
-    #: arrives by ``ALTER TABLE`` too.
+    #: Defaulted to ``None`` and stamped by ``IngestService`` rather than by a
+    #: ``default_factory``: a factory would make every ``Asset(...)`` built
+    #: anywhere claim an arrival, and this column's whole value is that NULL stays
+    #: NULL. Declared last, after ``thumbnail_hash``, because it arrives by
+    #: ``ALTER TABLE``.
     ingested_at: datetime | None = None
 
     @field_validator("content_hash", "thumbnail_hash")

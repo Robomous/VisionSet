@@ -2,9 +2,8 @@
  * The class-palette rule, asserted from the *consumer's* side.
  *
  * `classColor` is unit-tested where it is implemented (`paint.test.ts` in the
- * annotator). What is tested here is the thing #128's acceptance criterion is
- * actually about: that ui-core reaches **the same function the canvas draws
- * with**, so a side-panel swatch (#126) and a gallery badge (#55) cannot disagree
+ * annotator). What is tested here is that ui-core reaches **the same function the
+ * canvas draws with**, so a side-panel swatch and a gallery badge cannot disagree
  * with the shape beside them.
  *
  * A test asserting the hash's *output* here would not prove that — two identical
@@ -70,8 +69,8 @@ describe("the class palette", () => {
 /**
  * `hexColor` — the notation change that lets a colour input show the truth.
  *
- * #162: `<input type="color">` accepts only `#rrggbb`, `classColor`'s derived
- * branch answers `hsl(h 72% 58%)`, and the editor's old fallback turned every
+ * `<input type="color">` accepts only `#rrggbb` and `classColor`'s derived
+ * branch answers `hsl(h 72% 58%)`, so a fallback turns every
  * derived class grey — beside a dot showing the real colour, and against an
  * annotator drawing that same real colour.
  *
@@ -127,7 +126,7 @@ describe("hexColor", () => {
   it("converts everything the derived branch can produce", () => {
     // The property, stated once: whatever `classColor` derives for a class with no
     // declared colour is convertible. The moment that stops holding, the editor
-    // goes grey again — which is #162.
+    // goes grey again.
     for (const name of ["lane", "vehicle", "pedestrian", "weather", "", "ünïcodé", "a".repeat(64)]) {
       const derived = classColor({ name, geometry: "bbox", color: null, attributes: [] }, name);
       expect(derived).toMatch(/^hsl\(/);

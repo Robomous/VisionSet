@@ -27,7 +27,7 @@
 
 @theme {
   /*
-   * The primary action: a near-black with an indigo undertone (#323).
+   * The primary action: a near-black with an indigo undertone.
    *
    * It is not the brand colour and is deliberately not read as one. An interface
    * whose every button is brand-coloured spends the brand on "Cancel"; a
@@ -83,7 +83,7 @@
   --color-disabled-foreground: #a0a3b1;
 
   /*
-   * The stage a picture sits on (#185): the surround around an asset in the
+   * The stage a picture sits on: the surround around an asset in the
    * annotator. A role of its own rather than `muted` or `card`, because it is
    * neither a subtle fill nor a surface content sits *in* — it is the neutral a
    * photograph is judged against, and it has to stay distinguishable from
@@ -117,7 +117,7 @@
   --color-destructive-foreground: #ffffff;
 
   /*
-   * The dark rail (#58) — now the same near-black as the primary action, so the
+   * The dark rail — the same near-black as the primary action, so the
    * rail and a filled button are recognisably one family rather than two darks.
    */
   --color-sidebar: #1e2130;

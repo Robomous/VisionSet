@@ -71,7 +71,7 @@ test("binary responses type as unknown rather than as a shape no response has", 
   }
 });
 
-// --- the response checks (#225) ----------------------------------------------
+// --- the response checks ----------------------------------------------
 
 const committedChecks = () => readFileSync(path.join(repoRoot(), CHECKS_PATH), "utf8");
 
@@ -143,7 +143,7 @@ test("the checks are generated from this spec, not from an empty one", () => {
   assert.match(source, /mapOf\(/); // AnnotationOut.attributes
   assert.match(source, /export const checkDeleteProject = checkNoContent;/); // a 204
   // Bytes. `POST /releases/{id}/export` used to be the example here and stopped
-  // being one when #328 moved it behind the queue — the archive now leaves through
+  // being one once it moved behind the job queue — the archive leaves through
   // the artifact route instead, which is the operation this pins.
   assert.match(source, /export const checkGetBackgroundJobArtifact = checkBlob;/);
   // An unconstrained schema. `BackgroundJob.result` is whatever its handler

@@ -11,8 +11,8 @@
  * whatsoever at runtime. `unwrap` used to return `result.data` unexamined, so a
  * well-formed JSON document of the *wrong* type reached a screen intact and one
  * `undefined` in a formatter took the page down with it. That happened three times
- * during #206–#213, and the fixes were three separate hand-written guards at three
- * render sites. This is the one mechanism that replaces them.
+ * three times over one milestone, and the fixes were three separate hand-written
+ * guards at three render sites. This is the one mechanism that replaces them.
  *
  * ## Why combinators rather than one generated predicate per schema
  *

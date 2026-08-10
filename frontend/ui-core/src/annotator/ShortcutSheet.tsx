@@ -1,5 +1,5 @@
 /**
- * The keyboard shortcuts, read off the live registry (#189).
+ * The keyboard shortcuts, read off the live registry.
  *
  * ## The list is derived, never retyped
  *
@@ -31,8 +31,8 @@
  * `mod+c` / `mod+v` used to be *unclaimed*, and this sheet said so — a user who
  * cannot find a familiar chord in a list has no way to tell "not implemented"
  * from "not listed", and the second reading is the one that makes somebody file a
- * bug. #123 claimed them, so they are ordinary rows above. What replaces the note
- * is the fact that is now the surprising one: inside a text field the chords are
+ * bug. They are claimed, so they are ordinary rows above. What is worth a note
+ * instead is the surprising fact: inside a text field the chords are
  * still the browser's, because `AnnotatorCanvas` checks `isTextEntry` before it
  * runs anything. Same reasoning, different sentence.
  */
@@ -68,7 +68,7 @@ const PHRASES: Readonly<Record<ActionKind, (action: Action) => string>> = {
         : action.event.type === "commit"
           ? // Both meanings of `enter`, because the sheet reads the registry and
             // the registry holds only one of them: the adapter substitutes
-            // `save-and-next` when nothing is being drawn (#383). A row that
+            // `save-and-next` when nothing is being drawn. A row that
             // named the ring close alone would be right about the table and
             // wrong about the key.
             "Finish the shape being drawn — or, with nothing in progress, save and go to the next frame"
@@ -104,7 +104,7 @@ function hostPhrase(name: string): string {
 /**
  * Which key `mod` is on this machine — `⌘` or `Ctrl`.
  *
- * Exported because the top bar shows the same chord on a button (#383), and two
+ * Exported because the top bar shows the same chord on a button, and two
  * spellings of "is this a Mac" is how one of them ends up saying Ctrl on a
  * MacBook. `navigator.platform` is deprecated and is still the only thing every
  * engine agrees on; the guard is for the server and for a test with no DOM.

@@ -34,8 +34,9 @@ for — attributes, confidence, provenance, the annotation's own id — is carri
 a ``"visionset"`` object on each annotation. COCO is JSON and every reader
 tolerates keys it does not know; one nested object cannot collide with a future
 COCO field the way four top-level ones could. So a release of boxes and polygons
-exports **clean**, with no consent required, and #65's report is what refuses a
-release holding a classification tag — which COCO genuinely has nowhere to put.
+exports **clean**, with no consent required, and the compatibility report is what
+refuses a release holding a classification tag — which COCO genuinely has nowhere
+to put.
 """
 
 from __future__ import annotations
@@ -103,13 +104,13 @@ class CocoExporter:
 
     #: The two geometries COCO instances describe. A classification tag has no
     #: location, and COCO has no place for a label that is about the whole image —
-    #: that is a different task with a different file — so #65's report is what
-    #: refuses a release holding one, by class and with a count.
+    #: that is a different task with a different file — so the compatibility
+    #: report is what refuses a release holding one, by class and with a count.
     supported_geometries = frozenset({GeometryType.BBOX, GeometryType.POLYGON})
 
     #: Empty, and it is the interesting empty set of the four: COCO writes a
     #: polygon *as a polygon*, with the shoelace area rather than the box's, so it
-    #: reduces nothing. #158's regression guard is that this report did not move.
+    #: reduces nothing.
     degraded_geometries: frozenset[GeometryType] = frozenset()
 
     supported_modalities = frozenset({"image"})

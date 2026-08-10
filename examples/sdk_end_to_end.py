@@ -17,8 +17,8 @@ bytes are fixed, which is what keeps the split folds the same on every machine.
 
 **Every step now goes through the service that owns it.** That sentence used to
 carry an exception: creating an ``Asset`` had no door, so this file wrote the row
-by hand through the same public port a service uses. #20's ``IngestService``
-closed it. The frames are written to disk, the directory is registered as a
+by hand through the same public port a service uses. ``IngestService`` closed
+it. The frames are written to disk, the directory is registered as a
 source, and the ingest hashes them, stores them once and puts them in a batch —
 which is what a real caller does with a real folder of photographs.
 """
@@ -215,7 +215,7 @@ def labels_for(asset: Asset, index: int) -> list[Annotation]:
         attributes["damaged"] = True
 
     # One frame's box is a pre-annotation, as a model provider will produce them
-    # post-beta (#81). provenance='model' without a model_ref cannot be
+    # post-beta. provenance='model' without a model_ref cannot be
     # constructed at all — the domain refuses it, so no service re-checks it.
     by_model = index == MODEL_LABELED_FRAME
 

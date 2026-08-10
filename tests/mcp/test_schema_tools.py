@@ -160,7 +160,7 @@ def test_the_label_class_schema_reaches_the_agent_with_the_domain_docstrings() -
     assert definitions["LabelClass"]["description"]
 
 
-# --- the commit message, and when it was written (#230) -----------------------
+# --- the commit message, and when it was written ------------------------------
 
 
 def test_a_version_carries_the_description_the_agent_wrote(
@@ -202,7 +202,7 @@ def test_a_version_created_without_one_reports_null_rather_than_omitting_it(
     assert created["created_at"] is not None
 
 
-# --- comparing two versions (#231) -------------------------------------------
+# --- comparing two versions ---------------------------------------------------
 
 
 def test_comparing_two_versions_classifies_what_changed(
@@ -270,7 +270,7 @@ def test_version_zero_is_a_malformed_request_rather_than_a_domain_refusal(
     assert result.is_error
 
 
-# --- provenance: the agent's own answer, defaulted to the honest one (#368) ----
+# --- provenance: the agent's own answer, defaulted to the honest one ----------
 
 
 def test_an_agent_publishing_a_version_records_it_as_curated(

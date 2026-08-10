@@ -12,13 +12,13 @@ export default defineConfig(({ command }) => ({
     // `/projects` on its own origin. In development vite owns the origin and the
     // API is somewhere else, and the two ways to bridge that are not equal —
     // enabling CORS on the server would put a middleware in front of every
-    // response *in production too*, and #31 found that the catch-all `Exception`
+    // response *in production too*, and the catch-all `Exception`
     // handler lives in `ServerErrorMiddleware`, **outside** the user middleware
     // stack, so a CORS layer would not run on a 500. A proxy is dev-only by
     // construction and changes no shipped byte.
     //
     // `/api` rather than proxying the API's own paths: the API owns the root, so
-    // `/projects` is both a client route the SPA will want (#58) and a real
+    // `/projects` is both a client route the SPA wants and a real
     // endpoint. A prefix keeps them from colliding, and the app passes
     // `baseUrl="/api"` in dev and `""` in production.
     proxy: {

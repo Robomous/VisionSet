@@ -1,6 +1,6 @@
 /**
  * The suggest gesture's state: points placed, an answer pending, a preview
- * showing — and none of it in the document or in the command log (D4 on #424).
+ * showing — and none of it in the document or in the command log.
  *
  * ## Why this is beside `machine.ts` and not inside it
  *
@@ -62,14 +62,13 @@
  * the host so that the ordering rule — positives and negatives in the order they
  * were placed, each list on its own — has one owner.
  *
- * ## The class can move under a session, and the session survives it (#472)
+ * ## The class can move under a session, and the session survives it
  *
- * #451 held the mode *beside* the active class and discarded it whenever that
- * class moved, on the reading that moving the active class is how this build
- * spells switching tools. In use that is wrong: arming the tool is a decision
- * about how to work, and picking the class to work on is the next thing somebody
- * does. Directed (Armando, 2026-08-09): a session ends when the user puts the
- * tool away or the asset changes, and a class switch is neither.
+ * Discarding the mode whenever the active class moves reads as consistent —
+ * moving the active class is how this build spells switching tools — and in use it
+ * is wrong: arming the tool is a decision about how to work, and picking the class
+ * to work on is the next thing somebody does. A session ends when the user puts
+ * the tool away or the asset changes, and a class switch is neither.
  *
  * {@link withClass} is that whole rule, and it is one function because the three
  * readings are one transition:
@@ -78,7 +77,7 @@
  * - **A preview showing.** It is discarded with the clicks that produced it. It
  *   was answered under the old class's `allowed_geometries`, so accepting it
  *   under the new one could write a shape that class does not admit — the same
- *   argument D3 makes about which classes may be asked in the first place.
+ *   argument that decides which classes may be asked in the first place.
  * - **A class that can hold nothing** — a tag, a path. The session **parks**:
  *   `labelClass` is `null`, no click is diverted, and the armed intent is kept so
  *   that returning to a class which can hold an answer picks up where it left

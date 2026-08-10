@@ -1,26 +1,25 @@
 /**
- * The batch view, in a browser — where #284's riskiest claims are the only ones
+ * The batch view, in a browser — where its riskiest claims are the only ones
  * that can be checked at all.
  *
  * ## Why this suite exists rather than more vitest
  *
  * jsdom reports every element as 0×0. A `ResizeObserver` that is never attached,
  * a grid that renders one tile per row at every width, a nested scroll container
- * — all three are invisible there, and all three are what this change touches.
- * **#159 is the precedent and it is not a hypothetical**: the gallery rendered one
- * column for the whole beta while its component tests passed, because those tests
- * asserted the fallback as though it were the design.
+ * — all three are invisible there, and all three are what this screen turns on.
+ * **It is not a hypothetical**: a gallery can render one
+ * column for a whole release while its component tests pass, because those tests
+ * assert the fallback as though it were the design.
  *
- * #284 made that worse before it made it better. The measured element used to be
- * the scroll container, so a virtualizer that worked was evidence the node had
- * been handed over; the scroller is now the **window**, and `useWindowVirtualizer`
+ * A window scroller makes that worse. When the measured element is the scroll
+ * container, a virtualizer that works is evidence the node has
+ * been handed over; with `useWindowVirtualizer` it
  * virtualizes perfectly against a grid nobody ever measured. The tell is gone, so
- * the assertion moves here.
+ * the assertion lives here.
  *
  * Everything is routed under `/api/`, which is where the app sends requests in
  * development. Routing the bare paths would also intercept the *document*
- * navigation, and the failure reads as "the shell disappeared" — #53 learned that
- * one the slow way.
+ * navigation, and the failure reads as "the shell disappeared".
  */
 
 import { expect, test, type Page, type Request } from "@playwright/test";
@@ -67,9 +66,9 @@ const STATES = [
 const INDEXES = [0, 1, 2, 3, 4, 5, 6, 1047] as const;
 
 /**
- * The same eight frames with every one of them settled — #301's batch.
+ * The same eight frames with every one of them settled.
  *
- * Three annotated and five skipped, which is the founder's own shape scaled down:
+ * Three annotated and five skipped:
  * nothing `unannotated` and nothing `review_pending`, so nothing blocks
  * completion, and a majority skipped so `Restore` has something real to act on.
  */
@@ -132,7 +131,7 @@ const BATCH_COUNTS = {
   skipped: 4,
 };
 
-/** Nothing outstanding, which is the whole precondition for finishing (#301). */
+/** Nothing outstanding, which is the whole precondition for finishing. */
 const SETTLED_COUNTS = {
   total: 48,
   unannotated: 0,
@@ -146,7 +145,7 @@ interface Options {
   /** `draft` is the state with the approve CTA, and the state with no jobs. */
   readonly state?: string;
   /**
-   * Every frame settled and nothing outstanding — the batch #301 was reported on.
+   * Every frame settled and nothing outstanding.
    *
    * The default fixture is deliberately mid-flight (30 of 48 unannotated), which
    * is the wrong shape for every claim about *finishing*: the Complete button is
@@ -180,7 +179,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
     const path = new URL(request.url()).pathname.replace(/^\/api/, "");
 
     // Answered before anything is recorded: every page load asks whether this
-    // server will sign the browser in by itself (#179), and here it will not.
+    // server will sign the browser in by itself, and here it will not.
     if (path === "/session") return route.fulfill({ json: { issued: false } });
     sent.push(request);
 
@@ -379,7 +378,7 @@ test("the grid renders more than one column, measured in a real browser", async 
   const sent: Request[] = [];
   await openGallery(page, sent);
 
-  // #159's actual defect, and the only place it is detectable. The viewport is
+  // The column count, and the only place it is detectable. The viewport is
   // 1440 wide and the default density is a 200px minimum column, so a measured
   // grid is several columns and an unmeasured one is exactly 1.
   const grid = page.getByTestId("gallery-grid");
@@ -680,8 +679,7 @@ test("shift-click selects a range and Escape clears it", async ({ page }) => {
   await expect(page.getByTestId("bulk-count")).toHaveText("1 frame selected");
 
   // `locator.click` and not `page.mouse.click`: the latter silently ignores a
-  // `modifiers` option and TypeScript does not catch it (#48 found that by
-  // watching a refusal pass while its sibling failed).
+  // `modifiers` option and TypeScript does not catch it.
   await page.getByTestId("select-asset-3").click({ modifiers: ["Shift"] });
   await expect(page.getByTestId("bulk-count")).toHaveText("4 frames selected");
 
@@ -724,8 +722,8 @@ test("a draft offers the selection membership editing needs, and only that", asy
   // A draft offered no selection at all while `remove_assets` had no wire
   // surface: `Mark skipped` needs a job a draft does not have, so every action a
   // checkbox could offer was unavailable, and a control whose every action is
-  // unavailable is worse than no control. Membership editing (#281) is the
-  // action that is legal here and nowhere else, so the bar is back — with the
+  // unavailable is worse than no control. Membership editing is the
+  // action that is legal here and nowhere else, so the bar is there — with the
   // progress moves still dead, for their own reason.
   await expect(page.getByTestId("tile-asset-0")).toBeVisible();
   await page.getByTestId("select-asset-0").click();
@@ -733,7 +731,7 @@ test("a draft offers the selection membership editing needs, and only that", asy
   await expect(page.getByTestId("bulk-remove")).toBeEnabled();
   await expect(page.getByTestId("bulk-skip")).toBeDisabled();
   await expect(page.getByTestId("bulk-restore")).toBeDisabled();
-  // #160's third criterion, on the element the pointer is over: not-yet rather
+  // On the element the pointer is over: not-yet rather
   // than broken. Opening a frame is still what a draft cannot do.
   await expect(page.getByTestId("tile-asset-0")).toHaveAttribute("data-pending", "true");
   await expect(page.getByTestId("tile-asset-0")).toHaveAttribute("title", /draft/i);
@@ -808,7 +806,7 @@ test("a timeline cell names its frame and its exact state", async ({ page }) => 
   );
 });
 
-// --- finishing a batch, and taking a skip back (#301) ------------------------
+// --- finishing a batch, and taking a skip back --------------------------------
 
 /** Every write the page made, as `METHOD path`, in the order the server saw them. */
 function writes(sent: Request[]): string[] {
@@ -977,13 +975,13 @@ test("a batch with no work left still offers a way into the annotator", async ({
   await expect(page.getByTestId("start-annotating")).toHaveText(/Open annotator/);
 
   // And it goes to a real asset. Everything here is annotated or skipped, so the
-  // frame it lands on is one the annotator can un-skip from (#187) — which is why
+  // frame it lands on is one the annotator can un-skip from — which is why
   // the door must not be conditional on unannotated work in the first place.
   await page.getByTestId("start-annotating").click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/jobs/${JOB}`);
 });
 
-// --- membership editing (#281) -----------------------------------------------
+// --- membership editing -------------------------------------------------------
 
 test("frames can be taken out of a draft batch, and the counts follow", async ({ page }) => {
   const sent: Request[] = [];

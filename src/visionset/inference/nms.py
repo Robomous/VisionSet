@@ -1,13 +1,12 @@
 # usage: from visionset.inference.nms import suppressed, DEFAULT_IOU_THRESHOLD
 """Cross-box non-maximum suppression, over domain values and nothing else.
 
-**This exists because the measurement said so.** The Phase 0 spike recorded on
-#418 found that at usable thresholds the primary failure mode of a raw
-zero-shot detector is not missing objects but *duplicating* them: several boxes
-over one instance, each confident. Handing that to a write gate would put three
-labels on one dog and make every count downstream wrong, so suppression happens
-before results leave the adapter — which is also #425's fourth settled
-responsibility, stated there for the batch mode and satisfied here for both.
+**This exists because the measurement said so.** At usable thresholds the primary
+failure mode of a raw zero-shot detector is not missing objects but *duplicating*
+them: several boxes over one instance, each confident. Handing that to a write
+gate would put three labels on one dog and make every count downstream wrong, so
+suppression happens before results leave the adapter — for interactive and batch
+prediction alike.
 
 **Cross-box, not per-label.** Suppression compares every pair, including two
 boxes that answered under different phrases. A prompt of ``("dog", "animal")``
@@ -39,11 +38,11 @@ from visionset.kernel.domain import BboxGeometry, PredictedRegion
 DEFAULT_IOU_THRESHOLD: Final = 0.5
 """Two boxes overlapping by more than this are the same object.
 
-The conventional value, and conventional is the right kind of default here: it
-is what the numbers the spike reported were read against, and a threshold picked
-to flatter one measurement would not survive the second dataset. Configurable at
-the provider, because the honest tuning input is on-domain acceptance data — the
-signal the interactive mode is sequenced first to produce (`cf. #418`).
+The conventional value, and conventional is the right kind of default here: it is
+what the measurements behind this module were read against, and a threshold
+picked to flatter one measurement would not survive the second dataset.
+Configurable at the provider, because the honest tuning input is on-domain
+acceptance data.
 """
 
 

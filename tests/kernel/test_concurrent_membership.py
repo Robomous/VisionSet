@@ -5,7 +5,7 @@ and with the same invariant: **a call that returned is a call whose effect is in
 the stored state.** Not "was attempted", not "was legal when it was sent".
 
 `Repository.update` replaces a whole entity and a `Batch` carries every member,
-so before #281 two callers adding *different* assets to one draft both wrote the
+so without a narrow write two callers adding *different* assets to one draft both write the
 same row set — and the second deleted the first one's row before re-inserting the
 membership it had read. Neither was refused. The defect was unreachable only
 because `add_assets` and `remove_assets` had no route in front of them; putting
@@ -165,7 +165,7 @@ def test_a_state_transition_does_not_put_back_a_concurrent_membership_edit(
     `approve` reads a whole batch, sets `state`, and saves it. While membership
     rode along on that write, an add landing between the read and the save was
     silently undone — one writer, one editor, nothing contending for the same
-    field. The batch's version of #302's `JobService.complete` finding, and the
+    field. The batch's version of the `JobService.complete` finding, and the
     reason the fix is "updates stop touching membership" rather than "membership
     writes take a lock".
 

@@ -30,7 +30,7 @@ export const Progress = forwardRef<
       {...props}
     >
       <ProgressPrimitive.Indicator
-        // `brand`, and one of only two places it is allowed (#323). A progress
+        // `brand`, and one of only two places it is allowed. A progress
         // bar is the one piece of chrome a person watches rather than reads, so
         // it is where the coral buys attention instead of spending it.
         className="h-full w-full flex-1 bg-brand transition-transform"

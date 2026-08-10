@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stand up a real VisionSet server for #59's browser cycle.
+# Stand up a real VisionSet server for the browser cycle suite.
 #
 # One script rather than a chain in `webServer.command`, because three of these
 # steps can fail in ways worth naming, and a `&&` chain reports only the exit code.

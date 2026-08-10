@@ -5,7 +5,7 @@
  * the point of having it. The machine stays a pure function over data, and every
  * piece of knowledge about how a store is driven — the argument `stage` wants,
  * what `commit` does with a label, that a log verb drops the preview — lives in
- * one reviewable place instead of being re-derived by #43, #44 and #47.
+ * one reviewable place instead of being re-derived by every tool and adapter.
  *
  * ## `stage` resolves against the committed document, every time
  *

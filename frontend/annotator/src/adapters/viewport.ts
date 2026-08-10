@@ -72,26 +72,24 @@ export const IDENTITY_VIEWPORT: Viewport = { zoom: 1, panX: 0, panY: 0 };
  * The floor, well below v1's 0.3.
  *
  * v1 clamped 30%–200% in fixed ten-point steps, which is fine for the 1080p
- * stills it was pointed at and impossible for the 4K and 8K assets #49 measures:
+ * stills it was pointed at and impossible for 4K and 8K assets:
  * an 8K frame does not *fit* a laptop pane above about 18%, so a 30% floor makes
  * "zoom out until you can see the whole thing" unreachable.
  */
 export const MIN_ZOOM = 0.05;
 
 /**
- * The ceiling: **8x, one asset pixel as an eight-pixel block** (#228).
+ * The ceiling: **8x, one asset pixel as an eight-pixel block**.
  *
  * Above this there is no more information in the picture — only larger blocks of
  * the same pixels — so the zoom is capped rather than left to run. It was 16.
  *
  * The number is also where the frame ceiling lives, and that is not a coincidence
- * worth hiding. #131 removed all 880 DOM writes a wheel notch used to cost and
- * **the clock did not move**: the cost is the browser rasterising and compositing
- * a scaled stage — a 4K `<img>` and 660 SVG elements — which is not work this
- * codebase does, and is not work any render architecture available here avoids
- * (`docs/annotations.md`, "The ceiling is raster"). Vector re-rendering of the
- * annotation chrome is deferred to the drawing-tool orbit, `cf. #342`, where
- * drawing precision would be the thing paying for it.
+ * worth hiding. Removing all 880 DOM writes a wheel notch used to cost moved the
+ * clock not at all: the cost is the browser rasterising and compositing a scaled
+ * stage — a 4K `<img>` and 660 SVG elements — which is not work this codebase
+ * does, and is not work any render architecture available here avoids
+ * (`docs/annotations.md`, "The ceiling is raster").
  *
  * So the cap is honest in both directions: it is the depth past which the image
  * has nothing left to show, and the depth past which the browser struggles to
@@ -101,7 +99,7 @@ export const MIN_ZOOM = 0.05;
 export const MAX_ZOOM = 8;
 
 /**
- * Above this, the picture renders as pixel blocks rather than smoothed (#228).
+ * Above this, the picture renders as pixel blocks rather than smoothed.
  *
  * 4x, half the ceiling. Below it a browser's bilinear smoothing is doing what it
  * is for — hiding the sampling grid at scales where the grid is not the subject.
@@ -112,7 +110,7 @@ export const MAX_ZOOM = 8;
  *
  * The rule is the **image layer's alone**. Annotation chrome — strokes, grips,
  * vertices, labels — is drawn by SVG at whatever the compositor can manage and is
- * untouched by this; sharpening that is `cf. #342`'s orbit, not this constant's.
+ * untouched by this.
  */
 export const PIXELATED_ABOVE_ZOOM = 4;
 

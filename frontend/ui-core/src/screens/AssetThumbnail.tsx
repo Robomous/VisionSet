@@ -104,7 +104,7 @@ export function AssetThumbnail({
         {/* A preview that was never cached is not a preview that broke, and
             `DESIGN.md` forbids a broken-image glyph for the first. NULL is the
             ordinary state of an asset ingested before the cache existed or one
-            whose bytes would not render (#21) — the asset is fine. A fetch that
+            whose bytes would not render — the asset is fine. A fetch that
             actually failed keeps the crossed-out icon, because that one *is* a
             failure. */}
         {failed ? (
@@ -129,7 +129,7 @@ export function AssetThumbnail({
       className={className}
       loading="lazy"
       // The browser's native image drag lifts a ghost of the picture out of any
-      // tile (#428) — inside a grid whose press means *open this frame*, a drag
+      // tile — inside a grid whose press means *open this frame*, a drag
       // that grabs the image instead is a gesture the product never means. The
       // attribute is the whole enforcement: an `<img draggable={false}>` starts
       // no native drag in any engine this product supports, and a second guard

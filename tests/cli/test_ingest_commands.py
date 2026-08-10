@@ -157,7 +157,8 @@ def test_a_video_registers_at_the_rate_it_was_given(root: Path, tmp_path: Path) 
 
 
 def test_a_damaged_clip_says_how_much_of_it_arrived(root: Path, tmp_path: Path) -> None:
-    """#452 on stderr, where the person who typed the command is looking.
+    """The partial report on stderr, where the person who typed the command is
+    looking.
 
     Not on stdout: that carries the batch id and nothing else, which is what makes
     `BATCH=$(visionset ingest …)` work — and a damaged clip still fills a batch.

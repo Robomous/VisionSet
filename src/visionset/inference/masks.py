@@ -9,12 +9,13 @@ see, so it is the part a test drives with literals.
 
 **Which shape is produced is the caller's schema decision, not this module's
 guess.** ``geometry_from`` takes the geometry kinds the active class actually
-admits and produces one of those or nothing — D3 on #424, where a class allowing
-polygons gets the outline, a class allowing only boxes gets the mask's extent,
-and a class allowing neither is not offered the gesture at all.
+admits and produces one of those or nothing: a class allowing polygons gets the
+outline, a class allowing only boxes gets the mask's extent, and a class allowing
+neither is not offered the gesture at all.
 
-**Tolerance is relative, and that is what makes one "detail" setting work.** D3
-asks for a single knob that lands typical objects in a 10-40 vertex range. An
+**Tolerance is relative, and that is what makes one "detail" setting work.** The
+design asks for a single knob that lands typical objects in a 10-40 vertex range.
+An
 absolute pixel tolerance cannot: three pixels is nothing on a car and is the
 whole of a bottle cap. So the tolerance handed to Douglas-Peucker is a fraction
 of the region's own bounding diagonal, which makes the vertex count a property of
@@ -181,8 +182,8 @@ def _gap(point: Point, run: tuple[int, int, int]) -> float:
 def _start_of(mask: Mask, at: Sequence[Point]) -> tuple[int, int] | None:
     """The pixel to begin tracing from: top-left of the blob the prompt asks about.
 
-    The selection rule, and the whole of #461. A point-prompted segmenter is
-    asked *about a place*, so the blob that answers is the one under the point —
+    A point-prompted segmenter is asked *about a place*, so the blob that answers
+    is the one under the point —
     not the one that happens to own the topmost-leftmost lit pixel, which is a
     property of where the speckle fell rather than of what was clicked.
 
@@ -343,7 +344,7 @@ def polygon_from(
     choose *which* blob. It matters here and not only there because a stray blob
     is usually a speck, a speck traces to fewer than three points, and the answer
     would otherwise be this ``None`` — "no suggestion" reported over a mask that
-    segmented the object perfectly well (#461).
+    segmented the object perfectly well.
     """
     traced = outline(mask, at=at)
     if len(traced) < 3:

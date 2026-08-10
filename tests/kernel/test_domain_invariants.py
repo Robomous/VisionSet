@@ -56,7 +56,7 @@ def test_job_and_progress_states() -> None:
     ]
 
 
-# --- what a failure report is allowed to say about an item (#317) ------------
+# --- what a failure report is allowed to say about an item --------------------
 
 
 def test_a_report_name_with_no_root_is_the_basename() -> None:
@@ -113,7 +113,7 @@ def test_a_partial_report_must_say_how_much_arrived() -> None:
     """The kind and the count are one statement, so neither may be made without the other.
 
     `partial` means *some of it is in the batch*, and a report that claimed it without
-    saying how much would be the prose sentence #452 exists to replace. The estimate is
+    saying how much would be a prose sentence where a number belongs. The estimate is
     genuinely optional beside it — a container that will not say how long it is still
     yields a countable number of frames.
     """

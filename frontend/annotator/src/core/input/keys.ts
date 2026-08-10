@@ -6,11 +6,10 @@
  *
  * The obvious design puts `keystrokeOf(event: KeyboardEvent)` in an adapter,
  * because a `KeyboardEvent` is the DOM's. It fails three ways at once. React's
- * `onKeyDown` hands over `React.KeyboardEvent<T>`, not `KeyboardEvent`, so #47's
- * call site would need `event.nativeEvent` or a cast. This package has no jsdom
- * and no vitest config — `vitest run` on defaults, in Node — so nothing in an
- * adapter that names a DOM type could be tested at all. And the module would
- * have no caller until #47 and no test ever.
+ * `onKeyDown` hands over `React.KeyboardEvent<T>`, not `KeyboardEvent`, so the
+ * adapter's call site would need `event.nativeEvent` or a cast. This package has
+ * no jsdom and no vitest config — `vitest run` on defaults, in Node — so nothing
+ * in an adapter that names a DOM type could be tested at all.
  *
  * So the *shape* is declared here, which is exactly the remedy the
  * `annotator-core` skill names: **"the signature wanted a DOM type for its shape
@@ -18,8 +17,8 @@
  * layer's normalized events are for."** The DOM's `KeyboardEvent` and React's
  * synthetic one both satisfy `KeyPress` structurally, with zero imports on
  * either side. Canonicalization therefore lives under the ordinary vitest suite,
- * which is what #46's first acceptance criterion — a table *covered by dispatch
- * tests* — actually asks for, and the adapter shrinks to `keystrokeOf(event)`.
+ * so the table is covered by dispatch tests, and the adapter shrinks to
+ * `keystrokeOf(event)`.
  *
  * ## Shift is part of the chord iff the key is named or an ASCII letter
  *
@@ -70,7 +69,7 @@
  * host's error boundary: a refusal loses a keystroke, a throw loses the
  * session."* IME composition (`event.isComposing`, `keyCode === 229`) is the
  * adapter's to drop, because core cannot see either; `index.ts` lists it with
- * everything else #47 owes.
+ * everything else the adapter owes.
  */
 
 import { isToggleModifier } from "../interaction/events";

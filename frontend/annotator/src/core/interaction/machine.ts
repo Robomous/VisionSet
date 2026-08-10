@@ -23,8 +23,8 @@
  * The issue's literal shape is `(state, event) -> [state, effects]`. Taking a
  * context is the one deviation, and it buys a single owner for the priority
  * order in `target.ts`: without it the caller would have to resolve "what is
- * under the pointer" first, which puts that order in #43 *and* in #47, free to
- * disagree.
+ * under the pointer" first, which would put that order in the machine *and* in
+ * the adapter, free to disagree.
  *
  * `mint` is in the context rather than reached for as a module global, so the
  * function stays pure with respect to its arguments and a test injects a counter
@@ -35,7 +35,7 @@
  *
  * `document` is the **committed** document, never `AnnotatorStore.rendered`.
  * Handing the machine the preview would make each pointer-move compute from the
- * last one, which is precisely the accumulating shape #41's absolute transforms
+ * last one, which is precisely the accumulating shape the absolute transforms
  * were built to avoid.
  *
  * ## The staleness guards
@@ -97,16 +97,16 @@
  *
  * ## Closing a polygon, three ways
  *
- * A press on the first vertex, a double-click, or `commit` (#46 binds Enter). All
+ * A press on the first vertex, a double-click, or `commit` (Enter, by default). All
  * three go through `closeSession`, all three are gated at `MIN_POLYGON_POINTS`, and
  * all three produce exactly one `add` — so a session of any length is one undo step
  * whichever way it ended.
  *
  * Only the first is v1's. **v1 has no double-click close for polygons at all** —
  * that is its *polyline* gesture, driven by a hand-rolled 350 ms timer against a
- * `polylineLastClickTimeRef`. #73 put `polyline` out of scope, so the gesture is
- * unclaimed here, it is the idiom every other polygon tool uses, and #44's issue
- * body asks for it by name. It arrives as a real `double-click` event because
+ * `polylineLastClickTimeRef`. Here that gesture is unclaimed and it is the idiom
+ * every other polygon tool uses, so the polygon takes it.
+ * It arrives as a real `double-click` event because
  * `events.ts` makes the adapter own that recognition, which is also what retires
  * v1's timer.
  *
@@ -150,7 +150,7 @@
  * pointer-move. Only `drawing-bbox` genuinely discarded, and only because its
  * commit was deferred to pointer-up.
  *
- * Because #39's store stages instead, `discard` drops a preview that was only
+ * Because the store stages instead, `discard` drops a preview that was only
  * ever a projection of an untouched committed document. **Escape now reverts a
  * drag to exactly where the gesture began, and `canUndo` never moved during
  * it.** `gestures.test.ts` pins it by reference rather than by value.
@@ -372,9 +372,8 @@ function pressOnShape(turn: Turn<InteractionState, Extract<InteractionEvent, { t
   }
   const annotation = annotationById(context.document, id);
   // A tag is the one geometry left that selects and does not drag: it has no
-  // coordinates, so there is nothing for a move to move. `polyline` was here until
-  // #342 gave it a tool — the refusal existed because a lane you could drag and not
-  // draw would be the only way to change one, which is no longer the case.
+  // coordinates, so there is nothing for a move to move. `polyline` is not here:
+  // it has a drawing tool, so dragging is not the only way to change one.
   if (annotation === undefined || annotation.geometry.type === "classification_tag") {
     return { state: IDLE, effects: [{ kind: "select", selection: selectOnly(id) }] };
   }
@@ -392,18 +391,18 @@ function pressOnShape(turn: Turn<InteractionState, Extract<InteractionEvent, { t
 /**
  * v1's vertex delete — right-click or ctrl-click.
  *
- * `removePolygonVertex` answers `null` at `MIN_POLYGON_POINTS`, and **#44's answer
- * to that is to do nothing.** v1 deleted the whole annotation, and `polygon.ts`
- * left the call here on the grounds that it is a document decision. The call, made:
+ * `removePolygonVertex` answers `null` at `MIN_POLYGON_POINTS`, and **the answer
+ * to that is to do nothing.** v1 deleted the whole annotation; `polygon.ts` leaves
+ * the call here, because it is a document decision. The call, made:
  *
  * A gesture whose scope escalates from "remove this vertex" to "remove the whole
  * shape" at a boundary the user cannot see is a surprise, and a triangle does not
  * look different enough from a quadrilateral to be a warning. Undo would make it
  * *recoverable* — which v1's could not — but recoverable is not the same as
  * predictable, and the remedy for deleting a polygon already exists and is explicit:
- * select it and press Delete (#46).
+ * select it and press Delete.
  *
- * It also removes a failure mode #47 would otherwise inherit. On macOS a ctrl-click
+ * It also removes a failure mode the adapter would otherwise inherit. On macOS a ctrl-click
  * is the native secondary click, so both spellings of this gesture fire from one
  * press — v1's own bug. Two no-ops are a no-op; two `remove`s are a `DocumentError`
  * out of `removeAnnotations`' all-or-nothing refusal, raised from a pointer handler.
@@ -415,7 +414,7 @@ function deleteVertex(context: InteractionContext, id: string, index: number): T
   const annotation = annotationById(context.document, id);
   if (annotation === undefined || !hasVertices(annotation.geometry)) return idle();
   // Each shape reads its own floor — three for a polygon, two for a path — and both
-  // answer `null` the same way, so #44's "nothing happens" is inherited rather than
+  // answer `null` the same way, so "nothing happens" is inherited rather than
   // re-decided. A lane at two points is the same surprise a triangle was.
   const geometry = annotation.geometry;
   const next =
@@ -621,9 +620,9 @@ const DRAWING_POLYGON_ROW: Row<"drawing-polygon"> = {
 
     if (event.button !== "primary") {
       // v1's right-click-to-take-back. Kept, and shared with the `take-back-point`
-      // intent below — #129 found this gesture has no path through the React
-      // adapter, which answers every non-primary press with a pan, so the keyboard
-      // is how a user actually reaches it. One implementation, two doors.
+      // intent below — this gesture has no path through the React adapter, which
+      // answers every non-primary press with a pan, so the keyboard is how a user
+      // actually reaches it. One implementation, two doors.
       if (event.button !== "secondary") return stay(turn);
       return takeBackPoint(turn);
     }
@@ -663,7 +662,7 @@ const DRAWING_POLYGON_ROW: Row<"drawing-polygon"> = {
 };
 
 /**
- * Drop the last placed vertex — v1's right-click, and #46's `backspace`.
+ * Drop the last placed vertex — v1's right-click, and `backspace` here.
  *
  * Emptying the buffer returns to `idle` rather than leaving a `drawing-polygon`
  * holding nothing: `points[0]` is what the close ring and the affordance are
@@ -685,7 +684,7 @@ function takeBackPoint(
 }
 
 /**
- * A path session ends, if it has enough points to be a path (#342).
+ * A path session ends, if it has enough points to be a path.
  *
  * `closeSession`'s twin, and the arity gate is the whole of the difference:
  * `MIN_POLYLINE_POINTS` is two. Below it the session **stays alive** for
@@ -721,8 +720,8 @@ function repeatsLastPathVertex(
 }
 
 /**
- * `DRAWING_POLYGON_ROW` with the ring removed, which is #342's whole description of
- * the tool — and the two rules that survive the removal are the interesting part.
+ * `DRAWING_POLYGON_ROW` with the ring removed, which is the whole of the path tool
+ * — and the two rules that survive the removal are the interesting part.
  *
  * **There is no close attempt**, so a press near the first vertex is an ordinary
  * vertex. That is what an open path means: there is no "you are back where you

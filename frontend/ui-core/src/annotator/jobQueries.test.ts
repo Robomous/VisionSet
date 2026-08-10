@@ -1,6 +1,6 @@
 /**
- * The save plan — the one piece of #56 that is pure and therefore worth pinning
- * away from a browser.
+ * The save plan — the one piece of the annotation page that is pure and therefore
+ * worth pinning away from a browser.
  *
  * Everything else on the annotation page is composition over screens that already
  * have their own tests; this is the part that decides what actually travels, and
@@ -153,7 +153,7 @@ describe("planSave", () => {
 /**
  * Where the annotator opens, given the asset a gallery tile handed it.
  *
- * #160's "on that asset" half. Pure, so it is pinned here; that the tile *reaches*
+ * The "on that asset" half. Pure, so it is pinned here; that the tile *reaches*
  * the annotator at all is a browser claim and lives in `cycle/cycle.spec.ts`,
  * because jsdom reports every element as 0×0 and the gallery's virtualizer
  * therefore renders no tiles to click.
@@ -179,14 +179,14 @@ describe("assetPositionOf", () => {
 
   it("answers zero while the assets are still loading", () => {
     // The position has to be readable before the answer exists, because it is
-    // derived on every render rather than seeded once by an effect — which is the
-    // shape that made #159 possible.
+    // derived on every render rather than seeded once by an effect, which is the
+    // shape that misses its one chance to run.
     expect(assetPositionOf(undefined, "c")).toBe(0);
   });
 });
 
 /**
- * `assetPositionOf`'s inverse, and the whole of #353's decision.
+ * `assetPositionOf`'s inverse: keeping the address bar naming the frame on screen.
  *
  * The wiring either side of it is a browser claim — that pressing next rewrites
  * the address, and that the address survives a reload — so it lives in

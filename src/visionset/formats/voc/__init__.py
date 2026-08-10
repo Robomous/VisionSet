@@ -2,10 +2,10 @@
 """Pascal VOC: one XML per image, and an ``ImageSets`` index per fold.
 
 The third exporter, and the interchange format the wider ecosystem expects. It
-is also the smallest, because #62 and #63 already paid for it: fold assignment,
-content-hash naming, the image-signature sniff and the required-dimensions check
-all live in :mod:`visionset.formats._layout`, and #65 owns the compatibility
-report. What is left is the document.
+is also the smallest, because the earlier two already paid for it: fold
+assignment, content-hash naming, the image-signature sniff and the
+required-dimensions check all live in :mod:`visionset.formats._layout`, and the
+kernel owns the compatibility report. What is left is the document.
 
 **Coordinates are 1-based and inclusive, which is what "Pascal VOC" means.** The
 original devkit's annotations index from 1, and evaluation code written against
@@ -26,8 +26,8 @@ element has a fixed schema its consumers index by tag name, so there is nowhere 
 put an attribute, a confidence or a provenance — unlike COCO, where JSON's
 tolerance for unknown keys is what makes that format lossless. A polygon is still
 exported, as its bounding box, which is why ``degraded_geometries`` is
-``{polygon}``; a classification tag is dropped. #65's report names both, by class
-and with a count, before anything is written — and since #158 it names them
+``{polygon}``; a classification tag is dropped. The compatibility report names
+both, by class and with a count, before anything is written — and names them
 differently, because "reduced to a box" and "absent" are not the same thing to
 consent to.
 """
@@ -93,10 +93,10 @@ class VocExporter:
     #: Boxes, and only boxes arrive intact.
     supported_geometries = frozenset({GeometryType.BBOX})
 
-    #: Polygons, written as their axis-aligned bounding box. #158: this exporter
-    #: has always done it and the report used to call it a removal. A
-    #: classification tag has no location for VOC to record at all, so it stays
-    #: outside both sets and is genuinely dropped.
+    #: Polygons, written as their axis-aligned bounding box — a reduction rather
+    #: than a removal, and the report says which. A classification tag has no
+    #: location for VOC to record at all, so it stays outside both sets and is
+    #: genuinely dropped.
     degraded_geometries = frozenset({GeometryType.POLYGON})
 
     supported_modalities = frozenset({"image"})

@@ -3,7 +3,7 @@
  *
  * The two claims worth the file:
  *
- * **The partition body carries `kind` explicitly.** #29 found that a discriminated
+ * **The partition body carries `kind` explicitly.** A discriminated
  * union's tag emitted with a default reads as *optional* in the JSON schema while
  * pydantic reads it out of the input dict to pick a variant — so a payload omitting
  * it fails with `union_tag_not_found` however the field is declared. The generated
@@ -19,8 +19,8 @@
  * Virtualization itself is **not** asserted here, and that is deliberate rather
  * than an omission: jsdom reports every element as 0×0, so a virtualizer measures
  * an empty viewport and renders one row whatever the data. The claim "smooth with
- * 1k+ assets" is about layout and paint, which only a browser has — #59's suite is
- * where it belongs. What is checked here is the part that is logic: that the pages
+ * 1k+ assets" is about layout and paint, which only a browser has, so the browser
+ * cycle suite is where it belongs. What is checked here is the part that is logic: that the pages
  * accumulate and that the request goes out with the right window.
  */
 
@@ -151,8 +151,8 @@ describe("the batch table", () => {
     expect(screen.queryByTestId("complete-c")).not.toBeNull();
     // `completed` is terminal as a *state* — there is no route back to `draft`,
     // because jobs are already cut against the pinned schema — but it is not the
-    // end of the batch's usefulness: promotion is the last move, and #59 found the
-    // product had no way to make it.
+    // end of the batch's usefulness: promotion is the last move, and the product
+    // needs a way to make it.
     expect(screen.queryByTestId("promote-d")).not.toBeNull();
     expect(screen.queryByTestId("approve-d")).toBeNull();
     expect(screen.queryByTestId("start-d")).toBeNull();
@@ -173,9 +173,8 @@ describe("the labels foreshadowing banner (#290)", () => {
     // `SchemaForeshadow` reads `useProjectReadiness`, which needs the schema and
     // the project's counts to answer at all — an unanswered source leaves
     // readiness `null` and the banner never renders, which looks exactly like
-    // the banner being wrong. The dataset and its releases are stubbed too: the
-    // hook stopped reading them with #388, and they are kept because this
-    // screen's own cards still ask.
+    // the banner being wrong. The dataset and its releases are stubbed too,
+    // because this screen's own cards still ask for them.
     on("GET", /^\/projects\/[^/]+\/dataset$/, {
       status: 200,
       body: datasetOf(PROJECT, "22222222-2222-4222-8222-222222222222"),
@@ -292,7 +291,7 @@ describe("the approval dialog", () => {
 
     // Approval is when the active version pins to the batch, so a schema-less
     // project cannot be approved at all — and creating v1 here would be the second
-    // door `SchemaService` closed. Since #291 this one refusal is translated —
+    // door `SchemaService` closed. This one refusal is translated —
     // it has a remedy a person can act on — while every other code keeps its
     // raw `{code}: {message}` (`batchLifecycle.test.tsx` pins both branches).
     expect((await screen.findByTestId("approve-schema-missing")).textContent).toContain(
@@ -412,7 +411,7 @@ describe("the gallery", () => {
     // `BatchOut` is seven fields and not one of them is a source, a resolution or
     // a moment — so every part of this line is derived: the name and rate from
     // the first asset's `source_id`, the resolution from its own dimensions, and
-    // the age from the earliest `ingested_at` (#283).
+    // the age from the earliest `ingested_at`.
     await waitFor(() =>
       expect(screen.getByTestId("batch-facts").textContent).toContain("5 fps"),
     );
@@ -423,8 +422,8 @@ describe("the gallery", () => {
   });
 
   it("says nothing about an age nothing recorded", async () => {
-    // Null means *unknown*, not "never" — every asset ingested before #216 is
-    // legitimately unstamped, and inventing a date for them would be worse than
+    // Null means *unknown*, not "never" — an asset ingested before the column
+    // existed is legitimately unstamped, and inventing a date would be worse than
     // the omission.
     on("GET", /\/assets$/, {
       status: 200,
@@ -562,9 +561,9 @@ describe("the gallery", () => {
 
       // A draft used to render no selection at all, because every action a
       // checkbox could offer was unavailable — `Mark skipped` needs a job that
-      // does not exist, and membership editing had no wire surface (#281). It
-      // has one now, and `draft` is the *only* state where it is legal, so the
-      // one gate that hid this bar was hiding the one state it is for.
+      // does not exist. Membership editing does have a wire surface, and `draft`
+      // is the *only* state where it is legal, so gating this bar on progress
+      // would hide the one state it is for.
       fireEvent.click(await screen.findByTestId("select-asset-0"));
       await screen.findByTestId("bulk-bar");
 
@@ -573,8 +572,7 @@ describe("the gallery", () => {
       // one: a draft has no jobs, so there is no progress to move.
       expect((screen.getByTestId("bulk-skip") as HTMLButtonElement).disabled).toBe(true);
       expect((screen.getByTestId("bulk-restore") as HTMLButtonElement).disabled).toBe(true);
-      // #160's third criterion survives the change: not-yet rather than broken,
-      // on the element the pointer is actually over.
+      // Not-yet rather than broken, on the element the pointer is actually over.
       expect(tile.getAttribute("data-pending")).toBe("true");
       expect(tile.getAttribute("title")).toMatch(/draft/i);
     });
@@ -699,19 +697,19 @@ describe("the gallery", () => {
   });
 
   /**
-   * #159's third acceptance criterion, and it is a criterion about *this file*.
+   * A criterion about *this file*.
    *
-   * The gallery rendered one tile per row at every width for the whole beta, and
-   * these tests passed throughout — because jsdom has no `ResizeObserver` and the
-   * screen's docstring called the resulting one-column fallback "correct-but-slow
-   * rather than wrong". So the tests asserted the broken value as if it were the
-   * intended one: a claim verified against itself.
+   * A gallery can render one tile per row at every width for a whole release with
+   * these tests passing throughout, because jsdom has no `ResizeObserver` and the
+   * resulting one-column fallback is "correct-but-slow rather than wrong". The
+   * tests then assert the broken value as if it were the intended one: a claim
+   * verified against itself.
    *
-   * #284 made that worse rather than better, which is why the browser assertion
-   * is now mandatory. The scroller used to be the measured node, so a virtualizer
-   * that worked was evidence the node had been handed over; the scroller is now
-   * the *window*, and `useWindowVirtualizer` would virtualize perfectly against a
-   * grid that had never been measured once. The tell is gone.
+   * The window scroller makes that worse rather than better, which is why the
+   * browser assertion is mandatory. When the scroller was the measured node, a
+   * virtualizer that worked was evidence the node had been handed over;
+   * `useWindowVirtualizer` virtualizes perfectly against a grid that has never been
+   * measured once. The tell is gone.
    *
    * What is pinned here is only the honest part — the arithmetic, and that the
    * fallback is reached when the observer is genuinely absent. The count a browser
@@ -766,8 +764,8 @@ describe("the gallery", () => {
  *
  * Not through the grid, and that is the jsdom limitation stated honestly rather
  * than worked around: every element reports 0×0 there, so the virtualizer measures
- * an empty viewport and renders no rows at all. Its windowing is a browser claim
- * (#59). What `AssetThumbnail` does is not — it is a fetch and an object URL, and
+ * an empty viewport and renders no rows at all. Its windowing is a browser claim.
+ * What `AssetThumbnail` does is not — it is a fetch and an object URL, and
  * both are testable here.
  */
 describe("an asset's preview", () => {
@@ -808,16 +806,15 @@ describe("an asset's preview", () => {
 });
 
 /**
- * Finishing a batch, and the two links nobody was sending (#301).
+ * Finishing a batch, and the two links it takes.
  *
  * The claim under all of these is one sentence: **completion is derived at two
  * levels and implicit at neither.** `BatchService.complete` refuses while any job
- * is outstanding and `JobService.complete` refuses while any asset is, and the
- * browser only ever sent the outer one — so a batch reading `0 to do` answered
- * `BATCH_NOT_COMPLETE` for ever, with the remedy sitting on a toolbar inside the
- * annotator that nobody had a reason to visit.
+ * is outstanding and `JobService.complete` refuses while any asset is, so a
+ * browser that sends only the outer one leaves a batch reading `0 to do`
+ * answering `BATCH_NOT_COMPLETE` for ever.
  *
- * These assert the **requests**, in order, because that is what the defect was.
+ * These assert the **requests**, in order, because that is where the defect lives.
  * A test that only checked the button ends up green against a screen that sends
  * the same one request it always did.
  */
@@ -873,8 +870,7 @@ describe("finishing a batch", () => {
 
     await pressComplete();
 
-    // The exact defect, as a sequence. Before #301 this was one line long and the
-    // server answered 409 to it.
+    // The exact defect, as a sequence: one line long, answered 409.
     await waitFor(() =>
       expect(writes()).toEqual([
         "POST /jobs/job-0/complete",
@@ -935,8 +931,8 @@ describe("finishing a batch", () => {
 
     await pressComplete();
 
-    // In a person's words, not the kernel's identifier — #292's rule, and the
-    // one the old `{asApiError(error).code}` broke.
+    // In a person's words, not the kernel's identifier — which a bare
+    // `{asApiError(error).code}` would be.
     expect((await screen.findByTestId("complete-error-drive-01")).textContent).toContain(
       "still need annotating or skipping",
     );
@@ -1006,11 +1002,11 @@ describe("finishing a batch", () => {
 });
 
 /**
- * The bulk bar, and the no-op that reported success (#301).
+ * The bulk bar, and the no-op that would report success.
  *
- * `JobService.mark` answers a re-stated state `200` with nothing changed, so the
- * old bar sent three requests over three already-skipped frames, counted three
- * successes and moved nothing — the screen agreeing it had worked while the
+ * `JobService.mark` answers a re-stated state `200` with nothing changed, so a
+ * bar that sends three requests over three already-skipped frames counts three
+ * successes and moves nothing — the screen agreeing it had worked while the
  * person watched it not work. Selection was never the broken part, which is why
  * every one of these asserts the **payloads**.
  */
@@ -1182,7 +1178,7 @@ describe("the bulk bar", () => {
   });
 
   /**
-   * Removing frames from a batch (#281).
+   * Removing frames from a batch.
    *
    * The mirror image of the block above, and worth its own describe for that
    * reason: every action there is per-frame and legal only while the batch is
@@ -1474,11 +1470,11 @@ describe("the bulk bar", () => {
 });
 
 /**
- * The way into the annotator, which used to close behind you (#301).
+ * The way into the annotator, which must not close behind you.
  *
- * `Start annotating` was drawn only while some frame was `unannotated`, so a batch
- * whose work was finished had no action in its header at all — while the badge
- * beside the empty space went on saying `in progress`.
+ * Drawing `Start annotating` only while some frame is `unannotated` leaves a batch
+ * whose work is finished with no action in its header at all — while the badge
+ * beside the empty space goes on saying `in progress`.
  */
 describe("the gallery header's way into the annotator", () => {
   function frames(batchState: BatchState, ...states: string[]): Record<string, unknown> {
@@ -1539,7 +1535,7 @@ describe("the gallery header's way into the annotator", () => {
     const opened = await open("skipped", "skipped");
     await userEvent.click(screen.getByTestId("start-annotating"));
     // Not filtered out. The annotator lists a job's assets with no progress
-    // filter and carries `Un-skip` on its toolbar (#187), so a skipped frame is a
+    // filter and carries `Un-skip` on its toolbar, so a skipped frame is a
     // legitimate thing to open — and with everything skipped it is the only thing.
     expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: "asset-0" }));
   });

@@ -315,7 +315,7 @@ def test_download_prints_the_connection_as_json(root: Path, fetched: list[str]) 
 
 
 def test_downloading_twice_verifies_rather_than_refusing(root: Path, fetched: list[str]) -> None:
-    """The second run checks the cache it already filled, and says so (#469).
+    """The second run checks the cache it already filled, and says so.
 
     The command that fetches is the command that checks, because the work is the
     same work: a snapshot already on disk is found rather than transferred
@@ -456,7 +456,7 @@ def test_a_size_without_the_runtime_exits_one_with_the_install_command() -> None
     assert "Traceback" not in result.stderr
 
 
-# --- checking that what is on disk is undamaged (#471) ------------------------
+# --- checking that what is on disk is undamaged -------------------------------
 
 
 @pytest.fixture()

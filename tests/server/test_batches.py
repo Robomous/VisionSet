@@ -55,7 +55,7 @@ def ingested(client: TestClient, tmp_path: Path, runner: InlineDispatcher, proje
     return batch_from_ingest(client, runner, tmp_path, project, images=3)
 
 
-# --- the listing, and the envelope #28 pinned ---------------------------------
+# --- the listing, and the collection envelope ---------------------------------
 
 
 def test_a_batchs_assets_answer_with_the_envelope(client: TestClient, ingested: str) -> None:
@@ -76,7 +76,7 @@ def test_membership_order_is_stable(client: TestClient, ingested: str) -> None:
 
 
 def test_an_asset_carries_its_hashes_but_not_its_path(client: TestClient, ingested: str) -> None:
-    """`uri` is a server-side path; reaching the bytes is #30's download by hash."""
+    """`uri` is a server-side path; reaching the bytes is the download by hash."""
     asset = client.get(f"/batches/{ingested}/assets").json()["items"][0]
 
     assert "uri" not in asset
@@ -387,7 +387,7 @@ def test_a_lifecycle_move_on_an_unknown_batch_is_404(client: TestClient, action:
     assert response.json()["code"] == "BATCH_NOT_FOUND"
 
 
-# --- targeting an existing batch from an ingest, the debt #28 deferred --------
+# --- targeting an existing batch from an ingest --------------------------------
 
 
 def test_a_second_ingest_can_be_pointed_at_the_first_ones_batch(
@@ -441,7 +441,7 @@ def test_ingesting_into_an_approved_batch_is_refused_before_any_job_row(
     assert client.get(f"/sources/{source}/ingest-jobs").json() == {"items": [], "total": 0}
 
 
-# --- re-pinning the schema version (#229) ------------------------------------
+# --- re-pinning the schema version --------------------------------------------
 
 
 def new_version(client: TestClient, project: str, *classes: object, **query: object) -> object:
@@ -657,7 +657,7 @@ def test_removing_an_asset_from_the_trunk_takes_it_off_the_count(
 def test_a_batch_can_be_created_from_a_chosen_asset_set(
     client: TestClient, ingested: str, project: str
 ) -> None:
-    """The surface #281 needed and nothing had: a batch curated by hand.
+    """A batch curated by hand, which nothing else offers.
 
     A batch is still born from an ingest in the ordinary case. What had no route
     at all was cutting one out of an arbitrary subset — which is the shape a
@@ -787,13 +787,13 @@ def test_an_open_batch_refuses_to_be_corrected(
     assert "create_correction" not in client.get(f"/batches/{batch_id}").json()["allowed_actions"]
 
 
-# --- membership editing (#281) ------------------------------------------------
+# --- membership editing -------------------------------------------------------
 
 
 def _walk_to(client: TestClient, batch_id: str, state: str) -> None:
     """Take a batch to `state` through the routes a client would actually call.
 
-    The progress write is a **PUT**, and was a POST here until #376 needed the
+    The progress write is a **PUT** rather than a POST, because batch deletion needed the
     `completed` leg to be real: the route is `@router.put`, so the POST answered
     405, nothing settled, `complete` refused, and every `completed` case in this
     module was quietly running against an `in_annotation` batch. It went
@@ -931,7 +931,7 @@ def test_membership_routes_agree_with_what_the_batch_declares(
     `tests/kernel/test_capabilities.py` proves `edit_membership` declared ⇔
     `BatchService.add_assets` succeeds, over the whole state square. It drives
     services, so it cannot see whether a *route* exists in front of one — which
-    is exactly the gap #281 was: a capability declared on every draft, with
+    is exactly the gap to avoid: a capability declared on every draft, with
     nothing on the wire to call.
 
     So this closes the other half, in the only way that is honest without a new
@@ -959,7 +959,7 @@ def test_membership_routes_agree_with_what_the_batch_declares(
         assert "skipped" in added.json()["message"]
 
 
-# --- delete (#376) ------------------------------------------------------------
+# --- delete -------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("state", ["draft", "approved", "in_annotation"])
@@ -1016,7 +1016,7 @@ def test_the_delete_route_agrees_with_what_the_batch_declares(
     `tests/kernel/test_capabilities.py` proves `delete` declared ⇔
     `BatchService.delete` succeeds, over the whole state square, by driving the
     service. It cannot see whether a *route* stands in front of one — which is
-    the orphan #331 withdrew the member over, in the opposite direction.
+    the orphan a withdrawn member avoids, in the opposite direction.
     """
     _walk_to(client, ingested, state)
     declared = "delete" in client.get(f"/batches/{ingested}").json()["allowed_actions"]

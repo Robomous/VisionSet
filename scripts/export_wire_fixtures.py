@@ -12,8 +12,8 @@ Two gates, sharing no toolchain, exactly like the spec and its client:
 `frontend/annotator/src/core/wire.test.ts` keeps the TypeScript matching this
 file. The frontend CI job installs no Python and reads only what is committed.
 
-#40 widened it from annotations alone to **the three inputs an annotator document
-is built from** — an asset, a schema and the annotations on that asset — because
+It carries **the three inputs an annotator document is built from** — an asset, a
+schema and the annotations on that asset — rather than annotations alone, because
 the document takes a schema as typed input and a hand-written TypeScript schema
 fixture would be the second spelling this whole arrangement exists to prevent.
 The filename stays `wire_annotations.json`: renaming a committed artifact for
@@ -77,7 +77,7 @@ def _schema() -> AnnotationSchema:
     branches unparsed, which is the same gap the "bare" annotation below closes.
 
     One class per geometry is not decoration either: an annotator picks a class
-    and gets a geometry, so #43-#45 each need one to draw with.
+    and gets a geometry, so each tool needs one to draw with.
 
     ``description``, ``created_at`` and ``provenance`` are populated rather than
     left null for the reason the classes are: a fixture carrying ``null`` in a
@@ -99,9 +99,9 @@ def _schema() -> AnnotationSchema:
             # No colour, no attributes. A renderer must choose its own colour for
             # this one, and the parser must accept the keys being absent.
             LabelClass(name="lane", geometry=GeometryType.POLYGON),
-            # #223's geometry. It is the one a class can declare with no drawing
-            # tool behind it, which is a fact about the annotator rather than
-            # about the wire — so it appears here exactly like the other three.
+            # A geometry a class can declare with no drawing tool behind it is a
+            # fact about the annotator rather than about the wire — so it appears
+            # here exactly like the other three.
             LabelClass(name="centerline", geometry=GeometryType.POLYLINE, color="#eb5a47"),
             # An attribute with every optional at its default: not required, no
             # options, no default. `select` is the only kind that may carry

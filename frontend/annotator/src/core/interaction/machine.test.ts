@@ -1,9 +1,9 @@
 /**
  * The transition table, swept against itself.
  *
- * Acceptance criterion 1 of #42 — *the transition table exercised by tests,
- * including cancel paths from every state* — is the "the table is the whole of
- * what happens" and "cancel, from everywhere" blocks. **Neither lists a state by
+ * The transition table exercised by tests, including cancel paths from every
+ * state — the "the table is the whole of what happens" and "cancel, from
+ * everywhere" blocks. **Neither lists a state by
  * hand.** Both are generated from `TRANSITIONS` and from `_scene.ts`'s `ROUTES`,
  * which is the rule `tests/kernel/test_batch_service.py` set for
  * `BATCH_TRANSITIONS`: a sweep that reads the table cannot drift from it.
@@ -82,9 +82,8 @@ function isSilent(state: InteractionStateType, event: string): boolean {
  */
 const KEEPS_ITS_WORK_ON_A_LOST_POINTER = new Set<InteractionStateType>([
   "drawing-polygon",
-  // #342, and it joined here because this set is a set: the polyline row has the
-  // same asymmetry for the same reason, and a path session is if anything the
-  // longer of the two to lose.
+  // The polyline row has the same asymmetry for the same reason, and a path
+  // session is if anything the longer of the two to lose.
   "drawing-polyline",
 ]);
 
@@ -335,8 +334,8 @@ describe("a vertex, deleted", () => {
     world.send(down([350, 340]), up([350, 340]));
     world.dispatch(down(POLY_VERTEX, "secondary"));
     const before = world.store.document;
-    // A triangle now. `removePolygonVertex` answers `null` and #44's call is that
-    // nothing happens — v1 deleted the whole annotation here. By identity, because
+    // A triangle now. `removePolygonVertex` answers `null` and nothing happens —
+    // v1 deleted the whole annotation here. By identity, because
     // "the document did not move" is the claim; an equal-but-new document would
     // still have put an entry in the history.
     world.dispatch(down([300, 300], "secondary"));
@@ -362,7 +361,7 @@ describe("a vertex, deleted", () => {
 });
 
 /**
- * #129's answer: the take-back a browser can actually reach.
+ * The take-back a browser can actually reach.
  *
  * v1 spelled this as a right-click, and the React adapter answers **every**
  * non-primary press with a pan before the machine is told — deliberately, because
@@ -459,8 +458,8 @@ describe("taking a polygon point back", () => {
  * file ends on a shape that is still there, so `commitDrag` was the only branch
  * any of the three rows had taken.
  *
- * It is reachable rather than theoretical. A drag stages outside the command log
- * (#39), so the document underneath one is free to move while the gesture is
+ * It is reachable rather than theoretical. A drag stages outside the command log,
+ * so the document underneath one is free to move while the gesture is
  * open — an undo, a delete arriving from the side panel, a reload of the page's
  * annotations with a pointer still down.
  *

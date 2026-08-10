@@ -1,7 +1,7 @@
 """Reading how big a download would be, without doing the download.
 
-The number the local-connection form shows before somebody confirms (#424 D1).
-Its whole reason to exist is that the decision recorded on #418 — VisionSet
+The number the local-connection form shows before somebody confirms.
+Its whole reason to exist is that the standing decision — VisionSet
 downloads nothing on its own — is only a real decision if the cost is on screen
 first, so the one property worth proving is negative: **asking never fetches**.
 
