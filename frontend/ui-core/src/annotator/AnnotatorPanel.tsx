@@ -72,6 +72,7 @@
 import {
   annotationsInDrawOrder,
   classNamed,
+  confidencePercent,
   hotkeyForClass,
   isTaggableClass,
   randomUuid,
@@ -86,13 +87,19 @@ import {
   type AnnotatorStore,
   type LabelClass,
 } from "@visionset/annotator";
-import { Check, Eye, EyeOff, Tag, Trash2 } from "lucide-react";
+import { Check, Eye, EyeOff, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { Input } from "../primitives/Input";
-import { DropdownMenu, DropdownMenuTrigger } from "../primitives/Menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../primitives/Menu";
 import { ClassRegion } from "./ClassRegion";
 import { ReassignMenu } from "./ReassignMenu";
 import { cn } from "../lib/cn";
@@ -375,6 +382,67 @@ function TagStrip({
   );
 }
 
+/**
+ * What a model produced, and how sure it was — on the rows that have one.
+ *
+ * Renders nothing at all for a person's work. That is the whole of the design:
+ * accepting a predicted box is the act that most needs the reviewer to know what
+ * they are accepting, and the *common* path is a label somebody drew, which
+ * earns no badge. Absence is the human case, so the row a reviewer sees a
+ * thousand times is exactly the row that shipped.
+ *
+ * Never colour alone: the glyph carries it, and the accessible name says it in
+ * words, so neither a monochrome screen nor a screen reader depends on the
+ * muted foreground this is tinted with.
+ *
+ * `import` provenance is deliberately not marked. It would need a mark of its
+ * own to mean anything, and the importers that would produce one do not exist
+ * yet; marking it as a model's work would be a claim about where the label came
+ * from that this build cannot support.
+ */
+function ModelMark({
+  annotation,
+  index,
+}: {
+  readonly annotation: Annotation;
+  readonly index: number;
+}): JSX.Element | null {
+  if (annotation.provenance !== "model") return null;
+  // `confidencePercent`, not a local `toFixed` — the canvas writes the same
+  // quantity beside the same annotation, and DESIGN.md's rule for `classColor`
+  // is the rule here too: ui-core imports the answer, it does not respell it.
+  const score = annotation.confidence === null ? null : confidencePercent(annotation.confidence);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          data-testid={`object-model-${index}`}
+          // The score is the sighted reading; the label is the whole sentence,
+          // because a glyph and a bare number are not self-describing.
+          aria-label={
+            score === null
+              ? `Model-produced by ${annotation.model_ref ?? "an unnamed model"}`
+              : `Model-produced by ${annotation.model_ref ?? "an unnamed model"}, confidence ${score}`
+          }
+          className="flex shrink-0 items-center gap-0.5 text-meta text-muted-foreground"
+        >
+          <Sparkles className="size-3" aria-hidden="true" />
+          {score !== null && (
+            // Tabular figures, so a column of scores does not jitter as the
+            // selection moves down it — DESIGN.md's Numbers rule.
+            <span className="tabular-nums" data-testid={`object-confidence-${index}`}>
+              {score}
+            </span>
+          )}
+        </span>
+      </TooltipTrigger>
+      {/* The full reference, which is far too long for the row and is exactly
+          what a reviewer wants when they ask "which model said so". */}
+      <TooltipContent side="left">{annotation.model_ref ?? "Model not recorded"}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 interface ObjectRowProps {
   readonly annotation: Annotation;
   readonly index: number;
@@ -448,6 +516,9 @@ function ObjectRow({
           {index + 1}. {annotation.label_class}
         </span>
       </button>
+      {/* Outside the select button: it is a mark, not a target, and putting it
+          inside would make the score part of the row's click affordance. */}
+      <ModelMark annotation={annotation} index={index} />
       {onReassign !== undefined && (
         <RowReassign
           index={index}

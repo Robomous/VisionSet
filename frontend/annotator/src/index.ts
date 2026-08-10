@@ -280,6 +280,7 @@ export {
   Vertices,
   classColor,
   confidenceLabel,
+  confidencePercent,
   digitFromCode,
   editedId,
   isComposing,

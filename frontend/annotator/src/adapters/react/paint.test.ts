@@ -11,11 +11,13 @@ import { ASSET, SCHEMA, annotation } from "../../core/state/_sample";
 import { createDocument } from "../../core/state/document";
 import { EMPTY_SELECTION, selectionOf } from "../../core/state/selection";
 import type { Annotation } from "../../core/types";
+import { labelText } from "./Shapes";
 import {
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
   classColor,
   confidenceLabel,
+  confidencePercent,
   editedId,
   paintAnnotation,
   paintDocument,
@@ -23,6 +25,7 @@ import {
   pendingPolygon,
   rubberBand,
   screenPx,
+  type PaintedAnnotation,
 } from "./paint";
 import {
   answered,
@@ -321,5 +324,70 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
       modelRef: "m@1",
     });
     expect(paintSuggestion(path, SIGN)).toBeNull();
+  });
+});
+
+describe("what a model produced, projected so the label can say so", () => {
+  function predicted(overrides: Partial<Annotation> = {}): Annotation {
+    return {
+      ...annotation("m1"),
+      provenance: "model",
+      model_ref: "IDEA-Research/grounding-dino-tiny@abc123",
+      confidence: 0.62,
+      ...overrides,
+    };
+  }
+
+  function paintOne(one: Annotation): PaintedAnnotation {
+    const painted = paintAnnotation(
+      createDocument(ASSET, SCHEMA, [one]),
+      EMPTY_SELECTION,
+      one.id,
+      null,
+    );
+    if (painted === null) throw new Error("the fixture must paint; a null here is a broken test");
+    return painted;
+  }
+
+  it("carries both fields onto the draw list", () => {
+    const shape = paintOne(predicted());
+    expect(shape.provenance).toBe("model");
+    expect(shape.confidence).toBe(0.62);
+  });
+
+  it("carries a person's own values too, so the label can tell them apart", () => {
+    const shape = paintOne(annotation("h1"));
+    expect(shape.provenance).toBe("human");
+    expect(shape.confidence).toBeNull();
+  });
+
+  it("writes the model's score beside the class, at the shipped spelling", () => {
+    expect(labelText(paintOne(predicted()))).toBe("sign · 62%");
+  });
+
+  it("still marks a model's work when the model reported no score", () => {
+    // `confidence` is optional on a model-produced annotation, and a mark that
+    // appeared only when a model happened to score itself is a mark whose
+    // absence says nothing.
+    expect(labelText(paintOne(predicted({ confidence: null })))).toBe("sign · model");
+  });
+
+  it("leaves a person's label exactly as it shipped", () => {
+    expect(labelText(paintOne(annotation("h1")))).toBe("sign");
+  });
+
+  it("leaves an imported label alone, having no mark that would mean anything", () => {
+    const imported = predicted({ provenance: "import", model_ref: null, confidence: null });
+    expect(labelText(paintOne(imported))).toBe("sign");
+  });
+
+  it("spells the score the way the suggestion overlay already does", () => {
+    // One quantity, one spelling. `confidenceLabel` is the canvas's live
+    // suggestion; `labelText` is the committed annotation; a reader looking at
+    // both at once must not see two notations for the same number.
+    expect(labelText(paintOne(predicted({ confidence: 0.87 })))).toContain(
+      confidencePercent(0.87),
+    );
+    expect(confidenceLabel("sign", 0.87)).toContain(confidencePercent(0.87));
   });
 });

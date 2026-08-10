@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
 import { AnnotatorPanel } from "./AnnotatorPanel";
+import { TooltipProvider } from "../primitives/Menu";
 
 const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
@@ -71,15 +72,19 @@ function mount(
   store: AnnotatorStore,
   overrides: Partial<Parameters<typeof AnnotatorPanel>[0]> = {},
 ): JSX.Element {
+  // The provider the app mounts once at its root (`app/src/main.tsx`); a row's
+  // model mark is a tooltip trigger, and Radix refuses one outside it.
   return (
-    <AnnotatorPanel
-      store={store}
-      hiddenIds={new Set()}
-      onHiddenChange={vi.fn()}
-      activeClass={null}
-      onActivateClass={vi.fn()}
-      {...overrides}
-    />
+    <TooltipProvider>
+      <AnnotatorPanel
+        store={store}
+        hiddenIds={new Set()}
+        onHiddenChange={vi.fn()}
+        activeClass={null}
+        onActivateClass={vi.fn()}
+        {...overrides}
+      />
+    </TooltipProvider>
   );
 }
 
@@ -466,5 +471,85 @@ describe("selection is one state, reflected everywhere (#426 d)", () => {
 
     expect(await screen.findByTestId("object-row-1")).toHaveProperty("dataset.selected", "true");
     expect(scrolled).toHaveBeenCalled();
+  });
+});
+
+describe("what a model produced, on the row a reviewer accepts it from", () => {
+  /** A predicted annotation: the write path stamps all three of these together. */
+  function predicted(id: string, overrides: Record<string, unknown> = {}): unknown {
+    return {
+      ...(annotation(id, "vehicle", "bbox") as Record<string, unknown>),
+      provenance: "model",
+      model_ref: "IDEA-Research/grounding-dino-tiny@abc123",
+      confidence: 0.62,
+      ...overrides,
+    };
+  }
+
+  it("marks it, and says how sure the model was", () => {
+    render(mount(storeWith([predicted("m")])));
+
+    expect(screen.getByTestId("object-model-0")).toBeDefined();
+    expect(screen.getByTestId("object-confidence-0").textContent).toBe("62%");
+  });
+
+  it("says in words what the glyph says in a picture", () => {
+    // Never colour alone, and never shape alone either: the accessible name
+    // carries the whole claim, so the mark survives a screen reader.
+    render(mount(storeWith([predicted("m")])));
+
+    expect(screen.getByTestId("object-model-0").getAttribute("aria-label")).toBe(
+      "Model-produced by IDEA-Research/grounding-dino-tiny@abc123, confidence 62%",
+    );
+  });
+
+  it("puts nothing at all on a label a person drew", () => {
+    // The common path stays exactly as it shipped — absence is the human case,
+    // so a reviewer's thousandth row gains no badge and no noise.
+    render(mount(storeWith([annotation("h", "vehicle", "bbox")])));
+
+    expect(screen.queryByTestId("object-model-0")).toBeNull();
+    expect(screen.queryByTestId("object-confidence-0")).toBeNull();
+  });
+
+  it("still marks the model's work when no score was recorded", () => {
+    render(mount(storeWith([predicted("m", { confidence: null })])));
+
+    expect(screen.getByTestId("object-model-0")).toBeDefined();
+    // Absent reads as absent — never as a zero, and never as a low score.
+    expect(screen.queryByTestId("object-confidence-0")).toBeNull();
+    expect(screen.getByTestId("object-model-0").textContent).not.toContain("0");
+  });
+
+  it("marks nothing for an imported label, which has no model to name", () => {
+    const imported = predicted("i", { provenance: "import", model_ref: null, confidence: null });
+    render(mount(storeWith([imported])));
+
+    expect(screen.queryByTestId("object-model-0")).toBeNull();
+  });
+
+  it("carries the full model reference for the reviewer who asks which model", () => {
+    // The row is far too narrow for a hub id and a revision, so the reference
+    // lives on the trigger's tooltip. Radix mounts the content on hover; the
+    // accessible name above is what a keyboard or a screen reader gets.
+    render(mount(storeWith([predicted("m")])));
+
+    expect(screen.getByTestId("object-model-0").getAttribute("aria-label")).toContain(
+      "IDEA-Research/grounding-dino-tiny@abc123",
+    );
+  });
+
+  it("marks only the rows that are the model's, in a list holding both", () => {
+    render(
+      mount(
+        storeWith([
+          annotation("h", "vehicle", "bbox"),
+          predicted("m", { confidence: 0.41 }),
+        ]),
+      ),
+    );
+
+    expect(screen.queryByTestId("object-model-0")).toBeNull();
+    expect(screen.getByTestId("object-confidence-1").textContent).toBe("41%");
   });
 });
