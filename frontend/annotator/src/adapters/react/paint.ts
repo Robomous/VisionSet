@@ -53,6 +53,7 @@ import type {
   Point,
   PolygonGeometry,
   PolylineGeometry,
+  Provenance,
 } from "../../core/types";
 
 /** A shape whose class the schema declares, ready to draw. */
@@ -65,6 +66,17 @@ export interface PaintedAnnotation {
   /** Under the pointer, or held by the drag in flight. */
   readonly hot: boolean;
   readonly color: string;
+  /**
+   * Who drew it, projected so the label can say so.
+   *
+   * Carried rather than derived at the label because the draw list is where a
+   * renderer's questions are already answered — a `<text>` that reached back
+   * into the document for provenance would be the one component that needs a
+   * document, and the only reason for it would be four characters of suffix.
+   */
+  readonly provenance: Provenance;
+  /** How sure the model was, and `null` for every label a person drew. */
+  readonly confidence: number | null;
 }
 
 /**
@@ -176,6 +188,8 @@ function painted(
     selected: selection.has(annotation.id),
     hot: annotation.id === hotId,
     color: classColor(declared, annotation.label_class),
+    provenance: annotation.provenance,
+    confidence: annotation.confidence,
   };
 }
 
@@ -307,14 +321,23 @@ export function paintSuggestion(
 }
 
 /**
- * `class 87%`, or the bare class when the model reported no confidence.
+ * How a model's confidence is written down, everywhere it is written down.
  *
- * Rounded to whole percent, because a suggestion's confidence is a rough signal
- * about whether to look closely and two decimal places would suggest a precision
- * the number does not have. A confidence outside `[0, 1]` cannot arrive — the
- * kernel's `PredictedRegion` refuses one — so nothing is clamped here.
+ * Whole percent, because a confidence is a rough signal about whether to look
+ * closely and two decimal places would suggest a precision the number does not
+ * have. A confidence outside `[0, 1]` cannot arrive — the kernel's
+ * `PredictedRegion` refuses one — so nothing is clamped here.
+ *
+ * Exported for the same reason `classColor` is: the panel shows the same
+ * quantity as the canvas, and a second spelling of it in `ui-core` would be a
+ * number that disagrees with itself across two surfaces.
  */
+export function confidencePercent(confidence: number): string {
+  return `${Math.round(confidence * 100)}%`;
+}
+
+/** `class 87%`, or the bare class when the model reported no confidence. */
 export function confidenceLabel(labelClass: string, confidence: number | null): string {
   if (confidence === null) return labelClass;
-  return `${labelClass} ${Math.round(confidence * 100)}%`;
+  return `${labelClass} ${confidencePercent(confidence)}`;
 }

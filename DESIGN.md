@@ -1008,6 +1008,23 @@ gallery badges (#55) — and it **already exists, shipped and unit-tested**:
   outline; the class label renders only while selected, 11px / 700, anchored at the
   first vertex, never a pointer target.
 
+**A model's work is marked; a person's is not.** `provenance: "model"` earns a mark on the
+canvas label (`class · 62%`, and `class · model` where the model recorded no score) and a
+`Sparkles` glyph with the score on the side-panel row, whose accessible name carries the
+claim in words and whose tooltip carries the full `model_ref`. Never colour alone — class
+colour is already user data and cannot also mean provenance. **Absence is the human case**:
+no "manual" badge, no mark on the common path, because the row a reviewer sees a thousand
+times is the one that must stay quiet. `import` provenance is unmarked until there is an
+importer whose mark would mean something.
+
+**Confidence has one spelling, and it is whole percent.** `confidencePercent` in
+`frontend/annotator/src/adapters/react/paint.ts` — the same shared-helper rule as
+`classColor` directly above, and for the same reason: a live suggestion, a committed
+annotation's canvas label and its panel row all show the same number, and two notations for
+it is a number that disagrees with itself. Two decimals would claim a precision a
+confidence does not have. A `null` confidence reads as absent — never as `0`, never as a
+low score.
+
 ## Libraries
 
 | Concern | Choice | Status |
