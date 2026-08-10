@@ -44,11 +44,14 @@ serves nothing. See [CONTRIBUTING.md](../CONTRIBUTING.md#building-the-distributi
 
 ```bash
 visionset --version         # the version, and nothing else
-visionset format list       # coco, dummy, voc, yolo
+visionset format list       # the formats this installation can write
 ```
 
 `format list` is the more useful of the two: it reads *installed* entry-point metadata, so a
-non-empty answer proves the wheel is properly installed rather than merely importable.
+non-empty answer proves the wheel is properly installed rather than merely importable. Run it
+for the current set rather than trusting a list written down somewhere — third-party
+distributions register into the same entry-point group, so what a given installation can write
+is a property of that installation.
 
 ## ffmpeg, and when you need it
 
