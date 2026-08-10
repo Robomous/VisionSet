@@ -57,7 +57,7 @@ def list_asset_annotations(workspace: WorkspaceDep, job_id: UUID, asset_id: UUID
     """Every annotation on one asset of this job, in the order they were added.
 
     Empty for an asset nobody has labeled yet — the ordinary starting state, not
-    an error. Reading is not gated on the batch being open: a label outlives the
+    an error. Reading is not gated on job or batch state: a label outlives the
     work that produced it.
     """
     found = AnnotationService(workspace).for_asset(job_id, asset_id)

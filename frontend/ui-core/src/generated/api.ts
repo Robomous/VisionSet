@@ -1110,7 +1110,7 @@ export interface paths {
          * @description Every annotation on one asset of this job, in the order they were added.
          *
          *     Empty for an asset nobody has labeled yet — the ordinary starting state, not
-         *     an error. Reading is not gated on the batch being open: a label outlives the
+         *     an error. Reading is not gated on job or batch state: a label outlives the
          *     work that produced it.
          */
         get: operations["list_asset_annotations"];
