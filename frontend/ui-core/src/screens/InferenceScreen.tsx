@@ -63,6 +63,24 @@
  * before the job row says so. The settle-invalidation is what makes the row
  * agree, and the prose describes a state the workspace is already in.
  *
+ * ## A download is watched, not owned
+ *
+ * Everything this screen shows about a transfer comes off `ConnectionOut.download`
+ * and nothing from client-held state. That is what makes the screen a viewport
+ * rather than the owner: arriving mid-download — a reload, a second tab, a return
+ * visit, another machine — shows the bar and the prose on the first fetch, because
+ * the row it was going to list says so anyway.
+ *
+ * The list re-reads itself while any row reports a live transfer and stops the
+ * moment none does (`useConnections`). Nothing the browser does reaches the job:
+ * it runs in a worker process the server owns, so navigating away or closing the
+ * tab neither cancels nor pauses it — only the poll stops.
+ *
+ * The integrity check still follows a job id this screen holds, and the asymmetry
+ * is deliberate rather than forgotten: a check is a different question with a
+ * different vocabulary and it is not on the connection's wire model, so there is
+ * nothing to read it off. It keeps the coupling the download shed.
+ *
  * ## The size is asked for before the connection exists
  *
  * The local form shows what a download would cost *before*
@@ -88,6 +106,7 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
 import {
+  isDownloading,
   useCheckIntegrity,
   useConnections,
   useCreateConnection,
@@ -98,9 +117,11 @@ import {
   useUpdateConnection,
   type Connection,
   type ConnectionType,
+  type WeightDownload,
 } from "../data/inferenceQueries";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
+import { Progress } from "../primitives/Feedback";
 import {
   Dialog,
   DialogContent,
@@ -260,8 +281,8 @@ function ConnectionRow({
 }): JSX.Element {
   const can = new Set(connection.allowed_actions);
   const ready = connection.setup_state === "ready";
-  const weights = useWeightsRun(connection, useDownloadWeights(), "DOWNLOAD_FAILED");
-  const integrity = useWeightsRun(connection, useCheckIntegrity(), "WEIGHTS_DAMAGED");
+  const weights = useDownloadRun(connection);
+  const integrity = useIntegrityRun(connection);
   return (
     <TableRow data-testid={`connection-${connection.name}`}>
       <TableCell className="font-medium">{connection.name}</TableCell>
@@ -369,11 +390,13 @@ function ConnectionRow({
               </DropdownMenu>
             )}
           </div>
-          {weights.running && weights.progress !== null && (
-            <span className="text-meta text-muted-foreground" data-testid="download-progress">
-              {weights.progress}
-            </span>
-          )}
+          {/*
+            Rendered off the wire and not off `weights.running`, so a page that
+            arrived mid-transfer shows it on its first fetch — the whole point of
+            the download living on the connection. It disappears when the job
+            settles, at which point the row's own status says what happened.
+          */}
+          {weights.live !== null && <DownloadProgress download={weights.live} />}
           {integrity.running && integrity.progress !== null && (
             <span className="text-meta text-muted-foreground" data-testid="integrity-progress">
               {integrity.progress} files
@@ -410,46 +433,72 @@ function ConnectionRow({
 }
 
 /**
- * One launched-and-polled job on a connection row: how to start it, and what it
- * is saying.
+ * The connection's weight transfer, read off the row rather than followed.
  *
- * 202 and poll, the contract the export route uses. It lives on the *row* rather
- * than inside a control because the controls are menu items, and a menu closes
- * when one is chosen — a job whose progress and refusal lived inside the item
- * would take both with it on the way out.
+ * **Nothing here remembers that a download was started**, and that is the whole
+ * of why leaving the screen no longer loses one. The wire says which job, what
+ * state and how many bytes; this reads it. A version of this that held the job id
+ * from the `202` — which is what shipped — could only show a transfer the *same
+ * mount* had launched, so a reload, a second tab, or walking to another screen
+ * and back all produced `Not set up` beside a download that was still running.
+ *
+ * The mutation is still here because starting one is still an event, and its own
+ * refusal (a 409, a missing runtime) is answered to the request rather than to a
+ * job that was never created.
+ *
+ * A settled transfer stays readable, which is what makes a failure survivable: the
+ * row goes on carrying the sentence until a retry replaces the record.
+ */
+function useDownloadRun(connection: Connection): {
+  readonly start: () => void;
+  readonly running: boolean;
+  readonly live: WeightDownload | null;
+  readonly failure: { readonly code: string; readonly message: string } | null;
+} {
+  const mutation = useDownloadWeights();
+  const download = connection.download ?? null;
+  const live = isDownloading(connection);
+  return {
+    start: () => mutation.mutate(connection.id),
+    // `isPending` covers the gap between the click and the re-read that brings
+    // the queued job back, which is the one moment the wire has not caught up.
+    running: mutation.isPending || live,
+    live: live ? download : null,
+    failure: mutation.isError
+      ? asApiError(mutation.error)
+      : download?.state === "failed"
+        ? { code: "DOWNLOAD_FAILED", message: download.error ?? "The download did not finish." }
+        : null,
+  };
+}
+
+/**
+ * The integrity check on a connection row: how to start it, and what it is saying.
+ *
+ * 202 and poll, the contract the export route uses, and the shape the download
+ * used to share before its progress moved onto the connection. It lives on the
+ * *row* rather than inside a control because the control is a menu item, and a
+ * menu closes when one is chosen — a job whose progress and refusal lived inside
+ * the item would take both with it on the way out.
  *
  * **The list is re-read when the job settles.** What the `202` changes is the
  * declaration; what the *completion* changes is `setup_state` and, with it, the
- * row's whole meaning. Without a re-read at that moment a finished download leaves
- * `Not set up` on screen until somebody reloads the page. A settled job is a
- * mutation like any other, so it invalidates what it touched — including the other
- * direction, where a check that finds damage moves the row from `Ready` to `Not set
- * up`.
+ * row's whole meaning — a check that finds damage moves the row from `Ready` to
+ * `Not set up`. A settled job is a mutation like any other, so it invalidates
+ * what it touched.
  *
- * **Taken as a parameter rather than chosen inside**, because the row has two jobs
- * to run. Two calls means two independent poll states, which is what
- * keeps a running check from reading as a running download; passing the mutation
- * in is what lets one body serve both without a `kind` flag branching over
- * everything it does.
+ * It keeps the job id the download gave up, and the asymmetry is honest rather
+ * than an oversight: a check is not on the connection's wire model, so there is
+ * nothing to read it off. It therefore has the coupling the download no longer
+ * has — a reload loses a check in flight — and `#492` records that.
  */
-function useWeightsRun(
-  connection: Connection,
-  mutation: {
-    readonly mutate: (
-      id: string,
-      options: { readonly onSuccess: (queued: { readonly id: string }) => void },
-    ) => void;
-    readonly isPending: boolean;
-    readonly isError: boolean;
-    readonly error: unknown;
-  },
-  failed: string,
-): {
+function useIntegrityRun(connection: Connection): {
   readonly start: () => void;
   readonly running: boolean;
   readonly progress: string | null;
   readonly failure: { readonly code: string; readonly message: string } | null;
 } {
+  const mutation = useCheckIntegrity();
   const refresh = useRefreshConnections();
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useBackgroundJob(jobId);
@@ -478,9 +527,68 @@ function useWeightsRun(
     failure: mutation.isError
       ? asApiError(mutation.error)
       : state === "failed"
-        ? { code: failed, message: job.data?.error ?? "The job did not finish." }
+        ? { code: "WEIGHTS_DAMAGED", message: job.data?.error ?? "The job did not finish." }
         : null,
   };
+}
+
+/**
+ * A transfer in flight: a bar somebody watches, and a sentence they can read.
+ *
+ * Both, never one — a bar alone cannot say *queued*, and prose alone makes
+ * somebody read a number every two seconds to find out whether anything is
+ * moving. Sizes rather than a bare percentage, because "38%" of an unstated
+ * amount answers neither *how much longer* nor *how much disk*.
+ *
+ * **Three renderings, and the middle one is why this is not one line.**
+ *
+ * - *Queued* — no bytes yet, and the honest bar is empty with a sentence saying
+ *   what it is waiting for.
+ * - *Transferring* — determinate, and it is the whole point of the feature.
+ * - *Settling* — every byte is here and the job has not finished, because a
+ *   download ends by reading what arrived and recording the connection ready.
+ *   The bar is full and the sentence names that phase, so a bar sitting at 100%
+ *   for a second reads as a step rather than as a stall.
+ *
+ * A transfer whose published total could not be read gets the sentence and **no
+ * bar at all**. `Progress` renders an indeterminate value as an empty track,
+ * which reads as *0%* — a lie in the one case where the truth is *this is going,
+ * and nobody can say how far*. Giving the primitive an indeterminate animation is
+ * a design-system change and not this screen's to make.
+ */
+function DownloadProgress({ download }: { readonly download: WeightDownload }): JSX.Element {
+  const { state, bytes_done: done, bytes_total: total } = download;
+  const known = total !== null && total > 0;
+  const settling = known && done >= total;
+  const percent = known ? Math.min(100, Math.round((done / total) * 100)) : null;
+  return (
+    <div className="flex w-56 flex-col gap-1" data-testid="download-progress">
+      {known && (
+        <Progress
+          value={percent ?? 0}
+          data-testid="download-bar"
+          data-phase={settling ? "settling" : state}
+          aria-label={`Downloading ${download.job_id}`}
+        />
+      )}
+      {/*
+        Tabular figures, `DESIGN.md`'s Numbers rule: the number changes every two
+        seconds and the words after it must not move under a reader's eye.
+      */}
+      <span
+        className="text-meta tabular-nums text-muted-foreground"
+        data-testid="download-progress-prose"
+      >
+        {state === "queued"
+          ? "Queued — starts as soon as a worker is free."
+          : settling
+            ? "Checking what arrived…"
+            : known
+              ? `${bytes(done)} of ${bytes(total)} · ${percent}%`
+              : `${bytes(done)} so far — the published size could not be read.`}
+      </span>
+    </div>
+  );
 }
 
 /**
@@ -873,11 +981,33 @@ function DownloadSizeLine({
 }
 
 /**
+ * One decimal place, in the reader's own locale. See {@link bytes}.
+ *
+ * Built once at module scope rather than per call: constructing an
+ * `Intl.NumberFormat` is the expensive half of formatting, and this one is called
+ * on every row of a list that re-reads itself twice a second while a download
+ * runs.
+ */
+const SCALED = new Intl.NumberFormat(undefined, {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+/**
  * Bytes as somebody reads them.
  *
  * Decimal units, because a download size is what a network moves and what a
  * publisher quotes; binary units would put a different number on screen from the
  * one the model's own page shows.
+ *
+ * **One helper, and every size on this screen goes through it** — the curated
+ * list's entries, the form's line before a confirm, and both halves of a transfer
+ * in flight. `DESIGN.md`'s Numbers rule states the reason: `1.2 GB` and `1,2 GB`
+ * on one screen is exactly how a call-site decision goes wrong.
+ *
+ * Locale-aware for the same rule's sake, and a whole number of bytes stays whole:
+ * `512 B` rather than `512.0 B`, because a unit small enough to count exactly is
+ * one nobody wants rounded.
  */
 export function bytes(count: number): string {
   const units = ["B", "kB", "MB", "GB", "TB"];
@@ -887,7 +1017,7 @@ export function bytes(count: number): string {
     value /= 1000;
     unit += 1;
   }
-  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+  return `${unit === 0 ? value.toLocaleString() : SCALED.format(value)} ${units[unit]}`;
 }
 
 function DeleteConnectionDialog({

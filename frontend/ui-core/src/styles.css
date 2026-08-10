@@ -42,7 +42,8 @@
    * Robomous coral, and the whole reason the palette above is grey.
    *
    * It appears in exactly **two** places in the product — the wordmark in the
-   * rail, and the ingest progress bar's fill — and `DESIGN.md` names both. That
+   * rail, and the `Progress` primitive's fill, whatever is being measured — and
+   * `DESIGN.md` names both. That
    * scarcity is the token's contract, not a coincidence of the current screens:
    * a third `bg-brand` is a design decision, not a styling one, and belongs in a
    * review rather than in a diff.
