@@ -1,7 +1,7 @@
 /**
  * The benchmark scene: 200 boxes, 20 polygons of 32 vertices, on a 4K asset.
  *
- * #49's numbers, exactly — the vision doc's open topic 4 asks for v1's ceiling as
+ * The benchmark's numbers, exactly — v1's ceiling as
  * the baseline to beat, and M4's own exit criterion is "60fps with 200+
  * annotations". Twelve tasks argued this engine is *correct*; this file is what
  * lets something finally measure whether it is *fast*.
@@ -46,7 +46,7 @@
 
 import type { Annotation, AssetDescriptor, Point } from "@visionset/annotator";
 
-/** 4K, the size #49 names. The frame every coordinate below is in. */
+/** 4K. The frame every coordinate below is in. */
 export const BENCH_ASSET: AssetDescriptor = {
   id: "bench-asset-0001",
   width: 3840,

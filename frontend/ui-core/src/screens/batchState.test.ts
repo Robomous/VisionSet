@@ -1,8 +1,8 @@
 /**
  * The batch view's rules, checked where they are checkable.
  *
- * Everything here is a pure function, and that placement is #159's lesson applied
- * rather than restated: jsdom reports every element as 0×0, so a claim about
+ * Everything here is a pure function, and that placement is deliberate: jsdom
+ * reports every element as 0×0, so a claim about
  * *layout* asserted in this environment is a claim verified against itself. What
  * can honestly be pinned without a browser is the arithmetic and the mappings —
  * and the most important of those is that the four segments partition the five
@@ -240,8 +240,8 @@ describe("the status colour vocabulary (#391)", () => {
   });
 
   it("keeps the near-black on the batch that has work in it", () => {
-    // #391 left this row genuinely open and the PR settles it. `warning` is the
-    // attention family, and `review_pending` is what it means product-wide; a
+    // `warning` is the attention family, and `review_pending` is what it means
+    // product-wide; a
     // batch somebody is annotating is the *healthy* majority state, so painting
     // it amber would make a list of ordinary work read as a list of problems.
     // The near-black is the action colour: it says "the work is here".
@@ -307,8 +307,8 @@ describe("an asset's arrival (#283)", () => {
   });
 
   it("ignores unstamped assets instead of letting one erase the answer", () => {
-    // Pre-#216 rows are legitimately null, and a batch that holds one mixed in
-    // with stamped ones still has an honest earliest.
+    // Rows written before the column existed are legitimately null, and a batch
+    // that holds one mixed in with stamped ones still has an honest earliest.
     expect(
       earliestArrival([{ ingested_at: null }, { ingested_at: "2026-08-01T09:00:00Z" }]),
     ).toBe("2026-08-01T09:00:00Z");

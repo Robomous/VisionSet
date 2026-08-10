@@ -89,9 +89,9 @@ describe("unwrap", () => {
   });
 
   it("refuses a well-formed document of the wrong type, and says where", () => {
-    // The whole of #225. This exact body — the empty-collection envelope answered
-    // for `/stats` — reached three surfaces intact during #206–#213 and
-    // white-screened each of them in a formatter. It is now an error with a path.
+    // This exact body — the empty-collection envelope answered for `/stats` —
+    // reached three surfaces intact and white-screened each of them in a
+    // formatter. It is now an error with a path.
     // The cast is the whole problem in one expression: at compile time `data` is a
     // `ProjectStatsOut` because the contract says so, and at runtime it is whatever
     // actually arrived. That gap is what the check closes.

@@ -1,12 +1,12 @@
 /**
- * The reassignment picker's canvas anchor (#380), driven against a real store.
+ * The reassignment picker's canvas anchor, driven against a real store.
  *
  * The same shape `panel.test.tsx` has: no `fetch`, no provider, no mock. What is
  * asserted here is *wiring* — that the affordance appears for the right subject,
  * that it applies through the command, and that a digit is claimed. The two claims
  * that need a real browser (a right-click reaching the machine, and the button
- * landing on the shape's corner) are in `frontend/app/e2e/annotate.spec.ts`, on
- * #47's precedent: jsdom's `getBoundingClientRect` answers all zeros, so a layout
+ * landing on the shape's corner) are in `frontend/app/e2e/annotate.spec.ts`:
+ * jsdom's `getBoundingClientRect` answers all zeros, so a layout
  * assertion here would pass whatever the transform did.
  */
 

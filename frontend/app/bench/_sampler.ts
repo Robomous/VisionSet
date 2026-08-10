@@ -41,7 +41,7 @@
 
 import type { CDPSession, Page } from "@playwright/test";
 
-/** 60fps, in milliseconds. The line #49's acceptance criterion draws. */
+/** 60fps, in milliseconds. The line the benchmark's claim is drawn against. */
 export const FRAME_BUDGET_MS = 1000 / 60;
 
 /**
@@ -161,7 +161,7 @@ const sessions = new WeakMap<Page, CDPSession>();
  * throttle-then-detach, and **292.4 ms** with the session held open.
  *
  * `Emulation.setCPUThrottlingRate` is a CDP call, so this is chromium-only —
- * which the whole suite already is, for #48's reason.
+ * which the whole suite already is.
  */
 export async function throttleCpu(page: Page, rate: number): Promise<void> {
   let session = sessions.get(page);

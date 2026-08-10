@@ -17,10 +17,9 @@
  * There is deliberately **no `begin()`/`commit()`/`abort()` pair**. An open
  * transaction spanning pointer events is a state that an Escape, a thrown error or
  * a lost pointer capture can leave dangling, and nothing needs one: transient drag
- * state lives outside the log entirely, in `AnnotatorStore`'s staging area. #44's
- * "a whole polygon drawing session is one undo step" is served the same way — the
- * pending points are interaction state (#42), and closing the polygon is one
- * `addAnnotationCommand`.
+ * state lives outside the log entirely, in `AnnotatorStore`'s staging area. A
+ * whole polygon drawing session is one undo step the same way — the pending points
+ * are interaction state, and closing the polygon is one `addAnnotationCommand`.
  */
 
 import {

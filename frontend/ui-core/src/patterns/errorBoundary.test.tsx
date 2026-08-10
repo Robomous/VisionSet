@@ -60,8 +60,8 @@ describe("what a thrown render becomes", () => {
 
   it("says a refusal in the product's words when the throw was one", () => {
     // `unwrap` throws `ApiError`, so a boundary reached through a render that
-    // read a bad response has a real code in hand — the shape of every one of
-    // #206–#213's white screens.
+    // read a bad response has a real code in hand — the shape of the white screens
+    // a bad response used to cause.
     quietly(() =>
       render(
         <ErrorBoundary>

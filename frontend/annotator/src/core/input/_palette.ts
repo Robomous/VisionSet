@@ -76,7 +76,7 @@ export const WEATHER: LabelClass = {
   color: null,
   attributes: [],
 };
-/** Digit 4 — a lane. Drawable since #342 gave `polyline` a tool. */
+/** Digit 4 — a lane. Drawable, since `polyline` has a tool. */
 export const RAIL: LabelClass = {
   name: "rail",
   geometry: "polyline",
@@ -94,11 +94,9 @@ export const STOP: LabelClass = {
 /**
  * Digit 6 — declarable in a schema, carryable by no annotation.
  *
- * `rail` held this role until #342, when `polyline` stopped being one of the
- * geometries with no `Geometry` variant behind it. The role still needs an
- * occupant — "a class the palette must let you arm and the canvas must refuse to
- * draw with" is a real state — so it moved to a geometry that is genuinely still
- * in that position rather than being deleted along with the case.
+ * The role — "a class the palette must let you arm and the canvas must refuse to
+ * draw with" — is a real state and needs an occupant, so it sits on a geometry
+ * that genuinely has no `Geometry` variant behind it.
  *
  * Appended rather than inserted: the digits are palette rows in order, and
  * `bindings.test.ts` names four of them.

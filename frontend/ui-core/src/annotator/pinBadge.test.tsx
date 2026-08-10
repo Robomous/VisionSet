@@ -1,8 +1,8 @@
 /**
- * The pin badge as an answer rather than a statement (#368).
+ * The pin badge as an answer rather than a statement.
  *
- * `v3` on the top bar has said which contract this batch is judged against since
- * #229 made the pin movable. What it could not say is what everybody asks next —
+ * `v3` on the top bar says which contract this batch is judged against, and the
+ * pin is movable. What it cannot say on its own is what everybody asks next —
  * *is that the current one, and what am I missing?* — and both halves of that
  * answer used to be a navigation away, which principle 10 forbids.
  *
@@ -73,7 +73,7 @@ function answer(path: string, search: string): unknown {
   }
   if (path.endsWith("/schema/compare")) {
     // The whole `SchemaDiffOut`, because `unwrap` validates the shape and a
-    // partial stub answers as three slow requests rather than as an error (#316).
+    // partial stub answers as three slow requests rather than as an error.
     // `search` is read so the stub cannot silently answer a comparison nobody
     // asked for.
     const bounds = new URLSearchParams(search);

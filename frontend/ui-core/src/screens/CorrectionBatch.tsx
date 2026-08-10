@@ -1,21 +1,17 @@
 /**
- * Correcting a batch that is finished — audit gap G6, and the end of the
- * forward-only story.
+ * Correcting a batch that is finished — the end of the forward-only story.
  *
  * ## What this replaces
  *
  * Nothing, which is the point. A `completed` batch is immutable as a workflow
  * unit: the kernel gives it no exit and none is coming. The product's answer to
- * "this frame is wrong" had been a dead end dressed three different ways — an
- * annotator that opened fully editable and refused every save (#306 made it a
- * viewer), a bulk bar whose buttons were live and whose every request 409'd
- * (#305 disabled them with a reason), and a sentence naming a correction batch
- * that nothing could create.
+ * "this frame is wrong" would otherwise be a dead end dressed three different
+ * ways — an annotator that opens fully editable and refuses every save, a bulk bar
+ * whose buttons are live and whose every request 409s, and a sentence naming a
+ * correction batch that nothing can create.
  *
- * Each of those now says the same thing and, from here, *points at the same
- * control*. That is the difference between a refusal and a next step, and it is
- * the whole reason those two tasks left the sentence in place rather than
- * inventing a friendlier lie.
+ * Each of those says the same thing and, from here, *points at the same control*.
+ * That is the difference between a refusal and a next step.
  *
  * ## Scope is a choice, and the default is the whole batch
  *

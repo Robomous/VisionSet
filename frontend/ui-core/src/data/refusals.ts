@@ -8,8 +8,8 @@
  * `BATCH_NOT_IN_ANNOTATION` badge in three, and a humanized sentence in two —
  * each map written where it was needed and none of them aware of the others.
  * The bare-code sites are the ones worth naming: a kernel identifier in front of
- * a user is not an error message, and #292 removed that class of rendering from
- * one screen without anywhere to put the rule.
+ * a user is not an error message, and removing that class of rendering one screen
+ * at a time leaves the rule with nowhere to live.
  *
  * This is that place. A code has one sentence, product-wide, and a screen that
  * wants a remedy adds it *beside* the sentence rather than instead of it.
@@ -49,7 +49,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // Not the same sentence as INVALID_TRANSITION, though they are neighbours.
   // That one means the move was never allowed from here; this one means it was
   // allowed a moment ago and somebody else got there first — so the remedy names
-  // the other person rather than the rule (#302).
+  // the other person rather than the rule.
   STALE_WRITE: "Someone else changed this while you were working on it — reload to see it.",
 
   // The per-asset family.

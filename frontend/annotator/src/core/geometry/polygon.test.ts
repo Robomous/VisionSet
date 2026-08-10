@@ -200,9 +200,8 @@ describe("moving a polygon moves it rigidly", () => {
   });
 
   /**
-   * The polyline arm, which exists because a polyline can be **pasted** (#123)
-   * even though nothing can drag one — `MovableGeometry` is `bbox | polygon`, and
-   * vertex editing is `cf. #342`.
+   * The polyline arm, which exists because a polyline can be **pasted** even
+   * though nothing can drag one — `MovableGeometry` is `bbox | polygon`.
    *
    * The claims worth making are that it is the *same* clamp and that it keeps its
    * own `type`: a shared private is what makes the first true, and a lane that
@@ -285,8 +284,8 @@ describe("editing vertices", () => {
 
   it("answers null at the minimum rather than deleting the annotation itself", () => {
     // v1 removed the whole annotation here, in four copies, from inside a pointer
-    // handler. That is #45's call: one command, one undo step, one place to tell
-    // the user.
+    // handler. This engine's answer is one command, one undo step, one place to
+    // tell the user.
     const triangle = polygon([0, 0], [10, 0], [0, 10]);
     expect(triangle.points).toHaveLength(MIN_POLYGON_POINTS);
     expect(removePolygonVertex(triangle, 0)).toBeNull();

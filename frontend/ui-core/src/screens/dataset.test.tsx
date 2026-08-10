@@ -393,12 +393,12 @@ describe("export, and the third gate word", () => {
   });
 
   /**
-   * The export job's own state, which had no rendering at all (#391).
+   * The export job's own state.
    *
-   * `succeeded`/`failed`/`cancelled` existed only as a polling predicate, so the
-   * one long-running operation in this product answered "is it done?" with a
-   * button label and nothing else. A prose refusal covers the two failures; what
-   * was missing is the status itself, in the same vocabulary every other state
+   * Without a rendering, `succeeded`/`failed`/`cancelled` are only a polling
+   * predicate, so the one long-running operation in this product answers "is it
+   * done?" with a button label and nothing else. A prose refusal covers the two
+   * failures; the status itself belongs in the same vocabulary every other state
    * on the page uses.
    */
   function backgroundJob(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -425,7 +425,7 @@ describe("export, and the third gate word", () => {
     // The launch is answered with a whole `BackgroundJobOut`, because
     // `checkExportRelease` validates it — a stub missing a required field makes
     // `onSuccess` never fire, and the symptom is a badge that does not render
-    // rather than an error anybody can read (#317's lesson, one screen over).
+    // rather than an error anybody can read.
     handlers.push((request) =>
       request.method === "POST" && request.url.includes("/export")
         ? { status: 200, body: backgroundJob({ state: "queued" }) }
@@ -472,16 +472,15 @@ describe("export, and the third gate word", () => {
 });
 
 /**
- * The two ways the format list arrives with nothing in it (#440).
+ * The two ways the format list arrives with nothing in it.
  *
  * They are different facts and the dialog owes a different sentence to each. A
  * failed `GET /formats` is a request that never got an answer; a successful
  * `{items: [], total: 0}` is an answer, and it says this server has no exporter
- * plugins installed. Before this, both fell through the same `?? []` into a
+ * plugins installed. Falling both through the same `?? []` gives a
  * combobox with an empty popover and no message anywhere — the swallowed-refusal
- * pattern `ui-capabilities` bans, and the exact visible signature of the
- * packaging defect fixed in #436 (cf. #437), so the one screen that should have
- * told the two apart was the reason they looked alike.
+ * pattern `ui-capabilities` bans, and the visible signature of an install whose
+ * exporters are not discoverable.
  *
  * The assertions that matter are the *pair*: each state renders its own thing
  * and not the other one's. A single test proving "something appears" would pass
@@ -570,10 +569,9 @@ describe("a format list with nothing in it", () => {
 });
 
 /**
- * Curating the trunk (#316).
+ * Curating the trunk.
  *
- * `DELETE /datasets/{id}/assets/{id}` had been on the wire since M3 with no
- * caller anywhere in the product. The claim worth the block is that removal is
+ * The claim worth the block is that removal is
  * **curation, not deletion** — which is why the kernel gives it no `confirm=`
  * gate — and that the counts a removal invalidates include one on a screen this
  * mutation never touches.

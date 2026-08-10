@@ -4,17 +4,17 @@
  *
  * ## Why it lives here and not beside `GeometryType`
  *
- * #375 named both homes with their costs. The kernel option — category metadata
- * declared next to the enum — gives docs, MCP and the UI one source of truth and
- * makes a new geometry categorise itself where it is named. It was declined:
- * *"Robotics and AD" is a market segment, not a domain fact*, and the kernel has
+ * The alternative home is the kernel — category metadata declared next to the
+ * enum — which would give docs, MCP and the UI one source of truth and make a new
+ * geometry categorise itself where it is named. It was declined:
+ * "Robotics and AD" is a market segment, not a domain fact, and the kernel has
  * refused exactly this kind of value before (`DatasetChange.operation` is a plain
  * `str` so a log outlives the build that wrote it). A category is a claim about
  * who buys the product, and it can be renamed on a Tuesday; the domain cannot.
  *
- * The cost the issue priced against that — *"a geometry added to the enum with no
- * entry in the map is a silent gap the way every hand-mirrored table in this repo
- * has been"* — is the reason for the `satisfies` below rather than a reason to
+ * The cost of that — a geometry added to the enum with no entry in the map is a
+ * silent gap, the way every hand-mirrored table in this repo has been — is the
+ * reason for the `satisfies` below rather than a reason to
  * reconsider. `GEOMETRY_CATEGORY` is declared **total over the generated union**,
  * so a ninth `GeometryType` arriving from the wire fails `tsc` in this file until
  * somebody says where it goes. The gap is paid for by type-check, not by
@@ -30,9 +30,8 @@
  * "Robotics and AD", and saying so would be a claim about `cuboid_3d` that no
  * exporter has made.
  *
- * The names are the working ones from #375 and ship as written. Renaming a
- * category is a string change in this file — which is most of the argument for
- * the file existing.
+ * Renaming a category is a string change in this file, which is most of the
+ * argument for the file existing.
  */
 
 import type { components } from "../generated/api.js";

@@ -4,12 +4,12 @@
  * rather than a thing a screen claims.
  *
  * They are conventions, not policy: none of them fetches, retries or knows what an
- * API is. #52 wires them to the query layer; the shapes are decided here so that
- * eight screens do not each invent one.
+ * API is. The data shell wires them to the query layer; the shapes are decided
+ * here so that eight screens do not each invent one.
  *
  * ## Why the error state takes a `code`
  *
- * M3's error body is `{code, message, detail?, incident_id?}` and its whole
+ * The API's error body is `{code, message, detail?, incident_id?}` and its whole
  * argument is that **clients branch on `code`, never on the status** — two 409s
  * exist and only one is retryable with a flag. A component that rendered only the
  * message would throw away the field that decides whether a retry is even

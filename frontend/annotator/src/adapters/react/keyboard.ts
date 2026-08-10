@@ -4,7 +4,7 @@
  *
  * `core/input/index.ts` lists seven things the adapter owes. Four are wiring and
  * live in `AnnotatorCanvas.tsx`; these three are decisions, and a decision
- * deserves a test. The trick that makes that possible is #46's own: a plain
+ * deserves a test. The trick that makes that possible: a plain
  * interface describing *just enough of* a DOM value is satisfied by the real
  * thing structurally, with no import in either direction, so a test satisfies it
  * with an object literal and this package still ships no jsdom.

@@ -79,10 +79,10 @@ describe("the tools a schema can reach", () => {
 
   it("offers polyline as a live tool, and it activates its class (#342)", () => {
     // It spent one release as the strip's worked example of not-yet-drawable —
-    // disabled, carrying its own reason. #342 shipped the tool, so the button is
+    // disabled, carrying its own reason. The tool exists, so the button is
     // live and the sentence is gone. Both halves are asserted, because a button
     // that merely stopped being disabled while still activating nothing would
-    // leave the canvas inert with a lane class held (#198's bug).
+    // leave the canvas inert with a lane class held.
     const onActivateClass = vi.fn();
     render(mount({ onActivateClass }));
 
@@ -133,7 +133,7 @@ describe("the tools a schema can reach", () => {
   });
 
   it("carries the digit the engine actually binds, and V for select", () => {
-    // #46 binds digit N to palette row N. Printing v1's "B"/"P" would be printing
+    // Digit N is palette row N. Printing v1's "B"/"P" would be printing
     // a key that does nothing in this build.
     const choices = toolChoices(SCHEMA);
     expect(choices.find((choice) => choice.tool === "select")?.hotkey).toBe("V");
@@ -310,7 +310,7 @@ describe("the suggest tool (#424)", () => {
   });
 
   /**
-   * The class half of what the schema check is the project half of (#472).
+   * The class half of what the schema check is the project half of.
    *
    * Hidden is for a schema that could never hold an answer; dimmed-with-reason is
    * for a class that cannot hold one *right now*, because that comes back the

@@ -1,7 +1,7 @@
 /**
  * The design system, rendered.
  *
- * #128's first acceptance criterion is that *a screen built only from semantic
+ * The claim it exists for is that *a screen built only from semantic
  * utilities matches the contract* — which is a claim about pixels, and a claim
  * about pixels needs a page. This is that page: every primitive `ui-core` exports,
  * composed with nothing but token utilities, so the contract can be looked at
@@ -14,7 +14,7 @@
  * exactly that reason.
  *
  * Deliberately in `@visionset/app` and not in `ui-core`: this is composition, and
- * the enterprise rule (#58) says composition lives here. It carries no capability
+ * the enterprise rule says composition lives here. It carries no capability
  * a product would want — only the components it is showing.
  */
 
@@ -139,7 +139,7 @@ export function Styleguide(): JSX.Element {
             <Swatch name="sidebar" className="bg-sidebar" />
             {/* The brand, shown here because a styleguide is where a value is
                 inspected rather than used. Its two product sites are the rail's
-                wordmark and the progress fill (#323). */}
+                wordmark and the progress fill. */}
             <Swatch name="brand" className="bg-brand" />
           </div>
         </Section>
@@ -236,7 +236,7 @@ export function Styleguide(): JSX.Element {
               <FieldHint>Singular per class — picking a class picks a tool.</FieldHint>
             </div>
             {/*
-              The two-line option (#472). Here because it is a primitive variant
+              The two-line option. Here because it is a primitive variant
               rather than one screen's styling: an option that is an identifier
               plus the facts about it stacks them, and the trigger shows the same
               two lines the list does because Radix renders the selected item's
@@ -343,9 +343,9 @@ export function Styleguide(): JSX.Element {
             </TabsContent>
           </Tabs>
 
-          {/* There is no second specimen: #368 retired the `segmented` variant
+          {/* There is no second specimen: the `segmented` variant is gone
               along with the Objects | Labels switch that was its only caller, so
-              every shape that ships has one specimen and that is this one (#182). */}
+              every shape that ships has one specimen and that is this one. */}
         </Section>
 
         <Section
@@ -453,7 +453,7 @@ export function Styleguide(): JSX.Element {
               </div>
 
               {/* Two real tiles, four placeholders and a "+N" — the state the
-                  Overview is in whenever thumbnails are missing (#21). */}
+                  Overview is in whenever thumbnails are missing. */}
               <ThumbnailGrid
                 tiles={[
                   <div key="a" className="size-full bg-primary/20" />,

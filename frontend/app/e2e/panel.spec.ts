@@ -115,8 +115,8 @@ test("the tag strip toggles a whole-asset tag, and the demo's own checkbox agree
 }) => {
   await frameOf(page);
 
-  // A tag is a command, not an active class — `classAction`'s split, and since
-  // #368 the strip is the only surface that offers one: it is not a shape, so no
+  // A tag is a command, not an active class — `classAction`'s split, and the
+  // strip is the only surface that offers one: it is not a shape, so no
   // tool and no canvas gesture reaches it.
   await page.getByTestId("tag-chip-daytime").click();
   await expect(page.getByTestId("tag-chip-daytime")).toHaveAttribute("data-active", "true");

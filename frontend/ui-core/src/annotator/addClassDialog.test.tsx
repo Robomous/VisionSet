@@ -136,10 +136,10 @@ describe("what it submits", () => {
   });
 
   /**
-   * #375's second surface. Both pickers already shared `ClassFields`, so grouping
-   * arrived here without a second call site — and this is the test that says so,
-   * because "they share a component" is a fact about today's code and the claim
-   * worth pinning is about what a person sees.
+   * The second surface for grouped geometry choices. Both pickers share
+   * `ClassFields`, so grouping arrives here without a second call site — and this
+   * is the test that says so, because "they share a component" is a fact about
+   * today's code and the claim worth pinning is about what a person sees.
    */
   it("groups the geometries under their category, the same as the Schema tab", async () => {
     render(mount());
@@ -288,7 +288,7 @@ describe("what it promises when the batch will not take the pin", () => {
 });
 
 /**
- * One dialog session is one published version (#368).
+ * One dialog session is one published version.
  *
  * The point is not the request — `create_version` takes the whole contract
  * whether it holds one new class or three — it is the re-pins and refetches that
@@ -476,10 +476,10 @@ describe("closing with classes pending", () => {
 });
 
 /**
- * The name the create row typed (#368).
+ * The name the create row typed.
  *
- * `ClassField`'s no-match row has handed the typed name over since WS2, and the
- * page dropped it because this dialog had nowhere to put it. Typing a name,
+ * `ClassField`'s no-match row hands the typed name over, and dropping it would
+ * mean typing a name,
  * being told it does not exist, and typing it again is the smallest possible way
  * to make a shortcut feel like a detour.
  */

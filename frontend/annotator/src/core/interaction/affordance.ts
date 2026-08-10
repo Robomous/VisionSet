@@ -30,7 +30,7 @@
  * and `affordance.test.ts` pins it with the pointer parked on a selected box's `nw`
  * grip.
  *
- * The same rule read forwards, once #44 gave the polygon row a second meaning for a
+ * The same rule read forwards, because the polygon row has a second meaning for a
  * press: *while a polygon session is open*, a press inside the ring around the first
  * vertex closes the shape instead of extending it, so the cursor there is `pointer`
  * rather than `crosshair`. Both facts come from one function — the row and this
@@ -53,8 +53,8 @@
  * transition must never resolve against a preview. This function is the opposite:
  * an adapter passes a `Scene` over `store.rendered`, because a hover has to hit-test
  * the pixels that are actually on screen, and mid-drag those are the preview's. The
- * asymmetry is small and load-bearing, and #47 is the caller that has to get it
- * right.
+ * asymmetry is small and load-bearing, and the adapter is the caller that has to get
+ * it right.
  */
 
 import { bboxHandlePositions } from "../geometry/bbox";
@@ -71,15 +71,14 @@ import type { Tool } from "./tool";
 /**
  * The cursors this engine can ask for.
  *
- * Eight, and each is earned by a branch below. #43 shipped seven and left `pointer`
- * out on the grounds that "nothing here distinguishes holding a body from hovering
- * one, and inventing that distinction in a chassis task is how a vocabulary grows
- * entries nobody uses". #44 supplies the distinction it was waiting for: inside the
- * ring around a half-drawn polygon's first vertex a press **closes the shape**,
- * where a press one pixel outside it places another vertex. Two different gestures
- * a millimetre apart, and the only warning a user can get is the cursor.
+ * Eight, and each is earned by a branch below. `pointer` is earned by the polygon
+ * close: inside the ring around a half-drawn polygon's first vertex a press
+ * **closes the shape**, where a press one pixel outside it places another vertex.
+ * Two different gestures a millimetre apart, and the only warning a user can get is
+ * the cursor.
  *
- * `grabbing` is still out, for #43's reason unamended.
+ * `grabbing` is out: nothing here distinguishes holding a body from hovering one,
+ * and inventing that distinction is how a vocabulary grows entries nobody uses.
  */
 export type Cursor =
   | "default"
@@ -171,7 +170,7 @@ function heldBody(scene: Scene, id: string): Target {
  *
  * `too-few` shows `crosshair`, not `pointer`. The press there does nothing, and a
  * cursor promising a close that will not happen is the same lie in the other
- * direction — #43's `default`-over-an-`edge` mistake, one task on.
+ * direction.
  */
 function drawingPolygon(
   state: Extract<InteractionState, { type: "drawing-polygon" }>,
@@ -256,10 +255,9 @@ export function affordanceAt(
 }
 
 /**
- * The affordance a **viewer** answers, where selection is the only gesture
- * (#426).
+ * The affordance a **viewer** answers, where selection is the only gesture.
  *
- * The cursor is `default` everywhere — decision (b): a read-only page never
+ * The cursor is `default` everywhere: a read-only page never
  * shows `move`, because no move exists to promise. What survives is the hot
  * body, so hovering still says *this is the shape a press would pick*: a
  * highlight aids selection, which is a read, where a cursor change advertises

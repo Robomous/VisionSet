@@ -2,9 +2,9 @@
  * The application's stylesheet: `@visionset/ui-core`'s design tokens, plus this
  * package's own sources.
  *
- * #128 kept this on a second Vite entry so that Tailwind's preflight — a global
+ * This was once on a second Vite entry so that Tailwind's preflight — a global
  * reset — would not reach the annotator showcase, whose scenarios derive their
- * coordinates from the page's real layout. #58 retires that entry, as #128 said it
+ * coordinates from the page's real layout. That entry is gone, as it said it
  * would: the product needs the stylesheet everywhere and a router cannot scope a
  * global reset. `src/main.tsx` records what made the flip safe.
  */

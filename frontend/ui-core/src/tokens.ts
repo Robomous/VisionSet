@@ -15,7 +15,7 @@
  *
  * Every value is recorded in the repository-root `DESIGN.md`, which is the prose
  * half of this contract and the file to read before building any screen. The
- * neutrals and the near-black action came from #323; the coral that preceded
+ * The palette is the shipped one; the coral that preceded
  * them was v1's, and survives only as `brand`.
  */
 
@@ -23,7 +23,7 @@
  * Colour, by **intent**. A component names the intent; only this file and
  * `styles.css` know a hex.
  *
- * The palette is neutral-first (#323): a near-monochrome cool grey interface, a
+ * The palette is neutral-first: a near-monochrome cool grey interface, a
  * near-black `primary` for the one action a view is about, and Robomous coral
  * held back to `brand` — two sites in the whole product, both named in
  * `DESIGN.md`. Colour is scarce here so that the places it appears mean
@@ -51,7 +51,7 @@ export const COLOR = {
   disabled: "#f3f4f6",
   "disabled-foreground": "#a0a3b1",
 
-  // The stage a picture sits on (#185) — the annotator's surround. Its own role:
+  // The stage a picture sits on — the annotator's surround. Its own role:
   // not a subtle fill and not a surface content sits in, but the neutral a
   // photograph is judged against.
   stage: "#e4e6ec",
@@ -67,7 +67,7 @@ export const COLOR = {
   destructive: "#c93b3b",
   "destructive-foreground": "#ffffff",
 
-  // The dark rail (#58). Bright content, dark chrome — the one place a large
+  // The dark rail. Bright content, dark chrome — the one place a large
   // surface is deliberately not `background`, and the same near-black as
   // `primary` so the rail and a filled button read as one family.
   sidebar: "#1e2130",

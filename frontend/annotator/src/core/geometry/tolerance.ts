@@ -10,7 +10,7 @@
  * — it answers with **this file alone**. Two of the three filters earn their
  * place: the bare `grep` matches prose in this directory explaining why other
  * modules take no zoom, so excluding JSDoc lines is what makes the check mean what
- * it says; and #43's drawing-gate tests set `assetTolerances(4)` and
+ * it says; and the drawing-gate tests set `assetTolerances(4)` and
  * `assetTolerances(0.25)` deliberately, to prove the conversion is load-bearing
  * rather than decorative. A *test* naming a zoom is the discipline being
  * exercised. The claim was always about the shipped engine — which is exactly what
@@ -23,8 +23,8 @@
  * A grab radius is a fact about fingers and trackpads, so it is chosen by looking
  * at a screen and it is stated here in screen pixels. A polygon's vertices are
  * asset pixels. The two meet at exactly one call, `toleranceInAssetPixels`, which
- * the adapter (#47) makes once per zoom change and threads into the hit tests as a
- * plain number.
+ * the adapter makes once per zoom change and threads into the hit tests as a plain
+ * number.
  *
  * Putting the zoom into the hit tests instead was considered and rejected: it
  * would carry a viewport into nine signatures that have no viewport, `nearestEdge`
@@ -32,7 +32,7 @@
  * value — which is the "individually plausible and uniformly wrong" failure
  * `AssetDescriptor`'s own docstring warns about.
  *
- * ## This inverts v1, deliberately, and the issue asked for it by name
+ * ## This inverts v1, deliberately
  *
  * v1's `getRelativePoint` already divided the client position by the zoom, so its
  * `point` was in asset pixels — and then it compared that against `6`, `10` and
@@ -95,8 +95,8 @@ export const CLICK_SLOP_PX = 3;
 
 /**
  * How large a drawn box must be on each axis to count as drawn rather than as a
- * mis-click, in screen pixels. v1's 3, and #43's caller is the one place a
- * drawing gesture becomes an annotation.
+ * mis-click, in screen pixels. v1's 3, read by the one place a drawing gesture
+ * becomes an annotation.
  *
  * ## Three numbers, and the point is that they answer three questions
  *
@@ -131,13 +131,10 @@ export const MIN_DRAW_SIZE_PX = 3;
  * How far a pasted copy lands from what it was copied from, in screen pixels.
  * v1's 20 (`AnnotationCanvas.tsx`), kept.
  *
- * The eighth constant, and the one that is not about how near counts as on — it
- * is here because it is the *only* other screen-pixel number the engine has, and
- * #123's deferral named that as its third reason to wait: *"v1's 20 px is screen
- * pixels; every coordinate in `core/` is asset pixels, and converting one needs a
- * zoom — which `state.ts` says only `tolerance.ts` may name. So the offset is
- * either the adapter's or it is not 20 px."* It is 20 px, and it is this module's,
- * which is the third possibility that answer left out.
+ * The eighth constant, and the one that is not about how near counts as on. It is
+ * here because it is the *only* other screen-pixel number the engine has: every
+ * coordinate in `core/` is asset pixels, and converting one needs a zoom, which
+ * only this module may name.
  *
  * Screen rather than asset pixels for the reason `MIN_DRAW_SIZE_PX` gives, with
  * the failure at both ends this time. A fixed asset-pixel offset is **invisible**
@@ -151,9 +148,9 @@ export const PASTE_OFFSET_PX = 20;
 /**
  * Every screen-pixel constant above, in the asset's own pixels.
  *
- * The adapter builds one per zoom change and threads it through; #42's
- * `resolveTarget` and its state machine take this record and never a zoom, which
- * is what keeps the audit above answering with this file alone.
+ * The adapter builds one per zoom change and threads it through; `resolveTarget`
+ * and the state machine take this record and never a zoom, which is what keeps the
+ * audit above answering with this file alone.
  *
  * Seven of the eight are tolerances in the strict sense and the name is theirs.
  * `pasteOffset` is a displacement rather than a radius, and it rides here anyway

@@ -4,7 +4,7 @@
  * ## Why this takes `onOpenProject` instead of importing a router
  *
  * `@visionset/ui-core` must not know how the application navigates. The app owns
- * routing (#58's enterprise rule, from the other side): a screen that reached for
+ * routing (the enterprise rule, from the other side): a screen that reached for
  * `useNavigate` would only work inside a `react-router` tree, which is a
  * dependency the future enterprise UI has no reason to share. So navigation
  * arrives as a callback and leaves as one, and the app turns it into a `<Link>`.
@@ -76,7 +76,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
           // `secondary`, not `primary`: the header's "New project" is always on
           // screen and is the same label calling the same handler, so on an empty
           // list the two used to render as a pair of identical filled buttons.
-          // One filled action per view (#323) — and the header's is the one that
+          // One filled action per view — and the header's is the one that
           // survives when the list fills up.
           action: (
             <Button variant="secondary" onClick={() => setCreating(true)}>
@@ -146,7 +146,7 @@ function CreateProjectDialog({
   readonly open: boolean;
   readonly onClose: () => void;
   /**
-   * Where a successful create lands (#387).
+   * Where a successful create lands.
    *
    * `onOpenProject`, handed straight through — the same callback a table row
    * uses, so the routing stays in the app and this file still imports no router.

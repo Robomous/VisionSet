@@ -1,5 +1,5 @@
 /**
- * The design system, in a browser — the half of #128's contract no unit test can
+ * The design system, in a browser — the half of its contract no unit test can
  * reach.
  *
  * `tokens.test.ts` proves `styles.css` and `tokens.ts` agree, and
@@ -20,7 +20,7 @@ import { expect, test } from "@playwright/test";
 
 /** `--color-primary`, the near-black everything else is calibrated against. */
 const PRIMARY = "rgb(30, 33, 48)";
-/** `--color-brand` — Robomous coral, and it belongs to two elements (#323). */
+/** `--color-brand` — the coral, and it belongs to two elements. */
 const BRAND = "rgb(232, 93, 68)";
 /** `--color-foreground`. */
 const INK = "rgb(27, 29, 40)";
@@ -47,7 +47,7 @@ test("the token utilities reach the browser as the contract's values", async ({ 
 });
 
 /**
- * #323's actual claim, and the only place a browser can check it.
+ * The palette's actual claim, and the only place a browser can check it.
  *
  * The palette's whole argument is that the brand is *not* what a button is made
  * of. `tokens.test.ts` can assert the two hexes differ; only a rendered page can
@@ -100,7 +100,7 @@ test("a dialog traps focus, closes on Escape and returns focus to its trigger", 
 });
 
 /**
- * #182's actual claim, which is a claim about pixels.
+ * The tab bar's actual claim, which is a claim about pixels.
  *
  * `primitives.test.tsx` asserts the *meaning* — `aria-selected`, `data-state`, one
  * panel in the tree — and deliberately matches no class string, so it would stay
@@ -161,7 +161,7 @@ test("the class palette draws the schema's colour and the derived hue side by si
 });
 
 /**
- * #188: one rule owns the space between a tab bar and its content.
+ * One rule owns the space between a tab bar and its content.
  *
  * `TabsContent`'s `mt-3` is that rule, and a consumer adds no gap of its own.
  * Measured here as well as on the real screen, because the styleguide is where the
@@ -179,7 +179,7 @@ test("the tab bar sits one rhythm step above its content", async ({ page }) => {
 });
 
 /**
- * #472's claim, which is a claim about pixels.
+ * The two-line option's claim, which is a claim about pixels.
  *
  * `primitives.test.tsx` asserts the *structure* — two elements, the meta in the
  * muted role, the id keeping its own line — and jsdom computes no layout, so the

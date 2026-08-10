@@ -1,6 +1,6 @@
 /**
- * #43's two acceptance criteria, in one file: draw, move and resize produce exact
- * geometry, and undo after each restores the document that was there before.
+ * Two claims in one file: draw, move and resize produce exact geometry, and undo
+ * after each restores the document that was there before.
  *
  * `gestures.test.ts` already walks a draw and a move — it exists to kill the
  * accumulating-delta bug, and its there-and-back, walked-versus-jumped and

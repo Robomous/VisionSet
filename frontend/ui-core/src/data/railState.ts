@@ -4,7 +4,7 @@
  * ## The default is collapsed, and it is one declaration
  *
  * The rail carries four things — the logo, the toggle, Home, Projects, and sign
- * out (`DESIGN.md` → **Layout**, and #58's thin-app rule keeps it that way) — and
+ * out (`DESIGN.md` → **Layout**, and the thin-app rule keeps it that way) — and
  * every one of them is legible as an icon, with its label in `title=` when narrow.
  * The screens beside it are the ones that need the width: the gallery measures its
  * column count off the pane, and the annotator derives its fit zoom off the pane's
@@ -69,7 +69,7 @@ function storage(): Storage | null {
  *
  * Call it as a lazy `useState` initializer, never from an effect: an effect that
  * writes state on mount paints the wrong width first and then corrects it, which
- * is a visible jump, and it is the shape #159's defect had.
+ * is a visible jump.
  */
 export function readRailCollapsed(): boolean {
   const store = storage();

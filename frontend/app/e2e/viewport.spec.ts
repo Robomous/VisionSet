@@ -1,5 +1,5 @@
 /**
- * The annotator's minimum viewport, in a browser (#184).
+ * The annotator's minimum viewport, in a browser.
  *
  * jsdom has no widths, so the unit tests stub `matchMedia` and can only assert
  * what the component does with an answer. **This suite sets real viewport sizes**

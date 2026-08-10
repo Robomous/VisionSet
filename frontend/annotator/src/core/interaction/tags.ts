@@ -2,9 +2,9 @@
  * The classification tag tool: a whole-asset label, with no coordinates.
  *
  * The third of the three geometries an annotation can carry, and the only one
- * that never touches the canvas. `tool.ts` said so from the other end — cause 3
- * of `select` is *"a `classification_tag` class … #45 is a panel"* — and this is
- * that panel's engine. There is no new interaction state, no new event and no
+ * that never touches the canvas. `tool.ts` says so from the other end — a
+ * `classification_tag` class is cause 3 of `select`, and belongs to a panel — and
+ * this is that panel's engine. There is no new interaction state, no new event and no
  * `TRANSITIONS` row: a tag is applied by a keystroke or a checkbox, both of which
  * `events.ts` deliberately keeps out of the machine, on the same grounds as undo
  * and delete-selection. A host calls `store.execute(...)` directly.
@@ -66,7 +66,7 @@
  * `null` rather than a throw, because that is what this package does everywhere
  * else — `classNamed` answers `undefined`, `toolFor` answers `"select"`,
  * `drawableGeometry` and `removePolygonVertex` both answer `null` — and because
- * the caller is a keybinding. #46's registry is remappable, so a binding can
+ * the caller is a keybinding. The key registry is remappable, so a binding can
  * outlive the class it names, and an exception out of a keydown handler is an
  * exception into the host's error boundary: a refusal loses a keystroke, a throw
  * loses the session. `null` rather than a silent identity command, because under

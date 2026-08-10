@@ -1,5 +1,5 @@
 /**
- * Curating the trunk, in a browser (#316).
+ * Curating the trunk, in a browser.
  *
  * ## Why this is here and not only in vitest
  *
@@ -8,9 +8,9 @@
  * requests. What it cannot see is whether the control is *reachable*: the
  * removal lives inside a listing that did not exist until this task, on a screen
  * reached through a project tab, and "the component renders a button" and "a
- * person can press it from the app" are different claims. #160 is the precedent
- * — the annotator was unreachable from inside the app for a whole beta while its
- * component tests passed.
+ * person can press it from the app" are different claims — a screen can be
+ * unreachable from inside the app for a whole release while its component tests
+ * pass.
  *
  * ## The trunk is served from state, not from a literal
  *

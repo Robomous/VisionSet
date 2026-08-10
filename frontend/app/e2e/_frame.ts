@@ -37,10 +37,9 @@ import { expect, type Locator, type Page } from "@playwright/test";
 /**
  * Where the annotator showcase lives.
  *
- * `/`, until #58 gave the application a router and a real Home. The showcase is a
- * route now — outside the token gate, because its picture is a `data:` URI and it
- * has no server to authenticate against — and naming it once here is what kept
- * that move to one line instead of nine `beforeEach` blocks.
+ * A route of its own — outside the token gate, because its picture is a `data:`
+ * URI and it has no server to authenticate against — and naming it once here is
+ * what keeps a move to one line instead of nine `beforeEach` blocks.
  */
 export const SHOWCASE = "/demo";
 
@@ -78,7 +77,7 @@ export interface Frame {
  * more: that page renders no canvas at all until its 4K raster has been encoded,
  * so the same check is the readiness barrier there too.
  *
- * `asset` defaults to the demo's frame. #49's benchmark page is 3840x2160, and a
+ * `asset` defaults to the demo's frame. The benchmark page is 3840x2160, and a
  * zoom read against the wrong width is not a wrong number — it is a *plausible*
  * one, which is the kind that survives review.
  */
@@ -246,10 +245,10 @@ export function triangleOf(cx: number, cy: number, size = 70): readonly (readonl
 }
 
 /**
- * Save the work now, the way the product offers it since #368.
+ * Save the work now, the way the product offers it.
  *
- * The Save *button* is gone from the bar and `⌘S` is the chord that replaced it.
- * A helper rather than the chord written out at every call site, because the two
+ * `⌘S` is the chord. A helper rather than the chord written out at every call
+ * site, because the two
  * are one decision: if the shortcut ever moves, the specs move with it in one
  * place instead of twenty.
  *
@@ -276,12 +275,11 @@ export async function expectNothingToSave(page: Page): Promise<void> {
 }
 
 /**
- * Assert the frame's progress, which is a dot **and its word** on the bar since
- * #383.
+ * Assert the frame's progress, which is a dot **and its word** on the bar.
  *
- * The badge that used to carry the word competed with the workflow actions for
- * the bar's right-hand side, so #368 made it a dot with the word in a tooltip —
- * and a tooltip is a place a word goes to not be read. It is prose again now,
+ * A badge carrying the word competes with the workflow actions for the bar's
+ * right-hand side, and a dot with the word in a tooltip puts it somewhere it will
+ * not be read. It is prose,
  * beside the save state, and `data-progress` is still the machine-readable half.
  * `DESIGN.md`'s "status is never colour alone" is why both exist.
  */
@@ -291,7 +289,7 @@ export async function expectProgress(page: Page, progress: string): Promise<void
 
 /**
  * Open the bar's overflow menu, where the actions that are not about *this* frame
- * now live (#368) — return-to-annotator, an explicit Save, the shortcut sheet.
+ * live — return-to-annotator, an explicit Save, the shortcut sheet.
  *
  * Radix closes the menu on select, so a scenario pressing two of these opens it
  * twice. That is the product's behaviour and not a harness quirk.

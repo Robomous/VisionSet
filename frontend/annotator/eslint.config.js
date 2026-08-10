@@ -71,11 +71,11 @@ export default tseslint.config(
     },
   },
   {
-    // The Rules of Hooks, over the one directory that has any. #47 brought the
-    // repository's first non-trivial hook code, and a hook called conditionally or
-    // a stale dependency is precisely the class of bug the three gates above are
-    // blind to: `tsc` type-checks a conditional `useRef` happily, and a `useEffect`
-    // reading a value it does not depend on is well-typed and wrong.
+    // The Rules of Hooks, over the one directory that has any. A hook called
+    // conditionally or a stale dependency is precisely the class of bug the three
+    // gates above are blind to: `tsc` type-checks a conditional `useRef` happily,
+    // and a `useEffect` reading a value it does not depend on is well-typed and
+    // wrong.
     //
     // Scoped to `src/adapters/react/**` rather than applied package-wide, for the
     // same reason the boundary rules are scoped to `src/core/**`: a rule whose

@@ -1,12 +1,11 @@
 /**
- * Reassigning an annotation's class: **one component, two anchors** (#380).
+ * Reassigning an annotation's class: **one component, two anchors**.
  *
  * ## Why this file exists
  *
- * The menu shipped inside `AnnotatorPanel` as a private `ReassignMenu`, anchored to
- * an object row. #368's decision 9 deferred the second anchor — the same picker on
- * the canvas, over the shape itself — and the whole of that decision is that it is
- * the *same* picker. So the part that decides anything moved here and both mounts
+ * The picker is anchored to an object row in `AnnotatorPanel` and to the shape
+ * itself on the canvas, and the whole point is that it is the *same* picker. So
+ * the part that decides anything lives here and both mounts
  * render it: the class list, the legality rendering, the hotkey, and the call that
  * applies the change.
  *
@@ -22,7 +21,7 @@
  * while silently withholding the answer to "where is `lane`" — and `lane` is
  * missing for a reason the person can act on, which is to draw a polygon instead.
  * So the row is there, greyed, naming the geometry it needs. The rule itself is the
- * kernel's (`DisallowedGeometry`, #7) and is matched per class against
+ * kernel's (`DisallowedGeometry`) and is matched per class against
  * `LabelClass.geometry`, never against the union across the schema, which would let
  * a polygon through under a bbox class.
  *

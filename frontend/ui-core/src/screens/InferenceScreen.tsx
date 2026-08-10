@@ -1,11 +1,10 @@
 /**
  * The Inference section: where model connections are made, set up and removed.
  *
- * A top-level destination rather than a project tab, per the decision recorded on
- * #421 (2026-08-08): a connection carries no project id, every project uses the
- * same ones, and navigation maps 1:1 to domain objects — so a project tab would
- * state a scope the object does not have. That decision supersedes #58's rail
- * rule, and `DESIGN.md` carries the new membership.
+ * A top-level destination rather than a project tab: a connection carries no
+ * project id, every project uses the same ones, and navigation maps 1:1 to domain
+ * objects — so a project tab would state a scope the object does not have.
+ * `DESIGN.md` carries the rail's membership.
  *
  * ## Nothing here decides what is legal
  *
@@ -19,13 +18,13 @@
  *
  * ## The status column has two values, not three
  *
- * `#421`'s journey lists `Ready` / `Not set up` / `Unreachable`. The wire has two:
+ * The obvious third is `Unreachable`, and the wire has only two:
  * `setup_state` is deliberately **not** a reachability answer — whether an
  * endpoint responds has a fresh answer every time it is asked, so it belongs to a
  * test call and its result rather than to a stored row that would start lying the
- * moment the network moved. The test action ships with the HTTP endpoint contract
- * (`cf. #421`); until then there is no third value to render and no control that
- * would produce one.
+ * moment the network moved. A test action ships with the HTTP endpoint contract;
+ * until then there is no third value to render and no control that would produce
+ * one.
  *
  * ## What the form offers, and what it refuses to compute
  *
@@ -44,14 +43,14 @@
  *
  * ## Two actions over the same files, and each label says what it proves
  *
- * `download_weights` is declared for a local connection in either state (#469).
+ * `download_weights` is declared for a local connection in either state.
  * Below `Ready` it is the row's **Download weights** button; at `Ready` it is
  * **Check for missing files** in the overflow, where it re-runs the fetch and
  * turns up anything absent. The row picks that reading from `setup_state` — a
  * field the wire states — and never from a table of its own.
  *
  * `check_integrity` is the second action, declared only at `Ready` and only for
- * a local connection (#471), and it renders as **Check files are undamaged**.
+ * a local connection, and it renders as **Check files are undamaged**.
  * The two labels are written against each other on purpose: a download reads an
  * index and can prove nothing is *missing*, and only a full re-read of every
  * byte can prove nothing is *damaged*. **Verify weights** was the old label for
@@ -66,7 +65,7 @@
  *
  * ## The size is asked for before the connection exists
  *
- * D1 on #424 requires the local form to show what a download would cost *before*
+ * The local form shows what a download would cost *before*
  * somebody confirms. That is a query the form makes about a published revision,
  * not something the create response could carry — by the time a connection exists
  * the decision has already been taken. The same query is what surfaces a missing
@@ -174,7 +173,7 @@ export function InferenceScreen(): JSX.Element {
             "VisionSet never downloads models on its own — you choose what runs and where.",
           // `secondary`, not `primary`: the header's "Add connection" is on screen
           // and is the same label calling the same handler. One filled action per
-          // view (#323).
+          // view.
           action: (
             <Button variant="secondary" onClick={() => setCreating(true)}>
               Add connection
@@ -327,7 +326,7 @@ function ConnectionRow({
                 <DropdownMenuContent align="end">
                   {/*
                     Two checks over the same files, and each label says what its
-                    own check *proves* rather than what it is called (#471).
+                    own check *proves* rather than what it is called.
                     "Verify weights" covered both readings and could only be
                     honest about one: a download against a set-up connection
                     reads an index and finds a file that is absent, and no
@@ -419,17 +418,16 @@ function ConnectionRow({
  * when one is chosen — a job whose progress and refusal lived inside the item
  * would take both with it on the way out.
  *
- * **The list is re-read when the job settles, and that is the fix for a bug**
- * (#469). What the `202` changed was the declaration; what the *completion*
- * changes is `setup_state` and, with it, the row's whole meaning. Nothing was
- * re-reading at that moment, so a finished download left `Not set up` on screen
- * until somebody reloaded the page. A settled job is a mutation like any other,
- * so it invalidates what it touched. It covers the new transition too (#471):
- * a check that finds damage moves the row the *other* way, `Ready` to `Not set
- * up`, and the same settle is what makes the row say so without a reload.
+ * **The list is re-read when the job settles.** What the `202` changes is the
+ * declaration; what the *completion* changes is `setup_state` and, with it, the
+ * row's whole meaning. Without a re-read at that moment a finished download leaves
+ * `Not set up` on screen until somebody reloads the page. A settled job is a
+ * mutation like any other, so it invalidates what it touched — including the other
+ * direction, where a check that finds damage moves the row from `Ready` to `Not set
+ * up`.
  *
- * **Taken as a parameter rather than chosen inside**, since #471 gave the row a
- * second job to run. Two calls means two independent poll states, which is what
+ * **Taken as a parameter rather than chosen inside**, because the row has two jobs
+ * to run. Two calls means two independent poll states, which is what
  * keeps a running check from reading as a running download; passing the mutation
  * in is what lets one body serve both without a `kind` flag branching over
  * everything it does.
@@ -664,8 +662,8 @@ function ConnectionDialog({
                             {/*
                               Two lines: the id is what identifies the checkpoint
                               and the rest is what it costs and what it is for
-                              (#472). On one line it was a sentence long enough to
-                              wrap inside the trigger, and a wrapped identifier is
+                              On one line it is a sentence long enough to wrap
+                              inside the trigger, and a wrapped identifier is
                               harder to read than a stacked one.
                             */}
                             {group.models.map((model) => (

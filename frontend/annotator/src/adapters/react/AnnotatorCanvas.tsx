@@ -5,8 +5,8 @@
  * Everything decidable lives elsewhere — the transform in `adapters/viewport.ts`,
  * the keyboard predicates in `keyboard.ts`, the draw list in `paint.ts`, the
  * behaviour itself in `src/core/`. What is left here is wiring: refs, handlers,
- * and the three effects a browser makes necessary. That thinness is the claim
- * #112 and #42 were paying for; v1's equivalent was 1413 lines.
+ * and the three effects a browser makes necessary. That thinness is what a
+ * headless engine buys; v1's equivalent was 1413 lines.
  *
  * ## The stage, and where the frame conversion happens
  *
@@ -24,7 +24,7 @@
  * `screenToImage` and `pointerPoint`, in that order, which is the single door a
  * coordinate enters the engine by.
  *
- * ## The pane is the input surface, and the `<svg>` is only the picture (#186)
+ * ## The pane is the input surface, and the `<svg>` is only the picture
  *
  * The pointer handlers used to sit on the `<svg>`, which is laid out at
  * `asset.width × asset.height` — so the `<svg>` *was* the image rectangle and the
@@ -38,8 +38,8 @@
  * read the **pane's** rect, so moving the handlers up one element changed no
  * arithmetic at all.
  *
- * **#47's focus rule survives, and is strengthened rather than traded away.** The
- * bug it fixed was an SVG shape being a press's hit target and then being detached
+ * **The focus rule survives, and is strengthened rather than traded away.** The
+ * bug it guards is an SVG shape being a press's hit target and then being detached
  * by that same press, leaving the browser's focus fixup with nothing to resolve.
  * The invariant is *one input surface, and shapes are never it*. The pane is a
  * `<div>` that no commit detaches, so it is a strictly safer host for that rule
@@ -56,8 +56,9 @@
  * - remove the wrapper's `none` → the scenario fails, whatever the `<svg>` says;
  * - remove the `<svg>`'s `none` alone → **nothing changes**, it inherits;
  * - remove `AnnotationLayer`'s `pointerEvents="none"` → nothing changes either,
- *   although that same removal reproduced #47's focus bug back when the `<svg>`
- *   was live. #48's finding has not been falsified; its precondition is gone.
+ *   although that same removal reproduced the focus bug back when the `<svg>`
+ *   was the input surface. That finding has not been falsified; its precondition
+ *   is gone.
  *
  * The redundant declarations stay: they cost nothing, and each is what would still
  * hold if the one above it were removed. What they are *not* is the thing standing
@@ -243,9 +244,8 @@ export interface AnnotatorCanvasProps {
    * reason this one must not be.
    *
    * Read-only. Zoom **controls** — a `−`/`+` pair driving the stage from outside —
-   * need an imperative handle this adapter deliberately does not publish yet;
-   * they land with the annotation page that has a top bar to put them in (#56).
-   * Until then the host reports the zoom and the user changes it with the wheel,
+   * need an imperative handle, and they belong to a host with a top bar to put
+   * them in. Until then the host reports the zoom and the user changes it with the wheel,
    * a pinch, or `mod+0`.
    *
    * A mount announces `IDENTITY_VIEWPORT` and then the fit, in that order and
@@ -262,9 +262,9 @@ export interface AnnotatorCanvasProps {
    * full, including why a shape you cannot see must not swallow a press.
    *
    * **Hold this in state; never build it inline.** A freshly allocated `Set` on
-   * every render defeats `AnnotationLayer`'s `memo` before it is consulted, which
-   * is #49's finding about `skipId` from the other side — and the difference is a
-   * drag that costs the committed layer three DOM writes instead of six hundred.
+   * every render defeats `AnnotationLayer`'s `memo` before it is consulted — the
+   * same trap `skipId` avoids by being a string, and the difference is a drag that
+   * costs the committed layer three DOM writes instead of six hundred.
    */
   readonly hiddenIds?: ReadonlySet<string>;
   /**
@@ -273,7 +273,7 @@ export interface AnnotatorCanvasProps {
    */
   readonly onHostAction?: (name: string) => boolean;
   /**
-   * A context-menu request that landed on a shape: which shape (#380).
+   * A context-menu request that landed on a shape: which shape.
    *
    * A **report, not an action.** What a right-click on an annotation should open
    * is entirely the host's business — this component owns no menus and no chrome
@@ -285,7 +285,7 @@ export interface AnnotatorCanvasProps {
    * It rides the browser's own `contextmenu` rather than a secondary
    * `pointer-down`, and that is deliberate on both sides. A secondary press is a
    * pan, and consuming it here would take the gesture away from the two
-   * interaction-table rows that still have no browser spelling (`cf. #129`);
+   * interaction-table rows that still have no browser spelling;
    * `contextmenu` arrives after the press has already started its pan, so a
    * click-with-no-travel pans by zero and nothing about the existing grammar
    * moves.
@@ -302,7 +302,7 @@ export interface AnnotatorCanvasProps {
   /** Folded after the defaults and the class hotkeys, so a row here wins. */
   readonly bindings?: readonly Binding[];
   /**
-   * Where `mod+c` puts things and where `mod+v` takes them from (#123).
+   * Where `mod+c` puts things and where `mod+v` takes them from.
    *
    * Optional, and the default is the interesting half: with none supplied this
    * component makes its own, so duplicating a shape inside one asset works with
@@ -322,9 +322,8 @@ export interface AnnotatorCanvasProps {
   /**
    * Zoom controls, for a host that has somewhere to put them.
    *
-   * #50 reported the zoom and did not drive it, because driving it needs an
-   * imperative handle and there was no top bar to hang one off. #56 has one, so
-   * this is that handle — and it is deliberately **two methods and no state**:
+   * Driving the zoom from outside needs an imperative handle, and this is it —
+   * deliberately **two methods and no state**:
    * `onViewChange` already reports where the stage is, and a controlled `zoom`
    * prop would make the wheel a round trip through the host on every notch.
    *
@@ -367,7 +366,7 @@ export interface AnnotatorCanvasProps {
    */
   readonly readOnly?: boolean;
   /**
-   * The suggest session, or `null`/absent when the tool is not armed (#424).
+   * The suggest session, or `null`/absent when the tool is not armed.
    *
    * **The host holds it**, for the reason `core/interaction/suggestion.ts` gives
    * at length: every transition but the first is driven by a server's answer, and
@@ -391,11 +390,10 @@ export interface AnnotatorCanvasProps {
   /**
    * A press while the suggest tool is armed, in asset pixels.
    *
-   * Alt-click is the negative point, which is D2's *"left-click adds a positive
-   * point, alt/right-click a negative point"* with the alt half taken and the
-   * right half left alone: a secondary press is a pan on this canvas, and #380's
-   * `contextmenu` note explains why taking it back is not free. Alt is the
-   * spelling that costs no existing gesture.
+   * Alt-click is the negative point. The design allows alt or right-click; only
+   * the alt half is taken, because a secondary press is a pan on this canvas and
+   * the `contextmenu` note above explains why taking it back is not free. Alt is
+   * the spelling that costs no existing gesture.
    *
    * Absent, with a session armed, means a host that armed a tool it cannot serve
    * — so the press is swallowed rather than falling through to a drawing gesture,
@@ -463,7 +461,7 @@ export function AnnotatorCanvas({
   const tolerances = assetTolerances(view.zoom);
 
   // `defaultRegistry` rather than the fold spelled out here: the help sheet lists
-  // what is bound and must read the *same* map, overrides included (#189).
+  // what is bound and must read the *same* map, overrides included.
   const registry = useMemo(() => defaultRegistry(schema, bindings ?? []), [schema, bindings]);
 
   /** One turn of the machine — the only place `transition` is called. */
@@ -557,7 +555,7 @@ export function AnnotatorCanvas({
   }, [tool, dispatch]);
 
   /**
-   * Arming the suggest tool interrupts whatever the pointer was doing (#424).
+   * Arming the suggest tool interrupts whatever the pointer was doing.
    *
    * The pan contract's second occupant, discharged the way the first one is: a
    * gesture in flight when the mode begins is cancelled, and after that the
@@ -649,11 +647,11 @@ export function AnnotatorCanvas({
 
     /**
      * `enter` means **finish**, and what it finishes depends on whether anything
-     * is in progress (#383).
+     * is in progress.
      *
      * The chord is `send commit` in `DEFAULT_BINDINGS` — v1's ring close, and the
-     * one close a keyboard can always reach. #383's flow verb wants the same key
-     * for the frame, and the two never collide: outside `drawing-polygon` the
+     * one close a keyboard can always reach. The top bar's flow verb wants the same
+     * key for the frame, and the two never collide: outside `drawing-polygon` the
      * machine has no row for a commit, so today the press is silently swallowed.
      * This is that dead press given the meaning the bar already shows on its
      * primary button.
@@ -672,10 +670,10 @@ export function AnnotatorCanvas({
     const finishing = resolved.kind === "send" && resolved.event.type === "commit";
     /**
      * `escape` means **take back**, and a pending suggestion is the most recent
-     * thing there is to take back (#424, D4: *"Esc is the preview's undo"*).
+     * thing there is to take back — Escape is the preview's undo.
      *
-     * The same substitution `enter` has had since #383, on the other chord and
-     * for the same reason: the deciding fact is state the adapter holds. It
+     * The same substitution `enter` has, on the other chord and for the same
+     * reason: the deciding fact is state the adapter holds. It
      * outranks the machine's cancel while something is pending and disappears
      * the moment nothing is — so every cancel row in `machine.ts` still reads
      * exactly as written, and a second Escape clears the selection as it always
@@ -695,8 +693,8 @@ export function AnnotatorCanvas({
     // check, deliberately, so Escape blurs a field; that ordering is easy to lose
     // and is ported verbatim.
     //
-    // It runs **before** the read-only branch below, which #123 moved and which
-    // matters now that `mod+v` is claimed: a text field is the browser's whatever
+    // It runs **before** the read-only branch below, which matters because
+    // `mod+v` is claimed: a text field is the browser's whatever
     // mode the canvas is in, so swallowing the chord there would leave somebody
     // on a read-only page unable to paste into an ordinary input. Nothing else
     // changes hands — the branch below still swallows a claimed chord that
@@ -749,7 +747,7 @@ export function AnnotatorCanvas({
     // was clicked. Pressing on it is the click.
     rootRef.current?.focus({ preventScroll: true });
 
-    // Read-only: a primary press *selects* and does nothing else (#426). It
+    // Read-only: a primary press *selects* and does nothing else. It
     // never reaches the machine, so no drag state — a draw, a move, a resize, a
     // vertex drag — is reachable at all, which is a stronger guarantee than
     // gating each one. Selection is a read: it is what lets the panel name the
@@ -876,7 +874,7 @@ export function AnnotatorCanvas({
     hover === null
       ? { cursor: "default" as const, hot: NO_TARGET }
       : readOnly
-        ? // The viewer's answer (#426): `default` everywhere — no cursor may
+        ? // The viewer's answer: `default` everywhere — no cursor may
           // promise a move that cannot happen — with the hot body kept, because
           // a highlight aids the one gesture a viewer has, which is selecting.
           viewerAffordanceAt(
@@ -943,11 +941,11 @@ export function AnnotatorCanvas({
           touchAction: "none",
           cursor: affordance.cursor,
         }}
-        // (7) The input surface, and the only one — #186. It spans the whole
-        // viewport, so a press in the margin around the picture reaches the
-        // machine with the negative or past-the-edge coordinate it deserves; and
-        // it is a <div> no commit detaches, which is what keeps #47's focus rule
-        // true by construction rather than by luck.
+        // (7) The input surface, and the only one. It spans the whole viewport,
+        // so a press in the margin around the picture reaches the machine with the
+        // negative or past-the-edge coordinate it deserves; and it is a <div> no
+        // commit detaches, which is what keeps the focus rule true by construction
+        // rather than by luck.
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -972,7 +970,7 @@ export function AnnotatorCanvas({
             // read off `elementFromPoint` instead of a claim in a comment.
             pointerEvents: "none",
             // Every screen-pixel size the committed document draws with, published
-            // once here for the whole subtree to inherit (#131). This is the only
+            // once here for the whole subtree to inherit. This is the only
             // place a zoom change has to be written: without it, `zoom` is an input
             // to every shape and one wheel notch rewrites four attributes on each
             // of them. The stage was already the element a zoom writes to, so this
@@ -984,7 +982,7 @@ export function AnnotatorCanvas({
             src={imageSrc}
             alt=""
             aria-hidden="true"
-            // Named so the pixelated-at-depth rule (#228) is asserted against the
+            // Named so the pixelated-at-depth rule is asserted against the
             // image layer itself rather than against whichever element a
             // positional selector happens to reach.
             data-testid="annotator-image"
@@ -995,7 +993,7 @@ export function AnnotatorCanvas({
               display: "block",
               pointerEvents: "none",
               userSelect: "none",
-              // Honest pixels past `PIXELATED_ABOVE_ZOOM` (#228): deep zoom shows
+              // Honest pixels past `PIXELATED_ABOVE_ZOOM`: deep zoom shows
               // the asset's real sampling grid instead of gradients the browser
               // invented between the pixels somebody zoomed in to look at. The
               // image layer only — the `<svg>` below is untouched by this.
@@ -1007,7 +1005,7 @@ export function AnnotatorCanvas({
             width={asset.width}
             height={asset.height}
             viewBox={`0 0 ${asset.width} ${asset.height}`}
-            // Inert, like the two layers inside it: since #186 the pane is the
+            // Inert, like the two layers inside it: the pane is the
             // input surface, and an element that cannot be a hit target cannot
             // take the focus with it when a press removes what is drawn on it.
             // Its *geometry* is unchanged and load-bearing — `e2e/_frame.ts`

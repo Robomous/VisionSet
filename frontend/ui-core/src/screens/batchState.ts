@@ -15,23 +15,20 @@
  *
  * ## Green arrived, and it arrived the way the old note said it would have to
  *
- * This file used to argue there was no green: the design brief wanted one,
- * `DESIGN.md` published a single accent and no status palette, and
  * `tests/scripts/design_tokens.test.mjs` fails the build on a colour that is not a
- * token — so a green would have meant either a design-system change nobody had
- * asked for, or a hardcoded hex (gated, correctly). #323 *is* that design-system
- * change: `success` is a published token now, so `completed` takes it.
+ * token, so a status green has to be a published token before anything can use
+ * one. `success` is that token, and `completed` takes it.
  *
- * ## The tone is a token, and the word is not optional (#391)
+ * ## The tone is a token, and the word is not optional
  *
- * The five per-asset states were drawn in **three** private vocabularies: the
- * gallery card and the timeline shared a monochrome ramp off `primary`, and the
- * annotator kept a semantic one of its own in which `skipped` was
- * **`destructive`**. So `accepted` was green on one screen and near-black on
- * another, and a frame somebody had deliberately passed over was painted in the
+ * Left to each surface, the five per-asset states get **three** private
+ * vocabularies: a monochrome ramp off `primary` for the gallery card and the
+ * timeline, and a semantic one in the annotator in which `skipped` is
+ * **`destructive`**. That makes `accepted` green on one screen and near-black on
+ * another, and paints a frame somebody deliberately passed over in the
  * colour this product uses for a failure.
  *
- * `PROGRESS_TONE` is the one answer now, and `progressDotClass` /
+ * `PROGRESS_TONE` is the one answer, and `progressDotClass` /
  * `progressCellClass` are the one drawing of it. The rule underneath is two
  * channels that stay separable: **the tone says which family a state is in, the
  * shape says how far along it is**, so the strip still reads in greyscale and a
@@ -386,8 +383,8 @@ export function annotatedShare(counts: {
 /**
  * "3 days ago", from an ISO moment — or `null` when there is nothing to say.
  *
- * **Null in, null out, and that is the whole point of #283.** `ingested_at` is
- * nullable because an asset written before #216 existed is legitimately
+ * **Null in, null out.** `ingested_at` is nullable because an asset written
+ * before the column existed is legitimately
  * unstamped, and null means *unknown* rather than "never". Rendering unknown as
  * "just now" or as the epoch would be inventing a fact; the header omits the line
  * instead.
@@ -415,7 +412,7 @@ export function relativeAge(iso: string | null | undefined, now: number): string
 /**
  * The earliest arrival among the assets loaded so far, as the batch's own age.
  *
- * Derived rather than stored: `BatchOut` has no timestamp at all (#283 records
+ * Derived rather than stored: `BatchOut` has no timestamp at all (that gap is
  * why, and settling it is a migration nobody has taken). A whole ingest run
  * shares one timestamp, so for the batch this exists for — one born from one run
  * — the earliest *is* the batch's moment. It is computed from the loaded window

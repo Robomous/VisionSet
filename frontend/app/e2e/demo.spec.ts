@@ -10,9 +10,8 @@
  * a back button. This page has none of that — it is `<AnnotatorDemo/>` on one route,
  * with no backend and no auth. Those five describe a product surface M5 builds, not
  * a behaviour that moved, so they are recorded as out of scope rather than dropped
- * quietly. #58 gave the application a router and a rail; the showcase stayed a leaf
- * outside the token gate, so the five are still out of scope here and belong to
- * #59's cycle instead.
+ * quietly. The application has a router and a rail; the showcase is a leaf
+ * outside the token gate, so the five belong to the cycle suite instead.
  *
  * The sixth — *"no console errors on annotation route"* — ports directly, and is
  * worth more here than it was there. `StrictMode` double-invokes effects, and

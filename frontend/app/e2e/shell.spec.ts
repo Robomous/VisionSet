@@ -8,8 +8,8 @@
  * The alternative, seeding `sessionStorage` and starting inside the gate, would
  * skip the only part of this flow that has ever been wrong.
  *
- * The screens themselves are #53–#57 and are placeholders today, which is why
- * nothing below asserts about their content. What is asserted is everything #58
+ * The screens themselves are `ui-core`'s, which is why
+ * nothing below asserts about their content. What is asserted is everything the shell
  * actually owns: what the rail contains, that navigation is real links, that the
  * gate is where the router says it is, and that a deep link resolves.
  *
@@ -31,7 +31,7 @@ import { expect, test, type Page } from "@playwright/test";
  * failure reads as "the shell disappeared".
  */
 async function serveApi(page: Page, { session = false } = {}): Promise<void> {
-  // Every page load asks this first (#179). `false` is this suite's default,
+  // Every page load asks this first. `false` is this suite's default,
   // because the gate and the sign-out button are what it is about and both are
   // only reachable when the server declines to sign the browser in by itself.
   await page.route("**/api/session", (route) => route.fulfill({ json: { issued: session } }));
@@ -59,7 +59,7 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
         json: { id: PROJECT, name: "highway", description: null },
       });
     }
-    // #211's header counts the project, and the catch-all below answers every
+    // The project header counts the project, and the catch-all below answers every
     // *collection* with an empty page — which is the wrong shape for this one.
     // A stub that answers a shape the endpoint never sends tests nothing, and
     // this one took the page down with it.
@@ -99,14 +99,14 @@ test("the browser the server signed in never sees the gate", async ({ page }) =>
   await serveApi(page, { session: true });
   await page.goto("/");
 
-  // Nothing typed, nothing pasted: #179's whole point, in a browser.
+  // Nothing typed, nothing pasted: the browser session's whole point.
   await expect(page.getByTestId("app-rail")).toBeVisible();
   await expect(page.getByTestId("token-input")).toHaveCount(0);
 
   // The control says what it can actually do. A cookie set by the server is one
   // no script here can delete, so this stops using it rather than forgetting it.
   // Read off the accessible name rather than the text: the rail starts collapsed
-  // (#200) and a collapsed rail deliberately drops its labels, keeping them in
+  // and a collapsed rail deliberately drops its labels, keeping them in
   // `aria-label` and `title` so no destination is lost. That is the string a
   // screen reader and a tooltip both get, which makes it the stronger assertion.
   const control = page.getByTestId("rail-sign-out");
@@ -161,8 +161,8 @@ test("the rail carries exactly what the design gives it", async ({ page }) => {
   await signIn(page);
 
   const rail = page.getByTestId("app-rail");
-  // Three, not two: `Inference` joined by the decision recorded on #421
-  // (2026-08-08), which supersedes #58's rule. The count is the assertion — a
+  // Three, not two: `Inference` is a top-level destination, because model
+  // connections are workspace infrastructure. The count is the assertion — a
   // fourth destination arriving without that decision fails here first.
   await expect(rail.getByRole("link")).toHaveCount(3);
   await expect(page.getByTestId("rail-home")).toBeVisible();
@@ -211,7 +211,7 @@ test("collapsing the rail narrows it and keeps every control reachable", async (
   await signIn(page);
   const rail = page.getByTestId("app-rail");
 
-  // Expanded first, because collapsed is now where a fresh session starts (#200)
+  // Expanded first, because collapsed is where a fresh session starts
   // — so this scenario has to open the rail before it can claim that closing it
   // narrows anything. The claim itself is unchanged.
   await page.getByTestId("rail-collapse").click();
@@ -237,14 +237,14 @@ test("a deep link inside the product resolves to its screen", async ({ page }) =
   await page.getByTestId("token-submit").click();
 
   await expect(page.getByTestId("app-rail")).toBeVisible();
-  // #53's project screen — the claim is that the router put us on it rather than
+  // The project screen — the claim is that the router put us on it rather than
   // on the list or on a 404.
   await expect(page.getByTestId("project-screen")).toBeVisible();
   await expect(page).toHaveURL(/\/projects\/11111111/);
 });
 
 /**
- * #171: the project view's section is in the URL, and this is the only place that
+ * The project view's section is in the URL, and this is the only place that
  * wiring exists.
  *
  * `ui-core` is deliberately router-free — it takes the tab as a prop and hands one
@@ -259,7 +259,7 @@ test("the project view's tab is in the URL, and survives a reload", async ({ pag
   await page.getByTestId("token-submit").click();
 
   // The link opened on the section it named, not on the default — which is
-  // Overview since #210.
+  // Overview is the default.
   await expect(page.getByTestId("version-history")).toBeVisible();
   await expect(page.getByTestId("overview-panel")).toHaveCount(0);
   await expect(page.getByTestId("overview-empty")).toHaveCount(0);
@@ -290,7 +290,7 @@ test("a client route nobody defined answers inside the shell, not with a blank p
 });
 
 /**
- * The rail starts collapsed (#200).
+ * The rail starts collapsed.
  *
  * The unit tests hold the logic — absent key, unparseable value, refused storage
  * all resolve to the default — and cannot see whether anything calls it. These

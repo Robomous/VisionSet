@@ -27,14 +27,13 @@
  * the API publishes; `Geometry` has four variants, because that is what an
  * annotation can actually carry. Naming `mask` or `keypoints` is legal in a
  * schema and refused at the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`)
- * and by `parseGeometry` here. `polyline` moved across that line in #223, which
- * cost this list one entry and the union one variant. See `docs/schemas.md`.
+ * and by `parseGeometry` here. See `docs/schemas.md`.
  *
- * #40 answered the question this docstring used to leave open — how a locally
- * drawn annotation carries identity when `AnnotationCreate` has no `id` field.
- * It mints a client-side uuid v4 into the ordinary `id`, and `toAnnotationCreate`
- * drops it: the provisional value is the document's key and the selection's key
- * for the life of the session, and it never travels. See `state/document.ts`.
+ * A locally drawn annotation carries identity even though `AnnotationCreate` has
+ * no `id` field: it mints a client-side uuid v4 into the ordinary `id`, and
+ * `toAnnotationCreate` drops it. The provisional value is the document's key and
+ * the selection's key for the life of the session, and it never travels. See
+ * `state/document.ts`.
  */
 
 /**
@@ -75,7 +74,7 @@ export const IMPLEMENTED_GEOMETRY_TYPES = [
  * What an `Attribute` may hold — the kernel's `Attribute.kind` Literal.
  *
  * A `Literal` rather than an enum on the Python side, spelled inline in the wire
- * model for #27's reason, so nothing structural ties this list to that one.
+ * model, so nothing structural ties this list to that one.
  * `wire.test.ts` asserts it against the fixture's `attribute_kinds`.
  */
 export const ATTRIBUTE_KINDS = ["boolean", "number", "select", "string"] as const;
@@ -279,8 +278,7 @@ export interface AnnotationSchema {
  * is the same trap `get_asset_image` publishes four numbers to avoid — a preview
  * is capped on its long edge, and coordinates measured on it and submitted
  * unscaled are individually plausible and uniformly wrong. The screen↔image
- * transform belongs to the adapter (#47); the document only ever holds native
- * pixels.
+ * transform belongs to the adapter; the document only ever holds native pixels.
  */
 export interface AssetDescriptor {
   readonly id: string;

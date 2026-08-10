@@ -5,7 +5,7 @@
  * `@radix-ui/react-dialog` rather than on its own primitive is what gives both the
  * focus trap, the `Escape` handler, the scroll lock, the `aria-modal` wiring and
  * the return of focus to the trigger — none of which a hand-rolled panel gets, and
- * all of which a destructive-confirmation dialog (#53) genuinely needs.
+ * all of which a destructive-confirmation dialog genuinely needs.
  *
  * `DialogTitle` is **required** by Radix: without one it warns, and a modal with
  * no accessible name is unusable with a screen reader. It is exported rather than

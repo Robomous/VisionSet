@@ -2,31 +2,30 @@
  * The machine's alphabet: eight normalized events, and not one DOM type among
  * them.
  *
- * ## The line between this and #46
+ * ## The line between this and the input layer
  *
- * #46 owns the input *layer* — translating a `PointerEvent` into one of these,
- * and a keyboard registry that is scoped, remappable and free of global
+ * `core/input/` owns the input *layer* — translating a `PointerEvent` into one of
+ * these, and a keyboard registry that is scoped, remappable and free of global
  * listeners. This file owns the *vocabulary*, because a transition function
  * cannot be written without one and because the vocabulary is a property of the
  * machine rather than of its delivery.
  *
  * The sharpest expression of that line is `cancel` and `commit`. They are
- * **intents, not keys**: #42 decides what a cancel means in each state, #46
- * decides that Escape is a cancel and Enter is a commit, and a user remapping
- * either costs nothing because nothing here has ever heard the string
- * `"Escape"`. It also satisfies #46's own acceptance criterion — "no
- * `KeyboardEvent` construction anywhere as an inter-component API" — by
- * construction rather than by discipline, which is worth noting because v1's
- * confirm button literally did `document.dispatchEvent(new KeyboardEvent(…))`.
+ * **intents, not keys**: the machine decides what a cancel means in each state,
+ * the input layer decides that Escape is a cancel and Enter is a commit, and a
+ * user remapping either costs nothing because nothing here has ever heard the
+ * string `"Escape"`. No `KeyboardEvent` is ever constructed as an
+ * inter-component API — worth noting because v1's confirm button literally did
+ * `document.dispatchEvent(new KeyboardEvent(…))`.
  *
- * `core/input/index.ts` stays the reserved slot for #46's layer. Putting this
- * union there instead would give #46 ownership of the vocabulary of a machine it
+ * `core/input/index.ts` stays the reserved slot for that layer. Putting this
+ * union there instead would give it ownership of the vocabulary of a machine it
  * does not contain.
  *
  * ## Everything is in asset pixels
  *
  * `point` is always the asset's own frame. The screen↔image transform belongs to
- * the adapter (#47) and `AssetDescriptor`'s docstring already names the failure
+ * the adapter, and `AssetDescriptor`'s docstring already names the failure
  * mode of getting it wrong: coordinates measured on a scaled preview and
  * submitted unscaled are individually plausible and uniformly wrong.
  *
@@ -39,7 +38,7 @@
  * `alt` is carried and unused. An adapter that had to remember which subset of
  * the modifiers this core accepts is a worse boundary than a four-field record,
  * and a rule about multi-select modifiers that could not express "alt" would be
- * one #46 has to widen. That is a deliberate exception to the discipline that
+ * one the input layer has to widen. That is a deliberate exception to the discipline that
  * refuses a field nobody reads, and it is stated rather than left to be noticed.
  *
  * ## There is no clock
@@ -56,8 +55,9 @@
  *
  * `undo`, `redo`, delete-the-selection, select-all, class hotkeys. None of them
  * read or write interaction state, so routing them through the machine would
- * make it a command bus that every future shortcut has to be added to. #46 binds
- * them straight to the store. What the machine owes them is *robustness* — an
+ * make it a command bus that every future shortcut has to be added to. The input
+ * layer binds them straight to the store. What the machine owes them is
+ * *robustness* — an
  * undo landing mid-drag must not throw — and that is the staleness guard in
  * `machine.ts`, not ownership.
  *
@@ -116,7 +116,7 @@ export type InteractionEvent =
       readonly point: Point;
       readonly modifiers: Modifiers;
     }
-  /** Abandon whatever is in flight. Escape, by default, in #46's registry. */
+  /** Abandon whatever is in flight. Escape, by default, in the key registry. */
   | { readonly type: "cancel" }
   /** Finish whatever is in flight. Enter, by default. Closes a polygon. */
   | { readonly type: "commit" }
@@ -133,10 +133,11 @@ export type InteractionEvent =
    * Take back the last point placed while drawing a polygon.
    *
    * An **intent**, like `cancel` and `commit`, and it exists for the same reason
-   * they do: #42 decides what taking back a point means in each state, #46 decides
-   * which key says it. Nothing in `interaction/` has heard of `Backspace`.
+   * they do: the machine decides what taking back a point means in each state, the
+   * input layer decides which key says it. Nothing in `interaction/` has heard of
+   * `Backspace`.
    *
-   * It is here because #129 found that the gesture v1 used for this — a secondary
+   * It is here because the gesture v1 used for this — a secondary
    * press — has **no path through the React adapter**, which answers every
    * non-primary press with a pan before the machine is told. That decision is kept
    * (see `AnnotatorCanvas`), so the capability needed a spelling of its own; it had

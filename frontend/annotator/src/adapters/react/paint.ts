@@ -14,7 +14,7 @@
  * therefore 2 *asset* pixels — half a hair at 8× zoom and a slab at 10%. Every
  * thickness, radius and font size goes through `screenPx`.
  *
- * That is #41's finding pointed at rendering rather than at hit-testing. v1
+ * That is the hit-testing rule pointed at rendering. v1
  * compared an asset-pixel distance *against* a screen-pixel constant, making its
  * grab radius 4.5 screen pixels at 30% zoom; drawing has the identical trap with
  * the identical fix, and it is the easiest thing in this task to get backwards
@@ -141,8 +141,8 @@ export function paintAnnotation(
  * is the order `topmostAnnotationAt` resolves against, so what a click picks is
  * what a user sees on top.
  *
- * Tags are absent: a `classification_tag` has no coordinates, and #45 put it in a
- * panel for that reason. Filtering here rather than in the component is what keeps
+ * Tags are absent: a `classification_tag` has no coordinates, so it belongs in a
+ * panel. Filtering here rather than in the component is what keeps
  * the rule in one place and testable.
  */
 export function paintDocument(
@@ -212,7 +212,7 @@ export function rubberBand(state: InteractionState): BboxGeometry | null {
  * A shape under construction click by click: the vertices placed, and where the
  * rubber band ends.
  *
- * One projection for both sessions (#342), because the painter's job is the same
+ * One projection for both sessions, because the painter's job is the same
  * for both: a chain of placed vertices plus a band to the cursor. `closable` is
  * the single bit that differs, and it is carried rather than re-derived from the
  * state type so the renderer never learns which states exist.
@@ -242,7 +242,7 @@ export function pendingPolygon(state: InteractionState): PendingPolygon | null {
 }
 
 /**
- * How a proposal is told apart from a stored annotation (#424, D2).
+ * How a proposal is told apart from a stored annotation.
  *
  * **Two signals, and never colour alone.** A suggestion is drawn in its class's
  * own colour — that is the point of it, since the class is what it will be
@@ -291,7 +291,7 @@ export function paintSuggestion(
 ): PaintedSuggestion | null {
   const suggestion = state.suggestion;
   if (state.status !== "shown" || suggestion === null) return null;
-  // A parked session (#472) has no class, so there is no colour to draw it in and
+  // A parked session has no class, so there is no colour to draw it in and
   // no label to write on it. It also cannot be `shown`, so this is the same kind
   // of guard as the one above: what the type allows, not what the machine does.
   const labelClass = state.labelClass;

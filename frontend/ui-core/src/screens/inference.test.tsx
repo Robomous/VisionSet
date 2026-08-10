@@ -649,7 +649,7 @@ it("runs the same request for the completeness check as for Download weights", a
   );
 });
 
-// --- the integrity check, and keeping it apart from the other one (#471) --------
+// --- the integrity check, and keeping it apart from the other one --------------
 
 /** Everything a ready local connection declares. Typed off `Connection`, so a
  *  renamed action is a type error here rather than a string that still compiles. */
@@ -708,8 +708,8 @@ it("does not offer the integrity check when the wire withholds it", async () => 
 });
 
 it("lands the row at Not set up when a check finds damage, and says what was done", async () => {
-  // The transition #471 added, and the reason the settle-invalidation from #469
-  // has to cover it: the row's whole meaning changed, in the other direction.
+  // The other direction, and the reason the settle-invalidation has to cover it:
+  // the row's whole meaning changes.
   let damaged = false;
   handlers.push((request) => {
     if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;

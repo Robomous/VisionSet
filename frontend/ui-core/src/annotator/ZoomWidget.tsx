@@ -1,13 +1,12 @@
 /**
- * The stage's own zoom controls, floating bottom-right (#368).
+ * The stage's own zoom controls, floating bottom-right.
  *
- * They were in the top bar, wedged between the workflow buttons and the edge, and
- * that placement said something false about them: a workflow action changes the
- * *work*, while zoom changes only how the work is being looked at. Mixing the two
- * in one row meant the bar's rightmost third was half decisions and half optics,
- * and the decisions were the ones getting lost.
+ * Not in the top bar, which would say something false about them: a workflow
+ * action changes the *work*, while zoom changes only how the work is being looked
+ * at. Mixing the two in one row makes the bar's rightmost third half decisions and
+ * half optics, and the decisions are the ones that get lost.
  *
- * So they move onto the picture they operate on, opposite the tool strip and
+ * So they sit on the picture they operate on, opposite the tool strip and
  * sharing its chrome — bottom-right against the strip's top-left, so neither
  * covers the other and both stay clear of the middle where the annotating
  * happens.
@@ -153,7 +152,7 @@ function useFullscreen(
 }
 
 /**
- * A zoom control that says why it stopped working (#228).
+ * A zoom control that says why it stopped working.
  *
  * `ToolPalette`'s `PaletteButton` is the pattern and the two share its one
  * load-bearing detail: **`aria-disabled`, never the native `disabled` attribute**.

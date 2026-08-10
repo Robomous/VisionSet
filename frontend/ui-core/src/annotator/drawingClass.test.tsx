@@ -1,16 +1,15 @@
 /**
- * The drawing class's lifetime is the **job**, not the frame (#368).
+ * The drawing class's lifetime is the **job**, not the frame.
  *
- * It used to be `Workspace`'s state, and `Workspace` is keyed on the asset — so
- * moving to the next frame reset it, and a re-pin reset it too, because
+ * As `Workspace`'s state it would die on every frame, because `Workspace` is keyed
+ * on the asset — and on every re-pin too, because
  * `usePinnedSchema`'s query key names the version and `JobScreen` falls through
- * to `LoadingState` while a moved pin refetches. The second of those is what made
- * #233's "you are drawing with the class you just made" a promise the page could
- * not keep, silently: the field simply read `Select` again a moment later.
+ * to `LoadingState` while a moved pin refetches. The second of those is what would
+ * make "you are drawing with the class you just made" a promise the page could
+ * not keep, silently: the field would simply read `Select` again a moment later.
  *
- * So it moved up beside the clipboard, which lives in `JobScreen` for the same
- * reason one frame over (#123). Both stop at the job's edge, where the asset
- * frame and the pinned schema are somebody else's.
+ * So it sits beside the clipboard in `JobScreen`. Both stop at the job's edge,
+ * where the asset frame and the pinned schema are somebody else's.
  *
  * The re-pin half is asserted in `addClassProvenance.test.tsx`, where the whole
  * add-a-class chain already runs. This is the navigation half, which needs a job

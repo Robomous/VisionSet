@@ -8,8 +8,7 @@
  * working mode here, not an edge case — and three fixed ports made the browser suites
  * single-occupancy. The second `scripts/check.sh` to reach the browser group found 5273
  * held and died with `Port 5273 is already in use`, which reads as a broken dev server
- * rather than as contention; #345's gate lost two runs to exactly that, and #346 is the
- * tracker.
+ * rather than as contention.
  *
  * So a port joins the rest of a worktree's disjoint surface, beside its branch and its
  * `dist/`: derived from the worktree's own absolute path, stable for as long as that
@@ -86,8 +85,8 @@ export const LEGACY: Readonly<Record<Suite, number>> = {
 };
 
 /**
- * The escape hatch, one per suite. `VISIONSET_CYCLE_PORT` is not new — the cycle server
- * script has read it since #59, and `playwright.cycle.config.ts` still passes it down.
+ * The escape hatch, one per suite. The cycle server script reads
+ * `VISIONSET_CYCLE_PORT`, and `playwright.cycle.config.ts` passes it down.
  */
 export const OVERRIDE: Readonly<Record<Suite, string>> = {
   e2e: "VISIONSET_E2E_PORT",

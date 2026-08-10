@@ -10,7 +10,7 @@
  *
  * A **token** is what somebody pastes, and this module holds it. A **browser
  * session** is what the server gives the page it served itself, as an `HttpOnly`
- * cookie no script here can read (#179) — so the only way to find out whether this
+ * cookie no script here can read — so the only way to find out whether this
  * browser has one is to ask, which is the one request made outside a screen's own
  * query. `TokenGate` triggers it through `ensureAccess`, and that is why the gate's
  * input is `access` and not `token !== null`: on your own machine the ordinary
@@ -70,7 +70,7 @@ import { clearToken, readToken, writeToken } from "./session";
  *
  * Four states rather than a `token: string | null`, because the credential this
  * browser is most likely to hold is one it **cannot read** — an `HttpOnly` cookie
- * the server set on the page it served (#179). "Signed in" is therefore no longer
+ * the server set on the page it served. "Signed in" is therefore no longer
  * the same question as "is there a token", and collapsing the two would put the
  * token form in front of somebody who is already authenticated.
  *

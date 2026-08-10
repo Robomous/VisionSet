@@ -4,8 +4,8 @@
  *
  * `DESIGN.md` is explicit about what is on it — logo, collapse toggle, Home,
  * Projects, Inference, and the account control at the bottom — and about what is
- * not. `Inference` joined it by the decision recorded on #421 (2026-08-08), which
- * supersedes #58's rule: model connections are workspace infrastructure that every
+ * not. `Inference` is one of them by a settled decision:
+ * model connections are workspace infrastructure that every
  * project uses, so they cannot live inside any one project, and the rail is the
  * only workspace-level surface there is.
  * Anything richer growing here is exactly what the **thin-app audit** exists to
@@ -14,7 +14,7 @@
  *
  * ## It starts collapsed, and the answer lives in one place
  *
- * `readRailCollapsed` (#200) is the whole decision: collapsed unless a stored
+ * `readRailCollapsed` is the whole decision: collapsed unless a stored
  * preference says otherwise. It is in `ui-core` rather than inline here because a
  * default spelled at a call site is a default that gets spelled twice, and because
  * a module is testable where a `useState` argument is not.
@@ -22,7 +22,7 @@
  * The state is read once, in a **lazy initializer**. An effect that corrected the
  * width on mount would paint the wrong one first, and a rail that visibly snaps
  * narrow on every page load is worse than one that never collapsed — which is the
- * shape #159's defect had, one screen over.
+ * shape an effect that measures too late always has.
  *
  * ## Why the collapsed width is a token
  *
@@ -47,12 +47,12 @@
  * right for those. The annotator is not: it is the one screen somebody sits in
  * front of for an hour, and boxing it costs real pixels — `fitToViewport` derives
  * the zoom from the pane's rect, so a shrunken pane opens every asset smaller than
- * it needs to and applies the tolerance constants at a zoom nobody chose (#183).
+ * it needs to and applies the tolerance constants at a zoom nobody chose.
  *
  * So the choice is a **route**, not a prop and not a `useMatch` here. `PaddedPane`
  * and `FullBleedPane` are the two `<main>`s, and `routes.tsx` puts each screen
  * under the one it wants — which keeps this file composition-only, exactly as
- * #58's thin-app rule asks, and keeps `ui-core` from fighting the container with
+ * the thin-app rule asks, and keeps `ui-core` from fighting the container with
  * negative margins.
  *
  * **The panes are nested inside this one layout route, and the reason is not the
@@ -75,7 +75,7 @@ import { useState, type JSX, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 
 export function AppShell(): JSX.Element {
-  // A **lazy initializer**, never an effect (#200): an effect that corrects the
+  // A **lazy initializer**, never an effect: an effect that corrects the
   // width on mount paints the wrong one first, and a rail that visibly snaps
   // narrow on every page load is worse than one that never collapsed.
   const [collapsed, setCollapsed] = useState(readRailCollapsed);
@@ -101,7 +101,7 @@ export function AppShell(): JSX.Element {
         <div className="flex items-center justify-between gap-2 px-1 py-2">
           {!collapsed && (
             <span className="truncate text-section font-semibold">
-              {/* The wordmark, and one of only two places `brand` is allowed (#323). */}
+              {/* The wordmark, and one of only two places `brand` is allowed. */}
               Robomous <span className="text-brand">VisionSet</span>
             </span>
           )}
@@ -219,7 +219,7 @@ function RailLink({
       end={end ?? false}
       data-testid={testId}
       title={collapsed ? label : undefined}
-      // The active item was `bg-primary`, which #323 made the *same near-black as
+      // `bg-primary` would be the *same near-black as
       // the rail itself* — an active item that vanishes into its own background.
       // The rail carries its own contrast now: a lifted fill and white ink for
       // active, `sidebar-muted` for the rest, so the distinction survives inside

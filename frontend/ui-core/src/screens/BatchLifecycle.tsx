@@ -1,8 +1,8 @@
 /**
  * The two pieces of the batch lifecycle that more than one screen renders.
  *
- * Both moved here out of `BatchesScreen` when `GalleryScreen` needed them (#284),
- * **promoted rather than copied** — the rule the kernel follows for a gate two
+ * Both are here rather than in `BatchesScreen`, because `GalleryScreen` needs
+ * them too — **promoted rather than copied**, the rule the kernel follows for a gate two
  * services need, for the same reason: a second spelling of "what does approving
  * do" is free to drift, and the two would eventually disagree in front of a user
  * about something irreversible.
@@ -85,14 +85,14 @@ export function BatchProgressBar({
   );
 }
 
-// --- closing the batch (#301) ------------------------------------------------
+// --- closing the batch --------------------------------------------------------
 
 /**
  * How the refusals that can still reach this button read to a person.
  *
  * Every one of them is pre-empted by the disabled rule below, so reaching one
  * means the batch moved under the press — somebody else annotating, a second tab.
- * That makes these rare rather than impossible, and #292's rule stands either way:
+ * That makes these rare rather than impossible, and the rule stands either way:
  * a raw kernel identifier in front of a user is not an error message.
  *
  * A code that is not here keeps its raw `{code}: {message}`, which is what a bug
@@ -110,14 +110,14 @@ export function BatchProgressBar({
  */
 
 /**
- * Close the batch — and its jobs, which is the half nobody was sending (#301).
+ * Close the batch — and its jobs, which is the half that is easy to miss.
  *
  * Shared by the batch table and the gallery header, **promoted rather than
  * copied**, for the reason the module docstring gives about `ApproveDialog`: two
  * spellings of an irreversible move eventually disagree in front of a user. It is
  * also why the gallery has this at all — that is the screen a person is on when
- * they finish the work, and until #301 the closing move existed only on a table
- * one tab away.
+ * they finish the work, and a closing move that lived only on a table one tab away
+ * would be unreachable from it.
  *
  * **The press is withheld while work is outstanding rather than offered and
  * refused.** `JobService.complete` will refuse an unsettled asset, and this screen
@@ -189,7 +189,7 @@ export function ApproveDialog({
   readonly onClose: () => void;
   /** The gallery moves its own header when this lands; the table just re-reads. */
   readonly onApproved?: () => void;
-  /** Where "define your labels" goes when the refusal is `SCHEMA_NOT_FOUND` (#291). */
+  /** Where "define your labels" goes when the refusal is `SCHEMA_NOT_FOUND`. */
   readonly onOpenSchema?: () => void;
 }): JSX.Element {
   // `"single"`, not `"single_job"` — the tag is `SingleJob.kind`'s value and the

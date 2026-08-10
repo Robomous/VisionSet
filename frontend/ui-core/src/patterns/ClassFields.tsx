@@ -1,8 +1,8 @@
 /**
  * The fields that describe one label class, wherever a class is being written.
  *
- * Extracted from `SchemaEditor.tsx` by #233, which needed the same form inside a
- * dialog on the annotation page — "add a label without leaving the job". A second
+ * Shared by `SchemaEditor.tsx` and the add-a-class dialog on the annotation page,
+ * which needs the same form to add a label without leaving the job. A second
  * spelling would have been two forms drifting apart on which geometries are
  * offered, how a derived colour is shown, and how an attribute's options are
  * typed; that last one alone is three rules (`select` only, blank-trimmed,
@@ -40,18 +40,12 @@ import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/que
 /**
  * The four an `Annotation` can carry. The other four are refused at write time.
  *
- * `polyline` is here from #223 and has no drawing tool yet: lanes are written
- * through the SDK, the API and MCP, and reviewed in the annotator. Offering the
- * class is still right — the geometry is real, the API accepts it, and the
- * exporters need it — and the tool strip says so where it matters (#342).
- *
- * `satisfies` rather than an annotation (#375), so the elements keep their
+ * `satisfies` rather than an annotation, so the elements keep their
  * literal types and a member deleted from the generated union fails here. What
  * that does **not** close is the cross-language mirror: the offerable set is the
  * kernel's `IMPLEMENTED_GEOMETRIES`, derived off the `Geometry` union, and the
  * wire does not publish it — so implementing `mask` still means editing this
- * line by hand. Deriving it needs the API to declare the set; that is a wire
- * change and #375 is presentation-only.
+ * line by hand. Deriving it would need the API to declare the set.
  */
 const GEOMETRIES = [
   "bbox",
@@ -106,7 +100,7 @@ export function ClassFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {/* Grouped, not flat (#375): a flat list of every name the product
+              {/* Grouped, not flat: a flat list of every name the product
                   can address says nothing about which ones belong to the work
                   somebody is actually doing, and the list only grows. The
                   headings are presentation — `SelectLabel` is Radix's own
@@ -152,7 +146,7 @@ export function ClassFields({
             Derive
           </Button>
         </div>
-        {/* Informational here: the digit is what the *annotator* binds (#46),
+        {/* Informational here: the digit is what the *annotator* binds,
             which caps at nine and maps to palette order. Showing it in the
             editor is how somebody authoring an ontology knows what they are
             about to give their annotators. */}
@@ -359,10 +353,9 @@ function splitOptions(value: string): string[] {
  *
  * This used to answer a flat `#888888` for anything that was not already a hex,
  * which meant **every derived class showed grey** — `classColor`'s derived branch
- * returns `hsl(...)`. #162: the dot beside the class name showed the real colour,
- * this input showed grey, and the annotator drew the real colour. Two of the three
- * agreed and the disagreeing one was the control whose entire job is to show what
- * colour something is.
+ * returns `hsl(...)`. The dot beside the class name shows the real colour and the
+ * annotator draws the real colour, so a grey input is the one control whose entire
+ * job is to show what colour something is disagreeing with both.
  *
  * `hexColor` converts instead, so the preview is the truth. The neutral survives
  * for the case it was always right about: a schema authored elsewhere may hold any

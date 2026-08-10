@@ -1,8 +1,8 @@
 /**
- * The approve dialog's refusal surface (#291).
+ * The approve dialog's refusal surface.
  *
- * Until now `ApproveDialog` was tested only through its host screens, and the
- * claim this file exists for is one those tests never made: **the rendering of a
+ * `ApproveDialog` is otherwise tested only through its host screens, and the
+ * claim this file exists for is one those tests do not make: **the rendering of a
  * refusal branches on the error `code`, and exactly one code earns a
  * translation.** `SCHEMA_NOT_FOUND` has a remedy a person can act on — define
  * labels — so it is said in their words with the way there beside it. Every

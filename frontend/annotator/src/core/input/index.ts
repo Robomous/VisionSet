@@ -29,20 +29,20 @@
  * ## This is the only barrel in `core/`, and the exception is deliberate
  *
  * `geometry/`, `interaction/` and `state/` have none. Two things earn one here.
- * `events.ts` names `core/input/index.ts` by path as *"the reserved slot for
- * #46's layer"*, so deleting the file would dangle that reference. And this is
+ * `events.ts` names `core/input/index.ts` by path as the reserved slot for this
+ * layer, so deleting the file would dangle that reference. And this is
  * the one directory whose contract is with a layer that **does not exist in this
  * package** — which is where a barrel earns its keep, because it is somewhere to
  * write that contract down.
  *
- * ## What the adapter owes, so #47 inherits it rather than rediscovering it
+ * ## What the adapter owes, so it inherits this rather than rediscovering it
  *
  * The "no global listeners" half of the deliverable is already an
  * *impossibility* rather than a rule: nothing in `src/core/` can name
  * `addEventListener`, because `tsconfig.core.json` compiles with no DOM `lib` and
  * `eslint.config.js` bans `document` as a value here, tests included, with
- * `tests/scripts/annotator_boundary.test.mjs` proving both fire. #112 shipped that
- * gate; #46 invents none. What is left is the adapter's, and it is this list:
+ * `tests/scripts/annotator_boundary.test.mjs` proving both fire. What is left is
+ * the adapter's, and it is this list:
  *
  * 1. **`onKeyDown` as a React prop on the annotator root**, never
  *    `document.addEventListener`. Subtree bubbling is the scoping, for free, and

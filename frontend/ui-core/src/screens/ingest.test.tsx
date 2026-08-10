@@ -205,7 +205,7 @@ describe("registering a source", () => {
     // Repeated under one name, because that is what `list[UploadFile]` reads. A
     // single part holding an array is silently one file with a stringified name.
     expect((form as FormData).getAll("files")).toHaveLength(2);
-    // And the source is named (#245): blank field, so the suggestion — the first
+    // And the source is named: blank field, so the suggestion — the first
     // file's *stem*, because "a.png" is a file and "a" is a thing you can call a
     // source. Without a name the server would call it by the upload's digest.
     expect((form as FormData).get("name")).toBe("a");
@@ -229,7 +229,7 @@ describe("registering a source", () => {
     // The clip rides under `file` — singular, unlike the images' repeated `files`,
     // because `register_video_source` takes one `UploadFile`.
     //
-    // A clip states no name (#245): its filename already is one, and the wire
+    // A clip states no name: its filename already is one, and the wire
     // does not take the parameter on the video route.
     expect(form.has("name")).toBe(false);
 
@@ -281,11 +281,9 @@ describe("registering a source", () => {
 /**
  * The selection panel: what was chosen, read back before anything uploads.
  *
- * The rate went inline → modal (#234) → inline (#243), and what survives every
- * arrangement is the pair of claims here: the rate exists only for a clip, and a
- * rate the request could not carry disables the registration — with the
- * explanation adjacent, which is what made the inline return legal under
- * `DESIGN.md` principle 9.
+ * Two claims: the rate exists only for a clip, and a rate the request could not
+ * carry disables the registration — with the explanation adjacent, which is what
+ * makes an inline field legal under `DESIGN.md` principle 9.
  */
 describe("the selection panel", () => {
   beforeEach(() => {
@@ -420,11 +418,11 @@ describe("the selection panel", () => {
 });
 
 /**
- * The choreography: three steps, exactly one active (#243).
+ * The choreography: three steps, exactly one active.
  *
- * The claims here are about what is and is not *mounted*, because that is what
- * changed: the old layout kept every card fully live at once, so a user could
- * swap the files in step 1 while step 2 still described the old ones. `data-state`
+ * The claims here are about what is and is not *mounted*: a layout that keeps
+ * every card fully live at once lets a user
+ * swap the files in step 1 while step 2 still describes the old ones. `data-state`
  * is asserted rather than any class, and the absence of controls is asserted
  * rather than their styling — a dimmed-but-live dropzone would pass a style
  * check and still have the bug.
@@ -488,8 +486,8 @@ describe("one step at a time", () => {
     // A staged upload of images is named by its content digest — the server
     // stages parts under `uploads/<digest>/` and `SourceOut.name` is that
     // directory's basename. The full string survives in `title`; the visible
-    // text does not shout hex at the user. The naming itself is a recorded
-    // cross-surface wart (#245), not this screen's to fix.
+    // text does not shout hex at the user. The naming itself is not this screen's
+    // to fix.
     const digest = "4a3192814961e3d8b7f84a79dedfd8ecd7aaab876b0630cdcdf7536b3ad352c6";
     handlers.length = 0;
     on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
@@ -585,8 +583,8 @@ describe("launching a run", () => {
   });
 
   it("surfaces a synchronous launch refusal on the form, not on a job", async () => {
-    // #28's rule: anything the request can refuse is refused before a job row
-    // exists — so there is nothing to poll and the message belongs here.
+    // Anything the request can refuse is refused before a job row exists — so
+    // there is nothing to poll and the message belongs here.
     on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
     on("POST", /\/ingest-jobs$/, {
@@ -683,8 +681,8 @@ describe("watching a run", () => {
   });
 
   it("says how much of a damaged clip arrived, and what to do about it", async () => {
-    // #452: the run holds "eight of about twenty" and used to spend it on a
-    // sentence about the file being corrupt. The frames are in the batch, so the
+    // The run holds "eight of about twenty" rather than a sentence about the file
+    // being corrupt. The frames are in the batch, so the
     // report is not a failure row — it says what arrived and what the remedy is.
     on("GET", /\/ingest-jobs\//, {
       status: 200,
@@ -741,8 +739,8 @@ describe("watching a run", () => {
   });
 
   it("says nothing at all about a run in which everything was read", async () => {
-    // Silence is the ok-state. The decision on #452 is explicit that surfacing it
-    // again would only be noise, and the first place that holds is here.
+    // Silence is the ok-state: surfacing a clean run again would only be noise,
+    // and the first place that holds is here.
     on("GET", /\/ingest-jobs\//, { status: 200, body: job({ failures: [] }) });
     await launch();
 
@@ -829,12 +827,13 @@ describe("watching a run", () => {
 });
 
 /**
- * #181: a settled run used to be a dead end.
+ * A settled run must not be a dead end.
  *
- * The card reached `completed` and the screen went inert — no route to the batch
- * it had just filled, and `Start ingest` stayed `disabled` for the rest of the
- * page's life. Ingest is the product's entry point, so a terminal state naming
- * no next step leaves a first-time user guessing where their assets went.
+ * Without this the card reaches `completed` and the screen goes inert — no route
+ * to the batch it has just filled, and `Start ingest` stays `disabled` for the
+ * rest of the page's life. Ingest is the product's entry point, so a terminal
+ * state naming no next step leaves a first-time user guessing where their assets
+ * went.
  *
  * The batch id is what makes the button conditional rather than decorative:
  * `enqueue` stores only an id it was *handed*, which is null for a run creating
@@ -999,9 +998,8 @@ describe("the labels foreshadowing banner (#290)", () => {
     // `SchemaForeshadow` reads `useProjectReadiness`, which needs the schema and
     // the project's counts to answer at all — an unanswered source leaves
     // readiness `null` and the banner never renders, which looks exactly like
-    // the banner being wrong. The dataset and its releases are stubbed too: the
-    // hook stopped reading them with #388, and they are kept because this
-    // screen's own cards still ask.
+    // the banner being wrong. The dataset and its releases are stubbed too,
+    // because this screen's own cards still ask for them.
     on("GET", /^\/projects\/[^/]+\/dataset$/, {
       status: 200,
       body: datasetOf(PROJECT, "22222222-2222-4222-8222-222222222222"),

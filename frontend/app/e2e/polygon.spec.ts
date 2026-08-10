@@ -217,7 +217,7 @@ test("Delete after pressing a vertex removes the whole polygon", async ({ page }
  * polygon deleted)"*, on the reasoning that 3 − 1 = 2 is below the minimum so the
  * shape cannot survive.
  *
- * #44 answered the same question the other way: `removePolygonVertex` returns
+ * The tool answers the same question the other way: `removePolygonVertex` returns
  * `null` at `MIN_POLYGON_POINTS`, `deleteVertex` returns `idle()` with no effect,
  * and **nothing happens**. Destroying a shape somebody spent three clicks on
  * because they aimed at a vertex is a punishment for a typo; `Delete` on the
@@ -275,7 +275,7 @@ test("Delete after pressing the body removes the polygon", async ({ page }) => {
 });
 
 /**
- * Not in v1, which could only close with Enter — and the scenario that #47 makes
+ * Not in v1, which could only close with Enter — and the scenario the adapter makes
  * mandatory rather than merely nice.
  *
  * Closing by pressing the first vertex used to move focus to `<body>` and silently
@@ -283,7 +283,7 @@ test("Delete after pressing the body removes the polygon", async ({ page }) => {
  * commit during the event, and the browser's own focus fixup then resolved a
  * detached node and found nothing. No error was reported anywhere.
  *
- * Measured while writing this suite, and it refines #47's own note: the two render
+ * Measured while writing this suite, and it refines the adapter's own note: the two render
  * layers guard **different** halves, and only one of them guards this. Restoring
  * `pointer-events` on `TransientLayer` alone reproduces the bug exactly — focus
  * lands on `<body>` and this scenario is the only one that fails — because the

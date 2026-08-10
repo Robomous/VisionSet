@@ -1,11 +1,12 @@
 /**
- * The margin around the picture (#186).
+ * The margin around the picture.
  *
  * Every other scenario in this suite aims *inside* the asset, because that is
- * where annotations are. This one is about everywhere else — and until #186 there
+ * where annotations are. This one is about everywhere else — and without a
+ * full-viewport input surface there
  * was nothing there at all: `AnnotatorCanvas` laid the `<svg>` out at
  * `asset.width × asset.height` inside the scaled stage, so the `<svg>` **was** the
- * image rectangle, and since #47 it is deliberately the only input surface. The
+ * image rectangle, and it is deliberately the only input surface. The
  * hit-testable region was therefore exactly the asset, and the pane around it was
  * dead. A box against the edge of the image had grips sitting on or just outside
  * the boundary that could not be grabbed, and a press on the surround did not
@@ -15,7 +16,7 @@
  * with no clamp and `resolveTarget` has always worked at negative coordinates.
  * The fix moves the sole input surface from the `<svg>` to the **pane**, which
  * spans the whole viewport and, being a `<div>` that no commit ever detaches, is
- * a strictly safer host for #47's focus rule than the `<svg>` was.
+ * a strictly safer host for the focus rule than the `<svg>` was.
  *
  * ## Every coordinate here is deliberately outside the asset
  *
@@ -88,7 +89,7 @@ test("a press on the surround reaches the machine and clears the selection", asy
   await boxAgainstTheLeftEdge(page, frame);
 
   const { above } = await surroundOf(page);
-  // A press that stays put clears the selection — #48 measured that rule inside
+  // A press that stays put clears the selection — the same rule that holds inside
   // the image and it is not changed here, only made reachable in the margin.
   await page.mouse.click(above.x, above.y);
   await expectCounts(page, 1, 0);
@@ -104,7 +105,7 @@ test("a press on the surround that travels leaves the selection alone", async ({
   await page.mouse.move(above.x + 120, above.y, { steps: 8 });
   await page.mouse.up();
 
-  // There is no rubber-band marquee (#48), and a travelling press leaves the
+  // There is no rubber-band marquee, and a travelling press leaves the
   // selection untouched. This one passed before the fix too — for the wrong
   // reason, because the press reached nothing at all — so it is here as the
   // other half of the rule its sibling above asserts: now that the margin *is*
@@ -184,7 +185,7 @@ test("a drag that leaves the image keeps tracking", async ({ page }) => {
 });
 
 /**
- * #47's invariant, restated as a test rather than as a comment.
+ * The adapter's invariant, restated as a test rather than as a comment.
  *
  * The focus bug was caused by an SVG shape being a press's hit target and then
  * being detached by that same press, leaving the browser's focus fixup resolving
@@ -195,7 +196,7 @@ test("a drag that leaves the image keeps tracking", async ({ page }) => {
  * that was measured rather than assumed.** The property is inherited, so the
  * topmost inert element decides for everything below: removing the wrapper's
  * declaration fails this scenario, while removing the `<svg>`'s — or
- * `AnnotationLayer`'s, which is #48's own method and reproduced the focus bug
+ * `AnnotationLayer`'s, which reproduces the focus bug
  * when the `<svg>` was still live — changes nothing at all. The computed-style
  * assertions below therefore describe the *result* for the whole subtree, and the
  * `elementFromPoint` check is the one that actually bites.
@@ -222,7 +223,7 @@ test("nothing between the pane and the pixels can be a hit target", async ({ pag
   expect(inert.every((value) => value === "none")).toBe(true);
 
   // …and the element a press actually lands on is the pane — over the picture,
-  // where a shape is drawn, which is exactly where #47's bug lived.
+  // where a shape is drawn, which is exactly where the focus bug lives.
   const at = frame.at(300, 300);
   const target = await page.evaluate(
     ([x, y]) => (document.elementFromPoint(x, y) as HTMLElement | null)?.dataset["testid"] ?? null,
@@ -231,7 +232,7 @@ test("nothing between the pane and the pixels can be a hit target", async ({ pag
   expect(target).toBe("annotator-pane");
 
   // Focus survives the press that removes the shape under it — the exact gesture
-  // that broke before #47, driven here through the new surface.
+  // the focus rule protects, driven here through the pane.
   await page.mouse.click(at.x, at.y);
   await expect(page.getByTestId("annotator-root")).toBeFocused();
   await page.keyboard.press("Delete");

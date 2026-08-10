@@ -1,10 +1,10 @@
 /**
  * The annotation page's right-hand panel: **Classes over Annotations**, two
- * stacked regions (#420).
+ * stacked regions.
  *
  * ## Why it is here and not in `@visionset/annotator`
  *
- * #126 left the choice open. It lands in `ui-core` because the annotator's whole
+ * It lands in `ui-core` because the annotator's whole
  * claim is that it *"owns no UI a product would want to restyle"* — it ships
  * headless, with no Tailwind and no design tokens, and a styled panel inside
  * `adapters/react` would be the first thing an embedder had to fight. `ui-core`
@@ -19,11 +19,9 @@
  *
  * ## Two regions, no tabs, and no splitter
  *
- * It was **Objects | Labels** tabs until #368, which split them by where they
- * belong: arming the drawing class went to the top bar, and tagging the *asset* —
- * a fact about this frame rather than about the ontology — stayed here as a chip
- * strip. #420 brings class selection back, and the part worth stating is that it
- * does **not** bring the tabs back with it. A tab is a claim that two things are
+ * There are no **Objects | Labels** tabs. Tagging the *asset* — a fact about this
+ * frame rather than about the ontology — is a chip strip here, and class selection
+ * is the region above it. A tab is a claim that two things are
  * alternatives; classes and objects are the two halves of one question — what may
  * I draw, and what have I drawn — so they are stacked and both are on screen.
  *
@@ -49,14 +47,14 @@
  * ## Every write goes through a command
  *
  * Delete uses `removeAnnotationsCommand`, the same path the keyboard takes, so
- * #46's guards cannot diverge — including the one that reads oddly until you know
+ * the keyboard's guards cannot diverge — including the one that reads oddly until you know
  * why: an identity command still goes through `store.execute`, which drops a staged
  * preview, so a delete of nothing must not be executed at all.
  *
  * Class reassignment uses `replaceAnnotationCommand`, so it lands in the history and
  * undo takes it back like anything else. It is offered per row rather than for the
  * selection, which is the one thing about it this file still decides — everything
- * else lives in `ReassignMenu.tsx`, because #380 gave the same picker a second
+ * else lives in `ReassignMenu.tsx`, because the same picker has a second
  * anchor on the canvas and a rule with two spellings is a rule that drifts.
  *
  * Applied on selection rather than behind an **Apply**, which the card this replaces
@@ -115,13 +113,12 @@ export interface AnnotatorPanelProps {
    */
   readonly readOnly?: boolean;
   /**
-   * The drawing class, and the one way to change it (#420).
+   * The drawing class, and the one way to change it.
    *
-   * Back on the panel after #368 sent it to the top bar — but held by the page,
-   * exactly as it was, so the canvas, the tool strip, a digit hotkey and this
-   * list all land on one callback. A panel that owned the value would be the
-   * second road to a setting with one owner that #368's docstring warned about;
-   * a panel that renders somebody else's value is a view of it.
+   * Held by the page, so the canvas, the tool strip, a digit hotkey and this
+   * list all land on one callback. A panel that owned the value would be a
+   * second road to a setting with one owner; a panel that renders somebody
+   * else's value is a view of it.
    */
   readonly activeClass: string | null;
   readonly onActivateClass: (labelClass: string) => void;
@@ -171,8 +168,8 @@ export function AnnotatorPanel({
     //
     // Guarded on the annotation still being there rather than on the command being
     // non-null — `removeAnnotationsCommand` always returns one, and executing an
-    // identity command still drops a staged preview, which is #46's finding about
-    // `delete-selection` seen from the panel.
+    // identity command still drops a staged preview — the same trap
+    // `delete-selection` has, seen from the panel.
     if (!store.document.annotations.has(id)) return;
     store.execute(removeAnnotationsCommand([id]));
   }
@@ -197,9 +194,8 @@ export function AnnotatorPanel({
       aria-label="Classes and annotations"
     >
       {/* Upper region: the ontology — absent, not disabled, in the read-only
-          mode (#426): what may I draw is not a question a viewer can ask, so
-          rendering the list there was information about nothing. The decision
-          supersedes #420's render-as-information direction. The objects region
+          mode: what may I draw is not a question a viewer can ask, so
+          rendering the list there would be information about nothing. The objects region
           below takes the whole panel by the same rule that always sized it —
           it is `flex-1` and there is nothing else left.
 
@@ -409,7 +405,7 @@ function ObjectRow({
 }: ObjectRowProps): JSX.Element {
   const row = useRef<HTMLLIElement | null>(null);
   /**
-   * Selection is one state, reflected everywhere (#426): a shape picked on the
+   * Selection is one state, reflected everywhere: a shape picked on the
    * canvas selects this row too, and a row a filter or a long list has pushed
    * out of the scroller scrolls into view. Each row watches its own `selected`,
    * so the rule costs nothing to the rows it does not concern; `nearest` keeps
@@ -486,7 +482,7 @@ function ObjectRow({
 }
 
 /**
- * The row's anchor for `ReassignMenu` — and nothing else (#380).
+ * The row's anchor for `ReassignMenu` — and nothing else.
  *
  * Everything this menu decides moved into `ReassignMenu.tsx` when the canvas grew
  * a second anchor for it: the class list, the disabled-with-reason rendering, the

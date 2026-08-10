@@ -15,16 +15,16 @@
  * afterwards. That is not a missing screen — there is no route, because there is
  * no service method, because a version is immutable.
  *
- * ## The draft belongs to the screen, not to this component (#389)
+ * ## The draft belongs to the screen, not to this component
  *
  * `SchemaDraft` is a prop. That is not plumbing for its own sake: this editor
  * renders inside a Radix `TabsContent`, which unmounts when another tab is shown,
- * so a draft held in `useState` here was destroyed — silently, every time —
+ * so a draft held in `useState` here is destroyed — silently, every time —
  * along with everything somebody had typed into it. `ProjectScreen` holds it
  * above that boundary and says why.
  *
- * The other half of the same defect was an effect that re-seeded the draft
- * whenever the active version changed, with nothing to stop it. **Seeding is
+ * The other half of the same defect is an effect that re-seeds the draft
+ * whenever the active version changes, with nothing to stop it. **Seeding is
  * derived here rather than done in an effect**, which is what lets the rule be
  * stated once where the value is read: a held draft wins while it still describes
  * this project and either matches the active version or has unsaved work in it.
@@ -40,21 +40,20 @@
  * choice the API will refuse is a worse experience than not offering it — and the
  * two are kept in step by the API's refusal, not by this list being right.
  *
- * #223 moved `polyline` across that line, and it is the one geometry a class can
- * declare with **no drawing tool behind it**: lane annotations are written by the
- * SDK, the API and MCP and reviewed here. That is a statement about the annotator,
- * not about the schema, so it does not belong in this picker — the tool strip is
- * where a person finds out, and it says so rather than showing a gap (#342).
+ * A geometry a class can declare with no drawing tool behind it is a statement
+ * about the annotator rather than about the schema, so it does not belong in this
+ * picker — the tool strip is where a person finds out, and it says so rather than
+ * showing a gap.
  *
  * ## The history is read-only, and that is honest rather than a limitation
  *
  * Every version is reachable through the navigator; selecting a past one shows
- * what it contained, why it was made (#230's description) and what it changed,
+ * what it contained, why it was made and what it changed,
  * with **no edit affordance at all** — not a disabled one. A disabled control
  * says "not now"; there is no now. Editing the active version is unchanged, and
  * leaving the navigator alone is byte-for-byte the screen that shipped before.
  *
- * The per-version diff comes from `GET .../schema/compare` (#231) and is never
+ * The per-version diff comes from `GET .../schema/compare` and is never
  * computed here. `domain/schema_diff.py` is the one spelling of that rule and it
  * is not obvious — an *optional* attribute added is additive while a *required*
  * one is not — so a TypeScript copy would drift, and the drift would read as a
@@ -84,8 +83,8 @@
  *
  * ## What the wire does not carry
  *
- * #53 asks for a class **description**. `LabelClassBody` has `name`, `geometry`,
- * `color` and `attributes` and nothing else, and the kernel's `LabelClass` is the
+ * A class **description** has nowhere to go. `LabelClassBody` has `name`,
+ * `geometry`, `color` and `attributes` and nothing else, and the kernel's `LabelClass` is the
  * same — so there is nowhere to put one. Left out rather than stored somewhere it
  * would not survive a round trip; recorded here so it is a decision and not an
  * omission.
@@ -132,11 +131,11 @@ const WOULD_ORPHAN = "SCHEMA_CHANGE_WOULD_ORPHAN";
 /**
  * A draft of the next version, and the version it was drafted from.
  *
- * **Held by the screen rather than by this component (#389).** Radix unmounts an
+ * **Held by the screen rather than by this component.** Radix unmounts an
  * inactive `TabsContent` by design — that is what makes each tab own its own
- * query (`ProjectScreen`'s docstring) — so a draft owned here died on a tab
+ * query (`ProjectScreen`'s docstring) — so a draft owned here dies on a tab
  * switch, silently and every time. State that outlives the editor is the only
- * shape that survives it, and no effect guard could have reached that one.
+ * shape that survives it, and no effect guard can reach that one.
  *
  * `seed` travels beside `classes` because **dirty is measured against what the
  * draft started as, not against whatever the server says now**. Without it,
@@ -189,7 +188,7 @@ export function SchemaEditor({
   //
   // Component state and not the query string, deliberately. `?tab=` carries the
   // *tab* because a tab is a destination somebody links to; a version somebody is
-  // glancing at is not, and ui-core imports no router (#171). Nothing about this
+  // glancing at is not, and ui-core imports no router. Nothing about this
   // is a new navigation pattern, which is what `DESIGN.md` asks of a tab's
   // internals.
   const [viewing, setViewing] = useState<number | null>(null);
@@ -200,10 +199,9 @@ export function SchemaEditor({
   // this tab after that one costs no request.
   const stats = useProjectStats(projectId);
 
-  // Seeding is **derived, not an effect**, and that is what closes the second
-  // half of #389. An effect that re-seeds has to be told when not to — and the
-  // one that shipped was never told, so a version published underneath replaced
-  // whatever had been typed. Deriving states the rule once, in the place the
+  // Seeding is **derived, not an effect**. An effect that re-seeds has to be told
+  // when not to, and one that is not told lets a version published underneath
+  // replace whatever had been typed. Deriving states the rule once, in the place the
   // value is read: a held draft is shown while it is still about this project
   // and either still describes the active version or has something in it worth
   // keeping. Anything else is seeded fresh from `active`.
@@ -296,7 +294,7 @@ export function SchemaEditor({
         // This screen is where somebody sits down and decides what the project
         // labels, so every version it publishes is a milestone — including one
         // that happens to add a single class. What makes a version incidental is
-        // the *surface*, not the size of the change (#368).
+        // the *surface*, not the size of the change.
         provenance: "curated",
       },
       {
@@ -413,7 +411,7 @@ export function SchemaEditor({
           question, so it is neither an `Alert` nor a dialog. The reload is the
           one thing a person might want and cannot otherwise reach — reverting to
           the new active version means discarding what they typed, which is
-          exactly the choice this was destroying by making it for them (#389). */}
+          exactly the choice a re-seeding effect makes for them. */}
       {past === undefined && moved !== null && (
         <p className="text-meta text-muted-foreground" data-testid="schema-moved">
           Version {moved} was published while you were editing. Your changes are still
@@ -704,7 +702,7 @@ function VersionDiff({
       {diff.changes.map((change, index) => (
         <li key={index} className="flex items-start gap-2 text-meta">
           {/* The kernel's own words — they are accurate — sentence-cased for a
-              badge (#292). `detail` below stays verbatim; see the docstring. */}
+              badge. `detail` below stays verbatim; see the docstring. */}
           <Badge variant={change.kind === "destructive" ? "destructive" : "neutral"}>
             {change.kind === "destructive" ? "Destructive" : change.kind === "additive" ? "Additive" : change.kind}
           </Badge>

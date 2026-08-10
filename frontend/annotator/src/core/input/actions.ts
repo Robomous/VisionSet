@@ -20,17 +20,17 @@
  * `KeyIntent` is `Extract`ed rather than re-spelled, so a rename in `events.ts`
  * fails *here* rather than silently. Narrowed rather than carrying the whole
  * union, because a binding able to name `pointer-down` would have to invent a
- * `Point` — reopening the exact door #46 exists to close. `events.ts` states the
- * line: *"`cancel` and `commit` are **intents, not keys**: #42 decides what a
- * cancel means in each state, #46 decides that Escape is a cancel and Enter is a
- * commit."* Nothing in `interaction/` has ever heard the string `"Escape"`, and
+ * `Point` — reopening the exact door this layer exists to close. `cancel` and
+ * `commit` are **intents, not keys**: the machine decides what a cancel means in
+ * each state, and this layer decides that Escape is a cancel and Enter is a
+ * commit. Nothing in `interaction/` has ever heard the string `"Escape"`, and
  * nothing here has ever heard of a transition table.
  *
  * ## The `host` kind is open on purpose
  *
  * `mod+0` (zoom to 100%) and `?` (the help sheet) are v1 rows nothing in this
- * package can execute — `state.ts` says *"`tolerance.ts` is the only module in
- * `src/core/` allowed to name a zoom"*, and there is no help panel until #50.
+ * package can execute — `tolerance.ts` is the only module in `src/core/` allowed
+ * to name a zoom, and the help panel is a host's.
  * They still belong in the default table, because **the registry is also the
  * list of keystrokes the annotator takes away from the browser**: an adapter
  * calls `preventDefault()` iff `resolve` answered non-null, so an unclaimed
@@ -117,8 +117,8 @@ export type ActionKind = Action["kind"];
  * A set rather than a chain of `!==` in the adapter, because the question is
  * *about the action* and the answer belongs beside the union it is read off.
  * `host` was always here in spirit — those are the rows core declares and does
- * not implement, help and zoom and next-asset — and #123 adds `copy-selection`,
- * which is the first action that touches the store and still writes nothing:
+ * not implement, help and zoom and next-asset. `copy-selection` joins them as the
+ * one action that touches the store and still writes nothing:
  * copying a box out of a completed batch is how somebody carries it into a
  * correction, and refusing it would be refusing a read.
  *
@@ -156,14 +156,11 @@ export const TOGGLE_HELP = "toggle-help";
 export const FOCUS_CLASS_FIELD = "focus-class-field";
 
 /**
- * Ask the host to store the work. v1 had no such chord and neither did this
- * build until #368.
+ * Ask the host to store the work. v1 had no such chord.
  *
- * It arrives with the removal of the Save *button*, and it is the reason that
- * removal is not a regression: the page saves on navigate and on every settle
- * already, so what the button offered was "store it now, without going
- * anywhere" — a real thing to want, and until now only a button could ask for
- * it.
+ * It is what replaces a Save *button*: the page saves on navigate and on every
+ * settle already, so what a button offered was "store it now, without going
+ * anywhere" — a real thing to want, and a chord is a better place for it.
  *
  * A host action rather than anything core can do, obviously: this package has no
  * HTTP and never will. But it must be *claimed* here whatever the host does with
@@ -174,7 +171,7 @@ export const FOCUS_CLASS_FIELD = "focus-class-field";
 export const SAVE = "save";
 
 /**
- * Store the work and move to the next frame — the flow verb (#383).
+ * Store the work and move to the next frame — the flow verb.
  *
  * The fifth name core writes and cannot execute: this package has no HTTP and no
  * idea what "the next frame" is, both of which are the host's. It is claimed here
@@ -193,7 +190,7 @@ export const SAVE = "save";
 export const SAVE_AND_NEXT = "save-and-next";
 
 /**
- * Settle this frame as skipped and move on — Save-and-next's sibling (#383).
+ * Settle this frame as skipped and move on — Save-and-next's sibling.
  *
  * `x`, a bare letter, on `c`'s and `v`'s terms: the canvas is not a text field,
  * and `isTextEntry` hands the chord back to any field that is. It is a host row
@@ -208,7 +205,7 @@ export const SKIP_FRAME = "skip-frame";
 
 /**
  * Arm or disarm the suggest tool — `s`, a bare letter on `c`'s, `v`'s and `x`'s
- * terms (#424, slice 3b).
+ * terms.
  *
  * A host row, and it could be nothing else: a suggestion comes from a model
  * behind an HTTP route, and this package has no HTTP and never will. What core
@@ -224,7 +221,7 @@ export const SKIP_FRAME = "skip-frame";
 export const TOGGLE_SUGGEST = "toggle-suggest";
 
 /**
- * Turn the pending suggestion into an annotation — `enter` (#424, D4).
+ * Turn the pending suggestion into an annotation — `enter`.
  *
  * `SAVE_AND_NEXT`'s sibling and its neighbour in the same substitution.
  * `enter` already means *finish*, and this is the third thing it can finish:
@@ -241,8 +238,7 @@ export const TOGGLE_SUGGEST = "toggle-suggest";
 export const ACCEPT_SUGGESTION = "accept-suggestion";
 
 /**
- * Throw the pending suggestion away — `escape` (#424, D4: *"Esc is the preview's
- * undo"*).
+ * Throw the pending suggestion away — `escape`, the preview's undo.
  *
  * The same substitution as `ACCEPT_SUGGESTION`, on the other chord, and it is
  * **first**: a preview is the most recent thing a person put on screen, so an

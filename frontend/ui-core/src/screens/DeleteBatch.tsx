@@ -6,7 +6,7 @@
  * The Batches row and the gallery header both offer this, and a second spelling
  * of "which states may be deleted", of the blast radius, or of the confirmation
  * would be the hand-mirror one layer up from the one `capabilities.ts` exists to
- * remove. #380 established the shape for the same problem in the annotator: the
+ * remove. The annotator's reassignment picker has the same shape: the
  * shared piece holds everything the control *decides*, and each mount supplies
  * only its anchor and what to do afterwards.
  *
@@ -97,7 +97,7 @@ export function BatchOverflowMenu({
           {/*
             Disabled-with-reason rather than hidden: there *is* an operation
             behind this and a state that would enable it, which is the whole
-            distinction #354 drew when it removed a control instead. The reason
+            distinction between this and removing the control. The reason
             renders inline under the label — the shape the annotator's class
             picker uses for a class a shape cannot become — because a tooltip on
             a menu item that cannot be hovered into is a reason nobody reads.

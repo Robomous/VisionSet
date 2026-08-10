@@ -42,7 +42,7 @@ const sent: Request[] = [];
  * What each request carried, captured before the client consumes it.
  *
  * Cloned rather than read later: a `Request` body is a one-shot stream, so a test
- * asking for it after the fact gets nothing. #162 needs it — its second criterion
+ * asking for it after the fact gets nothing. The colour-input claim needs it —
  * is about the payload a save actually sends, not about what the control shows.
  */
 const bodies = new Map<Request, string>();
@@ -144,7 +144,7 @@ describe("the project list", () => {
     // Every project is created in order to do something with it, so the list is
     // never the destination. The id comes back on the 201 — nothing is fetched
     // to find it — and it travels out through the callback the row already uses,
-    // which is what keeps the routing in the app (#387).
+    // which is what keeps the routing in the app.
     await waitFor(() => expect(opened).toHaveBeenCalledWith(PROJECT));
     expect(screen.queryByTestId("create-project-dialog")).toBeNull();
   });
@@ -165,7 +165,7 @@ describe("the project list", () => {
     const error = await screen.findByTestId("create-error");
     expect(error.textContent).toContain("PROJECT_NAME_TAKEN");
     expect(error.textContent).toContain("already exists");
-    // The failure path is untouched by #387: the dialog stays open with what was
+    // The failure path is untouched: the dialog stays open with what was
     // typed still in it, and nothing navigates anywhere.
     expect(screen.queryByTestId("create-project-dialog")).not.toBeNull();
     expect(screen.getByTestId("project-name")).toHaveProperty("value", "highway");
@@ -217,10 +217,10 @@ describe("the schema editor", () => {
   /**
    * Select a class and remove it from the draft, through the confirmation.
    *
-   * Three steps rather than one since #213: only the *selected* class has a
+   * Three steps rather than one: only the *selected* class has a
    * detail panel, and removal states its blast radius before it happens.
    */
-  /** Open one class's detail panel. Only the selected class has one since #213. */
+  /** Open one class's detail panel. Only the selected class has one. */
   async function selectClass(index: number): Promise<void> {
     await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[index]);
   }
@@ -236,7 +236,7 @@ describe("the schema editor", () => {
       status: 200,
       body: { id: PROJECT, name: "fresh", description: null },
     });
-    // A project starts schema-less on purpose (#6). This 404 is the normal state
+    // A project starts schema-less on purpose. This 404 is the normal state
     // of a project three seconds old, and an error surface here would tell a new
     // user their project is broken.
     on("GET", /^\/projects\/[^/]+\/schema$/, {
@@ -261,7 +261,7 @@ describe("the schema editor", () => {
 
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
-    // Versioning is ambient (#213): one persistent line saying what saving would
+    // Versioning is ambient: one persistent line saying what saving would
     // do, rather than a disabled button somebody has to press to find out.
     expect(screen.getByTestId("schema-status").textContent).toContain("Version 3 active");
     expect(screen.getByTestId("schema-status").textContent).toContain("v4");
@@ -353,7 +353,7 @@ describe("the schema editor", () => {
     await screen.findByTestId("schema-editor");
 
     await userEvent.click(screen.getByTestId("class-geometry-0"));
-    // `polyline` is offered from #223 even though no tool draws one: the API
+    // `polyline` is offered even where no tool draws one: the API
     // accepts it, the exporters need it, and the tool strip is where a person
     // learns there is nothing to draw with. Offering it is not offering a refusal.
     for (const geometry of ["bbox", "polygon", "polyline", "classification_tag"]) {
@@ -367,7 +367,7 @@ describe("the schema editor", () => {
   });
 
   /**
-   * #375: a flat list of every name the product can address says nothing about
+   * A flat list of every name the product can address says nothing about
    * which ones belong to the work somebody is doing, and it only grows.
    *
    * The grouping is presentation and this is the surface it exists for. What is
@@ -417,7 +417,7 @@ describe("the schema editor", () => {
   });
 
   /**
-   * #162: the colour control has to show the colour the class is actually drawn in.
+   * The colour control has to show the colour the class is actually drawn in.
    *
    * The swatch was bound to the **stored** colour, which is `null` for a derived
    * class, so `<input type="color">` fell back to its own default and rendered
@@ -438,7 +438,7 @@ describe("the schema editor", () => {
       classColor({ name: "lane", geometry: "polygon", color: null, attributes: [] }, "lane"),
     );
     expect(derived).not.toBeNull();
-    // One panel at a time since #213, so each class is asserted from its own.
+    // One panel at a time, so each class is asserted from its own.
     await selectClass(1);
     expect(screen.getByTestId("class-color-1")).toHaveProperty("value", derived);
     // Never the neutral, which is what it used to be for every derived class.
@@ -450,7 +450,7 @@ describe("the schema editor", () => {
   });
 
   it("does not turn a derived colour into a declared one just by showing it", async () => {
-    // #162's second criterion, and the one worth being careful about: making the
+    // The half worth being careful about: making the
     // input *display* a colour must not make the class *declare* it. A schema
     // version that pinned today's hash output would make every derived class look
     // authored, and would change meaning if the palette rule ever moved.
@@ -463,7 +463,7 @@ describe("the schema editor", () => {
     render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
     await screen.findByTestId("schema-editor");
     // Dirty by something that is not the colour. An untouched draft sends
-    // nothing — the button answers instead of being grey (#213), and that
+    // nothing — the button answers instead of being grey, and that
     // refusal is itself the first half of the guarantee.
     await userEvent.click(screen.getByTestId("save-schema"));
     expect(sent.some((r) => r.method === "POST")).toBe(false);
@@ -511,7 +511,7 @@ describe("the schema editor", () => {
 });
 
 /**
- * #171: the sections are tabs, so what is *not* on the page is now an assertion.
+ * The sections are tabs, so what is *not* on the page is an assertion.
  *
  * The interesting one is the last: a query that lives in the section that renders
  * it is a query that follows the tab. That is what makes the split more than
@@ -519,7 +519,7 @@ describe("the schema editor", () => {
  */
 describe("the schema version history", () => {
   /**
-   * Three versions with descriptions and moments, the shape #230 put on the wire.
+   * Three versions with descriptions and moments, the wire's own shape.
    *
    * Descriptions differ per version on purpose: a history whose entries all said
    * the same thing would pass an assertion that the *selected* one is shown while
@@ -997,7 +997,7 @@ describe("the project view's tabs", () => {
     });
     on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
     on("GET", /\/batches/, { status: 200, body: { items: [], total: 0 } });
-    // Overview is the default tab since #210, so its two reads are part of
+    // Overview is the default tab, so its two reads are part of
     // opening a project at all.
     on("GET", /\/stats$/, {
       status: 200,
@@ -1018,7 +1018,7 @@ describe("the project view's tabs", () => {
     project();
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
 
-    // Overview is where a project opens since #210: a project page's subject is
+    // Overview is where a project opens: a project page's subject is
     // its data, and the schema editor renders the same for an empty project and
     // a hundred-thousand-image one.
     await screen.findByTestId("overview-panel");
@@ -1040,7 +1040,7 @@ describe("the project view's tabs", () => {
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
     await screen.findByTestId("overview-panel");
 
-    // Structural, never a class string (#182): the styling changed once already
+    // Structural, never a class string: the styling changed once already
     // and will again, but "this section is the open one" is what the keyboard and
     // a screen reader read, and it is what a restyle must not lose.
     expect(screen.getAllByRole("tab")).toHaveLength(4);
@@ -1065,13 +1065,13 @@ describe("the project view's tabs", () => {
     unmount();
 
     // A stale link, a typo, or `batches` on a host with no batch route: none of
-    // them is an empty page. The default they land on is Overview since #210.
+    // them is an empty page. The default they land on is Overview.
     render(mount(<ProjectScreen projectId={PROJECT} tab="nonsense" />));
     await screen.findByTestId("overview-panel");
   });
 
   it("opens on Overview, and offers the four sections in order", async () => {
-    // #210 reversed #171's choice of Schema. A schema editor is configuration,
+    // Not Schema. A schema editor is configuration,
     // and it renders identically for an empty project and a 100k-image one —
     // which is the test `DESIGN.md` principle 6 states, about this page.
     project();
@@ -1199,7 +1199,7 @@ describe("version history", () => {
   });
 
   it("shows why and when, and an em dash for a version that recorded neither", async () => {
-    // #230's two fields on the ledger. Both are null for a version published
+    // The two optional fields on the ledger. Both are null for a version published
     // before the migration, and nothing backfills either — so the row has to say
     // "not recorded" rather than go blank, which reads as a rendering bug.
     on("GET", /^\/projects\/[^/]+$/, {
@@ -1240,7 +1240,7 @@ describe("version history", () => {
   });
 
   /**
-   * Grouping the ledger by provenance (#368, decision 7).
+   * Grouping the ledger by provenance.
    *
    * The rule itself is `schemaHistory.test.ts` — pure, and where the boundaries
    * are. This is the half that only exists on screen: that a run renders as one
@@ -1540,7 +1540,7 @@ describe("the project header", () => {
 
   it("omits the ingest chip when nothing records an arrival", async () => {
     // Null is not "never ingested" — it is *unknown*, because every asset in
-    // this project predates migration 13 and cannot be backfilled (#216). Same
+    // this project predates the column and cannot be backfilled. Same
     // rule as a missing description: omitted, never placeheld.
     headerFor({});
     render(mount(<ProjectScreen projectId={PROJECT} />));
@@ -1552,9 +1552,9 @@ describe("the project header", () => {
   });
 
   it("refuses a stats document whose timestamp is not a string", async () => {
-    // #225 moved this assertion rather than removing it. It used to read "the chip
+    // This assertion moved rather than being removed. It used to read "the chip
     // is simply absent", which was the *symptom* of a document nobody had checked:
-    // during #206–#213 the same wrong body white-screened three surfaces, and the
+    // the same wrong body white-screened three surfaces once, and the
     // fix was a hand-written guard at each render site. Now the check runs at
     // `unwrap`, so the query fails, both chips stay away, and the page still stands.
     headerFor({ lastIngest: 1_754_000_000 });
@@ -1584,7 +1584,7 @@ describe("the project header", () => {
   });
 
   it("does not render Annotate at all when no batch is open for annotation", async () => {
-    // `DESIGN.md`'s never-disable rule, and #160 from the other side: a control
+    // `DESIGN.md`'s never-disable rule: a control
     // that leads nowhere is absent, not grey.
     headerFor({ batchState: "draft" });
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />));
@@ -1594,7 +1594,7 @@ describe("the project header", () => {
   });
 
   /*
-   * The header's half of the one-filled-button rule (#388).
+   * The header's half of the one-filled-button rule.
    *
    * `headerFor` stubs no assets endpoint and no dataset, which is exactly the
    * state a three-second-old project is in — so these run against the same
@@ -1635,7 +1635,7 @@ describe("the project header", () => {
 
   it("keeps the filled Ingest when the invitation is the ingest one", async () => {
     // The invitation and the header say the same thing with the same handler, so
-    // the loud one stays in the header and the panel's stays outlined (#323).
+    // the loud one stays in the header and the panel's stays outlined.
     headerFor({ assets: 0 });
     render(mount(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />));
 

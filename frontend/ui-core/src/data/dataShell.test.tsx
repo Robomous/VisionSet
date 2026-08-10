@@ -44,7 +44,7 @@ afterEach(() => {
  *
  * `GET /session` is answered *outside* the table and consumes nothing from it.
  * The provider asks for a browser session before anything else whenever there is
- * no token (#179), and letting that request eat the first row would silently shift
+ * no token, and letting that request eat the first row would silently shift
  * every answer in every test by one — a failure that reads as the client sending
  * the wrong request. `session` is what the server says, and `false` is the default
  * because "this browser was not served by the API" is what a test about *tokens*
@@ -137,7 +137,8 @@ describe("the browser session", () => {
       </ApiProvider>,
     );
 
-    // #179, at the level this package owns it: the product, with nothing typed.
+    // The browser session at the level this package owns it: the product, with
+    // nothing typed.
     await waitFor(() => expect(screen.queryByTestId("projects")).not.toBeNull());
     expect(screen.queryByTestId("token-input")).toBeNull();
     // Nothing was stored, because there is nothing to store: the credential is an

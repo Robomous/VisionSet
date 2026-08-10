@@ -4,16 +4,16 @@
  * click.
  *
  * **In `data/` rather than in `annotator/`, because two surfaces read it.** The
- * suggest tool asks which connections exist so it can explain itself (#424 D6);
- * the Inference section is where they are made and set up (#421). The list, its
+ * suggest tool asks which connections exist so it can explain itself; the
+ * Inference section is where they are made and set up. The list, its
  * key and its invalidation are one fact, and a second copy under the screen that
  * happens to have been written second is how two callers come to disagree about
  * what "ready" means.
  *
  * ## Why the connection list is a *read* the editor does
  *
- * D5 puts the model behind a connection and D6 says the editor must explain
- * itself when there is no usable one — and "usable" is three different states
+ * The model sits behind a connection, and the editor must explain
+ * itself when there is no usable one — "usable" being three different states
  * (`setup_state`, and whether any row exists at all) that only the list can
  * answer. So the panel's copy is derived from the same read the request uses to
  * pick a connection, rather than from a refusal discovered after the click.
@@ -24,11 +24,9 @@
  *
  * ## Which connection, and the limit that is stated rather than hidden
  *
- * The **first `ready` one, in the list's own order**. There is no picker, because
- * the surface that would hold one is #421's and waits on its open rail question —
- * so this is a deliberate limit rather than a design: a workspace with two ready
- * connections always suggests through the older of them, and choosing is what
- * #421 adds.
+ * The **first `ready` one, in the list's own order**. There is no picker yet, so
+ * this is a deliberate limit rather than a design: a workspace with two ready
+ * connections always suggests through the older of them.
  *
  * It is not a hand-mirrored capability table. `setup_state` is the wire's own
  * field and this reads it; the *legality* of the call is the server's answer, and
@@ -217,7 +215,7 @@ export function useDownloadWeights() {
  * A different question from `useDownloadWeights` over the same files, and the
  * one the row must not conflate: a download against a set-up connection proves
  * nothing is *missing* and answers from an index, while this proves nothing is
- * *damaged* and can only do so by reading every byte (#471).
+ * *damaged* and can only do so by reading every byte.
  *
  * The list is invalidated on the `202` for the download hook's reason — the
  * declaration changed the moment the check started — and again when the job
@@ -263,7 +261,7 @@ export function useRefreshConnections(): () => void {
 /**
  * What fetching that revision would cost, read before anybody agrees to it.
  *
- * D1 on #424 requires the number on screen *before* the confirm, which is why
+ * The number has to be on screen *before* the confirm, which is why
  * this is a query the form makes rather than something the create response
  * carries: by the time a connection exists the decision has been taken.
  *

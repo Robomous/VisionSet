@@ -12,7 +12,7 @@
  *
  * v1 kept `interaction.last` on its React state, computed `dx = point.x - last.x`,
  * applied it to the *current* geometry and reset `last`. That shape is unusable
- * here: #39's `AnnotatorStore.stage` re-projects the **committed** document on
+ * here: `AnnotatorStore.stage` re-projects the **committed** document on
  * every pointer-move, so an accumulating transform would either drift or double.
  * Both functions therefore take a destination — the caller derives it from the
  * geometry the gesture began on, and re-applying the same call is a fixpoint.
@@ -26,8 +26,8 @@
  * v1's last step before normalizing was, for a box narrower than `minSize`, to
  * push the anchored edge away from the dragged one. On a box at `x: 0, width: 2`
  * with the `w` grip dragged left, that is `left = right - 3 = -1` — a negative
- * coordinate on an annotation the kernel would then be asked to store. #41's
- * acceptance criterion forbids it outright, so `slideIntoBounds` follows: the
+ * coordinate on an annotation the kernel would then be asked to store. A transform
+ * may never escape the asset bounds, so `slideIntoBounds` follows: the
  * interval slides back inside, rather than being squeezed. It is a no-op wherever
  * v1 was already correct, because the pointer was clamped and the anchor came from
  * an in-bounds start box, so the interval was already inside.
@@ -108,7 +108,7 @@ const HANDLE_DRIVES: Readonly<
  * It is written as "take the length, then place it" rather than as "shift both ends
  * by the same delta", and the reason is arithmetic rather than taste: `lo + (limit -
  * hi)` rounds to about `-1e-16` when the interval very nearly fills the frame, which
- * is a negative coordinate on a stored annotation. #41's property test found it on
+ * is a negative coordinate on a stored annotation — found by the property test on
  * four of six seeds. Deriving the start through `clamp(…, 0, …)` makes `0` a literal
  * bound instead of the result of a subtraction, so the criterion holds exactly. The
  * length may still move by an ulp, which is why the minimum size is the invariant
@@ -149,7 +149,7 @@ export function normalizeBbox(start: Point, end: Point): BboxGeometry {
  * Did the drag describe a box, or was it a click that moved a little?
  *
  * `minimum` is in the same pixels as the box — the caller converts, which is what
- * lets the threshold be chosen on a screen and applied in the asset. #43's
+ * lets the threshold be chosen on a screen and applied in the asset. The
  * `drawing-bbox` row is the caller; nothing else may be.
  *
  * **Both axes must clear it.** v1 refused a 200×2 sliver as well as a 2×2 speck,
@@ -269,8 +269,8 @@ export function moveBbox(
  * pointer-move's answer. Four steps, in v1's order: clamp the pointer into the
  * frame, move the edge or edges this grip drives, push the *anchored* edge out if
  * the box came out below `MIN_BBOX_SIZE`, then slide the result back inside the
- * frame — the fourth being #41's addition, and the reason a hard drag into an edge
- * can no longer produce a negative coordinate.
+ * frame — the fourth being this engine's addition, and the reason a hard drag into
+ * an edge cannot produce a negative coordinate.
  *
  * A drag past the anchor re-anchors rather than producing a negative size, because
  * the edges are read back through `min`/`max` at the end.

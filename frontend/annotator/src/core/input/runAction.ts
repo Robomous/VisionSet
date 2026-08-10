@@ -90,7 +90,7 @@
  * `useSyncExternalStore` consumer would re-render for nothing, against the
  * store's explicit "the snapshot's identity is load-bearing".
  *
- * ## Copy is a read; paste is one write and one selection (#123)
+ * ## Copy is a read; paste is one write and one selection
  *
  * The asymmetry is the whole of why they are two kinds rather than a pair of
  * halves. `copy-selection` touches no document, which is what puts it in

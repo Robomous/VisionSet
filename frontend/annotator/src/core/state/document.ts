@@ -18,8 +18,8 @@
  * `annotationsInDrawOrder`.
  *
  * Every operation returns a **new** document and mutates nothing. That is what
- * lets #39 snapshot a document by reference and makes undo a pointer swap rather
- * than a deep copy. Copying a 200-entry Map per edit is 200 pointer copies, which
+ * lets the log snapshot a document by reference and makes undo a pointer swap
+ * rather than a deep copy. Copying a 200-entry Map per edit is 200 pointer copies, which
  * is nothing next to a render.
  *
  * ## What it refuses, and what it deliberately does not
@@ -36,8 +36,8 @@
  * polygon or a tag. That is valid wire data the kernel produced. A document that
  * enforced class↔geometry agreement could not load its own fixture.
  *
- * What it offers instead is the lookup — `classNamed` — so the tools (#43-#45)
- * refuse at draw time, where a user can be told which class they are holding.
+ * What it offers instead is the lookup — `classNamed` — so the tools refuse at
+ * draw time, where a user can be told which class they are holding.
  *
  * ## Draft identity, and why there is no rebase
  *
@@ -125,7 +125,7 @@ export function createDocument(
 /**
  * Build a document straight from what three API responses contain.
  *
- * The boundary where #32's generated client plugs in at M5: everything arrives as
+ * The boundary a generated API client plugs into: everything arrives as
  * `unknown` and leaves typed, so a payload that does not match the contract is
  * refused here rather than surfacing as a rendering bug later.
  */

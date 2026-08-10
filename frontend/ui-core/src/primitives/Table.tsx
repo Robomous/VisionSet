@@ -1,5 +1,5 @@
 /**
- * The table — the batch list (#55), the release timeline (#57).
+ * The table — the batch list, the release timeline.
  *
  * Real `<table>` semantics rather than a grid of `<div>`s, because a screen reader
  * announces "row 3 of 12, column State" only for the former, and both of the

@@ -1,5 +1,5 @@
 /**
- * Acceptance criterion 2 of #41: a transform never escapes the asset bounds.
+ * The invariant this file exists for: a transform never escapes the asset bounds.
  *
  * Each seed drives two hundred rounds — a frame, a shape that fits inside it, a
  * target point that is outside it about half the time, and one of the six
@@ -31,7 +31,7 @@
  *
  * `resizeBbox` is idempotent unless the drag flipped past its anchor, because a
  * flip re-anchors the box and the same grip then means the other side. That is
- * v1's behaviour, kept, and it costs nothing in practice — #39's store re-projects
+ * v1's behaviour, kept, and it costs nothing in practice — the store re-projects
  * from the committed document, so a tool always passes the box the gesture began
  * on. I4 therefore excludes flips, and `bbox.test.ts` pins the flip case by hand.
  */

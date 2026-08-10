@@ -1,5 +1,5 @@
 /**
- * The benchmark's own Playwright project — #49, run by hand.
+ * The benchmark's own Playwright project, run by hand.
  *
  * A second config rather than a second project inside `playwright.config.ts`,
  * because almost everything the behavioural suite decided is wrong here: that
@@ -15,7 +15,7 @@
  * this config builds the app and serves `vite preview`, which also makes
  * `StrictMode` a no-op — one decision closing both holes.
  *
- * The annotator is built first for the reason #47 recorded after losing a real
+ * The annotator is built first for the reason the e2e config records after losing a real
  * detour to it: `frontend/app` resolves `@visionset/annotator` through its
  * **`dist/`**, so an unbuilt engine change is invisible in the browser rather
  * than a compile error. A benchmark that quietly measured last week's engine
@@ -26,9 +26,9 @@
  * The end-to-end suite reuses a server that is already answering, which is a
  * convenience there and a correctness bug here: the build **is** part of what is
  * being measured. `reuseExistingServer` also asks only whether *something*
- * answers 200 — the trap that had #48's first run driving v1's OrbStack stack on
+ * answers 200 — the trap that has a run driving somebody else's stack on
  * vite's 5173 — so this takes a port of its own, with `--strictPort` to turn a clash
- * into a refusal rather than a silent hop. Since #346 that port is 5373 in the main
+ * into a refusal rather than a silent hop. That port is 5373 in the main
  * checkout and derived from the path in a linked worktree, so two worktrees can
  * measure at once; `e2e-ports.ts` argues it.
  *
@@ -36,7 +36,7 @@
  *
  * `vite.config.ts` sets `base: command === "build" ? "/app/" : "/"`, because the
  * Python wheel serves the bundle under that prefix and the API owns the root
- * (#33). The trap, measured rather than reasoned about: **`vite preview` reports
+ * The trap, measured rather than reasoned about: **`vite preview` reports
  * `command` as `"serve"`**, so the config hands it `base: "/"` while the build it
  * is about to serve has `/app/assets/…` baked into its `index.html`. The result is
  * not an error — the preview server's SPA fallback answers **200 with

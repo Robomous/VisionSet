@@ -1,7 +1,7 @@
 /**
  * The document: identity, containment, draw order, and the wire round-trip.
  *
- * Acceptance criterion 2 of #40 is the `documentFromWire` block — a document built
+ * The `documentFromWire` block is the load-bearing one — a document built
  * from what the kernel actually produced, and serialized back to the same bytes.
  * The fixture carries a bbox, a polygon and a classification tag, so all three
  * carryable variants make the trip.
@@ -159,7 +159,7 @@ describe("immutability, which is what makes undo a pointer swap", () => {
   });
 
   it("shares the asset and schema rather than copying them", () => {
-    // They are inputs, not editable state — #39 will snapshot documents on every
+    // They are inputs, not editable state — the log snapshots documents on every
     // command and neither should be copied 200 times.
     const after = addAnnotation(documentOf("a"), annotation("b"));
     expect(after.asset).toBe(ASSET);

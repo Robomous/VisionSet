@@ -1,6 +1,6 @@
 /**
- * #342's acceptance criteria in one file: draw a lane, end it deliberately, hit it,
- * move it, edit its vertices, and stop at two.
+ * The polyline tool in one file: draw a lane, end it deliberately, hit it, move it,
+ * edit its vertices, and stop at two.
  *
  * The policy, restated so a reader does not have to go and find `machine.ts`'s
  * header: a path has **no close ring**, so a press anywhere places a vertex; a
@@ -304,7 +304,7 @@ describe("moving and editing a lane", () => {
 
     const atTheFloor = world.store.document;
     world.dispatch(down([620, 300], "secondary"));
-    // Nothing happens — #44's call, inherited: a gesture that escalates from
+    // Nothing happens, inherited from the polygon: a gesture that escalates from
     // "remove this vertex" to "remove the whole lane" at an invisible boundary is
     // the same surprise whichever shape it happens to.
     expect(world.store.document).toBe(atTheFloor);

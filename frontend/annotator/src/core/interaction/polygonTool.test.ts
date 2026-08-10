@@ -1,7 +1,6 @@
 /**
- * #44's acceptance criteria in one file: the draw/close/cancel/edit event
- * sequences, and the degenerate cases the issue asks to be handled "per documented
- * policy".
+ * The polygon tool in one file: the draw/close/cancel/edit event sequences, and
+ * the degenerate cases.
  *
  * The policy, restated here so a reader of the tests does not have to go and find
  * `machine.ts`'s header: a press inside the ring around the first vertex is a close

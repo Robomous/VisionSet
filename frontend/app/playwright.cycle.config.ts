@@ -1,5 +1,5 @@
 /**
- * #59: the whole cycle in a browser, against a **real server and a real kernel**.
+ * The whole cycle in a browser, against a **real server and a real kernel**.
  *
  * Every other suite in this repository stubs the API — `annotate.spec.ts` holds
  * the routes still so a failure names the page, and the annotator's 76 scenarios
@@ -16,7 +16,7 @@
  * A `projects[]` entry cannot carry a different `webServer`.
  *
  * It is also why the base URL ends in `/app/`: the API owns the root, so the bundle
- * is mounted under a prefix (#33), and the SPA deep-link fallback (#58) is what
+ * is mounted under a prefix, and the SPA deep-link fallback is what
  * makes a reload on `/app/projects/x` work at all. Driving the real mount is the
  * only way either of those is actually exercised.
  *

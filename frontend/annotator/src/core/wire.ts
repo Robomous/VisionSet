@@ -27,10 +27,9 @@
  * 3. **A declared-but-unimplemented geometry gets its own message.** `mask` is a
  *    real `GeometryType` with no model, not a typo, and the refusal says so —
  *    because someone reading it needs to know the answer is "not yet" rather than
- *    "you misspelled it". `polyline` was the example here until #223 implemented
- *    it; four names still have no model.
+ *    "you misspelled it". Four names still have no model.
  *
- * #40 added the schema and the asset, and with them a fourth rule:
+ * The schema and the asset bring a fourth rule:
  *
  * 4. **Strictness follows the round-trip, not the type.** Rule 1 is exact about
  *    keys *because the editor hands annotations back*: a key silently dropped is
@@ -47,9 +46,8 @@
  *    This is the rule `@visionset/ui-core` already follows on the other side of
  *    the frontend — its generated `checks.ts` says "unknown keys (a server that
  *    grows a field must not break an older client)" in its own header — and
- *    `wire.ts` predates it and disagreed until #230 made the disagreement cost
- *    something. Two fields added to `SchemaVersionOut` made `parseSchema` refuse
- *    every schema the server sent.
+ *    and the cost of disagreeing has been paid once: two fields added to
+ *    `SchemaVersionOut` made `parseSchema` refuse every schema the server sent.
  *
  *    It matters because these two packages are published. Inside the wheel the
  *    annotator and the server always ship together, so skew is impossible; an

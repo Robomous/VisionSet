@@ -17,14 +17,14 @@
  *
  * Root `pnpm test` is `pnpm -r test && pnpm test:scripts`. Naming this package's
  * script `test` would put a browser download inside the existing `frontend` CI job
- * on every pull request. It gets its own job instead — the precedent is #37's
+ * on every pull request. It gets its own job instead — the same split the
  * `e2e (http|cli|mcp)` matrix, a job that pays for its own setup.
  *
  * ## The server builds the engine first, deliberately
  *
  * `frontend/app` resolves `@visionset/annotator` through its **`dist/`**, so an
  * unbuilt engine change is invisible in the browser rather than a compile error —
- * the workflow gotcha #47 recorded after losing a real detour to it. Encoding the
+ * the workflow gotcha worth encoding after losing a real detour to it. Encoding the
  * build in `webServer.command` is what stops a green run against last week's engine.
  * The cost is that `reuseExistingServer` skips it locally: if the demo behaves like
  * an older build, kill the dev server you already had open.
@@ -41,7 +41,7 @@
  * an assertion is a guarantee.
  *
  * One dedicated port was not enough once several worktrees started running their
- * gates at once, so since #346 the number is derived from this worktree's own path —
+ * gates at once, so the number is derived from this worktree's own path —
  * 5273 in the main checkout and in CI, its own elsewhere. `e2e-ports.ts` argues it
  * and `--guard` refuses the run, saying where the number came from, if somebody is
  * already on it.

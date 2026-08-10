@@ -1,7 +1,7 @@
 /**
  * The box. Eight `it`s for the eight grips, because a resize that drives the wrong
  * edge for one of them is exactly the bug a single "it resizes" test would miss —
- * and one test carrying v1's own numbers for the escape that #41 closed.
+ * and one test carrying v1's own numbers for the out-of-bounds escape it had.
  */
 
 import { describe, expect, it } from "vitest";
@@ -248,7 +248,7 @@ describe("resizing from a handle", () => {
     // Worth writing down rather than discovering later: after `w` is dragged past
     // the east edge, the box has re-anchored and the *same* grip now means the
     // other side, so feeding the answer back is a different gesture. It costs
-    // nothing in practice — #39's store re-projects from the committed document, so
+    // nothing in practice — the store re-projects from the committed document, so
     // a tool always passes the box the gesture began on — but it is the one
     // transform here that is not idempotent, and the property test excludes flips
     // for exactly this reason.
@@ -279,7 +279,7 @@ describe("resizing from a handle", () => {
 });
 
 describe("whether a drag was a drawing at all", () => {
-  // #43's gate. The number is the caller's — `Tolerances.minDraw`, in the same
+  // The drawing gate. The number is the caller's — `Tolerances.minDraw`, in the same
   // pixels as the box by the time it arrives — so these pass 3 explicitly rather
   // than importing a constant, which keeps the predicate usable in either frame
   // and stops this file re-asserting a value `tolerance.ts` owns.
@@ -333,7 +333,7 @@ describe("whether a drag was a drawing at all", () => {
   it("is not MIN_BBOX_SIZE, however equal the two numbers happen to be", () => {
     // They answer different questions — `tolerance.ts` sets out all three — and a
     // caller reaching for `MIN_BBOX_SIZE` here would be measuring a gesture in
-    // asset pixels, which is the frame inversion #41 exists to have fixed. A
+    // asset pixels, which is the frame inversion this package exists to have fixed. A
     // minimum larger than the stored floor is legal and this shows it working.
     expect(isDrawnBox(box(10, 10, MIN_BBOX_SIZE, MIN_BBOX_SIZE), 8, FRAME)).toBe(false);
   });

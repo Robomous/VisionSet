@@ -10,9 +10,9 @@
  *
  * ## Counting work instead of timing it
  *
- * #47 proved its render claim by counting DOM mutations (1 in the committed
- * layer against 601 in the transient one) rather than by timing anything, and
- * #48 recorded its own runtime as *measured, not gated*, because a wall-clock
+ * The render claim is proved by counting DOM mutations (1 in the committed
+ * layer against 601 in the transient one) rather than by timing anything, and a
+ * runtime is *measured, not gated*, because a wall-clock
  * assertion on a shared runner fails for reasons nobody chose. This module is
  * that split made reusable: `layerCounts` is deterministic and hardware
  * independent, so it can be asserted; the clock lives next door in `bench/` and
@@ -42,7 +42,7 @@ import { BENCH_ANNOTATIONS, BENCH_ASSET, benchBoxCentre } from "../src/demo/benc
 export { BENCH_ANNOTATIONS, BENCH_ASSET, benchBoxCentre };
 
 /**
- * #49's scene: 200 boxes, 20 polygons of 32 vertices, on a 4K asset.
+ * The bench scene: 200 boxes, 20 polygons of 32 vertices, on a 4K asset.
  *
  * Relative, with no leading slash, and that is load-bearing. `vite.config.ts`
  * sets `base: "/app/"` for a production build, so the benchmark's `vite preview`
