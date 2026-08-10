@@ -37,6 +37,7 @@ re-run.
 | `information-architecture` | The canonical sitemap: routes, tabs, entry points, back-links | `.agents/skills/frontend/information-architecture/SKILL.md` |
 | `refactor-protocol` | Execution rules for any implementation task: worktree, scope, tests, PR/CI | `.agents/skills/process/refactor-protocol/SKILL.md` |
 | `public-communications` | What may be written to public surfaces: issues, PRs, docs, code comments | `.agents/skills/process/public-communications/SKILL.md` |
+| `issue-pr-writing` | How issue and PR prose reads: self-sufficient paragraphs, woven references, exact records | `.agents/skills/process/issue-pr-writing/SKILL.md` |
 
 ### Auto-invoke
 
@@ -58,6 +59,7 @@ Read the skill **before** writing code in that area.
 | Rendering a state-gated action, a mutation hook, or error/success feedback | `ui-capabilities` |
 | Adding, moving, or removing a route, tab, screen, nav entry, or cross-screen link | `information-architecture` |
 | Writing an issue, an issue comment, a PR body, or a doc — before posting | `public-communications` |
+| Writing or editing any issue body, issue comment, PR body, or PR comment | `issue-pr-writing` |
 | Writing a code comment or a docstring | **Comments and docstrings** under `Rules` below |
 
 ## Project overview
