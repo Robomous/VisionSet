@@ -300,6 +300,12 @@ def test_the_phases_are_reported_in_order(
 def test_reporting_is_optional(
     connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
 ) -> None:
+    """Neither callback is obliged to be supplied, and one call shows both.
+
+    ``on_progress`` and ``on_bytes`` are independent — the CLI wants phases and
+    the job wants bytes, and neither is obliged to want both — so omitting the
+    pair is what demonstrates each is omissible on its own.
+    """
     assert fetch_weights(workspace, a_local(connections).id).setup_state is (
         ConnectionSetupState.READY
     )
@@ -685,16 +691,6 @@ def test_a_sample_above_the_total_is_held_at_it(
     fetch_weights(workspace, a_local(connections).id, on_bytes=lambda *pair: said.append(pair))
 
     assert max(done for done, _ in said) == FETCHED_BYTES
-
-
-def test_reporting_bytes_is_optional(
-    connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
-) -> None:
-    """The CLI wants phases and the job wants bytes; neither is obliged to want
-    both, and `on_progress`'s own optionality is what this mirrors."""
-    assert fetch_weights(workspace, a_local(connections).id).setup_state is (
-        ConnectionSetupState.READY
-    )
 
 
 # --- what a transfer in flight looks like on the disk -------------------------
