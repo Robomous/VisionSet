@@ -294,6 +294,13 @@ POST /inference/suggest
 carved back without starting over. Refining means sending the accumulated points again, not a
 diff — the call keeps no state about your gesture, so the same points always answer the same way.
 
+**Every point has to be on the asset**, positive and negative alike: `x` in `[0, width]` and `y`
+in `[0, height]`, both ends included. One point outside refuses the whole request with 422
+`PROMPT_POINT_OUT_OF_BOUNDS`, naming the coordinate you sent and the size of the asset. Nothing is
+clamped and nothing is dropped, because both would answer a question you did not ask — a
+segmenter handed a coordinate off the picture still returns a mask, with a confidence attached,
+and that confidence is about nowhere.
+
 **`allowed_geometries` is your schema, not a preference.** The answer comes back in one of the
 kinds you named or not at all: name `polygon` and you get the outline; name only `bbox` and you
 get that outline's extent; name a kind that holds no shape and `region` is `null`. Answering in a

@@ -1881,6 +1881,12 @@ class SuggestPoint(BaseModel):
     shape a generated client types as ``number[]`` and a reader has to guess the
     order of. The domain's own tuples are fine — Python has positional meaning —
     but the wire is read by people.
+
+    Must be on the asset: `x` in `[0, width]` and `y` in `[0, height]`, both
+    ends included. The bounds cannot be stated as field constraints, because
+    they belong to the asset the request names rather than to the point, so a
+    coordinate off the picture is refused by the route with
+    `PROMPT_POINT_OUT_OF_BOUNDS` rather than by this schema.
     """
 
     model_config = ConfigDict(extra="forbid")
