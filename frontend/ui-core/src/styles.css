@@ -109,9 +109,17 @@
 
   /*
    * Status, desaturated to sit on a near-monochrome page. Each is used as ink
-   * and as a 10%-alpha fill behind its own border, never as a saturated block.
+   * and as a 10%-alpha fill behind its own border, never as a saturated block —
+   * with one exception, the annotation editor's `Save and stay`, which is a
+   * filled `success` control. Its two companions exist for that fill and for
+   * nothing else: `success-foreground` is the ink on it, and `success-hover`
+   * lifts the fill by the same channel deltas `primary-hover` lifts `primary`
+   * (+12, +12, +16), so the two filled variants brighten by the same amount
+   * under a pointer instead of each inventing a feel.
    */
   --color-success: #2e7d5b;
+  --color-success-hover: #3a896b;
+  --color-success-foreground: #ffffff;
   --color-warning: #b98217;
   --color-destructive: #c93b3b;
   --color-destructive-foreground: #ffffff;

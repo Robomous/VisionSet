@@ -219,8 +219,22 @@ Sibling actions are the outlined `secondary` variant — `card` fill, `input` bo
 so those are `secondary` too.
 
 The known exceptions, all legitimate: a modal `Dialog`'s confirm button (it overlays the
-page, so it is its own view), and the steps of the ingest stepper (only the active step
-renders).
+page, so it is its own view), the steps of the ingest stepper (only the active step
+renders), and **the annotation editor's paired forward actions**.
+
+That last one is the only place two filled buttons sit side by side, and it is recorded
+rather than tolerated. The editor's top bar carries the primary next-action (`Save and
+next` / `Next`, or `Finish job` on the last frame) in `primary`, and **Save and stay** in
+`success`, immediately to its right. Two filled controls compete when they are two
+answers to *what do I do next*; these are two halves of **one** answer — having finished
+with this frame, advance or persist in place — and a person choosing between them is not
+choosing between two calls to action. Colour is what separates their intent: a second
+near-black beside the first would contend with it rather than pair with it, and the two
+would read as a bar that could not decide. `success` is the only other fill in the
+product, and this is its only filled use.
+
+The count test therefore reads the bar as `bg-primary` exactly once and `bg-success`
+exactly once — still a count, still asserted from both sides.
 
 **The rule is a count, so it is tested as one — in both directions.** A test asserting that
 *the* CTA is present, or that a sibling is `secondary`, passes just as happily with two
@@ -239,7 +253,7 @@ annotator and near-black in the gallery, and a *skipped* frame was painted `dest
 
 | Family | Token |
 |---|---|
-| Done, settled, succeeded — `annotated`, `accepted`, batch `completed`, ingest `completed`, export `succeeded` | `success` |
+| Done, settled, succeeded — `annotated`, `accepted`, batch `completed`, ingest `completed`, export `succeeded` — **and the annotation editor's `Save and stay` fill** | `success` |
 | Waiting on a person — `review_pending` | `warning` |
 | Failed — ingest `failed`, export `failed`, a corrupt file, a refusal | `destructive` |
 | Nothing has happened, or a decision was taken and nothing is wrong — `unannotated`, `skipped`, batch `draft`, export `queued`/`cancelled` | neutral |
@@ -272,6 +286,14 @@ sixth colour is a compile error rather than a diff nobody notices.
 `text-green-600` for the "saved" indicator — is retired with it: there is no longer a
 sanctioned hardcoded colour anywhere in the frontend, and `design_tokens.test.mjs` was
 already refusing one.
+
+It gained two companions when the annotation editor's **Save and stay** became a filled
+control: `success-foreground` (`#ffffff`, the ink on that fill) and `success-hover`
+(`#3a896b`). The hover is derived rather than picked — `primary-hover` lifts `primary` by
+(+12, +12, +16) per channel, and the same deltas applied to `success` give this — so the
+bar's two filled controls brighten by the same amount under a pointer instead of each
+having its own feel. They exist for that one control; a status *ink* still uses plain
+`success`.
 
 ## Typography
 
@@ -532,8 +554,8 @@ The page the reference design shows (#56), with measurements verified in v1's so
   | Zone | Contents |
   | --- | --- |
   | Left | back · pinned `v{n}` badge · the frame's identity as a label (the content-hash head — there is no filename on the wire) · the frame microtext `● annotated · Saved` |
-  | Centre | the **navigation cluster**: `[⊞] [‹] n/m [›] │ [Skip] [Save and next]` |
-  | Right | `n / m annotated` · **Save and stay** (ghost, ⌘S) · the review move (outline) · overflow `⋯` |
+  | Centre | the **navigation cluster**: `[⊞] [‹] n/m [›] │ [Skip] [Save and next] [Save and stay]` |
+  | Right | `n / m annotated` · the review move (outline) · overflow `⋯` |
 
   **Everything that changes the picture on screen is in the centre cluster, and nothing
   else is** (#416). The gallery and `‹` `›` used to sit at the far left beside the back
@@ -605,11 +627,21 @@ The page the reference design shows (#56), with measurements verified in v1's so
   tooltip saying what it means, because this product has **no annotator identity**
   (cf. #282) — a submitted frame is marked for a review pass, not routed to a person.
 
-  **Save is a ghost button again** (#383). #368 removed it on the grounds that it
-  duplicated an automatic behaviour — ⌘S saves, navigating saves, settling saves — and
-  dogfooding showed what that missed: the chord is invisible, and the overflow put the one
-  press meaning *store this now, without going anywhere* two clicks from the work. Ghost
-  is the honest weight for a control most people never need.
+  **Save and stay is the second half of the forward gesture, and it sits beside the
+  first.** #368 removed the explicit save on the grounds that it duplicated an automatic
+  behaviour — ⌘S saves, navigating saves, settling saves — and dogfooding showed what that
+  missed: the chord is invisible, and the overflow put the one press meaning *store this
+  now, without going anywhere* two clicks from the work. #383 brought it back as a ghost
+  in the right zone, which fixed the reachability and left the reading wrong: *advance*
+  and *persist in place* are one decision read two ways, and they were a bar apart with
+  the second of them the quietest control on the row.
+
+  It is now the third member of the resolve group — `Skip · [primary next-action] · Save
+  and stay` — **filled in `success`**, which is the recorded exception to *one filled
+  button per view* above. It keeps the frame verbs' lifetime rather than the mode's: a
+  closed batch or a finished job has nothing to save on any frame, so it leaves with Skip
+  and the flow verb; inside a working job it holds its slot, disabled, so the cluster does
+  not change width as somebody walks a mixed job.
 
   **Reabsorption order when the bar runs out of room**: `Save and stay` first (below
   `xl`), the review move second (below `lg`), into the overflow; the Skip/Save-and-next
@@ -618,14 +650,33 @@ The page the reference design shows (#56), with measurements verified in v1's so
   readout has no overflow row and needs none — it truncates, which is what a sentence may
   do and a button may not.
 
-  **Hotkey chips go on the ghost and outline controls and on nothing else** — `⌘S` on
-  Save and stay, `X` on Skip, both rows in `core/input/bindings.ts`. A chip is a muted
-  box on a bordered ground, which is a *lighter-than-the-surface* treatment: on the one
-  filled control it inverts into a dark box inside a dark button and reads as a smudge
-  rather than as a key, so the flow verb carries none (#385). Its chord is not the loser
-  — `enter` is the one key with two meanings, the polygon ring close while a shape is in
-  progress and *finish the frame* otherwise, and both are in the shortcut sheet, which
-  derives its rows from the live registry rather than from a hand-written table.
+  **Hotkey chips go on the ghost and outline controls and on nothing else** — `X` on
+  Skip, from `core/input/bindings.ts`. A chip is a muted box on a bordered ground, which
+  is a *lighter-than-the-surface* treatment: inside a filled control it inverts into a
+  dark box on a dark ground and reads as a smudge rather than as a key, so neither the
+  flow verb (#385) nor Save and stay carries one. Neither chord is the loser. `⌘S` is
+  taught by Save and stay's tooltip — the tool strip's own pattern (`Box (B)`) — and
+  `enter` is the one key with two meanings, the polygon ring close while a shape is in
+  progress and *finish the frame* otherwise. Both are in the shortcut sheet, which derives
+  its rows from the live registry rather than from a hand-written table.
+
+  **In-editor messages have one surface, top-right of the stage** (`EditorNotice`). Every
+  sentence the editor floats over the picture goes into one column inset 16px from the
+  stage's top and right edges: a suggest session, a refused save, a refused progress move,
+  and a batch or job that could not be opened. They were four placements in three
+  treatments — two destructive badges inside the top bar's microtext, a full-bleed strip
+  under the header, and the suggest card bottom-right — so *where* a sentence appeared
+  depended on which mutation produced it. Top-right is the corner nothing else occupies:
+  the tool strip is top-left, the object counter bottom-left, and the zoom cluster
+  bottom-right, which the suggest card had been clearing with a hard-coded offset. The
+  column is a stack, most-blocking first, because more than one of those can be true at
+  once. Its width is `max-w-md` and its body wraps mid-token — a model reference is one
+  unbroken string and **no fixed width guarantees the next one fits**, so wrapping is the
+  invariant and the width is comfort.
+
+  The top bar keeps the frame microtext `● annotated · Saved`, which says *where the work
+  is* and has three readings, not four: after a refused save the honest answer there is
+  `unsaved`, and the reason is a sentence in the notice column.
 
   The frame microtext replaces the dot-with-a-tooltip: the word is on the bar beside the
   save state, because **status is never colour alone** and a tooltip is a place a word

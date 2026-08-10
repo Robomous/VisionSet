@@ -41,6 +41,19 @@ export const buttonVariants = cva(
       variant: {
         primary: `bg-primary text-primary-foreground hover:bg-primary-hover ${DISABLED_FILLED}`,
         secondary: `border border-input bg-card text-foreground hover:bg-muted ${DISABLED_FILLED}`,
+        /**
+         * The second filled weight, and it has exactly one sanctioned caller:
+         * the annotation editor's `Save and stay` (`DESIGN.md`, *One filled
+         * button per view*). Colour is what separates *advance* from
+         * *persist in place* where a second near-black would compete with the
+         * primary rather than pair with it.
+         *
+         * Not a general "confirm" variant. A view whose forward action is a
+         * success is still `primary` — this exists because two halves of one
+         * gesture sit side by side, which is a shape the rest of the product
+         * does not have.
+         */
+        success: `bg-success text-success-foreground hover:bg-success-hover ${DISABLED_FILLED}`,
         ghost:
           "text-muted-foreground hover:bg-muted hover:text-foreground " +
           // No fill: a ghost has none to grey out, and giving it one on the way
