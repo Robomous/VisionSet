@@ -250,8 +250,10 @@ def test_curating_the_trunk_does_not_reach_backwards_into_a_published_release(
     assert client.get(f"/releases/{published['id']}").json()["asset_count"] == 3
 
 
-def test_the_manifest_of_an_unknown_release_is_404(client: TestClient) -> None:
-    assert client.get(f"/releases/{uuid4()}/manifest").status_code == 404
+@pytest.mark.parametrize("suffix", ["manifest", "verify", "assignment"])
+def test_an_unknown_release_is_404_on_every_derived_read(client: TestClient, suffix: str) -> None:
+    """The three reads derived from a release all refuse one that is not there."""
+    assert client.get(f"/releases/{uuid4()}/{suffix}").status_code == 404
 
 
 # --- verification -------------------------------------------------------------
@@ -297,10 +299,6 @@ def test_an_altered_blob_is_reported_as_corrupt_rather_than_missing(
     assert body["missing"] == []
 
 
-def test_verifying_an_unknown_release_is_404(client: TestClient) -> None:
-    assert client.get(f"/releases/{uuid4()}/verify").status_code == 404
-
-
 # --- the split ----------------------------------------------------------------
 
 
@@ -335,10 +333,6 @@ def test_a_release_published_without_a_recipe_has_no_assignment(
 
     assert response.status_code == 404
     assert response.json()["code"] == "NO_SPLIT_RECIPE"
-
-
-def test_the_assignment_of_an_unknown_release_is_404(client: TestClient) -> None:
-    assert client.get(f"/releases/{uuid4()}/assignment").status_code == 404
 
 
 # --- export -------------------------------------------------------------------

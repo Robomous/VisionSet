@@ -183,8 +183,33 @@ def test_an_empty_listing_is_an_envelope_not_an_array(client: TestClient) -> Non
     assert client.get("/inference/connections").json() == {"items": [], "total": 0}
 
 
-def test_an_unknown_connection_is_not_found(client: TestClient) -> None:
-    response = client.get(f"/inference/connections/{uuid4()}")
+@pytest.mark.parametrize(
+    ("method", "suffix", "checks_for_the_extra"),
+    [
+        pytest.param("get", "", False, id="reading-it"),
+        pytest.param("post", "/download", True, id="downloading-it"),
+        pytest.param("post", "/check-integrity", True, id="checking-it"),
+    ],
+)
+def test_an_unknown_connection_is_not_found(
+    client: TestClient,
+    request: pytest.FixtureRequest,
+    method: str,
+    suffix: str,
+    checks_for_the_extra: bool,
+) -> None:
+    """Reading, downloading and checking an absent connection all refuse alike.
+
+    The third column is the distinction the table exists to keep: the two routes
+    that would reach a runtime check for the extra *before* they look anything up,
+    so they need the check stubbed to get as far as the lookup. The read does not,
+    and takes no stub — which is what makes its row prove the 404 arrives with
+    nothing patched at all.
+    """
+    if checks_for_the_extra:
+        request.getfixturevalue("runtime_present")
+
+    response = getattr(client, method)(f"/inference/connections/{uuid4()}{suffix}")
     assert response.status_code == 404, response.text
     assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_FOUND"
 
@@ -558,14 +583,6 @@ def test_downloading_an_http_connection_is_a_conflict(
     assert "download_weights" not in made["allowed_actions"]
 
 
-def test_downloading_an_unknown_connection_is_not_found(
-    client: TestClient, runtime_present: None
-) -> None:
-    response = client.post(f"/inference/connections/{uuid4()}/download")
-    assert response.status_code == 404, response.text
-    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_FOUND"
-
-
 @without_the_extra
 def test_a_missing_local_runtime_refuses_with_the_install_command(client: TestClient) -> None:
     """Unstubbed, and the message is the remedy.
@@ -702,14 +719,6 @@ def test_checking_an_http_connection_is_a_conflict(
     assert response.status_code == 409, response.text
     assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_CHECKABLE"
     assert "runs elsewhere" in response.json()["message"]
-
-
-def test_checking_an_unknown_connection_is_not_found(
-    client: TestClient, runtime_present: None
-) -> None:
-    response = client.post(f"/inference/connections/{uuid4()}/check-integrity")
-    assert response.status_code == 404, response.text
-    assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_FOUND"
 
 
 def test_a_refused_check_creates_no_job(client: TestClient, runtime_present: None) -> None:
