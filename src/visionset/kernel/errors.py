@@ -941,6 +941,27 @@ class UnsupportedPrompt(VisionSetError):
     """
 
 
+class PromptPointOutOfBounds(VisionSetError):
+    """A prompt point names a place that is not on the asset.
+
+    Prompt coordinates are in the asset's own pixel frame, so a point past its
+    width or height is a question about nothing. A segmenter handed one does not
+    fail — it returns a mask with a confidence attached — and that confidence is
+    about a place nobody asked about, which is worse than an error because it
+    looks like an answer.
+
+    Not clamped onto the nearest edge, and the difference from a drag is the
+    whole reason: a drag that left the picture still means "make the box this
+    big", while a point off the picture is not a point on anything, and moving
+    it would place a prompt somebody never gave.
+
+    ``UnsupportedPrompt``'s sibling in status and its opposite in remedy — that
+    one wants a different kind of prompt or a different connection, this one
+    wants a different coordinate with everything else unchanged — which is why
+    it carries its own code rather than folding into it.
+    """
+
+
 class InferenceConnectionNotDownloadable(VisionSetError):
     """This connection cannot be asked to fetch weights.
 

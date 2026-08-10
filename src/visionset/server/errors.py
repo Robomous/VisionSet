@@ -95,6 +95,7 @@ from visionset.kernel import (
     NotAWorkspace,
     ProjectNameTaken,
     ProjectNotFound,
+    PromptPointOutOfBounds,
     ReleaseNotFound,
     ReleaseTagTaken,
     SchemaChangeWouldOrphan,
@@ -351,6 +352,13 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # mapped anyway, because the exact-correspondence test is what keeps this
     # table honest and an unmapped kernel error answers 500 the day one appears.
     UnsupportedPrompt: ErrorRule(422, "UNSUPPORTED_PROMPT"),
+    # A click past the edge of the picture. 422 beside UNSUPPORTED_PROMPT and
+    # not 404 with the asset's own code: the asset is real and was found, and
+    # what is wrong is a coordinate in the body. Its own code rather than that
+    # one because the remedies are opposites — UNSUPPORTED_PROMPT wants another
+    # kind of prompt or another connection, this wants the same request with a
+    # different point — and a client cannot tell them apart from a shared 422.
+    PromptPointOutOfBounds: ErrorRule(422, "PROMPT_POINT_OUT_OF_BOUNDS"),
     # --- 503: transient, and a wait genuinely helps ------------------------
     WorkspaceBusy: ErrorRule(
         503, "WORKSPACE_BUSY", retry_after=RETRY_AFTER_SECONDS, expose_message=True

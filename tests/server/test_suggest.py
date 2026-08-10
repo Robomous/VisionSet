@@ -5,11 +5,12 @@ thing CI should do — but everything else on the path is shipped code: the rout
 the orchestration, the narrowing to what the class admits, and the error
 translation.
 
-The refusal tests deliberately send no asset at all. That is not a shortcut: the
-orchestration resolves the connection *before* it looks the asset up, precisely
-so somebody part-way through setting a connection up is told about the
-connection rather than about an asset that was never the problem. These tests are
-what holds that order in place.
+The connection refusals deliberately send no asset at all. That is not a
+shortcut: the orchestration resolves the connection *before* it looks the asset
+up, precisely so somebody part-way through setting a connection up is told about
+the connection rather than about an asset that was never the problem. These tests
+are what holds that order in place. The bounds refusals are the one group that
+needs a real asset, because a size is what they are asked against.
 """
 
 from __future__ import annotations
@@ -139,7 +140,10 @@ def ask(
             "project_id": project,
             "asset_id": asset,
             "connection_id": connection,
-            "positive": [{"x": 32.0, "y": 32.0}] if positive is None else positive,
+            # Inside the fixture asset, which ``write_image`` makes 32 by 24 —
+            # a default off the picture would make every happy path here a
+            # bounds refusal rather than the answer it is asserting on.
+            "positive": [{"x": 16.0, "y": 12.0}] if positive is None else positive,
             "negative": negative or [],
             "allowed_geometries": ["polygon"] if allowed is None else allowed,
         },
@@ -264,6 +268,126 @@ def test_an_unknown_field_on_a_point_is_unprocessable(client: TestClient, projec
         positive=[{"x": 32.0, "y": 32.0, "z": 1.0}],
     )
     assert answer.status_code == 422, answer.text
+
+
+# --- a point that is not on the asset -----------------------------------------
+#
+# The fixture asset is 32 by 24. These are the refusals the browser's own hit
+# test cannot cover, because no browser is involved: a script composing
+# coordinates reaches the same route.
+
+
+def test_a_point_past_the_edge_is_refused_rather_than_answered(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    answer = ask(
+        client,
+        project=project,
+        asset=asset,
+        connection=connection,
+        positive=[{"x": 900.0, "y": 700.0}],
+    )
+
+    assert answer.status_code == 422, answer.text
+    assert answer.json()["code"] == "PROMPT_POINT_OUT_OF_BOUNDS"
+    assert not answering, "the provider must never be asked about a place that is not there"
+
+
+def test_the_refusal_reaches_a_scripted_caller_as_prose(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    """The whole error body, as anything that is not a canvas receives it.
+
+    A caller with no picture in front of it debugs from this sentence alone, so
+    it has to carry both halves: the coordinate that was sent, and the size that
+    would have accepted one.
+    """
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    body = ask(
+        client,
+        project=project,
+        asset=asset,
+        connection=connection,
+        positive=[{"x": 900.0, "y": 700.0}],
+    ).json()
+
+    assert body["code"] == "PROMPT_POINT_OUT_OF_BOUNDS"
+    assert "900" in body["message"] and "700" in body["message"]
+    assert "32" in body["message"] and "24" in body["message"]
+    assert body["detail"] is None
+
+
+def test_a_negative_point_off_the_asset_refuses_the_gesture(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    """Checked like a positive, and it takes the whole request with it."""
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    answer = ask(
+        client,
+        project=project,
+        asset=asset,
+        connection=connection,
+        positive=[{"x": 16.0, "y": 12.0}],
+        negative=[{"x": -4.0, "y": 12.0}],
+    )
+
+    assert answer.json()["code"] == "PROMPT_POINT_OUT_OF_BOUNDS"
+    assert not answering, "one bad point is not dropped so the rest can be answered"
+
+
+def test_the_far_edge_of_the_asset_is_still_on_it(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    """The inclusive boundary, over the wire, in the direction that can silently break.
+
+    This is the half that agrees with the editor's hit test. If the server ever
+    became exclusive, a press the editor allows on the last row of pixels would
+    start answering 422 and the two would disagree about the same click.
+    """
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    answer = ask(
+        client,
+        project=project,
+        asset=asset,
+        connection=connection,
+        positive=[{"x": 32.0, "y": 24.0}],
+    )
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["region"] is not None
+    assert answering[0].prompt.positive == ((32.0, 24.0),)
+
+
+def test_an_unknown_asset_is_still_named_before_its_bounds_are(
+    client: TestClient, project: str, answering: list[Any]
+) -> None:
+    """A missing asset has no size, so the 404 comes first and says so.
+
+    The refusal order the orchestration documents, extended one step: telling a
+    caller its coordinates are out of bounds on an asset that does not exist
+    would be an answer about the wrong problem.
+    """
+    connection = a_connection(client)
+
+    answer = ask(
+        client,
+        project=project,
+        asset=str(uuid4()),
+        connection=connection,
+        positive=[{"x": 900.0, "y": 700.0}],
+    )
+
+    assert answer.status_code == 404
+    assert answer.json()["code"] == "ASSET_NOT_FOUND"
 
 
 # --- the answer ---------------------------------------------------------------

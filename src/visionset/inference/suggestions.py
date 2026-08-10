@@ -32,6 +32,7 @@ from visionset.kernel.domain import (
     PredictionRequest,
     PredictionTarget,
     media_type_of,
+    require_points_on_asset,
 )
 from visionset.kernel.services import (
     InferenceConnectionService,
@@ -73,12 +74,17 @@ def suggest(
         UnsupportedPrompt: that connection's model answers words, not places.
         ProjectNotFound: no such project.
         AssetNotFound: no such asset in that project.
+        PromptPointOutOfBounds: a point in the gesture is not on that asset.
     """
     connection = InferenceConnectionService(workspace).get(connection_id)
     provider = (pool or resident()).get(connection, workspace_root=workspace.root)
 
     ingest = IngestService(workspace)
     asset = ingest.asset(project_id, asset_id)
+    # Before the bytes are read, because a prompt that names nowhere on this
+    # asset is refused whether or not the file opens, and reading an image to
+    # answer that would be work nobody asked for.
+    require_points_on_asset(prompt, width=asset.width, height=asset.height)
     with ingest.open_content(asset) as handle:
         content = handle.read()
 

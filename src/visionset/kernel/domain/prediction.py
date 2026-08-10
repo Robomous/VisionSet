@@ -41,6 +41,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from visionset.kernel.domain.geometry import Geometry
+from visionset.kernel.errors import PromptPointOutOfBounds
 
 
 class PredictionTarget(BaseModel):
@@ -94,6 +95,46 @@ class PointPrompt(BaseModel):
     kind: Literal["points"] = "points"
     positive: tuple[tuple[float, float], ...] = Field(min_length=1)
     negative: tuple[tuple[float, float], ...] = ()
+
+
+def require_points_on_asset(prompt: PointPrompt, *, width: int | None, height: int | None) -> None:
+    """Every point in the gesture is a place on that asset, or none of it is asked.
+
+    A rule about the prompt rather than about the model, which is why it sits
+    here beside :class:`PointPrompt` and not in any provider: a coordinate past
+    the frame is meaningless to every model there will ever be, and the point of
+    refusing it in one place is that no adapter has to remember to.
+
+    **One bad point refuses the whole gesture.** Dropping it and answering the
+    rest would answer a question the caller did not ask — a prompt with a point
+    removed is a different prompt — and negatives are checked exactly like
+    positives, because a *not that* pointing at nothing steers the answer just
+    as wrongly as a *this* would.
+
+    **The frame is inclusive at both ends.** The last row of pixels is part of
+    the asset, and an exclusive rule would make the far edge a place where a
+    press silently stopped working. The editor's own hit test draws the boundary
+    the same way, and the two must agree or there is a coordinate one accepts
+    and the other refuses. A non-finite coordinate falls out of the comparisons
+    rather than being tested for, and is refused.
+
+    An asset whose dimensions were never recorded is not checked. There is
+    nothing to check against, and refusing every prompt on it would punish the
+    caller for a gap in the asset's own metadata.
+
+    Raises:
+        PromptPointOutOfBounds: some point is not on an asset that size.
+    """
+    if width is None or height is None:
+        return
+    for which, points in (("positive", prompt.positive), ("negative", prompt.negative)):
+        for x, y in points:
+            if not (0.0 <= x <= width and 0.0 <= y <= height):
+                raise PromptPointOutOfBounds(
+                    f"the {which} point at ({x:g}, {y:g}) is not on this asset, which is "
+                    f"{width} by {height} pixels; send coordinates with x in [0, {width}] "
+                    f"and y in [0, {height}]"
+                )
 
 
 Prompt = Annotated[TextPrompt | PointPrompt, Field(discriminator="kind")]
