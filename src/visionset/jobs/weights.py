@@ -45,9 +45,9 @@ from visionset.inference import fetch_weights
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
 from visionset.kernel.domain import (
-    WEIGHT_DOWNLOAD_CONNECTION_KEY,
+    CONNECTION_JOB_KEY,
     WEIGHT_DOWNLOAD_JOB_TYPE,
-    weight_download_payload,
+    connection_job_payload,
 )
 from visionset.kernel.ports import ProgressReporter
 
@@ -78,7 +78,7 @@ def payload_for(connection_id: UUID) -> dict[str, JsonValue]:
     spelling and read under another produces a download that runs perfectly and
     is invisible to everything watching for it.
     """
-    return weight_download_payload(connection_id)
+    return connection_job_payload(connection_id)
 
 
 def run(
@@ -111,7 +111,7 @@ def run(
     """
     if reporter.is_cancelled():
         return {}
-    connection_id = UUID(str(payload[WEIGHT_DOWNLOAD_CONNECTION_KEY]))
+    connection_id = UUID(str(payload[CONNECTION_JOB_KEY]))
     # Never a ``with``: the handle belongs to the worker and outlives this task.
     # See ``jobs/context.py``.
     workspace = workspace_for(workspace_root)

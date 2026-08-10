@@ -93,8 +93,9 @@ function connectionRow(
     // makes sense beside `setup`.
     capabilities: setup === "ready" ? ["point_suggest"] : [],
     // Not optional on the wire, so not optional here — the generated runtime
-    // check refuses a response missing it.
+    // check refuses a response missing them.
     download: null,
+    integrity_check: null,
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
     ...overrides,

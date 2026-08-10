@@ -32,7 +32,7 @@ import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Final
+from typing import ClassVar, Final, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
@@ -279,63 +279,118 @@ class DownloadSize(BaseModel):
 
 
 WEIGHT_DOWNLOAD_JOB_TYPE: Final = "inference.download_weights"
-"""The background job that fetches a local connection's weights.
+"""The background job that fetches a local connection's weights."""
 
-**In the domain although the handler is not**, because two sides need the same
-word and only one of them may hold it: ``visionset.jobs.weights`` registers the
-handler under this type, and :meth:`InferenceConnectionService.downloads` finds a
-connection's transfer by it. The kernel is forbidden from importing ``jobs``, so
-a constant living there would have to be spelled a second time here — and two
-spellings of a job type is a mismatch that surfaces as a download nobody can
-observe rather than as an error anybody can see.
+INTEGRITY_CHECK_JOB_TYPE: Final = "inference.check_integrity"
+"""The background job that re-reads a cached snapshot and judges it."""
 
-The kernel already models background work (``BackgroundJobSpec``, ``JobQueue``);
-naming one type of it is that vocabulary used, not widened.
-"""
+CONNECTION_JOB_KEY: Final = "connection_id"
+"""Which connection a background job is about, inside its payload.
 
-WEIGHT_DOWNLOAD_CONNECTION_KEY: Final = "connection_id"
-"""Which connection a weight download is for, inside the job's payload.
-
-Here for the job type's reason, and it is the half that would actually bite: the
-handler reads this key and the lookup below matches on it, so a payload written
-under one spelling and read under another produces a job that runs correctly and
-is invisible to every screen watching for it.
+Shared by both job types above because both are about exactly one connection, and
+naming it once is the difference between a lookup that finds a job and one that
+runs perfectly while being invisible to everything watching for it.
 """
 
 
-def weight_download_payload(connection_id: UUID) -> dict[str, JsonValue]:
-    """The payload a weight download carries. Built here, read here."""
-    return {WEIGHT_DOWNLOAD_CONNECTION_KEY: str(connection_id)}
+def connection_job_payload(connection_id: UUID) -> dict[str, JsonValue]:
+    """The payload a connection's background job carries. Built here, read here."""
+    return {CONNECTION_JOB_KEY: str(connection_id)}
 
 
-class WeightDownload(BaseModel):
-    """A connection's weight transfer: which job, how far, and how it ended.
+class ConnectionJob(BaseModel):
+    """Background work against one connection, read off its job row.
 
-    **Derived, never stored.** The download's whole record is the background job
-    row, and this is that row read as the thing it is about. Persisting a copy on
-    the connection would be a second encoding of a number the job already holds,
-    and it would need an owner for the case the two disagree.
+    **Derived, never stored.** A run's whole record is the row the queue keeps,
+    and this is that row read as the thing it is about. Persisting a copy on the
+    connection would be a second encoding of numbers the job already holds, and it
+    would need an owner for the case the two disagree.
 
     **Why the connection carries this rather than the client remembering a job
-    id.** A transfer outlives the request that started it and outlives the page
-    that asked; the only way a screen can show one it did not itself launch — a
-    reload, a second tab, a return visit — is for the resource it lists to say so.
-    A job id held in a component is lost by the first navigation, which is exactly
-    how a running download came to read as *Not set up*.
+    id.** A run outlives the request that started it and outlives the page that
+    asked; the only way a screen can show one it did not itself launch — a reload,
+    a second tab, a return visit, a run somebody started from the terminal — is
+    for the resource it lists to say so. A job id held in a component is lost by
+    the first navigation, which is how a running download came to read as *Not set
+    up* and a running check as though nothing were happening.
 
-    **It does not add a setup state, and must not.** ``ConnectionSetupState``
-    stays two-valued: the connection says whether the weights are *here*, and this
-    says whether something is currently fetching them. A ``downloading`` member
-    would reopen the half-fetched window that ordering closes, and would strand a
-    connection there whenever a worker died. A job settles itself — including
-    through ``sweep_orphans``, which settles what a dead process left running.
+    **It adds no setup state, and must not.** ``ConnectionSetupState`` stays
+    two-valued: the connection says whether usable weights are *here*, and this
+    says whether something is currently working on them. A third member would
+    reopen the window that ordering closes — the state flip is the last statement
+    of both operations — and would strand a connection there whenever a worker
+    died. A job settles itself, including through ``sweep_orphans``, which settles
+    what a dead process left running.
+
+    **Subclasses name the counts and this class does not**, which is the whole of
+    why there are two of them rather than one shape with a ``kind``. A job row's
+    ``processed`` and ``total`` are an absolute count of whatever unit its handler
+    works in — bytes for a transfer, files for a re-read — and a wire field whose
+    meaning depended on a sibling field would put that lookup in every client. The
+    unit is named exactly where the job type is known: here.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: The job type a subclass reads. Not a field: it says which rows this class
+    #: can be built from, which is a fact about the class rather than about any
+    #: one run.
+    JOB_TYPE: ClassVar[str]
+
     connection_id: UUID
     job_id: UUID
     state: BackgroundJobState
+    #: Why it failed, in the sentence the handler wrote. ``None`` unless
+    #: :attr:`state` is ``failed``.
+    error: str | None = None
+
+    @classmethod
+    def of(cls, job: BackgroundJob) -> Self:
+        """That job read as this kind of run.
+
+        One body for both kinds, because the identification is identical and only
+        the counts differ: check the type, read the connection out of the payload,
+        and let :meth:`_counts` name the unit.
+
+        Raises:
+            ValueError: the job is not this kind, or its payload names no
+                connection.
+        """
+        if job.type != cls.JOB_TYPE:
+            raise ValueError(f"job {job.id} is a {job.type!r}, not a {cls.JOB_TYPE!r}")
+        named = job.payload.get(CONNECTION_JOB_KEY)
+        if not isinstance(named, str):
+            raise ValueError(f"job {job.id} names no connection")
+        return cls(
+            connection_id=UUID(named),
+            job_id=job.id,
+            state=job.state,
+            error=job.error,
+            **cls._counts(job),
+        )
+
+    @classmethod
+    def _counts(cls, job: BackgroundJob) -> Mapping[str, int | None]:
+        """This kind's progress fields, named for what they count."""
+        raise NotImplementedError
+
+
+def _at_most(done: int, total: int | None) -> int:
+    """That count, held under the total it is a fraction of.
+
+    Clamped rather than refused, because the two numbers can come from different
+    places — a download's are a disk measurement against a published size — and a
+    cosmetic disagreement must not turn a connection listing into a 500. What it
+    prevents is the visible failure: a bar that fills past its own end.
+    """
+    return done if total is None else min(done, total)
+
+
+class WeightDownload(ConnectionJob):
+    """A connection's weight transfer: which job, how far, and how it ended."""
+
+    JOB_TYPE: ClassVar[str] = WEIGHT_DOWNLOAD_JOB_TYPE
+
     #: Bytes that have arrived. Monotonic per job and never above
     #: :attr:`bytes_total`: a transfer that retries re-reads bytes it already had,
     #: and a bar that moves backwards reads as a bug in the product rather than as
@@ -345,12 +400,9 @@ class WeightDownload(BaseModel):
     #:
     #: Null is a real answer rather than a failure: sizing reaches the hub
     #: independently of the transfer, so a lookup that fails leaves a download
-    #: that can still run — and an indeterminate bar is the honest rendering of a
-    #: total nobody knows. It is the rule ``BackgroundJob.total`` already states.
+    #: that can still run — and no bar at all is the honest rendering of a total
+    #: nobody knows. It is the rule ``BackgroundJob.total`` already states.
     bytes_total: int | None = Field(default=None, ge=0)
-    #: Why it failed, in the sentence the handler wrote. ``None`` unless
-    #: :attr:`state` is ``failed``.
-    error: str | None = None
 
     @model_validator(mode="after")
     def _progress_is_within_its_total(self) -> WeightDownload:
@@ -361,40 +413,66 @@ class WeightDownload(BaseModel):
         return self
 
     @classmethod
-    def of(cls, job: BackgroundJob) -> WeightDownload:
-        """That job read as a download, with its counts clamped into shape.
+    def _counts(cls, job: BackgroundJob) -> Mapping[str, int | None]:
+        return {"bytes_done": _at_most(job.processed, job.total), "bytes_total": job.total}
 
-        **This is the one place that knows what the job's counts mean.** A job row
-        carries ``processed`` and ``total`` — an absolute count of whatever unit
-        the handler works in, which is files for the integrity check and bytes for
-        this. Naming them here is what keeps every reader downstream from having
-        to know the mapping: a client reads ``bytes_done`` and formats bytes,
-        rather than reading ``processed`` and looking up the job type to find out
-        what it counted.
 
-        The clamp is applied rather than refused because the input is a row two
-        processes wrote: a sampler reports what is on disk while a separately
-        measured total is what the form was told, and a snapshot that shares a
-        blob between two files legitimately lands slightly under. Refusing there
-        would turn a cosmetic disagreement into a connection list that 500s.
+class IntegrityCheck(ConnectionJob):
+    """A connection's snapshot re-read: which job, how far, and what it found.
 
-        Raises:
-            ValueError: the job is not a weight download, or its payload does not
-                name a connection.
-        """
-        if job.type != WEIGHT_DOWNLOAD_JOB_TYPE:
-            raise ValueError(f"job {job.id} is a {job.type!r}, not a weight download")
-        named = job.payload.get(WEIGHT_DOWNLOAD_CONNECTION_KEY)
-        if not isinstance(named, str):
-            raise ValueError(f"weight download {job.id} names no connection")
-        return cls(
-            connection_id=UUID(named),
-            job_id=job.id,
-            state=job.state,
-            bytes_done=job.processed if job.total is None else min(job.processed, job.total),
-            bytes_total=job.total,
-            error=job.error,
-        )
+    **Files rather than bytes, and the asymmetry with the download is honest.** A
+    transfer hands its work to a library that reports nothing a caller can use, so
+    its progress is measured off the disk in bytes; a check owns its own loop and
+    knows how many files it has before it opens the first one. Each reports the
+    unit it actually counts, which is why neither borrows the other's name.
+
+    **What a finished check means is on the connection, not here.** A pass leaves
+    the row ``ready`` and a failure has already purged the damaged blobs and stood
+    the connection down by the time this says ``failed`` — so the verdict a reader
+    acts on is ``setup_state`` plus the action it now declares, and what this adds
+    is the sentence saying why. That ordering is
+    ``visionset.inference.integrity``'s and nothing here changes it.
+    """
+
+    JOB_TYPE: ClassVar[str] = INTEGRITY_CHECK_JOB_TYPE
+
+    #: Files re-read and compared so far.
+    files_read: int = Field(default=0, ge=0)
+    #: How many the revision names, or ``None`` before the run has read the hub's
+    #: listing. Unlike a download's total this is known almost immediately and from
+    #: the same metadata the check needs anyway, so the null window is the moment
+    #: between claiming the job and the first published digest arriving.
+    files_total: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _progress_is_within_its_total(self) -> IntegrityCheck:
+        if self.files_total is not None and self.files_read > self.files_total:
+            raise ValueError(
+                f"a check cannot have read {self.files_read} files of {self.files_total}"
+            )
+        return self
+
+    @classmethod
+    def _counts(cls, job: BackgroundJob) -> Mapping[str, int | None]:
+        return {"files_read": _at_most(job.processed, job.total), "files_total": job.total}
+
+
+class ConnectionJobs(BaseModel):
+    """Every connection's latest run of each kind, read from the queue at once.
+
+    A named pair rather than two calls, because the caller is a listing that
+    polls: one query answers both questions for every row, and a shape that
+    returned only one of them would have the screen ask twice on its own interval.
+
+    Not a wire model and never published. What a client reads is the two fields
+    hung off the connection it was already listing; this is how a projection gets
+    them without a query per row.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    downloads: Mapping[UUID, WeightDownload] = Field(default_factory=dict)
+    checks: Mapping[UUID, IntegrityCheck] = Field(default_factory=dict)
 
 
 class InferenceConnection(BaseModel):
