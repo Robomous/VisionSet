@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends
 from tests.server._openapi import assert_every_operation_is_protected, operations
 from tests.server._probe import probe_app
 
+from visionset.server import models
 from visionset.server.dependencies import require_token
 from visionset.server.main import app, create_app
 
@@ -192,3 +193,95 @@ def test_the_walk_skips_non_operation_keys_in_a_path_item() -> None:
     }
     assert [method for _, method, _ in operations(spec)] == ["get"]
     assert_every_operation_is_protected(spec)
+
+
+# ---------------------------------------------------------------------------
+# Unknown fields on the way in
+# ---------------------------------------------------------------------------
+#
+# `extra="forbid"` is what turns a client's typo into a 422 instead of a silent
+# no-op, and it is a rule about *request* models specifically. Responses go the
+# other way on purpose: `frontend/ui-core/src/data/check.ts` accepts unknown keys
+# so that an additive, backward-compatible field cannot break a page.
+#
+# The roster is derived rather than written down. A hand-kept list is how four
+# models came to sit outside a convention the other twenty-two follow with
+# nothing to notice it — so the walk below starts at every `requestBody` in the
+# contract and follows `$ref` all the way down, which reaches a nested model such
+# as `SuggestPoint` that no route names directly.
+
+
+def _referenced(node: Any, into: set[str]) -> None:
+    """Every component schema `node` names, at any depth."""
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+            into.add(ref.rsplit("/", 1)[1])
+        for value in node.values():
+            _referenced(value, into)
+    elif isinstance(node, list):
+        for value in node:
+            _referenced(value, into)
+
+
+def request_schemas(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Every object schema a caller can put in a request body, transitively.
+
+    Enums and scalars are excluded because `additionalProperties` says nothing
+    about them, and so are the bodies FastAPI *synthesises* for multipart routes
+    — `Body_register_image_source` and its sibling are built from a handler's
+    parameters rather than declared in ``server/models.py``, so there is no
+    ``model_config`` to put the rule on. Membership is decided by asking that
+    module, so a model added there is covered the day it is added.
+    """
+    schemas = spec["components"]["schemas"]
+
+    seeds: set[str] = set()
+    for _, _, operation in operations(spec):
+        if body := operation.get("requestBody"):
+            _referenced(body, seeds)
+
+    reachable: set[str] = set()
+    pending = list(seeds)
+    while pending:
+        name = pending.pop()
+        if name in reachable or name not in schemas:
+            continue
+        reachable.add(name)
+        nested: set[str] = set()
+        _referenced(schemas[name], nested)
+        pending.extend(nested)
+
+    return {
+        name: schemas[name]
+        for name in sorted(reachable)
+        if schemas[name].get("type") == "object" and hasattr(models, name)
+    }
+
+
+def test_the_request_walk_finds_the_models_routes_name_and_the_ones_they_nest() -> None:
+    """The roster is non-empty and reaches past the models a route names.
+
+    Without this the parametrised test below would pass by iterating nothing,
+    which is the failure mode a derived roster is most prone to. `SuggestPoint`
+    is the witness for depth: no route mentions it, `SuggestRequest` nests it.
+    """
+    found = set(request_schemas(app.openapi()))
+
+    assert {"ProjectCreate", "SuggestRequest", "SuggestPoint", "AttributeBody"} <= found
+    assert len(found) > 20
+    # Synthesised multipart bodies are reachable and deliberately not covered.
+    assert not [name for name in found if name.startswith("Body_")]
+
+
+@pytest.mark.parametrize("name", sorted(request_schemas(app.openapi())))
+def test_every_request_model_forbids_unknown_fields(name: str) -> None:
+    """One rule, one roster, no model quietly outside it.
+
+    A field a caller misspells has to be refused rather than dropped: accepted
+    and ignored, the caller gets a 200 and the old value, with nothing anywhere
+    saying the edit did not take.
+    """
+    assert request_schemas(app.openapi())[name].get("additionalProperties") is False, (
+        f"{name} accepts unknown fields; every other request model forbids them"
+    )

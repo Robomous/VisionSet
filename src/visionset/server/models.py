@@ -1812,8 +1812,11 @@ class ConnectionCreate(BaseModel):
     ``setup_state`` is absent on purpose: it is derived from the kind by the
     service, because it says what the kind still needs rather than what the
     caller wants. Accepting it would let a client declare weights present that
-    were never fetched.
+    were never fetched, so supplying it is refused along with any other field
+    this shape does not declare.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str
     connection_type: ConnectionType
@@ -1833,6 +1836,8 @@ class ConnectionUpdate(BaseModel):
     parameters that could be cleared are exactly the ones the kind requires, so
     clearing one would produce a row the domain refuses anyway.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
     model_id: str | None = None
@@ -1878,6 +1883,8 @@ class SuggestPoint(BaseModel):
     but the wire is read by people.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     x: float
     y: float
 
@@ -1890,6 +1897,8 @@ class SuggestRequest(BaseModel):
     would make it look like the parent of the request, which is how a URL is
     read.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     project_id: UUID
     asset_id: UUID

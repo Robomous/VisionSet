@@ -1504,7 +1504,8 @@
         "type": "string"
       },
       "ConnectionCreate": {
-        "description": "What a caller supplies to configure a connection.\n\n``setup_state`` is absent on purpose: it is derived from the kind by the\nservice, because it says what the kind still needs rather than what the\ncaller wants. Accepting it would let a client declare weights present that\nwere never fetched.",
+        "additionalProperties": false,
+        "description": "What a caller supplies to configure a connection.\n\n``setup_state`` is absent on purpose: it is derived from the kind by the\nservice, because it says what the kind still needs rather than what the\ncaller wants. Accepting it would let a client declare weights present that\nwere never fetched, so supplying it is refused along with any other field\nthis shape does not declare.",
         "properties": {
           "connection_type": {
             "$ref": "#/components/schemas/ConnectionType"
@@ -1727,6 +1728,7 @@
         "type": "string"
       },
       "ConnectionUpdate": {
+        "additionalProperties": false,
         "description": "A partial edit. Every field omitted or null means *leave this alone*.\n\n``connection_type`` is absent because the kind is not editable \u2014 see\n``InferenceConnectionService.update``. A field cannot be *cleared* through\nthis shape, which is the honest consequence of null meaning \"unchanged\": the\nparameters that could be cleared are exactly the ones the kind requires, so\nclearing one would produce a row the domain refuses anyway.",
         "properties": {
           "device": {
@@ -3422,6 +3424,7 @@
         "type": "object"
       },
       "SuggestPoint": {
+        "additionalProperties": false,
         "description": "One click, in the asset's own pixel coordinates.\n\nAn object rather than a two-element array because a JSON ``[x, y]`` is a\nshape a generated client types as ``number[]`` and a reader has to guess the\norder of. The domain's own tuples are fine \u2014 Python has positional meaning \u2014\nbut the wire is read by people.",
         "properties": {
           "x": {
@@ -3441,6 +3444,7 @@
         "type": "object"
       },
       "SuggestRequest": {
+        "additionalProperties": false,
         "description": "Where somebody clicked, on what, through which connection.\n\nEverything travels in the body rather than in the path: the call names an\nasset *and* a connection, and neither owns the other. Putting one in the path\nwould make it look like the parent of the request, which is how a URL is\nread.",
         "properties": {
           "allowed_geometries": {
