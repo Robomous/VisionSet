@@ -734,11 +734,12 @@ The page the reference design shows (#56), with measurements verified in v1's so
 
   The reference draws three more controls between the navigator and the save state —
   version select (GitBranch), create-branch (GitBranchPlus) and **Merge** (GitMerge).
-  **They are not rendered**, because the model they operate does not exist: annotation
-  versioning is #127, post-beta and blocked on a decision. They were drawn disabled
+  **They are not rendered**, because the model they operate does not exist: the
+  branch-and-merge question was settled on 2026-08-10 as superseded by the batch, review
+  and release model the product already has (cf. #127). They were drawn disabled
   until 2026-08-05 to hold the design's shape, which principle 9 forbids — the only
   honest tooltip for them is "this feature does not exist", and that is not an
-  explanation of what would enable the button. They return with the model, not before.
+  explanation of what would enable the button.
 - **Classes region** (#368 as a top-bar field, #420 as the panel's upper region): where
   class selection lives. It was the side panel's Labels tab, then a `Combobox` in the
   centre of the top bar, and it is a **list** now — because what is being chosen between
@@ -1088,10 +1089,11 @@ Adapted from v1's `DESIGN.md` (`computer-vision-lab-app`, sibling checkout) on
 `components/annotations/annotation-utils.ts` (`getClassPalette`), and the annotation
 workspace components (`AnnotationToolHeader` / `AnnotationToolStrip` /
 `AnnotationSidePanel`). The reference screenshots are described in the 2026-07-30 design
-comment on #51. The version-control affordances (branch dropdown, Merge) are recorded in
-#127 and are post-beta. Their top-bar slots were removed on 2026-08-05: this record is
-what re-milestoned #127 out of 0.1.0, and a disabled control whose only explanation is
-"this does not exist yet" is the thing principle 9 names.
+comment on #51. The version-control affordances (branch dropdown, Merge) are not part of
+this interface. Their top-bar slots were removed on 2026-08-05 (#354) — a disabled control
+whose only explanation is "this does not exist yet" is the thing principle 9 names — and
+the branch-and-merge model behind them was settled on 2026-08-10 as superseded by the
+batch, review and release model the product already has (cf. #127).
 
 **2026-08-01 (#206)** added principles 6–9, the whole of **Project surfaces**, and the
 qualification to principle 3, ahead of the project view redesign (#207–#213).

@@ -7500,7 +7500,7 @@
     },
     "/jobs/{job_id}/assets/{asset_id}/annotations": {
       "get": {
-        "description": "Every annotation on one asset of this job, in the order they were added.\n\nEmpty for an asset nobody has labeled yet \u2014 the ordinary starting state, not\nan error. Reading is not gated on the batch being open: a label outlives the\nwork that produced it.",
+        "description": "Every annotation on one asset of this job, in the order they were added.\n\nEmpty for an asset nobody has labeled yet \u2014 the ordinary starting state, not\nan error. Reading is not gated on job or batch state: a label outlives the\nwork that produced it.",
         "operationId": "list_asset_annotations",
         "parameters": [
           {

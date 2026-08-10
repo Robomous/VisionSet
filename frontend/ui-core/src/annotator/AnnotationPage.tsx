@@ -27,13 +27,13 @@
  *
  * ## What the top bar has and what it does not
  *
- * `DESIGN.md` draws a version dropdown, create-branch and Merge. Annotation
- * versioning is post-beta and blocked on a decision nobody has taken. They used to
+ * `DESIGN.md` draws a version dropdown, create-branch and Merge. The branch-and-merge
+ * model they operate was settled as superseded by the batch, review and release model
+ * the product already has, so there is nothing behind them to render. They used to
  * render **disabled**, to hold the design's shape — but a disabled control with no
  * model behind it cannot be explained in the terms principle 9 asks for, because
- * the honest explanation is "this feature does not exist". So the slots are gone
- * and they come back with the thing they operate. Every control on the bar now
- * corresponds to a capability that exists.
+ * the honest explanation is "this feature does not exist". So the slots are gone.
+ * Every control on the bar now corresponds to a capability that exists.
  *
  * ## There is a minimum viewport, and the decision is made before anything mounts
  *
