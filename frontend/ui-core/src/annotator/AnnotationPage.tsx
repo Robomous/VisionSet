@@ -199,6 +199,19 @@ import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { FrameGallery } from "./FrameGallery";
 import { SuggestPanel } from "./SuggestPanel";
 import { useConnections, useSuggestRegion, usableConnection } from "../data/inferenceQueries";
+import { readPref, writePref } from "../data/prefs";
+
+/**
+ * Where a project's suggest-through choice is remembered.
+ *
+ * Keyed by project rather than globally: two projects can hold different
+ * schemas and different work, and the model that suits one is not the model that
+ * suits the other. Keyed by project rather than by *job* for the opposite
+ * reason — nobody wants to re-pick a model per batch.
+ */
+function preferredConnectionKey(projectId: string): string {
+  return `suggest.connection.${projectId}`;
+}
 import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState";
 import type { LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
@@ -799,8 +812,33 @@ function Workspace({
    * than leaving a click to vanish into it.
    */
   const connections = useConnections(session !== null);
-  const { connection, blocker } = usableConnection(connections.data?.items);
+  /**
+   * Which model this project suggests through, when there is more than one.
+   *
+   * **A preference, per project, and never a constraint.** It survives leaving
+   * the editor and coming back — which is the whole point of remembering it —
+   * and `usableConnection` falls back to the first candidate whenever the
+   * remembered one is gone, renamed away from capability, or not downloaded any
+   * more. So a deleted connection cannot leave a project unable to suggest.
+   *
+   * `readPref`/`writePref` rather than server state: it is a view preference in
+   * `prefs.ts`'s own sense — a choice about this browser, not a fact about the
+   * workspace, and one that must not turn into a write every annotator on a
+   * shared workspace fights over.
+   */
+  const [preferredConnection, setPreferredConnection] = useState<string | null>(() =>
+    readPref(preferredConnectionKey(projectId)),
+  );
+  const { connection, candidates, blocker } = usableConnection(
+    connections.data?.items,
+    preferredConnection,
+  );
   const suggestRegion = useSuggestRegion();
+
+  function chooseConnection(connectionId: string): void {
+    setPreferredConnection(connectionId);
+    writePref(preferredConnectionKey(projectId), connectionId);
+  }
 
   /**
    * Arming and disarming — and arming activates a class, exactly as every other
@@ -2430,6 +2468,9 @@ function Workspace({
                 heldClass={activeClass}
                 blocker={blocker}
                 refusal={suggesting.refusal}
+                candidates={candidates}
+                connectionId={connection?.id ?? null}
+                onChooseConnection={chooseConnection}
                 onAccept={acceptSuggestion}
                 onDiscard={discardSuggestion}
                 {...(onConfigureInference === undefined

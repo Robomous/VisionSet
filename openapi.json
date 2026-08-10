@@ -1573,6 +1573,13 @@
             "title": "Allowed Actions",
             "type": "array"
           },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCapability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "connection_type": {
             "$ref": "#/components/schemas/ConnectionType"
           },
@@ -1650,6 +1657,7 @@
           "endpoint_url",
           "setup_state",
           "allowed_actions",
+          "capabilities",
           "created_at",
           "updated_at"
         ],
@@ -2463,6 +2471,15 @@
         ],
         "title": "LabelClassBody",
         "type": "object"
+      },
+      "ModelCapability": {
+        "description": "What a connection's model can be asked for: the kind of prompt it takes.",
+        "enum": [
+          "point_suggest",
+          "text_detect"
+        ],
+        "title": "ModelCapability",
+        "type": "string"
       },
       "PolygonBody": {
         "additionalProperties": false,
@@ -5945,7 +5962,7 @@
     },
     "/inference/connections": {
       "get": {
-        "description": "Every configured connection in this workspace, in the order they were made.",
+        "description": "Every configured connection in this workspace, in the order they were made.\n\nA set-up connection that has never been asked what kind of model it holds is\nasked here, once, from files already on this disk \u2014 see\n``visionset.inference.weights.with_families``. It is the backfill for rows\nwritten before a connection recorded that, and it is on the read path because\nthe kernel cannot reach a model cache and a migration runs in the kernel.",
         "operationId": "list_inference_connections",
         "responses": {
           "200": {
@@ -6177,7 +6194,7 @@
         ]
       },
       "get": {
-        "description": "The connection with that id.",
+        "description": "The connection with that id.\n\nCarries the same backfill the listing does, so that reading one connection\nand reading the list never disagree about what it can be asked for.",
         "operationId": "get_inference_connection",
         "parameters": [
           {

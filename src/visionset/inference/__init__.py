@@ -47,6 +47,14 @@ from visionset.inference.cache import (
     DEFAULT_PROVIDER_CAPACITY,
     BoundedCache,
 )
+from visionset.inference.families import (
+    CAPABILITY_BY_FAMILY,
+    DETECTOR_FAMILIES,
+    SEGMENTER_FAMILIES,
+    SUPPORTED_FAMILIES,
+    capabilities_of,
+    family_of,
+)
 from visionset.inference.integrity import (
     READ_CHUNK,
     Digest,
@@ -59,15 +67,7 @@ from visionset.inference.integrity import (
 )
 from visionset.inference.masks import DEFAULT_DETAIL, narrowed, polygon_from
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
-from visionset.inference.providers import (
-    DETECTOR_FAMILIES,
-    SEGMENTER_FAMILIES,
-    SUPPORTED_FAMILIES,
-    ProviderPool,
-    family_of,
-    provider_for,
-    resident,
-)
+from visionset.inference.providers import ProviderPool, provider_for, resident
 from visionset.inference.sam_provider import LocalSamProvider
 from visionset.inference.suggestions import suggest
 from visionset.inference.transformers_provider import LocalTransformersProvider
@@ -81,6 +81,7 @@ from visionset.inference.weights import (
     fetch_weights,
     known_sizes,
     measure,
+    with_families,
 )
 
 __all__ = [
@@ -88,6 +89,7 @@ __all__ = [
     "DEFAULT_EMBEDDING_CAPACITY",
     "DEFAULT_IOU_THRESHOLD",
     "DEFAULT_PROVIDER_CAPACITY",
+    "CAPABILITY_BY_FAMILY",
     "DEFAULT_SIZE_CAPACITY",
     "DETECTOR_FAMILIES",
     "EXTRA",
@@ -102,6 +104,7 @@ __all__ = [
     "LocalTransformersProvider",
     "ProviderPool",
     "cache_root",
+    "capabilities_of",
     "check_integrity",
     "digest_of",
     "download",
@@ -123,4 +126,5 @@ __all__ = [
     "resident",
     "suggest",
     "suppressed",
+    "with_families",
 ]

@@ -145,6 +145,10 @@ class InferenceConnectionService:
         """Edit a connection in place. Every argument is optional; ``None`` means
         *leave this alone*.
 
+        Pointing a connection at a different model or revision **forgets what
+        kind of model it was**, because that answer was read out of the old
+        model's config and nothing has read the new one.
+
         The kind is deliberately not editable. Changing ``local`` to ``http``
         would empty every parameter the row carries and keep only its name, which
         is a new connection wearing an old id — and an id that already travelled
@@ -172,6 +176,13 @@ class InferenceConnectionService:
                 ):
                     if value is not None:
                         changes[field] = value
+                # A different model is a different config, and nobody has read
+                # the new one. Keeping the old family would leave the row
+                # declaring what its *previous* weights could be asked for —
+                # a stale answer that reads exactly like a fresh one. Forgetting
+                # is what sends it back through the resolver.
+                if "model_id" in changes or "model_revision" in changes:
+                    changes["model_family"] = None
                 # Rebuilt rather than mutated, so the cross-field rule runs on the
                 # result: ``model_copy`` does not validate, which is the whole
                 # reason ``Source`` had to turn on ``validate_assignment``.
@@ -215,7 +226,9 @@ class InferenceConnectionService:
             return connection
         raise InferenceConnectionNotDownloadable(_why_not_downloadable(connection))
 
-    def record_weights_ready(self, connection_id: UUID) -> InferenceConnection:
+    def record_weights_ready(
+        self, connection_id: UUID, *, model_family: str | None = None
+    ) -> InferenceConnection:
         """Mark the weights present. Called **after** they are, never before.
 
         The one edge in this entity's short life, and it is written last on
@@ -227,30 +240,32 @@ class InferenceConnectionService:
         idempotent, so a crash after this commit and before the row settled means
         a retry arrives at a connection that is already ``ready``; answering that
         with a refusal would fail a job whose work is done. Recording something
-        already true returns it unchanged.
+        already true returns it unchanged — and *unchanged* is now decided by
+        comparing the fields rather than by the state alone, because a re-run
+        over an already-``ready`` connection is exactly how a row that predates
+        ``model_family`` gets one.
 
-        Deliberately narrow. It takes no state to move *to*, because there is
-        only one, and it accepts no other field — the caller is a job handler
-        that has just written bytes to a cache, and the only thing it has
-        learned is that they are there.
+        ``model_family`` is the second thing the caller has learned, and it can
+        only be learned here. What model type a connection points at is written
+        in the model's own downloaded config, so the first moment it is knowable
+        without reaching a network is the moment the download finishes — and the
+        caller that just finished one is holding the answer. ``None`` means *I
+        did not find out*, which leaves whatever the row already had; the empty
+        string means *I looked and it declared nothing*, which is a finding and
+        is recorded as one.
 
         Raises:
             InferenceConnectionNotFound: no such connection in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
             current = self.require_connection(uow, connection_id)
-            if current.setup_state is ConnectionSetupState.READY:
+            changes: dict[str, object] = {"setup_state": ConnectionSetupState.READY}
+            if model_family is not None:
+                changes["model_family"] = model_family
+            if all(getattr(current, field) == value for field, value in changes.items()):
                 return current
             return uow.inference_connections.update(
-                _built(
-                    **(
-                        current.model_dump()
-                        | {
-                            "setup_state": ConnectionSetupState.READY,
-                            "updated_at": datetime.now(UTC),
-                        }
-                    )
-                )
+                _built(**(current.model_dump() | changes | {"updated_at": datetime.now(UTC)}))
             )
 
     def require_checkable(self, connection_id: UUID) -> InferenceConnection:

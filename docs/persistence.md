@@ -155,8 +155,10 @@ MIGRATIONS: list[Migration] = [
     Migration(version=3, name="annotation_provenance", upgrade=_add_annotation_provenance),
     Migration(version=4, name="job_queue", upgrade=_add_job_queue),
     Migration(version=5, name="schema_provenance", upgrade=_add_schema_provenance),
+    Migration(version=6, name="inference_connections", upgrade=_add_inference_connections),
+    Migration(version=7, name="model_family", upgrade=_add_model_family),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 5
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 7
 ```
 
 **Generation 1 is the baseline, and everything after it is an ordinary migration.** A long
@@ -172,9 +174,16 @@ force again for every entry appended after the baseline.
 `tests/kernel/test_migrations.py` that builds an old-looking file. The failure is the silent
 kind: a column left in place makes its own migration find the column already there and return
 early, so `test_a_fresh_database_and_a_migrated_one_have_the_same_schema` compares a file
-against itself and passes while proving nothing. Migration 4 is the standing exception — it
-creates a *table*, and dropping that in the helper would exercise SQLite rather than this
-module.
+against itself and passes while proving nothing. The table-creating migrations — 4 and 6 — are
+the standing exception: dropping a whole table in the helper would exercise SQLite rather than
+this module.
+
+**A migration cannot always backfill what it adds, and saying which is which is part of adding
+one.** Migration 3 could attribute an annotation because the file already recorded enough to
+answer it; migration 7 cannot fill in a connection's model family at all, because that answer
+lives in a model cache the kernel is forbidden to reach. Where the value is unknowable here, the
+column arrives NULL and something outside the kernel fills it in later — and the column's own
+docstring says which, so a reader does not mistake an honest absence for a forgotten step.
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed

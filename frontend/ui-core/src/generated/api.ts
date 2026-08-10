@@ -704,6 +704,12 @@ export interface paths {
         /**
          * List Inference Connections
          * @description Every configured connection in this workspace, in the order they were made.
+         *
+         *     A set-up connection that has never been asked what kind of model it holds is
+         *     asked here, once, from files already on this disk — see
+         *     ``visionset.inference.weights.with_families``. It is the backfill for rows
+         *     written before a connection recorded that, and it is on the read path because
+         *     the kernel cannot reach a model cache and a migration runs in the kernel.
          */
         get: operations["list_inference_connections"];
         put?: never;
@@ -728,6 +734,9 @@ export interface paths {
         /**
          * Get Inference Connection
          * @description The connection with that id.
+         *
+         *     Carries the same backfill the listing does, so that reading one connection
+         *     and reading the list never disagree about what it can be asked for.
          */
         get: operations["get_inference_connection"];
         put?: never;
@@ -2648,6 +2657,8 @@ export interface components {
         ConnectionOut: {
             /** Allowed Actions */
             allowed_actions: components["schemas"]["ConnectionAction"][];
+            /** Capabilities */
+            capabilities: components["schemas"]["ModelCapability"][];
             connection_type: components["schemas"]["ConnectionType"];
             /**
              * Created At
@@ -3095,6 +3106,12 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * ModelCapability
+         * @description What a connection's model can be asked for: the kind of prompt it takes.
+         * @enum {string}
+         */
+        ModelCapability: "point_suggest" | "text_detect";
         /**
          * PolygonBody
          * @description A closed polygon of at least three points. The closing edge is implicit.

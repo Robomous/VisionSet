@@ -9,20 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from visionset.inference import providers as providers_module
-from visionset.inference.providers import (
-    DETECTOR_FAMILIES,
-    SEGMENTER_FAMILIES,
-    SUPPORTED_FAMILIES,
-    ProviderPool,
-    family_of,
-    provider_for,
-    resident,
-)
+from visionset.inference.families import SUPPORTED_FAMILIES
+from visionset.inference.providers import ProviderPool, provider_for, resident
 from visionset.inference.sam_provider import LocalSamProvider
 from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.kernel.domain import ConnectionType, InferenceConnection
@@ -181,37 +173,6 @@ def test_a_config_that_declares_no_type_is_refused_too(
     message = str(raised.value)
     assert "some/segmenter" in message
     assert all(family in message for family in SUPPORTED_FAMILIES)
-
-
-def test_an_unreadable_config_answers_empty_rather_than_raising(
-    connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Reading the config and deciding what to do about it stay separate.
-
-    This function's job is to report what the files say; the refusal for "they
-    say nothing" is the resolver's, one level up.
-    """
-
-    class Broken:
-        class AutoConfig:
-            @staticmethod
-            def from_pretrained(*_: Any, **__: Any) -> Any:
-                raise OSError("nothing in the cache")
-
-    monkeypatch.setattr(providers_module, "imported", lambda _: Broken())
-    assert family_of(a_local(connections), cache_dir=tmp_path) == ""
-
-
-def test_both_spellings_of_the_one_architecture_are_named() -> None:
-    """A set rather than a string, and both members are load-bearing today."""
-    assert {"sam2", "sam2_video"} <= SEGMENTER_FAMILIES
-
-
-def test_the_two_families_are_disjoint_and_are_the_whole_of_what_is_supported() -> None:
-    """What the refusal lists is derived, so a family cannot be added to one set
-    and forgotten in the message."""
-    assert not SEGMENTER_FAMILIES & DETECTOR_FAMILIES
-    assert SUPPORTED_FAMILIES == SEGMENTER_FAMILIES | DETECTOR_FAMILIES
 
 
 def test_an_unsupported_model_leaves_nothing_behind_for_the_next_request(

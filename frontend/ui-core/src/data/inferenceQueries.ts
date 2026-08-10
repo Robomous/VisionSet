@@ -359,24 +359,71 @@ export function useSuggestRegion() {
  * `checking` is one of them deliberately. The list is only fetched once the tool
  * is armed — a job that never suggests makes no inference request at all — so
  * there is a real moment where the answer is not known, and a click landing in it
- * must be told something rather than vanishing. Three states, one union, so the
+ * must be told something rather than vanishing. Four states, one union, so the
  * panel's copy is total over them.
  */
-export type SuggestBlocker = "checking" | "no-connections" | "not-ready";
+export type SuggestBlocker = "checking" | "no-connections" | "not-ready" | "not-capable";
+
+/**
+ * The capability a click needs, which is the whole of what this tool is.
+ *
+ * Read off `capabilities` rather than guessed from a model id or inferred from a
+ * setup state: the server resolves it from the model's own config, and a client
+ * that re-derived it would be guessing about weights it has never seen.
+ */
+export const SUGGEST_CAPABILITY = "point_suggest" as const;
+
+/** The connection a click goes through, the alternatives, and why there is none. */
+export interface UsableConnection {
+  /** Where to send a click, or `null` when there is nowhere to send one. */
+  readonly connection: Connection | null;
+  /**
+   * Every connection this tool *could* go through, in the list's own order.
+   *
+   * What a chooser renders. One candidate is the common case and needs no
+   * control at all; the array is still returned so the caller decides that,
+   * rather than this function deciding it by returning `null`.
+   */
+  readonly candidates: readonly Connection[];
+  readonly blocker: SuggestBlocker | null;
+}
 
 /**
  * The connection a click should go through, and why there is none.
  *
  * One function rather than two, because the answers are exclusive and the panel
  * needs whichever it is: a `connection` to send to, or a `blocker` to explain.
+ *
+ * ## Ready is not enough, and that was a shipped bug
+ *
+ * This used to be `find(row => row.setup_state === "ready")`. A workspace whose
+ * one ready connection answers text prompts therefore sent every point-prompt
+ * click to it, and the server refused each one truthfully — a tool offered where
+ * it could never work, one refusal at a time. Being ready says the files are
+ * here; it says nothing about what kind of model they are.
+ *
+ * ## The order of the two refusals
+ *
+ * `not-ready` outranks `not-capable`, because an undownloaded connection has no
+ * capability *yet* — nothing has read its config. Asking about capability first
+ * would tell somebody their SAM connection is the wrong kind of model when the
+ * truth is that its weights have not arrived.
+ *
+ * `preferredId` is a preference and never a constraint: a remembered choice that
+ * is no longer a candidate falls back to the first one rather than blocking the
+ * tool over a connection somebody deleted.
  */
-export function usableConnection(connections: readonly Connection[] | undefined): {
-  readonly connection: Connection | null;
-  readonly blocker: SuggestBlocker | null;
-} {
-  if (connections === undefined) return { connection: null, blocker: "checking" };
-  if (connections.length === 0) return { connection: null, blocker: "no-connections" };
-  const ready = connections.find((row) => row.setup_state === "ready");
-  if (ready === undefined) return { connection: null, blocker: "not-ready" };
-  return { connection: ready, blocker: null };
+export function usableConnection(
+  connections: readonly Connection[] | undefined,
+  preferredId?: string | null,
+): UsableConnection {
+  if (connections === undefined) return { connection: null, candidates: [], blocker: "checking" };
+  if (connections.length === 0)
+    return { connection: null, candidates: [], blocker: "no-connections" };
+  const ready = connections.filter((row) => row.setup_state === "ready");
+  if (ready.length === 0) return { connection: null, candidates: [], blocker: "not-ready" };
+  const candidates = ready.filter((row) => row.capabilities.includes(SUGGEST_CAPABILITY));
+  if (candidates.length === 0) return { connection: null, candidates: [], blocker: "not-capable" };
+  const preferred = candidates.find((row) => row.id === preferredId);
+  return { connection: preferred ?? candidates[0], candidates, blocker: null };
 }

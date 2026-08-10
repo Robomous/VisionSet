@@ -52,6 +52,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+# The one import here that is not the kernel's, and it is the same direction as
+# everything else in this package: `visionset.inference` is a sibling below the
+# surfaces, it imports nothing from here, and what it owns is the fact this
+# module has no way to know — which model families this build can serve. The
+# alternative is spelling that mapping a second time, which is what every other
+# rule in this file exists to prevent.
+from visionset.inference import capabilities_of
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
@@ -599,6 +606,10 @@ def connection(value: InferenceConnection) -> dict[str, Any]:
             a.value
             for a in connection_actions(value.setup_state, connection_type=value.connection_type)
         ],
+        # What its model answers, where its actions are what may be done *to* it.
+        # Empty until something has read the model's own config — see
+        # ``InferenceConnection.model_family``.
+        "capabilities": [c.value for c in capabilities_of(value.model_family)],
         "created_at": _moment(value.created_at),
         "updated_at": _moment(value.updated_at),
     }

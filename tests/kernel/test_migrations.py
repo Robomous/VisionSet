@@ -178,6 +178,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE batch DROP COLUMN parent_batch_id"))
         connection.execute(text("ALTER TABLE annotation DROP COLUMN job_id"))
         connection.execute(text("ALTER TABLE annotation_schema DROP COLUMN provenance"))
+        connection.execute(text("ALTER TABLE inference_connection DROP COLUMN model_family"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 1"))
     store.close()
 
