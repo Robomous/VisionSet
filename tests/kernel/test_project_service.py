@@ -7,6 +7,7 @@ test — and the release here exists only to be cascaded away and to name a blob
 that must survive it.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -212,10 +213,34 @@ def test_a_project_reads_back_by_id(tmp_path: Path) -> None:
     workspace.close()
 
 
-def test_getting_an_unknown_project_is_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("call", "match"),
+    [
+        pytest.param(lambda ps: ps.get(uuid4()), "no project", id="by-id"),
+        # A different refusal because it is a different question: this one names
+        # what was searched for rather than an id nobody typed.
+        pytest.param(lambda ps: ps.get_by_name("signs"), "no project named", id="by-name"),
+        pytest.param(lambda ps: ps.rename(uuid4(), "signs"), None, id="renaming"),
+        # Both spellings of delete, because nothing destructive is being guarded
+        # when the target does not exist and the confirmation must not change that.
+        pytest.param(lambda ps: ps.delete(uuid4(), confirm=False), None, id="deleting-unconfirmed"),
+        pytest.param(lambda ps: ps.delete(uuid4(), confirm=True), None, id="deleting-confirmed"),
+        pytest.param(lambda ps: ps.stats(uuid4()), None, id="stats"),
+    ],
+)
+def test_naming_a_project_that_does_not_exist_is_refused(
+    tmp_path: Path, call: Callable[[ProjectService], object], match: str | None
+) -> None:
+    """Every entry point that takes a project refuses the same way.
+
+    The two delete rows are the input space this table is not allowed to shrink:
+    ``confirm`` is orthogonal to whether the project exists, and a delete that
+    checked the flag first would answer the wrong refusal to an unconfirmed call
+    against a project that was never there.
+    """
     workspace, projects = _service(tmp_path)
-    with pytest.raises(ProjectNotFound, match="no project"):
-        projects.get(uuid4())
+    with pytest.raises(ProjectNotFound, match=match):
+        call(projects)
     workspace.close()
 
 
@@ -252,13 +277,6 @@ def test_a_name_resolves_after_normalization(tmp_path: Path) -> None:
     workspace, projects = _service(tmp_path)
     project = projects.create("signs")
     assert projects.get_by_name("  signs  ") == project
-    workspace.close()
-
-
-def test_getting_an_unknown_name_is_refused(tmp_path: Path) -> None:
-    workspace, projects = _service(tmp_path)
-    with pytest.raises(ProjectNotFound, match="no project named"):
-        projects.get_by_name("signs")
     workspace.close()
 
 
@@ -365,13 +383,6 @@ def test_renaming_a_project_to_a_blank_name_is_rejected(tmp_path: Path, blank: s
     workspace.close()
 
 
-def test_renaming_an_unknown_project_is_refused(tmp_path: Path) -> None:
-    workspace, projects = _service(tmp_path)
-    with pytest.raises(ProjectNotFound):
-        projects.rename(uuid4(), "signs")
-    workspace.close()
-
-
 # --- delete: confirmation -----------------------------------------------------
 
 
@@ -408,15 +419,6 @@ def test_a_deleted_name_becomes_free_again(tmp_path: Path) -> None:
     workspace, projects = _service(tmp_path)
     projects.delete(projects.create("signs").id, confirm=True)
     assert projects.create("signs").name == "signs"
-    workspace.close()
-
-
-@pytest.mark.parametrize("confirm", [False, True], ids=["unconfirmed", "confirmed"])
-def test_deleting_an_unknown_project_is_refused(tmp_path: Path, confirm: bool) -> None:
-    """Nothing destructive is being guarded when the target does not exist."""
-    workspace, projects = _service(tmp_path)
-    with pytest.raises(ProjectNotFound):
-        projects.delete(uuid4(), confirm=confirm)
     workspace.close()
 
 
@@ -649,13 +651,6 @@ def test_stats_count_one_project_and_never_its_neighbour(tmp_path: Path) -> None
 
     assert projects.stats(mine.id).asset_count == 2
     assert projects.stats(theirs.id).asset_count == 7
-    workspace.close()
-
-
-def test_stats_for_an_unknown_project_is_project_not_found(tmp_path: Path) -> None:
-    workspace, projects = _service(tmp_path)
-    with pytest.raises(ProjectNotFound):
-        projects.stats(uuid4())
     workspace.close()
 
 

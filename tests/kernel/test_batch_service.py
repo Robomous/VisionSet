@@ -7,6 +7,7 @@ still moves through the one door.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -260,13 +261,6 @@ def test_an_empty_batch_has_no_assets_rather_than_no_answer(tmp_path: Path) -> N
     fixture.close()
 
 
-def test_reading_the_assets_of_an_unknown_batch_is_refused(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(BatchNotFound):
-        fixture.batches.assets(uuid4())
-    fixture.close()
-
-
 def test_an_asset_from_another_project_cannot_join_the_batch(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     stranger = Fixture(tmp_path, "other")
@@ -462,10 +456,50 @@ def test_batches_are_listed_in_the_order_they_were_created(tmp_path: Path) -> No
     fixture.close()
 
 
-def test_an_unknown_batch_is_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("call", "expected", "match"),
+    [
+        pytest.param(
+            lambda fx: fx.batches.get(uuid4()),
+            BatchNotFound,
+            "no batch",
+            id="getting-an-unknown-batch",
+        ),
+        pytest.param(
+            lambda fx: fx.batches.assets(uuid4()),
+            BatchNotFound,
+            None,
+            id="reading-an-unknown-batchs-assets",
+        ),
+        pytest.param(
+            lambda fx: fx.batches.repin(uuid4()),
+            BatchNotFound,
+            None,
+            id="re-pinning-an-unknown-batch",
+        ),
+        pytest.param(
+            lambda fx: fx.batches.list(uuid4()),
+            ProjectNotFound,
+            None,
+            id="listing-the-batches-of-an-unknown-project",
+        ),
+    ],
+)
+def test_naming_something_that_does_not_exist_is_refused(
+    tmp_path: Path,
+    call: Callable[[Fixture], object],
+    expected: type[Exception],
+    match: str | None,
+) -> None:
+    """The not-found answers, in one table.
+
+    The last row is the one the table exists for: three of these refuse the batch
+    and the fourth refuses the *project*, because listing is scoped by project and
+    an unknown one is not an empty listing.
+    """
     fixture = Fixture(tmp_path)
-    with pytest.raises(BatchNotFound, match="no batch"):
-        fixture.batches.get(uuid4())
+    with pytest.raises(expected, match=match):
+        call(fixture)
     fixture.close()
 
 
@@ -478,13 +512,6 @@ def test_a_batch_from_another_workspace_reads_as_missing(tmp_path: Path) -> None
         fixture.batches.get(theirs.id)
     fixture.close()
     stranger.close()
-
-
-def test_listing_the_batches_of_an_unknown_project_is_refused(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(ProjectNotFound):
-        fixture.batches.list(uuid4())
-    fixture.close()
 
 
 def test_deleting_a_batch_needs_confirmation(tmp_path: Path) -> None:
@@ -711,13 +738,6 @@ def test_annotations_already_written_keep_the_version_they_were_stamped_with(
 
     with fixture.workspace.unit_of_work() as uow:
         assert [a.schema_version for a in uow.annotations.list(fixture.assets[0])] == [1]
-    fixture.close()
-
-
-def test_re_pinning_an_unknown_batch_is_not_found(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(BatchNotFound):
-        fixture.batches.repin(uuid4())
     fixture.close()
 
 

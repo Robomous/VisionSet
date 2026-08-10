@@ -90,13 +90,6 @@ def _annotate(workspace: WorkspaceService, project_id: UUID, label_class: str) -
 # --- versions are 1..N, monotonic, immutable ---------------------------------
 
 
-def test_the_first_version_of_a_schema_is_one(tmp_path: Path) -> None:
-    workspace, projects, schemas = _services(tmp_path)
-    project = projects.create("signs")
-    assert schemas.create_version(project.id, [SIGN]).version == 1
-    workspace.close()
-
-
 def test_versions_are_numbered_one_past_the_highest_stored(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")

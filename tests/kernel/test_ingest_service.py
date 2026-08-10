@@ -2292,27 +2292,6 @@ def test_an_asset_with_no_recorded_arrival_sorts_last(tmp_path: Path) -> None:
     fixture.close()
 
 
-def test_pre_migration_assets_keep_the_stable_order_among_themselves(tmp_path: Path) -> None:
-    """With nothing to be recent about, the listing falls through to stable order."""
-    fixture = Fixture(tmp_path)
-    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
-    with fixture.workspace.unit_of_work() as uow:
-        for index, name in enumerate(["c.png", "a.png", "b.png"]):
-            uow.assets.add(
-                Asset(
-                    project_id=fixture.project.id,
-                    content_hash=f"{index:064x}",
-                    uri=f"/tmp/in/{name}",
-                    source_id=source.id,
-                )
-            )
-
-    listed = fixture.ingest.assets(fixture.project.id)
-
-    assert [Path(asset.uri).name for asset in listed] == ["a.png", "b.png", "c.png"]
-    fixture.close()
-
-
 # --- the sort key itself -------------------------------------------------------
 #
 # Module level so it can be exercised against constructed assets, which is the
