@@ -322,6 +322,35 @@ it("draws no bar when the published size could not be read", async () => {
   expect(screen.queryByTestId("download-bar")).toBeNull();
 });
 
+it("never re-reads a list nothing is moving in", async () => {
+  // The other half of the conditional poll, and the half a browser cannot be
+  // asked about: asserting that nothing happens over an interval means waiting on
+  // a clock, which `tests/scripts/e2e_discipline` forbids in a spec for the
+  // reason it gives. Here the request log is the state, and jsdom's scheduler is
+  // not the thing under test.
+  let reads = 0;
+  handlers.push((request) => {
+    if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
+    reads += 1;
+    return {
+      status: 200,
+      body: {
+        items: [connection({ setup_state: "ready", allowed_actions: ["update", "delete"] })],
+        total: 1,
+      },
+    };
+  });
+
+  render(mount(<InferenceScreen />));
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-status").textContent).toContain("Ready"),
+  );
+
+  const first = reads;
+  await new Promise((done) => setTimeout(done, DOWNLOAD_POLL_MS * 2));
+  expect(reads).toBe(first);
+}, 15_000);
+
 it("shows no progress for a connection that has never been downloaded", async () => {
   listing([connection()]);
   render(mount(<InferenceScreen />));

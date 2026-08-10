@@ -10,9 +10,14 @@
  * comes back still knows a transfer is running. `page.reload()` is the assertion,
  * and there is no jsdom equivalent of it.
  *
- * It is also where the *poll* is real. The interval is wall-clock and conditional
- * on the wire, so "keeps asking while a download is live, stops when it settles"
- * is a statement about time passing in a browser.
+ * It is also where the *poll* is real: the bar below moves because a timer fired
+ * and an answer changed, with nothing clicked after the screen opened.
+ *
+ * What is **not** here is the counting half — *and it stops asking once nothing is
+ * moving*. That is a claim that nothing happens over an interval, and the only way
+ * to make it in a browser is to wait on a clock, which `tests/scripts/e2e_discipline`
+ * forbids for the reason it gives. It is asserted in `inference.test.tsx`, which
+ * can count requests without a browser scheduler deciding the outcome.
  *
  * ## The wire is stubbed and the screen is not
  *
@@ -69,16 +74,11 @@ function connection(setup: "not_set_up" | "ready", download: Download | null): u
  * every request, so what a test changes is the *workspace*, and the screen reads
  * it the way it reads a server.
  */
-async function serveApi(
-  page: Page,
-  next: () => unknown,
-  counted?: { reads: number },
-): Promise<void> {
+async function serveApi(page: Page, next: () => unknown): Promise<void> {
   await page.route("**/api/session", (route) => route.fulfill({ json: { issued: false } }));
-  await page.route("**/api/inference/connections*", (route) => {
-    if (counted !== undefined) counted.reads += 1;
-    return route.fulfill({ status: 200, json: { items: [next()], total: 1 } });
-  });
+  await page.route("**/api/inference/connections*", (route) =>
+    route.fulfill({ status: 200, json: { items: [next()], total: 1 } }),
+  );
   await page.route("**/api/projects**", (route) =>
     route.fulfill({ status: 200, json: { items: [], total: 0 } }),
   );
@@ -134,30 +134,28 @@ test("a transfer left running is where it got to when you come back", async ({ p
   await expect(page.getByTestId("download-progress-prose")).toHaveText("1.2 GB of 1.6 GB · 75%");
 });
 
-test("the bar follows the transfer, and the poll stops when it settles", async ({ page }) => {
-  const counted = { reads: 0 };
+test("the bar moves on the poll alone, and stops being a bar when it lands", async ({ page }) => {
+  // Nothing is clicked after the screen opens. Every number below arrives because
+  // a timer fired, a request went out, and the answer changed — which is the one
+  // part of this feature that only a browser can be asked about.
   let done = 0.8 * GIGABYTE;
   let settled = false;
-  await serveApi(
-    page,
-    () =>
-      settled
-        ? connection("ready", {
-            state: "succeeded",
-            bytes_done: 1.6 * GIGABYTE,
-            bytes_total: 1.6 * GIGABYTE,
-          })
-        : connection("not_set_up", {
-            state: "running",
-            bytes_done: done,
-            bytes_total: 1.6 * GIGABYTE,
-          }),
-    counted,
+  await serveApi(page, () =>
+    settled
+      ? connection("ready", {
+          state: "succeeded",
+          bytes_done: 1.6 * GIGABYTE,
+          bytes_total: 1.6 * GIGABYTE,
+        })
+      : connection("not_set_up", {
+          state: "running",
+          bytes_done: done,
+          bytes_total: 1.6 * GIGABYTE,
+        }),
   );
   await openInference(page);
   await expect(page.getByTestId("download-progress-prose")).toContainText("50%");
 
-  // The bar moves on the poll alone — nothing here clicks anything.
   done = 1.4 * GIGABYTE;
   await expect(page.getByTestId("download-progress-prose")).toContainText("88%");
 
@@ -165,22 +163,23 @@ test("the bar follows the transfer, and the poll stops when it settles", async (
   await expect(page.getByTestId("connection-status")).toContainText("Ready");
   // The success treatment is the row's own status; the bar goes with the transfer.
   await expect(page.getByTestId("download-progress")).toHaveCount(0);
-
-  // And the timer stops rather than re-reading a list nothing is moving.
-  const after = counted.reads;
-  await page.waitForTimeout(5_000);
-  expect(counted.reads).toBe(after);
 });
 
-test("a connection that is not downloading is not polled at all", async ({ page }) => {
-  const counted = { reads: 0 };
-  await serveApi(page, () => connection("ready", null), counted);
+test("arriving after a transfer finished shows the row and no bar", async ({ page }) => {
+  // The record stays on the connection once the job settles — it answers *what
+  // happened last time* — and a settled record is not something to draw a bar for.
+  await serveApi(page, () =>
+    connection("ready", {
+      state: "succeeded",
+      bytes_done: 1.6 * GIGABYTE,
+      bytes_total: 1.6 * GIGABYTE,
+    }),
+  );
   await openInference(page);
-  await expect(page.getByTestId("connection-status")).toContainText("Ready");
 
-  const first = counted.reads;
-  await page.waitForTimeout(5_000);
-  expect(counted.reads).toBe(first);
+  await expect(page.getByTestId("connection-status")).toContainText("Ready");
+  await expect(page.getByTestId("download-progress")).toHaveCount(0);
+  await expect(page.getByTestId("download-error")).toHaveCount(0);
 });
 
 test("a transfer that failed while nobody was watching still says why", async ({ page }) => {
