@@ -2,10 +2,10 @@
  * The combinators, one case per branch the generator can emit.
  *
  * Every fixture here is hand-written and every expectation is stated by a person.
- * That is the whole design of this file: `tests/scripts/checks_conformance.test.mjs`
- * compares the generated checks against a second reader of the same spec, which is a
- * strong test of *agreement* and no test at all of whether either one is right. This
- * file is where "right" is asserted, by someone who read the contract.
+ * That is the whole design of this file: `./conformance.test.ts` compares the generated
+ * checks against a second reader of the same spec, which is a strong test of *agreement*
+ * and no test at all of whether either one is right. This file is where "right" is
+ * asserted, by someone who read the contract.
  *
  * Each `it` fails if its branch is deleted from `check.ts`, which is the mutation
  * claim stated as a checklist rather than run as a tool.

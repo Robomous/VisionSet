@@ -23,15 +23,16 @@
  * widens a `const` fails the build. Four of the six ways the generator can be wrong
  * are caught before any test runs. The two it cannot catch — a dropped nullable and
  * an over-strict extra field — are both *over*-validation, and they are what
- * `tests/scripts/checks_conformance.test.mjs` exists for.
+ * `./conformance.test.ts` exists for.
  *
  * ## Three rules, each of which is a decision
  *
  * **Unknown keys are allowed.** `additionalProperties: false` in the spec constrains
  * what pydantic *accepts*, not what the server may one day *send*. A client that
  * refused a response because it grew a field would turn every additive, backward-
- * compatible API change into a broken page. Forward compatibility wins, and a test
- * pins it so it cannot be tightened by accident.
+ * compatible API change into a broken page. Forward compatibility wins, and two tests
+ * pin it so it cannot be tightened by accident — `./check.test.ts` on the combinators
+ * and `./conformance.test.ts` across every generated check.
  *
  * **`format` is not validated.** `uuid` and `date-time` are checked as `string` and
  * nothing more. A renderer is protected by the *type*; rejecting a legal ISO-8601

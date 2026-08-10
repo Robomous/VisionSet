@@ -51,6 +51,7 @@ All work in the worktree; never the primary checkout. Conventional commits in lo
 - **`git add` new files before trusting any local check run.** Several gates read `git ls-files` — the index, not the working tree — so an untracked new file is invisible to them and passes locally while failing in CI. — 2026-08 run, T4
 - **After a rebase or merge that brings in commits you did not write, lint the *whole tree*** — `ruff check .`, not the files you touched. A rename is a whole-tree fact: your branch renames a symbol, somebody else's branch adds a *new* use of the old name, and git merges both without a conflict because they are different lines. Re-running the tests you edited proves nothing either when the surviving use is a type annotation, which is never evaluated. #339 renamed a test double; #281 landed mid-flight with a fixture annotated on the old name; every targeted pytest module passed and CI answered `F821`. — #339
 - **A test double must not encode invisible-order or frozen-state semantics.** Put defaults in the *unmatched-request fallback* so an explicit stub always wins whichever order it was registered in, and derive stub responses from the state the test walks rather than from frozen literals. Both failure modes make a test assert against the fixture instead of the code, and both are silent. — 2026-08 run, T6/T7/T10
+- **A test double is constructed against the real signature it doubles, and an absence assertion requires its positive path proven in the same test file.** The two halves are one rule because they fail together: a double built from a remembered signature does not run the code under test at all, and the assertion that then passes is almost always an absence — *nothing was written*, *no download started*, *the field did not change* — which a double that raises on entry satisfies vacuously. So: read the real callable or model before writing the fake (field names included — a fake `IntegrityReport` spelled one field differently made a check that never ran look like a check that found nothing), and never let a "nothing happened" assertion stand alone. Somewhere in the same file, the same double must be shown making something happen; if no test in the file exercises the positive path, the absence proves the fake is broken and not that the code is right. — #491, #496
 - **A new rule is verified by breaking it — and the harness that breaks it lies in three ways unless you hold it to these.** A test that passed the moment it was written has not been shown to fail; deliberately violating the rule it guards is the only thing that tells a test from a description. Every one of the three below has already cost a run:
 
   - **Commit the work before the first mutation.** To a directory-wide revert, your uncommitted implementation and the mutation are the same edit. `git checkout -- frontend` after one mutation reverted ~20 files of finished work — and left the mutation in place, because it lived in a file git was not yet tracking. Three more then stacked on that same file and the next run came back as unrelated-looking red spread across the suite, which reads as a broken implementation rather than as a broken harness.
@@ -111,6 +112,25 @@ git fetch --prune
 ```
 
 If not merged at session end: leave the worktree, report path + branch + PR URL + CI status.
+
+**Neither of the two commands above reports its own success honestly, and both lie in the
+direction of "something went wrong" when nothing did.** Confirm the state, never the exit
+code — a cleanup phase re-run against an already-clean remote is how a session invents work
+for itself at four in the morning.
+
+- **`gh pr merge` run from a worktree can exit non-zero while the merge and the branch
+  deletion both completed.** It squashes, deletes the remote branch, and then tries to check
+  out `main` locally to fast-forward it — which fails with
+  `fatal: 'main' is already used by worktree at …`, because the primary checkout holds it.
+  The exit code belongs to that last step and says nothing about the merge. Verify by SHA:
+  `gh pr view <n> --json state,mergedAt,mergeCommit`. Do not re-run the merge.
+- **`git ls-remote --heads` can race GitHub's branch deletion**, which is asynchronous and
+  lands a few seconds after the API call returns. A branch still listed immediately after a
+  `--delete-branch` merge is usually not a branch that survived. Sleep a few seconds and ask
+  again before concluding that manual cleanup is needed — and if it *is* still there on the
+  second reading, delete it explicitly rather than assuming the merge was partial.
+
+— 2026-08 inference line
 
 ### Background processes you spawned
 

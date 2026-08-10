@@ -542,6 +542,13 @@ which leaves every one-line select on the contract's 36px. **Nothing truncates**
 identifier cut off in the middle is not an identifier, so a long one wraps. The specimen is
 on the styleguide page.
 
+**Indeterminate progress renders as prose, never as a bar** (#494, 2026-08-10). `Progress`
+draws an indeterminate value as an empty track, and an empty track reads as *0%* — a lie in
+the one case where the truth is *this is going, and nobody can say how far*. So a run whose
+total is unknown gets the sentence and no bar at all; the bar appears when there is a
+fraction to draw. Giving the primitive an indeterminate animation would change this rule,
+which makes it a design decision and not a screen's to take in passing.
+
 ### Lists and filtering
 
 Any list that can exceed ~20 rows carries a filter input. Filtering is client-side and
