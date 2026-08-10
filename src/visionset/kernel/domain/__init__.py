@@ -78,6 +78,7 @@ from visionset.kernel.domain.inference import (
     ConnectionType,
     DownloadSize,
     InferenceConnection,
+    ModelCapability,
     Precision,
     precisions_for,
 )
@@ -296,6 +297,7 @@ __all__ = [
     "Manifest",
     "ManifestAnnotation",
     "ManifestAsset",
+    "ModelCapability",
     "MembershipChange",
     "Partition",
     "PointPrompt",

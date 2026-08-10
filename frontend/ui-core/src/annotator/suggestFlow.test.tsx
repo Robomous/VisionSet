@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
+import { clearPrefs, writePref } from "../data/prefs";
 import { writeToken } from "../data/session";
 import { AnnotationPage } from "./AnnotationPage";
 import { TooltipProvider } from "../primitives/Menu";
@@ -37,6 +38,8 @@ const ASSET = "44444444-4444-4444-8444-444444444444";
 /** The second frame, so "switching assets discards" has somewhere to switch to. */
 const ASSET_TWO = "55555555-5555-4555-8555-555555555555";
 const CONNECTION = "66666666-6666-4666-8666-666666666666";
+/** A second capable connection, so "which one" is a question worth asking. */
+const OTHER_CONNECTION = "88888888-8888-4888-8888-888888888888";
 const MODEL_REF = "facebook/sam2-hiera-base-plus@main";
 
 const SCHEMA = {
@@ -70,7 +73,10 @@ let connections: readonly Record<string, unknown>[] = [];
 let suggestion: Record<string, unknown> | null = null;
 let suggestRefusal: { status: number; code: string; message: string } | null = null;
 
-function connectionRow(setup: "ready" | "not_set_up"): Record<string, unknown> {
+function connectionRow(
+  setup: "ready" | "not_set_up",
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     id: CONNECTION,
     name: "local sam",
@@ -82,9 +88,33 @@ function connectionRow(setup: "ready" | "not_set_up"): Record<string, unknown> {
     endpoint_url: null,
     setup_state: setup,
     allowed_actions: [],
+    // What the server resolved from this model's own config. A row that has
+    // never been downloaded declares nothing, which is why the default only
+    // makes sense beside `setup`.
+    capabilities: setup === "ready" ? ["point_suggest"] : [],
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
+    ...overrides,
   };
+}
+
+/** A second connection this tool could equally go through. */
+function theOtherSam(): Record<string, unknown> {
+  return connectionRow("ready", {
+    id: OTHER_CONNECTION,
+    name: "the big one",
+    model_id: "facebook/sam2-hiera-large",
+  });
+}
+
+/** The workspace as it was observed: one ready connection, and it answers words. */
+function aDetector(): Record<string, unknown> {
+  return connectionRow("ready", {
+    id: "77777777-7777-4777-8777-777777777777",
+    name: "grounding dino",
+    model_id: "IDEA-Research/grounding-dino-tiny",
+    capabilities: ["text_detect"],
+  });
 }
 
 function assetRow(id: string, hash: string): Record<string, unknown> {
@@ -150,6 +180,9 @@ function answer(path: string): unknown {
 
 beforeEach(() => {
   sent.length = 0;
+  // The remembered model choice is a preference like any other, and a test
+  // that inherited the last one's would pass alone and fail in a suite.
+  clearPrefs();
   connections = [connectionRow("ready")];
   suggestion = {
     model_ref: MODEL_REF,
@@ -552,6 +585,75 @@ describe("when there is nothing to suggest through (D6)", () => {
     await open();
     await arm();
     await screen.findByTestId("suggest-not-ready");
+  });
+
+  it("says why it cannot run over a workspace whose model answers words", async () => {
+    // The reproduction, exactly as observed: `grounding-dino-tiny` is the only
+    // ready connection. Every click used to round-trip and come back with a
+    // truthful `UnsupportedPrompt` refusal — the tool was offered where it could
+    // never work, and the server said so one click at a time.
+    connections = [aDetector()];
+    await open();
+    await arm();
+    await screen.findByTestId("suggest-not-capable");
+  });
+
+  it("sends no request at all over one, which is the half the server cannot fix", async () => {
+    connections = [aDetector()];
+    await open();
+    await arm();
+    await screen.findByTestId("suggest-not-capable");
+    clickCanvas();
+
+    expect(asks()).toHaveLength(0);
+  });
+
+  it("says the weights are missing before it says the model is the wrong kind", async () => {
+    // An undownloaded connection has no capability *yet* — nothing has read its
+    // config. Ranking capability first would tell somebody their SAM connection
+    // answers the wrong question when the truth is that it has not arrived.
+    connections = [connectionRow("not_set_up")];
+    await open();
+    await arm();
+    await screen.findByTestId("suggest-not-ready");
+    expect(screen.queryByTestId("suggest-not-capable")).toBeNull();
+  });
+
+  it("suggests through the capable connection when a workspace holds both kinds", async () => {
+    connections = [aDetector(), connectionRow("ready")];
+    await open();
+    await arm();
+    clickCanvas();
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    expect(asks()[0]?.["connection_id"]).toBe(CONNECTION);
+  });
+
+  it("remembers, per project, which of several models a click goes through", async () => {
+    // Seeded before the page mounts, which is the claim: the choice survives
+    // leaving the editor and coming back, because it is read at mount rather
+    // than held in the session.
+    connections = [connectionRow("ready"), theOtherSam()];
+    writePref(`suggest.connection.${PROJECT}`, OTHER_CONNECTION);
+    await open();
+    await arm();
+    clickCanvas();
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    expect(asks()[0]?.["connection_id"]).toBe(OTHER_CONNECTION);
+  });
+
+  it("does not carry one project's choice into another", async () => {
+    // The key names the project, so a workspace whose two projects want
+    // different models does not have them fighting over one setting.
+    connections = [connectionRow("ready"), theOtherSam()];
+    writePref("suggest.connection.99999999-9999-4999-8999-999999999999", OTHER_CONNECTION);
+    await open();
+    await arm();
+    clickCanvas();
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    expect(asks()[0]?.["connection_id"]).toBe(CONNECTION);
   });
 
   it("sends nothing while the tool is blocked", async () => {

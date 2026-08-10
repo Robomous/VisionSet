@@ -711,6 +711,16 @@ class InferenceConnectionRow(Base):
     #: ISO-8601 with offset, never SQLite ``DATETIME``. See the module docstring.
     created_at: Mapped[str] = mapped_column(String, nullable=False)
     updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    #: Last on the class because it arrives by ``ALTER TABLE``, which SQLite
+    #: appends — the module docstring's rule, and the same pair
+    #: ``BatchRow.parent_batch_id`` and ``AnnotationSchemaRow.provenance``
+    #: already stand in.
+    #:
+    #: Nullable in the schema *and* meaningful when empty: NULL is "nobody has
+    #: read this connection's config yet", the empty string is "somebody read it
+    #: and it declared nothing". ``InferenceConnection.model_family`` carries the
+    #: reason those are worth telling apart.
+    model_family: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: Connection names are unique in the workspace, case-insensitively.

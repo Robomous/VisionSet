@@ -45,6 +45,7 @@ from uuid import UUID, uuid4
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from visionset.inference import capabilities_of
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
@@ -87,6 +88,7 @@ from visionset.kernel.domain import (
     JobAction,
     LabelClass,
     MembershipChange,
+    ModelCapability,
     Partition,
     PolygonGeometry,
     PolylineGeometry,
@@ -1634,6 +1636,23 @@ class ConnectionOut(BaseModel):
     endpoint_url: str | None
     setup_state: ConnectionSetupState
     allowed_actions: list[ConnectionAction]
+    #: What this connection's model can be asked for, and empty where nothing is
+    #: known yet: a connection whose weights have never been fetched, one whose
+    #: config declared no model type, one of a type this build cannot run, and an
+    #: ``http`` connection — which declares nothing until the remote contract
+    #: says how an endpoint states what it can do.
+    #:
+    #: **Not the same question as ``allowed_actions``, and both are needed.** An
+    #: action is something to do *to* this connection and is decided by its state;
+    #: a capability is what its model answers and is decided by the weights. A
+    #: client offering a tool wants a connection that is ``ready`` **and**
+    #: declares the capability the tool needs — being ready says the files are
+    #: here, not that they are the right kind of model.
+    #:
+    #: Empty is not a refusal to act on. It says only that this connection cannot
+    #: be relied on for a particular tool; the server still judges every request
+    #: on its own.
+    capabilities: list[ModelCapability]
     created_at: datetime
     updated_at: datetime
 
@@ -1652,6 +1671,7 @@ class ConnectionOut(BaseModel):
             allowed_actions=connection_actions(
                 connection.setup_state, connection_type=connection.connection_type
             ),
+            capabilities=capabilities_of(connection.model_family),
             created_at=connection.created_at,
             updated_at=connection.updated_at,
         )

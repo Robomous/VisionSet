@@ -418,6 +418,22 @@ want and a segmentation model proposes its shape. It runs through a model
 connection (`docs/inference.md`), and the server side of it is
 `POST /inference/suggest`.
 
+**It runs through a connection that can answer a click**, which is a narrower set
+than "the ones that are ready": only those declaring `point_suggest`. A workspace
+whose only downloaded model answers text prompts gets a panel saying so, and no
+request is sent — the server would refuse each one truthfully, which is a correct
+answer to a question the editor should not have asked. The panel tells that case
+apart from having nothing configured and from having nothing downloaded, because
+each is a different thing to go and do.
+
+Where more than one connection can answer, the panel carries a picker naming the
+model under each, and the choice is remembered **per project** — it is a
+preference about this browser, so it survives leaving the editor and does not
+become a workspace setting that everybody annotating shares. With one candidate
+there is no control at all, only a line naming what is answering. The picker
+appears on the idle card alone: changing which model answers while a proposal is
+on screen would leave a shape nothing on the card explains.
+
 The gesture:
 
 | Press | What it does |

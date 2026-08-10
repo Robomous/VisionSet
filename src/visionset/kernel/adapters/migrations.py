@@ -227,6 +227,27 @@ def _add_inference_connections(connection: Connection) -> None:
     Base.metadata.create_all(connection, tables=[Base.metadata.tables["inference_connection"]])
 
 
+def _add_model_family(connection: Connection) -> None:
+    """``inference_connection.model_family``: what kind of model this one is.
+
+    **The backfill cannot happen here, and that is a layering fact rather than a
+    shortcut.** The value is read from a model's own config, which sits in a
+    cache under the workspace root that only ``visionset.inference`` knows how to
+    address — and this module is in the kernel, which is forbidden from importing
+    it. So every existing row starts NULL, meaning *nobody has looked yet*, and
+    the look happens where the resolver already lives: at the next download, and
+    on the first read of a connection that is set up (see
+    ``visionset.inference.weights.with_families``).
+
+    NULL is therefore the honest starting value rather than a gap. It is
+    distinguishable from the empty string, which the resolver writes when it did
+    look and the config declared nothing — so a row that has been asked and
+    answered nothing is never asked again, and a row that has never been asked
+    still will be.
+    """
+    _add_column(connection, "inference_connection", "model_family")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -234,6 +255,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=4, name="job_queue", upgrade=_add_job_queue),
     Migration(version=5, name="schema_provenance", upgrade=_add_schema_provenance),
     Migration(version=6, name="inference_connections", upgrade=_add_inference_connections),
+    Migration(version=7, name="model_family", upgrade=_add_model_family),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

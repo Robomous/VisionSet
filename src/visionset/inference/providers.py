@@ -5,7 +5,9 @@ Two questions that belong together because the answer to the second depends on
 the first being cheap to ask.
 
 **Resolution is by the model's own declared family, not by the connection's
-kind.** ``ConnectionType`` says *where* a model runs — here or elsewhere — and
+kind**, and the families themselves live in ``families.py`` — one module over,
+because the same fact also decides what a connection may be *asked* for and the
+two readings must not drift. ``ConnectionType`` says *where* a model runs — here or elsewhere — and
 that is the only thing it says. It cannot say whether the weights behind a local
 connection are a detector or a segmenter, and those answer different questions:
 one takes words and one takes places. So the family is read from the model's own
@@ -15,7 +17,7 @@ with points is then refused with the port's own vocabulary rather than dying
 somewhere inside a forward pass on a shape mismatch.
 
 **And a family this build does not serve is refused rather than guessed at.**
-The two sets below are the whole of what resolves; there is no fallback. A
+``SUPPORTED_FAMILIES`` is the whole of what resolves; there is no fallback. A
 resolver with one guesses on every model it has not been told about, and the
 guess is invisible until the wrong adapter refuses the request in its own
 vocabulary — a sentence that describes a model the user does not have.
@@ -38,8 +40,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Final
 
-from visionset.inference._extra import imported, require
+from visionset.inference._extra import require
 from visionset.inference.cache import DEFAULT_PROVIDER_CAPACITY, BoundedCache
+from visionset.inference.families import (
+    DETECTOR_FAMILIES,
+    SEGMENTER_FAMILIES,
+    SUPPORTED_FAMILIES,
+    family_of,
+)
 from visionset.inference.sam_provider import LocalSamProvider
 from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.inference.weights import cache_root
@@ -49,43 +57,6 @@ from visionset.kernel.errors import (
     InferenceConnectionNotSetUp,
 )
 from visionset.kernel.ports import ModelProvider
-
-SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset({"sam2", "sam2_video"})
-"""``model_type`` values this build serves with the point-prompted adapter.
-
-**Two spellings of one architecture, and the second is not a door held open for
-later.** The published SAM 2 checkpoints — including the one the connection form
-suggests — declare ``sam2_video``, and ``transformers`` loads such a checkpoint
-into the image model deliberately, saying so as it does: *"loading a
-``sam2_video`` checkpoint into ``Sam2Model``"*. Naming only ``sam2`` sends the
-commonest point-prompt model in the product to the detector adapter, which then
-refuses a click with a sentence about text prompts.
-
-Whole models only. The locked ``transformers`` also registers
-``sam2_vision_model`` and ``sam2_hiera_det_model``, which are the encoder halves
-a full config nests rather than checkpoints anything can prompt. A connection
-naming one of those is refused below, not handed to an adapter that would look
-for a mask decoder and find none.
-"""
-
-DETECTOR_FAMILIES: Final[frozenset[str]] = frozenset({"grounding-dino", "mm-grounding-dino"})
-"""``model_type`` values this build serves with the text-prompted adapter.
-
-Narrower than "everything ``AutoModelForZeroShotObjectDetection`` accepts", and
-measured rather than assumed. ``transformers_provider`` post-processes with
-``post_process_grounded_object_detection(outputs, input_ids, …, text_threshold=…)``
-— this family's signature. The other zero-shot detectors the locked
-``transformers`` registers take a different one, with no ``input_ids`` and no
-``text_threshold``, so listing them here would claim a support that fails inside
-a post-processor instead of in a refusal a reader can act on.
-"""
-
-SUPPORTED_FAMILIES: Final[frozenset[str]] = SEGMENTER_FAMILIES | DETECTOR_FAMILIES
-"""Every ``model_type`` this build has an adapter for, and what a refusal lists.
-
-Derived rather than written a third time, so a family added to one set above
-cannot be missing from the sentence that tells somebody what they may use.
-"""
 
 _Key = tuple[str, str]
 
@@ -236,30 +207,3 @@ def _no_adapter_for(connection: InferenceConnection, family: str) -> str:
         f"model type {family!r}, and this build has no adapter for that model type; it supports "
         f"{supported} — point the connection at a model of one of those types"
     )
-
-
-def family_of(connection: InferenceConnection, *, cache_dir: Path) -> str:
-    """The ``model_type`` the downloaded config declares, or ``""`` if it cannot say.
-
-    Read from the cache rather than from the network — ``local_files_only`` — for
-    the same reason every other load in this package is: this product downloads
-    weights when somebody asks it to and at no other time.
-
-    An unreadable config answers ``""`` rather than raising: reading the files
-    and deciding what to do about them are separate jobs, and this one only
-    reports. ``""`` is not a family, so :func:`_local` refuses it — the same
-    answer it gives a type nobody here serves, because "the config says nothing"
-    and "the config says something unknown" leave the resolver equally unable to
-    pick an adapter honestly.
-    """
-    transformers = imported("transformers")
-    try:
-        config = transformers.AutoConfig.from_pretrained(
-            connection.model_id,
-            revision=connection.model_revision,
-            cache_dir=str(cache_dir),
-            local_files_only=True,
-        )
-    except Exception:  # noqa: BLE001 — see the docstring: this is a fallback, not a handler
-        return ""
-    return str(getattr(config, "model_type", "") or "")

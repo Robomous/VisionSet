@@ -95,6 +95,22 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     return seen
 
 
+#: What the faked config declares, where a test needs one.
+DOWNLOADED_FAMILY = "sam2"
+
+
+@pytest.fixture(autouse=True)
+def _the_config_read_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A finished download reads the model's config; here it does not.
+
+    Nothing in this file is about what a config says, and the real read imports
+    ``transformers`` — which ``test_configuring_a_connection_reaches_no_model_runtime``
+    asserts a full-suite process has not done. An unfaked read would fail that
+    test, in another directory, in a run whose order decided it.
+    """
+    monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: DOWNLOADED_FAMILY)
+
+
 # --- registration -------------------------------------------------------------
 
 

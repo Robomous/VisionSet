@@ -70,6 +70,36 @@ class ConnectionSetupState(StrEnum):
     READY = "ready"
 
 
+# A vocabulary of its own because neither of the other two answers the question.
+# `ConnectionType` says where a model runs and `ConnectionSetupState` says whether
+# its weights arrived; both are silent about whether this model answers the
+# question a caller is about to put to it. A tool offered without that check is a
+# tool that works by being lucky, and the editor shipped exactly that: it picked
+# the first `ready` connection, sent point prompts to a text-prompted detector,
+# and let the server refuse them one click at a time.
+#
+# **The prompt, not the answer.** A region comes back either way, so naming the
+# output would collapse the two members and lose the only distinction that decides
+# whether a request can be made at all.
+#
+# Declared here and **mapped to model families outside**: which `model_type`
+# values a build can serve is a fact about that build's optional runtime, and the
+# kernel has no view of one. `visionset.inference.families` owns the mapping,
+# beside the family sets it reads.
+#
+# The reasoning is a comment because this enum is *published*: FastAPI copies a
+# docstring verbatim into `openapi.json`, where RST markup ships as literal
+# backticks and internal rationale ships as API documentation. The docstring is
+# the sentence a client should read, on `ConnectionAction`'s terms.
+class ModelCapability(StrEnum):
+    """What a connection's model can be asked for: the kind of prompt it takes."""
+
+    #: Give me the thing under these points.
+    POINT_SUGGEST = "point_suggest"
+    #: Find everything these words name.
+    TEXT_DETECT = "text_detect"
+
+
 class Precision(StrEnum):
     """The numeric precision a local connection asks its weights to be loaded in.
 
@@ -289,6 +319,22 @@ class InferenceConnection(BaseModel):
     #: changes it, never null — "never edited" is honestly expressed as "last
     #: changed when it was made".
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    #: The ``model_type`` this connection's own downloaded config declares —
+    #: recorded when the weights arrive, because that is the first moment it is
+    #: knowable without reaching a network. Opaque to the kernel, like
+    #: ``model_id``: what a family *means* is
+    #: ``visionset.inference.families``' to say.
+    #:
+    #: **Three states, and the third is the useful one.** ``None`` is *nobody has
+    #: looked*, which is where every row written before this column existed
+    #: starts. ``""`` is *somebody looked and the config did not say* — the
+    #: answer ``family_of`` already gave to an unreadable config, kept rather
+    #: than folded into ``None`` so that a look which found nothing is not
+    #: repeated on every read. Anything else is the family itself.
+    #:
+    #: Never derived from the model id. A name is not a declaration, and
+    #: matching on one is the guessing this product removed from the resolver.
+    model_family: str | None = None
 
     @field_validator("name", "model_id", "model_revision")
     @classmethod
