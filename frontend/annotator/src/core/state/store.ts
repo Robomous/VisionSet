@@ -28,7 +28,7 @@
  *
  * ## Selection is here, and it is still not in the log
  *
- * #40 put the selection beside the document rather than inside it. "Beside" means
+ * The selection is beside the document rather than inside it. "Beside" means
  * inside the same subscribable container — a renderer painting shapes and their
  * handles wants one subscription, not two — and it still means outside the
  * history: `select` notifies subscribers and leaves `canUndo` exactly where it
@@ -37,7 +37,7 @@
  *
  * ## The snapshot's identity is load-bearing
  *
- * React's `useSyncExternalStore` — what #47's adapter will use — calls
+ * React's `useSyncExternalStore` — what the React adapter uses — calls
  * `getSnapshot` on every render and compares the result with `Object.is`. A store
  * that built a fresh object per call would re-render forever. So the snapshot is
  * cached and rebuilt only after something has actually changed. Designed in one

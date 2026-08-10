@@ -32,7 +32,7 @@ class _AnExporter:
     format_name = "an-exporter"
     lossy = False
 
-    #: #65's capability declaration. Everything, so this double's *subject* stays
+    #: The capability declaration. Everything, so this double's *subject* stays
     #: what it was — the file it writes, or the flag it sets — rather than a
     #: geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
@@ -55,7 +55,7 @@ def test_the_shipped_dummy_exporter_is_discovered() -> None:
 
 
 def test_a_discovered_exporter_declares_whether_it_is_lossy() -> None:
-    """The port widened in #30, so what discovery returns must carry the new member."""
+    """Discovery must return a plugin carrying every member of the port."""
     assert exporters()["dummy"].lossy is False
 
 
@@ -65,9 +65,8 @@ def test_exporters_are_keyed_by_what_they_call_themselves() -> None:
 
 
 def test_an_unknown_format_is_refused_by_name() -> None:
-    # A name nothing will ever register. It used to be "coco", which #63 made
-    # real — a test whose subject is "not installed" has to name something that
-    # stays that way.
+    # A name nothing will ever register — a test whose subject is "not installed"
+    # has to name something that stays that way.
     with pytest.raises(ExportFormatNotFound) as refusal:
         exporter("not-a-format")
 
@@ -111,7 +110,7 @@ def test_an_importer_is_not_an_exporter() -> None:
 def test_a_plugin_missing_the_lossy_member_is_not_an_exporter() -> None:
     """The port's newest member is load-bearing, not decoration.
 
-    A pre-#30 plugin declares ``format_name`` and ``export`` and nothing else;
+    A plugin declaring only ``format_name`` and ``export``
     it must fail the check rather than reach ``ReleaseService.export`` and raise
     ``AttributeError`` where the consent gate should have been.
     """

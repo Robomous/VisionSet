@@ -90,7 +90,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 Two ways out, because they fail differently. Re-rendering is free
                 and fixes a transient throw — a response that arrived in a shape
                 one formatter could not read, which is the shape of every one of
-                #206–#213's white screens. A reload is the one that fixes a
+                the white screens a bad response used to cause. A reload is the one that fixes a
                 module-level failure, and it is the honest fallback when the
                 first button does nothing.
               */}

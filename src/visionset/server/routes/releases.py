@@ -10,10 +10,9 @@ and the whole promise is that publishing twice from an unchanged dataset gives
 byte-identical documents; parsing one and dumping it again would put this
 build's JSON encoder between a client and the bytes the hash is *of*.
 
-**Export is queued, not synchronous**, and the limit this file used to record is
-gone: the row to poll now exists, because #328 gave the product a generic one.
-What is left of that argument is its shape — the refusals a *request* can make are
-still made on the request, and only the work moved. See ``export_release``.
+**Export is queued, not synchronous**: the caller gets a background-job row to
+poll. The refusals a *request* can make are still made on the request, and only
+the work moved. See ``export_release``.
 
 The exporter is resolved *here* rather than in the kernel. ``ReleaseService``
 takes an ``Exporter`` instance because import-linter forbids the kernel from
@@ -270,8 +269,8 @@ def export_release(
     # ``VisionSetError`` tree and would answer 500 to a caller who mistyped a
     # format name. One wording for the refusal, and it lives in the registry.
     exporter = pick(exporters, format)
-    # Synchronously, before the job exists — #28's rule that a refusal a request
-    # can make is a refusal the request makes. Discovering the consent gate in a
+    # Synchronously, before the job exists: a refusal a request can make is a
+    # refusal the request makes. Discovering the consent gate in a
     # worker would put a 409 on a row somebody has to go and read. The worker
     # checks again; that one is the guarantee, this one is the answer.
     ReleaseService(workspace).require_export_consent(release_id, exporter, allow_lossy=allow_lossy)

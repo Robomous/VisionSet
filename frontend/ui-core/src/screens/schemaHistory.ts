@@ -1,10 +1,10 @@
 /**
- * Reading a version history that annotators write into (#368).
+ * Reading a version history that annotators write into.
  *
  * ## What this exists to stop
  *
  * Before WS1 a schema version had one shape: somebody opened the Schema tab and
- * published a contract. Since #233 the annotator publishes them too, one class at
+ * published a contract. The annotator publishes them too, one class at
  * a time, mid-job — and WS4 makes a *session* of that, so one sitting can still
  * produce several. Left flat, a ledger of "every version this project declared"
  * turns into a list in which the two curated milestones somebody actually wants

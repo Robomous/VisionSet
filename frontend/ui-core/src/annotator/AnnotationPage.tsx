@@ -1,11 +1,10 @@
 /**
- * The annotation page: M4's engine meeting M3's API.
+ * The annotation page: the headless engine meeting the REST API.
  *
  * ## Autosave: there is none, and that is the documented decision
  *
- * The issue asks for "explicit save + save-on-navigate (decide autosave debounce
- * policy, document it)". The policy is **no autosave**, for three reasons that are
- * about this system rather than about taste:
+ * The page saves explicitly and on navigate. The policy is **no autosave**, for
+ * three reasons that are about this system rather than about taste:
  *
  * 1. **A save is followed by a reload.** The annotator mints client-side ids and
  *    the kernel mints its own, so the page cannot merge a save's response back in
@@ -28,8 +27,8 @@
  *
  * ## What the top bar has and what it does not
  *
- * `DESIGN.md` draws a version dropdown, create-branch and Merge. Those are #127,
- * which is post-beta and blocked on a decision nobody has taken. They used to
+ * `DESIGN.md` draws a version dropdown, create-branch and Merge. Annotation
+ * versioning is post-beta and blocked on a decision nobody has taken. They used to
  * render **disabled**, to hold the design's shape — but a disabled control with no
  * model behind it cannot be explained in the terms principle 9 asks for, because
  * the honest explanation is "this feature does not exist". So the slots are gone
@@ -38,7 +37,7 @@
  *
  * ## There is a minimum viewport, and the decision is made before anything mounts
  *
- * #184: below `ANNOTATOR_MIN_VIEWPORT_PX` this page renders an explanation
+ * Below `ANNOTATOR_MIN_VIEWPORT_PX` this page renders an explanation
  * instead of the editor. The check is in the exported component and the whole of
  * the old one moved into `JobScreen`, so a narrow viewport mounts **no store, no
  * canvas and no engine** — not a hidden one. That is not tidiness:
@@ -47,7 +46,7 @@
  * treatment would leave the editor holding a zoom nobody chose the moment
  * somebody widened the window.
  *
- * ## Reversing a skip is an action, never a side effect of drawing (#187)
+ * ## Reversing a skip is an action, never a side effect of drawing
  *
  * `progress_after_annotating` moves an asset only `unannotated ↔ annotated`, and
  * its docstring says why: `skipped` is a person's decision, and drawing a box does
@@ -218,8 +217,8 @@ import { toast } from "../primitives/Feedback";
  * declares — this is a *presentation* order over `allowed_actions`, never a
  * second opinion about legality.
  *
- * They were the bar's filled primary until #383 and are an **outline** control
- * now: the filled slot belongs to the flow verb, because the thing a person does
+ * They are an **outline** control rather than the bar's filled primary:
+ * the filled slot belongs to the flow verb, because the thing a person does
  * on nine frames out of ten is finish this one and go to the next, and submitting
  * for review is the tenth. The list itself is unchanged — what moved is which
  * variant it wears and what sits to its right.
@@ -229,7 +228,7 @@ export const REVIEW_ACTIONS: readonly {
   readonly label: string;
   readonly testId: string;
   readonly progress: "review_pending" | "accepted";
-  /** What the move means, for a product with no annotator identity (cf. #282). */
+  /** What the move means, for a product with no annotator identity. */
   readonly tooltip: string;
 }[] = [
   {
@@ -254,7 +253,7 @@ const ZOOM_STEP = 1.25;
 
 /**
  * The wire's suggestion as the engine's, or `null` for an answer with nothing in
- * it (#424).
+ * it.
  *
  * `parseGeometry` rather than a cast: it is the annotator's own *"unknown in,
  * typed out"* door, and a suggestion arrives on the same wire an annotation does.
@@ -292,8 +291,8 @@ function readSuggestion(answer: {
  * chord exists, and it is honest exactly because it names something that layer
  * already claims: `x` and `mod+s` are both rows in the default table.
  *
- * **It belongs on the bar's ghost and outline controls and on nothing else**
- * (#385). The colours are a muted box on a bordered ground, which is a
+ * **It belongs on the bar's ghost and outline controls and on nothing else.**
+ * The colours are a muted box on a bordered ground, which is a
  * *lighter-than-the-surface* treatment — on the one filled control it inverts
  * into a dark box inside a dark button and reads as a smudge rather than as a
  * key. A filled-surface variant was considered and declined: two skins for one
@@ -312,7 +311,7 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
  * The bar's divider, and the one idiom for it — `ZoomWidget` draws the same rule
  * between its own sub-groups.
  *
- * Inside the navigation cluster it carries the whole of #416's claim: the three
+ * Inside the navigation cluster it carries the whole grouping claim: the three
  * sub-groups are *instrument*, *browse* and *resolve*, and what tells them apart
  * on screen is one hairline each. Without them the cluster is eight controls in a
  * row and the browse/resolve distinction is back to being learned rather than
@@ -327,7 +326,7 @@ export interface AnnotationPageProps {
   /**
    * Which asset of the job to open on. Defaults to the first.
    *
-   * #160: a gallery tile that opened the job at its *first* asset read as the
+   * A gallery tile that opened the job at its *first* asset would read as the
    * click being ignored — press the fifth picture, get the first. An id rather
    * than a position, because the caller is holding an asset and the position is
    * this page's own idea; an id nobody in this job carries falls back to the
@@ -335,11 +334,11 @@ export interface AnnotationPageProps {
    */
   readonly initialAssetId?: string;
   /**
-   * The gallery (#55) — the batch this job's assets belong to, and this page's
+   * The gallery — the batch this job's assets belong to, and this page's
    * **parent**. Both the back arrow and the design's grid button go there.
    *
-   * #199: there used to be a separate `onBack` prop, and the app wired it to
-   * `navigate(-1)`. That is history rather than structure, so it meant a
+   * Not a `navigate(-1)`-style `onBack`: that is history rather than structure, so
+   * it means a
    * different thing depending on how the page was reached — the gallery from a
    * tile, nothing at all on a fresh tab, and one asset at a time after walking
    * forward through the job. The argument against it is the one this file already
@@ -358,12 +357,12 @@ export interface AnnotationPageProps {
   /**
    * The frame on screen, reported whenever it changes — and once on arrival.
    *
-   * #353: `initialAssetId` says where the annotator was *entered*, and the
-   * next/previous buttons move through the job without it. So the caller holding
-   * the URL had no way to keep it true, and a link pasted from frame 7 took the
-   * reader to frame 1 — silently, which is the part that makes it a defect rather
-   * than a shortfall. This is the page's half of the fix: it reports which frame
-   * it is showing, and the caller spells the address (`assetParamFor`).
+   * `initialAssetId` says where the annotator was *entered*, and the
+   * next/previous buttons move through the job without it — so without this the
+   * caller holding the URL has no way to keep it true, and a link pasted from
+   * frame 7 takes the reader to frame 1, silently. This is the page's half: it
+   * reports which frame it is showing, and the caller spells the address
+   * (`assetParamFor`).
    *
    * Reported on arrival as well as on a change, deliberately. That is what
    * corrects a `?asset=` naming an id this job does not carry: such a link
@@ -373,7 +372,7 @@ export interface AnnotationPageProps {
   readonly onAssetChange?: (assetId: string) => void;
   /**
    * Where somebody goes to set up a model connection, if the app has such a
-   * screen (#424, D6).
+   * screen.
    *
    * Optional because `ui-core` imports no router and cannot know whether its
    * host has such a screen — the app does, and wires this to the Inference
@@ -398,12 +397,11 @@ export function AnnotationPage(props: AnnotationPageProps): JSX.Element {
 }
 
 /**
- * Under the floor: what the minimum is, why there is one, and a way out (#184).
+ * Under the floor: what the minimum is, why there is one, and a way out.
  *
  * A way out matters more here than the explanation does. Somebody who followed a
  * link from a phone has no rail beside them and, on a fresh tab, no history to
- * fall back on — so a screen that only said "too small" would be the dead end
- * #199 spent a whole issue removing everywhere else.
+ * fall back on — so a screen that only said "too small" would be a dead end.
  *
  * It runs the two reads that resolve the destination — job → batch, the walk
  * `AnnotationPage` does for its own reasons — and **nothing else**. No schema, no
@@ -463,8 +461,8 @@ function JobScreen({
   // Where the caller asked to start, derived rather than seeded into state.
   //
   // The obvious spelling — `useState(0)` plus an effect that jumps once the assets
-  // arrive — is the shape #159's defect has: an effect whose one chance to run
-  // happens while the thing it needs is still absent. Here `chosen` is null until
+  // arrive — is an effect whose one chance to run happens while the thing it needs
+  // is still absent. Here `chosen` is null until
   // the *user* navigates, and `index` falls through to the requested position, so
   // there is no moment to miss and a background refetch cannot pull somebody back
   // to where they started. An id the job does not carry lands on the first asset:
@@ -472,8 +470,7 @@ function JobScreen({
   const [chosen, setChosen] = useState<number | null>(null);
 
   /**
-   * The annotator's clipboard, held **here** rather than inside the workspace
-   * (#123).
+   * The annotator's clipboard, held **here** rather than inside the workspace.
    *
    * This is the whole of cross-frame paste. `Workspace` is remounted per asset —
    * `key={asset.id}`, so an `AnnotatorStore`'s undo history cannot walk into the
@@ -490,7 +487,7 @@ function JobScreen({
   const [clipboard] = useState<Clipboard>(createClipboard);
 
   /**
-   * The drawing class, held **here** rather than in `Workspace` (#368).
+   * The drawing class, held **here** rather than in `Workspace`.
    *
    * The clipboard's argument, applied to the other thing that must outlive a
    * remount — and the reason is sharper than convenience. `Workspace` unmounts
@@ -500,11 +497,12 @@ function JobScreen({
    * different query with no data, this component falls through to
    * `LoadingState`, and everything `Workspace` was holding is gone.
    *
-   * That is what made #233's `activateClass(declared.name)` a promise the page
-   * could not keep: the class was armed and then discarded a few hundred
-   * milliseconds later by the very refetch the re-pin caused, so "you are drawing
-   * with it now" was false in exactly the flow it was written for. Nothing said
-   * so, because the field simply read `Select` again.
+   * That is what would make `activateClass(declared.name)` a promise the page
+   * could not keep after adding a class: it would be armed and then discarded a
+   * few hundred milliseconds later by the very refetch the re-pin causes, so "you
+   * are drawing with it now" would be false in exactly the flow it was written
+   * for — and nothing would say so, because the field would simply read `Select`
+   * again.
    *
    * Deliberate consequence: the drawing class now also survives moving to the
    * next frame, where it used to reset. That is the behaviour somebody labelling
@@ -517,8 +515,8 @@ function JobScreen({
    * Every route to a drawing class goes through here — the panel's list, the tool
    * strip, a digit hotkey and the canvas's own `activate-class`.
    *
-   * The recency list this used to keep went with the top-bar field (#420). It
-   * existed to order that field's rows, and the panel's list is in **schema
+   * There is no recency list. It would only order a combobox's rows, and the
+   * panel's list is in **schema
    * order** and stays there: a persistent list that reordered itself by what was
    * last used would move rows under the cursor, and the digits are schema
    * positions, so a recency-ordered list would show `3` against the row sitting
@@ -533,7 +531,7 @@ function JobScreen({
   const annotations = useAssetAnnotations(jobId, asset?.id);
 
   // Say which frame is on screen, so whoever holds the router can keep the URL
-  // true (#353). An effect rather than a line inside `onNavigate`, because the
+  // true. An effect rather than a line inside `onNavigate`, because the
   // first frame is a change too — from *no answer* to one — and that is the case
   // where the address is most often wrong: a stale `?asset=` that resolved to the
   // first asset, or no parameter at all.
@@ -577,7 +575,7 @@ function JobScreen({
       projectId={batch.data.project_id}
       assetIndex={index}
       assetCount={assets.data.length}
-      // The whole list, for the frame gallery (#390). It is data the page is
+      // The whole list, for the frame gallery. It is data the page is
       // already holding for the navigator and the `n/m` counter — the overlay
       // costs no request.
       assets={assets.data}
@@ -618,7 +616,7 @@ interface WorkspaceProps {
   readonly assetCount: number;
   /**
    * Every frame in the job, in the job's own order — what the gallery overlay
-   * draws (#390).
+   * draws.
    *
    * Beside `assetCount` rather than replacing it: the count is what the bar reads
    * and it must not start depending on the list's length, which is a different
@@ -644,7 +642,7 @@ interface WorkspaceProps {
   readonly schema: unknown;
   /** The version the batch pinned at approval — what every write here is judged against. */
   readonly schemaVersion: number | null;
-  /** The batch this job belongs to. The re-pin in #233's chain addresses it. */
+  /** The batch this job belongs to. The add-a-class chain re-pins it. */
   readonly batchId: string;
   readonly loaded: readonly WireAnnotation[];
   readonly counts: {
@@ -654,7 +652,7 @@ interface WorkspaceProps {
     /**
      * With `unannotated`, the other state that blocks the job's `complete` —
      * `outstandingWork` sums exactly the two, and the Finish-job tooltip reads
-     * that sum (#427). The full five-field model arrives from the wire; this
+     * that sum. The full five-field model arrives from the wire; this
      * type names only what the page consumes.
      */
     readonly review_pending: number;
@@ -666,7 +664,7 @@ interface WorkspaceProps {
   readonly onActivateClass: (labelClass: string | null) => void;
   readonly onNavigate: (index: number) => void;
   readonly onOpenGallery?: () => void;
-  /** #424's D6 destination, if the host has one. See `AnnotationPageProps`. */
+  /** Where to set up a model connection, if the host has such a screen. */
   readonly onConfigureInference?: () => void;
 }
 
@@ -682,8 +680,8 @@ interface WorkspaceProps {
  * `annotations.dataUpdatedAt`, to rebuild the store after a save — and that was a
  * real bug: `dataUpdatedAt` moves on *every* refetch, including the background ones
  * `staleTime` and window focus produce, so the whole workspace remounted every few
- * seconds and took any unsaved work with it. #59's cycle found it as a panel button
- * that could never be clicked because the element kept detaching.
+ * seconds and took any unsaved work with it — observed as a panel button that
+ * could never be clicked, because the element kept detaching.
  *
  * What rebuilds the store after a save is the `useMemo` below, keyed on `loaded`.
  * TanStack Query structurally shares its results, so a refetch that finds identical
@@ -731,7 +729,7 @@ function Workspace({
   const [helpOpen, setHelpOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   /**
-   * Which shape's class picker is open, if any (#380).
+   * Which shape's class picker is open, if any.
    *
    * An id rather than a boolean, so the state cannot outlive its subject — see
    * `CanvasReassign`. Held here rather than inside that component because the
@@ -750,7 +748,7 @@ function Workspace({
    */
   const [newClassName, setNewClassName] = useState("");
   /**
-   * The panel's class filter, for `c` (#420).
+   * The panel's class filter, for `c`.
    *
    * A ref rather than a piece of state, because the keystroke arrives at the
    * annotator's own keyboard root and what it wants is *focus* — and focus is
@@ -770,7 +768,7 @@ function Workspace({
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
 
   /**
-   * The suggest session (#424, D4) — **here, and outside the store on purpose.**
+   * The suggest session — **here, and outside the store on purpose.**
    *
    * The whole of ephemerality is where this lives. `AnnotatorStore` is the
    * document and its history; a pending suggestion is neither, so it is held as
@@ -782,11 +780,11 @@ function Workspace({
    * In `Workspace` rather than in `JobScreen`, which is the opposite call from
    * `activeClass` and `clipboard` — and the difference is exactly what those two
    * are for. They live one level up so they *survive* the per-asset remount; a
-   * suggestion must not. D2 says switching assets discards, and the `key={asset.id}`
+   * suggestion must not. Switching assets discards it, and the `key={asset.id}`
    * remount is that rule enforced by construction rather than by an effect
    * somebody has to remember to write.
    *
-   * It survives a **class** switch, though, since #472 — see the effect below.
+   * It does survive a **class** switch — see the effect below.
    */
   const [session, setSession] = useState<SuggestionState | null>(null);
 
@@ -875,9 +873,9 @@ function Workspace({
    * Through `addAnnotationCommand` — the same command a finished draw produces —
    * so the write path, the undo step and the save diff are all the ones that
    * already exist. The frame enters at `annotated` through the normal settle,
-   * which is the Decision (Armando, 2026-08-07) on #424: an interactively
-   * accepted suggestion is not a *silent* write, so #418's `review_pending`
-   * constraint governs unattended batch prediction and not this.
+   * which is the decision that matters here: an interactively accepted suggestion
+   * is not a *silent* write, so the `review_pending` constraint governs unattended
+   * batch prediction and not this.
    *
    * The session is cleared rather than disarmed: somebody who accepted one shape
    * is usually about to click the next thing.
@@ -904,13 +902,12 @@ function Workspace({
   const suggestibleClass = suggestibleClassIn(store.document.schema, activeClass);
 
   /**
-   * The active class moved, and the tool goes with it (#472).
+   * The active class moved, and the tool goes with it.
    *
-   * **This is the behaviour #451 shipped, deliberately reversed.** That slice
-   * discarded the session whenever the active class left the one it captured, on
-   * the reading that moving the active class is how this build spells switching
-   * tools (D2). Directed (Armando, 2026-08-09): arming is a decision about how to
-   * work and picking a class is the next thing somebody does, so a class switch
+   * Discarding the session whenever the active class leaves the one it captured
+   * reads as consistent — moving the active class is how this build spells
+   * switching tools — and it is wrong: arming is a decision about how to work and
+   * picking a class is the next thing somebody does, so a class switch
    * ends what is *pending* and not the session. `withClass` is the whole rule —
    * swap, discard the preview, or park — and it returns the state by identity when
    * the class did not really move, so this can fold unconditionally.
@@ -930,7 +927,7 @@ function Workspace({
   }, [suggestibleClass]);
 
   /**
-   * The one capability the canvas hands out rather than owning (#189).
+   * The one capability the canvas hands out rather than owning.
    *
    * It used to be `(name) => name === TOGGLE_HELP` — which returns **true**, the
    * value that means *the host handled this*, while rendering nothing. So `?`
@@ -944,8 +941,8 @@ function Workspace({
       setHelpOpen((open) => !open);
       return true;
     }
-    // `c` (#368). Still claimed while read-only, where it does nothing: the
-    // classes region is absent there (#426), so the ref holds null and the
+    // `c`. Still claimed while read-only, where it does nothing: the
+    // classes region is absent there, so the ref holds null and the
     // focus call is a no-op — which is exactly what "C does nothing" means,
     // with no second spelling of the mode to keep in step.
     if (name === FOCUS_CLASS_FIELD) {
@@ -958,7 +955,7 @@ function Workspace({
       if (!readOnly) attempt();
       return true;
     }
-    // `↵` (#383) — the chord the flow verb shows on its own button, and the same
+    // `↵` — the chord the flow verb shows on its own button, and the same
     // `go(1)` it calls, so there is one save-first advance and not a keyboard
     // copy of one. The last frame answers nothing, which is what `go` does with a
     // move it cannot make; the button is not rendered there either.
@@ -966,14 +963,14 @@ function Workspace({
       go(1);
       return true;
     }
-    // `x` (#383). Gated on the wire's own declaration rather than on this page's
+    // `x`. Gated on the wire's own declaration rather than on this page's
     // reading of the progress — the same `declares` the button is disabled by, so
     // the chord cannot reach a move the button would refuse.
     if (name === SKIP_FRAME) {
       if (declares(asset, ASSET_ACTION.skip) && !setProgress.isPending) settle("skipped");
       return true;
     }
-    // `s` (#424). Claimed even where it does nothing — a read-only frame still
+    // `s`. Claimed even where it does nothing — a read-only frame still
     // has to swallow the chord rather than let a bare letter reach the page
     // around the canvas, which is why the registry claims it at all.
     if (name === TOGGLE_SUGGEST) {
@@ -999,7 +996,7 @@ function Workspace({
   const registry = useMemo(() => defaultRegistry(store.document.schema), [store]);
 
   const save = useSaveAnnotations(jobId, asset.id);
-  // #233's chain. The *active* schema, not this batch's pin: the next version is
+  // The add-a-class chain. The *active* schema, not this batch's pin: the next version is
   // composed on what the project declares now, and the pin is what moves onto it.
   //
   // **Only while a surface that needs it is open**, and that is a rule rather
@@ -1024,11 +1021,11 @@ function Workspace({
    * batch itself has not been opened.
    *
    * Both are moves somebody has to make, and on this path there is nobody else.
-   * The job's half is #59's finding: `pending → in_progress` was a move nothing
-   * in the browser made, so `JobService.complete` would have refused forever.
-   * The batch's half is #299's, from the other end of the lifecycle: approval
+   * Without the job's half, `pending → in_progress` is a move nothing
+   * in the browser makes, so `JobService.complete` refuses forever.
+   * Without the batch's half, from the other end of the lifecycle: approval
    * cuts the jobs, so the workspace offers `Start annotating` and every tile
-   * opens here — but only the batch table's own `Start` button ever sent
+   * opens here — but only the batch table's own `Start` button ever sends
    * `POST /batches/{id}/start`, and the workspace flow bypasses the table. An
    * `approved` batch refuses the job start *and* every save with
    * `BATCH_NOT_IN_ANNOTATION`, which is what a person saw: a page that draws
@@ -1050,13 +1047,13 @@ function Workspace({
    * and the setter survive either way. It surfaces in its **own** slot beside
    * the save state, rather than being discovered at Save.
    *
-   * ## Whether to send: the wire's answer, not this page's arithmetic (#319)
+   * ## Whether to send: the wire's answer, not this page's arithmetic
    *
-   * The gates were `batchState !== "approved"` and `jobState !== "pending"` —
-   * two rows of `BATCH_TRANSITIONS` and `JOB_TRANSITIONS` restated here, which
-   * is the hand-mirror the capabilities contract exists to delete. Both are now
+   * Gating on `batchState !== "approved"` and `jobState !== "pending"` would
+   * restate two rows of `BATCH_TRANSITIONS` and `JOB_TRANSITIONS` here, which
+   * is the hand-mirror the capabilities contract exists to delete. Both are
    * `declares(...)`, so the question "may this move be made" has one answer and
-   * the kernel gives it. It reads the same today and cannot drift tomorrow.
+   * the kernel gives it.
    *
    * ## Already-made is not a failure, and this is what made the suite flake
    *
@@ -1157,7 +1154,7 @@ function Workspace({
             // labeling an asset: somebody needed a class that was not there and
             // the version is a side effect of that, not a decision about the
             // contract. It is what lets a version history collapse a run of these
-            // and still show every version authored in the schema editor (#368).
+            // and still show every version authored in the schema editor.
             createVersion.mutateAsync({ classes, description, provenance: "annotation" }),
           // Asked before anything is published, which is the whole of F23: the
           // chain used to publish and *then* discover the pin would not move.
@@ -1281,7 +1278,7 @@ function Workspace({
   }
 
   /**
-   * `skipped → unannotated`, the only edge out (#187).
+   * `skipped → unannotated`, the only edge out.
    *
    * Deliberately **not** `settle`: settling an asset is finishing with it and
    * advancing, while reversing a skip is the opposite — the user came back to this
@@ -1299,13 +1296,13 @@ function Workspace({
 
   /**
    * Whether this is an editor or a viewer — the one derivation the whole page
-   * turns on (audit finding F2).
+   * turns on.
    *
    * `annotate` is the wire's name for *the right to write labels here at all*,
    * and the kernel derives it from all three dimensions: the batch must be
-   * `in_annotation`, the job must still be open (`OPEN_JOB_STATES`, #439), **and**
+   * `in_annotation`, the job must still be open (`OPEN_JOB_STATES`), **and**
    * the frame's progress must be one the labels can still move with
-   * (`WRITABLE_PROGRESS`, which #304 made a real gate rather than a convention).
+   * (`WRITABLE_PROGRESS`).
    * So one question answers "is this batch closed", "is this job finished" and
    * "is this frame settled" alike, and none of the three is re-derived here.
    *
@@ -1320,7 +1317,7 @@ function Workspace({
   const readOnly = !canAnnotate;
 
   /**
-   * The session, gated on the mode rather than torn down by an effect (#424).
+   * The session, gated on the mode rather than torn down by an effect.
    *
    * A frame that becomes a viewer under somebody — `ui-capabilities`: *"read-only
    * is a transition, not only an entry state"* — must not keep a preview offering
@@ -1331,7 +1328,7 @@ function Workspace({
   const suggesting = readOnly ? null : session;
 
   /**
-   * The session as the **canvas** sees it — which is `null` while parked (#472).
+   * The session as the **canvas** sees it — which is `null` while parked.
    *
    * `AnnotatorCanvas`'s prop is the instruction to divert every primary press
    * into a prompt point, and a parked session has nothing to prompt. The class
@@ -1355,7 +1352,7 @@ function Workspace({
    */
   const closedBecause = withheldBecause(batchState);
   /**
-   * The middle cause (#439), and it is copy rather than legality: whether the
+   * The middle cause, and it is copy rather than legality: whether the
    * frame is a viewer is `allowed_actions`' answer and is already decided above.
    * This only picks the sentence, the way `withheldBecause` picks one from the
    * batch's state.
@@ -1392,15 +1389,15 @@ function Workspace({
     (finishJob.isError ? finishJob.error : null);
 
   /**
-   * The one review action this frame's own state puts forward (#368, restyled by
-   * #383).
+   * The one review action this frame's own state puts forward.
    *
-   * The bar used to render five buttons — Save, Skip, Submit for review, Return
-   * to annotator, Accept, Finish job — most of them disabled most of the time,
-   * and a person had to read all six to find the one that would do anything.
+   * A bar rendering five buttons — Save, Skip, Submit for review, Return to
+   * annotator, Accept, Finish job — leaves most of them disabled most of the
+   * time, and a person has to read all six to find the one that would do
+   * anything.
    *
-   * **Asset actions only, and that is a decision rather than the brief's
-   * priority.** `submit_for_review` and the job's `complete` co-declare on the
+   * **Asset actions only, and that is a decision.**
+   * `submit_for_review` and the job's `complete` co-declare on the
    * commonest path there is — an `annotated` frame in a job whose every frame is
    * settled — because `SETTLED_PROGRESS` includes `annotated`. A priority that
    * ranked them against each other would have hidden **Finish job** behind
@@ -1422,7 +1419,7 @@ function Workspace({
 
   /**
    * Whether this is the end of the job — the one predicate the right zone's
-   * occupancy turns on (#383).
+   * occupancy turns on.
    *
    * Not a wire declaration and it could not be: which frame of a job somebody is
    * looking at is this page's own state, and no resource has an opinion about it.
@@ -1435,7 +1432,7 @@ function Workspace({
 
   /**
    * Why **Finish job** cannot be pressed, when it is on screen and cannot be
-   * (#416, principle 9).
+   * (principle 9).
    *
    * The control renders only on the last frame now, and there it is the filled
    * slot — so it is the one control on the bar a person arrives at *expecting* to
@@ -1446,7 +1443,7 @@ function Workspace({
    * tooltip repeating the word in the button is a tooltip nobody needs. Null too
    * once `complete` is declared, because then it is simply live.
    *
-   * The sentence names the blocker **with its count** (#427): `outstandingWork`
+   * The sentence names the blocker **with its count**: `outstandingWork`
    * is `batchState.ts`'s spelling of "how many frames still block completion" —
    * `unannotated` plus `review_pending`, the same two states whose settling is
    * what makes the kernel declare `complete` — so the number and the disable
@@ -1466,10 +1463,10 @@ function Workspace({
             : `${unresolved} frames unresolved — annotate or skip them to finish the job.`));
 
   /**
-   * Whether pressing the flow verb will actually store anything (#383).
+   * Whether pressing the flow verb will actually store anything.
    *
-   * Decision 2's rule is that the button never promises a save it will not
-   * perform, and its stated key is *no annotations and no unsaved changes* — a
+   * The button never promises a save it will not perform. The case it must catch
+   * is *no annotations and no unsaved changes* — a
    * frame nobody has drawn on yet, where the honest word is `Next`.
    *
    * `readOnly` is the same rule applied to the case the key does not enumerate:
@@ -1479,13 +1476,13 @@ function Workspace({
    */
   const flowLabel = !readOnly && (dirty || drawn > 0) ? "Save and next" : "Next";
   /**
-   * Whether the frame's own verbs render at all (#439).
+   * Whether the frame's own verbs render at all.
    *
    * **A job-level question, deliberately, and not `readOnly`.** Two invariants
-   * meet here and only this reading keeps both. #416 measured the navigation
-   * cluster to a constant width so that walking a job does not move the arrows
+   * meet here and only this reading keeps both. The navigation cluster is
+   * measured to a constant width so that walking a job does not move the arrows
    * under a cursor — which is why `Skip` is `min-w-27` and disabled rather than
-   * absent on a frame that cannot take it. And #423 made `Un-skip` the one way
+   * absent on a frame that cannot take it. And `Un-skip` is the one way
    * back out of a skipped frame, which is a *read-only* frame in an open batch.
    *
    * Gating on the mode would break both: the slot would empty and refill frame
@@ -1529,15 +1526,15 @@ function Workspace({
     // navigator moves `assetIndex` in component state without rewriting it, so
     // the URL names where the page was entered rather than where it is — and a
     // harness reading the URL addresses the wrong frame while every assertion it
-    // makes still passes. #223's cycle step is where that was found.
+    // makes still passes.
     <div className="flex h-screen flex-col" data-testid="annotation-page" data-asset={asset.id}>
       {/*
-        Three zones (#368, regrouped by #416): **where you are**, **what changes
+        Three zones: **where you are**, **what changes
         the frame**, **the session**. The bar was one undifferentiated row of
         thirteen controls in which a navigation arrow, the save state and the
         button that ends the job all looked alike.
 
-        #368 split it into three; #416 fixed *which* controls belong to which. The
+        The zones fix *which* controls belong to which. The
         four that change the picture on screen — the gallery, `‹` / `›`, Skip and
         the flow verb — were split across the two far ends of a 44px row, one pair
         beside the back arrow and the other beside the overflow. Two motion
@@ -1557,7 +1554,7 @@ function Workspace({
       */}
       <header className="grid h-11 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-border bg-card px-2">
         {/* --- where you are ------------------------------------------- */}
-        {/* Identity and state, and **nothing that changes the frame** (#416) —
+        {/* Identity and state, and **nothing that changes the frame** —
             that is the whole rule this zone is now held to.
 
             `overflow-hidden` is how a side zone *yields*: it is a `minmax(0, 1fr)`
@@ -1588,13 +1585,13 @@ function Workspace({
           </Button>
 
           {/* The batch's pin, not the project's active version. Named here because
-              #229 made the pin movable: "why can I not use the class I just made"
+              the pin is movable: "why can I not use the class I just made"
               is answerable only if the screen says which contract it is judged
               against. Null exactly while a batch is a draft, which an annotator
               cannot reach.
 
-              Since #368 it also *answers* that question rather than only raising
-              it — see `PinBadge`. */}
+              It also *answers* that question rather than only raising it — see
+              `PinBadge`. */}
           {schemaVersion !== null && (
             <PinBadge
               projectId={projectId}
@@ -1607,7 +1604,7 @@ function Workspace({
           )}
 
           {/*
-            Which frame this is, as a label and not as a control (#416).
+            Which frame this is, as a label and not as a control.
 
             It is the head of the content-addressed hash, because **there is no
             filename to show**: `Asset.uri` is deliberately not on the wire (the
@@ -1652,16 +1649,16 @@ function Workspace({
 
         {/* --- what changes the frame ---------------------------------- */}
         {/*
-          The navigation cluster (#416): every control that changes the picture on
+          The navigation cluster: every control that changes the picture on
           screen, in one place, read left to right as **browse | resolve**.
 
           The divider is what tells them apart, and it is the reason the cluster
           exists: `‹` and `›` *browse*, Skip and the flow verb *resolve*. They
           were a bar apart and both advanced, so `›` and `Save and next` looked
-          like two spellings of one thing to anybody who had not read #383. Side
+          like two spellings of one thing. Side
           by side, one hairline apart, the difference is the hairline.
 
-          **The instrument sub-group is gone** (#420). The class field held a
+          **There is no instrument sub-group.** A class field would hold a
           192px reservation here and now lives in the side panel, where the
           ontology is a list rather than a popup. What the bar gets back is that
           width — which is what pays for `Save and stay` and the review move
@@ -1677,7 +1674,7 @@ function Workspace({
           {/* --- browse: move without resolving anything ---------------- */}
           <div className="flex shrink-0 items-center gap-1" data-testid="asset-navigator">
             {/*
-              The frame switcher (#390). It opens an overlay *inside* the editor —
+              The frame switcher. It opens an overlay *inside* the editor —
               no route change, nothing torn down, and no save on the way in because
               nothing is being left.
 
@@ -1687,8 +1684,8 @@ function Workspace({
               back arrow still means *up* and keeps its guard.
 
               It leads the browse group because it is the same question the arrows
-              ask, asked of all the frames at once — #416 moved it out of the left
-              zone for that reason and for no other. Its behaviour is untouched.
+              ask, asked of all the frames at once, which is why it sits here
+              rather than in the left zone.
             */}
             <Button
               variant="ghost"
@@ -1738,7 +1735,7 @@ function Workspace({
           {/*
             The hairline between *look at another frame* and *finish this one*,
             and it renders only while there is a second group to divide from
-            (#439). Everything on its right can now be absent at once — a middle
+            Everything on its right can be absent at once — a middle
             frame of a closed batch or a finished job offers no resolution move
             and no save-first advance — and a divider drawn around an absence is
             a rule with nothing on one side of it.
@@ -1753,13 +1750,13 @@ function Workspace({
               would be offering a refusal — `ASSET_PROGRESS_TRANSITIONS` gives
               `skipped` one exit and it is not itself.
 
-              Skip and the flow verb are **siblings** (#383): two ways of resolving
+              Skip and the flow verb are **siblings**: two ways of resolving
               this frame — skipped or annotated — that both advance. Neither ever
-              collapses into the overflow, which is what stopped Skip inheriting
-              prominence from a bar where nothing else advanced. #416 put them
-              beside the arrows they were always the counterpart of.
+              collapses into the overflow, which is what stops Skip inheriting
+              prominence from a bar where nothing else advances. They sit beside
+              the arrows they are the counterpart of.
 
-              **Absent once the job is closed** (#439) — see `frameVerbs`, which
+              **Absent once the job is closed** — see `frameVerbs`, which
               is a question about the job rather than about this frame. Inside a
               working job the pair keeps its slot and its disabled state, which
               is what holds the cluster still and what keeps `Un-skip` reachable
@@ -1810,12 +1807,12 @@ function Workspace({
               rather than 104 because a floor equal to the wider label is not a
               floor at all — `Skip` measures 104.09, so clamping `Un-skip` to 104
               left 0.39px of drift, which a browser test catches and a person
-              would not. With the class field's reservation gone (#420) these two
-              floors are the whole of what keeps the cluster a constant width.
+              would not. These two floors are the whole of what keeps the cluster
+              a constant width.
             */}
             {lastFrame ? (
               /*
-                **Finish job renders on the last frame and nowhere else** (#416).
+                **Finish job renders on the last frame and nowhere else.**
 
                 It used to render on every frame, disabled with nothing attached
                 for as long as one frame was unannotated — a bare greyed control
@@ -1826,7 +1823,7 @@ function Workspace({
                 Two things are true and only together do they fix it: it does not
                 appear until the frame it belongs on, and when it does appear it
                 carries why it cannot be pressed. Which frame that is was already
-                settled by #383 — the filled slot is `Save and next` while there
+                settled elsewhere — the filled slot is `Save and next` while there
                 is somewhere to advance to and `Finish job` when there is not, so
                 the two are exclusive by arithmetic rather than by a priority
                 anybody maintains. It is not in `REVIEW_ACTIONS` and never was: it
@@ -1840,7 +1837,7 @@ function Workspace({
                 whether it is on screen at all.
 
                 **The reason is a real tooltip, and the withheld state is
-                `aria-disabled`, never the native attribute** (#427). This was a
+                `aria-disabled`, never the native attribute**. A `title` alone is a
                 `title` spread — invisible to the keyboard and to most pointers.
                 `ZoomWidget` earned the pattern: a disabled `<button>` receives
                 no pointer events and cannot take focus, so Radix's trigger
@@ -1896,9 +1893,9 @@ function Workspace({
               </Tooltip>
             ) : !frameVerbs ? null : (
               /*
-                The flow verb, and the whole of #383 (decision 2).
+                The flow verb.
 
-                **Absent once the job is closed** (#439), beside Skip and on its
+                **Absent once the job is closed**, beside Skip and on its
                 terms: this slot is the *save*-first advance, and a job nobody
                 can write to has nothing to save on any of its frames. `‹` `›`
                 and the gallery are what move between frames there, and they are
@@ -1910,12 +1907,12 @@ function Workspace({
                 a job whose last frame happens to be settled — accepted, say,
                 while other frames are still outstanding — would otherwise have
                 no way to be finished from the workspace at all. Where it is
-                withheld it already says why (#427); once the job is completed it
+                withheld it already says why; once the job is completed it
                 reads `Finished`, which is this page's standing statement that
                 the work is over.
 
                 After finishing a frame the right move is *this one is done, show
-                me the next* — and until #383 that had no button at all. The
+                me the next*. The
                 navigator's `›` is chrome rather than a verb, so `Skip` was the
                 most prominent thing to press on a frame somebody had just
                 annotated, which is how work gets skipped by people who meant to
@@ -1932,7 +1929,7 @@ function Workspace({
                 **`Next` when there is nothing to save**, per decision 2, so the
                 button never promises a save it will not perform.
 
-                **No hotkey chip, unlike its two neighbours** (#385). `Chip` is a
+                **No hotkey chip, unlike its two neighbours.** `Chip` is a
                 muted box on a bordered ground, which is right on the ghost and the
                 outline controls and wrong on the only filled one: on near-black it
                 reads as a smudge beside the chevron rather than as a key. The
@@ -1977,10 +1974,10 @@ function Workspace({
           </span>
 
           {/*
-            The explicit save, back on the bar (#383).
+            The explicit save, on the bar.
 
-            #368 removed it on the grounds that it duplicated an automatic
-            behaviour, and dogfooding showed what that argument missed: ⌘S is
+            Removing it on the grounds that it duplicates an automatic
+            behaviour misses this: ⌘S is
             invisible, and the overflow put the one press meaning *store this now,
             without going anywhere* two clicks from the work. It is a **ghost**,
             which is the honest weight — most people never need it, because
@@ -1990,7 +1987,7 @@ function Workspace({
             is the one control on the right whose job the keyboard and every other
             exit already do, and the overflow carries it below `xl`.
 
-            **Back to `xl` with #420**, from the `2xl` #416 had to move it to.
+            Reabsorbed at `xl`.
             That move was what the centred cluster cost while the class field
             still held 192px in the middle: the grid hands each side exactly half
             of what is left, and the right zone is the heavier of the two. With
@@ -2012,7 +2009,7 @@ function Workspace({
           </Button>
 
           {/*
-            The review move, when the frame declares one — outline since #383,
+            The review move, when the frame declares one — outline,
             because the filled slot belongs to the flow verb. Rendered rather than
             disabled-with-reason because there is nothing to explain: the states
             that withhold both of these are the states where the *other* controls
@@ -2020,10 +2017,9 @@ function Workspace({
             every unannotated frame is the noise this zone exists to remove. See
             `REVIEW_ACTIONS` for why `complete` is not in the list.
 
-            Second to be reabsorbed (decision 4), so it survives one breakpoint
+            Second to be reabsorbed, so it survives one breakpoint
             longer than the save: it is a decision about the work, and the save is
-            a convenience. Back to `lg` with #420, for the reason written on the
-            save above.
+            a convenience.
           */}
           {reviewAction !== undefined && (
             <Tooltip>
@@ -2041,8 +2037,8 @@ function Workspace({
                 </Button>
               </TooltipTrigger>
               {/*
-                Decision 6, and the sentence is careful about what this product
-                does not have: there is no annotator identity (cf. #282), so
+                The sentence is careful about what this product
+                does not have: there is no annotator identity, so
                 submitting routes the frame to nobody — it marks a state that the
                 next person to open the job can act on.
               */}
@@ -2129,7 +2125,7 @@ function Workspace({
       </header>
 
       {/*
-        Why the counter did not move, said where the work is happening (#187).
+        Why the counter did not move, said where the work is happening.
         Rendered whenever the asset is skipped rather than only after a save: the
         user who is about to draw deserves it more than the one who already has.
       */}
@@ -2169,7 +2165,7 @@ function Workspace({
         Not rendered for a skipped frame **in an open batch** — the notice below
         is the same fact with the remedy attached, and two banners saying one
         thing is how a person learns to ignore both. In a closed batch the yield
-        runs the other way (#423): the notice's Un-skip is a move the wire
+        runs the other way: the notice's Un-skip is a move the wire
         withholds there, so this banner — and the correction route it carries —
         is the one surface that can still say something actionable. The old
         guard predated the correction link and hid it on exactly that frame.
@@ -2184,9 +2180,9 @@ function Workspace({
           {workflowBecause ?? settledBecause}
           {/*
             The sentence names a correction batch, and now it can reach one — the
-            last link in the forward-only story (audit G6). #306 wrote that
-            sentence deliberately pointing at something that did not exist yet,
-            on the grounds that naming the route onward beats a friendlier lie.
+            last link in the forward-only story. The sentence was written
+            pointing at something that did not exist yet, on the grounds that
+            naming the route onward beats a friendlier lie.
             This is what it was waiting for.
 
             It goes to the **gallery** rather than opening a dialog here, and that
@@ -2216,7 +2212,7 @@ function Workspace({
 
       {/* Only while the batch is open: "Un-skip it" is this notice's whole
           remedy, and in a closed batch the wire withholds that move — the
-          read-only banner above speaks for that frame instead (#423). */}
+          read-only banner above speaks for that frame instead. */}
       {skipped && workflowBecause === null && (
         <p
           className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-meta text-destructive"
@@ -2248,11 +2244,11 @@ function Workspace({
                 hiddenIds={hiddenIds}
                 viewRef={viewRef}
                 // One per job, from `JobScreen` — the canvas would otherwise make
-                // its own and lose it on every navigation (#123).
+                // its own and lose it on every navigation.
                 clipboard={clipboard}
                 onHostAction={hostAction}
                 // A right-click on a shape: select it, then open its class
-                // picker over it (#380). Selecting is what makes the picker's
+                // picker over it. Selecting is what makes the picker's
                 // subject unambiguous — it anchors to the selection, and a menu
                 // about a shape nobody had selected would be a third rule about
                 // what "the selected object" means.
@@ -2264,10 +2260,10 @@ function Workspace({
                   store.select(selectOnly(annotationId));
                   setReclassing(annotationId);
                 }}
-                // The suggest mode (#424). Its presence diverts every primary
+                // The suggest mode. Its presence diverts every primary
                 // press away from the interaction machine, which is what stops a
                 // click meant for the model from drawing a box instead — so it is
-                // `diverting`, which drops a parked session (#472), and not the
+                // `diverting`, which drops a parked session, and not the
                 // whole of `suggesting`.
                 suggestion={diverting}
                 onSuggestPoint={suggestAt}
@@ -2276,7 +2272,7 @@ function Workspace({
           </AssetImage>
 
           {/*
-            The reassignment picker's canvas anchor (#380) — a sibling of the
+            The reassignment picker's canvas anchor — a sibling of the
             canvas for `ToolPalette`'s reason, since the stage is `relative` and
             the annotator ships no chrome.
           */}
@@ -2319,8 +2315,8 @@ function Workspace({
                 setNewClassName("");
                 setAddingClass(true);
               }}
-              // The chords have worked since #46; this is the first time the
-              // page says so. `canUndo`/`canRedo` come off the snapshot, so the
+              // The chords work whether or not the page draws them; this is where
+              // it says so. `canUndo`/`canRedo` come off the snapshot, so the
               // buttons and the keyboard read one command log.
               history={{
                 canUndo: snapshot.canUndo,
@@ -2328,11 +2324,11 @@ function Workspace({
                 onUndo: () => store.undo(),
                 onRedo: () => store.redo(),
               }}
-              // #424. The strip hides it on a schema no class of which could
+              // The strip hides it on a schema no class of which could
               // hold the answer; this page offers it because it has an API
               // behind it, which the showcase does not.
               //
-              // `unavailable` is the parked reading (#472): the schema can
+              // `unavailable` is the parked reading: the schema can
               // suggest, so the button is present, but the class the workspace is
               // sitting on cannot hold one — which is a fact to state rather than
               // a control that quietly stops working. Lit *and* dimmed, because
@@ -2349,7 +2345,7 @@ function Workspace({
           )}
 
           {/*
-            The suggest tool's own voice (#424, D6) — a sibling of the canvas for
+            The suggest tool's own voice — a sibling of the canvas for
             `ToolPalette`'s reason, and in the one corner the editor does not
             already occupy.
 
@@ -2362,7 +2358,7 @@ function Workspace({
             <SuggestPanel
               session={suggesting}
               // The class the workspace is on, which the session's own only stops
-              // matching while parked — the one reading that has to name it (#472).
+              // matching while parked — the one reading that has to name it.
               heldClass={activeClass}
               blocker={blocker}
               refusal={suggesting.refusal}
@@ -2379,7 +2375,7 @@ function Workspace({
           </span>
 
           {/*
-            Zoom lives on the picture it scales (#368). The bounds still come from
+            Zoom lives on the picture it scales. The bounds still come from
             `@visionset/annotator` rather than from a number here: `clampZoom` is
             the one thing that decides them, so a control re-deriving `>= 8` would
             be a second spelling free to disagree with the stage it is driving.
@@ -2398,15 +2394,15 @@ function Workspace({
         </div>
 
         {/*
-          The panel arms the drawing class again (#420) — the top bar's job since
-          #368, and the bar's combobox was clipped into invisibility by the
-          reservation it sat in. `activeClass` is still the page's: the panel
+          The panel arms the drawing class — a top-bar combobox would be clipped
+          into invisibility by the reservation it sat in. `activeClass` is still
+          the page's: the panel
           renders it and reports a choice, so the canvas, the tool strip, a digit
           and this list all land on the one `activateClass`.
 
           In the read-only mode the panel renders no classes region at all —
-          decision (a) of #426, superseding #420's render-as-information
-          direction — so this page no longer owes it a refusal sentence; the
+          rather than rendering it as information — so this page owes it no
+          refusal sentence; the
           banner above is the one surface that says why the frame is a viewer.
         */}
         <AnnotatorPanel
@@ -2461,13 +2457,12 @@ function Workspace({
 }
 
 /**
- * The pin, and what it is behind — a badge that answers instead of only stating
- * (#368).
+ * The pin, and what it is behind — a badge that answers instead of only stating.
  *
  * ## The question it exists for
  *
- * `v3` on the bar has said *which contract this batch is judged against* since
- * #229 made the pin movable. What it could not say is the thing everybody
+ * `v3` on the bar says *which contract this batch is judged against*, and the pin
+ * is movable. What it cannot say on its own is the thing everybody
  * actually asks next: **is that the current one, and if not, what am I missing?**
  * Somebody who added a class from another job, or who is looking at a batch
  * approved a week ago, has no route from the badge to the answer — and the two
@@ -2484,8 +2479,7 @@ function Workspace({
  * at all. A page that read the active version on arrival would be one refactor
  * away from offering classes this batch's pin does not declare.
  *
- * Decision 7 calls the same shape *diffs stay fetched on demand*, one surface
- * over.
+ * Diffs stay fetched on demand, one surface over, for the same reason.
  *
  * ## A disclosure, not a Popover
  *
@@ -2650,26 +2644,23 @@ function PinDiff({
 }
 
 /**
- * The frame's own progress: a dot **and its word** (#187, restyled by #368, given
- * its word by #383).
+ * The frame's own progress: a dot **and its word**.
  *
- * It was a `Badge` in the right-hand cluster, then a bare dot beside the
- * navigator with the word in a tooltip. A tooltip is a place a word goes to not
+ * A bare dot beside the navigator puts the word in a tooltip, and a tooltip is a
+ * place a word goes to not
  * be read — it needs a hover, it is unreachable on a touch screen, and the whole
  * reason the dot exists is to be glanced at. So the word is on the bar, in the
  * microtext the save state shares, and the dot in front of it is now decoration:
  * the colour is the glance and the prose is the answer, which is the strongest
  * reading of **status is never colour alone** (`DESIGN.md`).
  *
- * The words come from `batchState.ts`'s `PROGRESS_LABEL`: this page kept a second
- * copy of that map until #292, and two spellings of the same five states were
- * free to drift.
+ * The words come from `batchState.ts`'s `PROGRESS_LABEL` rather than a second
+ * copy: two spellings of the same five states are free to drift.
  *
- * **And the colour came from a third private map until #391.** The words were
- * unified and the colours were not, so `accepted` was green here and near-black
- * in the gallery — and, worse, `skipped` was **`destructive`**, which told
- * somebody who had deliberately passed over a frame that something had gone
- * wrong with it. Both halves read `batchState.ts` now; what stays local is the
+ * **The colour comes from there too.** Unifying the words and not the colours
+ * left `accepted` green here and near-black in the gallery — and, worse,
+ * `skipped` **`destructive`**, which told somebody who had deliberately passed
+ * over a frame that something had gone wrong with it. What stays local is the
  * dot's size, because a 44px bar and a gallery card are the same status at two
  * scales.
  */
@@ -2693,10 +2684,9 @@ function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Elem
 }
 
 /**
- * Why the page could not open the batch or the job it was asked to open (#299).
+ * Why the page could not open the batch or the job it was asked to open.
  *
- * Nothing at all when there is nothing to say — the common case by far, and the
- * only one the annotator's own flake ever produced (#319). It renders beside the
+ * Nothing at all when there is nothing to say — the common case by far. It renders beside the
  * save state rather than inside it: the two answer different questions, and the
  * one that outlives every save must not be overwritten by the next one, nor
  * overwrite it.
@@ -2713,9 +2703,8 @@ function OpeningRefusal({ error }: { readonly error: unknown }): JSX.Element | n
 /**
  * `DESIGN.md`'s save-state indicator: saving, saved, or why it did not.
  *
- * It rendered the raw kernel `code` — `BATCH_NOT_IN_ANNOTATION` as a destructive
- * badge, which is the exact class of rendering #292 removed elsewhere and which
- * audit finding F16 caught here. A kernel identifier is what a bug report should
+ * It must not render the raw kernel `code` — `BATCH_NOT_IN_ANNOTATION` as a
+ * destructive badge. A kernel identifier is what a bug report should
  * quote, not what a person should read, so the badge carries the sentence and the
  * code goes in the `title` where somebody filing that report can still find it.
  */
@@ -2752,8 +2741,8 @@ function SaveState({
   }
   return (
     // `success`, which is the indicator v1 wanted a hardcoded `text-green-600` for
-    // and `DESIGN.md` carried as its one sanctioned exception. #323 published the
-    // token, so the exception is retired rather than inherited. The tick still
+    // and `DESIGN.md` carried as its one sanctioned exception. The token exists,
+    // so the exception is retired rather than inherited. The tick still
     // carries the meaning on its own — state is never colour alone.
     <span className="flex items-center gap-1 text-meta text-success" data-testid="save-state">
       <Check className="size-3.5" aria-hidden="true" />

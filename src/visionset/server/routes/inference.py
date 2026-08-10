@@ -11,7 +11,7 @@ operations over a snapshot — the weight download and the integrity check — a
 both queued rather than performed, answering 202 and pointing at a background
 job, the contract the export route already uses. A reachability ``test`` is
 still absent rather than stubbed, so ``allowed_actions`` does not name it and no
-client is told about a control that does not exist yet (`cf. #418`, `#421`).
+client is told about a control that does not exist yet.
 
 The one network call made here is ``download-size``, and it reads a file
 listing rather than files: the number has to be on screen *before* somebody
@@ -177,7 +177,7 @@ def check_connection_integrity(
 ) -> BackgroundJobOut:
     """Re-read every cached file and compare it against what the hub published.
 
-    The `check_integrity` action (`cf. #471`). Distinct from `download_weights`
+    The `check_integrity` action. Distinct from `download_weights`
     over the same files, and the distinction is what each can prove: a download
     against a set-up connection establishes that nothing is **missing**, reading
     an index rather than the files; this establishes that nothing is
@@ -224,9 +224,9 @@ def check_connection_integrity(
 def inference_download_size(model_id: str, model_revision: str) -> DownloadSizeOut:
     """How big fetching that model's weights would be, before anybody fetches them.
 
-    What the local-connection form shows beside its confirm control, so the
-    decision recorded on #418 — that VisionSet downloads nothing on its own — is
-    one somebody can actually make (`cf. #421`, `#424`).
+    What the local-connection form shows beside its confirm control, so that
+    "VisionSet downloads nothing on its own" is a decision somebody can actually
+    make.
 
     **This downloads nothing.** It reads the publishing hub's file listing, which
     is the one question answerable before the download it describes. The number
@@ -251,9 +251,8 @@ def inference_download_size(model_id: str, model_revision: str) -> DownloadSizeO
 def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionOut:
     """Propose a shape for the thing under those points.
 
-    The server side of the editor's suggest gesture (`cf. #424`). One asset, one
-    prompt set, one answer — batch prediction is a separate path and is not this
-    one.
+    The server side of the editor's suggest gesture. One asset, one prompt set,
+    one answer — batch prediction is a separate path and is not this one.
 
     **Nothing is written and nothing is remembered.** A suggestion is a proposal:
     accepting it is a later, ordinary annotation write carrying `provenance:
@@ -311,6 +310,6 @@ def delete_inference_connection(workspace: WorkspaceDep, connection_id: UUID) ->
 
     No ``confirm`` gate, unlike deleting a project: nothing holds a key to this
     row, because an annotation copies its model's identity at write time rather
-    than pointing here (`cf. #417`). What is destroyed is a configuration.
+    than pointing here. What is destroyed is a configuration.
     """
     InferenceConnectionService(workspace).delete(connection_id)

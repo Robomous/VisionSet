@@ -3,10 +3,10 @@
 
 **Why anything is cached at all.** A point-prompted segmenter splits its work in
 two: an encode that reads the whole image and costs most of the time, and a
-decode from a click that costs almost none. D5 on #424 budgets =<300 ms for the
-perceived cost of a click, and that number is only reachable if the first click
-on an asset pays the encode and the ones after it do not. So the embedding is
-kept, and this is what keeps it.
+decode from a click that costs almost none. The design budget for the perceived
+cost of a click is =<300 ms, and that is only reachable if the first click on an
+asset pays the encode and the ones after it do not. So the embedding is kept, and
+this is what keeps it.
 
 **Bounded by count rather than by bytes, and small.** A byte budget would need to
 know the size of a tensor living on a device this module must not import, and

@@ -274,7 +274,7 @@ describe("paste", () => {
 
   it("executes nothing when every entry is a tag the asset already carries", () => {
     // `tags.ts`'s invariant, and the reason it matters here: the kernel now
-    // refuses a duplicate outright (#121), so a paste that looked like it worked
+    // refuses a duplicate outright, so a paste that looked like it worked
     // would refuse the whole save minutes later, blaming an index.
     const tag = annotationOf("t1", "weather", A_TAG);
     const store = paletteStore([tag]);

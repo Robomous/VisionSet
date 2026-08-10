@@ -14,12 +14,12 @@
  * shape `GET /jobs/{id}/assets/{asset_id}/annotations` returns — so the demo goes
  * through `documentFromWire` and the wire mirror is exercised on the way in.
  *
- * ## What #50 changed, and what it deliberately did not
+ * ## What the showcase adds, and what it deliberately does not
  *
  * The page was a debug surface in dark inline styles that predated the design
  * alignment. It now follows the repo-root `DESIGN.md` — light GitHub-style
  * surfaces, a near-black action colour and no brand at all, one type scale — with the tool
- * strip and the zoom readout borrowed from the annotation page M5 builds (#56), so
+ * strip and the zoom readout borrowed from the product's annotation page, so
  * the showcase and the product read as one thing. `theme.ts` holds the tokens and
  * records the single deliberate exception (the canvas well stays dark).
  *
@@ -32,7 +32,7 @@
  * The strip reports the tool and does not own one; `ToolStrip.tsx` argues that.
  * The zoom is reported and not driven: `−`/`+` need an imperative handle the
  * adapter does not publish yet, and that lands with the top bar that has somewhere
- * to put them (#56).
+ * to put them.
  */
 
 import {
@@ -88,7 +88,7 @@ export function AnnotatorDemo(): JSX.Element {
   const [view, setView] = useState<Viewport | null>(null);
   // Held here, and handed to both: the panel writes it and the canvas reads it.
   // A `useState` rather than a fresh `Set` per render, because an unstable set
-  // defeats `AnnotationLayer`'s `memo` — #49's finding about `skipId`.
+  // defeats `AnnotationLayer`'s `memo` — the same trap `skipId` avoids.
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const schema = snapshot.document.schema;
@@ -163,11 +163,11 @@ export function AnnotatorDemo(): JSX.Element {
           minHeight: 0,
         }}
       >
-        {/* #126's panel, composed here so the showcase is where its browser
+        {/* The objects panel, composed here so the showcase is where its browser
             scenarios run. It is `ui-core`'s and styled with the design tokens; the
             debug panels below it stay inline-styled, which `theme.ts` argues.
 
-            `flexShrink: 0` since #420, and it is load-bearing rather than tidy.
+            `flexShrink: 0`, and it is load-bearing rather than tidy.
             The panel is two regions now and carries `min-h-0` so its lower half
             can scroll inside a container of definite height — which is what it
             gets in the app, where it is a stretched item of a row. This aside is

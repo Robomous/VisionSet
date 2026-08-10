@@ -326,7 +326,7 @@ def test_batch_membership_keeps_the_order_it_was_written_in(tmp_path: Path) -> N
 
 
 def test_updating_a_batch_does_not_touch_its_membership(tmp_path: Path) -> None:
-    """The capability #281 deliberately removed, asserted rather than left absent.
+    """A capability deliberately removed, asserted rather than left absent.
 
     `Repository.update` replaces a whole entity, and a `Batch` carries every
     member — which is how two concurrent membership edits used to lose one of the

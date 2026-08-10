@@ -2,10 +2,11 @@
  * The component-test harness — this package's, and not the annotator's.
  *
  * `@visionset/annotator` deliberately has **no jsdom**: its core is pure
- * TypeScript and #47 argued that a component test of the canvas would verify
+ * TypeScript, and the annotator's own argument is that a component test of the
+ * canvas would verify
  * nothing, because jsdom's `getBoundingClientRect` returns zeros and the transform
  * is the risky part. Neither reason applies here. These are ordinary DOM
- * components whose behaviour *is* markup and roles, and #53's acceptance criterion
+ * components whose behaviour *is* markup and roles, and the schema editor
  * asks in so many words for "component tests for the editor's edit/validate/save
  * flow" — so the harness is stood up once, here, rather than by whichever screen
  * needs it first.

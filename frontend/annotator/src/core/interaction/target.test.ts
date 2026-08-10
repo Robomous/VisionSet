@@ -170,7 +170,7 @@ describe("where a double-click would put a vertex", () => {
 });
 
 /**
- * #186: the margin around the picture is a place a pointer can be.
+ * The margin around the picture is a place a pointer can be.
  *
  * The adapter used to lay its only input surface out at exactly the asset's
  * rectangle, so nothing ever asked these questions — and that is the shape of the
@@ -196,7 +196,8 @@ describe("a point outside the asset resolves like any other", () => {
 
   it("selects a box by the sliver of it that overhangs the image", () => {
     // Two pixels *outside* the asset and outside the geometry, but inside the
-    // body's own tolerance band — which is the whole gesture #186 restored. The
+    // body's own tolerance band, which is the gesture the full-viewport input
+    // surface exists to allow. The
     // answer is `body`, not `edge`: this file's third decision is that `edge`
     // ranks below `body`, and nothing about being out of bounds changes it.
     const at = scene([boxAt("a", 0, 200, 300, 100)]);

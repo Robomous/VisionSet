@@ -1,8 +1,8 @@
 /**
  * The history, driven over real documents.
  *
- * Acceptance criterion 2 of #39 — grouped commands undo atomically — is the
- * "a group is one step" block. The redo block holds the trap the whole design
+ * Grouped commands undo atomically — the "a group is one step" block. The redo
+ * block holds the trap the whole design
  * exists to close: `apply` runs exactly once, so a command that mints an id
  * cannot mint a different one on the way back.
  */

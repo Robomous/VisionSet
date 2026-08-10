@@ -35,9 +35,9 @@ const ASSET_REST = {
   frame_index: null,
   frame_timestamp: null,
   thumbnail_hash: null,
-  // Null is a legitimate value and the *key* is what the shape check wants:
-  // #283 made the field required on the wire, and an asset ingested before
-  // #216 existed genuinely has no arrival to report.
+  // Null is a legitimate value and the *key* is what the shape check wants: the
+  // field is required on the wire, and an asset ingested before the column
+  // existed genuinely has no arrival to report.
   ingested_at: null,
 } as const;
 
@@ -143,9 +143,8 @@ const DATASET = "22222222-2222-4222-8222-222222222222";
 /**
  * The two-hop the pipeline row reads: project -> dataset -> releases.
  *
- * Installed for every fixture rather than per test. `useProjectReadiness` stopped
- * waiting on it with #388 — the checklist that needed a release signal is gone —
- * but the dashboard's trunk and release cards still ask, and an unstubbed pair
+ * Installed for every fixture rather than per test. `useProjectReadiness` does not
+ * wait on it, but the dashboard's trunk and release cards still ask, and an unstubbed pair
  * falls through to the 500 the harness answers with.
  */
 function serveTrunk(releases: readonly string[] = []): void {
@@ -334,7 +333,7 @@ describe("the Overview panel", () => {
   });
 });
 
-// --- the first-run invitation (#388) ------------------------------------------
+// --- the first-run invitation -------------------------------------------------
 
 describe("firstRunInvitation", () => {
   // The whole state table, swept — four combinations and four answers, so the
@@ -350,7 +349,7 @@ describe("firstRunInvitation", () => {
 
   it("hands the filled button to the invitation only where the header has none to lose", () => {
     // The `ingest` invitation is the exception: the header's Ingest is the same
-    // label and the same handler, so the filled one stays up there (#323).
+    // label and the same handler, so the filled one stays up there.
     expect(invitationOwnsTheAction("classes-first")).toBe(true);
     expect(invitationOwnsTheAction("classes-after-ingest")).toBe(true);
     expect(invitationOwnsTheAction("ingest")).toBe(false);
@@ -387,7 +386,7 @@ function readinessOf(options: {
  * `bg-primary` is the one utility the `primary` variant owns (`buttonVariants`),
  * so counting it is counting filled buttons — and principle 8's whole claim is a
  * count. A test that only asserted "the CTA is there" would pass just as
- * happily with two of them, which is the exact defect #388 was filed about.
+ * happily with two of them, which is the defect worth catching.
  */
 function filledButtons(): readonly HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("button.bg-primary")];
@@ -442,7 +441,7 @@ describe("the first-run invitation", () => {
     expect(region.dataset.invitation).toBe("ingest");
     expect(screen.getByTestId("overview-ingest")).not.toBeNull();
     // Zero filled buttons *here*, because the page's one lives in the header
-    // this panel does not render (#323). `ProjectScreen`'s own tests carry the
+    // this panel does not render. `ProjectScreen`'s own tests carry the
     // other half of that claim.
     expect(filledButtons()).toHaveLength(0);
     expect(screen.queryByTestId("first-run-cta")).toBeNull();
@@ -482,8 +481,8 @@ describe("the first-run invitation", () => {
   });
 
   it("is retired outright: no checklist, no dismissal, on any state", async () => {
-    // #289's four-station strip and its per-project dismissal are gone rather
-    // than hidden. Asserted on the state that used to render step one, which is
+    // There is no four-station onboarding strip and no per-project dismissal.
+    // Asserted on the state that would render step one, which is
     // where a survivor would show up first.
     readinessOf({ schema: false, stats: empty });
     render(mount(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} />));
@@ -564,8 +563,8 @@ describe("the pipeline row", () => {
   });
 
   it("says a section is empty in words rather than showing a zero", async () => {
-    // #287's lesson one screen over: a documented "no answer" rendered as data
-    // reads as a broken screen. "None yet" is an invitation; `0` is a
+    // A documented "no answer" rendered as data reads as a broken screen.
+    // "None yet" is an invitation; `0` is a
     // measurement of nothing.
     readinessOf({ stats: statsOf({ asset_count: 48 }), batches: [] });
 

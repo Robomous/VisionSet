@@ -14,9 +14,9 @@ agent is both — it reads, and it decides — so it gets the kernel's own sente
                "hint": null, "index": null}}
 
 **There is deliberately no ``code``.** The codes live in ``server/errors.py``'s
-``ERROR_RULES``, which this package may not import, and the standing rule from
-#31 forbids deriving one from a class name — a public contract keyed to a Python
-identifier breaks silently on a refactor and passes every test. What a code was
+``ERROR_RULES``, which this package may not import, and deriving one from a class
+name is forbidden — a public contract keyed to a Python identifier breaks
+silently on a refactor and passes every test. What a code was
 actually needed for here is one question, "may I retry this, and with what?", and
 :data:`RETRY_WITH` answers it directly. ``DESTRUCTIVE_SCHEMA_CHANGE`` is
 retryable with a flag and ``SCHEMA_CHANGE_WOULD_ORPHAN`` is not; publishing the

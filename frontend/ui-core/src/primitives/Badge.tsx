@@ -5,11 +5,10 @@
  * an asset's progress, a refusal — so a screen picks an intent and never a colour.
  *
  * Every variant is its colour as ink over that colour at 10% behind its own
- * border. On a near-monochrome page (#323) that is enough separation to read as a
+ * border. On a near-monochrome page that is enough separation to read as a
  * state without any of them becoming a saturated block: `accent` is the near-black
  * action, so it is the neutral chip, and `success` / `warning` / `destructive` are
- * the three desaturated statuses. `success` exists as of #323 — `DESIGN.md` used
- * to record its absence as v1's one hardcoded-colour exception.
+ * the three desaturated statuses.
  *
  * `Alert` carries `role="alert"` on the destructive variant only. An informational
  * panel announced as an alert interrupts a screen reader for something nobody

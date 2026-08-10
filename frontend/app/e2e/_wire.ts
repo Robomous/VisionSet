@@ -20,14 +20,14 @@ type BatchState = "draft" | "approved" | "in_annotation" | "completed";
 type JobState = "pending" | "in_progress" | "completed";
 type Progress = "unannotated" | "annotated" | "skipped" | "review_pending" | "accepted";
 
-// `delete` in every row but `completed` (#376), which is `DELETABLE_STATES`.
+// `delete` in every row but `completed`, which is `DELETABLE_STATES`.
 // Note these are `string[]` and not the generated `BatchAction` union —
 // deliberately, since this file stubs the wire rather than consuming it, but the
 // cost is that `tsc` cannot catch a drifted member here the way it does in
-// `ui-core`'s `wire.fixtures.ts`. When #331 withdrew the member it surfaced
-// instead as every gallery spec timing out, because `checks.ts` rejects the
-// payload inside a hook. `tests/scripts/wire_rosters.test.mjs` is what now holds
-// this table and that one to each other.
+// `ui-core`'s `wire.fixtures.ts`. A drifted member surfaces here as every gallery
+// spec timing out, because `checks.ts` rejects the payload inside a hook.
+// `tests/scripts/wire_rosters.test.mjs` is what holds this table and that one to
+// each other.
 const BATCH_ACTIONS: Record<BatchState, readonly string[]> = {
   draft: ["approve", "edit_membership", "delete"],
   approved: ["start", "repin", "delete"],
@@ -74,7 +74,7 @@ export function jobActions(
 /**
  * An asset's actions. `progress` is null exactly while the batch is a draft.
  *
- * `jobState` is the third dimension (#439) and defaults to `in_progress`, the
+ * `jobState` is the third dimension and defaults to `in_progress`, the
  * state a job is in while somebody is working it — which is what every caller
  * here means. A `completed` job declares nothing on any of its frames, in an
  * open batch as much as in a closed one: completing a job does not complete its

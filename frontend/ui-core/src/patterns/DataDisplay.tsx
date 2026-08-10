@@ -1,15 +1,15 @@
 /**
  * The parts a data surface is built from: a stat, a bar, a class row, a grid.
  *
- * `DESIGN.md`'s **Project surfaces → Components** (#206), as running code. All
+ * `DESIGN.md`'s **Project surfaces → Components**, as running code. All
  * four are **data-only** — nothing here fetches, and nothing here knows what an
  * API is. That is what lets them be rendered in the styleguide against fixtures
  * and reviewed before a single screen consumes them.
  *
  * ## Four, not six
  *
- * #209 was written asking for six. Two of them already shipped and are
- * deliberately not rebuilt here:
+ * The design names six. Two of them already exist and are deliberately not
+ * rebuilt here:
  *
  * - **`EmptyState`** is in `patterns/AsyncStates.tsx`, and is already icon +
  *   title + description + one action — the spec, down to the "one primary
@@ -166,7 +166,7 @@ export function DistributionBar({
 
 /**
  * The compact row's height, in CSS pixels — `h-9`, and exported because a
- * caller sizes a viewport in rows (#420).
+ * caller sizes a viewport in rows.
  *
  * A number rather than a measurement: the classes region's height rule is
  * "three rows minimum, one per class, eight maximum", and a rule stated in rows
@@ -192,7 +192,7 @@ export interface ClassListRowProps {
    */
   readonly count?: number;
   readonly color: string;
-  /** `1`–`9` for the first nine classes in schema order, else absent (#420). */
+  /** `1`–`9` for the first nine classes in schema order, else absent. */
   readonly hotkey?: string | null;
   readonly selected?: boolean;
   readonly onSelect?: () => void;
@@ -229,9 +229,8 @@ export interface ClassListRowProps {
  * row carries the same border at `transparent`, so selecting one does not shift
  * the text by two pixels — the trick `Tabs`' underline variant already uses.
  *
- * The compact variant arrived with #420, when the annotator's class picker
- * stopped being a dropdown on the top bar and became a persistent list in the
- * side panel. It is an extension rather than a sibling component deliberately:
+ * The compact variant is what the annotator's persistent class list in the side
+ * panel uses. It is an extension rather than a sibling component deliberately:
  * the selected treatment, the swatch and the truncation are the parts a second
  * spelling would eventually get differently, and the schema editor and the
  * annotator showing "the selected class" two different ways is exactly the

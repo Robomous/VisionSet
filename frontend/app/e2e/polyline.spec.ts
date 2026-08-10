@@ -1,10 +1,10 @@
 /**
  * v1's `polyline-tool.spec.ts`, ported — the last of its four specs to become
- * portable (#342).
+ * portable.
  *
  * `docs/annotations.md`'s reconciliation table has carried this file as *"out of
  * scope for a different and narrower reason: it drives a drawing tool, and 0.1.0
- * has none"* since #48. #342 shipped the tool, so the reason is spent and the port
+ * has none"*. The tool exists now, so the reason is spent and the port
  * is this file.
  *
  * ## What ports, and what does not
@@ -20,7 +20,7 @@
  * | pressing `L` activates it | *a class hotkey arms it* — the key is the class's digit, because tools are derived from classes and not dispatched (`tool.ts`) |
  * | drawing produces an SVG `<polyline>` | *drawing a lane places its points in the order they were clicked* |
  * | a floating bar shows the point count | **not ported** — there is no floating bar, and the point count lives on the Annotations panel |
- * | right-click undoes the last pending point | *backspace takes back the last point* — #129: every non-primary press is a pan and never reaches the machine, so the keyboard is the browser's only spelling |
+ * | right-click undoes the last pending point | *backspace takes back the last point* — every non-primary press is a pan and never reaches the machine, so the keyboard is the browser's only spelling |
  * | dragging the body moves it | *a lane moves as one, and undo puts it back* |
  * | Delete removes the selected polyline | *delete removes the selected lane* |
  *
@@ -75,7 +75,7 @@ test("the strip offers the tool a lane class earns", async ({ page }) => {
   const tool = page.getByTestId("tool-polyline");
   await expect(tool).toBeVisible();
   // Live, not disabled-with-reason: it spent one release as the strip's worked
-  // example of not-yet-drawable, and #342 is what ended that.
+  // example of not-yet-drawable, and it has a tool now.
   await expect(tool).not.toHaveAttribute("aria-disabled", /.*/);
   await expect(tool).toHaveAttribute("title", "Polyline (5)");
 });
@@ -131,7 +131,7 @@ test("a whole session is one undo step, however many points it has", async ({ pa
 test("backspace takes back the last point, which is the only spelling a browser has", async ({
   page,
 }) => {
-  // v1 used a right-click. #129: the React adapter answers **every** non-primary
+  // v1 used a right-click, and the React adapter answers **every** non-primary
   // press with a pan and returns before the machine is told, so the gesture has no
   // path through a browser — the keyboard is it. The engine still carries both, and
   // `polylineTool.test.ts` drives the secondary press directly.
@@ -200,7 +200,7 @@ test("a selected lane draws its vertices, and one of them drags", async ({ page 
   await page.keyboard.press("v");
 
   // Three vertices, because the lane is selected — the same affordance a polygon
-  // gets, over a geometry `resolveTarget` refused to look at before #342.
+  // gets, over a geometry `resolveTarget` would not look at without a tool.
   await expect(vertices(page)).toHaveCount(3);
 
   const grip = frame.at(LANE[0].x, LANE[0].y);

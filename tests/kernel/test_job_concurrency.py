@@ -112,7 +112,7 @@ def test_two_dispatchers_over_two_jobs_take_one_each(root: Path) -> None:
 
 
 def test_a_progress_write_lands_while_another_store_holds_the_workspace(root: Path) -> None:
-    """#80's WAL payoff, at the surface #328 added.
+    """The WAL payoff, at the job queue's surface.
 
     A worker writes progress on its own store while the API process holds one too.
     The write must land and the read must see it — which is the arrangement the

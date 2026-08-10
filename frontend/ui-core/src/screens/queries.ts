@@ -153,12 +153,10 @@ export function useProjectStats(projectId: string): UseQueryResult<ProjectStats,
 }
 
 /**
- * A window onto the project's own assets — the third asset listing (#208).
+ * A window onto the project's own assets — the third asset listing.
  *
  * `total` counts the project rather than the page, which is what lets six sample
- * tiles compute their own `+N` overflow without a second request. The order is
- * stable and deliberately **not** chronological: nothing records when an asset
- * arrived (#216), so this cannot be "the six most recent" yet.
+ * tiles compute their own `+N` overflow without a second request.
  */
 export function useProjectAssets(
   projectId: string,
@@ -233,15 +231,15 @@ export function useDeleteProject() {
  * The active schema — the highest version, derived and never stored.
  *
  * **404 is a real answer here, not a failure**: a project starts schema-less on
- * purpose (#6), and `SchemaNotFound` is what says so. The screen has to tell that
+ * purpose, and `SchemaNotFound` is what says so. The screen has to tell that
  * apart from a genuine error, which is why this hook does not swallow it — the
  * editor reads `error.code` and shows an empty draft rather than an error surface.
  *
  * `enabled` exists for one caller and one rule. The annotation page is judged
  * against the batch's **pinned** version and must never ask for the active one —
  * `e2e/annotate.spec.ts` asserts that no request to `/schema` is made, because a
- * page that read the active version would offer classes the API then refuses. But
- * #233's add-a-class dialog composes the next version on the active classes, so it
+ * page that read the active version would offer classes the API then refuses. The
+ * add-a-class dialog composes the next version on the active classes, so it
  * needs exactly this, and only while it is open. Off by default, so the rule holds
  * unless a caller says otherwise.
  */
@@ -264,11 +262,11 @@ export function useActiveSchema(
     // round trips to learn the same thing.
     retry: false,
     // And neither does a *second observer* mounting on the already-failed query,
-    // which is what `retryOnMount` does by default. #211 put a copy of this hook
-    // in the project header, and because the header mounts after `Async`
-    // resolves the project — later than the Schema tab underneath it — the
-    // arriving observer refetched an error that cannot change, re-rendered the
-    // section into `isPending`, and the editor never appeared at all.
+    // which is what `retryOnMount` does by default. The project header holds a
+    // second copy of this hook, and because it mounts after `Async`
+    // resolves the project — later than the Schema tab underneath it — an
+    // arriving observer would refetch an error that cannot change, re-render the
+    // section into `isPending`, and the editor would never appear at all.
     //
     // The rule is the same one the line above states: this 404 is a stable
     // answer about the project, not a transient failure. Asking again is asking
@@ -294,7 +292,7 @@ export function useSchemaVersions(projectId: string): UseQueryResult<SchemaVersi
 /**
  * What one schema version did to another, classified by the kernel.
  *
- * A route rather than arithmetic here (#231): the rule is `domain/schema_diff.py`
+ * A route rather than arithmetic here: the rule is `domain/schema_diff.py`
  * and it is not obvious — an *optional* attribute added is additive while a
  * *required* one is not, widening a `select` is additive and narrowing it is not,
  * and a rename reads as one removal plus one addition. A second implementation in
@@ -336,7 +334,7 @@ export function useSchemaComparison(
  * one question, narrowing a schema asks another.
  *
  * There is no preview. `SchemaService.preview` and `compare` exist in the kernel
- * and are deliberately unrouted — they had no caller when #27 shipped — so the
+ * and are deliberately unrouted, so the
  * only way to learn a change is destructive is to attempt it and read the 409.
  * That is why the refusal surface below is the feature rather than a fallback.
  */
@@ -347,10 +345,10 @@ export function useCreateSchemaVersion(projectId: string) {
     mutationFn: async (input: {
       classes: readonly LabelClassBody[];
       allowDestructive?: boolean;
-      // The version's commit message (#230). Written once at publish and never
+      // The version's commit message. Written once at publish and never
       // editable afterwards, so there is no update mutation to pair with this.
       description?: string | null;
-      // Which kind of work is publishing (#368). Required rather than optional,
+      // Which kind of work is publishing. Required rather than optional,
       // and deliberately: every caller in this repo *is* one surface or the other
       // and knows which, so leaving it defaultable would let a new screen record
       // "nobody said" by forgetting rather than by deciding. The wire keeps it
@@ -382,7 +380,7 @@ export function useCreateSchemaVersion(projectId: string) {
   });
 }
 
-// --- ingest (#54) ------------------------------------------------------------
+// --- ingest -------------------------------------------------------------------
 
 export type Source = components["schemas"]["SourceOut"];
 export type SourcePage = components["schemas"]["SourcePage"];
@@ -486,7 +484,7 @@ export function useRegisterSource(projectId: string) {
         : unwrap(
             await client.POST("/projects/{project_id}/sources/images", {
               params: { path: { project_id: projectId } },
-              // `name` is what the source will be *called* (#245) — without it
+              // `name` is what the source will be *called* — without it
               // the server names the source by its staged directory, whose
               // basename is a content digest. `formData` skips `undefined`.
               body: { files: input.files as unknown as string[], name: input.name },
@@ -506,7 +504,7 @@ export function useRegisterSource(projectId: string) {
  *
  * The batch target rides on the launch and is refused *synchronously*: an unknown
  * batch is 404 and one past `draft` is 409, both before the job row exists. That
- * is #28's rule — anything the request can refuse is refused now, and everything
+ * Anything the request can refuse is refused now, and everything
  * after the launch is reported on the job.
  */
 export function useStartIngest(projectId: string) {
@@ -576,7 +574,7 @@ export function useResumeIngest() {
   });
 }
 
-// --- batches, jobs and the gallery (#55) -------------------------------------
+// --- batches, jobs and the gallery --------------------------------------------
 
 export type BatchAsset = components["schemas"]["BatchAssetOut"];
 export type BatchAssetPage = components["schemas"]["BatchAssetPage"];
@@ -623,7 +621,7 @@ export function useBatchJobs(batchId: string, enabled = true) {
 /**
  * The batch's assets, a page at a time.
  *
- * The **only** paginated collection in this API, and #29 built it for exactly this
+ * The **only** paginated collection in this API, and it exists for exactly this
  * caller: a batch can hold fifty thousand frames. Two properties of that contract
  * decide the shape here — `total` is the size of the *whole* batch and does not
  * move as you page, so "have I seen everything" is `seen < total` rather than
@@ -656,7 +654,7 @@ export function useBatchAssets(batchId: string) {
  * Approve a batch, which is also when the partition happens and the schema pins.
  *
  * The partition body carries **`kind` explicitly and never by default**, and that
- * is #29's trap rather than a style choice: a discriminated union's tag emitted
+ * is a trap rather than a style choice: a discriminated union's tag emitted
  * with a default reads as *optional* in the JSON schema while pydantic reads the
  * tag out of the input dict to pick a variant, so a payload omitting it fails with
  * `union_tag_not_found` however the field is declared.
@@ -710,7 +708,7 @@ export function useBatchTransition(batchId: string, move: "start" | "complete") 
       // `in_annotation`), so moving the batch silently restates what each of its
       // jobs may be asked to do. Leaving them cached is the stale-declaration
       // bug in its cache-side form: the annotator opened an `approved` batch,
-      // started it here, and then read a job that still declared nothing (#319).
+      // started it here, and then read a job that still declared nothing.
       // `useJobTransition` invalidates `["batches"]` for the mirror-image reason.
       void queries.invalidateQueries({ queryKey: ["jobs"] });
     },
@@ -725,9 +723,9 @@ export interface FinishBatchResult {
 }
 
 /**
- * Finish a batch: its outstanding jobs first, then the batch itself (#301).
+ * Finish a batch: its outstanding jobs first, then the batch itself.
  *
- * ## The chain has three links and the browser only ever sent the last one
+ * ## The chain has three links, and sending only the last one refuses
  *
  * Completion is derived at **two** levels, and "derived" in this kernel means
  * *recomputed*, never *implicit*: `JobService.complete` refuses while any asset is
@@ -761,7 +759,7 @@ export interface FinishBatchResult {
  * partial because it is N independent moves; this is one move in stages.
  *
  * This is the same call `AnnotationPage` makes at the other end of the lifecycle
- * (#59, #299): opening a job to work on it **is** starting it, and the batch with
+ * opening a job to work on it **is** starting it, and the batch with
  * it. A surface composing the moves somebody plainly means is not the kernel
  * deriving them behind their back.
  */
@@ -814,7 +812,7 @@ export function useFinishBatch(batchId: string) {
 }
 
 /**
- * One source, by id — the batch header's provenance line (#284).
+ * One source, by id — the batch header's provenance line.
  *
  * A batch records no source of its own; what it holds is assets, and an asset
  * records the source it first arrived from. So the header reads `source_id` off
@@ -874,13 +872,13 @@ export interface BulkProgressResult {
  * The kernel's `ASSET_PROGRESS_TRANSITIONS` decides whether any individual move is
  * legal, and refusing is its job. What this owes is to not lose the refusal.
  *
- * ## The requests are sent one at a time, and it is no longer a workaround (#302)
+ * ## The requests are sent one at a time, and it is not a workaround
  *
  * This used to be `Promise.allSettled` over N concurrent requests, and **measured
  * against a real server: three concurrent moves over one job answered `200`,
  * `200`, `200` and moved exactly one asset** — which is precisely the
  * "multi-selection does not work" a person reported, and it was literally true.
- * Sending them one at a time was #301's stop-gap, put here because the cause was
+ * Sending them one at a time began as a stop-gap, because the cause was
  * a kernel-level lost update that any concurrent client hit.
  *
  * **That cause is closed.** Progress is now written one asset at a time, guarded
@@ -933,8 +931,8 @@ export function useBulkSetProgress(batchId: string) {
     },
     onSettled: () => {
       // On settled rather than on success: a partial failure still moved some
-      // assets, and a screen showing the old value for those is the shape #187
-      // was. Both keys, because the counts live on the batch and the per-asset
+      // assets, and a screen showing the old value for those is a counter that
+      // did not move. Both keys, because the counts live on the batch and the per-asset
       // state lives in the listing.
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
@@ -976,7 +974,7 @@ export function useRemoveBatchAssets(batchId: string) {
     onSuccess: () => {
       // The batch itself, and not only its assets: `asset_count`, the segmented
       // filter counts and `allowed_actions` all live on `BatchOut`, and a
-      // declaration is a cached answer like any number (#319's lesson). The
+      // declaration is a cached answer like any number. The
       // project listing carries per-batch counts too.
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.assets(batchId) });
@@ -996,7 +994,7 @@ export function useRemoveBatchAssets(batchId: string) {
  * Delete. What the browser must never do is re-check the *state* gate: a
  * `completed` batch is refused by the kernel and no flag lifts it, and the
  * control is disabled from `allowed_actions` rather than from a rule written
- * here (`cf. #358`).
+ * here.
  *
  * `projectId` is a parameter rather than read off the batch because the batch is
  * what has just stopped existing — the listing to invalidate has to be named
@@ -1028,7 +1026,7 @@ export function useDeleteBatch(projectId: string) {
   });
 }
 
-// --- datasets, releases and export (#57) -------------------------------------
+// --- datasets, releases and export --------------------------------------------
 
 export type Dataset = components["schemas"]["DatasetOut"];
 export type DatasetStats = components["schemas"]["DatasetStatsOut"];
@@ -1426,14 +1424,13 @@ export function useDownloadManifest(releaseId: string) {
   });
 }
 
-// --- project readiness (#288, narrowed by #388) -------------------------------
+// --- project readiness --------------------------------------------------------
 
 /**
  * The two facts the first-run surfaces are built on.
  *
- * It carried five more until #388. They existed to order a four-station
- * onboarding checklist — `currentStep`, and the `hasReleases` two-hop that
- * closed it — and the checklist is retired: the Overview reads the project's
+ * Two, and not the five a four-station onboarding checklist would need —
+ * `currentStep`, and the `hasReleases` two-hop that closes it. The Overview reads the project's
  * real state and renders one invitation for it, which needs to know whether the
  * project has classes and whether it has images and nothing else. Fields kept
  * "in case" are how a hook ends up making four requests to answer two questions.
@@ -1453,7 +1450,7 @@ export interface ProjectReadiness {
  * spellings of one fact are free to drift. This hook is the single source of
  * truth from here on: new code asks this, and the older sites migrate as they
  * are touched. The rule itself is `ProjectScreen`'s: **`SCHEMA_NOT_FOUND` is an
- * answer, not a failure** — a project starts schema-less on purpose (#6), so
+ * answer, not a failure** — a project starts schema-less on purpose, so
  * that 404 means `hasSchema: false` while any other failure means this hook has
  * no answer at all.
  *

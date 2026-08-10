@@ -2,9 +2,9 @@
  * The store: one subscription over the document, its history, the selection and
  * the drag that has not happened yet.
  *
- * Acceptance criterion 3 of #39 — no document mutation during a simulated drag
- * until release — is the "a drag writes nothing until release" block, and it is
- * asserted by reference (`toBe`) rather than by value: the claim is that the
+ * No document mutation during a simulated drag until release — the "a drag writes
+ * nothing until release" block, asserted by reference (`toBe`) rather than by
+ * value: the claim is that the
  * committed document *is the same object*, not merely that it looks the same.
  */
 
@@ -61,7 +61,7 @@ describe("reading the store", () => {
 
   it("hands back the same snapshot object while nothing changes", () => {
     // Load-bearing rather than an optimization. React's `useSyncExternalStore`
-    // — #47's adapter — calls this on every render and compares with `Object.is`,
+    // — what the adapter uses — calls this on every render and compares with `Object.is`,
     // so a store building a fresh object per call re-renders forever.
     const store = new AnnotatorStore(documentOf("a"));
     const first = store.getSnapshot();
@@ -193,7 +193,7 @@ describe("the selection is here, and still not in the history", () => {
   });
 
   it("gets a deleted annotation back when the delete is undone", () => {
-    // #40's behaviour, now through the real store: nothing prunes, because
+    // Through the real store: nothing prunes, because
     // `selectedAnnotations` resolves ids against whatever document is current.
     const store = new AnnotatorStore(documentOf("a", "b"), selectionOf(["a", "b"]));
     const picked = () => selectedAnnotations(store.document, store.selection).map((x) => x.id);

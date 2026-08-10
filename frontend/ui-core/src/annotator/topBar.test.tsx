@@ -1,6 +1,6 @@
 /**
- * The reshuffled top bar (#368): the class field, the single workflow primary,
- * the tool strip's undo/redo, and principle 10's save-first guard.
+ * The top bar: the single workflow primary, the tool strip's undo/redo, and
+ * principle 10's save-first guard.
  *
  * Driven through `AnnotationPage` rather than through the parts, because every
  * claim here is about how the parts are wired: which control the wire's
@@ -54,15 +54,15 @@ let jobSettled = false;
  * How many frames the job carries.
  *
  * One by default, which is also the last frame — so a module that never touches
- * this is testing the end of a job. #383's right zone is occupied differently
+ * this is testing the end of a job. The bar's right zone is occupied differently
  * there, which is why several tests below set it to two and stay on the first.
  */
 let assetCount = 1;
 
 /**
  * What `/jobs/{id}/progress` answers — the counts the Finish-job tooltip reads
- * (#427). Null keeps the route unanswered, which is how the older tests ran and
- * what the page treats as "no counts yet".
+ * Null keeps the route unanswered, which is what the page treats as "no counts
+ * yet".
  */
 let jobCounts: {
   unannotated: number;
@@ -309,8 +309,7 @@ describe("the class list, now in the panel (#420)", () => {
   });
 
   it("renders no classes region at all on a settled frame (#426)", async () => {
-    // Decision (a) of #426, superseding #420's render-as-information direction:
-    // an accepted frame opens in the read-only mode, and there the region — its
+    // An accepted frame opens in the read-only mode, and there the region — its
     // rows, its filter, its quick-create — is absent, not disabled. The banner
     // above the stage is the one surface that says why.
     progress = "accepted";
@@ -395,7 +394,7 @@ describe("the single review action", () => {
 });
 
 /**
- * The filled slot, which is the whole of #383.
+ * The filled slot: exactly one weight on the bar.
  *
  * `variant="primary"` is the one weight on the bar, so "exactly one filled
  * control" is a claim about `bg-primary` rather than about a `data-` attribute
@@ -431,8 +430,8 @@ describe("the navigation cluster (#416)", () => {
   });
 
   it("holds no instrument sub-group any more (#420)", async () => {
-    // The class field held a 192px reservation in the middle of this cluster and
-    // now lives in the side panel. The bar is *navigation only*, which is what
+    // A class field would hold a 192px reservation in the middle of this cluster;
+    // it lives in the side panel. The bar is *navigation only*, which is what
     // pays for the right zone's two controls being visible at 1440 again.
     assetCount = 2;
     await open();
@@ -477,8 +476,8 @@ describe("the flow verb", () => {
     // The conformance defect this replaces: **Finish job rendered on every
     // frame**, disabled with nothing attached for as long as one frame was
     // unannotated — a bare greyed control on a fresh job at 0 of 48, which is
-    // `DESIGN.md` principle 9's exact prohibition. It also contradicted #383,
-    // which settled that the filled slot is `Save and next` while there is
+    // `DESIGN.md` principle 9's exact prohibition. It also contradicts the
+    // occupancy rule: the filled slot is `Save and next` while there is
     // somewhere to advance to and `Finish job` when there is not.
     //
     // Deliberately asserted on the *most* favourable mid-job state there is:
@@ -499,7 +498,7 @@ describe("the flow verb", () => {
     // finished — it is the filled slot there — so on that frame it owes a reason.
     //
     // `aria-disabled`, never the native attribute, and a real tooltip rather
-    // than a `title` (#427): a natively disabled button cannot be hovered or
+    // than a `title`: a natively disabled button cannot be hovered or
     // focused, so its reason could never be read. The press is refused in the
     // handler instead, which the mutation assertion below holds.
     assetCount = 1;
@@ -549,7 +548,7 @@ describe("the flow verb", () => {
   });
 
   it("carries no tooltip at all once it is live", async () => {
-    // An enabled Finish job explains itself by being pressable (#427).
+    // An enabled Finish job explains itself by being pressable.
     assetCount = 1;
     jobSettled = true;
     progress = "annotated";
@@ -579,11 +578,11 @@ describe("the flow verb", () => {
     // does, so it is exclusive by arithmetic and cannot be contended by a
     // declaration. A review action promoted back to `primary` would fail here.
     //
-    // **Still exactly one after #439**, and this sweep is what says so. The
-    // frame's own verbs leave the bar once the *job* is closed, never because
+    // **Still exactly one when the job closes**, and this sweep is what says so.
+    // The frame's own verbs leave the bar once the *job* is closed, never because
     // this one frame is settled — the batch here is open in every row, so the
-    // slot stays filled through all five progresses and the cluster keeps the
-    // constant width #416 measured.
+    // slot stays filled through all five progresses and the cluster keeps its
+    // constant width.
     for (const state of PROGRESS_STATES) {
       for (const count of [1, 2]) {
         progress = state;
@@ -625,7 +624,7 @@ describe("the flow verb", () => {
   });
 
   it("carries no hotkey chip, unlike its two neighbours on the bar", async () => {
-    // #385: `Chip` is a muted box on a bordered ground — right on the ghost and
+    // `Chip` is a muted box on a bordered ground — right on the ghost and
     // the outline controls, a smudge on the only filled one. The chord is
     // unchanged, which is what the next test asserts; this is about the pixels.
     assetCount = 2;
@@ -767,8 +766,8 @@ describe("principle 10 — no exit loses work", () => {
   // **The ordering claim is not made here**, and the reason is worth stating: a
   // save only happens over a *dirty* document, and making one dirty means
   // drawing — which needs a canvas with a real size, and jsdom's
-  // `getBoundingClientRect` returns all zeros (the finding that kept #47 out of
-  // component tests in the first place). A test that clicked Back over a clean
+  // `getBoundingClientRect` returns all zeros, which is what keeps canvas claims
+  // out of component tests. A test that clicked Back over a clean
   // document and watched the navigation happen would pass with the guard
   // deleted, which is a description rather than a test.
   //

@@ -4,7 +4,7 @@
  * Reached two ways, and the second is the one that needed server work: a bad
  * in-app link, and a **reload on a URL that is a client route** — which arrives at
  * the server as a request for a path no file backs. `_install_ui`'s SPA fallback
- * (#58, deferred there by #33) serves the index for it so the router gets to
+ * serves the index for it so the router gets to
  * answer, and this is the answer.
  */
 

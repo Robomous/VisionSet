@@ -5,10 +5,10 @@ A job is one segment of an approved batch. ``next_pending_assets`` → look at t
 pixels → ``add_annotations`` → ``set_asset_progress`` where nothing is there to
 label → ``complete_job``.
 
-**There is no ``start_job``** (#109). A job is taken to ``in_progress`` by the
-first write that touches it, and the result says so; see ``_autostart``. The
-lifecycle verb was retired rather than folded, because the only thing an agent
-could do with it was remember to call it — and two of #36's twelve runs did not.
+**There is no ``start_job``.** A job is taken to ``in_progress`` by the first
+write that touches it, and the result says so; see ``_autostart``. The lifecycle
+verb was retired rather than folded, because the only thing an agent could do
+with it was remember to call it, and measured runs did not.
 
 ``get_job_progress`` folds into ``get_job``: the counts *are* what a caller wants
 a job for, and a second tool to fetch them is a round trip for a field.

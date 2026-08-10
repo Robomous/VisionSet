@@ -3,17 +3,12 @@
  *
  * ## Why this module re-exports instead of implementing
  *
- * #128 was filed asking for v1's `getClassPalette` to be ported: a schema colour
- * when there is one, else `hash = hash * 31 + charCode` over the lowercased name,
- * `hsl(hue 75% 48%)` for the stroke and a separate fill, selected and label hue.
- *
- * That port would have been a **second** spelling. `classColor` already shipped
- * with the React adapter (#47), is unit-tested there, and is what the canvas
- * actually draws with — so porting v1's formula would have given a side panel
- * whose swatches disagree with the shapes beside them, which is precisely the
- * failure the "one spelling" acceptance criterion exists to prevent. `DESIGN.md`
- * was corrected to record the shipped rule; this module is that correction in
- * code.
+ * Porting v1's `getClassPalette` — a schema colour when there is one, else
+ * `hash = hash * 31 + charCode` over the lowercased name, `hsl(hue 75% 48%)` for
+ * the stroke — would be a **second** spelling. `classColor` ships with the React
+ * adapter, is unit-tested there, and is what the canvas actually draws with, so a
+ * second formula would give a side panel whose swatches disagree with the shapes
+ * beside them.
  *
  * The shipped rule, for the record:
  *
@@ -28,7 +23,7 @@
  * without parsing. v1's four-value palette is not ported for the same reason: the
  * three extra values were an alpha and two hue shifts a renderer can apply itself.
  *
- * The panel swatches (#126) and the gallery badges (#55) import from here. The
+ * The panel swatches and the gallery badges import from here. The
  * canvas imports from `@visionset/annotator` directly. Both reach the same
  * function.
  */
@@ -51,9 +46,9 @@ export const CLASS_FILL_OPACITY = 0.2;
  * `<input type="color">` accepts **only** `#rrggbb`. Anything else — including a
  * perfectly valid CSS colour — leaves the control on its own default, which is
  * black in every browser and reads as grey through the design system's border.
- * That is #162: a class with no declared colour showed its derived hue in the dot
- * beside its name and **grey** in the swatch two inches to the right, in the one
- * control whose whole job is to show what colour something is.
+ * The failure it prevents: a class with no declared colour showing its derived
+ * hue in the dot beside its name and **grey** in the swatch two inches to the
+ * right, in the one control whose whole job is to show what colour something is.
  *
  * So this converts rather than gives up, and the derived branch is exactly the
  * case it has to handle: `classColor` answers `hsl(h 72% 58%)` there, which is a
@@ -61,8 +56,8 @@ export const CLASS_FILL_OPACITY = 0.2;
  * in general.
  *
  * **It is a conversion, never a second palette.** `classColor` stays the one
- * spelling of the rule (#128's acceptance criterion, and the reason this module
- * re-exports rather than re-implements); this only changes the notation.
+ * spelling of the rule, and the reason this module re-exports rather than
+ * re-implements; this only changes the notation.
  *
  * `null` for anything else, and that is honest rather than lazy: the kernel
  * accepts any CSS spelling in `LabelClass.color`, so a schema authored elsewhere

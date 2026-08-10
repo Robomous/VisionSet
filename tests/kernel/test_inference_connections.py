@@ -128,7 +128,7 @@ def test_the_service_refuses_in_the_kernels_own_vocabulary(connections) -> None:
     assert str(refusal.value) == "a local connection needs device"
 
 
-# --- the two closed vocabularies (#469) ---------------------------------------
+# --- the two closed vocabularies ----------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -338,7 +338,7 @@ def test_configuring_a_connection_reaches_no_model_runtime() -> None:
 
     The kernel knows the configuration; the `ModelProvider` port knows the
     protocol; resolving one into the other is the composition root's job outside
-    the kernel (`cf. #418`). Asserted as an import-graph fact because that is
+    the kernel. Asserted as an import-graph fact because that is
     what "creating a connection downloads nothing" actually rests on — a mocked
     call would prove only that this test did not download anything.
     """

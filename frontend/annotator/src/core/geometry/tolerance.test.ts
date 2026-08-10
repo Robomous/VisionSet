@@ -99,9 +99,9 @@ describe("the tolerances themselves", () => {
   });
 
   it("keeps v1's paste offset, and converts it like every other screen constant", () => {
-    // v1's 20 px, and the reason it is here rather than in `clipboard.ts` is
-    // #123's own deferral: it is a screen distance, and this is the one module
-    // allowed to divide by a zoom. The conversion is what makes a pasted copy sit
+    // v1's 20 px, and it lives here rather than in `clipboard.ts` because it is a
+    // screen distance and this is the one module allowed to divide by a zoom. The
+    // conversion is what makes a pasted copy sit
     // 20 screen pixels from its original at *every* zoom — invisible at a fitted
     // 5% and half a pane away at 8x if it were a fixed asset-pixel delta.
     expect(PASTE_OFFSET_PX).toBe(20);

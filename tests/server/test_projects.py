@@ -282,7 +282,7 @@ def test_every_project_route_refuses_a_request_without_a_token(
 
 # --- stats -------------------------------------------------------------------
 #
-# The wire's half of #207. That the numbers are *right* is
+# The wire's half of the project stats. That the numbers are *right* is
 # `tests/kernel/test_project_service.py`'s subject; what is asserted here is that
 # they reach a client in the documented shape, and that the one field the wire
 # adds — `annotated_pct`, derived from two the domain already carries — is

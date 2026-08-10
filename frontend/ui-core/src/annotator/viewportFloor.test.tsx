@@ -1,5 +1,5 @@
 /**
- * The annotator's minimum viewport (#184).
+ * The annotator's minimum viewport.
  *
  * Two claims, and they are different in kind. The **floor** is arithmetic — 768,
  * `min-width`, inclusive — and belongs here. The **gate** is structural: below
@@ -170,7 +170,7 @@ describe("the gate", () => {
   });
 
   it("offers a way out, resolved from the job's own batch", async () => {
-    // The dead end #199 removed everywhere else: on a phone there is no rail
+    // The dead end this avoids: on a phone there is no rail
     // beside this page and, on a fresh tab, no history behind it.
     stubMatchMedia(false);
     const onOpenGallery = vi.fn();

@@ -1,9 +1,9 @@
 /**
- * The in-editor frame gallery (#390).
+ * The in-editor frame gallery.
  *
- * The grid button used to *leave* — it called the same `onOpenGallery` the back
- * arrow does, so "show me the other frames" was answered by expelling somebody
- * from the workspace to a full batch-management screen and making them scroll
+ * A grid button wired to `onOpenGallery` *leaves* — so "show me the other frames"
+ * would be answered by expelling somebody from the workspace to a full
+ * batch-management screen and making them scroll
  * back to the frame they were looking at. `DESIGN.md`'s principle 10 says no flow
  * may force navigation out of the editor, and choosing the next frame is a flow
  * *inside* annotating: it is the `‹` / `›` navigator with pictures.
@@ -16,8 +16,8 @@
  * **What is deliberately not asserted here**: that the save actually *precedes*
  * the switch. Making a document dirty means drawing, drawing needs a canvas with
  * a real size, and jsdom answers all zeros — so that claim lives in chromium
- * (`frontend/app/e2e/annotate.spec.ts`), which is the same split #48 drew and the
- * one #368's work streams kept.
+ * (`frontend/app/e2e/annotate.spec.ts`), which is the standing split between what
+ * jsdom can answer and what needs a browser.
  */
 
 import { QueryClient } from "@tanstack/react-query";
@@ -109,7 +109,7 @@ function answer(path: string): unknown {
       format: "png",
       // Null on purpose: the tiles must render the photo-icon placeholder rather
       // than a broken-image glyph, which is `DESIGN.md`'s rule for a preview that
-      // was never cached — and the ordinary state of a pre-#21 asset.
+      // was never cached.
       thumbnail_hash: null,
       frame_index: index,
       frame_timestamp: index,
@@ -313,7 +313,7 @@ describe("the segmented filter", () => {
     expect(within(modal).getAllByTestId(/^frame-4444444/)).toHaveLength(1);
     // Frame 3 is still frame 3. The number is the frame's position in the job,
     // and a filter that renumbered would disagree with the navigator about which
-    // frame is "3" — the side panel's rule (#368), one surface over.
+    // frame is "3" — the side panel's rule, one surface over.
     expect(
       within(modal).getByTestId(`frame-${assetId(2)}`).getAttribute("aria-label"),
     ).toContain("Frame 3");

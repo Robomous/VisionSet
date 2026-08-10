@@ -85,8 +85,7 @@ function mount(
 
 describe("the two regions the panel is now", () => {
   it("stacks them without tabs, so both subjects are on screen at once", () => {
-    // #368 made this one view by removing the Objects | Labels tabs; #420 brings
-    // class selection back and deliberately does **not** bring the tabs with it.
+    // One view rather than Objects | Labels tabs.
     // A tab is a claim that two things are alternatives, and these are the two
     // halves of one question — what may I draw, and what have I drawn.
     render(mount(storeWith([annotation("a", "vehicle", "bbox")])));
@@ -118,8 +117,8 @@ describe("the object list", () => {
   });
 
   it("lists a lane like any other object, and selects it from its row", async () => {
-    // #223 shipped the polyline geometry without a drawing tool, so the object
-    // list is the *only* way to reach one: `geometryContains` deliberately
+    // A polyline drawn before the tool existed can only be reached from the object
+    // list: `geometryContains` deliberately
     // answers false for an open path, so a canvas press cannot select it. A row
     // that could not select would leave a lane visible and untouchable.
     const store = storeWith([
@@ -261,7 +260,7 @@ describe("the classification-tag strip", () => {
     expect(screen.getByTestId("tag-chip-daytime").getAttribute("aria-pressed")).toBe("true");
 
     // One tag per class, which the annotator holds structurally because the kernel
-    // enforces no uniqueness (#121).
+    // enforces no uniqueness.
     await userEvent.click(screen.getByTestId("tag-chip-daytime"));
     expect(store.document.annotations.size).toBe(0);
   });
@@ -326,8 +325,8 @@ describe("reassigning a class from a row", () => {
   });
 
   it("carries the class hotkeys, because the menu is the canvas picker's (#380)", async () => {
-    // The row menu and the canvas one are the same component, so what #380 added
-    // for the canvas is on the panel too. This is the assertion that fails if a
+    // The row menu and the canvas one are the same component, so what the canvas
+    // gained is on the panel too. This is the assertion that fails if a
     // second spelling is ever forked out of `ReassignMenu.tsx`.
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
     render(mount(store));
@@ -433,8 +432,7 @@ describe("what the panel offers when the document cannot be written", () => {
   });
 
   it("renders no classes region at all — absent, not disabled", () => {
-    // Decision (a) of #426, superseding #420's render-as-information direction:
-    // *what may I draw* is not a question a viewer can ask, so the region, its
+    // *What may I draw* is not a question a viewer can ask, so the region, its
     // filter, its quick-create and its hotkey badges all leave the panel. The
     // split rule goes with it — a divider between one region and nothing is a
     // line about nothing. What the region's absence buys — the objects region

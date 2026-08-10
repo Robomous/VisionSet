@@ -64,7 +64,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "AssetNotInJob": (404, "ASSET_NOT_IN_JOB"),
     "NoSplitRecipe": (404, "NO_SPLIT_RECIPE"),
     "ExportFormatNotFound": (404, "EXPORT_FORMAT_NOT_FOUND"),
-    # #62: a release naming bytes an export cannot use. 409 rather than 500 for
+    # A release naming bytes an export cannot use. 409 rather than 500 for
     # `UnserializableManifest`'s reason — the request is fine, the stored state is
     # not — so the message naming the asset reaches the caller.
     "ExportSourceUnreadable": (409, "EXPORT_SOURCE_UNREADABLE"),
@@ -199,13 +199,13 @@ def test_message_exposure_is_opt_in_and_only_for_5xx() -> None:
     assert exposed == {
         "WorkspaceBusy",
         "WorkspaceFormatTooNew",
-        # #277: a workspace whose schema is not the one it is stamped at. Opaque,
+        # A workspace whose schema is not the one it is stamped at. Opaque,
         # this is a 500 naming no cause on a route with no connection to the
         # problem, and the answer is only in the server's log — which was the
         # complaint. The message names the table and column instead.
         "WorkspaceSchemaMismatch",
         "MediaToolUnavailable",
-        # #418 slice 2: the two deployment conditions inference can hit. Both
+        # The two deployment conditions inference can hit. Both
         # carry a remedy nobody can reconstruct from a generic sentence — the
         # exact `pip install` for one, and which connection kind this build has
         # no adapter for in the other — which is `MediaToolUnavailable`'s stated
@@ -382,7 +382,7 @@ def test_a_wrong_method_speaks_the_same_schema(probe: TestClient) -> None:
     assert response.json()["code"] == "METHOD_NOT_ALLOWED"
 
 
-# --- the 401, which #25 builds on ----------------------------------------
+# --- the 401 -------------------------------------------------------------
 
 
 def test_a_401_carries_the_error_body_and_keeps_its_challenge() -> None:

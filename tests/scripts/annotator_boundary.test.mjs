@@ -1,6 +1,6 @@
 // Run with: pnpm test:scripts  (also part of the root `pnpm test`)
 //
-// The headless boundary's own gate, tested. #112's complaint was that the rule was stated in three
+// The headless boundary's own gate, tested. A rule stated in three
 // places and enforced in one; a gate with no test proving it fires is a weaker version of the same
 // problem — "core is DOM-free" would still be an assertion about a config nobody exercises.
 //
@@ -102,7 +102,7 @@ test("a DOM global and a DOM type in a signature both fail the core project", ()
     // ("property 'clientWidth' does not exist on type 'SVGSVGElement'"), which is what this gate
     // reported while @types/react's empty stand-ins were still in scope — a broken gate that looked
     // like a working one. `KeyboardEvent` is the case that had no error at all: a signature with no
-    // property access, and the exact shape #46 will want.
+    // property access, and the exact shape the input layer wants.
     assert.match(output, /error TS2584: Cannot find name 'document'/, output);
     assert.match(output, /error TS2304: Cannot find name 'KeyboardEvent'/, output);
     assert.match(output, /error TS2304: Cannot find name 'SVGSVGElement'/, output);
@@ -134,7 +134,7 @@ test("the same line is legal in an adapter", () => {
 });
 
 test("the react import ban still fires", () => {
-  // A regression pin: #112 edited the config object that rule lives in.
+  // A regression pin: the config object that rule lives in is edited by hand.
   const { status, output } = run(
     ESLINT,
     ["--stdin", "--stdin-filename", "src/core/probe.ts"],
@@ -144,7 +144,7 @@ test("the react import ban still fires", () => {
   assert.match(output, /no-restricted-imports/, output);
 });
 
-// #46's second acceptance criterion: "no `KeyboardEvent` construction anywhere as an
+// The input layer's second rule: "no `KeyboardEvent` construction anywhere as an
 // inter-component API". It is already true by construction — `core/interaction/events.ts` owns a
 // vocabulary that has never heard the string "Escape", and the type gate above proves a DOM type
 // cannot even be named in a core signature — but nothing pinned it, and v1 shipped exactly this:

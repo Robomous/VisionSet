@@ -2,7 +2,7 @@
 """Background jobs: the generic polling surface, and the one place artifacts leave.
 
 **The prefix is ``/background-jobs`` and not ``/jobs``, because ``/jobs`` is
-taken.** ``routes/jobs.py`` has served annotation jobs there since #29 —
+taken.** ``routes/jobs.py`` serves annotation jobs there —
 ``GET /jobs/{job_id}`` answers a ``JobOut``, a slice of *human* work — and that is
 a shipped contract in ``openapi.json``. Two different things wanted the same word;
 the newer one gives way. It also reads consistently beside ``/ingest-jobs``, which
@@ -127,10 +127,10 @@ def cancel_background_job(workspace: WorkspaceDep, job_id: UUID) -> BackgroundJo
     responses={
         **documented(404, 409),
         200: {
-            # **Both**, and declaring only one would be the mistake #32 caught on
-            # `get_asset_content`: that route declared two image types while
-            # `_media_type()` could also answer `application/octet-stream`, and a
-            # response the contract omits is a lie the generated client inherits.
+            # **Both.** A response the contract omits is a lie the generated
+            # client inherits — the mistake `get_asset_content` made by declaring
+            # two image types while `_media_type()` could also answer
+            # `application/octet-stream`.
             # Today's only artifact is a zip; anything else falls back to the
             # generic type, and both are what a caller may actually receive.
             "content": {

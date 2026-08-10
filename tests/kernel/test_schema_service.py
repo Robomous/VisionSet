@@ -522,7 +522,7 @@ def test_a_lost_version_race_is_reported_as_a_conflict(
     def _stale(self: SchemaService, uow: object, project_id: UUID) -> AnnotationSchema | None:
         return None  # as if nothing were stored yet, so the next version is 1 again
 
-    # `active` rather than `_active` since #207 promoted it: `ProjectService.stats`
+    # `active` rather than a private helper: `ProjectService.stats`
     # needs the "no schema yet" answer without an exception, and the seam a race
     # is simulated through is the same one.
     monkeypatch.setattr(SchemaService, "active", _stale)
@@ -651,7 +651,7 @@ def test_each_version_carries_its_own_description(tmp_path: Path) -> None:
     workspace.close()
 
 
-# --- provenance: which kind of work published a version (#368) ---------------
+# --- provenance: which kind of work published a version -----------------------
 #
 # It is recorded, never derived. Nothing in the service reads it back, no gate
 # consults it and no diff sees it — so what these tests are for is that the value

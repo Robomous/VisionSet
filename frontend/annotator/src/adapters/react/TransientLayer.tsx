@@ -55,12 +55,12 @@ export interface TransientLayerProps {
   readonly crosshair: Point | null;
   readonly asset: AssetDescriptor;
   /**
-   * The proposal waiting to be accepted, if one is showing (#424, D2).
+   * The proposal waiting to be accepted, if one is showing.
    *
    * Here rather than in `AnnotationLayer` because it is exactly what this layer
    * is for: something on screen that is not in the document. It never enters
-   * `AnnotatorStore`, so the committed layer has nothing to draw it from — which
-   * is D4's ephemerality made visible rather than merely promised.
+   * `AnnotatorStore`, so the committed layer has nothing to draw it from — its
+   * ephemerality made visible rather than merely promised.
    */
   readonly suggestion?: PaintedSuggestion | null;
   /**
@@ -146,7 +146,7 @@ export function TransientLayer({
 
 /**
  * A proposal, drawn as a proposal: reduced opacity, a dashed outline, and its
- * class and confidence beside it (#424, D2).
+ * class and confidence beside it.
  *
  * Both signals together, and `paint.ts` states why neither is enough alone. The
  * label carries the confidence because that is the one fact a person needs to
@@ -270,7 +270,7 @@ function PromptPoints({
  * is a promise about what a press near vertex zero does, and near a path's first
  * vertex a press places another vertex like any other. Drawing an inert ring there
  * would be the same lie as an inert cursor, which is what `affordanceAt`'s
- * `too-few` note is about (#342).
+ * `too-few` note is about.
  *
  * The ring is drawn from `Tolerances.closePolygon` and its filled state comes
  * from `polygonCloseAttempt` — the same function `affordanceAt` and the
@@ -283,7 +283,7 @@ function PendingPolygonShape({ points, cursor, color, zoom, closeRing }: {
   readonly cursor: Point | null;
   readonly color: string;
   readonly zoom: number;
-  /** The ring's radius, or `null` for a shape that does not close (#342). */
+  /** The ring's radius, or `null` for a shape that does not close. */
   readonly closeRing: number | null;
 }): JSX.Element {
   const first = points[0];

@@ -192,7 +192,7 @@ def test_reporting_is_optional(
 def test_a_connection_that_is_already_set_up_is_verified_rather_than_refused(
     connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
 ) -> None:
-    """The second run is the repair action, not a mistake to catch (#469).
+    """The second run is the repair action, not a mistake to catch.
 
     `download_weights` is legal at `ready`, so this reaches the download again
     — and the download against a full cache is a hash check rather than a

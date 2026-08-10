@@ -268,7 +268,7 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
         for job in started["jobs"]:
             job_id = job["id"]
             # Nothing marks the job as being worked on: there is no tool for it
-            # (#109). It is `pending` until the first write, which starts it and
+            # It is `pending` until the first write, which starts it and
             # says so — so this walk never spends a call on ceremony.
             assert ok(await tool("get_job", job_id=job_id))["state"] == "pending"
             pending = ok(await tool("next_pending_assets", job_id=job_id, count=10))

@@ -290,7 +290,7 @@ def test_no_work_happens_after_the_batch_is_closed(tmp_path: Path) -> None:
     fixture.close()
 
 
-# --- a job's own writes leave its assets' progress alone (#302) ---------------
+# --- a job's own writes leave its assets' progress alone ----------------------
 
 
 def test_writing_a_job_does_not_put_back_progress_that_moved_since_it_was_read(
@@ -528,7 +528,7 @@ def test_aggregation_refuses_an_unknown_batch_or_project(tmp_path: Path) -> None
 
 
 def test_a_batch_reaches_completed_through_its_jobs(tmp_path: Path) -> None:
-    """The end-to-end proof that #8 and #9 fit: nothing here reaches past a service."""
+    """The end-to-end proof that the two services fit: nothing reaches past one."""
     fixture = Fixture(tmp_path, assets=4)
     fixture.batches.approve(fixture.batch.id, BySize(size=2))
     fixture.batches.start(fixture.batch.id)
@@ -544,7 +544,7 @@ def test_a_batch_reaches_completed_through_its_jobs(tmp_path: Path) -> None:
     fixture.close()
 
 
-# --- a finished job is finished (#439) ----------------------------------------
+# --- a finished job is finished -----------------------------------------------
 
 
 def _finished_job(tmp_path: Path) -> tuple[Fixture, UUID, UUID]:
@@ -565,7 +565,7 @@ def test_a_finished_job_refuses_a_progress_move_inside_an_open_batch(tmp_path: P
     """The batch gate cannot cover this, which is the whole reason it exists.
 
     Completing a job leaves its batch `in_annotation` — `BatchService` derives
-    completion separately — so `require_open_batch` passes and, until #439,
+    completion separately — so `require_open_batch` passes and, without a job gate,
     nothing else was asked. An asset in a finished job could be skipped, or
     un-skipped back to `unannotated`, which unsettles a job that had already
     stated every asset was dealt with.

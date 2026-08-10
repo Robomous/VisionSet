@@ -13,8 +13,8 @@ here would throw that away and add a second definition to keep in step.
 **The one wart it inherits, stated rather than hidden**: a discriminated union's
 tag carries a default in the domain — ``LabelClass.geometry`` does not, but
 ``Geometry`` and ``Partition`` do — so the generated schema shows ``type`` as
-optional while pydantic needs it in the input dict to pick a variant. #29 fixed
-that on the wire by dropping the defaults from its own bodies; here it is
+optional while pydantic needs it in the input dict to pick a variant. The REST
+surface fixes that by dropping the defaults from its own bodies; here it is
 answered in the tool description and pinned by a test, because the alternative is
 the re-spelling this module exists to avoid.
 
@@ -22,10 +22,9 @@ the re-spelling this module exists to avoid.
 list of integers, and shipping a tool to fetch it is a round trip for something
 that fits in the answer to "what is the schema".
 
-``preview_schema_change`` gives ``SchemaService.preview`` its **first caller**.
-It has been in the kernel since #6 and unrouted since #27 for want of one. An
-agent is exactly the caller it was waiting for: plan-before-apply is how a model
-finds out that a change it is about to make would orphan somebody's work, and
+``preview_schema_change`` is where ``SchemaService.preview`` earns its place: an
+agent is the caller plan-before-apply was waiting for, because it is how a model
+finds out that a change it is about to make would orphan somebody's work — and
 finding out *before* is the whole point.
 """
 

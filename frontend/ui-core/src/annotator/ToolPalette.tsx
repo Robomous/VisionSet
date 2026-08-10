@@ -7,8 +7,7 @@
  * drag on the canvas draws nothing. The capability was reachable — the Labels tab
  * and the digit hotkeys both move the active class — but neither is a *tool*, and
  * neither is discoverable from the canvas somebody is looking at. So a first-time
- * user got a page whose primary gesture was inert (#198; #145 recorded the same
- * absence as ergonomics, which was too generous).
+ * user gets a page whose primary gesture is inert.
  *
  * ## A tool strip over a derived tool
  *
@@ -32,18 +31,18 @@
  *    tool, because there is nothing to draw: the label is about the whole image
  *    and the Labels tab is where it is toggled.
  *
- * ## `polyline` is a tool now (#342)
+ * ## `polyline` is a tool
  *
  * It spent one release as the strip's worked example of not-yet-drawable — a
  * disabled button carrying its own reason, because a missing control would have
- * said "this schema has no lanes", which was false. #342 shipped the tool, so the
+ * said "this schema has no lanes", which was false. It has a tool now, so the
  * button is live and the sentence is gone.
  *
  * `PENDING_TOOLS` stays, empty. The rule it encodes — *declared but not drawable
  * is disabled-with-reason, never absent* — is the part worth keeping, and `mask`
  * and `keypoints` are still in that position the day a schema declares one.
  *
- * ## The suggest button is the one control here that is a mode (#424)
+ * ## The suggest button is the one control here that is a mode
  *
  * Every other button on this strip *reports* a derived tool and moves the active
  * class to derive it. Suggest cannot: it is not a `Tool`, because `tool.ts`
@@ -53,13 +52,13 @@
  * the list stays exactly what its type says it is.
  *
  * It is **absent** rather than disabled on a schema whose classes can hold
- * neither a box nor a polygon (D3), which is the same rule that keeps a
+ * neither a box nor a polygon, which is the same rule that keeps a
  * `classification_tag` off the strip: a disabled control has to be explicable in
  * principle 9's terms, and "no class in this project could accept the answer" is
  * a fact about the schema rather than a capability that is coming.
  *
  * The *class* is a different question from the schema, and gets the other
- * treatment (#472). An armed tool over a class that can hold nothing is **dimmed
+ * treatment. An armed tool over a class that can hold nothing is **dimmed
  * with its reason**, not hidden: the capability is real in this project and comes
  * back the moment the active class moves, so a button that vanished and returned
  * as somebody worked down the class list would be describing a project that keeps
@@ -78,7 +77,7 @@
  * ## The shortcut in the tooltip is the digit, not v1's letter
  *
  * `DESIGN.md` writes "Box (B)", "Polygon (P)" from v1. This build binds classes to
- * the **digit row** (#46: digit N is palette row N, capped at nine), so the chord
+ * the **digit row** — digit N is palette row N, capped at nine — so the chord
  * that reaches a tool is the one `hotkeyForClass` answers. Printing v1's letter
  * would be printing a key that does nothing. `select` has no class and therefore no
  * digit; `V` is its chord in `DEFAULT_BINDINGS` and in the Labels tab, so it is `V`
@@ -111,11 +110,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/Menu";
 /**
  * Why a declared geometry has no tool yet, keyed by the geometry.
  *
- * **Empty since #342**, and kept rather than deleted along with its one entry.
+ * **Empty**, and kept rather than deleted along with its last entry.
  * The mechanism is what earns its place: the day `mask` or `keypoints` is declared
  * in a schema, the strip says so without anyone remembering that it should, and
- * that is a property worth more than the twelve lines it costs. `polyline` was the
- * entry, and the reason it is gone is that it has a tool now.
+ * that is a property worth more than the twelve lines it costs.
  *
  * The record is typed on `string` rather than on the geometry union so an entry
  * can name a geometry `drawableGeometry` has never heard of, which is the case it
@@ -150,7 +148,7 @@ interface ToolChoice {
    * Disabled-with-reason rather than hidden: see the module docstring. A button
    * carrying this never calls `onActivateClass`, because activating a class whose
    * tool does not exist would leave the canvas in `select` with a lane class held
-   * — inert, and indistinguishable from the bug #198 fixed.
+   * — inert, and indistinguishable from a canvas with no tool strip at all.
    */
   readonly unavailable: string | null;
 }
@@ -204,7 +202,7 @@ export interface ToolPaletteProps {
   readonly onActivateClass: (labelClass: string | null) => void;
   readonly onToggleHelp: () => void;
   /**
-   * The suggest tool (#424), or absent where the host cannot serve one.
+   * The suggest tool, or absent where the host cannot serve one.
    *
    * A prop rather than a row in `toolChoices`, because it is not a `Tool` and
    * must not be made to look like one: `tool.ts` derives the tool from the active
@@ -213,7 +211,7 @@ export interface ToolPaletteProps {
    * row and force `toolFor` to answer for something it cannot see.
    *
    * **Hidden, not disabled, when this schema declares no class that can hold a
-   * suggestion** (D3's third case) — the strip's own rule for a tool the schema
+   * suggestion** — the strip's own rule for a tool the schema
    * cannot reach, and the same mechanism that keeps a `classification_tag` off it.
    * A disabled sparkle over a tag-only schema would be promising a capability
    * that does not apply to this project rather than one that is coming.
@@ -226,7 +224,7 @@ export interface ToolPaletteProps {
     readonly active: boolean;
     readonly onToggle: () => void;
     /**
-     * Why the armed tool cannot act right now, or `null` when it can (#472).
+     * Why the armed tool cannot act right now, or `null` when it can.
      *
      * The *class* half of what the schema check above is the project half of: a
      * schema with no suggestible class hides the button, and a suggestible schema
@@ -239,18 +237,18 @@ export interface ToolPaletteProps {
     readonly unavailable?: string | null;
   };
   /**
-   * Open the add-a-class dialog (#233), or absent where there is nowhere to add
+   * Open the add-a-class dialog, or absent where there is nowhere to add
    * one — the demo has no project behind it. The `onOpenGallery` rule: a host
    * that cannot honour a control renders no control rather than a dead one.
    */
   readonly onAddClass?: () => void;
   /**
-   * The command log's two steps, made visible (#368).
+   * The command log's two steps, made visible.
    *
-   * `mod+z` and `mod+shift+z` have worked since #46 and are unchanged; what was
-   * missing is any way to *find out* that they do. Undo is the annotator's
-   * headline capability over v1, and it had no representation on screen at all —
-   * a person who did not already know the chord had no route to it.
+   * `mod+z` and `mod+shift+z` work whether or not anything draws them; what these
+   * add is a way to *find out* that they do. Undo is the annotator's headline
+   * capability over v1, and a person who did not already know the chord would
+   * otherwise have no route to it.
    *
    * Optional as a pair: a host with no store to step (the showcase) renders
    * neither, rather than two dead buttons.
@@ -277,7 +275,7 @@ export function ToolPalette({
    *
    * `AnnotatorCanvas` reads the keyboard off its own root, so a button that took
    * the focus would leave every chord dead until the user clicked back on the
-   * picture — the same class of failure #47 measured when a removed shape took the
+   * picture — the same class of failure a removed shape causes when it takes the
    * focus with it, arrived at from the other direction. `mousedown` is where the
    * browser moves focus, so that is where it is refused.
    */
@@ -332,7 +330,7 @@ export function ToolPalette({
 
       {/* Beside the tools, because "the class I need is not here" is a thought
           somebody has while looking at this strip — and a digit hotkey for the
-          new class arrives free, since the palette *is* the hotkey order (#46). */}
+          new class arrives free, since the palette *is* the hotkey order. */}
       {onAddClass !== undefined && (
         <PaletteButton
           testId="tool-add-class"

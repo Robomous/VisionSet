@@ -27,7 +27,7 @@ def test_version_file_is_the_beta(declared_version: str) -> None:
     publishing it safe rather than premature. See `docs/releasing.md`.
 
     `0.0.1b2` is the beta corrected: `0.0.1b1` shipped with three defects a manual
-    pass over the **wheel** found and a green suite could not (#164), and a
+    pass over the **wheel** found and a green suite could not, and a
     published version is never edited in place.
     """
     assert declared_version == "0.0.1b2"

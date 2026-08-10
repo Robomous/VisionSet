@@ -159,7 +159,7 @@ def test_a_connection_declares_what_this_slice_can_perform(client: TestClient) -
     assert created(client, LOCAL)["allowed_actions"] == ["download_weights", "update", "delete"]
     assert created(client, HTTP)["allowed_actions"] == ["update", "delete"]
     # `check_integrity` is absent from both, and for two different reasons —
-    # the local one has no snapshot yet and the HTTP one never will (#471).
+    # the local one has no snapshot yet and the HTTP one never will.
     # The `ready` half is `test_a_ready_connection_declares_the_integrity_check`.
 
 
@@ -232,7 +232,7 @@ def test_an_edit_into_a_shape_the_kind_refuses_is_a_422(client: TestClient) -> N
 def test_a_device_this_build_cannot_address_is_refused_with_the_reason(
     client: TestClient,
 ) -> None:
-    """The vocabulary reaches the wire as a sentence, not as a silent fallback (#469).
+    """The vocabulary reaches the wire as a sentence, not as a silent fallback.
 
     What the form does with the two fields is the form's business; that a caller
     who bypasses it is *told* is the kernel's, and this is where a client can see
@@ -281,7 +281,7 @@ def test_deleting_needs_no_confirmation(client: TestClient) -> None:
     """Unlike a project: what is destroyed is a configuration, not work.
 
     Provenance is denormalised onto the annotation at write time, so nothing
-    holds a key to this row (`cf. #417`).
+    holds a key to this row.
     """
     made = created(client, LOCAL)
     assert client.delete(f"/inference/connections/{made['id']}").status_code == 204
@@ -343,10 +343,10 @@ def test_a_finished_download_leaves_the_connection_ready(
         after = client.get(f"/inference/connections/{made['id']}").json()
         assert after["setup_state"] == "ready"
         # The declaration survives the flip: what the action means changes from
-        # "fetch these" to "check these are still here" (#469), and the name of
+        # "fetch these" to "check these are still here", and the name of
         # a capability does not change with the state it is read in. What the
         # flip *adds* is `check_integrity`, which had nothing to read before
-        # (#471) — so this is the one square where becoming ready grows the row
+        # — so this is the one square where becoming ready grows the row
         # a control rather than only re-labelling one.
         assert after["allowed_actions"] == [
             "download_weights",
@@ -389,7 +389,7 @@ def test_running_the_download_twice_is_a_verified_no_op(
     """The idempotency the registry claims for this handler, exercised.
 
     Both the re-queued orphan and the person pressing the action a second time
-    take this path since #469: the route accepts, the handler runs, the download
+    take this path: the route accepts, the handler runs, the download
     verifies a cache it already filled, and the row ends where it started. What
     the test holds is that *nothing moved* — a second run that reported a state
     change would mean the write is not the no-op the handler's registration
@@ -452,7 +452,7 @@ def test_a_missing_local_runtime_refuses_with_the_install_command(client: TestCl
     The action stays *declared* through all of this, deliberately: whether this
     machine has the extra is not a fact about the connection, and a control that
     vanished would leave the install command with nowhere to be shown
-    (design principle 9, `cf. #421`).
+    (design principle 9).
     """
     made = created(client, LOCAL)
     assert "download_weights" in made["allowed_actions"]
@@ -476,7 +476,7 @@ def test_a_refused_download_creates_no_job(client: TestClient, runtime_present: 
     assert UUID(made["id"])
 
 
-# --- the integrity check (#471) -----------------------------------------------
+# --- the integrity check ------------------------------------------------------
 
 
 def _made_ready(client: TestClient) -> dict[str, Any]:
@@ -527,7 +527,7 @@ def test_checking_a_ready_connection_launches_the_check(
 def test_a_check_that_found_damage_leaves_the_row_not_set_up_with_the_reason(
     tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The transition #471 added, seen the way a browser sees it.
+    """The integrity check's transition, seen the way a browser sees it.
 
     The job carries the sentence and the row carries the state, and the row has
     *already* moved by the time the job says so — which is what lets the failed

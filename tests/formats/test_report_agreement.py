@@ -1,17 +1,16 @@
 """The export report against the bytes on disk, for every installed exporter.
 
-#158's guard, and the reason it is a file of its own rather than three more tests
-in ``test_yolo.py``. The defect was not that an exporter did the wrong thing —
-YOLO's own ``test_a_polygon_is_written_as_its_bounding_box`` passed throughout,
-because writing the box is what that exporter is *for*. The defect was that
-nothing compared the report to the output, so the two could describe the same
-release differently and every test agreed with the half it was looking at.
+A file of its own rather than three more tests in ``test_yolo.py``, because the
+defect it guards is not an exporter doing the wrong thing — YOLO's own
+``test_a_polygon_is_written_as_its_bounding_box`` passes either way, since writing
+the box is what that exporter is *for*. The defect is that nothing compares the
+report to the output, so the two can describe the same release differently and
+every test agrees with the half it is looking at.
 
 **Every count here is read back out of the written artifacts.** Nothing asserts
 "the report says 1 and 1 is what we expect"; it asserts "the report says 1, and
 counting the rows in the label files finds exactly the annotations it did not
-claim". That is #158's first acceptance criterion, and it is the only shape of
-test that could have caught the original.
+claim". That is the only shape of test that catches this class of defect.
 
 The dispatch table is the fifth criterion: a fourth exporter registering into the
 ``visionset.formats`` group either lands a counter here or is declared as one
@@ -83,9 +82,9 @@ def _tag() -> Annotation:
 #: The release every test here exports: three boxes, two polygons, one tag,
 #: spread over three assets so ``assets`` counts differ from ``annotations``.
 #:
-#: It is the reproduction from #158's own body, deliberately — the report there
-#: said three annotations would be excluded and the output held four rows where
-#: two were expected.
+#: The shape the report and the output are most likely to disagree over: three
+#: annotations reported excluded against four rows on disk where two were
+#: expected.
 DRAWING: dict[int, list[Annotation]] = {
     0: [_box(x=8, y=6, width=20, height=22), _polygon()],
     1: [_box(x=2, y=2, width=10, height=10), _polygon([(30.0, 4.0), (44.0, 4.0), (44.0, 20.0)])],
@@ -166,7 +165,7 @@ def labelled(tmp_path: Path) -> Fixture:
 
 
 def test_every_installed_exporter_is_accounted_for() -> None:
-    """A fourth format cannot reintroduce #158 by not being looked at.
+    """A fourth format cannot disagree with its own report by not being looked at.
 
     The one assertion here that is about this file rather than about the code: a
     new exporter either gets a counter and is compared against its own output, or
@@ -222,11 +221,11 @@ def test_the_report_agrees_with_what_the_format_wrote(
 def test_excluded_annotations_is_exactly_what_is_missing_from_the_output(
     tmp_path: Path, labelled: Fixture, format_name: str
 ) -> None:
-    """#158's first and second acceptance criteria, counted rather than restated.
+    """The count, checked rather than restated.
 
     The number a caller consents to losing is checked against the arithmetic of
-    the artifact: everything the release held, minus everything on disk. Under
-    the old model YOLO answered 3 here and the subtraction gave 1.
+    the artifact: everything the release held, minus everything on disk. A
+    two-valued model answers 3 here where the subtraction gives 1.
     """
     release_id = labelled.publish()
     dest = tmp_path / f"out-{format_name}"
@@ -242,7 +241,7 @@ def test_excluded_annotations_is_exactly_what_is_missing_from_the_output(
 def test_a_reason_says_what_actually_happens_to_that_class(
     tmp_path: Path, labelled: Fixture, format_name: str
 ) -> None:
-    """#158's third criterion: a written class's reason must not deny being written."""
+    """A written class's reason must not deny being written."""
     release_id = labelled.publish()
     report = _export(labelled, release_id, _installed()[format_name], tmp_path / "out")
     labelled.close()
@@ -266,7 +265,7 @@ def test_a_reason_says_what_actually_happens_to_that_class(
 def test_yolo_reports_the_polygon_it_writes_as_degraded_not_excluded(
     tmp_path: Path, labelled: Fixture
 ) -> None:
-    """The reproduction from #158's body, in the numbers it disagreed about."""
+    """The reproduction, in the numbers a two-valued model disagrees about."""
     release_id = labelled.publish()
     dest = tmp_path / "out"
     report = _export(labelled, release_id, _installed()["yolo"], dest)
@@ -298,7 +297,7 @@ def test_voc_reports_the_polygon_it_writes_as_degraded_not_excluded(
 
 
 def test_coco_is_unchanged_because_it_reduces_nothing(tmp_path: Path, labelled: Fixture) -> None:
-    """#158's fourth criterion. COCO writes a polygon as a polygon, so it degrades nothing."""
+    """COCO writes a polygon as a polygon, so it degrades nothing."""
     release_id = labelled.publish()
     dest = tmp_path / "out"
     report = _export(labelled, release_id, _installed()["coco"], dest)
@@ -311,7 +310,7 @@ def test_coco_is_unchanged_because_it_reduces_nothing(tmp_path: Path, labelled: 
     assert [one.label_class for one in report.excluded] == ["weather"]
 
 
-# --- the lane family (#223) ---------------------------------------------------
+# --- the lane family ----------------------------------------------------------
 #
 # Five more installed exporters, and none of them can be counted the way the
 # three above are. A YOLO row starts with a class index, a VOC `<object>` has a
@@ -322,7 +321,7 @@ def test_coco_is_unchanged_because_it_reduces_nothing(tmp_path: Path, labelled: 
 # property of single-purpose formats, not an oversight.
 #
 # So they are compared at the granularity their output supports — every lane on
-# disk against every lane the report did not call dropped — which keeps #158's
+# disk against every lane the report did not call dropped — which keeps the
 # guarantee (the report is checked against the bytes) without inventing a class
 # attribution the files do not carry.
 
@@ -340,7 +339,7 @@ def _polyline(points: list[tuple[float, float]] | None = None) -> Annotation:
 
 #: The same shape as ``DRAWING``, plus three lanes. Kept separate rather than
 #: folded in, because the three reproduction tests above assert exact counters
-#: taken from #158's body and widening their release would silently rewrite the
+#: chosen to make a report disagree, and widening their release would rewrite the
 #: reproduction they exist to preserve.
 LANE_DRAWING: dict[int, list[Annotation]] = {
     0: [_box(x=8, y=6, width=20, height=22), _polyline()],
@@ -461,7 +460,7 @@ def test_tusimple_calls_the_lane_it_resamples_degraded_and_the_others_do_not(
 def test_the_three_general_formats_declare_polyline_truthfully(
     tmp_path: Path, laned: Fixture, format_name: str
 ) -> None:
-    """#223 asked what YOLO, COCO and VOC can genuinely do with an open path.
+    """What YOLO, COCO and VOC can genuinely do with an open path.
 
     The answer, verified against the bytes rather than assumed: **nothing**, and
     all three already said so. YOLO and VOC are box formats and reduce a *polygon*

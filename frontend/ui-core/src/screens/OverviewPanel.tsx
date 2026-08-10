@@ -8,7 +8,7 @@
  *
  * ## Counts come from the project, not from the trunk
  *
- * `useProjectStats` (#207), never `useDatasetStats`. A dataset is the **curated
+ * `useProjectStats`, never `useDatasetStats`. A dataset is the **curated
  * trunk** and an asset reaches it only when somebody promotes a completed batch,
  * so a project mid-annotation reads zero through the dataset's counts. Both
  * numbers are true; this page asks "what does this project hold?" and the dataset
@@ -22,15 +22,15 @@
  * again would be answering a question they did not ask. It renders as populated,
  * with an honest zero.
  *
- * ## One invitation at minute zero (#388)
+ * ## One invitation at minute zero
  *
- * A project three seconds old used to show three competing invitations — a
- * filled header Ingest, a checklist whose active step said *labels*, and an
- * outlined Ingest in the empty state. Whichever a person followed, the page was
- * also telling them to do something else. The checklist is retired and the
- * first-run region is now driven by the project's real state: `firstRunInvitation`
- * answers with exactly one, or with none once the project has both classes and
- * images. Nothing is gated — both tabs stay reachable throughout.
+ * A project three seconds old could show three competing invitations — a
+ * filled header Ingest, a checklist whose active step says *labels*, and an
+ * outlined Ingest in the empty state — and whichever a person follows, the page is
+ * also telling them to do something else. So the first-run region is driven by the
+ * project's real state: `firstRunInvitation` answers with exactly one, or with none
+ * once the project has both classes and images. Nothing is gated — both tabs stay
+ * reachable throughout.
  *
  * ## Skeletons reserve the final layout
  *
@@ -102,12 +102,9 @@ export function OverviewPanel({
     );
   }
 
-  // Read straight off the body. Until #225 this went through `?? 0` on every field,
-  // because `unwrap` checked the status and not the shape and a wrong document
-  // reached this — the landing tab — where one `undefined` in `formatCount` took the
-  // whole project view down. The check now runs at `unwrap`, so a body that gets
-  // here has the fields the contract declares, and reading them defensively would
-  // only hide the next thing that goes wrong.
+  // Read straight off the body rather than through `?? 0` on every field. The check
+  // runs at `unwrap`, so a body that gets here has the fields the contract declares,
+  // and reading them defensively would only hide the next thing that goes wrong.
   const counted = stats.data;
 
   /*
@@ -200,8 +197,8 @@ export function OverviewPanel({
  *
  * A card whose section has nothing yet says so in words rather than showing a
  * zero — "no batches yet" is an invitation and `0` is a measurement of nothing.
- * That is `DESIGN.md`'s copy rule and it is also the mistake #287 fixed one
- * screen over, where a draft's documented zero counts were rendered as data.
+ * That is `DESIGN.md`'s copy rule, and it is also what stops a draft's documented
+ * zero counts being rendered as data.
  */
 function Pipeline({
   projectId,
@@ -290,14 +287,13 @@ function Pipeline({
 export type FirstRunInvitation = "classes-first" | "ingest" | "classes-after-ingest";
 
 /**
- * The state-driven Overview's one rule (#388).
+ * The state-driven Overview's one rule.
  *
  * Exactly one invitation renders, and none at all once the project has both
  * halves — `DESIGN.md` principle 8 applied at minute zero rather than only once
- * a project has data. It replaces the four-station onboarding checklist (#289),
- * whose active step said *labels* while the header and the empty state both said
- * *ingest*: two hierarchies are none, and the reader who met all three was the
- * one who had nothing to dismiss yet.
+ * a project has data. A four-station onboarding checklist alongside it would say
+ * *labels* while the header and the empty state both said *ingest*: two
+ * hierarchies are none.
  *
  * **It guides and never gates.** Ingest and Schema stay independently reachable
  * throughout — both orders are legitimate — which is why the alternative path in
@@ -320,7 +316,7 @@ export function firstRunInvitation({
  * One spelling, read twice: here to pick the variant, and by `ProjectScreen` to
  * step the header's Ingest back to `secondary` for as long as it holds. The
  * `ingest` invitation is the deliberate exception — the header's Ingest is the
- * same label and the same handler, so the filled one stays up there (#323) and
+ * same label and the same handler, so the filled one stays up there and
  * this one stays outlined. Either way the page shows exactly one filled button.
  */
 export function invitationOwnsTheAction(invitation: FirstRunInvitation | null): boolean {
@@ -351,10 +347,8 @@ function FirstRun({
 }): JSX.Element {
   if (invitation === "ingest") {
     return (
-      // Kept verbatim from the empty state that shipped before #388. What
-      // changed is that it is now the only voice on the page rather than one of
-      // three, and the filled Ingest above it is no longer competing with a
-      // checklist step pointing somewhere else.
+      // The only voice on the page rather than one of three, so the filled Ingest
+      // above it is not competing with a checklist step pointing somewhere else.
       <div data-testid="first-run" data-invitation={invitation}>
         <EmptyState
           icon={<ImageIcon className="size-8" />}
@@ -364,7 +358,7 @@ function FirstRun({
             onIngest === undefined ? undefined : (
               // `secondary`: the project header's "Ingest" is on screen right
               // above this one, same label and same handler, so a filled button
-              // here rendered the identical action twice (#323).
+              // here would render the identical action twice.
               <Button variant="secondary" data-testid="overview-ingest" onClick={onIngest}>
                 <Upload className="size-4" aria-hidden="true" />
                 Ingest

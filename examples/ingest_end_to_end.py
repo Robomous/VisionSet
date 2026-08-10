@@ -21,8 +21,7 @@ a script.
 
 The stills are Pillow's work rather than a second copy of the sibling's PNG
 encoder. That encoder exists because M1 predates any image library; Pillow has
-been a dependency since #16, and re-deriving a PNG by hand next to it would be
-archaeology.
+a dependency, and re-deriving a PNG by hand next to it would be archaeology.
 """
 
 from __future__ import annotations

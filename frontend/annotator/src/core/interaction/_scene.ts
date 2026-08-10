@@ -70,7 +70,7 @@ export const POLY_BODY: Point = [350, 340];
 /** The polygon's first vertex, exactly. */
 export const POLY_VERTEX: Point = [300, 300];
 
-/** The path in the scene: class `path`, which draws polylines (#342). */
+/** The path in the scene: class `path`, which draws polylines. */
 export const PATH_ID = "path";
 
 /** On the path's first segment, away from both its vertices. */
@@ -241,7 +241,7 @@ export function everyEvent(): readonly InteractionEvent[] {
  * `context()` reads `store.document` — the **committed** one — every time it is
  * asked, so a test that undoes mid-drag gets the same context the adapter would.
  * Using `store.rendered` here instead would make each pointer-move compute from
- * the last, which is the accumulating shape #41's absolute transforms exist to
+ * the last, which is the accumulating shape the absolute transforms exist to
  * avoid, and no test would notice until a drag drifted.
  */
 export class World {

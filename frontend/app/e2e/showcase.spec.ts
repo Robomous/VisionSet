@@ -1,5 +1,5 @@
 /**
- * The chrome #50 added to make the demo a showcase: the floating tool strip and
+ * The chrome that makes the demo a showcase: the floating tool strip and
  * the zoom readout.
  *
  * Both are host UI, so nothing here is about the engine — every one of these
@@ -10,7 +10,7 @@
  * a number the host is keeping in parallel.
  *
  * The second is the one worth the file. `onViewChange` is the annotator prop this
- * task added, and there is no jsdom in this repository — #47 chose pure functions
+ * task added, and there is no jsdom in this repository — the adapter chose pure functions
  * over component tests precisely because `getBoundingClientRect` returns zeros
  * there — so a browser is the only place its mount-time call can be observed at
  * all. A readout stuck at `100%` is exactly what a missing mount call looks like.
@@ -31,7 +31,7 @@ test("the tool strip lists exactly the tools this schema can reach", async ({ pa
   await expect(page.getByTestId("tool-select")).toBeVisible();
   await expect(page.getByTestId("tool-bbox")).toBeVisible();
   await expect(page.getByTestId("tool-polygon")).toBeVisible();
-  // `centerline` is a polyline and has had a tool since #342.
+  // `centerline` is a polyline and has a tool.
   await expect(page.getByTestId("tool-polyline")).toBeVisible();
   // `daytime` is a tag and `pose` is keypoints: `drawableGeometry` answers `null`
   // for both, so neither gets a canvas tool. The demo's schema declares them so
@@ -53,7 +53,7 @@ test("a hotkey moves the strip, because the strip reports the derived tool", asy
     // not either — which is the whole reason it reads `toolFor` rather than the
     // class name.
     ["4", "tool-bbox"],
-    // `centerline` is a polyline and has had a tool since #342. Digit 6 is `pose`,
+    // `centerline` is a polyline and has a tool. Digit 6 is `pose`,
     // which is keypoints — declared, drawable by nothing, so the strip stays on
     // select and offers no button for it at all.
     ["5", "tool-polyline"],

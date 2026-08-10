@@ -2,7 +2,7 @@
  * Every URL this application answers, in one table.
  *
  * `@visionset/app` is **shell only** — navigation, layout, composition — and this
- * file is the shell's centre. The rule (#58, the epic's "enterprise rule") is that
+ * file is the shell's centre. The enterprise rule is that
  * a capability living here instead of in `@visionset/ui-core` is an architecture
  * bug by definition, because the future enterprise UI cannot reuse it. So a route
  * is allowed to decide *which* screen renders and *what its parameters are*, and
@@ -23,22 +23,19 @@
  *
  * ## Why those two stopped being separate Vite entries
  *
- * #49 gave the benchmark a query parameter and #128 gave the styleguide a second
- * HTML entry, both because there was no router to put them behind. There is one
- * now, so both collapse into routes and `rollupOptions.input` goes away — which is
- * what "#58 retires both entries" meant when those files said it.
+ * The benchmark had a query parameter and the styleguide a second HTML entry,
+ * both because there was no router to put them behind. There is one
+ * now, so both are routes and `rollupOptions.input` is gone.
  *
  * The benchmark keeps its query parameter (`/demo?scene=bench`) rather than
- * gaining a route: it is an instrument, #49's recorded numbers were taken against
+ * gaining a route: it is an instrument, its recorded numbers were taken against
  * that exact page, and moving it would change what it measures for no reason
  * anybody asked for.
  *
- * ## Every route now has a screen
+ * ## Every route has a screen
  *
- * #58 stood this table up with placeholders naming the task that owed each screen.
- * #53 through #57 filled them in, and the last placeholder went with #57 — which
- * the compiler noticed before anybody did, because an unused function is an error
- * here. That is the milestone's own progress bar, and it has run out.
+ * There are no placeholders left, and the compiler is what says so: an unused
+ * function is an error here.
  */
 
 import {
@@ -77,7 +74,7 @@ export function AppRoutes(): JSX.Element {
             <Route path="projects" element={<Projects />} />
             {/*
               A top-level destination rather than a project route, per the
-              decision recorded on #421: a connection carries no project id and
+              settled decision: a connection carries no project id and
               every project uses the same ones, so nesting it under a project
               would put a workspace-scoped object inside one project's URL.
             */}
@@ -96,7 +93,7 @@ export function AppRoutes(): JSX.Element {
 
           {/*
             The editing surface, and the only route that takes the whole viewport
-            (#183). It is a *route* rather than a prop on the shell because that
+            It is a *route* rather than a prop on the shell because that
             keeps `AppShell` composition-only and keeps `ui-core` from fighting
             the container from the inside with negative margins.
 
@@ -120,7 +117,7 @@ export function AppRoutes(): JSX.Element {
   );
 }
 
-/** The showcase, and #49's benchmark behind its query parameter. */
+/** The showcase, and the benchmark behind its query parameter. */
 function Showcase(): JSX.Element {
   const [query] = useSearchParams();
   const bench = query.get("scene") === "bench";
@@ -132,7 +129,7 @@ function Showcase(): JSX.Element {
 }
 
 /**
- * The two #53 screens, and the whole of what composing one means.
+ * The project screens, and the whole of what composing one means.
  *
  * `ui-core` takes navigation as a callback rather than importing a router — a
  * screen that called `useNavigate` would only work inside a `react-router` tree,
@@ -145,7 +142,7 @@ function Projects(): JSX.Element {
 }
 
 /**
- * Every sub-view's parent, in one place (#199).
+ * Every sub-view's parent, in one place.
  *
  * A back affordance navigates to its **declared parent**, never `navigate(-1)`:
  * the destination has to be the same whether the page was reached by clicking
@@ -165,7 +162,7 @@ const PARENT = {
   projects: "/projects",
   //: A rail destination, so nothing declares it as a parent — it is here because
   //: this table is the route map's own index, and an entry point missing from it
-  //: is the drift #199 was about. Its own way out is the rail.
+  //: is exactly the drift this table exists to prevent. Its own way out is the rail.
   inference: "/inference",
   project: (projectId: string) => `/projects/${projectId}`,
   batches: (projectId: string) => `/projects/${projectId}?tab=batches`,
@@ -175,7 +172,7 @@ const PARENT = {
 /**
  * The project, and the one screen whose *section* is part of the URL.
  *
- * #171 split the page into tabs, and a tab that lives only in component state is
+ * The project page is tabs, and a tab that lives only in component state is
  * lost on reload and cannot be linked to — which was half of what the split was
  * meant to fix. So `?tab=` is the section, and turning it into a tab is this
  * file's job the same way turning a callback into a route change is.
@@ -222,14 +219,14 @@ function Project(): JSX.Element {
 /**
  * The gallery, and the one place the product joins its two halves.
  *
- * #160: this route passed no `onOpenAsset`, so every tile rendered `disabled` and
+ * A route that passes no `onOpenAsset` renders every tile `disabled` and
  * **the annotator was unreachable from inside the app** — reachable only by typing
  * `/jobs/{id}` after reading the id out of the REST API. Every sibling route wired
  * its callbacks; this one looked like an omission because it was one.
  *
  * The two screens are keyed on different things — the gallery lists *assets in a
  * batch*, the annotator opens a *job* — and `asset.job_id` is the only bridge. It
- * is present exactly once the batch leaves `draft` (#29), which is why `Tile`
+ * is present exactly once the batch leaves `draft`, which is why `Tile`
  * refuses a null one on its own rather than trusting this callback to be careful.
  *
  * The asset travels as a query parameter, not a path segment: `/jobs/:jobId` is the
@@ -249,7 +246,7 @@ function Gallery(): JSX.Element {
         if (asset.job_id === null || asset.job_id === undefined) return;
         void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
       }}
-      // The approve dialog's SCHEMA_NOT_FOUND remedy (#291): the schema section
+      // The approve dialog's SCHEMA_NOT_FOUND remedy: the schema section
       // is a `?tab=` on the project page, and spelling that URL is this file's job.
       onOpenSchema={() => void navigate(`/projects/${projectId}?tab=schema`)}
       // Where a promotion from this screen lands (F18). The gallery is where a
@@ -260,7 +257,7 @@ function Gallery(): JSX.Element {
       // route the batch table's rows use — a batch is a batch, whichever screen
       // named it.
       onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
-      // This screen's whole subject has just stopped existing (#376), so its own
+      // This screen's whole subject has just stopped existing, so its own
       // URL is a 404 waiting to happen — the Batches tab is where to land, and
       // `replace` so Back does not walk into the gone batch.
       onDeleted={() => void navigate(PARENT.batches(projectId), { replace: true })}
@@ -281,7 +278,7 @@ function DatasetRedirect(): JSX.Element {
 }
 
 /**
- * The annotator, and the return leg of #160.
+ * The annotator, and the return leg into the gallery.
  *
  * `?asset=` is where the gallery said to start; absent — a deep link somebody
  * pasted, or a reload — the page opens on the job's first asset, which is what it
@@ -294,13 +291,13 @@ function DatasetRedirect(): JSX.Element {
  * annotator was reached by clicking a tile, by pasting a URL, or by walking
  * forward from another asset.
  *
- * #199 applied that same argument to the **back arrow**, which was the one control
- * left in the product still wired to history. So this route passes one callback and
+ * The same argument applies to the **back arrow**, the one control most likely to
+ * be wired to history. So this route passes one callback and
  * the page drives both controls with it: the batch gallery is this page's parent,
  * the arrow means *up* and the grid means *show me the grid*, and they coincide
  * because the annotator's parent is the grid.
  *
- * #353: the parameter is now kept true rather than only read. The page says which
+ * The parameter is kept true rather than only read. The page says which
  * frame it is showing and this route writes it, which is the split `?tab=` is on
  * one screen over — `ui-core` imports no router, so spelling a URL is this file's
  * job. `replace` rather than `push`, for the tabs' reason applied to frames: with
@@ -325,9 +322,8 @@ function Annotate(): JSX.Element {
         const next = assetParamFor(showing, query.get("asset"));
         if (next !== null) setQuery({ asset: next }, { replace: true });
       }}
-      // #424's D6: the editor's no-connection panel had no destination until
-      // there was an Inference section to send somebody to. `ui-core` renders no
-      // control when this callback is absent, which is what it did until now.
+      // The editor's no-connection panel needs somewhere to send somebody.
+      // `ui-core` renders no control when this callback is absent.
       onConfigureInference={() => void navigate(PARENT.inference)}
     />
   );
@@ -336,7 +332,7 @@ function Annotate(): JSX.Element {
 /**
  * Ingest, and the way out of it.
  *
- * #181: this route passed no navigation, so a run that reached `completed` ended
+ * A route that passes no navigation leaves a run that reached `completed` ending
  * the page — the batch it had just filled was reachable only by walking back to
  * the project and finding it in the list. `IngestScreen` names the batch itself;
  * turning that into a URL is this file's job, and it is the same one line as
@@ -355,7 +351,7 @@ function Ingest(): JSX.Element {
       projectId={projectId}
       onBack={() => void navigate(PARENT.project(projectId))}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
-      // The foreshadowing banner's link (#290): the schema section is a `?tab=`
+      // The foreshadowing banner's link: the schema section is a `?tab=`
       // on the project page, and spelling that URL is this file's job.
       onOpenSchema={() => void navigate(`/projects/${projectId}?tab=schema`)}
     />

@@ -44,7 +44,7 @@
  * The `<svg>` is laid out at the asset's native size inside a scaled wrapper, so
  * a user unit is an asset pixel. A 2 written here would be 2 *asset* pixels.
  * Everything visual is therefore divided by the zoom — but *where* that division
- * happens matters, and #131 moved it.
+ * happens matters.
  *
  * Anything drawn once per annotation reads a CSS custom property published by the
  * stage (`stageScreenSizes`), so its attributes never mention the zoom and a wheel
@@ -92,21 +92,20 @@ export const LABEL_LIFT_PX = 4;
  * The screen sizes a whole document draws with, as CSS custom properties for the
  * stage to carry.
  *
- * ## Why these are variables rather than attributes (#131)
+ * ## Why these are variables rather than attributes
  *
  * A stroke width written as an attribute is `screenPx(2, zoom)`, so `zoom` is an
  * input to every shape: a wheel notch changes it, `AnnotationLayer`'s `memo`
  * correctly fails to bail out, and React rewrites four attributes on every
- * annotation. #49 measured **880 records for one notch** on the 220-annotation
- * bench scene, against 0 for a pan and 3 for a whole drag, and put the zoom first
- * in line to break on the CPU-throttle ladder.
+ * annotation. That was measured at **880 records for one notch** on the
+ * 220-annotation bench scene, against 0 for a pan and 3 for a whole drag.
  *
  * A custom property inherits, so the same numbers written **once on the stage**
  * reach every shape without React touching any of them. The per-shape attributes
  * stop mentioning the zoom, the diff finds no work, and a notch costs one style
  * write instead of `4 × n`.
  *
- * ## Why not `vector-effect="non-scaling-stroke"`, which #131 proposed
+ * ## Why not `vector-effect="non-scaling-stroke"`, the obvious alternative
  *
  * Because it does nothing here, and that is measured rather than reasoned about.
  * It compensates for transforms up to the **SVG viewport**, and this stage scales
@@ -155,7 +154,7 @@ function labelAnchor(shape: PaintedAnnotation): Point {
 interface ShapeProps {
   readonly shape: PaintedAnnotation;
   readonly zoom: number;
-  /** Whether selection grows grips and vertex dots — `false` in a viewer (#426). */
+  /** Whether selection grows grips and vertex dots — `false` in a viewer. */
   readonly handles: boolean;
 }
 
@@ -280,7 +279,7 @@ export function Vertices({ points, color, zoom, hotIndex }: {
  * `y` is the anchor itself — a plain asset coordinate — and the screen-pixel lift
  * above it rides on the CSS `translate` property instead of being subtracted here.
  * That is what keeps every one of this element's attributes free of the zoom:
- * three of the four writes #131 measured were on this `<text>`.
+ * three of the four per-shape writes a zoom used to cost were on this `<text>`.
  */
 export function ShapeLabel({ shape }: { readonly shape: PaintedAnnotation }): JSX.Element {
   const [x, y] = labelAnchor(shape);
@@ -338,7 +337,7 @@ export function PolylineShape({ geometry, color, hot, selected }: {
  * Grips and vertices are drawn only for a selected shape, which mirrors
  * `resolveTarget` — it looks for a handle or a vertex only among the *selected*
  * annotations, so painting them on an unselected one would offer a grip that
- * cannot be taken. `handles` is the same mirror for the read-only mode (#426):
+ * cannot be taken. `handles` is the same mirror for the read-only mode:
  * a viewer's press cannot take a grip either, so none is painted — selection
  * there is the stroke and the label, nothing more.
  */

@@ -54,7 +54,7 @@ SKIPPED = AssetProgress.SKIPPED
 REVIEW_PENDING = AssetProgress.REVIEW_PENDING
 ACCEPTED = AssetProgress.ACCEPTED
 
-#: The shortest legal walk from ``unannotated`` to each state, as in #7's and #9's tests.
+#: The shortest legal walk from ``unannotated`` to each state.
 _ROUTES: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     UNANNOTATED: (),
     ANNOTATED: (ANNOTATED,),

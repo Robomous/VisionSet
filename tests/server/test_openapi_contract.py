@@ -1,7 +1,8 @@
 """The acceptance walk: every documented operation but `/health` needs a token.
 
-It was vacuous when #25 committed it — `/health` was the only operation, so the
-walk took its public branch once and asserted nothing about authentication. #27
+With `/health` as the only operation this is vacuous — the
+walk takes its public branch once and asserts nothing about authentication. A
+protected route
 landed nine protected operations and it now has something to say. The tests that
 prove the walk can *fail* stay regardless: without them, "it passes" would be
 indistinguishable from "it looks at nothing".
@@ -36,11 +37,11 @@ def test_every_documented_operation_except_health_requires_a_token() -> None:
 
 
 def test_the_committed_contract_declares_the_bearer_scheme() -> None:
-    """#27's first protected route put it there, exactly as #25 predicted.
+    """The first protected route puts it there.
 
     FastAPI collects security definitions per *route*, from its dependency tree.
     Declaring ``bearer_scheme`` at module level emits nothing, so the scheme was
-    absent for as long as zero routes depended on it — which is why #25's export
+    absent for as long as zero routes depend on it — which is why the export
     was byte-identical and this was the first task to move ``openapi.json``.
     The shape is the one the probe app pinned a task earlier.
     """
@@ -122,7 +123,8 @@ def test_a_protected_route_declares_the_bearer_scheme_and_its_401() -> None:
 def test_the_bearer_scheme_enters_the_spec_with_this_exact_shape() -> None:
     """The definition of the shape, still proven without touching the real app.
 
-    Written in #25 so the diff #27 committed was a decision already reviewed. It
+    Written before the first protected route, so its diff was a decision already
+    reviewed. It
     stays on the probe app: this is what the scheme *is*, and the assertion above
     is that the shipped contract agrees.
     """

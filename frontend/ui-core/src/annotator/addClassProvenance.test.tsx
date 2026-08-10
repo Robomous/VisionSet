@@ -1,5 +1,5 @@
 /**
- * Which kind of work the annotator's add-class dialog says it is (#368).
+ * Which kind of work the annotator's add-class dialog says it is.
  *
  * The value is chosen at `AnnotationPage`'s call site, not inside `runAddClass`
  * — that function takes a `publish(classes, note)` callback and never learns the
@@ -200,7 +200,7 @@ it("publishes a class added mid-job with provenance 'annotation'", async () => {
 });
 
 /**
- * A whole session, over the wire (#368).
+ * A whole session, over the wire.
  *
  * `addClassDialog.test.tsx` proves the dialog hands the page a list, and
  * `addClass.test.ts` proves the chain publishes it once. Neither can see the
@@ -235,12 +235,10 @@ it("publishes a whole session as one version, in the order they were written", a
 });
 
 /**
- * The name the create row typed, carried into the dialog (#368).
+ * The name the create row typed, carried into the dialog.
  *
- * The no-match row has handed it over since WS2 and the page dropped it, because
- * the dialog had nowhere to put it. The claim only exists where the two are
- * wired together, which is here — the row moved to the panel with #420 and the
- * hand-over did not change.
+ * The claim only exists where the row and the dialog are wired together, which is
+ * here.
  */
 it("opens the dialog on the name the class list's create row was typed with", async () => {
   render(mount(<AnnotationPage jobId={JOB} />));

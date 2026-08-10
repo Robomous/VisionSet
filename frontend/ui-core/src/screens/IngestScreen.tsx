@@ -17,7 +17,7 @@
  * was wrong, registering again at a different one produces a **second source** —
  * deliberately, since idempotency is on `(kind, path, extraction_fps)`.
  *
- * ## One step is active at a time (#243, superseding #234's modal)
+ * ## One step is active at a time
  *
  * The screen is a vertical stepper: three steps always visible, exactly one
  * active. Which one is **derived** from the data — a run in flight is step 3, a
@@ -30,13 +30,11 @@
  * line of what it will ask — the road ahead is what makes three cards read as
  * one workflow instead of appearing from nowhere.
  *
- * The extraction rate went inline (pre-#234) → modal (#234) → inline again,
- * and the constant through all three is the *decision*, which is made at
- * registration or never. The modal was dropped with the flow redesign: with
- * one active step there is no competing surface for the field to be lost in,
- * and the modal's real complaint was choosing blind, which the browser-side
- * estimate below answers better than a dialog did. #234's
- * `Number.isFinite(rate) && rate > 0` gate survives on `Register source` —
+ * The extraction rate is inline rather than in a modal: with one active step
+ * there is no competing surface for the field to be lost in, and the real
+ * objection to an inline field was choosing blind, which the browser-side
+ * estimate below answers better than a dialog does. The
+ * `Number.isFinite(rate) && rate > 0` gate sits on `Register source` —
  * every comparison with `NaN` is false, so a `<= 0` spelling would upload
  * `extraction_fps=NaN` — and with the field adjacent and visible, the disabled
  * button has its explanation next to it (`DESIGN.md` principle 9).
@@ -52,22 +50,22 @@
  *
  * ## Refusals split by when they can be known
  *
- * #28's rule, and it decides what this screen shows where. Anything the *request*
- * can refuse is refused synchronously — an unknown batch is 404, a batch past
+ * A refusal a request can make is made on the request, and that decides what this
+ * screen shows where: an unknown batch is 404, a batch past
  * `draft` is 409, a blank name is 422, all of them before a job row exists — so
  * those render on the launch form. Everything after the launch is on the job:
  * `error` is the one fatal cause, `failures` is the per-item report.
  *
  * ## The per-item report has two halves, and only one of them is a failure
  *
- * #452. A damaged clip is read as far as its bytes go and the frames that came
+ * A damaged clip is read as far as its bytes go and the frames that came
  * out become assets, so its entry says *some of this is in your batch* — the
  * opposite of every other row in that table. It renders as prose above the
  * table, with the count it recovered and the remedy; the table below counts only
  * the files that produced nothing.
  *
- * **And this card is the only place either fact is ever stated.** The decision
- * on #452 is that a partial extraction is reported once, at ingest, to the
+ * **And this card is the only place either fact is ever stated.** A partial
+ * extraction is reported once, at ingest, to the
  * person doing the ingest. The assets carry nothing, no later screen mentions
  * it, and a run that read everything says nothing at all — surfacing it again
  * would only be noise.
@@ -81,10 +79,10 @@
  *
  * ## A settled run is a fork in the road, and it has to name both branches
  *
- * #181: the card reached `completed` and the screen went inert — no way to the
- * batch the run had just filled, and no way to ingest a second source short of
+ * Without this the card reaches `completed` and the screen goes inert — no way to
+ * the batch the run has just filled, and no way to ingest a second source short of
  * reloading the page, because `Start ingest` is gated on `jobId !== null` and
- * nothing ever cleared it. Ingest is the *entry point* of the product, so a
+ * nothing clears it. Ingest is the *entry point* of the product, so a
  * terminal state naming no next step leaves a first-time user guessing where
  * their assets went. So a run that has settled offers the batch, a second run
  * with the same source into another batch, and a clean start with a new one.
@@ -183,7 +181,7 @@ const DEFAULT_EXTRACTION_FPS = 1;
 
 /**
  * `IngestState`, in the words a person uses for it — `batchState.ts`'s
- * convention (#292), unknown members falling through to themselves so a newer
+ * convention, unknown members falling through to themselves so a newer
  * server's state reads as that state rather than as a shrug.
  */
 const RUN_STATE_LABEL: Record<string, string> = {
@@ -198,10 +196,10 @@ function runStateLabel(state: string): string {
 }
 
 /**
- * The same states, as tokens (#391).
+ * The same states, as tokens.
  *
- * **A finished run is `success`, because a finished batch is** — this read
- * `outline` before, so "finished" had two colours in one product depending on
+ * **A finished run is `success`, because a finished batch is.** Reading `outline`
+ * here would give "finished" two colours in one product depending on
  * which noun you had finished. `outline` is the treatment for a decision nobody
  * has acted on yet (`approved`), which is the opposite of done.
  *
@@ -256,9 +254,9 @@ export interface IngestScreenProps {
    * anybody renders the outcome without the button rather than a dead link.
    */
   readonly onOpenBatch?: (batchId: string) => void;
-  /** Up to the project this is ingesting into (#199). */
+  /** Up to the project this is ingesting into. */
   readonly onBack?: () => void;
-  /** The schema tab, for the labels foreshadowing banner (#290). */
+  /** The schema tab, for the labels foreshadowing banner. */
   readonly onOpenSchema?: () => void;
 }
 
@@ -271,7 +269,7 @@ export function IngestScreen({
   const project = useProject(projectId);
   const [files, setFiles] = useState<readonly File[]>([]);
   const [fps, setFps] = useState(String(DEFAULT_EXTRACTION_FPS));
-  // What to call an image source (#245). Empty means "use the suggestion".
+  // What to call an image source. Empty means "use the suggestion".
   const [sourceName, setSourceName] = useState("");
   const [batchChoice, setBatchChoice] = useState(NEW_BATCH);
   const [batchName, setBatchName] = useState("");
@@ -297,8 +295,8 @@ export function IngestScreen({
    * `completed`. Without this, a user who ingests and then walks to the batch list
    * is shown "No batches yet" about a batch that is right there.
    *
-   * Found by #59's browser cycle, which is the only test that walks from one screen
-   * to another after a background job.
+   * Only a test that walks from one screen to another after a background job can
+   * see this, which is what the browser cycle suite is for.
    */
   const settled = job.data?.state;
   useEffect(() => {
@@ -331,15 +329,15 @@ export function IngestScreen({
   // with 409 `BATCH_NOT_EDITABLE`, so offering one would be offering a refusal.
   const draftBatches = (batches.data?.items ?? []).filter((batch) => batch.state === "draft");
 
-  // What an image source is called unless the user types otherwise (#245).
+  // What an image source is called unless the user types otherwise.
   // Without a stated name the server calls the source by its staged directory,
   // whose basename is a content digest — 64 hex characters that then become the
   // default batch name too. The first file's stem is deterministic, editable
   // right there, and honest: it names what was actually picked.
   const suggestedName = files.length > 0 && !isVideo ? stem(files[0].name) : "";
 
-  // #234's gate, kept: every comparison with NaN is false, so `<= 0` alone would
-  // wave a NaN through and upload `extraction_fps=NaN`.
+  // Every comparison with NaN is false, so `<= 0` alone would wave a NaN through
+  // and upload `extraction_fps=NaN`.
   const rate = Number(fps);
   const usableRate = Number.isFinite(rate) && rate > 0;
   const canRegister = files.length > 0 && !register.isPending && (!isVideo || usableRate);
@@ -455,7 +453,7 @@ export function IngestScreen({
       </header>
 
       {/* Ingesting without labels is fine — annotating without them is not, and
-          the refusal would otherwise arrive only at batch approval (#290). */}
+          the refusal would otherwise arrive only at batch approval. */}
       <SchemaForeshadow
         projectId={projectId}
         {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
@@ -890,8 +888,7 @@ function SelectionPanel({
  * basename — 64 hex characters nobody can read, in the step summary, the
  * default batch name and the outcome sentence. Rendered defensively on the
  * `IngestFailure.name` precedent: shorten for display, keep the full string in
- * `title`, and never invent a name the source does not have. The naming itself
- * is a cross-surface wart, recorded as #245.
+ * `title`, and never invent a name the source does not have.
  */
 function sourceLabel(name: string): string {
   return /^[0-9a-f]{64}$/.test(name) ? `${name.slice(0, 8)}…` : name;
@@ -1096,7 +1093,7 @@ function Outcome({
 }
 
 /**
- * What arrived out of a source that was only read in part (#452).
+ * What arrived out of a source that was only read in part.
  *
  * Prose rather than a table row, because a partial is the one entry in the
  * report that asks for a decision. The other kinds say "this file is not in your
@@ -1106,8 +1103,8 @@ function Outcome({
  * derives from a count. `DESIGN.md`'s copy rule, one sentence each: what
  * happened, then what to do.
  *
- * **This is the whole of where the fact lives.** The decision on #452 is that a
- * partial extraction is reported once, here, to the person doing the ingest —
+ * **This is the whole of where the fact lives.** A partial extraction is reported
+ * once, here, to the person doing the ingest —
  * the assets themselves carry nothing, and no later view mentions it.
  *
  * The estimate is hedged (`about`) and dropped entirely when the server sent
@@ -1169,7 +1166,7 @@ function Partials({
  * `partial` is filtered out rather than given a third badge: every row here is
  * a file that produced nothing, and the heading counts them on that basis. A
  * partial that slipped into this table would be counted as a file that could
- * not be read while its frames sat in the batch — the exact claim #452 removed.
+ * not be read while its frames sat in the batch.
  */
 function Failures({
   failures,

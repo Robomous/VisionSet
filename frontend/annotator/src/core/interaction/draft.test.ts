@@ -2,9 +2,9 @@
  * What a freshly drawn annotation carries before anybody has edited it.
  *
  * `draft.ts` is four lines of assembly and one loop, and the loop is the part with
- * a decision in it: #43 fills every attribute the class declares a default for,
- * and deliberately draws a class whose required attribute has none rather than
- * refusing the gesture.
+ * a decision in it: every attribute the class declares a default for is filled, and
+ * a class whose required attribute has none is drawn anyway rather than the gesture
+ * being refused.
  *
  * The fixtures are inline rather than `state/_sample.ts`'s, for the reason
  * `document.test.ts` gives for its own: the schema *is* the subject here, so a

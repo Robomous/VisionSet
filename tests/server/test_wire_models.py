@@ -193,7 +193,7 @@ def test_the_split_recipe_body_carries_every_field_the_domain_has() -> None:
 
 
 def test_a_split_recipe_the_domain_refuses_is_refused_at_construction() -> None:
-    """#27's trap again: without the validator this is a 500, not a 422.
+    """The trap again: without the validator this is a 500, not a 422.
 
     The fractions rule lives in ``SplitRecipe`` and is not restated on the wire,
     so what this really asserts is that the wire model still asks the domain.
@@ -276,7 +276,7 @@ def test_per_class_counts_are_ordered_by_the_domain_and_not_by_the_caller() -> N
 
 
 def test_the_class_counts_are_rows_rather_than_an_open_mapping() -> None:
-    """``dict[str, int]`` would generate as ``Record<string, number>`` for #32's client."""
+    """``dict[str, int]`` would generate as ``Record<string, number>`` for the client."""
     assert DatasetStatsOut.model_fields["classes"].annotation == list[ClassCountOut]
 
 
@@ -321,9 +321,9 @@ def test_a_release_with_a_recipe_publishes_it_unchanged() -> None:
     assert published.split.to_domain() == recipe
 
 
-# --- Asset.ingested_at (#283) ------------------------------------------------
+# --- Asset.ingested_at --------------------------------------------------------
 #
-# The field existed in the domain since #216 and reached no client at all: not
+# The field exists in the domain and must reach a client: not
 # `AssetOut`, not `BatchAssetOut`, and nothing in `visionset.wire`. Only the
 # project-level aggregate on `ProjectStatsOut` ever crossed the boundary, so a
 # batch's age was derivable in principle and unreachable in practice.
@@ -337,7 +337,7 @@ def test_an_assets_arrival_is_published() -> None:
 
 
 def test_an_unstamped_asset_publishes_null_rather_than_a_guess() -> None:
-    """Null means *unknown*, not "never" — a row written before #216 is legitimately bare.
+    """Null means *unknown*, not "never" — a row written before the column is legitimately bare.
 
     Substituting any other moment here would make an age a client renders look
     like a fact, which is the one thing a nullable timestamp exists to avoid.

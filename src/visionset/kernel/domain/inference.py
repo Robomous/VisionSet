@@ -18,8 +18,7 @@ say which weights this connection is configured for. An annotation's ``model_ref
 (``domain/annotation.py``) is a string copied onto a label when it is written,
 denormalised on purpose so that deleting a connection never breaks provenance.
 The two meet only when an adapter writes the second from the first. Two
-vocabularies, one word — worth saying out loud, because this area already has
-another pair like it (`cf. #421`).
+vocabularies, one word.
 
 **No workspace column**, on ``JobRow``'s terms rather than ``TokenRow``'s: one
 workspace is one SQLite file, so a connection is workspace-scoped by living in
@@ -172,16 +171,16 @@ WEIGHT_HOLDING_TYPES: Final[frozenset[ConnectionType]] = frozenset({ConnectionTy
 What both weight actions gate on, and the reason they can share one set: an
 ``http`` connection has nothing to fetch and therefore nothing to re-read, which
 is a fact about what it *is* rather than about where it has got to. Named once
-since #471 gave the fact a second reader — two actions each spelling
+because the fact has two readers: two actions each spelling
 ``frozenset({ConnectionType.LOCAL})`` would be two places to edit on the day a
 third kind arrives with weights.
 """
 
 
 CHECKABLE_STATES: Final[frozenset[ConnectionSetupState]] = frozenset({ConnectionSetupState.READY})
-"""The setup states in which a snapshot is there to be checked (#471).
+"""The setup states in which a snapshot is there to be checked.
 
-The first connection gate that is **not** total in state, and the narrowing is
+The one connection gate that is **not** total in state, and the narrowing is
 the point rather than an oversight. ``check_integrity`` re-reads the files a
 download left behind; a connection at ``not_set_up`` has no snapshot to read, so
 the action is not merely pointless there but unanswerable — it would have to
@@ -213,10 +212,10 @@ encoding ``capabilities`` exists to prevent.
 class DownloadSize(BaseModel):
     """What fetching a model's weights would cost, before anybody fetches them.
 
-    The answer to the question a setup form has to ask on somebody's behalf: the
-    decision recorded on #418 is that VisionSet downloads nothing on its own, and
-    a person can only make that decision if the size is on screen **before** they
-    confirm. So this is read separately from the download and ahead of it.
+    The answer to the question a setup form has to ask on somebody's behalf.
+    VisionSet downloads nothing on its own, and a person can only make that
+    decision if the size is on screen **before** they confirm — so this is read
+    separately from the download and ahead of it.
 
     **A pair, not a connection.** It is keyed on a model id and a revision rather
     than on an :class:`InferenceConnection`, because the moment it is needed is

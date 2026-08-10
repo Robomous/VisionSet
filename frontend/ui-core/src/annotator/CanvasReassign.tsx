@@ -1,8 +1,7 @@
 /**
- * The reassignment picker's second anchor: the selected shape, on the canvas
- * (#380, deferred from #368's decision 9).
+ * The reassignment picker's second anchor: the selected shape, on the canvas.
  *
- * The panel's object row has offered class reassignment since #378. This is the
+ * The panel's object row offers class reassignment. This is the
  * same menu — literally `ReassignMenu`, which is where every rule lives — reached
  * without leaving the picture: a tag button that rides on the shape, and a
  * right-click on the shape itself.

@@ -126,7 +126,7 @@ def test_a_segmenter_config_resolves_to_the_point_prompt_adapter(
 def test_the_video_variant_of_the_architecture_resolves_to_the_point_prompt_adapter(
     connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#456, and it is the spelling the suggested default actually declares.
+    """The spelling the suggested default actually declares.
 
     The published SAM 2 checkpoints — the connection form's own pre-filled model
     among them — say ``sam2_video``. Reading that as a detector refused a click
@@ -150,7 +150,7 @@ def test_a_detector_config_resolves_to_the_text_prompt_adapter(
 def test_an_unknown_model_type_is_refused_rather_than_handed_to_a_family(
     connections: InferenceConnectionService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#456's second half: a guess produces a message that lies about the model.
+    """The second half: a guess produces a message that lies about the model.
 
     The refusal names the type that was declared — so a reader can see what their
     config says — and lists what this build does run, which is the only thing

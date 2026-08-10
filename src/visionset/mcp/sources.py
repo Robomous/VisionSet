@@ -125,16 +125,16 @@ def ingest(
         result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
     return {
         "source": wire.source(registered),
-        # Not `job_id`: an agent that read that key tried it on `get_job` and was
+        # Not `job_id`: an agent reading that key tries it on `get_job` and is
         # refused, because the two words name different things and only one of
-        # them is reachable. #36's transcript, s1/opus/2.
+        # them is reachable. Observed on a real agent run.
         "ingest_job_id": str(result.job_id),
         "batch_id": str(result.batch_id),
         "created": result.created,
         "deduplicated": result.deduplicated,
         "failed": result.failed,
         # Its own count, not a subset of `failed`: a damaged clip that put frames
-        # in the batch is not a file the run could not use (#452).
+        # in the batch is not a file the run could not use.
         "partial": result.partial,
         "failures": [wire.ingest_failure(f) for f in result.failures],
     }

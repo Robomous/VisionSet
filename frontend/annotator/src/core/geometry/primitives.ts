@@ -5,8 +5,8 @@
  * Four exports, and every one of them is v1's — `dist` and
  * `closestPointOnSegment` come across unchanged from
  * `annotation-utils.ts`, and `clampPoint` is the pair of `clamp` calls v1 wrote
- * out at twenty-odd separate call sites. That is the whole of what #41 could
- * literally port: the rest of v1's geometry lived inline inside a 1413-line React
+ * out at twenty-odd separate call sites. That is the whole of what could be
+ * literally ported: the rest of v1's geometry lived inline inside a 1413-line React
  * component, in pointer handlers that read `svgRef.current`.
  *
  * ## Why `Bounds` and not `AssetDescriptor`
@@ -33,7 +33,7 @@
  *
  * No guard against a non-finite input. `clamp(NaN, 0, 10)` is `NaN` and stays
  * `NaN` all the way through. Catching it would cost a branch in every signature in
- * this directory to defend against something #42's input layer owns — a pointer
+ * this directory to defend against something the input layer owns — a pointer
  * position is a number by the time it reaches here or the bug is upstream. Stated
  * rather than left as an oversight.
  */

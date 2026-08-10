@@ -2,18 +2,19 @@
  * The showcase's design tokens — the repo-root `DESIGN.md` contract, as inline
  * style values.
  *
- * ## Why this file still exists after #128
+ * ## Why this file exists beside the design system
  *
- * #50 wrote that #128 would replace it. #128 replaced the *values*, which is the
+ * The design system replaced the *values*, which is the
  * half that mattered: every colour, radius and size below is now imported from
  * `@visionset/ui-core`, so there is one home for the contract and this is a
  * projection of it. What is left is a shape adapter — `COLOR.primary` as a string
  * for a `style={{}}` object, not `bg-primary` as a class.
  *
- * The showcase keeps inline styles rather than moving to Tailwind utilities. #128
+ * The showcase keeps inline styles rather than moving to Tailwind utilities. The
+ * design system
  * deferred that by giving the design system its own Vite entry, so that Tailwind's
  * preflight — a global reset — would not reach the page 54 Playwright scenarios
- * measure. #58 retired both entries: there is one bundle now and the reset applies
+ * measure. There is one bundle now and the reset applies
  * here too.
  *
  * These stayed anyway, and the reason is what made the flip safe. Because every

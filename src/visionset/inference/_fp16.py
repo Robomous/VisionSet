@@ -1,7 +1,7 @@
 # usage: from visionset.inference._fp16 import forward_guard
 """The two shims half precision needs, and the measurement that found them.
 
-**Finding 1 on #418's spike-findings comment, as code.** Grounding DINO in fp16
+**Measured rather than assumed.** Grounding DINO in fp16
 on transformers 5.14.1 does not simply work: several internals are built in
 float32 regardless of the weights' dtype, and the forward dies on a dtype
 mismatch rather than on anything a caller did. Two are enough to reproduce it —
@@ -39,8 +39,8 @@ from typing import Any
 HALF_PRECISION_NAMES = frozenset({"fp16", "float16", "half"})
 """What a connection's ``precision`` may say to mean half.
 
-Wider than the vocabulary that can now reach it. ``Precision`` closed the field
-around ``fp16``/``fp32`` (#469) and the domain normalizes the other two spellings
+Wider than the vocabulary that can now reach it. ``Precision`` closes the field
+around ``fp16``/``fp32`` and the domain normalizes the other two spellings
 onto it, so this set's extra members are what stops a *direct* caller — a test
 holding a stand-in, a future adapter reading a value from somewhere else — from
 having to know which spelling won. Keeping them costs a frozenset lookup and

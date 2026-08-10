@@ -648,7 +648,7 @@ class _Recording:
 
     format_name = "recording"
     lossy = False
-    #: #65's capability declaration. Everything, so this double's subject stays
+    #: The capability declaration. Everything, so this double's subject stays
     #: what it was rather than a geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
@@ -679,7 +679,7 @@ class _Lossy:
 
     format_name = "lossy"
     lossy = True
-    #: #65's capability declaration. Everything, so this double's subject stays
+    #: The capability declaration. Everything, so this double's subject stays
     #: what it was rather than a geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
@@ -746,7 +746,7 @@ def test_an_exporter_that_writes_nothing_reports_zero(tmp_path: Path) -> None:
     class _Silent:
         format_name = "silent"
         lossy = False
-        #: #65's capability declaration. Everything, so this double's subject stays
+        #: The capability declaration. Everything, so this double's subject stays
         #: what it was rather than a geometry report nobody wrote this test for.
         supported_geometries = frozenset(GeometryType)
         degraded_geometries: frozenset[GeometryType] = frozenset()
@@ -902,13 +902,13 @@ def test_open_manifest_says_the_workspace_is_damaged_when_the_blob_is_gone(
     fixture.close()
 
 
-# --- what a format would drop (#65) -------------------------------------------
+# --- what a format would drop -------------------------------------------------
 
 
 class _BoxesOnly:
     """Declares itself lossless and can only write boxes.
 
-    The pair #65 exists for. ``lossy`` is false, so nothing about the *format*
+    The pair the compatibility report exists for. ``lossy`` is false, so nothing about the *format*
     asks for consent — everything that happens below happens because of what this
     particular release holds.
     """
@@ -1036,7 +1036,7 @@ def test_check_export_writes_nothing_at_all(tmp_path: Path) -> None:
 
 
 def test_a_lossless_format_that_would_drop_a_class_is_still_refused(tmp_path: Path) -> None:
-    """#65's whole point: ``lossy`` is a blanket claim, and this is about the data."""
+    """``lossy`` is a blanket claim, and this is about the data."""
     fixture = Fixture(tmp_path)
     release = fixture.releases.publish(_mixed(fixture), "v1")
 
@@ -1086,7 +1086,7 @@ def test_the_report_is_written_into_the_export_directory(tmp_path: Path) -> None
     assert written["excluded_annotations"] == 2
     # Key-for-key what `visionset.wire` hands the CLI and MCP, and what
     # `ExportCompatibilityOut` puts on the API's refusal. One document, four
-    # places — which is #65's "report format stable" acceptance criterion, and it
+    # places — the report format is stable across all three, and it
     # is the reason `format_name` carries a serialization alias.
     assert written == wire.export_compatibility(result.compatibility)
     fixture.close()

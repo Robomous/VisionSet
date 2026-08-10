@@ -1,14 +1,14 @@
 /**
- * A seeded generator of random command runs — the harness behind #39's property
- * test, and nothing a consumer ever sees.
+ * A seeded generator of random command runs — the harness behind the command
+ * property test, and nothing a consumer ever sees.
  *
  * The `_` prefix marks a harness, the convention `tests/server/_flow.py` set on
  * the Python side and `_fixture.ts` already follows here: `tsconfig.build.json`
  * excludes `src/**\/_*.ts`, so this is out of the shipped engine and out of the
  * headless boundary's type gate, which inherits that exclusion.
  *
- * The PRNG itself and the seed list live in `../_random`, promoted there by #41
- * once a second property test needed them. What stays here is what is about
+ * The PRNG itself and the seed list live in `../_random`, promoted there once a
+ * second property test needed them. What stays here is what is about
  * *commands*: this module reaches for `commands`, `document` and `commandLog`,
  * and a geometry test importing it for sixteen lines of arithmetic would drag the
  * whole state layer into the stack trace of a failing clamp. The reasoning behind

@@ -8,9 +8,8 @@
  * headless boundary's type gate, which inherits that exclusion.
  *
  * It sits at the core root rather than beside a property test because two areas
- * now need it — #39's command runs in `state/_random.ts` and #41's transform
- * sweep in `geometry/transforms.property.test.ts`. The rule is the one
- * `JobService.require_job` and `visionset/wire/` were shaped by: a helper two
+ * need it — the command runs in `state/_random.ts` and the transform sweep in
+ * `geometry/transforms.property.test.ts`. A helper two
  * places need is **promoted, not copied**. Copying sixteen lines of arithmetic
  * would be harmless; copying the seed list would not, because "the seed is in
  * the test name so a failure replays" only holds while there is one list.

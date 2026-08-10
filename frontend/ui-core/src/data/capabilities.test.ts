@@ -109,8 +109,8 @@ describe("the action names the client imports", () => {
     // by `tsc` through `satisfies`. What this adds is the count — a ninth batch
     // action arriving on the wire with no constant here is a rename nobody can
     // perform, because the screens would have to spell it as a free string.
-    // `delete` came back with #376, together with the route, the MCP tool and the
-    // two controls that honour it — the condition #331 set when it withdrew it.
+    // `delete` is declared together with the route, the MCP tool and the two
+    // controls that honour it, which is the condition any action is added under.
     expect(Object.values(BATCH_ACTION).sort()).toEqual(
       [
         "approve",

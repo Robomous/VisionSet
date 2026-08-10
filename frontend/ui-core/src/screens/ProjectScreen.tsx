@@ -1,7 +1,7 @@
 /**
  * One project: its name, its schema, its batches, and every version it has ever had.
  *
- * ## Four things in one column is three too many (#171)
+ * ## Four things in one column is three too many
  *
  * The header, the schema editor, the batch table and the version history are four
  * separate concerns, and stacking them separated them by nothing but a card border:
@@ -12,18 +12,17 @@
  * and carries the actions that apply to all of it, and a tab list under it is what
  * says the rest are alternatives rather than a sequence.
  *
- * ## Overview is the default, and that reverses #171 on purpose (#210)
+ * ## Overview is the default
  *
- * #171 opened on `Schema`, because "a project three seconds old has nothing else
- * worth showing". That was true when the alternative was an empty batch table. It
- * stopped being true the moment #212 existed: a schema editor is *configuration*,
- * and it renders identically for an empty project and a hundred-thousand-image
- * one — which is `DESIGN.md` principle 6's own counter-example, written about
- * this page.
+ * Opening on `Schema` reads as right — "a project three seconds old has nothing
+ * else worth showing" — and it is only true while the alternative is an empty batch
+ * table. A schema editor is *configuration*, and it renders identically for an
+ * empty project and a hundred-thousand-image one, which is `DESIGN.md` principle
+ * 6's own counter-example written about this page.
  *
- * The three-second-old project is still answered, and since #388 it is answered
- * with exactly one invitation chosen from the project's real state rather than
- * with three that disagreed. While that invitation holds the page's filled
+ * The three-second-old project is answered by Overview
+ * with exactly one invitation chosen from the project's real state. While that
+ * invitation holds the page's filled
  * button, the header steps its own Ingest back to `secondary` — the same
  * `panelOwnsTheAction` bargain the Schema tab already had, for the same
  * one-filled-button-per-view reason.
@@ -32,7 +31,7 @@
  *
  * A tab held in component state is lost on reload and cannot be linked to, which is
  * the same complaint the split answers. So it travels as `?tab=`, and this screen
- * takes it the way every screen here takes navigation (#58): as props the host
+ * takes it the way every screen here takes navigation: as props the host
  * wires, never as a router import. `tab` is a raw `string` because it comes from a
  * query parameter — normalising it is this file's job, and anything unrecognised
  * opens on the default rather than on nothing.
@@ -51,7 +50,7 @@
  *
  * ## A 404 from the schema is an answer, not a failure
  *
- * A project starts schema-less on purpose (#6) — creating v1 inside `get_active`
+ * A project starts schema-less on purpose — creating v1 inside `get_active`
  * would be the second door `SchemaService` closed — so `GET /projects/{id}/schema`
  * answers **404 `SCHEMA_NOT_FOUND`** until somebody publishes one. That is the
  * normal state of a project three seconds old, and rendering an error surface for
@@ -147,8 +146,8 @@ const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
  * `versions` was never a sibling of Schema; it is a *view of* Schema. A tab bar
  * whose fourth entry is a read-only history of its second is offering a
  * subsection as a peer, which is how "Schema history" and "Releases" came to be
- * confusable enough that #292 had to rename one of them. The history now nests
- * inside the Schema tab, where the `VersionNavigator` seam already lived.
+ * confusable enough that one of them had to be renamed. The history nests
+ * inside the Schema tab, where the `VersionNavigator` seam already lives.
  *
  * `?tab=versions` is still honoured and lands on Schema — see `resolveProjectTab`.
  * A URL somebody bookmarked is a promise.
@@ -174,11 +173,11 @@ export function resolveProjectTab(raw: string | undefined): ProjectTab | null {
 /**
  * The one a project opens on, and where an unrecognised `?tab=` lands.
  *
- * **Overview since #210**, and the reversal is deliberate. #171 chose Schema
- * because "a project three seconds old has nothing else worth showing" — which
- * was true when the alternative was an empty batch table, and stopped being true
- * the moment #212 existed. A schema editor is *configuration*, and a project page
- * opening on configuration is `DESIGN.md` principle 6's own counter-example.
+ * **Overview**, deliberately. Schema reads as the right default — "a project
+ * three seconds old has nothing else worth showing" — and that is only true while
+ * the alternative is an empty batch table. A schema editor is *configuration*, and
+ * a project page opening on configuration is `DESIGN.md` principle 6's own
+ * counter-example.
  *
  * A three-second-old project is still handled: Overview's empty state invites the
  * first ingest, which is the next thing to do, where an empty schema form is a
@@ -204,7 +203,7 @@ const TABS: readonly ProjectTab[] = ["overview", "schema", "batches", "dataset"]
 export interface ProjectScreenProps {
   readonly projectId: string;
   /**
-   * Up to the project list (#199).
+   * Up to the project list.
    *
    * The rail's Projects link reaches the same URL, and that is not a reason to
    * leave this out: the rail is where you go to *start* somewhere, and a person
@@ -253,12 +252,12 @@ export function ProjectScreen({
   const [deleting, setDeleting] = useState(false);
   /*
    * The schema draft lives **here**, above the tabs, and that placement is the
-   * fix rather than an implementation detail (#389).
+   * fix rather than an implementation detail.
    *
    * Radix unmounts inactive content — the property the section above is built on
-   * — so a draft owned by the editor died every time somebody looked at another
+   * — so a draft owned by the editor dies every time somebody looks at another
    * tab, silently, taking whatever had been typed with it. No guard inside the
-   * editor could have reached that: the component was gone.
+   * editor can reach that: the component is gone.
    *
    * `forceMount` was the alternative and was rejected. It would keep the editor
    * alive at the cost of the query-follows-the-tab property this screen states
@@ -271,7 +270,7 @@ export function ProjectScreen({
   const [schemaDraft, setSchemaDraft] = useState<SchemaDraft | null>(null);
 
   // Batches are offered only when the host can open one. A table whose every row
-  // is a dead link is #160's bug with a tab in front of it, and a host that cannot
+  // is a dead link is a tile that reads as broken, and a host that cannot
   // navigate to a batch is better off not being told there is a section it cannot
   // use — which is exactly what this screen did with the section before the split.
   const available: readonly ProjectTab[] =
@@ -312,7 +311,7 @@ export function ProjectScreen({
             onOpenBatch={onOpenBatch}
             // The schema tab owns a filled "Save version" of its own, and it is
             // that view's forward action. Telling the header lets it step back,
-            // so the page still shows exactly one filled button (#323).
+            // so the page still shows exactly one filled button.
             panelOwnsTheAction={current === "schema" || overviewOwnsTheAction}
             {...(onTabChange === undefined ? {} : { onOpenDataset: () => onTabChange("dataset") })}
             onRename={() => setRenaming(true)}
@@ -438,9 +437,9 @@ export function ProjectScreen({
  * in the product, taking every batch, job, annotation, dataset member and release
  * with it.
  *
- * The numbers come from #207's stats, which is the reason this dialog could be
- * written at all: before it there was no way to say how much a delete costs
- * without walking the API. While they are still loading the dialog says so and
+ * The numbers come from the project's stats, which is the reason this dialog can
+ * be written at all: without them there is no way to say how much a delete costs
+ * short of walking the API. While they are still loading the dialog says so and
  * the button waits, because a confirmation that understates what it destroys is
  * worse than one that takes a moment.
  *
@@ -468,9 +467,9 @@ function DeleteDialog({
         <DialogTitle>Delete {name}?</DialogTitle>
         <DialogDescription data-testid="delete-blast-radius">
           {/* `stats.data === undefined` means the query has not answered yet — not
-              that the body might be missing a field. Until #225 this asked about the
-              field, because a wrong document could arrive with the count absent and
-              `formatCount(undefined)` white-screened the dialog. The check at `unwrap`
+              that the body might be missing a field. Asking about the
+              field instead would be defending against a wrong document arriving with
+              the count absent, which `formatCount(undefined)` white-screens on. The check at `unwrap`
               is what lets this ask the question it actually means. */}
           {stats.data === undefined
             ? "Counting what this would destroy…"
@@ -516,13 +515,13 @@ function DeleteDialog({
 /**
  * Who the project is, and what to do about it.
  *
- * ## Four lines, two buttons, and an overflow (#211, `DESIGN.md`)
+ * ## Four lines, two buttons, and an overflow (`DESIGN.md`)
  *
- * The header used to be a title, the literal string "No description.", and three
- * equal-weight buttons — Dataset, Ingest, Rename. Nothing said what kind of
- * project it was, what schema was live, or what to do next; and the one line it
- * spent on a *missing* description was a line about a field rather than about
- * anybody's project. Absent now renders nothing.
+ * A title, the literal string "No description." and three equal-weight buttons —
+ * Dataset, Ingest, Rename — says nothing about what kind of
+ * project it is, what schema is live, or what to do next; and the one line it
+ * spends on a *missing* description is a line about a field rather than about
+ * anybody's project. Absent renders nothing.
  *
  * ## The chips that are here, and the two that are not
  *
@@ -535,18 +534,17 @@ function DeleteDialog({
  * Inventing a field to fill one, or rendering "Unknown", is the "No
  * description." mistake with a border around it.
  *
- * Last ingest needed a migration to become answerable: until #216 nothing
- * recorded when an asset arrived, and `Source.registered_at` was not the proxy
- * it looked like, because registration is idempotent on
- * `(kind, path, extraction_fps)` and is never rewritten. `Asset.ingested_at` is
- * what answers it now — and it is **nullable forever**, since rows written
- * before that migration cannot be backfilled from anything. A null reaches the
+ * Last ingest is answered by `Asset.ingested_at`. `Source.registered_at` is not
+ * the proxy it looks like, because registration is idempotent on
+ * `(kind, path, extraction_fps)` and is never rewritten. It is **nullable
+ * forever**, since rows written before the column existed cannot be backfilled
+ * from anything. A null reaches the
  * same rule as a missing description: the chip is omitted, with no branch of its
  * own, which is why the omitted case needs no code beyond the guard below.
  *
- * The counted chip — `n images` — is the exception worth having, because #207
- * genuinely answers it and a project page that never mentions how much data it
- * holds is the thing this whole redesign is about.
+ * The counted chip — `n images` — is the exception worth having, because the
+ * project's stats genuinely answer it and a project page that never mentions how
+ * much data it holds is the thing this layout exists to fix.
  *
  * ## Annotate is the primary action, and it is absent rather than disabled
  *
@@ -557,14 +555,14 @@ function DeleteDialog({
  *
  * With no such batch there is nowhere to send anybody, and the button is **not
  * rendered** rather than rendered grey: a disabled control that never says what
- * would enable it is forbidden, and #160 is the same bug from the other side.
+ * would enable it is forbidden.
  * Ingest becomes the primary in that state, which is also the honest next step.
  *
- * ## Two queries the header now runs
+ * ## Two queries the header runs
  *
- * #171 moved the schema queries into the tab that shows them, so opening a
- * project stopped fetching a version list nobody looked at. This adds two back —
- * deliberately, and they are not the same thing: `useActiveSchema` and
+ * The schema queries live in the tab that shows them, so opening a
+ * project does not fetch a version list nobody looked at. These two are
+ * deliberately different: `useActiveSchema` and
  * `useProjectStats` are what the header *renders*, and the header is always
  * drawn. Both share their query key with the tab that also wants them, so the
  * Schema tab now opens against a warm cache rather than a cold one.
@@ -598,7 +596,7 @@ function ProjectHeader({
   const batches = useBatches(project.id);
 
   // The batch work can actually happen in. `in_annotation` is the only state an
-  // annotation may be written into (#9), so this is not a preference — anything
+  // annotation may be written into, so this is not a preference — anything
   // else would send somebody to a gallery that refuses every save.
   const open = batches.data?.items.find((batch) => batch.state === "in_annotation");
   const annotate = open !== undefined && onOpenBatch !== undefined ? () => onOpenBatch(open.id) : undefined;
@@ -629,8 +627,8 @@ function ProjectHeader({
           )}
           {/* Two different questions, and both still need asking. The first is
               nullability: the field really is `string | null` — null means nothing
-              has been ingested, or was ingested before #216 recorded it. The second
-              is the one risk #225 deliberately leaves open: the check at `unwrap`
+              has been ingested, or was ingested before the column existed. The second
+              is the one risk the response check deliberately leaves open: at `unwrap` it
               validates `date-time` as a *string* and no further, on purpose, so a
               string that will not parse still reaches here and `formatWhen` answers
               "". What is gone is the third question this used to ask — whether the
@@ -741,7 +739,7 @@ function SchemaSection({
         Version history is a *view of* the schema, not a peer of it — a fourth
         tab holding a read-only history of the second was offering a subsection
         as a sibling, which is how "Schema history" and "Releases" came to be
-        confusable enough that #292 had to rename one of them.
+        confusable enough that one of them had to be renamed.
 
         It still overlaps with the editor's own `VersionNavigator` and still
         answers a different question: this is every version at once, scannable;
@@ -760,7 +758,7 @@ function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Elem
       {/* It has a heading of its own now that it is a section rather than a tab:
           a tab is titled by its trigger, and a panel below an editor is not.
 
-          This table and the editor's navigator (#232) overlap on purpose and
+          This table and the editor's navigator overlap on purpose and
           answer different questions. This is the *ledger* — every version at
           once, scannable. That one is the *reader* — one version at a time, with
           what it changed against its predecessor. */}
@@ -840,7 +838,7 @@ function VersionRow({
         v{entry.version}
         {entry.version === active && <Badge variant="accent">active</Badge>}
       </TableCell>
-      {/* Both are null for a version published before #230, and nothing backfills
+      {/* Both are null for a version published before the fields existed, and nothing backfills
           either — an em dash is the honest rendering of a moment nobody recorded. */}
       <TableCell className="text-muted-foreground">
         {entry.created_at == null ? "—" : formatWhen(entry.created_at)}
@@ -854,11 +852,11 @@ function VersionRow({
 }
 
 /**
- * A run of versions published while somebody was annotating (#368, decision 7).
+ * A run of versions published while somebody was annotating.
  *
- * ## Why the ledger needed this
+ * ## Why the ledger needs this
  *
- * Since #233 the annotator publishes versions, and WS4 lets one sitting publish
+ * The annotator publishes versions, and one sitting can publish
  * several. Left flat, the two *curated* milestones a person opens this table to
  * read end up beneath nine rows of `Added class "cone" from the annotation view`
  * — every one of them true, and collectively the reason nobody scrolls to the
@@ -868,7 +866,7 @@ function VersionRow({
  * ## Collapsed by default, and never for a milestone
  *
  * `provenance` is what tells the two apart, and only `annotation` groups —
- * `curated` and a null from before WS1's migration always render individually.
+ * `curated` and a null from before the column existed always render individually.
  * That is the conservative direction: a fact nobody recorded must not be read as
  * "incidental".
  *

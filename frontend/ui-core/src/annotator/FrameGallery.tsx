@@ -1,16 +1,15 @@
 /**
- * The frame switcher, as an overlay inside the editor (#390).
+ * The frame switcher, as an overlay inside the editor.
  *
  * ## What it replaces, and why that was a defect rather than a preference
  *
- * The grid button was the only affordance for *"show me the other frames"*, and
- * pressing it **left the workspace** — it called the same `onOpenGallery` the back
- * arrow does, landing on the full batch-management screen. The save-first guard
- * was correct and recent; the destination was the bug. Getting back to the frame
- * you were looking at cost a scroll and a click, and the editor's viewport, zoom,
- * pan, tool and armed class all died on the way.
+ * The grid button is the only affordance for *"show me the other frames"*. Wiring
+ * it to `onOpenGallery` — what the back arrow does — **leaves the workspace** for
+ * the full batch-management screen: getting back to the frame you were looking at
+ * costs a scroll and a click, and the editor's viewport, zoom, pan, tool and armed
+ * class all die on the way.
  *
- * `DESIGN.md` principle 10 — ratified in #368 and marked immovable — says no flow
+ * `DESIGN.md` principle 10 — marked immovable — says no flow
  * may force navigation out of the editor. Choosing the next frame is a flow
  * *inside* annotating: it is the `‹` / `›` navigator two controls to the left,
  * with pictures. Routing it through an exit was exactly the "trip back through a
@@ -200,7 +199,7 @@ export function FrameGallery({
  * One frame.
  *
  * **The number is the frame's position in the job and filtering does not change
- * it** — the side panel's rule (#368) for the same reason: it is how somebody
+ * it** — the side panel's rule, for the same reason: it is how somebody
  * refers to a frame out loud, and a grid that renumbered as they filtered would
  * disagree with the navigator about which one is "3".
  *

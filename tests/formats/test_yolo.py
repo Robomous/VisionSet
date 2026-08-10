@@ -52,7 +52,7 @@ from visionset.kernel.services import (
 #:
 #: The order is the *authored* schema order, not alphabetical, so a test that
 #: happened to pass under sorting would fail here — which is the whole point of
-#: #62's "classes come from the frozen schema" rule.
+#: The "classes come from the frozen schema" rule.
 CLASSES = (
     LabelClass(name="sign", geometry=GeometryType.BBOX),
     LabelClass(name="lane", geometry=GeometryType.POLYGON),
@@ -178,7 +178,7 @@ def test_the_class_index_is_the_schema_order_not_the_alphabet(tmp_path: Path) ->
 
 
 def test_a_class_nobody_used_still_has_its_index(tmp_path: Path) -> None:
-    """#62's third acceptance criterion, and the reason the index cannot drift.
+    """The reason the class index cannot drift.
 
     v1 built its map out of the annotations present, so drawing the first box of a
     new class *renumbered every other class* — and a model trained before that and
@@ -251,7 +251,7 @@ def test_an_asset_with_nothing_on_it_gets_an_empty_file_not_no_file(tmp_path: Pa
 
 
 def test_a_polygon_is_written_as_its_bounding_box(tmp_path: Path) -> None:
-    """The conversion #62 asks for, reachable only because `lossy` is true."""
+    """The polygon-to-box conversion, reachable only because `lossy` is true."""
     fixture = Fixture(tmp_path)
     lane = Annotation(
         asset_id=uuid4(),
@@ -362,7 +362,7 @@ def test_bytes_that_are_not_an_image_this_format_can_write_are_refused_by_name(
 def test_a_missing_blob_aborts_rather_than_writing_a_dataset_that_is_short(
     tmp_path: Path,
 ) -> None:
-    """v1's failure #1: the read was wrapped in `except Exception: pass`.
+    """v1 wrapped the read in `except Exception: pass`.
 
     The label file was written anyway, so a lost object produced a training set
     silently missing an image *and* carrying labels pointing at nothing.
@@ -468,7 +468,8 @@ def test_a_known_release_produces_exactly_these_files(tmp_path: Path) -> None:
             '  2: "weather"\n'
         ),
         f"labels/train/{digest}.txt": "0 0.250000 0.500000 0.250000 0.500000\n",
-        # #65's report, which every export carries and which is not the format's.
+        # The compatibility report, which every export carries and which is not
+        # the format's.
         "visionset-export-report.json": _tree(out)["visionset-export-report.json"],
     }
     assert sorted(path.name for path in (out / "images" / "train").iterdir()) == [f"{digest}.png"]

@@ -459,7 +459,7 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
     _say(f"release {release['tag']} — {len(manifest)} manifest bytes hash true, verify {verified}")
 
     # (9) Export it. Which formats exist is a property of the deployment, so the
-    # client asks rather than assuming — and since #328 an export is *launched*,
+    # client asks rather than assuming — and an export is *launched*,
     # the same shape as the ingest above: 202, a `Location`, poll, then take the
     # artifact. A real exporter copies every image in the release, which is not
     # something a request can hold open.

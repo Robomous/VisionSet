@@ -1,6 +1,6 @@
 """The browser session: who is signed in without typing anything, and who is not.
 
-`GET /session` is the whole mechanism (#179), and almost everything worth
+`GET /session` is the whole mechanism, and almost everything worth
 asserting about it is a *refusal*. Signing the local browser in is one test; the
 other twelve are the cases where the server must go on asking for a token, because
 every one of them is a way for this feature to hand somebody's workspace to
@@ -88,7 +88,7 @@ def _app(root: Path) -> FastAPI:
 def test_the_browser_on_this_machine_is_signed_in_without_typing_anything(
     workspace: Path,
 ) -> None:
-    """#179's first acceptance criterion, at the level the server owns it."""
+    """The browser session, at the level the server owns it."""
     with served(workspace) as client:
         assert client.get(SESSION_PATH).json() == {"issued": True}
         # No `Authorization` header anywhere in this request. The cookie the line

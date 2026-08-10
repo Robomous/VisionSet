@@ -1,12 +1,12 @@
 /**
  * Every internal link in every tracked Markdown file resolves — file *and* anchor
- * (#337).
+ *.
  *
  * Renaming a `##` heading silently invalidates every inbound `#fragment` pointing
  * at it. Nothing fails, nothing warns; the link simply starts landing at the top of
  * the page, which is indistinguishable from working unless you already know which
  * paragraph you were promised. It was a near miss during the
- * `visionset ui` → `visionset server` rename (#329), where prose changes reached
+ * `visionset ui` → `visionset server` rename, where prose changes reached
  * headings — and this repository leans on cross-document references hard enough
  * (`docs/` alone is nineteen files that cite each other by section) that a reviewing
  * habit is the wrong instrument. It is mechanically decidable, so it is a gate.

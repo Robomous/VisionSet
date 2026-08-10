@@ -1,5 +1,5 @@
 /**
- * The cursor and the hot target — #43's second deliverable, "which handle is hot".
+ * The cursor and the hot target: which handle is hot.
  *
  * Two claims are worth the file. The first is that the affordance agrees with the
  * transition table: in a drawing tool a press starts a new shape whatever it lands
@@ -239,8 +239,8 @@ describe("mid-session, the cursor says whether this click would close the polygo
       cursor: "pointer",
       hot: NO_TARGET,
     });
-    // Asserted in the same `it` as the cursor that predicted it — #43's rule, and
-    // the only thing that stops the two drifting apart.
+    // Asserted in the same `it` as the cursor that predicted it, which is the only
+    // thing that stops the two drifting apart.
     world.dispatch(down(PENDING[0]));
     expect(world.state).toBe(IDLE);
     expect(world.minted).toBe(1);
@@ -265,7 +265,7 @@ describe("mid-session, the cursor says whether this click would close the polygo
     const world = drawing(PENDING[0], PENDING[1]);
     const where = sceneOfWorld(world);
     // `too-few`: the press there does nothing at all, so promising a close would be
-    // #43's `default`-over-an-`edge` mistake pointed the other way.
+    // a cursor lying about what a press does.
     expect(affordanceAt(world.state, where, "polygon", PENDING[0]).cursor).toBe("crosshair");
     const before = world.state;
     world.dispatch(down(PENDING[0]));
@@ -363,7 +363,7 @@ describe("a drag answers from what it is holding, not from where the pointer is"
   });
 
   it("keeps the cursor but drops the target when the shape is deleted under it", () => {
-    // Reachable: #46 binds Delete, and the machine's own staleness guard answers
+    // Reachable: Delete is bound, and the machine's own staleness guard answers
     // the next pointer-move by abandoning. Until that event arrives a renderer is
     // still asking what to draw, and a lookup that threw would take the frame with
     // it.

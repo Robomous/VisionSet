@@ -177,7 +177,7 @@ def test_a_route_added_after_the_application_was_built_is_still_reachable() -> N
     ``stubbed_app`` rather than ``probe_app``, because ``get_auth_provider``
     depends on the workspace: a bare probe run from a directory that is not one
     answers 500 ``NOT_A_WORKSPACE`` before it ever reaches the credential, which
-    is #25's documented consequence and not what this test is about.
+    is a documented consequence of the auth posture and not what this test is about.
     """
     with TestClient(stubbed_app(StubAuthProvider())) as client:
         assert client.get(PROBE_PATH).status_code == 401
@@ -206,7 +206,7 @@ def test_serving_the_bundle_opens_no_workspace(
     assert app.state.workspace_handle.is_open is False
 
 
-# --- the single-page deep-link fallback (#58) ---------------------------------
+# --- the single-page deep-link fallback ---------------------------------------
 
 
 HTML = {"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
@@ -216,7 +216,7 @@ HTML = {"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0
 def test_a_client_route_under_the_prefix_serves_the_index_so_a_reload_works(
     bundled: TestClient,
 ) -> None:
-    """The deferral #33 wrote into ``_install_ui``'s docstring, discharged.
+    """The deferral in ``_install_ui``'s docstring, discharged.
 
     ``/app/projects/abc`` is a route the router resolves in the browser; a reload on
     it is a real request for a path no file backs. Without this, refreshing any page

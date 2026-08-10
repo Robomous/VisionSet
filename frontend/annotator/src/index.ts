@@ -57,7 +57,7 @@ export {
   type Projection,
   type StoreSnapshot,
 } from "./core/state/store";
-// Geometry (#41) — asset-pixel math: predicates, hit-testing, transforms
+// Geometry — asset-pixel math: predicates, hit-testing, transforms
 export { clamp } from "./core/geometry/clamp";
 export {
   clampPoint,
@@ -112,7 +112,7 @@ export {
   toleranceInAssetPixels,
   type Tolerances,
 } from "./core/geometry/tolerance";
-// Interaction (#42) — the state machine: states, events, effects, and the runner
+// Interaction — the state machine: states, events, effects, and the runner
 export {
   IDLE,
   type InteractionState,
@@ -137,7 +137,7 @@ export {
   type Scene,
   type Target,
 } from "./core/interaction/target";
-// The bbox tool (#43) — what the pointer would do here, for a renderer to show
+// The bbox tool — what the pointer would do here, for a renderer to show
 export {
   HANDLE_CURSORS,
   affordanceAt,
@@ -145,7 +145,7 @@ export {
   type Cursor,
 } from "./core/interaction/affordance";
 export { draftAnnotation } from "./core/interaction/draft";
-// The suggest session (#424) — ephemeral by construction: no effects, no store,
+// The suggest session — ephemeral by construction: no effects, no store,
 // nothing in the command log until `acceptedAnnotation` is added like any shape
 export {
   SUGGESTIBLE_GEOMETRY_TYPES,
@@ -181,7 +181,7 @@ export {
   type Turn,
 } from "./core/interaction/machine";
 export { runEffects } from "./core/interaction/runEffects";
-// Copy and paste (#123) — a session clipboard, and the two transformations over it
+// Copy and paste — a session clipboard, and the two transformations over it
 export {
   copiedEntries,
   createClipboard,
@@ -189,7 +189,7 @@ export {
   type Clipboard,
   type ClipboardEntry,
 } from "./core/interaction/clipboard";
-// The classification tag tool (#45) — a panel, and the only tool not on the canvas
+// The classification tag tool — a panel, and the only tool not on the canvas
 export {
   isTaggableClass,
   tagCommand,
@@ -198,7 +198,7 @@ export {
   toggleTagCommand,
   untagCommand,
 } from "./core/interaction/tags";
-// The input layer (#46) — a press, a chord, the map, and what carries a row out
+// The input layer — a press, a chord, the map, and what carries a row out
 export {
   ACCEPT_SUGGESTION,
   CLASS_HOTKEY_DIGITS,
@@ -241,7 +241,7 @@ export {
 
 // Host adapters — each needs a capability the headless core may not name
 export { randomUuid } from "./adapters/ids";
-// The screen↔image transform (#47) — a zoom is not the engine's to name, so this
+// The screen↔image transform — a zoom is not the engine's to name, so this
 // is the one piece of geometry that lives outside `core/`. Renderer-agnostic.
 export {
   IDENTITY_VIEWPORT,
@@ -260,7 +260,7 @@ export {
   type Viewport,
 } from "./adapters/viewport";
 
-// React adapter (#47, requires the optional `react` peer dependency)
+// React adapter (requires the optional `react` peer dependency)
 export {
   AnnotationLayer,
   AnnotationShape,

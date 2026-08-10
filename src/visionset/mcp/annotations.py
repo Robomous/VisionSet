@@ -11,9 +11,9 @@ would be reasoning about nothing. So ``AnnotationInput`` omits it, exactly as
 union.
 
 All three writes **start the job they are addressed to**, if nobody has, and say
-so in ``job_started`` — #109, and the reasoning is in ``_autostart``. Nothing else
-about them changed: the gate is still the batch being ``in_annotation``, which is
-what refuses when the write is not allowed at all.
+so in ``job_started`` — the reasoning is in ``_autostart``. The gate is still the
+batch being ``in_annotation``, which is what refuses when the write is not allowed
+at all.
 
 All three writes are **one transaction and all-or-nothing**: a batch of ten
 annotations with one bad geometry writes none of them. When that happens the

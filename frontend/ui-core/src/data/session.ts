@@ -23,7 +23,7 @@
  * is no route that trades a typed token for one. What `GET /session` does instead
  * is hand the browser the server just served a credential *for being that
  * browser*, which takes no input and so has nothing to be tricked into — and is
- * what makes opening the app on your own machine ask for nothing (#179). That
+ * what makes opening the app on your own machine ask for nothing. That
  * credential never passes through this module: it is `HttpOnly`, so no script here
  * can read it, which is precisely the property `sessionStorage` cannot offer.
  *

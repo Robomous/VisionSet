@@ -1,6 +1,5 @@
 /**
- * The shortcut table, and the registry it folds into — #46's first acceptance
- * criterion.
+ * The shortcut table, and the registry it folds into.
  *
  * Every default row gets its own `it`, driven the way a host drives it: a
  * `KeyPress` through `keystrokeOf`, through `resolve`, to an `Action` compared
@@ -63,9 +62,9 @@ const DISPATCH: readonly DispatchRow[] = [
   { chord: "escape", key: "Escape", action: { kind: "send", event: { type: "cancel" } } },
   { chord: "enter", key: "Enter", action: { kind: "send", event: { type: "commit" } } },
   { chord: "delete", key: "Delete", action: { kind: "delete-selection" } },
-  // #129: not a synonym for `Delete` any more. The two chords meant one thing, so
-  // one was free — and `Backspace` takes back the last thing you did, which is the
-  // only spelling the polygon take-back has.
+  // Not a synonym for `Delete`. The two chords meant one thing, so one was free —
+  // and `Backspace` takes back the last thing you did, which is the only spelling
+  // the polygon take-back has.
   {
     chord: "backspace",
     key: "Backspace",
@@ -90,11 +89,11 @@ const DISPATCH: readonly DispatchRow[] = [
   },
   { chord: "c", key: "c", action: { kind: "host", name: FOCUS_CLASS_FIELD } },
   { chord: "mod+s", key: "s", held: MOD, action: { kind: "host", name: SAVE } },
-  // #383. `enter` is deliberately absent from this pair: the flow verb's chord is
+  // `enter` is deliberately absent from this pair: the flow verb's chord is
   // the ring close above, substituted by the adapter when nothing is being drawn,
   // so a second `enter` row here would shadow the commit.
   { chord: "x", key: "x", action: { kind: "host", name: SKIP_FRAME } },
-  // #424. `enter` and `escape` are absent from this trio for `x`'s neighbour's
+  // `enter` and `escape` are absent from this trio for `x`'s neighbour's
   // reason: accepting and discarding a suggestion are substitutions the adapter
   // makes over the two rows above, and a row here would shadow both.
   { chord: "s", key: "s", action: { kind: "host", name: TOGGLE_SUGGEST } },
@@ -143,7 +142,7 @@ describe("the default shortcut table", () => {
   });
 
   it("claims copy and paste, and the bare `v` still means select mode", () => {
-    // #123 took these two back from the browser. `v` and `mod+v` are different
+    // These two are taken back from the browser. `v` and `mod+v` are different
     // chords — `chordOf` puts the modifier in the string — so claiming the second
     // did not shadow the first, and that is worth an assertion rather than a
     // reading of `keys.ts`.
@@ -318,7 +317,7 @@ describe("registryOf", () => {
 });
 
 /**
- * The fold, named once (#189).
+ * The fold, named once.
  *
  * `defaultRegistry` exists because two callers must agree exactly: the adapter
  * that resolves a keystroke, and the help sheet that lists what is bound. A sheet

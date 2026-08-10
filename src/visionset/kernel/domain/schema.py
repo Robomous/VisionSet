@@ -56,8 +56,8 @@ class GeometryType(StrEnum):
 # * **The name collides, and the collision is only in the word.** ``Provenance``
 #   in ``domain/annotation.py`` asks whether a *label* was drawn, predicted or
 #   imported. This asks whether a *version* was designed or fell out of somebody
-#   needing a class mid-job. Different entity, different question; #368 records
-#   that docs must disambiguate the two wherever both appear.
+#   needing a class mid-job. Different entity, different question — docs must
+#   disambiguate the two wherever both appear.
 # * **Nothing infers it and nothing backfills it.** The only thing that knows
 #   which kind of work is happening is the surface the person is using, so the
 #   value is recorded verbatim from the caller. A version published before this
@@ -218,7 +218,8 @@ class AnnotationSchema(BaseModel):
     classes: tuple[LabelClass, ...] = ()
 
     #: Why this version exists, in the author's own words. Optional: an empty
-    #: commit message is legal, and a version published before #230 has none.
+    #: commit message is legal, and a version published before the field existed
+    #: has none.
     description: str | None = None
 
     #: When the version was published, UTC. Stamped by ``SchemaService``, in

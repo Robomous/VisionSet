@@ -7,8 +7,8 @@
  * `{ kind: "execute", command: Command }`, because that is the currency
  * `AnnotatorStore` already takes. It is the wrong call.
  *
- * #42's first acceptance criterion is that the transition table is *exercised by
- * tests*. With a closure, the only assertion a table row can make about a
+ * The transition table has to be *exercised by tests*. With a closure, the only
+ * assertion a table row can make about a
  * pointer-move is `typeof effects[0].project === "function"` — which is worth
  * nothing — or "run the closure against a document and inspect the result",
  * which drags a store into every test that was supposed to be about a
@@ -20,8 +20,8 @@
  * ]);
  * ```
  *
- * That also hands #43 its own acceptance criterion — "scripted event-sequence
- * tests: draw/move/resize produce exact expected geometry" — with no store, no
+ * That is also what lets a scripted event sequence assert exact geometry for a
+ * draw, a move or a resize — with no store, no
  * document round-trip and no adapter. And the geometry maths runs *inside* the
  * pure transition, where a test is looking at it, rather than later inside the
  * store where none is.

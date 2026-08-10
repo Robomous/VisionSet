@@ -32,13 +32,11 @@
  * handler. `removePolygonVertex` answers `null` instead and leaves the choice to
  * the tool.
  *
- * **#44 made that call, and it is not v1's**: the delete is refused, and the polygon
- * stays a triangle. A gesture that escalates from "remove this vertex" to "remove
- * the shape" at a boundary nobody can see is a surprise, and the remedy for deleting
- * a polygon is already explicit elsewhere. The argument in full, including the
- * ctrl-click double-fire it also avoids, is in `machine.ts`'s `deleteVertex`. This
- * paragraph previously predicted the opposite and is corrected rather than removed,
- * because the prediction is why the `null` is here at all.
+ * **The tool refuses the delete, and the polygon stays a triangle** — not v1's
+ * answer. A gesture that escalates from "remove this vertex" to "remove the shape"
+ * at a boundary nobody can see is a surprise, and the remedy for deleting a polygon
+ * is already explicit elsewhere. The argument in full, including the ctrl-click
+ * double-fire it also avoids, is in `machine.ts`'s `deleteVertex`.
  *
  * ## What is deliberately not here
  *
@@ -49,8 +47,8 @@
  *
  * It also refuses nothing. v1 bailed out of an edge insert when the click was
  * within 6 px of an existing vertex — that is a tool's reading of a double-click,
- * built on `nearestVertex` — #42's `nearestInsertion` is where it lives — and
- * not a fact about polygons.
+ * built on `nearestVertex`, and it lives in `nearestInsertion` rather than here,
+ * because it is not a fact about polygons.
  *
  * There is no self-intersection check and no winding rule. `polygonContains` is
  * even-odd, which is what SVG's default `fill-rule` draws, so what a user clicks
@@ -70,7 +68,7 @@ import { clampPoint, closestPointOnSegment, type Bounds } from "./primitives";
 export const MIN_POLYGON_POINTS = 3;
 
 /**
- * The fewest points a polyline may carry (#342).
+ * The fewest points a polyline may carry.
  *
  * **Two, not three**, and it is the one arity difference between the two shapes: a
  * polygon needs three to enclose anything, a path needs two to go anywhere. Every
@@ -164,8 +162,8 @@ export function translatePolygon(
  * The same rigid move, for the geometry that is structurally identical and has no
  * pointer tool of its own.
  *
- * A polyline cannot be dragged — `MovableGeometry` is `bbox | polygon`, and vertex
- * editing is `cf. #342` — but it can be **pasted** (#123), and a paste places a
+ * A polyline cannot be dragged — `MovableGeometry` is `bbox | polygon` — but it
+ * can be **pasted**, and a paste places a
  * shape exactly the way a move does: shift the whole thing, clamp the translation
  * rather than the vertices, never deform. Two doors over `translatedPoints` rather
  * than one function returning a union, because the machine's call site narrows to
@@ -209,7 +207,7 @@ export function movePolygonVertex(
 }
 
 /**
- * The same edit on an open path (#342).
+ * The same edit on an open path.
  *
  * Identical in every respect — a vertex is a vertex — which is why it shares
  * `movedVertex` rather than repeating four lines. `translatePolygon`/
@@ -254,7 +252,7 @@ export function insertPolygonVertex(
 }
 
 /**
- * A vertex inserted into an open path, after vertex `index` (#342).
+ * A vertex inserted into an open path, after vertex `index`.
  *
  * The one place the two shapes genuinely differ, and it is the closing edge:
  * a polygon has one and a polyline does not, so `index` here must name a **real**
@@ -290,9 +288,9 @@ function insertedVertex(shape: PointList, index: number, point: Point): readonly
  * Vertex `index` dropped, or `null` when the polygon is already at
  * `MIN_POLYGON_POINTS` and there is nothing left to drop it from.
  *
- * `null` means "this polygon cannot survive the edit" and nothing more. What to do
- * about that was #44's call, and #44 answered *nothing happens* — see `deleteVertex`
- * in `machine.ts`, and the section above.
+ * `null` means "this polygon cannot survive the edit" and nothing more. The tool
+ * answers *nothing happens* — see `deleteVertex` in `machine.ts`, and the section
+ * above.
  */
 export function removePolygonVertex(
   polygon: PolygonGeometry,
@@ -303,13 +301,12 @@ export function removePolygonVertex(
 }
 
 /**
- * Vertex `index` dropped from an open path, or `null` at `MIN_POLYLINE_POINTS`
- * (#342).
+ * Vertex `index` dropped from an open path, or `null` at `MIN_POLYLINE_POINTS`.
  *
  * The floor is two rather than three, and everything else is the polygon's: the
  * `null` says "this shape cannot survive the edit" and the tool decides what that
- * means. `machine.ts` answers *nothing happens* for both, which is #44's call
- * inherited rather than re-made — a gesture that escalates from "remove this
+ * means. `machine.ts` answers *nothing happens* for both — a gesture that
+ * escalates from "remove this
  * vertex" to "remove the whole lane" at an invisible boundary is the same surprise
  * whichever shape it happens to.
  */

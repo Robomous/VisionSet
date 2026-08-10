@@ -95,9 +95,8 @@ describe("parsing what the kernel produced", () => {
 
 describe("the divergences this file exists to keep closed", () => {
   it('refuses "classification", the value the mirror used to carry', () => {
-    // The kernel has always said `classification_tag`. This is the mismatch #73
-    // was filed for; it must fail loudly rather than parse into a variant that
-    // does not exist.
+    // The kernel has always said `classification_tag`. A mismatched spelling must
+    // fail loudly rather than parse into a variant that does not exist.
     expect(() => parseGeometry({ type: "classification" })).toThrow(WireFormatError);
     expect(() => parseGeometry({ type: "classification" })).toThrow(/not a GeometryType/);
   });
@@ -125,9 +124,8 @@ describe("the divergences this file exists to keep closed", () => {
     "refuses %s as declared-but-unimplemented rather than as unknown",
     (type) => {
       // The distinction is the point: the remedy for one is to wait for a
-      // variant, and for the other to fix the caller. #48 inherits this answer.
-      // `polyline` was in this list until #223 shipped its variant, which is the
-      // remedy arriving — four names are still waiting on one.
+      // variant, and for the other to fix the caller. Four names are still
+      // waiting on a variant.
       expect(() => parseGeometry({ type })).toThrow(WireFormatError);
       expect(() => parseGeometry({ type })).toThrow(/no implementation/);
       expect(() => parseGeometry({ type })).toThrow(/UNSUPPORTED_GEOMETRY/);
@@ -169,9 +167,9 @@ describe("strictness, so the editor cannot silently erase a field", () => {
 });
 
 describe("rule 4: an input-only mirror survives a server that grew a field", () => {
-  // #230 is why this block exists. Two fields were added to `SchemaVersionOut`
-  // and `parseSchema` refused every schema the server sent, because it was as
-  // exact about keys as the annotation path is. The annotation path *has* to be
+  // This block exists because two fields added to `SchemaVersionOut` once made
+  // `parseSchema` refuse every schema the server sent: it was as exact about keys
+  // as the annotation path is. The annotation path *has* to be
   // — it round-trips, so an ignored key is a field the editor erases on save —
   // and none of these four do.
 
@@ -200,9 +198,9 @@ describe("rule 4: an input-only mirror survives a server that grew a field", () 
   });
 
   it("parses an asset carrying one too, which it always did", () => {
-    // The asset parser has ignored undeclared keys since #40 — it names three
-    // fields of the eleven an asset carries. Rule 4 is that behaviour named and
-    // extended to its three siblings, not a new idea.
+    // The asset parser has always ignored undeclared keys — it names three fields
+    // of the eleven an asset carries. Rule 4 is that behaviour named and extended
+    // to its three siblings, not a new idea.
     const asset = parseAssetDescriptor({
       id: "a",
       width: 640,
@@ -319,10 +317,9 @@ describe("parsing the schema the kernel produced", () => {
   });
 
   it("ignores a key the schema contract does not declare", () => {
-    // This asserted the opposite until #230, and the reversal is rule 4. A
-    // schema is input-only, so a key this build does not know is a newer
-    // server's field and dropping it loses nothing — where refusing it loses
-    // the whole schema, which is exactly what #230 did.
+    // Rule 4. A schema is input-only, so a key this build does not know is a
+    // newer server's field and dropping it loses nothing — where refusing it
+    // loses the whole schema.
     const parsed = parseSchema({ project_id: "p", version: 1, classes: [], notes: "hi" });
     expect(parsed.version).toBe(1);
     expect(parsed).not.toHaveProperty("notes");

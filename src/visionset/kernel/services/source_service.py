@@ -3,8 +3,8 @@
 
 A ``Source`` is a receipt, not a payload — it says *this directory* or *this
 clip* is where a project's assets came from, when it was registered, and what a
-probe made of it. Materializing assets out of it is the ingest pipeline's job
-(#20); this service only ever writes one row.
+probe made of it. Materializing assets out of it is the ingest pipeline's job;
+this service only ever writes one row.
 
 **Two registration methods, not one ``register(kind=...)``.** The arguments
 genuinely differ: a clip needs a decomposition rate and gets probed, a directory
@@ -15,8 +15,8 @@ callers.
 
 **Registration is idempotent, and the match key is ``(kind, path,
 extraction_fps)``.** Registering the same origin twice returns the same
-``Source`` rather than a second one, so that once #20 gives ``asset.source_id`` a
-target, "which source did this asset come from?" has one answer. The key
+``Source`` rather than a second one, so that "which source did this asset come
+from?" has one answer through ``asset.source_id``. The key
 deliberately excludes ``capture_params``: fragmenting one directory into two
 sources because an operator typed a different lens note would defeat the point.
 It also excludes the probed ``VideoMetadata`` — a clip replaced at a known path
@@ -96,7 +96,7 @@ class SourceService:
         existing source. Differing ``capture_params`` are written onto it rather
         than making a second one — see the module docstring.
 
-        ``display_name`` is what to *call* the source (#245) — the answer for an
+        ``display_name`` is what to *call* the source — the answer for an
         origin whose basename is unreadable, which over HTTP is every image
         upload (the staging directory is content-addressed, so the basename is a
         digest). It is not part of the identity key: providing a new one renames
@@ -176,9 +176,9 @@ class SourceService:
         """The source, checked through its project so workspaces stay separate.
 
         Public, and taking a ``uow``, for the reason ``JobService.require_job``
-        is: #20's ingest has to resolve a source *inside its own transaction*
-        before it writes assets against it, and a second spelling of this ladder
-        is a second place for it to be got wrong.
+        is: ingest has to resolve a source *inside its own transaction* before it
+        writes assets against it, and a second spelling of this ladder is a second
+        place for it to be got wrong.
 
         Raises:
             SourceNotFound: no such source in this workspace.

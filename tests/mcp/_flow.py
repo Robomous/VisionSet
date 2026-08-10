@@ -53,7 +53,7 @@ SCHEMA_CLASSES: list[dict[str, Any]] = [
 ]
 """The smallest schema that is not trivial: one class, one optional attribute."""
 
-#: #223's lane class, for the suites that write one. Not in ``SCHEMA_CLASSES``.
+#: The lane class, for the suites that write one. Not in ``SCHEMA_CLASSES``.
 CENTERLINE: dict[str, Any] = {"name": "centerline", "geometry": "polyline"}
 
 BBOX: dict[str, Any] = {"type": "bbox", "x": 1.0, "y": 2.0, "width": 8.0, "height": 6.0}
@@ -66,7 +66,7 @@ def call(tool: str, /, **arguments: Any) -> CallToolResult:
 
 
 def call_destructive(tool: str, /, **arguments: Any) -> CallToolResult:
-    """The same, against a server started with ``--allow-destructive`` (#108).
+    """The same, against a server started with ``--allow-destructive``.
 
     A second server rather than an environment variable, because the module-level
     one registers at import and a test cannot get in front of that. This is the

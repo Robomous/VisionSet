@@ -1,21 +1,20 @@
 /**
- * The workspace panel's upper region: **the schema's classes, always on screen**
- * (#420).
+ * The workspace panel's upper region: **the schema's classes, always on screen**.
  *
- * ## Why a list and not the dropdown it replaces
+ * ## Why a list and not a dropdown
  *
- * #368 put the drawing class on the top bar as a combobox, on the argument that
- * it is the most-used control on the page and the eye is already up there. What
- * that missed is *what is being chosen between*: the classes are the ontology,
+ * A combobox on the top bar reads as right — the drawing class is the most-used
+ * control on the page and the eye is already up there. What that misses is
+ * *what is being chosen between*: the classes are the ontology,
  * and a picker keeps all of them one click away, so the answer to "what can I
  * draw here" was never on screen. A list shows the ontology and — stacked over
  * the objects region — puts it beside the things drawn from it, which are the two
  * surfaces an annotator alternates between.
  *
- * It also removes a defect rather than moving one. The top-bar instance was
- * clipped by the fixed-width reservation #416 wrapped it in: the popup is
+ * It also removes a defect rather than moving one. A top-bar combobox is clipped
+ * by the fixed-width reservation it sits in: the popup is
  * `position: absolute` at `top-9` inside a 32px-tall `overflow-hidden` slot, so
- * the listbox rendered entirely outside its clip and never appeared. A list in a
+ * the listbox renders entirely outside its clip and never appears. A list in a
  * region that scrolls has no popup to clip.
  *
  * ## The height rule, and why it is stated in rows
@@ -29,8 +28,8 @@
  * **It is computed from the schema's class count, never from the filtered one.**
  * A height that tracked the filter would resize this region — and reflow the
  * objects region under it — on every keystroke, which is the same
- * controls-moving-under-the-cursor problem the top bar spent #416 on. So typing
- * narrows the list inside a region that does not move.
+ * controls-moving-under-the-cursor problem the top bar's constant widths exist to
+ * prevent. So typing narrows the list inside a region that does not move.
  *
  * ## Hotkeys are the schema's order and nothing else's
  *

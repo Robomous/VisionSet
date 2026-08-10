@@ -1,5 +1,5 @@
 /**
- * Whether the rail starts collapsed (#200).
+ * Whether the rail starts collapsed.
  *
  * The claim is small and the ways to get it wrong are not: an absent key, a value
  * this module does not understand, and a browser that refuses storage entirely

@@ -181,10 +181,8 @@ def lanes_of(asset: ManifestAsset) -> list[Lane]:
     """Every polyline on this asset, left to right, vocabulary resolved.
 
     Non-polyline annotations are **not an error and not a loss reported here** —
-    a lane format is asked for lanes, and #65's compatibility report is what tells
-    a caller that the release also held boxes the format will not write. This is
-    v1's ``[a for a in annotations if a.get("type") == "polyline"]``, which every
-    one of its six exporters opened with.
+    a lane format is asked for lanes, and the compatibility report is what tells
+    a caller that the release also held boxes the format will not write.
     """
     lanes = [
         Lane(

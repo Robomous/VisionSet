@@ -1,6 +1,6 @@
 """Cross-box suppression, the rule the Phase 0 measurement asked for.
 
-The spike recorded on #418 found duplicate detections per instance to be the
+Measurement found duplicate detections per instance to be the
 primary failure mode of raw zero-shot output at usable thresholds — not missed
 objects. So this is not a tidiness pass: without it a write gate receives three
 labels for one dog and every count downstream is wrong.

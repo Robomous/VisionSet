@@ -20,11 +20,10 @@ The destination is the caller's. It is created if missing and **never emptied**,
 so a second export into the same directory leaves the first run's files there and
 the counts describe the directory afterwards rather than this run alone.
 
-**``--check`` answers the question without committing to it** (#163). The report
-``ReleaseService.check_export`` computes was reachable over REST and from MCP and
-from nowhere at a terminal, so the only way to find out what an export would cost
-was to attempt one and read a refusal that named neither the classes nor the
-counts. It is a flag on this command rather than a command of its own because the
+**``--check`` answers the question without committing to it.** Without it the
+only way to find out what an export would cost at a terminal is to attempt one
+and read a refusal that names neither the classes nor the counts. It is a flag on
+this command rather than a command of its own because the
 arguments that decide the answer are exactly these — a ``release compatibility``
 would restate every one of them — and because that is what makes
 ``visionset export --check … && visionset export …`` a thing somebody can write.
@@ -143,10 +142,10 @@ def export(
     # total, because "polygon, 1204" is what somebody acts on and a bare total is
     # not; the file in the output has the rest.
     #
-    # Two lines, not one, and #158 is why: the old single "Not carried" line was
-    # printed for classes the exporter then went on to write as boxes, so the one
-    # sentence a user reads about their export was wrong about half of what it
-    # listed. What disappears and what arrives coarser are different decisions.
+    # Two lines, not one: a single "Not carried" line would also cover classes the
+    # exporter goes on to write as boxes, so the one sentence a user reads about
+    # their export would be wrong about half of what it listed. What disappears
+    # and what arrives coarser are different decisions.
     excluded = result.compatibility.excluded
     if excluded:
         listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in excluded)
@@ -194,9 +193,9 @@ def _report(report: ExportCompatibility, *, json_out: bool) -> None:
     )
 
     # On stderr with the rest of the prose, so the table alone is what a pipe
-    # gets. Both numbers, always, and never added together: #158's whole finding
-    # is that "gone" and "coarser" are different things to consent to, and one
-    # total covering both is the sentence that was wrong.
+    # gets. Both numbers, always, and never added together: "gone" and "coarser"
+    # are different things to consent to, and one total covering both is a
+    # sentence that is wrong about half of what it counts.
     if report.compatible and not report.format_is_lossy:
         note(f"{report.format_name} carries everything this release holds.")
         return

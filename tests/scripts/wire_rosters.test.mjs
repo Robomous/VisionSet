@@ -9,7 +9,7 @@
 //   frontend/app/e2e/_wire.ts                       rows typed `readonly string[]`
 //
 // Only the first is held by the compiler, and only for *membership* — `tsc` refuses
-// a value outside the generated union, which is what caught the fixture when #331
+// a value outside the generated union, which is what catches the fixture when a
 // withdrew `BatchAction.DELETE`. The second is `string[]` by deliberate choice (it
 // stubs the wire rather than consuming it, so it does not import the app's types),
 // and that choice costs it every compile-time guarantee: it kept serving `"delete"`
@@ -17,7 +17,7 @@
 // does not raise, it just never resolves — and every gallery spec failed with
 // `element(s) not found` and a 20-second timeout pointing at the UI. 2590 pytest,
 // both vitest suites, mypy, ruff, lint-imports, `generate:client:check` and
-// `typecheck:e2e` were green the whole time. #358 is the record; this file is its
+// `typecheck:e2e` are green the whole time. This file is the
 // option 3.
 //
 // ## What this proves, and what it does not
@@ -25,7 +25,7 @@
 // It proves the two doubles agree with **each other**. It does not prove either one
 // agrees with the kernel: they could drift together and this gate would stay green.
 // Closing that needs the rosters to have one source rather than two — options 1 and
-// 2 on #358 (a `@visionset/ui-core/testing` subpath, or generating `_wire.ts`), both
+// 2 (a `@visionset/ui-core/testing` subpath, or generating `_wire.ts`), both
 // of which change `ui-core`'s public surface and are deliberately left open. What is
 // bought here is that a *unilateral* edit, the failure mode that actually happened,
 // is named and red.

@@ -60,7 +60,7 @@ describe("withoutHidden", () => {
     // Identity, not equality. `AnnotationLayer`'s `memo` is what makes a drag cost
     // the committed layer three DOM writes whatever its length, and a projection
     // allocating a new document every render would defeat the bail-out before it
-    // was consulted — #49's finding, from the other side.
+    // was consulted.
     expect(withoutHidden(document, undefined)).toBe(document);
     expect(withoutHidden(document, new Set())).toBe(document);
   });

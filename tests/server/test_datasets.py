@@ -84,7 +84,7 @@ def test_an_unknown_dataset_is_404_with_its_own_code(client: TestClient) -> None
 
 
 def test_a_malformed_dataset_id_is_422_rather_than_404(client: TestClient) -> None:
-    """The convention #27 fixed: a path that is not a UUID never reached a service."""
+    """The convention: a path that is not a UUID never reaches a service."""
     response = client.get("/datasets/not-a-uuid")
 
     assert response.status_code == 422

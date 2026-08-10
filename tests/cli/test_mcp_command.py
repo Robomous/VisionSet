@@ -183,7 +183,7 @@ def test_the_cli_does_not_import_the_mcp_package() -> None:
     assert "from visionset.mcp" not in source
 
 
-# --- the destructive posture (#108) -------------------------------------------
+# --- the destructive posture --------------------------------------------------
 
 
 def test_the_destructive_tools_are_off_unless_the_flag_is_passed(

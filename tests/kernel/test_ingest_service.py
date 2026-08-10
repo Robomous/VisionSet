@@ -233,7 +233,7 @@ class Fixture:
         """The same, with the previews subtracted — ingested content only.
 
         Every deduplication claim in this file is about *content*: the same
-        image is stored once. Since #21 a preview is stored beside each asset,
+        image is stored once. A preview is stored beside each asset,
         so a bare `blob_count` would make "one image, one blob" read as two and
         say nothing about the dedup it is there to prove. Every project in the
         workspace is walked, because two of these tests ingest into two.
@@ -357,7 +357,7 @@ def test_the_bytes_decide_the_format_and_not_the_name(tmp_path: Path) -> None:
 
 
 def test_an_exif_rotated_still_is_stored_at_its_displayed_size(tmp_path: Path) -> None:
-    """#16 applies orientation rather than reporting it; this is where it lands."""
+    """Orientation is applied rather than reported; this is where it lands."""
     fixture = Fixture(tmp_path)
     write_image(fixture.stills / "upright.jpg", size=(32, 24), orientation=6)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
@@ -476,7 +476,7 @@ def test_a_frame_takes_its_size_from_the_probe_and_its_format_from_the_port(
 
 
 def test_a_rotated_clip_yields_frames_at_their_displayed_size(tmp_path: Path) -> None:
-    """#17 applies the display matrix; a 64x48 file held upright ingests as 48x64."""
+    """The display matrix is applied; a 64x48 file held upright ingests as 48x64."""
     fixture = Fixture(tmp_path)
     clip = write_rotated_video(tmp_path / "upright.mp4")
     source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=1.0)
@@ -497,7 +497,7 @@ def test_a_truncated_clip_keeps_what_decoded_and_reports_the_break(tmp_path: Pat
 
     assert 0 < result.created < clip.frame_count
     assert [failure.kind for failure in result.failures] == [IngestFailureKind.PARTIAL]
-    # The clip's filename, not `source.path` — that one is absolute (#317).
+    # The clip's filename, not `source.path` — that one is absolute.
     assert result.failures[0].name == "broken.mp4"
     assert source.path not in result.failures[0].name
     assert fixture.ingest.get(result.job_id).state is IngestState.COMPLETED
@@ -505,7 +505,7 @@ def test_a_truncated_clip_keeps_what_decoded_and_reports_the_break(tmp_path: Pat
 
 
 def test_a_truncated_clip_reports_how_much_of_it_arrived(tmp_path: Path) -> None:
-    """#452: the run holds both numbers, so the report states them instead of a sentence.
+    """The run holds both numbers, so the report states them instead of a sentence.
 
     `frames_produced` is exact — it is the length of what the loop kept — and matches the
     assets that landed, which is what makes "the frames are in the batch" checkable rather
@@ -529,7 +529,7 @@ def test_a_truncated_clip_reports_how_much_of_it_arrived(tmp_path: Path) -> None
 
 
 def test_a_clip_that_reads_to_the_end_reports_nothing_at_all(tmp_path: Path) -> None:
-    """Silence is the ok-state (#452). A clean run has nothing to say about itself."""
+    """Silence is the ok-state. A clean run has nothing to say about itself."""
     fixture = Fixture(tmp_path)
     clip = fixture.clip()
     source = fixture.sources.register_video(fixture.project.id, clip.path, extraction_fps=10.0)
@@ -664,7 +664,7 @@ def test_the_store_refuses_a_second_asset_with_the_same_content(tmp_path: Path) 
 
 
 def test_the_store_refuses_a_second_source_for_one_origin(tmp_path: Path) -> None:
-    """The index #18 named as owed, now that `asset.source_id` has a target."""
+    """The origin index, now that `asset.source_id` has a target."""
     from visionset.kernel import ConstraintViolated
 
     fixture = Fixture(tmp_path)
@@ -818,7 +818,7 @@ def test_a_report_line_keeps_the_name_and_the_reason_apart(tmp_path: Path) -> No
 
 
 def test_a_report_line_names_the_file_without_naming_the_server(tmp_path: Path) -> None:
-    """#317: this report travels to REST, the CLI and MCP, and it used to carry
+    """This report travels to REST, the CLI and MCP, and must not carry
     the absolute path the run's own loop happened to be holding — the one place a
     server path reached a client, while `Source.path` and `Asset.uri` are kept
     off the wire on purpose.
@@ -1574,7 +1574,7 @@ def test_re_ingesting_does_not_replace_a_preview_that_is_already_there(tmp_path:
 
 
 def _plant_unrendered(fixture: Fixture, count: int) -> list[Asset]:
-    """`count` assets holding real bytes and no preview, as a pre-#21 row would."""
+    """`count` assets holding real bytes and no preview, as an unbackfilled row does."""
     planted: list[Asset] = []
     for path in write_images(fixture.stills, count=count, first_seed=11):
         with fixture.workspace.unit_of_work() as uow, path.open("rb") as handle:
@@ -1679,7 +1679,7 @@ def test_stored_bytes_that_will_not_render_are_reported_by_remedy(tmp_path: Path
     assert report.filled == (planted[1].id,)
     assert [failure.kind for failure in report.unreadable] == [IngestFailureKind.UNSUPPORTED]
     # The basename of the uri, never the uri: `Asset.uri` is unpublished and
-    # this report travels to the CLI and to MCP (#317).
+    # this report travels to the CLI and to MCP.
     assert report.unreadable[0].name == Path(planted[0].uri).name
     assert planted[0].uri not in report.unreadable[0].reason
     fixture.close()
@@ -1952,7 +1952,7 @@ def test_reading_a_preview_never_renders_one(tmp_path: Path) -> None:
     fixture.close()
 
 
-# --- listing a project's assets (#208) -----------------------------------------
+# --- listing a project's assets -----------------------------------------------
 
 
 def test_a_project_with_no_assets_lists_nothing_rather_than_refusing(tmp_path: Path) -> None:
@@ -2083,7 +2083,7 @@ def test_the_listing_sorts_rather_than_returning_the_store_s_own_order(tmp_path:
     fixture.close()
 
 
-# --- when an asset arrived (#216) ----------------------------------------------
+# --- when an asset arrived ----------------------------------------------------
 
 
 def test_an_ingested_asset_records_when_it_arrived(tmp_path: Path) -> None:
@@ -2183,7 +2183,7 @@ def test_a_dedup_that_fills_a_missing_thumbnail_leaves_the_arrival_alone(
     first = fixture.sources.register_images(fixture.project.id, fixture.stills)
     second = fixture.sources.register_images(fixture.project.id, other)
     original = fixture.ingest.ingest(first.id).assets[0]
-    # Exactly the state a pre-#21 asset is in: content stored, no preview.
+    # Exactly the state an unbackfilled asset is in: content stored, no preview.
     with fixture.workspace.unit_of_work() as uow:
         uow.assets.update(original.model_copy(update={"thumbnail_hash": None}))
 
@@ -2287,7 +2287,7 @@ def test_an_asset_with_no_recorded_arrival_sorts_last(tmp_path: Path) -> None:
 
 
 def test_pre_migration_assets_keep_the_stable_order_among_themselves(tmp_path: Path) -> None:
-    """With nothing to be recent about, the listing is exactly what #208 shipped."""
+    """With nothing to be recent about, the listing falls through to stable order."""
     fixture = Fixture(tmp_path)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
     with fixture.workspace.unit_of_work() as uow:

@@ -130,8 +130,8 @@ DestructiveQuery = Annotated[
 # Every collection answers with this envelope rather than a bare JSON array,
 # because an array cannot grow a field without breaking every client that parsed
 # it. ``total`` means "matching the query" rather than "in this page", which is
-# exactly what let #29 add ``limit``/``offset`` to one route without moving the
-# shape a client already parsed.
+# what lets ``limit``/``offset`` be added to a route without moving the shape a
+# client already parsed.
 #
 # This class is never a response model itself; a concrete subclass is. FastAPI
 # names a parametrised generic ``Page_ProjectOut_`` in the spec, which is not a
@@ -462,8 +462,8 @@ class SourceOut(BaseModel):
             id=source.id,
             project_id=source.project_id,
             kind=source.kind,
-            # The domain's one spelling of "what to call this source" (#245):
-            # the stated display name, else the path's last segment. Deriving
+            # The domain's one spelling of "what to call this source": the
+            # stated display name, else the path's last segment. Deriving
             # from ``path`` here again is how this and ``visionset.wire`` would
             # eventually answer differently.
             name=source.name,
@@ -481,8 +481,8 @@ class SourcePage(Page[SourceOut]):
 
 # ``partial`` is the kind that is not a total loss: the clip was read as far as
 # its bytes went and those frames are in the batch, so the two counts travel with
-# it (#452). They are null on every other kind, which the domain enforces rather
-# than merely intends — see ``IngestFailure``.
+# it. They are null on every other kind, which the domain enforces rather than
+# merely intends — see ``IngestFailure``.
 class IngestFailureOut(BaseModel):
     """What became of one item the run could not simply read."""
 
@@ -541,12 +541,11 @@ class IngestJobPage(Page[IngestJobOut]):
     """A page of ingest jobs."""
 
 
-# ``batch_id`` waited for #29 and arrives with it. The objection was never the
-# feature: it was that a refusal must not leave a caller holding a 202 that
-# points at a job row nobody wrote. It does not. ``IngestService.enqueue`` checks
-# the batch in the same transaction that inserts the job, so an unknown batch is
-# a 404 and a batch past ``draft`` is a 409 — both *before* the row, both
-# answered on the request that asked for them.
+# ``batch_id`` never leaves a caller holding a 202 that points at a job row
+# nobody wrote: ``IngestService.enqueue`` checks the batch in the same
+# transaction that inserts the job, so an unknown batch is a 404 and a batch past
+# ``draft`` is a 409 — both *before* the row, both answered on the request that
+# asked for them.
 #
 # And there is deliberately **no** ``_the_domain_accepts_it`` validator, which is
 # the interesting half. ``LabelClassBody`` needs one because ``LabelClass``
@@ -656,8 +655,8 @@ class AssetOut(BaseModel):
     frame_index: int | None
     frame_timestamp: float | None
     thumbnail_hash: str | None
-    # When this asset arrived (#216, published by #283). **Null means unknown,
-    # not "never"**: the column is nullable because rows written before it
+    # When this asset arrived. **Null means unknown, not "never"**: the column is
+    # nullable because rows written before it
     # existed are legitimately unstamped, and `ProjectStats.last_ingest_at`
     # already makes the same distinction one level up. A client deriving an age
     # from it has to render that third state rather than treating null as zero.
@@ -865,10 +864,9 @@ class BatchMembershipOut(BaseModel):
     # Two facts rather than one, because the batch alone cannot answer the
     # question a bulk edit raises. `changed` is what *this call* wrote — every id
     # it was given minus the ones the batch already agreed about — so "removed 3"
-    # can be told from "3 were already gone". An idempotent operation that
-    # reports only the final state loses exactly that distinction, and #305's
-    # third banned pattern is a surface with no way to tell "did N" from "nothing
-    # to do".
+    # can be told from "3 were already gone". An idempotent operation that reports
+    # only the final state loses exactly that distinction, which leaves a surface
+    # unable to tell "did N" from "nothing to do".
     batch: BatchOut
     changed: list[UUID]
 
@@ -1385,7 +1383,7 @@ class DatasetChangePage(Page[DatasetChangeOut]):
 
 
 # The one place a fractions-must-sum-to-one rule could reach a route body, so it
-# carries the validator #27 found the need for: ``SplitRecipe`` refuses with a
+# carries a validator: ``SplitRecipe`` refuses with a
 # pydantic ``ValidationError``, which from a request body is neither a
 # ``VisionSetError`` nor a ``RequestValidationError`` and answers **500** to a
 # plainly wrong payload. Converting during parsing makes it a 422 carrying the
@@ -1501,9 +1499,9 @@ class ClassCompatibilityOut(BaseModel):
 
     label_class: str
     geometry: GeometryType
-    # Three-valued since #158, replacing `supported: bool`. `supported` answered
-    # "written intact?" where `_compatibility` set it and was read as "written at
-    # all?" everywhere else, so a polygon in a YOLO export was reported absent and
+    # Three-valued rather than a `supported: bool`, which answers "written
+    # intact?" where `_compatibility` sets it and reads as "written at all?"
+    # everywhere else — so a polygon in a YOLO export is reported absent and
     # written as a box. `dropped` is absent, `degraded` is present and reduced.
     status: ClassExportStatus
     annotations: int
@@ -1523,10 +1521,10 @@ class ClassCompatibilityOut(BaseModel):
 
 
 # Key-for-key the document the kernel writes into an export directory and the one
-# ``visionset.wire`` gives the CLI and MCP. That is #65's first acceptance
-# criterion — the report is user-facing on three surfaces, so there is one
-# spelling of it and not three — and ``format`` rather than ``format_name`` is
-# the wire's word, matching the query parameter a caller just sent.
+# ``visionset.wire`` gives the CLI and MCP: the report is user-facing on three
+# surfaces, so there is one spelling of it and not three. ``format`` rather than
+# ``format_name`` is the wire's word, matching the query parameter a caller just
+# sent.
 class ExportCompatibilityOut(BaseModel):
     """What one format would drop from one release, worked out before writing."""
 
@@ -1534,7 +1532,7 @@ class ExportCompatibilityOut(BaseModel):
     format: str
     compatible: bool
     format_is_lossy: bool
-    # Dropped only. The count that used to fold degraded annotations in is #158.
+    # Dropped only; degraded annotations are counted separately below.
     excluded_annotations: int
     excluded_assets: int
     degraded_annotations: int
@@ -1586,12 +1584,12 @@ class FormatOut(BaseModel):
     # confidence, provenance included. A property of the format, never of a
     # release.
     lossy: bool
-    # The checkable half of `lossy`, added by #65. Sorted, because a set has no
-    # order and a wire shape must: two calls to one build have to agree.
+    # The checkable half of `lossy`. Sorted, because a set has no order and a wire
+    # shape must: two calls to one build have to agree.
     geometries: list[str] = []
     # Geometries this format writes in a reduced form — a polygon arriving as its
-    # bounding box. #158: `geometries` alone reads as the whole answer, and for
-    # `yolo` the whole answer left out that a polygon is written at all.
+    # bounding box. Without it `geometries` reads as the whole answer, and for
+    # `yolo` that answer leaves out that a polygon is written at all.
     degraded_geometries: list[str] = []
     modalities: list[str] = []
 
@@ -1614,9 +1612,9 @@ class FormatPage(Page[FormatOut]):
 
 
 # No credential field, and its absence is a decision rather than an oversight:
-# where an HTTP connection's secret lives is open (`cf. #421`), and a nullable
-# field added here "for later" would answer it by publishing a shape. A wire
-# model is the hardest thing in this repo to take back.
+# where an HTTP connection's secret lives is still open, and a nullable field
+# added here "for later" would answer it by publishing a shape. A wire model is
+# the hardest thing in this repo to take back.
 class ConnectionOut(BaseModel):
     """One configured place a model can be asked to predict."""
 

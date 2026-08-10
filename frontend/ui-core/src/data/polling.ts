@@ -3,8 +3,8 @@
  *
  * `docs/api.md`'s launch-and-poll contract: `POST /sources/{id}/ingest-jobs`
  * answers **202 with a `Location`**, and the job row is the client's only view of
- * what happens after. #54's ingest screen is the caller; #55's batch table wants
- * the same shape while a promotion settles.
+ * what happens after. The ingest screen is the caller; the batch table wants the
+ * same shape while a promotion settles.
  *
  * ## Why this is a hook and not a `while` loop with a sleep
  *
@@ -24,7 +24,7 @@
  * same machine as the browser, and a poll every second buys a progress bar that
  * moves more smoothly at the cost of taking CPU away from the thing being
  * measured. Two seconds is under the threshold where a person thinks nothing is
- * happening, and #54 may pass its own.
+ * happening, and a caller may pass its own.
  */
 
 import { useQuery, type QueryKey, type UseQueryResult } from "@tanstack/react-query";

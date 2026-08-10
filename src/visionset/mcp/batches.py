@@ -6,10 +6,10 @@ Approval freezes membership, pins the project's active schema version, and cuts
 the batch into jobs; nothing after that can return it to a draft, because the
 jobs are already partitioned against the pin.
 
-**Membership editing ships, and it is ``draft``-only** (#281). ``add_batch_assets``
-and ``remove_batch_assets`` are the twins of the REST routes; the gallery is the
-caller that ended the "no caller" argument, and an agent assembling a batch out of
-assets it has already listed is the same shape. After approval there is no
+**Membership editing is ``draft``-only.** ``add_batch_assets`` and
+``remove_batch_assets`` are the twins of the REST routes, and an agent assembling
+a batch out of assets it has already listed is the shape they serve. After
+approval there is no
 membership edit at all: the way to exclude an asset is ``set_asset_progress`` with
 ``skipped``, which keeps the decision on the record, and the tools say so where a
 model will read it.
@@ -19,11 +19,12 @@ description say so — the asset stays in its project and in every other batch. 
 agent that reads "delete" and reaches for it to clean up a project would be doing
 something no tool here can do.
 
-``delete_batch`` is the module's one destructive tool (#376) and is registered
-**only** under ``--allow-destructive``, with ``delete_project``, for #108's
-measured reason: when the caller is a model, ``confirm`` is a parameter it reads
-in the same listing it chooses from, so the gate has to sit somewhere the agent
-cannot reach. It destroys the *organisation* of work and never the work — the
+``delete_batch`` is the module's one destructive tool and is registered **only**
+under ``--allow-destructive``, with ``delete_project``, for the reason
+``DESTRUCTIVE_TOOLS`` gives: when the caller is a model, ``confirm`` is a
+parameter it reads in the same listing it chooses from, so the gate has to sit
+somewhere the agent cannot reach. It destroys the *organisation* of work and
+never the work — the
 distinction the description leads with, because it is the one an agent is most
 likely to get backwards.
 
@@ -361,7 +362,7 @@ def list_batch_assets(
         # this projection is a lookup rather than a join. Two public reads and no
         # new kernel method, which is what the REST listing does too.
         # The job's *state* travels beside its id: what an asset allows depends
-        # on it, and a completed job's frames declare nothing (#439).
+        # on it, and a completed job's frames declare nothing.
         placement = {
             asset_id: (job.id, job.state, progress)
             for job in service.jobs(resolved)

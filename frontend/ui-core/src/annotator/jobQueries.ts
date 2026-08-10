@@ -27,8 +27,8 @@
  * ## Saving is a diff, and then a reload
  *
  * The annotator holds a local document with **client-minted ids**, and the kernel
- * mints its own on write (#40 declined a `rebaseAnnotationId` for exactly this
- * reason). So a save cannot merge its own response back in: it computes
+ * mints its own on write (the document deliberately has no `rebaseAnnotationId`
+ * for exactly this reason). So a save cannot merge its own response back in: it computes
  * created / updated / deleted against what was loaded, sends up to three
  * all-or-nothing calls, and then **refetches**. The reload is not laziness — it is
  * the only way the page ends up holding the ids the server actually assigned.
@@ -200,7 +200,7 @@ export function useJobAssets(
 /**
  * Where in the job to open, given the asset a caller asked for.
  *
- * #160: a gallery tile hands the annotator an **asset**, and this page counts in
+ * A gallery tile hands the annotator an **asset**, and this page counts in
  * **positions**. Pure and exported for the same reason `planSave` is — it is the
  * part that decides something, and it is decidable without a browser.
  *
@@ -222,14 +222,14 @@ export function assetPositionOf(
  * What `?asset=` should say, given the frame actually on screen — `null` to leave
  * the URL alone.
  *
- * `assetPositionOf`'s inverse, and it exists for the defect that one created
- * (#353): the parameter recorded *where the annotator was entered*, so after one
- * press of next the address bar named a different picture than the screen. Copy
- * that URL on frame 7 and the colleague you send it to lands on frame 1, with
+ * `assetPositionOf`'s inverse. Without it the parameter records *where the
+ * annotator was entered*, so after one press of next the address bar names a
+ * different picture than the screen. Copy that URL on frame 7 and the colleague
+ * you send it to lands on frame 1, with
  * nothing anywhere saying so — and answers about a picture that was never meant.
  *
- * Pure and exported because the app spells URLs and `ui-core` imports no router
- * (#171): the page can only *say* which frame it is showing, so the rule for what
+ * Pure and exported because the app spells URLs and `ui-core` imports no router:
+ * the page can only *say* which frame it is showing, so the rule for what
  * that means for the address has to travel to whoever holds the router. The same
  * split `planSave` and `assetPositionOf` are on.
  *
@@ -349,7 +349,7 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
             params: { path: { job_id: jobId } },
             // The one cast in the data layer, and it is the readonly boundary
             // rather than a shape mismatch: the annotator's `Geometry` carries
-            // `readonly` tuples (frozen models, #73) while `openapi-typescript`
+            // `readonly` tuples (frozen models) while `openapi-typescript`
             // emits mutable arrays. Structurally identical, and a gate already
             // proves it — `tests/scripts/` checks the mirror against the spec.
             body: plan.updated.map(toAnnotationUpdate) as never,
@@ -420,8 +420,8 @@ export function useSetAssetProgress(jobId: string) {
 /**
  * Move the job itself — `pending → in_progress → completed`.
  *
- * Two moves nothing in the browser made before #59 walked the whole cycle and
- * found the batch stuck at `in_annotation`. The chain is real and each link is
+ * Two moves nothing else in the browser makes — without them a batch sticks at
+ * `in_annotation`. The chain is real and each link is
  * somebody's job: `BatchService.complete` refuses while any job is outstanding,
  * `JobService.complete` refuses while any asset is unsettled, and neither is
  * automatic — "derived" in this kernel means *recomputed*, not *implicit*.
@@ -430,7 +430,7 @@ export function useSetAssetProgress(jobId: string) {
  * and finishing it is a deliberate act with a button.
  */
 /**
- * Move the batch's schema pin onto the project's current active version (#229).
+ * Move the batch's schema pin onto the project's current active version.
  *
  * The second half of "add a label while annotating": a batch is judged against
  * the version it pinned at approval, so a class published a moment ago is
@@ -440,7 +440,7 @@ export function useSetAssetProgress(jobId: string) {
  * is additive by construction — the new version is the active one's classes plus
  * one — so the gate never fires. It fires only when somebody *else* narrowed the
  * schema past this batch's pin in the meantime, and the honest answer there is the
- * refusal, not a flag this page decided to set on their behalf. See #229.
+ * refusal, not a flag this page decided to set on their behalf.
  */
 export function useRepinBatch(batchId: string | undefined) {
   const client = useApiClient();

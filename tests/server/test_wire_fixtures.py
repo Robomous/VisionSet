@@ -3,7 +3,7 @@
 `tests/fixtures/wire_annotations.json` is a committed artifact, and the only
 thing that carries the wire contract across the language boundary: the
 `frontend` CI job installs no Python and reads what is in the repository. Since
-#40 it carries the three inputs an annotator document is built from — an asset, a
+it carries the three inputs an annotator document is built from — an asset, a
 schema and the annotations on that asset — not annotations alone.
 
 So it needs two independent links, the shape `openapi.json` and its generated
@@ -56,7 +56,7 @@ def test_the_fixture_names_exactly_the_geometries_an_annotation_can_carry() -> N
 
     That distinction is the whole reason the annotator declares two lists: it is
     what lets `parseGeometry` refuse `polyline` as "not yet" rather than as a
-    typo, and it is the answer #48 inherits about the polyline specs.
+    typo, and it is the answer the browser suite inherits about the polyline specs.
     """
     assert committed()["implemented_geometry_types"] == sorted(
         g.value for g in IMPLEMENTED_GEOMETRIES
@@ -79,7 +79,7 @@ def test_the_fixture_names_every_attribute_kind_the_domain_accepts() -> None:
     """The other vocabulary the annotator mirrors, on `geometry_types`' terms.
 
     `Attribute.kind` is a `Literal`, not an enum, and the wire model spells it
-    inline for #27's reason — so nothing structural ties the annotator's union to
+    inline — so nothing structural ties the annotator's union to
     it. This is what does.
     """
     assert committed()["attribute_kinds"] == sorted(

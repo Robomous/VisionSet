@@ -1,5 +1,5 @@
 /**
- * Selection, and acceptance criterion 1 of #40: it survives undo/redo.
+ * Selection, and the claim that matters: it survives undo/redo.
  *
  * The undo/redo block drives the **real** `CommandLog` rather than simulating
  * one, because the claim is about how the two pieces sit together: commands
@@ -7,8 +7,7 @@
  * on read. A test that swapped documents by hand would prove the shape of this
  * file and nothing about the pairing.
  *
- * #39 has since replaced the ad-hoc closures this file used to carry with the
- * real store and the real commands. Every assertion below is the one it inherited.
+ * It drives the real store and the real commands rather than ad-hoc closures.
  */
 
 import { describe, expect, it } from "vitest";
@@ -150,7 +149,7 @@ describe("across undo and redo", () => {
   });
 
   it("survives a long run of commands and a full unwind", () => {
-    // #39's property test in miniature, from the selection's side: whatever the
+    // The store's property test in miniature, from the selection's side: whatever the
     // log does to the document, the selection at the end is the selection at the
     // start, because it was never in the log.
     const store = new AnnotatorStore(documentOf("a", "b"), selectionOf(["a", "b"]));

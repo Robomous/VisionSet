@@ -1,5 +1,5 @@
 /**
- * The classes region (#420): the height rule and the hotkeys.
+ * The classes region: the height rule and the hotkeys.
  *
  * Driven through `ClassRegion` directly rather than through `AnnotationPage`,
  * unlike `topBar.test.tsx` — every claim here is about this component's own
@@ -94,7 +94,7 @@ describe("the height rule", () => {
   it("does not move when the filter narrows the list", async () => {
     // Height from the schema's count, never the filtered one. A region that
     // resized on every keystroke would reflow the objects region under it, which
-    // is the controls-moving-under-the-cursor problem the top bar spent #416 on.
+    // is the controls-moving-under-the-cursor problem the top bar guards against.
     render(mount(12));
     const before = listHeight();
 
@@ -126,8 +126,8 @@ describe("the hotkeys the rows advertise", () => {
 });
 
 describe("the empty schema", () => {
-  // The refusal machinery this region carried until #426 is gone with the
-  // reason for it: the read-only mode renders no classes region at all, so a
+  // This region carries no refusal machinery, because the reason for it is gone:
+  // the read-only mode renders no classes region at all, so a
   // region that exists is always armable. `panel.test.tsx` holds the absence.
   it("invites a first class rather than showing an empty list", () => {
     render(mount(0, { onAddClass: vi.fn() }));

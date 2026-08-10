@@ -4,6 +4,11 @@ Product and architecture docs land here. Start with the repo-root
 [README](../README.md) and [CONTRIBUTING](../CONTRIBUTING.md); the architecture
 contracts (kernel purity, headless annotator) are described there and enforced in CI.
 
+**Want the shape of the system rather than what it does?**
+[architecture/](architecture/README.md) is a tree of short pages you can walk
+top-down — the layer stack, a page per package, and where each boundary is
+enforced. The pages below are the behavioural reference; that tree is the map.
+
 The **visual** contract is [DESIGN.md](../DESIGN.md), also at the repository root
 rather than here — it is the file to read *before* building any screen, and the one
 `frontend/ui-core/src/styles.css` implements. Read it beside
@@ -13,6 +18,7 @@ rather than here — it is the file to read *before* building any screen, and th
 
 | Doc | Covers |
 | --- | --- |
+| [architecture/](architecture/README.md) | The shape of the system, walkable top-down: the layer stack and the one-way dependency graph, a page per backend package and per frontend workspace package, and one page for what runs through all of them — the two machine-enforced boundaries, the capabilities contract, and the batch lifecycle at a glance. Every page links into the code and to the doc that owns the behaviour |
 | [install.md](install.md) | Getting it: requirements, the wheel, what `ffmpeg` is and is not needed for, the optional groups that check exports, and where your data goes |
 | [tutorial.md](tutorial.md) | A first dataset end to end — clip to YOLO in about half an hour — with what each step actually freezes and why |
 | [workspaces.md](workspaces.md) | The workspace on disk: layout, `init`/`open`, which workspace a surface resolves to, project-name uniqueness, and how services are composed |

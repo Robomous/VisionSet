@@ -66,18 +66,16 @@ from visionset.kernel.domain.task import (
 )
 
 
-# `delete` is **back** (#376), on the terms #331 set when it withdrew the member:
-# a declaration is a promise rather than decoration, so the name returns in the
-# same change as the route, the MCP tool and the control that honour it. What made
-# it wrong before was not the action but the orphan — under the `ui-capabilities`
-# contract a conforming client renders what the wire declares, so an action named
-# here obliges every client to offer it, and naming one nothing could perform made
-# the wire the source of a control that could not work.
+# A declaration is a promise: under the `ui-capabilities` contract a conforming
+# client renders what the wire declares, so an action named here obliges every
+# client to offer it. A name may therefore only land in the same change as the
+# route, the MCP tool and the control that honour it — an orphan makes the wire
+# the source of a control that cannot work.
 #
-# It is declared **last**, which is a display decision and the one `registered_tools`
-# makes for the same reason: this is the only batch action that ends the resource
-# rather than moving it along, and a listing whose order doubles as the workflow
-# should not put a dead end in the middle of it.
+# `delete` is declared **last**, which is a display decision `registered_tools`
+# makes the same way: it is the only batch action that ends the resource rather
+# than moving it along, and a listing whose order doubles as the workflow should
+# not put a dead end in the middle of it.
 #
 # The reasoning lives here rather than in the docstring because FastAPI copies a
 # docstring verbatim into `openapi.json` as the schema's `description`, where an
@@ -121,10 +119,9 @@ class AssetAction(StrEnum):
 
 
 # ``download_weights`` arrives here in the same change as the route, the command
-# and the job that perform it — #376's condition, and the reason it was absent
-# from the previous slice rather than declared "for later". ``test`` is still
-# absent for exactly that reason: the remote endpoint contract is a later slice,
-# so naming it now would make the wire the source of a control that cannot work.
+# and the job that perform it, per the rule above. ``test`` is still absent for
+# exactly that reason: the remote endpoint contract is a later slice, so naming it
+# now would make the wire the source of a control that cannot work.
 #
 # It is declared **first**, which is a display decision. This is the only
 # connection action that moves the resource forward — it is what takes a local
@@ -133,7 +130,7 @@ class AssetAction(StrEnum):
 # because it ends the resource rather than changing it.
 #
 # ``check_integrity`` is the second action over the same files and deliberately
-# not a second reading of the first (#471). ``download_weights`` at ``ready``
+# not a second reading of the first. ``download_weights`` at ``ready``
 # asks *is every file here*, which the download library answers from its own
 # index without opening one; this asks *does every file still hold the bytes it
 # was written with*, which can only be answered by reading all of them and
@@ -208,14 +205,12 @@ restated — which is the whole point of those sets being named. Promotion is th
 clearest case: it moves assets into the trunk and leaves the batch exactly where
 it was, so ``BATCH_TRANSITIONS`` has nothing to say about it.
 
-``delete`` is the odd one in the other direction, and #376 is why it is here at
-all: it ends the resource rather than changing it, so a client renders it apart
-from the rest — but "may this batch be deleted" is a question about the batch's
-state and about nothing else, which is what this table answers. The entry is
-``DELETABLE_STATES`` itself, the set ``BatchService.delete`` raises
-``BatchImmutable`` against; a second frozenset spelled out beside it is exactly
-the hand-mirror this whole module exists to remove, and this repo has paid for
-that antipattern twice (`cf. #358`).
+``delete`` is the odd one in the other direction: it ends the resource rather
+than changing it, so a client renders it apart from the rest — but "may this
+batch be deleted" is a question about the batch's state and about nothing else,
+which is what this table answers. The entry is ``DELETABLE_STATES`` itself, the
+set ``BatchService.delete`` raises ``BatchImmutable`` against; a second frozenset
+spelled out beside it is exactly the hand-mirror this module exists to remove.
 """
 
 
@@ -284,20 +279,19 @@ CONNECTION_GATES: Final[Mapping[ConnectionAction, frozenset[ConnectionSetupState
 """Which setup states each connection action is legal in.
 
 **``download_weights`` is legal in both, and that is a decision rather than a
-widening for convenience (#469).** The work behind it is idempotent by the
-download library's own design: files already in the cache under this revision
-are found rather than re-fetched, and ``record_weights_ready`` returns a
-``ready`` connection unchanged. So the same request against a ``ready``
-connection answers "is this snapshot still complete?" — a real question on a
-machine where a disk filled or a cache was pruned mid-download — and it had no
-action at all before. It is completeness rather than integrity, and
-``visionset.inference.weights`` says why that distinction is worth keeping. A
-client renders it under its own label; the wire keeps one name, because it is
-one call doing one thing.
+widening for convenience.** The work behind it is idempotent by the download
+library's own design: files already in the cache under this revision are found
+rather than re-fetched, and ``record_weights_ready`` returns a ``ready``
+connection unchanged. So the same request against a ``ready`` connection answers
+"is this snapshot still complete?" — a real question on a machine where a disk
+filled or a cache was pruned mid-download. It is completeness rather than
+integrity, and ``visionset.inference.weights`` says why that distinction is worth
+keeping. A client renders it under its own label; the wire keeps one name,
+because it is one call doing one thing.
 
-**``check_integrity`` is the row that made this table conditional (#471)**, and
-it is the narrowing the previous paragraph said a later slice would make as a
-one-line edit here. It is legal at ``ready`` and nowhere else, because it
+**``check_integrity`` is the row that makes this table conditional**, and it is
+exactly the one-line narrowing the previous paragraph left room for. It is legal
+at ``ready`` and nowhere else, because it
 re-reads the snapshot a download left behind: at ``not_set_up`` there is no
 snapshot, so the action is not merely useless but unanswerable. That is
 :data:`~visionset.kernel.domain.inference.CHECKABLE_STATES`, named in the domain
@@ -366,12 +360,12 @@ def connection_actions(
     asked, never that this installation can carry it out: whether the local
     runtime extra is present is a fact about the machine, which no pure function
     over domain values can see. A deployment without it refuses with an install
-    hint rather than hiding the control, which is #421's stated design and design
-    principle 9 — never a bare disabled control.
+    hint rather than hiding the control — design principle 9, never a bare
+    disabled control.
 
     ``delete`` never depends on what a connection's annotations say, and cannot:
     provenance is denormalised onto the label at write time, so deleting a
-    connection takes nothing with it (`cf. #421`).
+    connection takes nothing with it.
     """
     return [
         action
@@ -445,19 +439,18 @@ def asset_actions(
     nobody opened.
 
     **Three dimensions, and none of them optional.** The batch has to be open,
-    the job has to be open, and the asset's own progress decides the rest.
-    ``job_state`` is the one that arrived late (#439): a completed job's assets
-    went on declaring ``annotate`` while ``JobService`` had already recorded that
-    every one of them was dealt with, because a job completing does not complete
-    its batch — ``BatchService`` derives that separately — so the batch gate had
-    nothing to say. The annotation workspace reads this declaration to decide
-    whether it is an editor or a viewer, and it stayed an editor over a finished
-    job. ``OPEN_JOB_STATES`` is the set, shared with the services that refuse the
-    same writes, so the declaration and the refusal cannot disagree.
+    the job has to be open, and the asset's own progress decides the rest. The
+    job dimension is not implied by the batch one: a job completing does not
+    complete its batch — ``BatchService`` derives that separately — so without it
+    a finished job's assets go on declaring ``annotate``, and the annotation
+    workspace, which reads this declaration to decide whether it is an editor or a
+    viewer, stays an editor over work that is done. ``OPEN_JOB_STATES`` is the
+    set, shared with the services that refuse the same writes, so the declaration
+    and the refusal cannot disagree.
 
     Keyword-only and defaulted nowhere, like ``job_actions``' ``batch_state``: a
-    caller that could omit a dimension is a caller that will, and the dropped
-    dimension is exactly how the browser's old mirror produced two blockers.
+    caller that could omit a dimension is a caller that will, and a dropped
+    dimension is how a hand-mirrored client produced two blockers.
 
     ``annotate`` is not a progress move and is the one action here that is not in
     ``ASSET_MOVES``: it is the right to add, change or remove labels, which is

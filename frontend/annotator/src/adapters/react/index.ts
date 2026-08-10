@@ -2,9 +2,9 @@
  * The React adapter's surface.
  *
  * `AnnotatorCanvas` and the two hooks are what a host needs. The layers and the
- * shapes are exported too, because #49's benchmark and #50's showcase both need
- * to compose the stage themselves, and a renderer whose pieces are private is one
- * nobody can measure.
+ * shapes are exported too, because the benchmark and the showcase both compose
+ * the stage themselves, and a renderer whose pieces are private is one nobody can
+ * measure.
  */
 
 export {

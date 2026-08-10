@@ -15,7 +15,7 @@
  * | `escape` | `send cancel` | **v1** `Escape`. `machine.ts` has one cancel rule per state, so v1's Escape-precedence bug is unrepresentable. |
  * | `enter` | `send commit` | **v1** `Enter`. `closeSession` keeps the `MIN_POLYGON_POINTS` gate. |
  * | `delete` | `delete-selection` | **v1** `Delete`, annotation arm only. |
- * | `backspace` | take back the last polygon point | **#129**, and see below. |
+ * | `backspace` | take back the last polygon point | **NEW**, and see below. |
  * | `mod+z` | `undo` | **NEW.** v1 has no undo at all. |
  * | `mod+shift+z` | `redo` | **NEW.** The only redo chord; see `keys.ts` on the `mod` fold. |
  * | `mod+a` | `select-all` | **NEW.** The other half of `delete-selection`. |
@@ -24,11 +24,11 @@
  * | `mod+0` | `host reset-zoom` | **v1** `Ctrl/⌘+0` → 100%. |
  * | `?` | `host toggle-help` | **v1** `?` → the help modal. |
  * | `v` | `activate-class null` | **v1** `v` → the select tool. |
- * | `x` | `host skip-frame` | **#383.** The other frame-resolution verb; see below. |
+ * | `x` | `host skip-frame` | **NEW.** The other frame-resolution verb; see below. |
  *
  * `enter` is the one chord with **two** meanings, and only one of them is in this
- * table. #383 gives the host a `save-and-next`, whose chord is `enter` — which is
- * already the ring close. They never overlap: a commit means something only while
+ * table. The host's `save-and-next` uses `enter` too — which is already the ring
+ * close. They never overlap: a commit means something only while
  * a shape is being drawn. So the substitution happens in the adapter, which is
  * the only layer holding the interaction state, and this row stays the commit.
  * A second `enter` row here would shadow it, because the fold is last-wins.
@@ -46,18 +46,18 @@
  * cause 1 — so it names none.
  *
  * **`k`, `l`** (keypoint, polyline). Geometries `types.ts` declares and no
- * annotation may carry; #73 put both out of scope. A binding for a tool that
- * cannot exist is one somebody has to remove later.
+ * annotation may carry. A binding for a tool that cannot exist is one somebody
+ * has to remove later.
  *
  * **`1`–`6`, `q`/`w`/`e`/`r`, `o`/`e`** — v1's lane-attribute hotkeys. Attributes
  * are schema-declared and an attribute editor is a panel, not a canvas binding.
  * Worth naming rather than omitting, because `1`–`6` is exactly the range the
  * class hotkeys now claim.
  *
- * **`mod+c` / `mod+v`** — copy and paste. These *were* the entry in this list:
- * deferred as **#123**, with the chords left unclaimed so the browser kept them
- * rather than being shadowed by a no-op. They are claimed now, and the four
- * questions that had to be answered first are answered in
+ * **`mod+c` / `mod+v`** — copy and paste. These were once deferred, with the
+ * chords left unclaimed so the browser kept them rather than being shadowed by a
+ * no-op. They are claimed now, and the four questions that had to be answered
+ * first are answered in
  * `interaction/clipboard.ts` — who owns a clipboard (a session object, not the
  * per-asset store), how a paste mints identity (freshly, and not through
  * `draftAnnotation`, whose attribute defaults are the wrong thing for a copy),
@@ -74,20 +74,20 @@
  * annotation second. There is no vertex selection here — `Selection` is
  * annotation ids — and vertex removal is a secondary-click or ctrl-click on a
  * vertex, in `machine.ts`'s idle row, whose docstring already names this key:
- * *"the remedy for deleting a polygon … is explicit: select it and press Delete
- * (#46)."* Inventing a vertex selection to port the arm would be this task
- * discovering a #44 concept three tasks late.
+ * *"the remedy for deleting a polygon … is explicit: select it and press
+ * Delete."* Inventing a vertex selection to port the arm would invent a concept
+ * nothing else here has.
  *
  * **The `inInput` guard** is not dropped, it is *relocated*:
  * `event.target instanceof HTMLInputElement` is a DOM question and belongs in the
- * adapter. `index.ts` lists it with everything else #47 owes, including the part
- * that is easy to lose — v1 ran `Escape` *before* that guard, deliberately, so
+ * adapter. `index.ts` lists it with everything else the adapter owes, including
+ * the part that is easy to lose — v1 ran `Escape` *before* that guard, so
  * Escape blurs a field.
  *
  * ## Class hotkeys bind by name, never by index
  *
- * `tags.ts` already wrote the case: *"#46's registry is remappable, so a binding
- * can outlive the class it names"* — and it answers `null` for exactly that.
+ * `tags.ts` already wrote the case: the registry is remappable, so a binding can
+ * outlive the class it names — and it answers `null` for exactly that.
  * `types.ts` says *"identity is NEVER an array index"*, and a `LabelClass` has no
  * id, so its name is the only identity it has. And index-addressing **silently
  * retargets**: a remap saved against a twelve-class schema and reloaded after a
@@ -152,14 +152,14 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { chord: "escape", action: { kind: "send", event: { type: "cancel" } } },
   { chord: "enter", action: { kind: "send", event: { type: "commit" } } },
   { chord: "delete", action: { kind: "delete-selection" } },
-  // `Backspace` is not a synonym for `Delete` any more, and that is #129's answer
-  // rather than an oversight.
+  // `Backspace` is not a synonym for `Delete`, and that is deliberate rather than
+  // an oversight.
   //
   // The two chords used to mean one thing, so one of them was free — and the split
   // is the conventional one: `Delete` removes a *thing*, `Backspace` takes back the
   // *last thing you did*, which is what it means in every text field and every
   // drawing tool. What it buys is a capability that had **no spelling at all**:
-  // v1 took a polygon point back with a right-click, and #129 found that gesture
+  // v1 took a polygon point back with a right-click, and that gesture
   // has no path through the React adapter, which answers every non-primary press
   // with a pan. `mod+z` cannot serve, because a pending polygon is not in the
   // command log.
@@ -174,18 +174,18 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { chord: "mod+v", action: { kind: "paste" } },
   { chord: "mod+0", action: { kind: "host", name: RESET_ZOOM } },
   { chord: "?", action: { kind: "host", name: TOGGLE_HELP } },
-  // `c` and not `mod+c`, which is copy (#123). A bare letter is safe here for the
+  // `c` and not `mod+c`, which is copy. A bare letter is safe here for the
   // reason `v` is: the canvas is not a text field, and the one field this chord
   // opens takes the focus with it — so the next `c` is typed into the filter
   // rather than reaching this table at all.
   { chord: "c", action: { kind: "host", name: FOCUS_CLASS_FIELD } },
   { chord: "mod+s", action: { kind: "host", name: SAVE } },
-  // `x`, a bare letter on `c`'s and `v`'s terms (#383). Skip and save-and-next are
+  // `x`, a bare letter on `c`'s and `v`'s terms. Skip and save-and-next are
   // the two frame-resolution verbs, and the bar shows both chords on the buttons —
   // so an unbound one would be a chip that lies. This is the half that fits in the
   // table; its sibling rides `enter`, for the reason above.
   { chord: "x", action: { kind: "host", name: SKIP_FRAME } },
-  // `s`, one more bare letter (#424). Not `mod+s`, which is `SAVE` — the two are
+  // `s`, one more bare letter. Not `mod+s`, which is `SAVE` — the two are
   // different chords and the fold never sees them collide. A host with no model
   // connection answers `false` and the chord falls through, which is what makes
   // claiming it safe on a build that cannot serve it.
@@ -239,7 +239,7 @@ export function hotkeyForClass(
  *
  * One exported spelling of that fold, because there are now **two** callers who
  * must agree exactly: the adapter that resolves a keystroke, and the help sheet
- * that lists what is bound (#189). A sheet built from its own `registryOf(...)`
+ * that lists what is bound. A sheet built from its own `registryOf(...)`
  * call is a second spelling free to drift, and drifting is precisely what v1's
  * hand-written `HelpModal.tsx` did — the failure this file's docstring already
  * names when it says *the help sheet **is** the registry*.

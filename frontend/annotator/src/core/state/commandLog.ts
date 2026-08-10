@@ -2,15 +2,15 @@
  * The history: an ordered list of document snapshots with a cursor in it.
  *
  * A command is **one-way**. It says how to get from a document to the next one
- * and nothing about how to get back, because #40's document is immutable and the
+ * and nothing about how to get back, because the document is immutable and the
  * way back is already in hand — the document that was there before. So an entry
  * keeps `before` and `after`, and both undo and redo are pointer swaps.
  *
  * ## Why `apply` runs exactly once, ever
  *
- * The scaffold this replaces re-ran `execute()` on redo. That is wrong here in a
- * way that would have surfaced at #43 rather than now: a drawn annotation gets a
- * client-minted uuid v4 from `../ids.ts`, so a create-command that mints inside
+ * The scaffold this replaces re-ran `execute()` on redo, which is wrong here: a
+ * drawn annotation gets a client-minted uuid v4 from `../ids.ts`, so a
+ * create-command that mints inside
  * its own body produces a **different** annotation on redo. The selection keys on
  * the first id and would be left pointing at an annotation that no longer exists,
  * and a host correlating local ids with `AnnotationCreate` payloads would hold a

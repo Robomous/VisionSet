@@ -23,7 +23,7 @@
  *
  * ## Layering
  *
- * `app/` is navigation, layout and composition — the enterprise rule (#58). A
+ * `app/` is navigation, layout and composition — the enterprise rule. A
  * capability that lands there instead of here is an architecture bug by
  * definition, because the future enterprise UI cannot reuse it. Screens are
  * components in this package; routes are in the app.
@@ -79,8 +79,8 @@ export {
   SheetTrigger,
   type SheetContentProps,
 } from "./primitives/Dialog.js";
-// One shape since #368 retired `segmented`, so there is no variant to export and
-// no `cva` behind it — see the argument in `Tabs.tsx`.
+// One shape, so there is no variant to export and no `cva` behind it — see the
+// argument in `Tabs.tsx`.
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./primitives/Tabs.js";
 export {
   Select,
@@ -123,7 +123,7 @@ export {
   type LoadingStateProps,
 } from "./patterns/AsyncStates.js";
 
-// The data-surface parts (#209). Four rather than six: `EmptyState` is already
+// The data-surface parts. Four rather than six: `EmptyState` is already
 // above and Chip is `Badge`, so neither is respelled here.
 export {
   CLASS_ROW_PX,
@@ -146,7 +146,7 @@ export { createApiClient } from "./client.js";
 export type { ApiClientOptions, VisionSetClient } from "./client.js";
 export type { components, operations, paths } from "./generated/api.js";
 
-// The data shell (#52): one client, one query cache, one answer to a 401.
+// The data shell: one client, one query cache, one answer to a 401.
 export {
   ApiProvider,
   useApiClient,
@@ -175,7 +175,7 @@ export * as checks from "./generated/checks.js";
 export { DEFAULT_POLL_MS, usePollingQuery, type PollingQueryOptions } from "./data/polling.js";
 export { clearToken, readToken, writeToken } from "./data/session.js";
 
-// Screens (#53 →). Domain UI, so it lives here and not in `@visionset/app`:
+// Screens. Domain UI, so they live here and not in `@visionset/app`:
 // a capability in the app is one the enterprise UI cannot reuse. Navigation
 // arrives as a callback — a screen that imported a router would only work inside
 // one particular router's tree.
@@ -228,7 +228,7 @@ export {
 } from "./data/capabilities.js";
 
 // Which family of work a geometry belongs to — presentation only, total over the
-// generated union by `satisfies`. The kernel takes no category concept (#375).
+// generated union by `satisfies`. The kernel takes no category concept.
 export {
   GEOMETRY_CATEGORIES,
   GEOMETRY_CATEGORY,
@@ -256,7 +256,7 @@ export { InferenceScreen } from "./screens/InferenceScreen.js";
 export { saveBlob } from "./screens/download.js";
 export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbnail.js";
 
-// The Overview panel (#212) and the heuristic it shows, exported separately so
+// The Overview panel and the heuristic it shows, exported separately so
 // the rule can be replaced without touching the screen that renders it.
 export { OverviewPanel, type OverviewPanelProps } from "./screens/OverviewPanel.js";
 export {
@@ -266,7 +266,7 @@ export {
   type ClassShare,
 } from "./screens/imbalance.js";
 
-// The annotation page's side panel (#126). Driven entirely by the `AnnotatorStore`
+// The annotation page's side panel. Driven entirely by the `AnnotatorStore`
 // the page already holds — no second door to the document.
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
 export {
@@ -278,18 +278,18 @@ export {
 } from "./annotator/ClassRegion.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
 
-// Whether the rail starts collapsed (#200). One declaration, guarded storage.
+// Whether the rail starts collapsed. One declaration, guarded storage.
 export {
   RAIL_COLLAPSED_BY_DEFAULT,
   readRailCollapsed,
   writeRailCollapsed,
 } from "./data/railState.js";
 
-// The way out of a sub-view (#199). Structural, never `navigate(-1)`.
+// The way out of a sub-view. Structural, never `navigate(-1)`.
 export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";
 export { parentLabel } from "./patterns/parentLabel.js";
 
-// The floating tool palette (#198). Reports the derived tool; never stores one.
+// The floating tool palette. Reports the derived tool; never stores one.
 export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
 export { ZoomWidget, type ZoomWidgetProps } from "./annotator/ZoomWidget.js";
 export {
@@ -299,14 +299,14 @@ export {
 } from "./annotator/AddClassDialog.js";
 export { ClassFields, type ClassFieldsProps } from "./patterns/ClassFields.js";
 
-// The annotator's minimum viewport (#184). Followed live, never sniffed.
+// The annotator's minimum viewport. Followed live, never sniffed.
 export {
   ANNOTATOR_MIN_VIEWPORT_PX,
   atLeastQuery,
   useViewportAtLeast,
 } from "./annotator/viewportFloor.js";
 
-// The annotation page (#56) — where M4's engine meets M3's API.
+// The annotation page — where the headless engine meets the REST API.
 export { AnnotationPage, type AnnotationPageProps } from "./annotator/AnnotationPage.js";
 export { AssetImage, type AssetImageProps } from "./annotator/AssetImage.js";
 export {

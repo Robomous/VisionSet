@@ -1,11 +1,10 @@
 # usage: from visionset.kernel.services import IngestService
 """Ingest: the one door that turns a registered source into assets.
 
-#18 recorded *where* data comes from. This is what reads it — hashing every
-item, storing the bytes once, writing the row that names them, and putting the
-result in a draft batch somebody can approve. It is the last write in the kernel
-that had no service behind it: until now the only way to make an ``Asset`` was
-``examples/sdk_end_to_end.py`` reaching below a service, which this task deletes.
+``SourceService`` records *where* data comes from. This is what reads it —
+hashing every item, storing the bytes once, writing the row that names them, and
+putting the result in a draft batch somebody can approve. Nothing else in the
+kernel may create an ``Asset``.
 
 **One ``ingest``, where ``SourceService`` has two ``register_*``.** That split
 was made because the arguments genuinely differed — a clip needs a rate and a
@@ -59,7 +58,7 @@ Extraction yields the frames it managed and then says the bytes ran out, so the
 run has both an entry to write and assets to keep. That entry is ``PARTIAL`` and
 it carries the two numbers — what arrived, and what the container claimed — so
 the surfaces can say "eight of about twenty" instead of "this file is corrupt"
-about a run that had just filled a batch (#452). The report is where it stops:
+about a run that had just filled a batch. The report is where it stops:
 nothing about a partial run is stamped on an asset or a batch, and an asset
 lifted out of a damaged clip is an ordinary asset from the moment the ingest
 result has been read.
@@ -174,16 +173,14 @@ class IngestService:
     def assets(self, project_id: UUID) -> list[Asset]:
         """Every asset of that project, most recently ingested first.
 
-        The collection side of "one door to an ``Asset``". Until #208 the only
-        asset listings on the wire were per *batch* and per *dataset* — one
-        window onto a work unit, one onto the curated trunk — and neither
-        answers "show me this project", which is what a project page asks.
+        The collection side of "one door to an ``Asset``". The other asset
+        listings on the wire are per *batch* and per *dataset* — one window onto a
+        work unit, one onto the curated trunk — and neither answers "show me this
+        project", which is what a project page asks.
 
-        **Recency first, and it is stable within a run.** #208 shipped this in a
-        deterministic but arbitrary order, because nothing recorded when an asset
-        arrived; ``Asset.ingested_at`` (#216) is what it reads now. A whole
-        ingest shares one timestamp, so the sort inside a
-        run falls through to ``_in_stable_order``, which is the order that
+        **Recency first, and it is stable within a run.** The sort reads
+        ``Asset.ingested_at``; a whole ingest shares one timestamp, so within a
+        run it falls through to ``_in_stable_order``, which is the order that
         actually means something:
 
         1. ``source_id``, so one clip's frames stay together rather than
@@ -685,9 +682,9 @@ class IngestService:
         it, which is one of the two ways the port allows an iterator to be
         released.
 
-        **And this is the one caller that can count the loss**, which is why
-        #452's report is assembled here rather than in ``_failure``. Both numbers
-        are already in hand at the moment the refusal arrives: what arrived is
+        **And this is the one caller that can count the loss**, which is why the
+        partial-extraction report is assembled here rather than in ``_failure``.
+        Both numbers are already in hand when the refusal arrives: what arrived is
         the length of ``candidates``, and what was expected is the probe this
         source has carried since it was registered, times the rate it was
         registered at. Neither costs a second pass over the clip — the estimate
@@ -908,7 +905,7 @@ class IngestService:
         """The job, checked through its source so workspaces stay separate.
 
         Public, and taking a ``uow``, for the reason
-        ``SourceService.require_source`` is: #19 has to resolve a job inside its
+        ``SourceService.require_source`` is: a run has to resolve a job inside its
         own transaction before it writes progress against it, and a second
         spelling of this ladder is a second place for it to be got wrong.
 
@@ -1038,10 +1035,10 @@ def _extraction_failure(
     """The same report line for a clip, which can end up with some of itself read.
 
     ``produced`` decides the kind, and it decides it the way the adapter already
-    decided which error to raise: since #449 the extraction answers
-    ``UnsupportedMedia`` when nothing came out and ``CorruptMedia`` when the
-    bytes ran out partway, so on this path the two are already "nothing arrived"
-    and "some of it did". Reading the count rather than the exception's type is
+    decided which error to raise: extraction answers ``UnsupportedMedia`` when
+    nothing came out and ``CorruptMedia`` when the bytes ran out partway, so on
+    this path the two already mean "nothing arrived" and "some of it did".
+    Reading the count rather than the exception's type is
     what keeps the report honest if that ever stops being true — a ``0`` here can
     never be published as a partial read, whatever was raised.
 

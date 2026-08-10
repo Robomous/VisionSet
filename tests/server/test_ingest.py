@@ -1,10 +1,10 @@
 """Launching a run and polling it — the contract every long operation reuses.
 
-The acceptance walk of #28 is one test here: upload a clip, register it at 5 fps,
+The acceptance walk is one test here: upload a clip, register it at 5 fps,
 launch, wait, read the assets. It is deliberately the shape a real client has —
 nothing reaches past the API for an answer the API is supposed to give.
 
-**Nothing in this module sleeps, and since #328 nothing needs to.** Work is
+**Nothing in this module sleeps, and nothing needs to.** Work is
 claimed off a durable queue, so "launched but not yet run" is a row rather than a
 thread parked on an `Event`: `ManualDispatcher` simply does not run it, and
 `InlineDispatcher` runs it before the launch responds. The discipline
@@ -158,7 +158,7 @@ def test_a_launch_answers_before_the_worker_has_picked_the_job_up(
     `ManualDispatcher` runs nothing until `run()`, so the observable state is
     simply the one the launch left behind. The old shape of this test parked a
     worker thread on an `Event` to reach the same instant; the queue makes the
-    instant durable instead, which is the substantive change #328 made rather than
+    instant durable instead, which is what the job queue buys rather than
     an easier way to write the assertion.
     """
     gated = ManualDispatcher()
@@ -255,7 +255,7 @@ def test_an_unreadable_item_is_reported_and_does_not_fail_the_run(
 def test_a_partial_extraction_is_reported_with_both_numbers(
     client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
-    """#452, on the wire the ingest screen actually polls."""
+    """The partial report, on the wire the ingest screen actually polls."""
     source = registered_broken_clip(client, project, tmp_path)
 
     job = launch(client, source).json()
@@ -276,7 +276,7 @@ def test_a_partial_extraction_is_reported_with_both_numbers(
 def test_a_partial_extraction_changes_nothing_about_the_assets_it_produced(
     client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
-    """The boundary #452 draws, asserted rather than intended.
+    """The boundary the partial report draws, asserted rather than intended.
 
     The report is the ingest job's and it stops there. An asset lifted out of a damaged
     clip is an ordinary asset — same fields, same batch — so nothing downstream can learn
@@ -436,7 +436,7 @@ def test_a_resume_that_is_allowed_answers_202_and_says_where_to_poll(
 def test_polling_is_answered_while_another_writer_holds_the_workspace(
     client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
-    """#80's payoff, at the surface it was landed for.
+    """The WAL payoff, at the surface it was landed for.
 
     A second `WorkspaceService` over one file is two engines with no shared cache
     — what two *processes* look like to SQLite. It writes and parks; the request

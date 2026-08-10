@@ -6,7 +6,7 @@ which is the only way bytes leave a job — and the only route in the server tha
 rejoins a path read out of a JSON column, so most of its tests are about that.
 
 **The prefix is `/background-jobs` and not `/jobs`.** `routes/jobs.py` has served
-annotation jobs at `/jobs` since #29 and that is a shipped contract; two
+annotation jobs at `/jobs` and that is a shipped contract; two
 different things wanted the same word and the newer one gave way.
 """
 

@@ -1,6 +1,6 @@
 /**
  * `useProjectReadiness`, the two facts the first-run surfaces are built on
- * (#288, narrowed by #388).
+ * — two facts, and only two.
  *
  * Two claims carry the file. **`SCHEMA_NOT_FOUND` is an answer** — a project
  * starts schema-less on purpose, so that 404 is `hasSchema: false` while any
@@ -9,7 +9,7 @@
  * mounting it beside a consumer of those queries adds zero requests. The second
  * claim is invisible in any rendering; only the request log shows it.
  *
- * That second claim got *stronger* with #388 rather than merely surviving it.
+ * The second claim is the stronger of the two.
  * The hook used to read the batch list, the dataset and its releases as well,
  * to order a four-station onboarding checklist. The checklist is retired, and
  * with it the ordering — so the trunk two-hop is gone and the count is two.
@@ -144,7 +144,7 @@ describe("useProjectReadiness", () => {
   it("separates the two facts: images with no schema is a state, not a contradiction", async () => {
     // The order is not enforced anywhere — ingesting first and declaring classes
     // first are both legitimate — so the hook has to be able to report the second
-    // order, and #388's third invitation is the surface that reads it.
+    // order, and the third invitation is the surface that reads it.
     serve({ schema: SCHEMALESS, stats: statsOf({ asset_count: 48 }) });
     render(mount(<Readiness projectId={PROJECT} />));
 

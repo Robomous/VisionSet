@@ -20,7 +20,7 @@ reports every other test passing. Overriding ``norecursedirs`` would have fixed
 it and would also have started collecting real build output; renaming costs
 nothing.
 
-**Opt-in locally, required in CI**, a variation on the ffmpeg rule from #22. These
+**Opt-in locally, required in CI**, a variation on the optional-binary rule. These
 install into a fresh virtual environment and start a server, which is about a
 minute — so they skip unless `VISIONSET_REQUIRE_WHEEL=1` says a wheel exists and
 must be tested, or `VISIONSET_WHEEL` names one. CI's `wheel` job sets the first
@@ -142,7 +142,7 @@ def test_the_compiled_app_travels_inside_the_wheel(names: list[str]) -> None:
 
 
 def test_the_bundle_was_built_for_the_ui_prefix(names: list[str]) -> None:
-    """#33's trap, and it is invisible once the wheel is built.
+    """The bundle-base trap, and it is invisible once the wheel is built.
 
     A bundle built with the dev base references `/assets/…`, which the SPA
     fallback answers with `index.html` at **200** — so the page loads blank

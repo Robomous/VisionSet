@@ -18,11 +18,11 @@ somewhere inside a forward pass on a shape mismatch.
 The two sets below are the whole of what resolves; there is no fallback. A
 resolver with one guesses on every model it has not been told about, and the
 guess is invisible until the wrong adapter refuses the request in its own
-vocabulary — a sentence that describes a model the user does not have (#456).
+vocabulary — a sentence that describes a model the user does not have.
 
 **Loaded models are kept, because the alternative defeats the embedding cache.**
-D5 on #424 budgets =<300 ms for a click. A provider built fresh per request would
-re-read gigabytes of weights every time and would carry an empty embedding cache
+The design budget for a click is =<300 ms. A provider built fresh per request
+would re-read gigabytes of weights every time and carry an empty embedding cache
 into every click — so the per-asset encode would happen on every click too, and
 the two caches would each be defeated by the absence of the other. Keeping the
 provider is what makes keeping the embedding worth anything.
@@ -57,9 +57,9 @@ SEGMENTER_FAMILIES: Final[frozenset[str]] = frozenset({"sam2", "sam2_video"})
 later.** The published SAM 2 checkpoints — including the one the connection form
 suggests — declare ``sam2_video``, and ``transformers`` loads such a checkpoint
 into the image model deliberately, saying so as it does: *"loading a
-``sam2_video`` checkpoint into ``Sam2Model``"*. Naming only ``sam2`` sent the
+``sam2_video`` checkpoint into ``Sam2Model``"*. Naming only ``sam2`` sends the
 commonest point-prompt model in the product to the detector adapter, which then
-refused a click with a sentence about text prompts (#456).
+refuses a click with a sentence about text prompts.
 
 Whole models only. The locked ``transformers`` also registers
 ``sam2_vision_model`` and ``sam2_hiera_det_model``, which are the encoder halves
@@ -186,8 +186,8 @@ def _local(connection: InferenceConnection, *, workspace_root: Path) -> ModelPro
     is no fallback adapter, because a fallback answers with the wrong adapter's
     vocabulary: a point-prompt model read as a detector refuses a click by saying
     the model "answers text prompts", which is a confident sentence about some
-    other model (#456). An honest "this build has no adapter for that model type"
-    is worth more than a guess that is right most of the time.
+    other model. An honest "this build has no adapter for that model type" is
+    worth more than a guess that is right most of the time.
     """
     if connection.setup_state is not ConnectionSetupState.READY:
         raise InferenceConnectionNotSetUp(

@@ -1,8 +1,7 @@
 /**
- * The classification tag tool — #45's acceptance matrix.
- *
- * Both criteria are here: **toggle semantics, with several classes tagging one
- * asset**, and **serialization to the `ClassificationGeometry` wire variant**.
+ * The classification tag tool, and its two claims: **toggle semantics, with
+ * several classes tagging one asset**, and **serialization to the
+ * `ClassificationGeometry` wire variant**.
  * The second is proved by a full parse round-trip rather than by reading the
  * geometry's one field, because `parseGeometry` checks keys exactly — a stray key
  * and a missing one both throw — so one assertion covers wire-legality.

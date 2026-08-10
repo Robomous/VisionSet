@@ -19,7 +19,7 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "../lib/cn";
 
 /**
- * The fill a disabled control wears (#323).
+ * The fill a disabled control wears.
  *
  * `opacity-50` was the old answer and it was the wrong one on a coral button: it
  * produced a *pale coral*, which reads as a weaker version of the brand rather

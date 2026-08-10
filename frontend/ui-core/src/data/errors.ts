@@ -127,8 +127,8 @@ export interface FetchResult<T> {
  * `openapi-fetch` types a response off the contract and verifies nothing at
  * runtime, so this function used to return `result.data` unexamined — a
  * well-formed JSON document of the wrong type reached a screen intact, and one
- * `undefined` in a formatter took the page down with it. That happened three
- * times during #206–#213. `check` closes it: pass the generated check for the
+ * `undefined` in a formatter took the page down with it, three times over one
+ * milestone. `check` closes it: pass the generated check for the
  * operation being called, from `../generated/checks`.
  *
  * It is required rather than optional because an optional gate is one every new

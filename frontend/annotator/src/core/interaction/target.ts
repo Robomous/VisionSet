@@ -43,11 +43,11 @@
  *
  * ## Hover is a query, not state
  *
- * #43 wants "which handle is hot" for a cursor. That is this function, called by
+ * A cursor needs to know which handle is hot. That is this function, called by
  * the adapter with the cursor position and memoized there. A `hover` field on the
  * idle state would mutate the machine — and notify every subscriber — on **every
- * mouse move across the canvas**, which is the re-render pattern #47's only
- * performance criterion exists to kill. Adding the field later is not breaking;
+ * mouse move across the canvas**, which is the re-render pattern the adapter's
+ * performance rule exists to kill. Adding the field later is not breaking;
  * removing it would be.
  */
 
@@ -182,7 +182,7 @@ export interface Insertion {
 }
 
 /**
- * v1's edge-insert rule, as one named function so #44 does not reimplement it.
+ * v1's edge-insert rule, as one named function so no tool reimplements it.
  *
  * The topmost polygon under the point; bail if the click is within
  * `tolerances.vertex` of one of its existing vertices — that is a double-click

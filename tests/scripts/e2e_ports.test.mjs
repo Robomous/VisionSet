@@ -2,7 +2,7 @@
 //
 // The browser suites' ports are derived from the worktree's path rather than written
 // down, so the properties a constant gave away for free — it is the same number every
-// time, it is a legal port, it is not somebody else's — now have to be asserted. #346.
+// time, it is a legal port, it is not somebody else's — have to be asserted.
 //
 // This imports the derivation from `frontend/app/e2e-ports.ts` directly. Node 24 strips
 // the types on the way in, which is what lets one module serve both the three Playwright

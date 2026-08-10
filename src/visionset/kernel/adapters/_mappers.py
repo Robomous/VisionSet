@@ -20,9 +20,8 @@ Most entities are flat — every field is a column — and share
 - ``BackgroundJob`` does both, and is the only entity here that does: three
   timestamps *and* a tuple of ``ItemFailure`` models.
 
-``Asset`` is the newest of those and the only one that *became* one: it was flat
-until ``ingested_at`` arrived (#216). Adding a timestamp to an entity costs it
-its flat mapping, which is worth knowing before adding the next one.
+Adding a timestamp to an entity costs it its flat mapping, which is worth
+knowing before adding the next one.
 """
 
 from __future__ import annotations
@@ -86,8 +85,7 @@ class ChildWriter[T](Protocol):
 
     ``inserting`` is keyword-only because it is the whole of what distinguishes
     the two calls, and a bare ``True`` at a call site says nothing. Batches use
-    it to write membership once and never again (#281); jobs ignore it, and say
-    so.
+    it to write membership once and never again; jobs ignore it, and say so.
     """
 
     def __call__(self, session: Session, entity: T, *, inserting: bool) -> None: ...
@@ -138,13 +136,12 @@ def _flat_mapping[M: Entity](
 
 
 def _schema_to_row(entity: AnnotationSchema) -> t.Base:
-    """Already hand-written for ``classes``, which is what makes #230 free.
+    """Hand-written because ``classes`` and ``created_at`` both need it.
 
-    A timestamp is what costs an entity its ``_flat_mapping`` — that dumps in
+    A timestamp is what costs an entity its ``_flat_mapping``: that dumps in
     python mode and would hand sqlite3's deprecated adapter a ``datetime``,
-    writing a second timestamp format. This pair existed long before
-    ``created_at`` did, because a tuple of ``LabelClass`` models is not a JSON
-    column's business either, so the column arrives as two more lines.
+    writing a second timestamp format. A tuple of ``LabelClass`` models is not a
+    JSON column's business either.
     """
     return t.AnnotationSchemaRow(
         id=entity.id,
@@ -507,34 +504,23 @@ def _batch_to_domain(session: Session, row: Any) -> Batch:
 def _batch_write_children(session: Session, entity: Batch, *, inserting: bool) -> None:
     """Write the batch's membership — **at creation, and never again**.
 
-    This used to be delete-everything-and-insert on every write, and that was
-    #281's blocking defect. ``Repository.update`` replaces a whole entity and a
-    ``Batch`` carries every member, so two callers adding *different* assets to
-    one draft both wrote this, and the second deleted the first one's row before
-    re-inserting the membership it had read. The identical lost update #302
-    fixed for progress, on the identical mechanism, and both answered ``200``.
+    ``Repository.update`` replaces a whole entity and a ``Batch`` carries every
+    member, so a delete-and-reinsert here let two callers adding *different*
+    assets to one draft clobber each other while both answered ``200``.
+    Insert-if-absent is not the fix: a stale entity would then *resurrect* a
+    member another writer had just removed. Both directions come from writing a
+    whole collection derived from an already-stale copy, so the write is removed
+    rather than narrowed.
 
-    Insert-if-absent instead of the delete would not have been enough, which is
-    worth stating because it is the tempting half-fix: a stale entity would then
-    *resurrect* a member another writer had just removed. Both directions of the
-    clobber come from the same place — a whole-collection write derived from a
-    copy of the membership that is already out of date — so the write is not
-    narrowed, it is removed.
-
-    So membership is written exactly once per member, when the batch is created,
+    Membership is written exactly once per member, when the batch is created,
     and from then on only by ``UnitOfWork.add_batch_assets`` /
     ``remove_batch_assets``. Every other update of a batch — a state transition,
-    a schema pin — now leaves its membership entirely alone, which also closes
-    the case with no race in it at all: ``approve`` reads a batch, sets
-    ``state``, and would otherwise put back the membership as it stood before
-    whatever landed while it was deciding.
+    a schema pin — leaves its membership entirely alone.
 
-    The cost, stated rather than discovered later: **``Batch.asset_ids`` is no
-    longer writable through ``Repository.update``**, so a stored membership
-    cannot be reordered by handing back a permuted list. Nothing offers that —
-    order is the order assets were added, and the two narrow writes preserve it —
-    and a capability whose only implementation is the defect is not one worth
-    keeping.
+    The cost: **``Batch.asset_ids`` is not writable through
+    ``Repository.update``**, so a stored membership cannot be reordered by
+    handing back a permuted list. Nothing offers that — order is the order
+    assets were added, and the two narrow writes preserve it.
     """
     if not inserting or not entity.asset_ids:
         return
@@ -568,25 +554,20 @@ def _job_to_domain(session: Session, row: Any) -> AnnotationJob:
 def _job_write_children(session: Session, entity: AnnotationJob, *, inserting: bool) -> None:
     """Write the job's per-asset rows — but never overwrite a stored ``progress``.
 
-    Reconciled on every write, unlike ``_batch_write_children``, and that
-    asymmetry is the difference between the two collections rather than an
-    oversight: a job's membership is fixed at approval and never edited, so
-    there is no second writer for this delete to lose. It is **not**
-    delete-everything-and-insert:
-    it upserts by key and deletes only what the entity no longer carries. The
-    difference is #302. ``progress`` is the one child column two callers contend
-    over, so it has its own narrow write (``UnitOfWork.set_asset_progress``); a
-    wholesale rewrite here would silently undo one of those every time an
-    unrelated field of the job moved — ``JobService.complete`` reads a job, sets
-    ``state``, and would put back the progress map as it was *before* whatever
-    landed while it was deciding.
+    Reconciled on every write, unlike ``_batch_write_children``, because a job's
+    membership is fixed at approval and never edited, so there is no second
+    writer for this delete to lose. It is **not** delete-everything-and-insert:
+    it upserts by key and deletes only what the entity no longer carries.
 
-    So the row's progress is written exactly once, when the row is inserted, and
-    from then on only by the guarded update. ``position`` is still reconciled,
-    because it is derived from the entity's own ordering and nothing else writes
-    it. A job's membership is fixed at approval, so in practice the delete and
-    the insert both match nothing after the job is created — which is the point:
-    an update of a job stops touching its assets' progress at all.
+    ``progress`` is the one child column two callers contend over, so it has its
+    own narrow write (``UnitOfWork.set_asset_progress``). A wholesale rewrite
+    here would silently undo one of those every time an unrelated field of the
+    job moved — ``JobService.complete`` reads a job, sets ``state``, and would
+    put back the progress map as it stood before whatever landed while it was
+    deciding. So the row's progress is written exactly once, when the row is
+    inserted, and from then on only by the guarded update. ``position`` is still
+    reconciled, because it is derived from the entity's own ordering and nothing
+    else writes it.
     """
     session.execute(
         delete(t.AnnotationJobAssetRow)
@@ -636,11 +617,11 @@ ANNOTATIONS: EntityMapping[Annotation] = EntityMapping(
 #: ``parent_column=None``, like ``Workspace`` and unlike everything else here.
 #:
 #: A job has no parent to be scoped by — see ``JobRow`` for why it carries no
-#: foreign key. The consequence is worth stating, because it is the trap #25
-#: recorded from the other side: ``SqlRepository.list(None)`` on a *scoped*
-#: entity silently returns every row in the table, so a root entity is the one
-#: place that call is correct. ``JobQueue.list`` is what callers use, and it
-#: filters by state rather than by parent.
+#: foreign key. The consequence is the trap worth stating:
+#: ``SqlRepository.list(None)`` on a *scoped* entity silently returns every row
+#: in the table, so a root entity is the one place that call is correct.
+#: ``JobQueue.list`` is what callers use, and it filters by state rather than by
+#: parent.
 BACKGROUND_JOBS: EntityMapping[BackgroundJob] = EntityMapping(
     row=t.JobRow,
     parent_column=None,

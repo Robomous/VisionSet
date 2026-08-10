@@ -10,7 +10,7 @@
  * What this file is really for is the half a unit test cannot reach. `bindings.test.ts`
  * proves a chord resolves to an action and `runAction.test.ts` proves the action runs;
  * neither can prove a browser delivers the keystroke to an element that still holds
- * focus, which is precisely the failure #47 shipped and then fixed.
+ * focus, which is precisely the failure a focus-stealing commit produces.
  */
 
 import { expect, test } from "@playwright/test";
@@ -51,10 +51,9 @@ test("the digits activate the schema's classes in authored order", async ({ page
     ["v", "select"],
   ] as const) {
     await page.keyboard.press(digit);
-    // `data-active`, not the row's colour. #50 moved the palette onto `DESIGN.md`'s
-    // tokens, where a selected row is `border-primary` plus the accent at 10% — so
-    // an assertion on a literal `rgb(...)` was pinning the design system rather than
-    // the behaviour, and would have to be re-pinned by every restyle.
+    // `data-active`, not the row's colour. A selected row is `border-primary` plus
+    // the accent at 10%, so an assertion on a literal `rgb(...)` would pin the
+    // design system rather than the behaviour and be re-pinned by every restyle.
     for (const row of rows) {
       await expect(page.getByTestId(`class-${row}`)).toHaveAttribute(
         "data-active",
@@ -66,12 +65,11 @@ test("the digits activate the schema's classes in authored order", async ({ page
 
 /**
  * `pose` is declared `keypoints` — a nameable `GeometryType` with no `Geometry`
- * variant, which is #73's answer. `toolFor` answers `select` for it, so activating
- * it draws nothing.
+ * variant. `toolFor` answers `select` for it, so activating it draws nothing.
  *
- * `centerline` held this role until #342, which gave `polyline` a variant and a
- * tool; `polyline.spec.ts` is the real port of `polyline-tool.spec.ts` now, and
- * this scenario keeps the state that spec's premise stood in for.
+ * `polyline` cannot hold this role, because it has a variant and a tool;
+ * `polyline.spec.ts` covers that, and this scenario keeps the state a
+ * declared-but-undrawable geometry is in.
  */
 test("a class whose geometry has no implementation draws nothing", async ({ page }) => {
   const frame = await frameOf(page);
@@ -201,7 +199,7 @@ test("typing in the notes field types, and draws nothing", async ({ page }) => {
   await expectCounts(page, 1, 1);
   expect(await wire(page)).toHaveLength(1);
 
-  // #123 claimed `mod+c`/`mod+v`, which makes this the chord a user is most
+  // `mod+c`/`mod+v` are claimed, which makes this the chord a user is most
   // likely to press inside a field — and the browser has to keep it, or copying
   // a note out of the panel would silently duplicate a box instead.
   await page.keyboard.press("ControlOrMeta+a");
@@ -212,8 +210,7 @@ test("typing in the notes field types, and draws nothing", async ({ page }) => {
 });
 
 /**
- * Copy and paste (#123), which the engine deferred and left to the browser until
- * the founder settled what a clipboard is.
+ * Copy and paste.
  *
  * The offset is the part only a browser can check: `PASTE_OFFSET_PX` is **20
  * screen pixels**, converted to asset pixels by dividing by the live zoom — so
@@ -279,11 +276,11 @@ test("paste with nothing copied does nothing at all", async ({ page }) => {
 });
 
 /**
- * #129 split the two delete chords, and this is the behaviour change a user sees.
+ * The two delete chords are split, and this is the behaviour a user sees.
  *
- * They used to mean one thing, so one of them was free — and `Backspace` takes back
+ * As synonyms one of them is free — and `Backspace` takes back
  * *the last thing you did*, which is what it means in every text field and every
- * drawing tool. It bought a capability that had no spelling at all: v1 took a
+ * drawing tool. It buys a capability that had no spelling at all: v1 took a
  * polygon point back with a right-click, and the React adapter answers every
  * non-primary press with a pan.
  *

@@ -1,6 +1,5 @@
 /**
- * The suggest gesture wired end to end (#424, slice 3b): arm, click, preview,
- * accept, save.
+ * The suggest gesture wired end to end: arm, click, preview, accept, save.
  *
  * Driven through `AnnotationPage` rather than through the parts, on `topBar`'s
  * argument: every claim here is about how the pieces are wired — that a press
@@ -50,7 +49,7 @@ const SCHEMA = {
     { name: "vehicle", geometry: "bbox", color: "#3355ff", attributes: [] },
     { name: "lane-area", geometry: "polygon", color: null, attributes: [] },
     // Drawable, and not suggestible: a mask narrows to a region and a lane is an
-    // open path. It is what parks the tool (#472), and it is a `polyline` rather
+    // open path. It is what parks the tool, and it is a `polyline` rather
     // than a tag on purpose — a class that can still be drawn on is the case where
     // a parked tool swallowing presses would be a bug rather than a nuisance.
     { name: "lane", geometry: "polyline", color: null, attributes: [] },
@@ -280,12 +279,10 @@ describe("arming the tool", () => {
 });
 
 /**
- * The class moving under an armed tool (#472).
+ * The class moving under an armed tool.
  *
- * **This describe block is the reversal.** #451 shipped "moving the active class
- * disarms", and the test that encoded it lived where the first one below now
- * does. Reverting `withClass` in the page's effect to `setSession(null)` turns
- * every test here red, starting with the first.
+ * The session survives it. Replacing `withClass` in the page's effect with
+ * `setSession(null)` turns every test here red, starting with the first.
  */
 describe("the active class moves and the tool stays armed", () => {
   it("stays armed on a class switch, and asks under the new class", async () => {

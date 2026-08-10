@@ -1,10 +1,10 @@
 /**
- * The suggest tool's one voice: what it is doing, or why it cannot (#424, D6).
+ * The suggest tool's one voice: what it is doing, or why it cannot.
  *
  * ## An in-editor panel, and never a navigation
  *
  * `DESIGN.md` principle 10 — *the annotation workspace is self-sufficient*,
- * ratified 2026-08-05 and marked immovable — is the whole shape of this
+ * marked immovable — is the whole shape of this
  * component. Somebody who arms a tool over an unconfigured workspace must be
  * told, on the canvas, without leaving work behind. So this is a card floating
  * over the picture: not a toast (which disappears while somebody is reading it),
@@ -16,7 +16,7 @@
  * "What is the suggest tool doing" has six honest answers, and each of them is a
  * sentence somewhere on this card: waiting for a click, asking, showing something
  * to accept, having found nothing, refusing, or parked over a class that can hold
- * nothing (#472). The alternative — a spinner in one corner, an error surface in
+ * nothing. The alternative — a spinner in one corner, an error surface in
  * another, an empty state somewhere else — scatters one answer across three
  * places and leaves the person to assemble it.
  *
@@ -58,7 +58,7 @@ export interface SuggestPanelProps {
   /** The session, whose status decides which sentence this card carries. */
   readonly session: SuggestionState;
   /**
-   * The class the workspace is on (#472).
+   * The class the workspace is on.
    *
    * The same thing as `session.labelClass` for every reading but one: a **parked**
    * session has no class of its own, and the sentence it needs is about the class
@@ -137,7 +137,7 @@ export function SuggestPanel({
   onDiscard,
 }: SuggestPanelProps): JSX.Element {
   /*
-    Parked outranks even the blocker (#472). A connection this tool will not use
+    Parked outranks even the blocker. A connection this tool will not use
     is not the thing standing in the way, and "getting the model ready" over a
     class that could never hold the answer would be the wrong sentence twice: it
     reports progress towards something that is not going to happen, and it hides
@@ -352,8 +352,7 @@ function Card({
         the same stage, and at `bottom-2` this card sat *under* `ZoomWidget`'s
         `bottom-3` box — which does not merely look wrong: the widget's subtree
         intercepts the pointer, so the panel's own action could not be clicked at
-        all. It shipped that way in #451 because nothing had a destination to
-        click through to yet, and the e2e that gave it one is what found it.
+        all — invisible until something has a destination to click through to.
 
         `bottom-16` clears the widget's 44px row and its gutter. The two never
         overlap now, so no z-index is needed and neither has to know about the

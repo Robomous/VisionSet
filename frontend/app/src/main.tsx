@@ -3,7 +3,7 @@
  *
  * ## Why the stylesheet is imported here now
  *
- * #128 kept the design system on a **second Vite entry** because Tailwind ships a
+ * The design system was once on a **second Vite entry**, because Tailwind ships a
  * preflight — a global reset — and applying it to the annotator showcase, whose
  * fifty-four Playwright scenarios derive their coordinates from the page's real
  * layout, would have been a layout change nobody asked for in the one place this

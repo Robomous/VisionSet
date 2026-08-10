@@ -3,7 +3,7 @@
  *
  * ## The problem it removes
  *
- * Before #233, a user who needed a class that did not exist had this path: leave
+ * Without it, a user who needs a class that does not exist has this path: leave
  * the job, open the project's Schema tab, publish a version, make a **new batch**
  * — because the old one pins the old version — and re-partition. The class they
  * wanted was two minutes and a lost place in the queue away.
@@ -16,7 +16,7 @@
  *    the new one — never on the batch's pin. Versions are linear: composing on a
  *    pin that is behind the active version would silently delete every class
  *    published since, which is a destructive change nobody asked for.
- * 3. **Re-pin the batch** (#229) onto that version, which is what makes the class
+ * 3. **Re-pin the batch** onto that version, which is what makes the class
  *    usable *here* rather than in the next batch somebody makes.
  *
  * **Step 1 must come first, and a test asserts the order.** `Workspace` builds the
@@ -45,18 +45,17 @@
  * "try again with a flag" — it is that somebody else narrowed the schema past this
  * batch's pin, and the Schema tab is where that gets looked at.
  *
- * ## One dialog session is one published version (#368)
+ * ## One dialog session is one published version
  *
  * `Create and add another` accumulates. Somebody who opens this because the road
  * survey needs `cone`, `barrier` and `crossing` writes three classes and presses
  * once, and the project's history gains **one** version rather than three — with
  * three re-pins, three refetches, and three chances for the middle one to refuse.
  *
- * The alternative — publish each class as it is written — was the shape #233
- * shipped, and it is what makes decision 7's grouping necessary in the first
- * place: a version per class turns a ledger into a transcript. Accumulating does
- * not remove the need for grouping (two sessions in a morning are still two
- * versions) but it stops one sitting from being nine of them.
+ * The alternative — publish each class as it is written — turns a ledger into a
+ * transcript. Accumulating does not remove the need to group versions in the
+ * history (two sessions in a morning are still two versions) but it stops one
+ * sitting from being nine of them.
  *
  * The accumulated classes are held **here** and nowhere else, which is what makes
  * "cancel discards them" true by construction: there is no draft on the server to
@@ -89,7 +88,7 @@ function blank(): LabelClassBody {
 }
 
 /**
- * The auto-filled version description (#230, pluralised by #368).
+ * The auto-filled version description.
  *
  * Pre-written rather than left empty because a version published from here is the
  * one somebody is *least* likely to describe — they are mid-annotation and think
@@ -178,7 +177,7 @@ export async function runAddClass(steps: {
   /**
    * The session's classes, in the order they were written — one press, one version.
    *
-   * A list rather than a single class since #368. The chain does not change shape
+   * A list rather than a single class. The chain does not change shape
    * for it: `create_version` takes the whole contract either way, so publishing
    * three new classes is the same one request as publishing one, and the *saving*
    * is the two re-pins and two refetches that do not happen.
@@ -216,13 +215,12 @@ export interface AddClassDialogProps {
   /** The refusal to render, or `null`. Owned by the caller: it runs the chain. */
   readonly error: unknown;
   /**
-   * The name to open with, from the create row that opened this (#368).
+   * The name to open with, from the create row that opened this.
    *
-   * `ClassField`'s no-match row has always handed over what was typed —
-   * `Create class "crossing"` — and until WS4 the page dropped it, because there
-   * was nothing here to seed. Typing a name, being told it does not exist, and
-   * then having to type it again is the smallest possible way to make a
-   * shortcut feel like a detour.
+   * The class field's no-match row hands over what was typed —
+   * `Create class "crossing"` — and dropping it would mean typing a name, being
+   * told it does not exist, and then typing it again: the smallest possible way to
+   * make a shortcut feel like a detour.
    *
    * Read on open rather than held as a controlled value: it is a starting point,
    * not a binding, and a prop that kept overwriting the field would make the

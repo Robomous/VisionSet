@@ -217,14 +217,12 @@ describe("the control", () => {
 });
 
 /**
- * Correcting a finished batch — audit gap G6, and the end of the forward-only
- * story.
+ * Correcting a finished batch — the end of the forward-only story.
  *
- * Three surfaces had been saying "corrections happen in a correction batch"
- * while nothing could create one: the annotator's read-only banner (#306), the
- * gallery's bulk bar (#305), and the settled-work sentence in both. Each named
- * the route onward deliberately, on the grounds that it beats a friendlier lie.
- * This is what they were waiting for.
+ * Three surfaces say "corrections happen in a correction batch": the annotator's
+ * read-only banner, the gallery's bulk bar, and the settled-work sentence in both.
+ * Each names the route onward deliberately, on the grounds that it beats a
+ * friendlier lie. This is what makes the route real.
  */
 describe("naming a correction", () => {
   it("suggests the parent's name, so the ordinary case costs no typing", () => {

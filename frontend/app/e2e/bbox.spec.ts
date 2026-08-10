@@ -139,7 +139,7 @@ test("a drag smaller than the draw minimum creates nothing", async ({ page }) =>
 /**
  * Escape mid-drag **reverts**, where v1 could only stop.
  *
- * #39's store stages a drag outside the log, so the committed document is the same
+ * The store stages a drag outside the log, so the committed document is the same
  * object for the whole gesture and a cancel drops the preview rather than pushing a
  * compensating edit. Nothing reaches the history at all — which is what `canUndo`
  * still reading `add vehicle` proves.

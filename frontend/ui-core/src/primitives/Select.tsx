@@ -6,10 +6,10 @@
  * option element cannot hold one. Everything else that matters — typeahead, the
  * keyboard, `aria-activedescendant`, closing on `Escape` — comes with it.
  *
- * `#126`'s rule rides on this component's *callers*, not on the component: every
- * class control in VisionSet is a picker over the schema, never free text (#6).
+ * One rule rides on this component's *callers* rather than on the component:
+ * every class control in VisionSet is a picker over the schema, never free text.
  *
- * ## An option can be two lines (#472)
+ * ## An option can be two lines
  *
  * Some options are an identifier plus the facts about it — a model id, then its
  * download size and what it is for. On one line that is a sentence long enough to
@@ -52,7 +52,7 @@ export const SelectTrigger = forwardRef<
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        // `card` and the neutral disabled skin, for `Input`'s reasons (#323).
+        // `card` and the neutral disabled skin, for `Input`'s reasons.
         //
         // `min-h-9` with `py-1` rather than `h-9`: a one-line value still lands on
         // exactly 36px (22.4px of text plus 8px of padding plus the border is under
@@ -100,7 +100,7 @@ export const SelectItem = forwardRef<
   ElementRef<typeof SelectPrimitive.Item>,
   ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & {
     /**
-     * A second line under the option, for the facts about it (#472).
+     * A second line under the option, for the facts about it.
      *
      * Inside `ItemText`, so the trigger shows the same two lines the list does.
      * Absent leaves the one-line option exactly as it was.

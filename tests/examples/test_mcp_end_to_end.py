@@ -62,8 +62,8 @@ def test_the_server_was_reached_over_a_real_pipe(summary: Any) -> None:
 
     The example starts the server the way a client does, with no
     `--allow-destructive`, so what it counts is what an agent is offered — every
-    tool in `TOOLS`, and *not* `delete_project`, which #108 moved out of the
-    default listing.
+    tool in `TOOLS`, and *not* `delete_project`, which is out of the default
+    listing.
 
     Counted against the registry rather than a literal, and that is the point of
     this assertion rather than a convenience. A tool that fails to register is

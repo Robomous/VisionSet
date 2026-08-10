@@ -295,7 +295,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # a state change, which is why the *message* separates them and the code does
     # not: both answers say stop asking.
     InferenceConnectionNotDownloadable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
-    # The same shape one action over (#471), and it earns its own code because
+    # The same shape one action over, and it earns its own code because
     # the remedies differ: an `http` connection is told to stop asking, while a
     # `local` one at `not_set_up` is told to download first — a state change that
     # makes the identical request succeed. Folding it into NOT_DOWNLOADABLE would
@@ -465,7 +465,7 @@ def _detail_for(exc: BaseException) -> dict[str, Any] | None:
     if isinstance(exc, LossyExportNotConsented) and isinstance(
         exc.compatibility, ExportCompatibility
     ):
-        # The report, on the refusal itself — #65's second acceptance criterion.
+        # The report, on the refusal itself.
         # A client that gets this 409 has everything it needs to render a consent
         # dialog without a second round trip, and it is the *same document*
         # ``GET /releases/{id}/export-compatibility`` returns and the export
