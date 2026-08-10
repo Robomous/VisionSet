@@ -160,6 +160,32 @@ function schemaOfSize(size: SchemaSize | undefined): typeof SCHEMA {
   };
 }
 
+/**
+ * A workspace with a segmenter in it, for the one scenario that needs the
+ * suggest tool to actually work.
+ *
+ * Off by default, because the interesting answer for every other test here is
+ * the empty list — that is the state the tool's explanation panel exists for,
+ * and it is what a workspace that has never been to the Inference section is in.
+ */
+const READY_SAM = {
+  id: "66666666-6666-4666-8666-666666666666",
+  name: "local sam",
+  connection_type: "local",
+  model_id: "facebook/sam2-hiera-base-plus",
+  model_revision: "main",
+  device: "cuda",
+  precision: "fp16",
+  endpoint_url: null,
+  setup_state: "ready",
+  allowed_actions: [],
+  capabilities: ["point_suggest"],
+  download: null,
+  integrity_check: null,
+  created_at: "2026-08-08T00:00:00Z",
+  updated_at: "2026-08-08T00:00:00Z",
+};
+
 async function serveApi(
   page: Page,
   sent: Request[],
@@ -167,6 +193,7 @@ async function serveApi(
   lifecycle: Lifecycle = openedWorld(),
   size?: SchemaSize,
   seeded: readonly Record<string, unknown>[] = [],
+  suggestible = false,
 ): Promise<void> {
   const stored: Record<string, unknown>[] = [...seeded];
   const batchBody = (): Record<string, unknown> => ({
@@ -340,7 +367,23 @@ async function serveApi(
     // here: it is the state the panel's explanation exists for, and it is what a workspace
     // that has never been to the Inference section is in.
     if (path === "/inference/connections") {
-      return route.fulfill({ json: { items: [], total: 0 } });
+      const items = suggestible ? [READY_SAM] : [];
+      return route.fulfill({ json: { items, total: items.length } });
+    }
+    if (path === "/inference/suggest" && request.method() === "POST") {
+      // `SuggestionOut`: a `model_ref` and a `region` that wraps the geometry
+      // beside the score. A flatter shape is refused by the generated runtime
+      // check, which reads as "the server answered something this app does not
+      // recognise" and looks nothing like a stub bug.
+      return route.fulfill({
+        json: {
+          model_ref: "facebook/sam2-hiera-base-plus@main",
+          region: {
+            geometry: { type: "bbox", x: 100, y: 100, width: 80, height: 60 },
+            confidence: 0.91,
+          },
+        },
+      });
     }
     return route.fulfill({ status: 500, json: { code: "NO_STUB", message: path } });
   });
@@ -353,8 +396,9 @@ async function openJob(
   lifecycle?: Lifecycle,
   size?: SchemaSize,
   seeded?: readonly Record<string, unknown>[],
+  suggestible?: boolean,
 ): Promise<void> {
-  await serveApi(page, sent, progress, lifecycle, size, seeded);
+  await serveApi(page, sent, progress, lifecycle, size, seeded, suggestible);
   await page.goto(`/jobs/${JOB}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
@@ -2720,6 +2764,60 @@ test("the no-connection panel now has somewhere to send you (#424 D6)", async ({
   await page.getByTestId("suggest-configure").click();
   await expect(page).toHaveURL(/\/inference$/);
   await expect(page.getByTestId("inference-screen")).toBeVisible();
+});
+
+/**
+ * The stage surround is not the asset — and this claim needs a browser, because
+ * jsdom has no surround.
+ *
+ * The pane spans the whole stage while the picture is fitted inside it with
+ * padding, so there is a margin around the image that is still the input
+ * surface. In jsdom every rectangle is zero, so that margin does not exist and a
+ * component test asserting anything about it would be asserting about nothing.
+ * Here the two rectangles are measured and the press is put between them.
+ *
+ * Run at a **non-default zoom**, because the rule has to be applied in asset
+ * pixels: one written against screen coordinates would pass at the fitted scale
+ * and refuse half the picture at any other.
+ */
+test("a suggest click in the margin around the picture asks nothing, at any zoom", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+
+  await page.getByTestId("tool-suggest").click();
+  await expect(page.getByTestId("suggest-idle")).toBeVisible();
+
+  // Off the fitted scale, so nothing below can be true by accident of zoom 1.
+  await page.getByTestId("zoom-in").click();
+  await expect(page.getByTestId("zoom-readout")).not.toHaveText("100%");
+
+  const asks = (): Request[] =>
+    sent.filter((r) => r.method() === "POST" && r.url().endsWith("/inference/suggest"));
+
+  // The `<svg>` is laid out at the asset's own size inside the scaled wrapper,
+  // so its box on screen *is* the picture's rectangle.
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  const pane = (await page.getByTestId("annotator-pane").boundingBox())!;
+  // The fit leaves room on at least one axis, and this test is meaningless
+  // without it — so it is asserted rather than assumed.
+  expect(picture.x).toBeGreaterThan(pane.x + 2);
+
+  // Left of the picture and inside the pane: on the stage, off the asset.
+  await page.mouse.click((pane.x + picture.x) / 2, picture.y + picture.height / 2);
+  // Nothing to wait for, so the absence is given a chance to be wrong: a press
+  // that *did* ask would have its request logged well inside this.
+  await expect(page.getByTestId("suggest-idle")).toBeVisible();
+  expect(asks()).toHaveLength(0);
+  await expect(page.getByTestId("suggestion-shape")).toHaveCount(0);
+
+  // The same gesture on the picture itself, so the absence above is a rule and
+  // not a broken fixture.
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+  expect(asks()).toHaveLength(1);
 });
 
 /**

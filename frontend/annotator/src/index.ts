@@ -63,6 +63,7 @@ export {
   clampPoint,
   closestPointOnSegment,
   distance,
+  withinBounds,
   type Bounds,
 } from "./core/geometry/primitives";
 export {

@@ -268,15 +268,27 @@ async function arm(): Promise<void> {
   await screen.findByTestId("suggest-panel");
 }
 
-/** One press on the canvas. `alt` is D2's negative point. */
-function clickCanvas(alt = false): void {
+/**
+ * One press on the canvas, at a client position.
+ *
+ * jsdom's rect is all zeros and the initial view is identity, so a client
+ * coordinate here **is** an asset coordinate — which is what lets a test place a
+ * press inside or outside a 640 × 480 frame without any layout. `alt` is D2's
+ * negative point.
+ */
+function clickCanvasAt(clientX: number, clientY: number, alt = false): void {
   fireEvent.pointerDown(screen.getByTestId("annotator-pane"), {
     button: 0,
-    clientX: 100,
-    clientY: 100,
+    clientX,
+    clientY,
     altKey: alt,
     pointerId: 1,
   });
+}
+
+/** One press well inside the asset. `alt` is D2's negative point. */
+function clickCanvas(alt = false): void {
+  clickCanvasAt(100, 100, alt);
 }
 
 /** Every suggest request that has left, newest last. */
@@ -485,6 +497,104 @@ describe("a click asks the model", () => {
 
     await waitFor(() => expect(asks()).toHaveLength(1));
     expect(screen.getByTestId("object-total").textContent).toBe("0 objects");
+  });
+});
+
+/**
+ * The stage surround is not the asset.
+ *
+ * The pane spans the whole viewport on purpose, so a press in the margin around
+ * the picture reaches the adapter with a coordinate outside the frame. A *drag*
+ * wants that — "make the box this big" survives leaving the picture. A prompt
+ * point cannot use it: there is nothing under the margin to segment.
+ *
+ * Before this, such a press was a prompt like any other. Measured on the fixture
+ * below: a click at (900, 700) on a 640 × 480 asset sent
+ * `positive: [{"x":900,"y":700}]`, painted a dot there, and drew whatever came
+ * back.
+ */
+describe("a press outside the asset is not a prompt", () => {
+  it("sends nothing and shows nothing", async () => {
+    await open();
+    await arm();
+
+    clickCanvasAt(900, 700);
+
+    // Waited on rather than asserted immediately, so this cannot pass merely by
+    // reading the log before a request had time to leave.
+    await waitFor(() => expect(screen.getByTestId("suggest-idle")).toBeTruthy());
+    expect(asks()).toHaveLength(0);
+    expect(screen.queryByTestId("suggestion-shape")).toBeNull();
+  });
+
+  it("swallows a negative press the same way", async () => {
+    await open();
+    await arm();
+
+    clickCanvasAt(-5, 200, true);
+
+    await waitFor(() => expect(screen.getByTestId("suggest-idle")).toBeTruthy());
+    expect(asks()).toHaveLength(0);
+  });
+
+  it("records no point, so the next real click is still the first one", async () => {
+    await open();
+    await arm();
+    clickCanvasAt(900, 700);
+    clickCanvasAt(320, -40);
+
+    clickCanvas();
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    // One point, not three. A dropped press that had quietly accumulated would
+    // send the model two coordinates nobody clicked on.
+    expect(asks()[0]["positive"]).toHaveLength(1);
+    expect(asks()[0]["negative"]).toEqual([]);
+  });
+
+  it("leaves a preview that is already showing exactly where it is", async () => {
+    await open();
+    await arm();
+    clickCanvas();
+    await screen.findByTestId("suggestion-shape");
+
+    clickCanvasAt(900, 700);
+
+    // Not a refine, and not a discard either: nothing happened at all, so the
+    // shape a person was about to accept is still there and still acceptable.
+    expect(screen.getByTestId("suggestion-shape")).toBeTruthy();
+    expect(asks()).toHaveLength(1);
+  });
+
+  it("counts the asset's own edge as inside", async () => {
+    await open();
+    await arm();
+
+    // The last row of pixels is part of the picture; a rule that excluded it
+    // would make the border a place where a press silently stopped working.
+    clickCanvasAt(640, 480);
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+  });
+
+  it("asks in asset pixels, so the same screen position changes answer under zoom", async () => {
+    await open();
+    await arm();
+
+    // Outside at 1x: the asset is 640 wide and this is 700.
+    clickCanvasAt(700, 100);
+    await waitFor(() => expect(screen.getByTestId("suggest-idle")).toBeTruthy());
+    expect(asks()).toHaveLength(0);
+
+    // The same screen position, one zoom step in. jsdom's pane measures zero, so
+    // zooming about its centre leaves the pan at the origin and 700 screen
+    // pixels is now 560 asset pixels — inside. A bounds check written against
+    // screen coordinates would still refuse it.
+    await userEvent.click(screen.getByTestId("zoom-in"));
+    clickCanvasAt(700, 100);
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    expect(asks()[0]["positive"]).toEqual([{ x: 560, y: 80 }]);
   });
 });
 

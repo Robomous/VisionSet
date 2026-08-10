@@ -72,7 +72,6 @@
 import {
   annotationsInDrawOrder,
   classNamed,
-  confidencePercent,
   hotkeyForClass,
   isTaggableClass,
   randomUuid,
@@ -383,13 +382,21 @@ function TagStrip({
 }
 
 /**
- * What a model produced, and how sure it was — on the rows that have one.
+ * That a model produced this one — on the rows that have one, and nothing more.
  *
  * Renders nothing at all for a person's work. That is the whole of the design:
  * accepting a predicted box is the act that most needs the reviewer to know what
  * they are accepting, and the *common* path is a label somebody drew, which
  * earns no badge. Absence is the human case, so the row a reviewer sees a
  * thousand times is exactly the row that shipped.
+ *
+ * **The confidence is deliberately not here.** It is a decision aid for
+ * accept-or-reject and it stops being one once the shape is accepted; a column
+ * of percentages down a settled list invites a reviewer to sort by a number
+ * that means different things per capability — a point-prompted mask score and
+ * a detection's prompt affinity are not the same quantity. Where the number
+ * does belong is the batch review loop, and it will be named there. In the
+ * editor it appears on the live suggestion preview alone.
  *
  * Never colour alone: the glyph carries it, and the accessible name says it in
  * words, so neither a monochrome screen nor a screen reader depends on the
@@ -408,32 +415,17 @@ function ModelMark({
   readonly index: number;
 }): JSX.Element | null {
   if (annotation.provenance !== "model") return null;
-  // `confidencePercent`, not a local `toFixed` — the canvas writes the same
-  // quantity beside the same annotation, and DESIGN.md's rule for `classColor`
-  // is the rule here too: ui-core imports the answer, it does not respell it.
-  const score = annotation.confidence === null ? null : confidencePercent(annotation.confidence);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span
           data-testid={`object-model-${index}`}
-          // The score is the sighted reading; the label is the whole sentence,
-          // because a glyph and a bare number are not self-describing.
-          aria-label={
-            score === null
-              ? `Model-produced by ${annotation.model_ref ?? "an unnamed model"}`
-              : `Model-produced by ${annotation.model_ref ?? "an unnamed model"}, confidence ${score}`
-          }
-          className="flex shrink-0 items-center gap-0.5 text-meta text-muted-foreground"
+          // The glyph is the sighted reading; the label is the claim in words,
+          // because a sparkle is not self-describing.
+          aria-label={`Model-produced by ${annotation.model_ref ?? "an unnamed model"}`}
+          className="flex shrink-0 items-center text-meta text-muted-foreground"
         >
           <Sparkles className="size-3" aria-hidden="true" />
-          {score !== null && (
-            // Tabular figures, so a column of scores does not jitter as the
-            // selection moves down it — DESIGN.md's Numbers rule.
-            <span className="tabular-nums" data-testid={`object-confidence-${index}`}>
-              {score}
-            </span>
-          )}
         </span>
       </TooltipTrigger>
       {/* The full reference, which is far too long for the row and is exactly
