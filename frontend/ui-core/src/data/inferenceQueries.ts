@@ -202,7 +202,7 @@ export function useCreateConnection() {
   return useMutation({
     mutationFn: async (input: ConnectionInput): Promise<Connection> =>
       unwrap(
-        await client.POST("/inference/connections", { body: bodyOf(input) }),
+        await client.POST("/inference/connections", { body: createBodyOf(input) }),
         checkCreateInferenceConnection,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: inferenceKeys.connections() }),
@@ -351,24 +351,37 @@ export function useDownloadSize(
 }
 
 /**
- * One shape into the wire's two, with the kind deciding which fields travel.
+ * One form's shape into the wire's, with the kind deciding which fields travel.
  *
  * The domain refuses a `local` connection carrying an `endpoint_url` and an
  * `http` one carrying a device — both halves, not just the required one — so
  * sending everything the form holds would turn a filled-in field somebody
  * switched away from into a 422 they cannot see the cause of.
+ *
+ * This is the edit body exactly; a create adds the kind on top.
  */
 function bodyOf(input: ConnectionInput) {
   const local = input.connectionType === "local";
   return {
     name: input.name,
-    connection_type: input.connectionType,
     model_id: input.modelId,
     model_revision: input.modelRevision,
     device: local ? (input.device ?? null) : null,
     precision: local ? (input.precision ?? null) : null,
     endpoint_url: local ? null : (input.endpointUrl ?? null),
   };
+}
+
+/**
+ * The create body: everything the edit sends, plus the kind.
+ *
+ * `ConnectionUpdate` does not declare `connection_type` — the kind is not
+ * editable — and both request models refuse a field they do not declare, so the
+ * two bodies cannot be one. Sending the kind on a PATCH is a 422 the form has
+ * nothing useful to say about, since nobody asked to change it.
+ */
+function createBodyOf(input: ConnectionInput) {
+  return { ...bodyOf(input), connection_type: input.connectionType };
 }
 
 /** What a suggest call needs beyond the points: whose asset, and through what. */

@@ -232,6 +232,40 @@ def test_a_request_naming_no_geometry_kinds_is_unprocessable(
     assert answer.status_code == 422
 
 
+def test_an_unknown_field_on_the_request_is_unprocessable(client: TestClient, project: str) -> None:
+    """`SuggestRequest` forbids unknown fields, as every other request model does.
+
+    A gesture is the one call a client is most likely to grow a field on — a
+    threshold, a hint, a mode — and accepting one this build does not implement
+    would answer 200 having ignored it.
+    """
+    answer = client.post(
+        "/inference/suggest",
+        json={
+            "project_id": project,
+            "asset_id": str(uuid4()),
+            "connection_id": str(uuid4()),
+            "positive": [{"x": 32.0, "y": 32.0}],
+            "negative": [],
+            "allowed_geometries": ["polygon"],
+            "threshold": 0.5,
+        },
+    )
+    assert answer.status_code == 422, answer.text
+
+
+def test_an_unknown_field_on_a_point_is_unprocessable(client: TestClient, project: str) -> None:
+    """`SuggestPoint` too: it is nested, and the rule is about the shape not the route."""
+    answer = ask(
+        client,
+        project=project,
+        asset=str(uuid4()),
+        connection=str(uuid4()),
+        positive=[{"x": 32.0, "y": 32.0, "z": 1.0}],
+    )
+    assert answer.status_code == 422, answer.text
+
+
 # --- the answer ---------------------------------------------------------------
 
 
