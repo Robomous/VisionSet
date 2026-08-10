@@ -195,11 +195,18 @@ Coral appears in the product in exactly two places, and adding a third is a desi
 decision rather than a styling one — raise it in review, do not put it in a diff:
 
 1. **The wordmark** in the rail (`frontend/app/src/shell/AppShell.tsx`).
-2. **The ingest progress bar's fill** (`Progress` in `frontend/ui-core/src/primitives/Feedback.tsx`).
+2. **The `Progress` primitive's fill** (`frontend/ui-core/src/primitives/Feedback.tsx`) — the
+   ingest bar, the weight download's, and any bar that comes after them.
 
 A progress bar is the one piece of chrome a person watches rather than reads, which is
 where the coral buys attention instead of spending it. The styleguide shows a `brand`
 swatch as well — a styleguide is where a value is inspected, not where it is used.
+
+The second entry names the **primitive** rather than one of its callers, and the recorded
+reason is why: it argues about what a progress bar *is*, not about which screen has one. A
+rule phrased as *the ingest bar* would make the weight download's bar look like the third
+site this list forbids, and the honest reading — one component, used twice — would have had
+to be argued from scratch every time a bar appeared.
 
 To check the invariant:
 
@@ -207,7 +214,14 @@ To check the invariant:
 git grep -nE '\b(bg|text|border|ring|fill|stroke)-brand\b' -- frontend
 ```
 
-Three hits is the expected state: the two above, plus the styleguide swatch.
+Four lines match and **three of them are usages**: the two above, plus the styleguide
+swatch. The fourth is the `--color-brand` comment in `frontend/ui-core/src/styles.css`,
+which states this rule rather than applying it, and which says the same two sites this list
+does.
+
+Three stays three however many bars there are, because the fill lives inside the primitive
+and a second caller adds no occurrence of its own — which is exactly what makes the
+invariant checkable by this grep after the change above.
 
 ### One filled button per view
 

@@ -96,6 +96,32 @@ export type ConnectionType = components["schemas"]["ConnectionType"];
 export type ConnectionSetupState = components["schemas"]["ConnectionSetupState"];
 export type Precision = components["schemas"]["Precision"];
 export type DownloadSizeOut = components["schemas"]["DownloadSizeOut"];
+export type WeightDownload = components["schemas"]["WeightDownloadOut"];
+
+/**
+ * Whether this connection's weights are arriving right now.
+ *
+ * Named for the *live* states rather than for the settled ones, which is the
+ * opposite of `usePollingQuery`'s rule and is deliberate: there, the terminal
+ * states are the enumerated ones and a predicate written the other way round
+ * would silently keep polling something added later. Here the live pair is what
+ * the domain enumerates — a job is `queued` then `running` and everything else is
+ * an ending — so this is the set that cannot grow without a kernel change.
+ */
+export function isDownloading(connection: Connection): boolean {
+  const state = connection.download?.state;
+  return state === "queued" || state === "running";
+}
+
+/**
+ * How often the connection list is re-read while a transfer is in flight.
+ *
+ * The same two seconds `DEFAULT_POLL_MS` uses, and for its stated reason: under
+ * the threshold where a person decides nothing is happening, and slow enough not
+ * to compete with the work being measured. The worker writes progress at most
+ * twice this often, so a faster poll would read the same number twice.
+ */
+export const DOWNLOAD_POLL_MS = 2_000;
 
 export const inferenceKeys = {
   connections: () => ["inference", "connections"] as const,
@@ -116,6 +142,22 @@ export const inferenceKeys = {
  * Unfiltered on purpose: "none configured" and "one configured but its weights
  * are not here" are different sentences with different remedies, and a filtered
  * list would make them look identical.
+ *
+ * ## Why this polls, and only sometimes
+ *
+ * A weight download is a background job the server owns, and the wire says how
+ * far it has got — so a screen showing one has to re-read something. It re-reads
+ * *this*, because the connection is where the download lives: nothing has to
+ * remember a job id, and a page that arrives mid-transfer sees it on its first
+ * fetch. Recovery after a navigation, a reload or a fresh tab is then a property
+ * of the shape rather than a feature anybody wrote.
+ *
+ * The interval is a function of the answer, which is what stops it: `false` the
+ * moment no row reports a live transfer, and `false` before the first one lands.
+ * That last part is where this departs from `usePollingQuery`, which keeps asking
+ * when it has no data — the right rule for a job somebody is waiting on, and the
+ * wrong one here, because this list is also the annotator's read and a broken
+ * endpoint would be polled forever behind a screen that never asked for one.
  */
 export function useConnections(enabled = true): UseQueryResult<ConnectionPage, Error> {
   const client = useApiClient();
@@ -124,6 +166,14 @@ export function useConnections(enabled = true): UseQueryResult<ConnectionPage, E
     enabled,
     queryFn: async () =>
       unwrap(await client.GET("/inference/connections", {}), checkListInferenceConnections),
+    refetchInterval: (query) => {
+      const page = query.state.data;
+      if (page === undefined) return false;
+      return page.items.some(isDownloading) ? DOWNLOAD_POLL_MS : false;
+    },
+    // A download started and left to run is the ordinary way this is used, so a
+    // backgrounded tab must not come back to a bar frozen where it was hidden.
+    refetchIntervalInBackground: true,
   });
 }
 

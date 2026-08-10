@@ -28,7 +28,7 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { InferenceScreen, bytes } from "./InferenceScreen";
 import { CURATED_MODELS, DEFAULT_MODEL } from "./inferenceCatalog";
-import type { Connection } from "../data/inferenceQueries";
+import { DOWNLOAD_POLL_MS, type Connection } from "../data/inferenceQueries";
 
 const API = "http://visionset.test";
 
@@ -115,6 +115,31 @@ function listing(rows: readonly Connection[]): void {
     status: 200,
     body: { items: rows, total: rows.length },
   });
+}
+
+/**
+ * The transfer a connection reports, as the wire spells it.
+ *
+ * A helper rather than a literal per test for `connection`'s reason: every field
+ * is required on the wire, and the generated runtime check refuses a response
+ * missing one — which renders as this screen's error card and reads as a
+ * component bug rather than as a stub that lied.
+ */
+type WeightDownload = NonNullable<Connection["download"]>;
+
+function downloadOf(
+  state: WeightDownload["state"],
+  done: number,
+  total: number | null,
+  error: string | null = null,
+): WeightDownload {
+  return {
+    job_id: "44444444-4444-4444-8444-444444444444",
+    state,
+    bytes_done: done,
+    bytes_total: total,
+    error,
+  };
 }
 
 function job(state: string, processed = 0, total: number | null = null): unknown {
@@ -246,13 +271,62 @@ it("renders a refused download as prose carrying the install command", async () 
   expect(shown.textContent).toContain('pip install "visionset[local-inference]"');
 });
 
-it("watches the job a download hands back", async () => {
-  listing([connection()]);
-  on("POST", /\/download$/, { status: 202, body: job("queued") });
-  on("GET", /^\/background-jobs\/job-1$/, { status: 200, body: job("running", 2, 5) });
+it("shows a transfer nobody on this page started", async () => {
+  // The whole point of the download living on the connection. Nothing is clicked
+  // here: the screen mounts onto a workspace where a download is already running,
+  // which is what a reload, a second tab, or a return visit looks like — and what
+  // used to render as `Not set up` beside a button somebody had already pressed.
+  listing([connection({ download: downloadOf("running", 400_000_000, 1_600_000_000) })]);
   render(mount(<InferenceScreen />));
-  await userEvent.click(await screen.findByTestId("download-weights"));
-  expect((await screen.findByTestId("download-progress")).textContent).toContain("2 of 5");
+
+  const shown = await screen.findByTestId("download-progress-prose");
+  expect(shown.textContent).toBe("400.0 MB of 1.6 GB · 25%");
+  expect(screen.getByTestId("download-bar").getAttribute("aria-valuenow")).toBe("25");
+  // And it did so without asking about a job at all.
+  expect(sent.some((one) => one.url.includes("/background-jobs/"))).toBe(false);
+});
+
+it("names the queue rather than drawing a bar that has not moved", async () => {
+  listing([connection({ download: downloadOf("queued", 0, null) })]);
+  render(mount(<InferenceScreen />));
+
+  expect((await screen.findByTestId("download-progress-prose")).textContent).toContain("Queued");
+  // A worker has not touched it, so there is no total either.
+  expect(screen.queryByTestId("download-bar")).toBeNull();
+});
+
+it("names the phase after the bytes rather than sitting full", async () => {
+  // A download ends by reading what arrived and recording the connection ready,
+  // so every byte can be here while the job is still running. A full bar with no
+  // sentence reads as a stall.
+  listing([connection({ download: downloadOf("running", 1_600_000_000, 1_600_000_000) })]);
+  render(mount(<InferenceScreen />));
+
+  expect((await screen.findByTestId("download-progress-prose")).textContent).toBe(
+    "Checking what arrived…",
+  );
+  expect(screen.getByTestId("download-bar").getAttribute("data-phase")).toBe("settling");
+});
+
+it("draws no bar when the published size could not be read", async () => {
+  // Sizing reaches the hub's listing and the transfer reaches its files, so one
+  // can fail while the other runs. `Progress` renders an indeterminate value as
+  // an empty track, which would read as 0% — a lie in the one case where the
+  // truth is "this is going, and nobody can say how far".
+  listing([connection({ download: downloadOf("running", 700_000_000, null) })]);
+  render(mount(<InferenceScreen />));
+
+  const shown = await screen.findByTestId("download-progress-prose");
+  expect(shown.textContent).toContain("700.0 MB so far");
+  expect(shown.textContent).toContain("could not be read");
+  expect(screen.queryByTestId("download-bar")).toBeNull();
+});
+
+it("shows no progress for a connection that has never been downloaded", async () => {
+  listing([connection()]);
+  render(mount(<InferenceScreen />));
+  await screen.findByTestId("connections-table");
+  expect(screen.queryByTestId("download-progress")).toBeNull();
 });
 
 // --- creating ------------------------------------------------------------------
@@ -562,47 +636,61 @@ it("shows a curated model at another revision as a custom connection", async () 
 
 // --- the download's whole life --------------------------------------------------
 
-it("refreshes the row when the job finishes, with no reload", async () => {
-  // The bug this closes: the `202` invalidated the list, and nothing invalidated
-  // it again when the work actually finished — so the row sat at `Not set up`
-  // until the page was reloaded.
-  let ready = false;
+it("follows a transfer to its end with no reload and no click", async () => {
+  // The bug this closes twice over: the `202` invalidated the list and nothing
+  // invalidated it again when the work finished, so the row sat at `Not set up`
+  // until somebody reloaded — and the only thing watching was a job id this page
+  // had to have launched itself.
+  //
+  // Now the list re-reads itself while the wire says a transfer is live, and
+  // stops when it says one is not. The screen never asks about a job.
+  let reads = 0;
   handlers.push((request) => {
     if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
-    const row = ready
-      ? connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] })
-      : connection();
+    reads += 1;
+    const row =
+      reads < 2
+        ? connection({ download: downloadOf("running", 800_000_000, 1_600_000_000) })
+        : connection({
+            setup_state: "ready",
+            allowed_actions: ["download_weights", "update", "delete"],
+            download: downloadOf("succeeded", 1_600_000_000, 1_600_000_000),
+          });
     return { status: 200, body: { items: [row], total: 1 } };
   });
-  on("POST", /\/download$/, { status: 202, body: job("queued") });
-  handlers.push((request) => {
-    if (!request.url.includes("/background-jobs/")) return;
-    // The job settles, and the row it moved is what the next listing answers.
-    ready = true;
-    return { status: 200, body: job("succeeded", 1, 1) };
-  });
 
   render(mount(<InferenceScreen />));
-  await userEvent.click(await screen.findByTestId("download-weights"));
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-status").textContent).toContain("Ready"),
+  expect((await screen.findByTestId("download-progress-prose")).textContent).toContain("50%");
+
+  await waitFor(
+    () => expect(screen.getByTestId("connection-status").textContent).toContain("Ready"),
+    { timeout: 5_000 },
   );
-  // And the row's control follows the state it is now in.
+  // The bar goes with the transfer: the row's own status is the success treatment.
+  expect(screen.queryByTestId("download-progress")).toBeNull();
   expect(screen.queryByTestId("download-weights")).toBeNull();
-});
+  expect(sent.some((one) => one.url.includes("/background-jobs/"))).toBe(false);
+
+  // And the poll stops, rather than re-reading a list nothing is moving.
+  const settled = reads;
+  await new Promise((done) => setTimeout(done, DOWNLOAD_POLL_MS * 1.5));
+  expect(reads).toBe(settled);
+}, 15_000);
 
 it("surfaces a failed download as prose, and leaves the same action as the retry", async () => {
-  listing([connection()]);
-  on("POST", /\/download$/, { status: 202, body: job("queued") });
-  on("GET", /^\/background-jobs\/job-1$/, {
-    status: 200,
-    body: {
-      ...(job("failed") as Record<string, unknown>),
-      error: "could not fetch facebook/sam2.1-hiera-base-plus at b73207: the connection was lost",
-    },
-  });
+  // Read off the row, so a transfer that died while nobody was watching still has
+  // its sentence when somebody comes back to the screen. Nothing is clicked here.
+  listing([
+    connection({
+      download: downloadOf(
+        "failed",
+        300_000_000,
+        1_600_000_000,
+        "could not fetch facebook/sam2.1-hiera-base-plus at b73207: the connection was lost",
+      ),
+    }),
+  ]);
   render(mount(<InferenceScreen />));
-  await userEvent.click(await screen.findByTestId("download-weights"));
 
   const shown = await screen.findByTestId("download-error");
   expect(shown.textContent).toContain("the connection was lost");
