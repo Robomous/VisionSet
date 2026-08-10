@@ -2831,3 +2831,63 @@ test("Save and stay teaches its chord in a tooltip now the keycap is gone", asyn
   // half that does not move.
   await expect(tip).toContainText(/Save and stay \((⌘|Ctrl)S\)/);
 });
+
+/**
+ * Saving must not move the camera.
+ *
+ * The viewport is `AnnotatorCanvas`'s own state and only a real browser has one:
+ * jsdom's `getBoundingClientRect` answers all zeros, so there is no fit to
+ * disturb, no wheel notch to apply and no pan to measure. A component test for
+ * this would pass with the bug fully present.
+ *
+ * Both halves are read at once off the `<svg>`'s box, which is `_frame.ts`'s own
+ * idiom: the element is laid out at the asset's native size inside the
+ * `translate(pan) scale(zoom)` wrapper, so its on-screen rect folds zoom, pan and
+ * the pane's origin into one measurement. The readout is asserted beside it
+ * because a zoom that survived while the pan did not would otherwise read as a
+ * pass.
+ */
+test("saving leaves the viewport exactly where it was", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const pane = (await page.getByTestId("annotator-pane").boundingBox())!;
+
+  // Off the fitted view in both dimensions: a wheel notch over a point that is
+  // not the pane's centre changes the zoom *and* the pan, and the secondary drag
+  // after it moves the pan again on its own.
+  await page.mouse.move(pane.x + pane.width * 0.35, pane.y + pane.height * 0.35);
+  await page.mouse.wheel(0, -600);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(pane.x + pane.width * 0.55, pane.y + pane.height * 0.5, { steps: 8 });
+  await page.mouse.up({ button: "right" });
+
+  const zoomBefore = await page.getByTestId("zoom-readout").textContent();
+  expect(zoomBefore).not.toBe("100%");
+  const frameBefore = (await canvas.boundingBox())!;
+
+  // Something to actually store — a save with an empty plan sends no request and
+  // rebuilds nothing, so a clean frame could not reproduce this at all.
+  await drawOneUnsavedBox(page);
+  await page.getByTestId("save-and-stay").click();
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+  // The refetch the save triggers is what rebuilds the store; wait for the
+  // rebuilt document rather than for the button, or the assertion below can run
+  // in the window before the camera has been moved.
+  await expect(page.getByTestId("object-total")).toContainText("1 object");
+
+  expect(await page.getByTestId("zoom-readout").textContent()).toBe(zoomBefore);
+  const frameAfter = (await canvas.boundingBox())!;
+  expect({
+    x: Math.round(frameAfter.x),
+    y: Math.round(frameAfter.y),
+    width: Math.round(frameAfter.width),
+    height: Math.round(frameAfter.height),
+  }).toEqual({
+    x: Math.round(frameBefore.x),
+    y: Math.round(frameBefore.y),
+    width: Math.round(frameBefore.width),
+    height: Math.round(frameBefore.height),
+  });
+});
