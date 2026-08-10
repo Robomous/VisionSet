@@ -341,9 +341,17 @@ def test_configuring_a_connection_reaches_no_model_runtime() -> None:
     the kernel. Asserted as an import-graph fact because that is
     what "creating a connection downloads nothing" actually rests on — a mocked
     call would prove only that this test did not download anything.
+
+    Read at the source, which is the whole of what a test sharing a process with
+    the rest of the suite can honestly ask. The transitive half — that nothing
+    this module reaches drags a runtime in behind it — is a fact about
+    `sys.modules`, and `sys.modules` belongs to the run rather than to this test:
+    where the runtime is installed, any earlier test that imports it for its own
+    reasons has already decided the answer. That half lives in
+    `tests/architecture/test_optional_runtime.py`, asked in an interpreter that
+    has imported nothing else, and it does not belong back here.
     """
     import ast
-    import sys
 
     from visionset.kernel.services import inference_connection_service as module
 
@@ -357,10 +365,6 @@ def test_configuring_a_connection_reaches_no_model_runtime() -> None:
 
     runtimes = {"torch", "transformers", "huggingface_hub", "httpx", "requests", "urllib"}
     assert not imported & runtimes
-    # And nothing it *did* import dragged one in behind it. Importing this
-    # module is what a caller does before creating a connection, so this is the
-    # "creating a connection downloads nothing" claim at its narrowest.
-    assert not {"torch", "transformers", "huggingface_hub"} & set(sys.modules)
 
 
 # --- what kind of model a connection points at --------------------------------

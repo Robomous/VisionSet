@@ -92,10 +92,10 @@ FETCHED_BYTES = 4_000_000_000
 def _the_config_read_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
     """A finished download reads the model's config; here it does not.
 
-    Nothing in this file is about what a config says, and the real read imports
-    ``transformers`` — which ``test_configuring_a_connection_reaches_no_model_runtime``
-    asserts a full-suite process has not done. An unfaked read would fail that
-    test, in another directory, in a run whose order decided it.
+    Nothing in this file is about what a config says, and the real read pulls in
+    the whole optional runtime to answer — seconds of import, spent only on the
+    machines carrying the extra and not on the ones without. Faked, this file
+    costs and asserts the same in both halves of the matrix.
     """
     monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: DOWNLOADED_FAMILY)
 
