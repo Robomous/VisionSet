@@ -87,11 +87,9 @@ FETCHED_BYTES = 4_000_000_000
 def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[str, Path]]:
     """Record the download's arguments and write nothing.
 
-    The config read that follows the download is faked here too, and not only
-    for speed: the real one imports ``transformers``, and
-    ``test_configuring_a_connection_reaches_no_model_runtime`` asserts that a
-    full-suite process has not imported it. A fixture that dragged it in would
-    fail a test three directories away, in a run whose order decided it.
+    The config read that follows the download is faked here too: the real one
+    pulls in the whole optional runtime to answer a question none of these tests
+    ask, against a snapshot the faked download never wrote.
     """
     seen: list[tuple[str, Path]] = []
 

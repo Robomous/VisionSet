@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 from visionset.inference import MODULES
 
@@ -81,6 +82,53 @@ assert not loaded, f"building the application pulled in the optional runtime: {{
     assert result.returncode == 0, result.stderr
 
 
+def test_configuring_a_connection_loads_none_of_it_either(tmp_path: Path) -> None:
+    """The kernel's connection service, driven for real in an interpreter of its own.
+
+    "Creating a connection downloads nothing" is the boundary the inference slice
+    exists to draw, and the honest form of it is transitive: not merely that the
+    service names no runtime, but that nothing it reaches names one either. A
+    caller does not stop at importing the module — it opens a workspace and
+    writes a row — so the probe does that, and asks the question afterwards.
+
+    **A fresh interpreter is not a stylistic choice here.** `sys.modules` is
+    process-global, so in the suite's own process the answer is decided by
+    whatever ran earlier: with the extra installed, the inference tests import the
+    runtime legitimately, long before a test in `tests/kernel` could ask. Asked in
+    a process that has imported nothing else, the same assertion answers about the
+    code instead of about the collection order.
+    """
+    probe = f"""
+import sys
+from pathlib import Path
+
+from visionset.kernel.domain import ConnectionType
+from visionset.kernel.services import InferenceConnectionService, WorkspaceService
+
+workspace = WorkspaceService.init(Path({str(tmp_path / "ws")!r}), name="inference")
+try:
+    connections = InferenceConnectionService(workspace)
+    made = connections.create(
+        "local",
+        connection_type=ConnectionType.LOCAL,
+        model_id="some/model",
+        model_revision="abc123",
+        device="cpu",
+        precision="fp32",
+    )
+    connections.get(made.id)
+    connections.list()
+finally:
+    workspace.close()
+
+forbidden = {set(MODULES)}
+loaded = forbidden & set(sys.modules)
+assert not loaded, f"configuring a connection pulled in the optional runtime: {{loaded}}"
+"""
+    result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
 def test_the_extra_is_declared_with_exactly_the_modules_the_guard_names() -> None:
     """The metadata and the guard say the same thing, or one of them is lying.
 
@@ -93,7 +141,6 @@ def test_the_extra_is_declared_with_exactly_the_modules_the_guard_names() -> Non
     `huggingface_hub`.
     """
     import tomllib
-    from pathlib import Path
 
     metadata = tomllib.loads(
         (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
