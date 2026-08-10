@@ -86,6 +86,15 @@ with the optional runtime absent, and
 [`tests/architecture/test_optional_runtime.py`](../../../tests/architecture/test_optional_runtime.py)
 proves it in a fresh interpreter.
 
+**That proof needs an environment where the libraries are actually installed.**
+On a machine without them, "importing the product left torch out of `sys.modules`"
+is true whatever the code does, so the assertion passes and says nothing. CI's
+`inference-smoke` job is where it means something: it installs the extra from the
+lockfile and runs this file among the rest of the inference surface. The two
+halves of that matrix, and the environment variable that keeps the with-runtime
+half honest, are described in
+[CONTRIBUTING](../../../CONTRIBUTING.md#the-two-halves-of-the-inference-matrix).
+
 The optional dependency group is `local-inference`; `_extra.py` names what it
 brings and turns a missing one into a sentence carrying the install command.
 

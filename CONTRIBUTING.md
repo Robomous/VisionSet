@@ -133,7 +133,7 @@ file and read it (`uv run pytest -q > /tmp/out.log 2>&1; echo $?`), or use the s
 above.
 
 The table below is the full list, and it is still wider than the script: the wheel build,
-the 30-minute flow, the format smoke tests and the annotator benchmark are left to CI or to
+the 30-minute flow, the two smoke suites and the annotator benchmark are left to CI or to
 a deliberate manual run, because each costs minutes or needs its own install.
 
 | Check | Command | In `check.sh` |
@@ -153,6 +153,7 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | Wire action rosters | part of `pnpm test` — `tests/scripts/wire_rosters.test.mjs` compares the two transcriptions of `allowed_actions` (`ui-core`'s `testing/wire.fixtures.ts` and the e2e suite's `_wire.ts`) in both directions. Only the first is typed against the generated union, so the second can drift silently; when it did, the failure surfaced as every gallery spec timing out. It proves the two agree with each other, not that either agrees with the kernel — see #358 | part of `frontend` |
 | Docs links | part of `pnpm test` — `tests/scripts/docs_links.test.mjs` resolves every internal link and every `#anchor` in all 46 tracked Markdown files (266 links, 551 headings), naming the file, line and dead fragment. External URLs are ignored on purpose: a gate that fails for somebody else's rate limit is one people re-run rather than read. Renaming a heading breaks inbound anchors *silently* — the link just lands at the top of the page — which was a near miss during the `visionset ui` → `visionset server` rename (#329) | part of `frontend` |
 | Format smoke (ultralytics, pycocotools) | `uv sync --group yolo --group coco && uv run pytest tests/formats/test_*_smoke.py` — their own groups because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run only those files and `uv sync` again afterwards; skips without them, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` / `VISIONSET_REQUIRE_PYCOCOTOOLS=1` so a broken install goes red | — CI |
+| Inference smoke (local-inference extra) | `uv sync --extra local-inference` then `VISIONSET_REQUIRE_LOCAL_INFERENCE=1 uv run pytest tests/inference tests/architecture/test_optional_runtime.py tests/server/test_inference.py tests/server/test_suggest.py tests/cli/test_inference_commands.py tests/jobs/test_weights_job.py -rs`, and `uv sync` again afterwards. The **with-runtime** half of the matrix — see [the two halves](#the-two-halves-of-the-inference-matrix) below. Roughly two gigabytes of CUDA wheels, which is why it is opt-in locally; CI's `inference-smoke` job runs it | — CI |
 | Wheel (build, install, serve) | `bash scripts/build_dist.sh && VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging` — builds the UI into `_static/`, builds the wheel, installs it in a fresh venv and serves `/app/` from it. Opt-in locally (it costs about a minute); CI's `wheel` job runs it and uploads the artifact | — CI |
 | The 30-minute flow | `uv run python examples/thirty_minute_flow.py` — the vision document's success metric end to end. CI's `30-minute flow (wheel, end to end)` job runs it from the **installed wheel** in an empty venv, with `ultralytics` required there | — CI |
 | Version sync | `pnpm version:check` | `generated` |
@@ -327,3 +328,29 @@ automation.
   which turns that skip into a hard failure so a broken install cannot pass unnoticed. The
   container route needs nothing on the host — `docker/api.Dockerfile` installs it into the image,
   and CI's `docker` job builds that image and runs the video tests inside it.
+
+### The two halves of the inference matrix
+
+`visionset.inference` is tested twice, in two environments, and both halves are deliberate.
+
+The **without-runtime** half is the ordinary `uv run pytest` and CI's `python` job: no
+`local-inference` extra installed. It is what proves a base install is a working install —
+that importing the server, the CLI, the job registry and `visionset.inference` pulls in none
+of torch, torchvision, transformers, accelerate or huggingface_hub, and that a machine
+without them refuses with the install command rather than an `ImportError` from a library the
+caller never named. Do not "fix" those skips by installing the extra into the default
+environment; they are the test.
+
+The **with-runtime** half is the table row above and CI's `inference-smoke` job: the extra
+installed from `uv.lock`, on a CPU-only runner. It is the only place the lazy-import contract
+means anything — on a machine where torch is not installed, "importing the product did not
+load torch" is true by construction — and the only place family resolution, capability
+derivation, the download path and the tensor conversions meet the real libraries at their
+locked versions.
+
+`VISIONSET_REQUIRE_LOCAL_INFERENCE=1` turns a missing runtime from a skip into an error, so a
+broken install goes red instead of quietly shrinking the suite. It says nothing about a
+missing **GPU**: no runner has a CUDA device, so the one test that reproduces the
+half-precision finding on real tensors asks for the runtime and the device separately and
+keeps skipping on the second. Anything that needs a GPU must be written the same way —
+`tests/fixtures/local_inference.py` says why.

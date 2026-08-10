@@ -18,13 +18,13 @@ against its own fixture. The forward's one measured hazard has its own file:
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from tests.fixtures.local_inference import require_local_inference, without_the_extra
 
-from visionset.inference import MODULES, LocalTransformersProvider, provider_for
+from visionset.inference import LocalTransformersProvider, provider_for
 from visionset.inference import providers as providers_module
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD
 from visionset.inference.transformers_provider import prompt_text, regions_from
@@ -42,8 +42,6 @@ from visionset.kernel.errors import (
     UnsupportedPrompt,
 )
 from visionset.kernel.ports import ModelProvider
-
-EXTRA_INSTALLED = all(importlib.util.find_spec(name) is not None for name in MODULES)
 
 
 def local(
@@ -63,7 +61,7 @@ def local(
 # --- resolving a connection to something that can answer ----------------------
 
 
-@pytest.mark.skipif(EXTRA_INSTALLED, reason="the local runtime is installed here")
+@without_the_extra
 def test_a_ready_connection_without_the_runtime_names_the_install_command(
     tmp_path: Path,
 ) -> None:
@@ -78,7 +76,6 @@ def test_a_ready_connection_without_the_runtime_names_the_install_command(
     assert 'pip install "visionset[local-inference]"' in str(raised.value)
 
 
-@pytest.mark.skipif(not EXTRA_INSTALLED, reason="needs the local-inference extra")
 def test_a_ready_local_connection_resolves_to_a_provider(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -93,6 +90,8 @@ def test_a_ready_local_connection_resolves_to_a_provider(
     to a fallback, so a real config is now the difference between this test
     building a provider and it exercising the refusal that has its own test.
     """
+    require_local_inference()
+
     monkeypatch.setattr(providers_module, "family_of", lambda *_, **__: "grounding-dino")
     built = provider_for(local(ConnectionSetupState.READY), workspace_root=tmp_path)
     assert isinstance(built, ModelProvider)

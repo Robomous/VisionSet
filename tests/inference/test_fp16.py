@@ -13,17 +13,18 @@ them needs hardware:
   everywhere, including on a base install with no torch at all, and it is what
   catches the shim being dropped.
 - **The reproduction**, driven with real half-precision CUDA tensors through the
-  real `torch.nn.functional.grid_sample`. It is skipped without a GPU — so it is
-  skipped in CI — and it is the one that would have caught the finding in the
-  first place.
+  real `torch.nn.functional.grid_sample`. It needs the runtime *and* a GPU, which
+  it asks for as two separate questions; CI has the first and none of its runners
+  has the second, so it is skipped there. It is the one that would have caught
+  the finding in the first place.
 """
 
 from __future__ import annotations
 
-import importlib.util
 from typing import Any
 
 import pytest
+from tests.fixtures.local_inference import require_local_inference
 
 from visionset.inference._fp16 import (
     forward_guard,
@@ -216,17 +217,6 @@ def test_everything_else_is_full_precision(spelling: str | None) -> None:
 # --- the reproduction, on real hardware ---------------------------------------
 
 
-def _cuda_is_available() -> bool:
-    if importlib.util.find_spec("torch") is None:
-        return False
-    import torch as real_torch
-
-    return bool(real_torch.cuda.is_available())
-
-
-@pytest.mark.skipif(
-    not _cuda_is_available(), reason="needs the local-inference extra and a CUDA device"
-)
 def test_a_half_precision_grid_sample_survives_a_float32_grid_on_cuda() -> None:
     """The measured failure, reproduced and then fixed, with real tensors.
 
@@ -236,12 +226,22 @@ def test_a_half_precision_grid_sample_survives_a_float32_grid_on_cuda() -> None:
     found Float`, which is exactly what the spike hit inside deformable attention;
     inside `forward_guard` it returns.
 
-    Skipped without a GPU, so it does not run in CI. It is here because the
-    stubbed tests above prove the *rule* and only this one proves the rule was
-    the right one — and because the next person to touch the shim will want a way
-    to check it on a machine that has the hardware.
+    It is here because the stubbed tests above prove the *rule* and only this one
+    proves the rule was the right one — and because the next person to touch the
+    shim will want a way to check it on a machine that has the hardware.
+
+    **Two gates, asked in this order, and the order is the point.** The runtime is
+    required first, so a build that was meant to carry torch and does not is an
+    error. The device is asked for second, and a missing one stays a skip forever:
+    no CI runner here has a GPU, and folding the two into one condition would make
+    the `inference-smoke` job permanently red for the only reason nobody can fix.
     """
+    require_local_inference()
+
     import torch as real_torch
+
+    if not real_torch.cuda.is_available():
+        pytest.skip("needs a CUDA device")
 
     values = real_torch.randn(1, 1, 8, 8, device="cuda", dtype=real_torch.float16)
     grid = real_torch.zeros(1, 4, 4, 2, device="cuda", dtype=real_torch.float32)

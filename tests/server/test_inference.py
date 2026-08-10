@@ -5,7 +5,6 @@ branches on, and what `allowed_actions` declares. What the kernel does underneat
 is `tests/kernel/test_inference_connections.py`'s subject.
 """
 
-import importlib.util
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -13,10 +12,10 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.fixtures.local_inference import without_the_extra
 from tests.server._api import api_client
 from tests.server._jobs import InlineDispatcher, ManualDispatcher
 
-from visionset.inference import MODULES
 from visionset.inference import weights as weights_module
 from visionset.inference.integrity import IntegrityReport
 from visionset.jobs import integrity as job_module
@@ -310,17 +309,6 @@ def test_deleting_an_unknown_connection_is_not_found(client: TestClient) -> None
 # --- downloading weights ------------------------------------------------------
 
 
-def _extra_is_installed() -> bool:
-    """Whether this environment actually carries the local runtime.
-
-    The base development environment does not, and CI's does not either, so the
-    unstubbed refusal test below is the one that runs for real. Guarded rather
-    than assumed, because a contributor with the extra installed must not see a
-    red suite for having it.
-    """
-    return all(importlib.util.find_spec(name) is not None for name in MODULES)
-
-
 def test_downloading_answers_202_and_points_at_its_job(
     tmp_path: Path, runtime_present: None
 ) -> None:
@@ -457,7 +445,7 @@ def test_downloading_an_unknown_connection_is_not_found(
     assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_FOUND"
 
 
-@pytest.mark.skipif(_extra_is_installed(), reason="the local runtime is installed here")
+@without_the_extra
 def test_a_missing_local_runtime_refuses_with_the_install_command(client: TestClient) -> None:
     """Unstubbed, and the message is the remedy.
 
@@ -702,7 +690,7 @@ def test_the_size_route_wants_both_halves_of_the_pair(client: TestClient) -> Non
     assert response.status_code == 422, response.text
 
 
-@pytest.mark.skipif(_extra_is_installed(), reason="the local runtime is installed here")
+@without_the_extra
 def test_a_size_without_the_runtime_carries_the_install_command(client: TestClient) -> None:
     """Unstubbed, and the same refusal the download gives.
 
