@@ -26,7 +26,7 @@ from uuid import UUID
 
 from fastapi import Response, status
 
-from visionset.inference import download_size, suggest
+from visionset.inference import download_size, suggest, with_families
 from visionset.inference import require as require_local_inference
 from visionset.jobs.integrity import JOB_TYPE as integrity_job_type
 from visionset.jobs.integrity import payload_for as integrity_payload_for
@@ -61,8 +61,15 @@ beside_connections = protected_router(prefix="/inference", tags=["inference"])
 
 @router.get("")
 def list_inference_connections(workspace: WorkspaceDep) -> ConnectionPage:
-    """Every configured connection in this workspace, in the order they were made."""
-    connections = InferenceConnectionService(workspace).list()
+    """Every configured connection in this workspace, in the order they were made.
+
+    A set-up connection that has never been asked what kind of model it holds is
+    asked here, once, from files already on this disk — see
+    ``visionset.inference.weights.with_families``. It is the backfill for rows
+    written before a connection recorded that, and it is on the read path because
+    the kernel cannot reach a model cache and a migration runs in the kernel.
+    """
+    connections = with_families(workspace, InferenceConnectionService(workspace).list())
     items = [ConnectionOut.of(one) for one in connections]
     return ConnectionPage(items=items, total=len(items))
 
@@ -85,8 +92,14 @@ def create_inference_connection(workspace: WorkspaceDep, body: ConnectionCreate)
 
 @router.get("/{connection_id}", responses=documented(404))
 def get_inference_connection(workspace: WorkspaceDep, connection_id: UUID) -> ConnectionOut:
-    """The connection with that id."""
-    return ConnectionOut.of(InferenceConnectionService(workspace).get(connection_id))
+    """The connection with that id.
+
+    Carries the same backfill the listing does, so that reading one connection
+    and reading the list never disagree about what it can be asked for.
+    """
+    connection = InferenceConnectionService(workspace).get(connection_id)
+    (resolved,) = with_families(workspace, [connection])
+    return ConnectionOut.of(resolved)
 
 
 @router.patch("/{connection_id}", responses=documented(404, 409, 422))

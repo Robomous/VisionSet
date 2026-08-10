@@ -417,6 +417,7 @@ def _connection_to_row(entity: InferenceConnection) -> t.Base:
         setup_state=entity.setup_state.value,
         created_at=entity.created_at.isoformat(),
         updated_at=entity.updated_at.isoformat(),
+        model_family=entity.model_family,
     )
 
 
@@ -433,6 +434,9 @@ def _connection_to_domain(_: Session, row: Any) -> InferenceConnection:
         setup_state=ConnectionSetupState(row.setup_state),
         created_at=datetime.fromisoformat(row.created_at),
         updated_at=datetime.fromisoformat(row.updated_at),
+        # Read straight through, empty string included: a row that was looked at
+        # and declared nothing must not come back as one nobody has looked at.
+        model_family=row.model_family,
     )
 
 

@@ -361,3 +361,82 @@ def test_configuring_a_connection_reaches_no_model_runtime() -> None:
     # module is what a caller does before creating a connection, so this is the
     # "creating a connection downloads nothing" claim at its narrowest.
     assert not {"torch", "transformers", "huggingface_hub"} & set(sys.modules)
+
+
+# --- what kind of model a connection points at --------------------------------
+
+
+def test_a_new_connection_knows_nothing_about_its_model_yet(connections) -> None:  # noqa: ANN001
+    """Nothing is fetched at creation, so nothing has been read at creation.
+
+    NULL here is "nobody has looked", which is exactly true of a connection
+    nobody has downloaded — and telling it apart from "looked and found nothing"
+    is what stops the look from being repeated forever.
+    """
+    assert connections.create("local", **LOCAL).model_family is None
+
+
+def test_recording_the_weights_ready_records_what_they_turned_out_to_be(
+    connections,  # noqa: ANN001
+) -> None:
+    """The two things the caller has learned, written together.
+
+    The state and the family are one commit because they are one finding: the
+    weights are here, and this is what they are.
+    """
+    made = connections.create("local", **LOCAL)
+    ready = connections.record_weights_ready(made.id, model_family="sam2")
+    assert ready.setup_state is ConnectionSetupState.READY
+    assert ready.model_family == "sam2"
+
+
+def test_a_caller_that_did_not_find_out_leaves_the_answer_alone(connections) -> None:  # noqa: ANN001
+    """`None` means *I did not find out*, on `update`'s convention.
+
+    A caller that cannot read a config must not be able to erase an answer
+    somebody else read — silence is not a finding.
+    """
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id, model_family="sam2")
+    assert connections.record_weights_ready(made.id).model_family == "sam2"
+
+
+def test_recording_a_family_on_an_already_ready_connection_writes_it(
+    connections,  # noqa: ANN001
+) -> None:
+    """The idempotent early return compares the fields, never the state alone.
+
+    This is the whole backfill path: a row written before the column existed is
+    `ready` already, so a guard that returned on the state would silently drop
+    the one thing the caller came to record.
+    """
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id)
+    assert connections.record_weights_ready(made.id, model_family="sam2").model_family == "sam2"
+    assert connections.get(made.id).model_family == "sam2"
+
+
+def test_pointing_a_connection_at_another_model_forgets_what_kind_it_was(
+    connections,  # noqa: ANN001
+) -> None:
+    """A stale family reads exactly like a fresh one, which is why it is dropped.
+
+    The answer was read out of the old model's config; nothing has read the new
+    one. Keeping it would leave the row declaring what its *previous* weights
+    could be asked for, and every client filtering on that declaration would
+    believe it.
+    """
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id, model_family="sam2")
+
+    assert connections.update(made.id, model_id="other/model").model_family is None
+    connections.record_weights_ready(made.id, model_family="grounding-dino")
+    assert connections.update(made.id, model_revision="beef1234").model_family is None
+
+
+def test_editing_anything_else_keeps_the_family(connections) -> None:  # noqa: ANN001
+    """Renaming a connection or moving it to another device changes no weights."""
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id, model_family="sam2")
+    assert connections.update(made.id, name="renamed").model_family == "sam2"
+    assert connections.update(made.id, device="cpu", precision="fp32").model_family == "sam2"

@@ -119,11 +119,14 @@ export const checkConnectionSetupState: Check<Schemas["ConnectionSetupState"]> =
 export const checkConnectionType: Check<Schemas["ConnectionType"]> =
   /*#__PURE__*/ oneOf(["local", "http"] as const);
 
+export const checkModelCapability: Check<Schemas["ModelCapability"]> =
+  /*#__PURE__*/ oneOf(["point_suggest", "text_detect"] as const);
+
 export const checkPrecision: Check<Schemas["Precision"]> =
   /*#__PURE__*/ oneOf(["fp16", "fp32"] as const);
 
 export const checkConnectionOut: Check<Schemas["ConnectionOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkConnectionAction)], "connection_type": [true, checkConnectionType], "created_at": [true, isString], "device": [true, either([isString, isNull] as const)], "endpoint_url": [true, either([isString, isNull] as const)], "id": [true, isString], "model_id": [true, isString], "model_revision": [true, isString], "name": [true, isString], "precision": [true, either([checkPrecision, isNull] as const)], "setup_state": [true, checkConnectionSetupState], "updated_at": [true, isString] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkConnectionAction)], "capabilities": [true, arrayOf(checkModelCapability)], "connection_type": [true, checkConnectionType], "created_at": [true, isString], "device": [true, either([isString, isNull] as const)], "endpoint_url": [true, either([isString, isNull] as const)], "id": [true, isString], "model_id": [true, isString], "model_revision": [true, isString], "name": [true, isString], "precision": [true, either([checkPrecision, isNull] as const)], "setup_state": [true, checkConnectionSetupState], "updated_at": [true, isString] } as const);
 
 export const checkConnectionPage: Check<Schemas["ConnectionPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkConnectionOut)], "total": [true, isInteger] } as const);

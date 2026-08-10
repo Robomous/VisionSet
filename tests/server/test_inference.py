@@ -80,6 +80,22 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     return seen
 
 
+#: What the faked config declares, where a test needs one.
+DOWNLOADED_FAMILY = "sam2"
+
+
+@pytest.fixture(autouse=True)
+def _the_config_read_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A finished download reads the model's config; here it does not.
+
+    Nothing in this file is about what a config says, and the real read imports
+    ``transformers`` — which ``test_configuring_a_connection_reaches_no_model_runtime``
+    asserts a full-suite process has not done. An unfaked read would fail that
+    test, in another directory, in a run whose order decided it.
+    """
+    monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: DOWNLOADED_FAMILY)
+
+
 def created(client: TestClient, body: dict[str, Any]) -> dict[str, Any]:
     response = client.post("/inference/connections", json=body)
     assert response.status_code == 201, response.text
@@ -703,3 +719,82 @@ def test_a_size_without_the_runtime_carries_the_install_command(client: TestClie
     body = response.json()
     assert body["code"] == "LOCAL_INFERENCE_UNAVAILABLE"
     assert 'pip install "visionset[local-inference]"' in body["message"]
+
+
+# --- what its model can be asked for ------------------------------------------
+#
+# A second declaration beside `allowed_actions`, answering a different question:
+# an action is something to do *to* this connection, a capability is what its
+# model answers. A client offering a tool needs both, and being ready says the
+# files are here rather than that they are the right kind of model.
+
+
+def test_a_connection_declares_what_its_model_can_be_asked_for(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """Read off the wire, and only after a download has read the config."""
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        assert _made_ready(client)["capabilities"] == ["point_suggest"]
+
+
+def test_a_connection_whose_weights_never_arrived_declares_nothing(
+    client: TestClient,
+) -> None:
+    """Nothing is fetched at creation, so nothing has been read at creation.
+
+    The empty list is not a refusal: the server still judges every request on
+    its own. It says only that no client can rely on this connection for a
+    particular tool yet.
+    """
+    assert created(client, LOCAL)["capabilities"] == []
+
+
+def test_an_http_connection_declares_nothing_yet(client: TestClient) -> None:
+    """`ready` on arrival and still capable of nothing a client may rely on.
+
+    An HTTP connection's model runs elsewhere, and how a remote endpoint states
+    what it can do is the remote-contract slice's question. Until it is
+    answered, the honest declaration is the empty one — the two states this
+    resource can be in are not the two questions being asked.
+    """
+    made = created(client, HTTP)
+    assert made["setup_state"] == "ready"
+    assert made["capabilities"] == []
+
+
+def test_a_row_written_before_the_column_is_resolved_on_its_first_read(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The backfill, over HTTP, with its bound: once per row, then never again.
+
+    Reached through the listing because that is the client that needs it — the
+    editor reads the list to decide which connection a click can go through, and
+    a row that predates the column would otherwise be invisible to every tool
+    for the life of the workspace.
+    """
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        # A row the way one written before the column looked: still `ready`,
+        # with nothing recorded about what kind of model it holds. The edit's own
+        # answer is the honest empty one — it is a write, and nothing has read
+        # the new model's config.
+        patched = client.patch(
+            f"/inference/connections/{made['id']}", json={"model_id": "other/model"}
+        )
+        assert patched.json()["capabilities"] == []
+
+        reads: list[str] = []
+
+        def _read(connection: Any, **_: Any) -> str:
+            reads.append(connection.model_id)
+            return "grounding-dino"
+
+        monkeypatch.setattr(weights_module, "family_of", _read)
+        listed = client.get("/inference/connections").json()["items"]
+        assert [one["capabilities"] for one in listed] == [["text_detect"]]
+        assert reads == ["other/model"]
+
+        # And the answer is now on the row, so no read of it looks again.
+        client.get("/inference/connections")
+        client.get(f"/inference/connections/{made['id']}")
+        assert reads == ["other/model"]

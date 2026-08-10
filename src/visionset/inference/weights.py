@@ -22,6 +22,13 @@ nothing, so there is no half-``ready`` row for a reader to find and no third
 state meaning "some of it arrived". That is an ordering rather than a guard,
 which is why nothing in the domain has to encode it.
 
+**What arrives is also read, once.** A download ends by reading the model's own
+config out of the cache it just filled and recording the family it declares, so
+that a client can be told what this connection may be asked for. That is the
+first moment the answer exists without a network call, which is why it happens
+here rather than at connection creation — and :func:`with_families` is the same
+read, late, for rows written before the column existed.
+
 **Idempotent, and two callers need it to be.** A connection already ``ready`` is
 re-checked — every file the revision names is looked for, and anything missing is
 fetched — and then left alone. That is not only a convenience for people typing
@@ -43,14 +50,20 @@ underneath it does not make.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Final
 from uuid import UUID
 
 from visionset.inference._extra import imported
 from visionset.inference.cache import BoundedCache
-from visionset.kernel.domain import ConnectionType, DownloadSize, InferenceConnection
+from visionset.inference.families import family_of
+from visionset.kernel.domain import (
+    ConnectionSetupState,
+    ConnectionType,
+    DownloadSize,
+    InferenceConnection,
+)
 from visionset.kernel.errors import LocalInferenceUnavailable
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
@@ -118,11 +131,81 @@ def fetch_weights(
     connections = InferenceConnectionService(workspace)
     connection = connections.require_downloadable(connection_id)
     say = on_progress or (lambda _: None)
+    cache = cache_root(workspace.root)
 
     say(f"fetching {connection.model_id} at {connection.model_revision}")
-    download(connection, into=cache_root(workspace.root))
+    download(connection, into=cache)
+    # Only knowable now, and knowable without a network only now: the config
+    # that says what kind of model this is arrived with the weights. Reading it
+    # here is what lets a client be told what this connection can be asked for
+    # instead of finding out one refusal at a time — see ``families``.
+    say("reading what kind of model arrived")
+    family = family_of(connection, cache_dir=cache)
     say("recording the connection as ready")
-    return connections.record_weights_ready(connection.id)
+    return connections.record_weights_ready(connection.id, model_family=family)
+
+
+def with_families(
+    workspace: WorkspaceService, connections: Sequence[InferenceConnection]
+) -> list[InferenceConnection]:
+    """Those connections, with any missing family filled in from the cache.
+
+    The backfill for every row written before a connection recorded what kind of
+    model it points at. It is deliberately *not* a migration: the answer lives in
+    a model config inside this workspace's cache, the kernel is forbidden from
+    reaching that cache, and a migration runs inside the kernel — so the only
+    place this can happen is out here, where the resolver already lives.
+
+    **A read that writes, and the bound is what makes it honest.** It touches
+    only a ``local`` connection that is ``ready`` and has never been asked, it
+    reads a small JSON file already on this disk, and it reaches no network. Once
+    a row has an answer — *any* answer, the empty string included — it is never
+    considered again, so the whole cost is one config read per pre-existing row,
+    once, ever. A row created after this shipped arrives with its family already
+    recorded by the download and never enters the loop at all.
+
+    **What it will not do is invent one.** A build without the optional runtime
+    cannot read a config, and a build that cannot look has not looked: the
+    connection is returned exactly as it was, still NULL, so a machine that later
+    installs the runtime resolves it then. Writing the empty string there would
+    record "this model declares nothing" on the strength of never having
+    checked — and every client filtering on the declaration would believe it.
+    """
+    service = InferenceConnectionService(workspace)
+    cache = cache_root(workspace.root)
+    resolved: list[InferenceConnection] = []
+    for connection in connections:
+        if not _awaiting_a_family(connection):
+            resolved.append(connection)
+            continue
+        try:
+            family = family_of(connection, cache_dir=cache)
+        except LocalInferenceUnavailable:
+            resolved.append(connection)
+            continue
+        _logger.info("resolved %s as model type %r", connection.name, family)
+        # The same write the download makes, made late — one encoding of "the
+        # weights are here and this is what they turned out to be", rather than a
+        # second path that could disagree with it. The state half is already
+        # true, so what this commits is the family.
+        resolved.append(service.record_weights_ready(connection.id, model_family=family))
+    return resolved
+
+
+def _awaiting_a_family(connection: InferenceConnection) -> bool:
+    """Whether reading this connection's config is a question worth asking.
+
+    Three conditions, each ruling out a different kind of nonsense: an ``http``
+    connection keeps its model somewhere else, so there is no config here to
+    read and the vocabulary for what a remote endpoint declares does not exist
+    yet; a connection that is not ``ready`` has no files at all; and one that
+    already carries an answer has been asked.
+    """
+    return (
+        connection.connection_type is ConnectionType.LOCAL
+        and connection.setup_state is ConnectionSetupState.READY
+        and connection.model_family is None
+    )
 
 
 def download(connection: InferenceConnection, *, into: Path) -> Path:
