@@ -61,6 +61,14 @@ gets into it. This is also why CI uses `--locked` rather than a bare `uv sync`: 
 under a cutoff *discards the lockfile and re-resolves*, which would mean CI silently testing a set
 nobody chose.
 
+**`uv.lock` never carries a cutoff, and the wrapper is what keeps it out.** uv records a global
+exclude-newer in the lockfile's `[options]` table, where `--locked` counts it as part of what the
+lock must agree with — so an unscrubbed wrapped resolution commits a rolling timestamp that every
+later `uv sync --locked` refuses. `scripts/cooldown.sh` removes the recorded line after the command
+it wraps, leaving the resolved versions exactly as the cool-down chose them. Do not try to repair
+such a lockfile by re-running a bare `uv lock`: uv throws away a lock whose recorded cutoff has
+gone and resolves again, straight past the versions the cool-down excluded.
+
 **When it fires.** `pnpm add <pkg>` with no version asks for `latest`, so a too-new release is
 refused outright (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`) rather than silently downgraded. Wait, or
 name an older version. To take a young version deliberately, add it to `minimumReleaseAgeExclude`
