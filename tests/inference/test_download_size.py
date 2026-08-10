@@ -12,17 +12,15 @@ what to refuse, and what to remember.
 
 from __future__ import annotations
 
-import importlib.util
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from tests.fixtures.local_inference import without_the_extra
 
-from visionset.inference import MODULES, DownloadSizes, download_size, known_sizes, measure
+from visionset.inference import DownloadSizes, download_size, known_sizes, measure
 from visionset.inference import weights as weights_module
 from visionset.kernel.errors import LocalInferenceUnavailable
-
-EXTRA_INSTALLED = all(importlib.util.find_spec(name) is not None for name in MODULES)
 
 
 @dataclass(frozen=True)
@@ -177,7 +175,7 @@ def test_a_failed_lookup_arrives_in_the_kernels_vocabulary(
     assert "Repository Not Found" in str(raised.value)
 
 
-@pytest.mark.skipif(EXTRA_INSTALLED, reason="the local runtime is installed here")
+@without_the_extra
 def test_a_missing_hub_client_names_the_install_command() -> None:
     """Unstubbed: the size is read with the client that would do the fetching, so
     a machine without the extra is refused here too — with the remedy."""

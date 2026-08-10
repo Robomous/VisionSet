@@ -7,7 +7,6 @@ never by calling the SDK — the SDK appears only to read state back.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 from typing import Any
@@ -15,10 +14,10 @@ from typing import Any
 import pytest
 from click.testing import Result
 from tests.cli._flow import ok, payload, run, runner, workspace
+from tests.fixtures.local_inference import without_the_extra
 
 from visionset.cli import inference as cli_inference
 from visionset.cli.main import app
-from visionset.inference import MODULES
 from visionset.inference import weights as weights_module
 from visionset.inference.integrity import IntegrityReport
 from visionset.kernel.errors import WeightsDamaged
@@ -244,17 +243,6 @@ def test_declining_the_prompt_keeps_the_connection(root: Path) -> None:
 # --- download -----------------------------------------------------------------
 
 
-def _extra_is_installed() -> bool:
-    """Whether this environment actually carries the local runtime.
-
-    The base development environment does not, and CI's does not either, so the
-    unstubbed refusal test is the one that runs for real. Guarded rather than
-    assumed: a contributor who has the extra installed must not see a red suite
-    for having it.
-    """
-    return all(importlib.util.find_spec(name) is not None for name in MODULES)
-
-
 @pytest.fixture()
 def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     """Record what would have been downloaded, and download nothing.
@@ -344,7 +332,7 @@ def test_downloading_an_unknown_connection_exits_one(root: Path, fetched: list[s
     assert "Error:" in result.stderr
 
 
-@pytest.mark.skipif(_extra_is_installed(), reason="the local runtime is installed here")
+@without_the_extra
 def test_a_missing_local_runtime_exits_one_with_the_install_command(root: Path) -> None:
     """Unstubbed. A sentence naming what to run, never a traceback.
 
@@ -441,7 +429,7 @@ def test_the_size_command_prints_the_document_on_json(monkeypatch: pytest.Monkey
     }
 
 
-@pytest.mark.skipif(_extra_is_installed(), reason="the local runtime is installed here")
+@without_the_extra
 def test_a_size_without_the_runtime_exits_one_with_the_install_command() -> None:
     """``size`` opens no workspace, so it carries ``domain_errors`` itself.
 
