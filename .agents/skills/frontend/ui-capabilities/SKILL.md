@@ -1,6 +1,6 @@
 ---
 name: ui-capabilities
-description: Rules for how the VisionSet frontend decides which actions to offer and how it handles mutation outcomes. Consult before touching any component that renders a state-gated action, any mutation hook, or any error/success feedback. Enforces the capabilities contract and bans the hand-mirrored-table and swallowed-error antipatterns that caused findings F1–F10 of the 2026-08 audit.
+description: Rules for how the VisionSet frontend decides which actions to offer, how it handles mutation outcomes, and why local view state disappears after a mutation with no error to show for it. Consult before touching any component that renders a state-gated action, any mutation hook, or any error/success feedback — and when debugging state a refetch silently reset. Enforces the capabilities contract and bans the hand-mirrored-table and swallowed-error antipatterns that caused findings F1–F10 of the 2026-08 audit.
 ---
 
 # UI capabilities
@@ -31,6 +31,20 @@ description: Rules for how the VisionSet frontend decides which actions to offer
 It shipped: #233's *"you are now drawing with the class you just made"* had never worked. The armed class lived in asset-scoped state; the add-a-class chain ends in a repin; `usePinnedSchema`'s key names the version. The repin moved the key, the screen fell through to its loading state, and the class died with the unmount — the field simply read `Select` again a moment later. Found and fixed in #379, cf. #368.
 
 State that must survive a mutation belongs at a scope whose query keys that mutation cannot move — the clipboard and the drawing class both live at job scope for this reason. When reviewing a mutation, ask which keys it invalidates or **renames**, and what component state lives below them. Invalidation alone is safe; renaming is not.
+
+## The other way view state dies, and nothing unmounts
+
+**An identity-unstable value in a hook's dependency array re-fires its consumer, and a re-fire resets state exactly as an unmount does — with no unmount to find.** A refetch that hands back a freshly parsed object gives every `useCallback`/`useMemo`/`useEffect` naming that object a new identity, so the effect below it runs again. Nothing remounts, no key moves, no loading state flashes. The state is simply overwritten by the effect that was supposed to seed it once.
+
+It shipped: #482's viewport reset on every save. `AnnotatorCanvas` holds zoom and pan in its own state and seeds them from an initial-fit layout effect — `const fit = useCallback(…, [asset, applyViewport])` over `snapshot.document.asset`, then `useLayoutEffect(fit, [fit])`. `documentFromWire` mints a fresh `AssetDescriptor` on every rebuild, and a save rebuilds: the write is followed by a refetch so the kernel's own annotation ids replace the client-minted ones, which is a materially different payload, so a new array, a new store, a new document, a new descriptor — a new `fit`, and the camera jumped back to the fitted view. The repair depends on the asset's `id`/`width`/`height` rather than on the object carrying them, so the identity tracks the frame the fit is actually a function of. cf. #482, cf. #485.
+
+**The tell that separates the two mechanisms is sibling state in the same component.** Under an unmount every piece of local state in that subtree dies together and something above it renders a loading state on the way. Under a re-fire only the state that one hook writes is disturbed and everything beside it survives untouched — in #482 the hidden-annotation set, the interaction state and the hover point all lived through the reset that took the viewport. Check that first: it costs one glance and it decides which of the two searches is worth running. #482 was dispatched against the query-key rule above and the query key turned out to be innocent, which cost a hunt for an unmount that never happened.
+
+Two habits follow. **Depend on the values a hook is really a function of, not on the object that carries them** — a descriptor's three numbers rather than the descriptor. And when reviewing a hook whose effect seeds state, ask what rebuilds each dependency and *why*: a value re-minted by an unrelated event is the whole bug, and it is invisible in a dependency array that reads perfectly.
+
+Where the chain is a callback consumed by an effect, the primitives belong in the **callback's** dependency list rather than the effect's. `react-hooks/exhaustive-deps` is an `error` in `frontend/annotator` and reports an unnecessary dependency as loudly as a missing one, so widening the effect's list to compensate for a callback that churns does not lint — and should not, because the honest fix is a callback whose identity already tracks the right thing.
+
+One last thing about how a re-fire presents, because it misdirects: TanStack Query shares its results structurally, so a background refetch returning identical JSON returns the *same* array and nothing re-fires at all. Only a write ever trips it. So the reset looks like a consequence of *saving* rather than of refetching, and the search goes to the mutation — which is innocent — instead of to the dependency array.
 
 ## Scope limits (do not overreach)
 
