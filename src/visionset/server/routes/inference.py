@@ -63,10 +63,11 @@ beside_connections = protected_router(prefix="/inference", tags=["inference"])
 def list_inference_connections(workspace: WorkspaceDep) -> ConnectionPage:
     """Every configured connection in this workspace, in the order they were made.
 
-    Each row carries its most recent weight download, so a client sees a transfer
-    it did not start — after a reload, in a second tab, on another machine. This
-    is therefore the read a screen polls while a download is live, and the reason
-    it can stop polling the moment none is.
+    Each row carries its most recent weight download **and its most recent
+    integrity check**, so a client sees a run it did not start — after a reload,
+    in a second tab, on another machine, or from a terminal. This is therefore the
+    read a screen polls while either is live, and the reason it can stop polling
+    the moment neither is.
 
     A set-up connection that has never been asked what kind of model it holds is
     asked here, once, from files already on this disk — see
@@ -76,10 +77,17 @@ def list_inference_connections(workspace: WorkspaceDep) -> ConnectionPage:
     """
     service = InferenceConnectionService(workspace)
     connections = with_families(workspace, service.list())
-    # One queue read for the whole page rather than one per row: this is a poll
-    # path while anything is downloading.
-    downloads = service.downloads()
-    items = [ConnectionOut.of(one, downloads.get(one.id)) for one in connections]
+    # One queue read for both kinds and the whole page rather than one per row:
+    # this is a poll path while anything is running.
+    jobs = service.connection_jobs()
+    items = [
+        ConnectionOut.of(
+            one,
+            download=jobs.downloads.get(one.id),
+            integrity_check=jobs.checks.get(one.id),
+        )
+        for one in connections
+    ]
     return ConnectionPage(items=items, total=len(items))
 
 
@@ -103,14 +111,19 @@ def create_inference_connection(workspace: WorkspaceDep, body: ConnectionCreate)
 def get_inference_connection(workspace: WorkspaceDep, connection_id: UUID) -> ConnectionOut:
     """The connection with that id.
 
-    Carries the same backfill the listing does, and the same weight download, so
-    that reading one connection and reading the list never disagree about what it
-    can be asked for or about what is happening to it.
+    Carries the same backfill the listing does, and the same runs, so that reading
+    one connection and reading the list never disagree about what it can be asked
+    for or about what is happening to it.
     """
     service = InferenceConnectionService(workspace)
     connection = service.get(connection_id)
     (resolved,) = with_families(workspace, [connection])
-    return ConnectionOut.of(resolved, service.downloads().get(resolved.id))
+    jobs = service.connection_jobs()
+    return ConnectionOut.of(
+        resolved,
+        download=jobs.downloads.get(resolved.id),
+        integrity_check=jobs.checks.get(resolved.id),
+    )
 
 
 @router.patch("/{connection_id}", responses=documented(404, 409, 422))
@@ -128,10 +141,15 @@ def update_inference_connection(
         precision=body.precision,
         endpoint_url=body.endpoint_url,
     )
-    # An edit can land while a download runs, so the response says the same thing
-    # the listing would. A shape that carried the field only on some routes would
-    # be a client having to know which reads it can believe.
-    return ConnectionOut.of(edited, service.downloads().get(edited.id))
+    # An edit can land while a run is in flight, so the response says the same
+    # thing the listing would. A shape that carried the fields only on some routes
+    # would be a client having to know which reads it can believe.
+    jobs = service.connection_jobs()
+    return ConnectionOut.of(
+        edited,
+        download=jobs.downloads.get(edited.id),
+        integrity_check=jobs.checks.get(edited.id),
+    )
 
 
 @router.post(
@@ -211,10 +229,13 @@ def check_connection_integrity(
     **damaged**, and can only do so by reading every byte.
 
     **202, not 200.** A snapshot is gigabytes and this reads all of it, so it
-    follows the launch-and-poll contract the download route uses: poll `GET
-    /background-jobs/{id}` — the `Location` header names it — where `processed`
-    and `total` count files. A successful job's result carries how many files
-    were read and how many bytes that came to.
+    follows the launch-and-poll contract the download route uses. The run is then
+    on the connection itself as `integrity_check`, which is what lets a client
+    that never made this request — after a reload, in another tab, or beside a
+    terminal that started it — see one in flight and how it ended. `GET
+    /background-jobs/{id}` answers the same run, and the `Location` header names
+    it; a successful job's result carries how many files were read and how many
+    bytes that came to.
 
     **Only for a local connection that is already set up.** An HTTP connection
     has no files here and one whose weights never arrived has none to read;

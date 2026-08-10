@@ -70,6 +70,7 @@ function connection(
     // declares nothing.
     capabilities: setup === "ready" ? ["point_suggest"] : [],
     download: null,
+    integrity_check: null,
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
     ...overrides,

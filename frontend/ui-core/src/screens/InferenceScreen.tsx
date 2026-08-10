@@ -63,23 +63,24 @@
  * before the job row says so. The settle-invalidation is what makes the row
  * agree, and the prose describes a state the workspace is already in.
  *
- * ## A download is watched, not owned
+ * ## A run is watched, not owned
  *
- * Everything this screen shows about a transfer comes off `ConnectionOut.download`
- * and nothing from client-held state. That is what makes the screen a viewport
- * rather than the owner: arriving mid-download — a reload, a second tab, a return
- * visit, another machine — shows the bar and the prose on the first fetch, because
- * the row it was going to list says so anyway.
+ * Everything this screen shows about a download or a check comes off the
+ * connection — `download` and `integrity_check` — and nothing from client-held
+ * state. That is what makes the screen a viewport rather than the owner: arriving
+ * mid-run — a reload, a second tab, a return visit, another machine, or beside a
+ * terminal that started it — shows the bar and the prose on the first fetch,
+ * because the row it was going to list says so anyway.
  *
- * The list re-reads itself while any row reports a live transfer and stops the
- * moment none does (`useConnections`). Nothing the browser does reaches the job:
- * it runs in a worker process the server owns, so navigating away or closing the
- * tab neither cancels nor pauses it — only the poll stops.
+ * The list re-reads itself while any row reports a live run of either kind and
+ * stops the moment none does (`useConnections`). Nothing the browser does reaches
+ * either job: they run in a worker process the server owns, so navigating away or
+ * closing the tab neither cancels nor pauses one — only the poll stops.
  *
- * The integrity check still follows a job id this screen holds, and the asymmetry
- * is deliberate rather than forgotten: a check is a different question with a
- * different vocabulary and it is not on the connection's wire model, so there is
- * nothing to read it off. It keeps the coupling the download shed.
+ * The two runs keep separate vocabularies because they count different things: a
+ * transfer reports bytes it measured off the disk, and a check reports files it
+ * has re-read. Neither borrows the other's name at any layer, which is why the
+ * wire carries two shapes rather than one with a discriminator.
  *
  * ## The size is asked for before the connection exists
  *
@@ -106,17 +107,17 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
 import {
-  isDownloading,
+  isLive,
   useCheckIntegrity,
   useConnections,
   useCreateConnection,
   useDeleteConnection,
   useDownloadSize,
   useDownloadWeights,
-  useRefreshConnections,
   useUpdateConnection,
   type Connection,
   type ConnectionType,
+  type IntegrityCheck,
   type WeightDownload,
 } from "../data/inferenceQueries";
 import { Badge } from "../primitives/Badge";
@@ -157,8 +158,6 @@ import {
   precisionsFor,
   type Precision,
 } from "./inferenceCatalog";
-import { useBackgroundJob } from "./queries";
-
 /** Above this many rows a list carries a filter input (`DESIGN.md`). */
 const FILTER_ABOVE = 20;
 
@@ -397,11 +396,7 @@ function ConnectionRow({
             settles, at which point the row's own status says what happened.
           */}
           {weights.live !== null && <DownloadProgress download={weights.live} />}
-          {integrity.running && integrity.progress !== null && (
-            <span className="text-meta text-muted-foreground" data-testid="integrity-progress">
-              {integrity.progress} files
-            </span>
-          )}
+          {integrity.live !== null && <IntegrityProgress check={integrity.live} />}
           {weights.failure !== null && (
             <FieldError data-testid="download-error">
               <Badge variant="destructive">{weights.failure.code}</Badge> {weights.failure.message}{" "}
@@ -457,7 +452,7 @@ function useDownloadRun(connection: Connection): {
 } {
   const mutation = useDownloadWeights();
   const download = connection.download ?? null;
-  const live = isDownloading(connection);
+  const live = isLive(download);
   return {
     start: () => mutation.mutate(connection.id),
     // `isPending` covers the gap between the click and the re-read that brings
@@ -473,121 +468,142 @@ function useDownloadRun(connection: Connection): {
 }
 
 /**
- * The integrity check on a connection row: how to start it, and what it is saying.
+ * The connection's integrity check, read off the row rather than followed.
  *
- * 202 and poll, the contract the export route uses, and the shape the download
- * used to share before its progress moved onto the connection. It lives on the
- * *row* rather than inside a control because the control is a menu item, and a
- * menu closes when one is chosen — a job whose progress and refusal lived inside
- * the item would take both with it on the way out.
+ * `useDownloadRun`'s twin over the same files, and it holds no job id for the
+ * same reason: a check outlives the request that started it, so the only way a
+ * screen can show one it did not itself launch — a reload, a second tab, a
+ * terminal — is for the connection it lists to say so. Holding the id meant only
+ * the mount that pressed the menu item could see a run reading gigabytes.
  *
- * **The list is re-read when the job settles.** What the `202` changes is the
- * declaration; what the *completion* changes is `setup_state` and, with it, the
- * row's whole meaning — a check that finds damage moves the row from `Ready` to
- * `Not set up`. A settled job is a mutation like any other, so it invalidates
- * what it touched.
- *
- * It keeps the job id the download gave up, and the asymmetry is honest rather
- * than an oversight: a check is not on the connection's wire model, so there is
- * nothing to read it off. It therefore has the coupling the download no longer
- * has — a reload loses a check in flight — and `#492` records that.
+ * A settled check stays readable, which is what makes a failure survivable: the
+ * verdict is on `setup_state` and the sentence is here, and both outlive the tab
+ * that was watching.
  */
 function useIntegrityRun(connection: Connection): {
   readonly start: () => void;
   readonly running: boolean;
-  readonly progress: string | null;
+  readonly live: IntegrityCheck | null;
   readonly failure: { readonly code: string; readonly message: string } | null;
 } {
   const mutation = useCheckIntegrity();
-  const refresh = useRefreshConnections();
-  const [jobId, setJobId] = useState<string | null>(null);
-  const job = useBackgroundJob(jobId);
-  const state = job.data?.state;
-  const running = mutation.isPending || state === "queued" || state === "running";
-
-  useEffect(() => {
-    if (state !== "succeeded" && state !== "failed" && state !== "cancelled") return;
-    refresh();
-    // A failure keeps its job id, because the job is where the reason is; the
-    // poll has already stopped on its own — `useBackgroundJob` settles — so this
-    // holds a finished row, not an open request.
-    if (state !== "failed") setJobId(null);
-    // `refresh` is stable per render under the compiler and re-running this on a
-    // list re-read would invalidate in a loop; the transition is what it watches.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
-
+  const check = connection.integrity_check ?? null;
+  const live = isLive(check);
   return {
-    start: () => mutation.mutate(connection.id, { onSuccess: (queued) => setJobId(queued.id) }),
-    running,
-    progress:
-      job.data === undefined
-        ? null
-        : `${job.data.processed}${job.data.total === null ? "" : ` of ${job.data.total}`}`,
+    start: () => mutation.mutate(connection.id),
+    running: mutation.isPending || live,
+    live: live ? check : null,
     failure: mutation.isError
       ? asApiError(mutation.error)
-      : state === "failed"
-        ? { code: "WEIGHTS_DAMAGED", message: job.data?.error ?? "The job did not finish." }
+      : check?.state === "failed"
+        ? { code: "WEIGHTS_DAMAGED", message: check.error ?? "The check did not finish." }
         : null,
   };
 }
 
 /**
- * A transfer in flight: a bar somebody watches, and a sentence they can read.
+ * A run in flight: a bar somebody watches, and a sentence they can read.
  *
  * Both, never one — a bar alone cannot say *queued*, and prose alone makes
  * somebody read a number every two seconds to find out whether anything is
- * moving. Sizes rather than a bare percentage, because "38%" of an unstated
- * amount answers neither *how much longer* nor *how much disk*.
+ * moving. Amounts rather than a bare percentage, because "38%" of an unstated
+ * quantity answers neither *how much longer* nor *how much of what*.
  *
- * **Three renderings, and the middle one is why this is not one line.**
+ * **One layout, two vocabularies.** The geometry, the tabular figures and the
+ * bar are shared; what each run *counts* is not, and the callers below supply the
+ * sentence. A component that branched on a `kind` would be the place the two
+ * vocabularies met, which is exactly what the wire is shaped to avoid.
  *
- * - *Queued* — no bytes yet, and the honest bar is empty with a sentence saying
- *   what it is waiting for.
- * - *Transferring* — determinate, and it is the whole point of the feature.
- * - *Settling* — every byte is here and the job has not finished, because a
- *   download ends by reading what arrived and recording the connection ready.
- *   The bar is full and the sentence names that phase, so a bar sitting at 100%
- *   for a second reads as a step rather than as a stall.
- *
- * A transfer whose published total could not be read gets the sentence and **no
- * bar at all**. `Progress` renders an indeterminate value as an empty track,
- * which reads as *0%* — a lie in the one case where the truth is *this is going,
- * and nobody can say how far*. Giving the primitive an indeterminate animation is
- * a design-system change and not this screen's to make.
+ * A run whose total is not known gets the sentence and **no bar at all**.
+ * `Progress` renders an indeterminate value as an empty track, which reads as
+ * *0%* — a lie in the one case where the truth is *this is going, and nobody can
+ * say how far*. Giving the primitive an indeterminate animation is a
+ * design-system change and not this screen's to make.
  */
-function DownloadProgress({ download }: { readonly download: WeightDownload }): JSX.Element {
-  const { state, bytes_done: done, bytes_total: total } = download;
-  const known = total !== null && total > 0;
-  const settling = known && done >= total;
-  const percent = known ? Math.min(100, Math.round((done / total) * 100)) : null;
+function RunProgress({
+  testId,
+  phase,
+  percent,
+  children,
+}: {
+  readonly testId: string;
+  readonly phase: string;
+  readonly percent: number | null;
+  readonly children: string;
+}): JSX.Element {
   return (
-    <div className="flex w-56 flex-col gap-1" data-testid="download-progress">
-      {known && (
-        <Progress
-          value={percent ?? 0}
-          data-testid="download-bar"
-          data-phase={settling ? "settling" : state}
-          aria-label={`Downloading ${download.job_id}`}
-        />
+    <div className="flex w-56 flex-col gap-1" data-testid={testId}>
+      {percent !== null && (
+        <Progress value={percent} data-testid={`${testId}-bar`} data-phase={phase} />
       )}
       {/*
         Tabular figures, `DESIGN.md`'s Numbers rule: the number changes every two
         seconds and the words after it must not move under a reader's eye.
       */}
-      <span
-        className="text-meta tabular-nums text-muted-foreground"
-        data-testid="download-progress-prose"
-      >
-        {state === "queued"
-          ? "Queued — starts as soon as a worker is free."
-          : settling
-            ? "Checking what arrived…"
-            : known
-              ? `${bytes(done)} of ${bytes(total)} · ${percent}%`
-              : `${bytes(done)} so far — the published size could not be read.`}
+      <span className="text-meta tabular-nums text-muted-foreground" data-testid={`${testId}-prose`}>
+        {children}
       </span>
     </div>
+  );
+}
+
+/**
+ * What a transfer is doing, in bytes.
+ *
+ * **Three renderings, and the middle one is why this is not one line.**
+ *
+ * - *Queued* — no bytes yet, and the honest bar is absent rather than empty.
+ * - *Transferring* — determinate, and it is the whole point of the feature.
+ * - *Settling* — every byte is here and the job has not finished, because a
+ *   download ends by reading what arrived and recording the connection ready.
+ *   The bar is full and the sentence names that phase, so a bar sitting at 100%
+ *   for a second reads as a step rather than as a stall.
+ */
+function DownloadProgress({ download }: { readonly download: WeightDownload }): JSX.Element {
+  const { state, bytes_done: done, bytes_total: total } = download;
+  const known = total !== null && total > 0;
+  const settling = known && done >= total;
+  const percent = known && state !== "queued" ? Math.min(100, Math.round((done / total) * 100)) : null;
+  return (
+    <RunProgress
+      testId="download-progress"
+      phase={settling ? "settling" : state}
+      percent={percent}
+    >
+      {state === "queued"
+        ? "Queued — starts as soon as a worker is free."
+        : settling
+          ? "Checking what arrived…"
+          : known
+            ? `${bytes(done)} of ${bytes(total)} · ${percent}%`
+            : `${bytes(done)} so far — the published size could not be read.`}
+    </RunProgress>
+  );
+}
+
+/**
+ * What a check is doing, in files.
+ *
+ * Files because that is what it counts: a check owns its loop and knows how many
+ * the revision names before it opens the first one. It borrows no part of the
+ * download's vocabulary, which is the whole reason the wire carries two shapes.
+ *
+ * The null-total window is short and real — a check reads the hub's listing
+ * before its first file — so it gets the same no-bar treatment a download with no
+ * published size does, and for the same reason.
+ */
+function IntegrityProgress({ check }: { readonly check: IntegrityCheck }): JSX.Element {
+  const { state, files_read: read, files_total: total } = check;
+  const known = total !== null && total > 0;
+  const percent = known && state !== "queued" ? Math.min(100, Math.round((read / total) * 100)) : null;
+  return (
+    <RunProgress testId="integrity-progress" phase={state} percent={percent}>
+      {state === "queued"
+        ? "Queued — starts as soon as a worker is free."
+        : known
+          ? `${read.toLocaleString()} of ${total.toLocaleString()} files · ${percent}%`
+          : "Reading what the model's source publishes…"}
+    </RunProgress>
   );
 }
 

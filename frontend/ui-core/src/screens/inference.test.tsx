@@ -28,7 +28,7 @@ import type { JSX, ReactNode } from "react";
 import { ApiProvider } from "../data/ApiProvider";
 import { InferenceScreen, bytes } from "./InferenceScreen";
 import { CURATED_MODELS, DEFAULT_MODEL } from "./inferenceCatalog";
-import { DOWNLOAD_POLL_MS, type Connection } from "../data/inferenceQueries";
+import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries";
 
 const API = "http://visionset.test";
 
@@ -101,9 +101,10 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     // check refuses a response missing it, and a stub that omitted one rendered
     // this screen's error card in every case — which reads as a component bug.
     capabilities: [],
-    // Also not optional on the wire, and `null` is its ordinary value: nobody
-    // has ever asked this connection to fetch anything.
+    // Also not optional on the wire, and `null` is their ordinary value: nobody
+    // has ever asked this connection to fetch or to re-read anything.
     download: null,
+    integrity_check: null,
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
     ...overrides,
@@ -126,6 +127,22 @@ function listing(rows: readonly Connection[]): void {
  * component bug rather than as a stub that lied.
  */
 type WeightDownload = NonNullable<Connection["download"]>;
+type IntegrityCheck = NonNullable<Connection["integrity_check"]>;
+
+function checkOf(
+  state: IntegrityCheck["state"],
+  read: number,
+  total: number | null,
+  error: string | null = null,
+): IntegrityCheck {
+  return {
+    job_id: "55555555-5555-4555-8555-555555555555",
+    state,
+    files_read: read,
+    files_total: total,
+    error,
+  };
+}
 
 function downloadOf(
   state: WeightDownload["state"],
@@ -281,7 +298,7 @@ it("shows a transfer nobody on this page started", async () => {
 
   const shown = await screen.findByTestId("download-progress-prose");
   expect(shown.textContent).toBe("400.0 MB of 1.6 GB · 25%");
-  expect(screen.getByTestId("download-bar").getAttribute("aria-valuenow")).toBe("25");
+  expect(screen.getByTestId("download-progress-bar").getAttribute("aria-valuenow")).toBe("25");
   // And it did so without asking about a job at all.
   expect(sent.some((one) => one.url.includes("/background-jobs/"))).toBe(false);
 });
@@ -305,7 +322,7 @@ it("names the phase after the bytes rather than sitting full", async () => {
   expect((await screen.findByTestId("download-progress-prose")).textContent).toBe(
     "Checking what arrived…",
   );
-  expect(screen.getByTestId("download-bar").getAttribute("data-phase")).toBe("settling");
+  expect(screen.getByTestId("download-progress-bar").getAttribute("data-phase")).toBe("settling");
 });
 
 it("draws no bar when the published size could not be read", async () => {
@@ -347,7 +364,7 @@ it("never re-reads a list nothing is moving in", async () => {
   );
 
   const first = reads;
-  await new Promise((done) => setTimeout(done, DOWNLOAD_POLL_MS * 2));
+  await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 2));
   expect(reads).toBe(first);
 }, 15_000);
 
@@ -702,7 +719,7 @@ it("follows a transfer to its end with no reload and no click", async () => {
 
   // And the poll stops, rather than re-reading a list nothing is moving.
   const settled = reads;
-  await new Promise((done) => setTimeout(done, DOWNLOAD_POLL_MS * 1.5));
+  await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 1.5));
   expect(reads).toBe(settled);
 }, 15_000);
 
@@ -832,60 +849,154 @@ it("does not offer the integrity check when the wire withholds it", async () => 
 });
 
 it("lands the row at Not set up when a check finds damage, and says what was done", async () => {
-  // The other direction, and the reason the settle-invalidation has to cover it:
-  // the row's whole meaning changes.
-  let damaged = false;
-  handlers.push((request) => {
-    if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
-    const row = damaged
-      ? connection({
-          setup_state: "not_set_up",
-          allowed_actions: ["download_weights", "update", "delete"],
-        })
-      : connection({ setup_state: "ready", allowed_actions: READY_BOTH });
-    return { status: 200, body: { items: [row], total: 1 } };
-  });
-  on("POST", /\/check-integrity$/, { status: 202, body: job("queued") });
-  handlers.push((request) => {
-    if (!request.url.includes("/background-jobs/")) return;
-    damaged = true;
-    return {
-      status: 200,
-      body: {
-        ...(job("failed") as Record<string, unknown>),
-        error: "1 file does not match (model.safetensors). The damaged copies have been removed",
-      },
-    };
-  });
+  // Read off the row and with nothing clicked, so a check that found damage while
+  // the tab was closed still explains itself. The verdict is `setup_state`, which
+  // moved before the job said so; the sentence is the check's.
+  listing([
+    connection({
+      setup_state: "not_set_up",
+      allowed_actions: ["download_weights", "update", "delete"],
+      integrity_check: checkOf(
+        "failed",
+        9,
+        9,
+        "1 file does not match (model.safetensors). The damaged copies have been removed",
+      ),
+    }),
+  ]);
 
   render(mount(<InferenceScreen />));
-  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
-  await userEvent.click(await screen.findByTestId("action-check-integrity"));
 
   const shown = await screen.findByTestId("integrity-error");
   expect(shown.textContent).toContain("model.safetensors");
   // What was done, and what to do — the remedy is the action the row now has.
   expect(shown.textContent).toContain("removed");
   expect(shown.textContent).toContain("real transfer");
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-status").textContent).toContain("Not set up"),
-  );
+  expect(screen.getByTestId("connection-status").textContent).toContain("Not set up");
   expect(await screen.findByTestId("download-weights")).not.toBeNull();
 });
 
 it("keeps a running check from reading as a running download", async () => {
-  // Two independent polls. One shared run state would light both controls, and
-  // the slow one would look like the fast one having stalled.
-  listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
-  on("POST", /\/check-integrity$/, { status: 202, body: job("queued") });
-  on("GET", /^\/background-jobs\/job-1$/, { status: 200, body: job("running", 2, 9) });
+  // Two records on one row, counting different things. One shared shape would
+  // put a file count where gigabytes belong, or the reverse.
+  listing([
+    connection({
+      setup_state: "ready",
+      allowed_actions: READY_BOTH,
+      integrity_check: checkOf("running", 2, 9),
+    }),
+  ]);
   render(mount(<InferenceScreen />));
-  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
-  await userEvent.click(await screen.findByTestId("action-check-integrity"));
 
-  expect((await screen.findByTestId("integrity-progress")).textContent).toContain("2 of 9");
+  expect((await screen.findByTestId("integrity-progress-prose")).textContent).toBe(
+    "2 of 9 files · 22%",
+  );
   expect(screen.queryByTestId("download-progress")).toBeNull();
 });
+
+it("shows a check nobody on this page started", async () => {
+  // The shipped bug's shape, one action over: the job id lived in a component, so
+  // only the mount that pressed the menu item could see a run reading gigabytes.
+  // A check started from a terminal was invisible to every browser.
+  listing([
+    connection({
+      setup_state: "ready",
+      allowed_actions: READY_BOTH,
+      integrity_check: checkOf("running", 400, 1_000),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+
+  expect((await screen.findByTestId("integrity-progress-prose")).textContent).toBe(
+    "400 of 1,000 files · 40%",
+  );
+  expect(screen.getByTestId("integrity-progress-bar").getAttribute("aria-valuenow")).toBe("40");
+  // And it asked about no job at all.
+  expect(sent.some((one) => one.url.includes("/background-jobs/"))).toBe(false);
+});
+
+it("names the queue rather than drawing a bar for a check that has not started", async () => {
+  listing([
+    connection({
+      setup_state: "ready",
+      allowed_actions: READY_BOTH,
+      integrity_check: checkOf("queued", 0, null),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+
+  expect((await screen.findByTestId("integrity-progress-prose")).textContent).toContain("Queued");
+  expect(screen.queryByTestId("integrity-progress-bar")).toBeNull();
+});
+
+it("names the listing read a check makes before its first file", async () => {
+  // A check learns its total from the hub, which it reads first. Short, real, and
+  // an empty track would read as 0% of a number nobody has yet.
+  listing([
+    connection({
+      setup_state: "ready",
+      allowed_actions: READY_BOTH,
+      integrity_check: checkOf("running", 0, null),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+
+  expect((await screen.findByTestId("integrity-progress-prose")).textContent).toContain(
+    "publishes",
+  );
+  expect(screen.queryByTestId("integrity-progress-bar")).toBeNull();
+});
+
+it("stops showing a check once it has passed", async () => {
+  // A pass leaves the row exactly where it was, and `Ready` is the whole of the
+  // success treatment — a settled record is not something to draw a bar for.
+  listing([
+    connection({
+      setup_state: "ready",
+      allowed_actions: READY_BOTH,
+      integrity_check: checkOf("succeeded", 9, 9),
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+  await screen.findByTestId("connections-table");
+
+  expect(screen.queryByTestId("integrity-progress")).toBeNull();
+  expect(screen.queryByTestId("integrity-error")).toBeNull();
+  expect(screen.getByTestId("connection-status").textContent).toContain("Ready");
+});
+
+it("polls while a check is live, and stops when it settles", async () => {
+  let reads = 0;
+  handlers.push((request) => {
+    if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
+    reads += 1;
+    const row =
+      reads < 2
+        ? connection({
+            setup_state: "ready",
+            allowed_actions: READY_BOTH,
+            integrity_check: checkOf("running", 4, 9),
+          })
+        : connection({
+            setup_state: "ready",
+            allowed_actions: READY_BOTH,
+            integrity_check: checkOf("succeeded", 9, 9),
+          });
+    return { status: 200, body: { items: [row], total: 1 } };
+  });
+
+  render(mount(<InferenceScreen />));
+  expect((await screen.findByTestId("integrity-progress-prose")).textContent).toContain("44%");
+
+  await waitFor(() => expect(screen.queryByTestId("integrity-progress")).toBeNull(), {
+    timeout: 5_000,
+  });
+  expect(sent.some((one) => one.url.includes("/background-jobs/"))).toBe(false);
+
+  const settled = reads;
+  await new Promise((done) => setTimeout(done, CONNECTION_POLL_MS * 1.5));
+  expect(reads).toBe(settled);
+}, 15_000);
 
 // --- editing and deleting ------------------------------------------------------
 

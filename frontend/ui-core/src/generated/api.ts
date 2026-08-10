@@ -705,10 +705,11 @@ export interface paths {
          * List Inference Connections
          * @description Every configured connection in this workspace, in the order they were made.
          *
-         *     Each row carries its most recent weight download, so a client sees a transfer
-         *     it did not start — after a reload, in a second tab, on another machine. This
-         *     is therefore the read a screen polls while a download is live, and the reason
-         *     it can stop polling the moment none is.
+         *     Each row carries its most recent weight download **and its most recent
+         *     integrity check**, so a client sees a run it did not start — after a reload,
+         *     in a second tab, on another machine, or from a terminal. This is therefore the
+         *     read a screen polls while either is live, and the reason it can stop polling
+         *     the moment neither is.
          *
          *     A set-up connection that has never been asked what kind of model it holds is
          *     asked here, once, from files already on this disk — see
@@ -740,9 +741,9 @@ export interface paths {
          * Get Inference Connection
          * @description The connection with that id.
          *
-         *     Carries the same backfill the listing does, and the same weight download, so
-         *     that reading one connection and reading the list never disagree about what it
-         *     can be asked for or about what is happening to it.
+         *     Carries the same backfill the listing does, and the same runs, so that reading
+         *     one connection and reading the list never disagree about what it can be asked
+         *     for or about what is happening to it.
          */
         get: operations["get_inference_connection"];
         put?: never;
@@ -785,10 +786,13 @@ export interface paths {
          *     **damaged**, and can only do so by reading every byte.
          *
          *     **202, not 200.** A snapshot is gigabytes and this reads all of it, so it
-         *     follows the launch-and-poll contract the download route uses: poll `GET
-         *     /background-jobs/{id}` — the `Location` header names it — where `processed`
-         *     and `total` count files. A successful job's result carries how many files
-         *     were read and how many bytes that came to.
+         *     follows the launch-and-poll contract the download route uses. The run is then
+         *     on the connection itself as `integrity_check`, which is what lets a client
+         *     that never made this request — after a reload, in another tab, or beside a
+         *     terminal that started it — see one in flight and how it ended. `GET
+         *     /background-jobs/{id}` answers the same run, and the `Location` header names
+         *     it; a successful job's result carries how many files were read and how many
+         *     bytes that came to.
          *
          *     **Only for a local connection that is already set up.** An HTTP connection
          *     has no files here and one whose weights never arrived has none to read;
@@ -2681,6 +2685,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            integrity_check: components["schemas"]["IntegrityCheckOut"] | null;
             /** Model Id */
             model_id: string;
             /** Model Revision */
@@ -3049,6 +3054,44 @@ export interface components {
          * @enum {string}
          */
         IngestState: "pending" | "running" | "completed" | "failed";
+        /**
+         * IntegrityCheckOut
+         * @description A connection's snapshot re-read: which job, how far, and how it ended.
+         *
+         *     `WeightDownloadOut`'s sibling over the same files, and present on the same
+         *     terms: whenever a check has ever been asked for on this connection, describing
+         *     the most recent one. It is how a client shows a run it did not itself start —
+         *     a reload, a second tab, another machine, or `visionset inference
+         *     check-integrity` in a terminal — rather than a job id somebody happened to
+         *     keep.
+         *
+         *     Polling it never affects the run. The job is dispatched to a worker process
+         *     the server owns; no client disconnect cancels or pauses it.
+         *
+         *     **Files, where a download counts bytes.** A check owns its loop and knows how
+         *     many files the revision names before it opens the first one, so it reports
+         *     what it actually counts. Neither borrows the other's name.
+         *
+         *     **The verdict is not here.** A pass leaves `setup_state` at `ready`; a failure
+         *     has already purged the damaged files and stood the connection down by the time
+         *     `state` says `failed`. So what a reader acts on is the connection's own state
+         *     and the actions it now declares, and what this adds is the sentence saying
+         *     why.
+         */
+        IntegrityCheckOut: {
+            /** Error */
+            error: string | null;
+            /** Files Read */
+            files_read: number;
+            /** Files Total */
+            files_total: number | null;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            state: components["schemas"]["BackgroundJobState"];
+        };
         /**
          * ItemFailureOut
          * @description One item a job could not process, and why.

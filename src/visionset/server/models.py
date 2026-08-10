@@ -84,6 +84,7 @@ from visionset.kernel.domain import (
     IngestFailureKind,
     IngestJob,
     IngestState,
+    IntegrityCheck,
     ItemFailure,
     JobAction,
     LabelClass,
@@ -1663,6 +1664,54 @@ class WeightDownloadOut(BaseModel):
         )
 
 
+class IntegrityCheckOut(BaseModel):
+    """A connection's snapshot re-read: which job, how far, and how it ended.
+
+    `WeightDownloadOut`'s sibling over the same files, and present on the same
+    terms: whenever a check has ever been asked for on this connection, describing
+    the most recent one. It is how a client shows a run it did not itself start —
+    a reload, a second tab, another machine, or `visionset inference
+    check-integrity` in a terminal — rather than a job id somebody happened to
+    keep.
+
+    Polling it never affects the run. The job is dispatched to a worker process
+    the server owns; no client disconnect cancels or pauses it.
+
+    **Files, where a download counts bytes.** A check owns its loop and knows how
+    many files the revision names before it opens the first one, so it reports
+    what it actually counts. Neither borrows the other's name.
+
+    **The verdict is not here.** A pass leaves `setup_state` at `ready`; a failure
+    has already purged the damaged files and stood the connection down by the time
+    `state` says `failed`. So what a reader acts on is the connection's own state
+    and the actions it now declares, and what this adds is the sentence saying
+    why.
+    """
+
+    job_id: UUID
+    state: BackgroundJobState
+    #: Files re-read and compared so far.
+    files_read: int
+    #: How many the revision names, or `null` before the run has read the hub's
+    #: listing. A check learns its total almost immediately, so the null window is
+    #: the moment between the job being claimed and the first digest arriving.
+    files_total: int | None
+    #: Why it failed, in the handler's own sentence. `null` unless `state` is
+    #: `failed`. A check that could not reach the hub fails here and changes
+    #: nothing: no verdict, no purge, no state change.
+    error: str | None
+
+    @classmethod
+    def of(cls, check: IntegrityCheck) -> Self:
+        return cls(
+            job_id=check.job_id,
+            state=check.state,
+            files_read=check.files_read,
+            files_total=check.files_total,
+            error=check.error,
+        )
+
+
 class ConnectionOut(BaseModel):
     """One configured place a model can be asked to predict."""
 
@@ -1714,11 +1763,22 @@ class ConnectionOut(BaseModel):
     #: moment it settles would leave a connection that failed while nobody was
     #: watching sitting at `not_set_up` with nothing saying why.
     download: WeightDownloadOut | None
+    #: The most recent integrity check asked for on this connection, or `null`
+    #: where none ever was. Carried for `download`'s reason and read the same way:
+    #: a run outlives the request that started it, so a client that remembered a
+    #: job id would lose it to the first navigation.
+    integrity_check: IntegrityCheckOut | None
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def of(cls, connection: InferenceConnection, download: WeightDownload | None = None) -> Self:
+    def of(
+        cls,
+        connection: InferenceConnection,
+        *,
+        download: WeightDownload | None = None,
+        integrity_check: IntegrityCheck | None = None,
+    ) -> Self:
         return cls(
             id=connection.id,
             name=connection.name,
@@ -1734,6 +1794,9 @@ class ConnectionOut(BaseModel):
             ),
             capabilities=capabilities_of(connection.model_family),
             download=None if download is None else WeightDownloadOut.of(download),
+            integrity_check=(
+                None if integrity_check is None else IntegrityCheckOut.of(integrity_check)
+            ),
             created_at=connection.created_at,
             updated_at=connection.updated_at,
         )

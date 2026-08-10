@@ -116,12 +116,12 @@ def inference_show(
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
         found = connections.get(_resolve(connections, connection))
-        # A download runs in the server's worker against this same workspace, so
-        # a terminal can watch one it did not start — the property the REST
+        # Either run happens in the server's worker against this same workspace,
+        # so a terminal can watch one it did not start — the property the REST
         # listing has, published by the surface that shares its projection.
-        downloading = connections.downloads().get(found.id)
+        jobs = connections.connection_jobs()
     if json_out:
-        document(wire.connection(found, downloading))
+        document(wire.connection(found, jobs.downloads.get(found.id), jobs.checks.get(found.id)))
         return
     table(_COLUMNS, [_row(found)])
 
@@ -317,12 +317,19 @@ def inference_list(
     with opened_workspace(workspace) as service:
         configured = InferenceConnectionService(service)
         connections = configured.list()
-        # One queue read for the page, on the REST listing's terms: a terminal
-        # watches a transfer the server's worker is running.
-        downloads = configured.downloads()
+        # One queue read for both kinds and the whole page, on the REST listing's
+        # terms: a terminal watches a run the server's worker is doing.
+        jobs = configured.connection_jobs()
         root = service.root
     if json_out:
-        document(wire.page([wire.connection(one, downloads.get(one.id)) for one in connections]))
+        document(
+            wire.page(
+                [
+                    wire.connection(one, jobs.downloads.get(one.id), jobs.checks.get(one.id))
+                    for one in connections
+                ]
+            )
+        )
         return
     table(_COLUMNS, [_row(one) for one in connections])
     if not connections:

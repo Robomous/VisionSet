@@ -1010,7 +1010,11 @@ def test_the_integrity_check_is_not_read_as_a_download(
     monkeypatch.setattr(
         job_module,
         "check_integrity",
-        lambda *_, **__: IntegrityReport(files=3, bytes_read=99),
+        # `files_checked`, not `files`. Spelled wrongly when this test was
+        # written, so the fake raised a `TypeError`, the job failed, and the
+        # assertion below held for the wrong reason — a check that never
+        # succeeded still leaves a download record untouched.
+        lambda *_, **__: IntegrityReport(files_checked=3, bytes_read=99),
     )
     with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
         made = _made_ready(client)
@@ -1021,3 +1025,180 @@ def test_the_integrity_check_is_not_read_as_a_download(
 
     assert after == before
     assert after["bytes_done"] == FETCHED_BYTES
+
+
+# --- the check on the wire ----------------------------------------------------
+
+
+def test_a_connection_that_was_never_checked_carries_no_check(client: TestClient) -> None:
+    """`null` and not a zeroed record: *nobody asked* is not *nothing read yet*."""
+    made = created(client, LOCAL)
+    assert made["integrity_check"] is None
+    assert created(client, HTTP)["integrity_check"] is None
+
+
+def test_a_queued_check_is_visible_with_nobody_polling_the_job(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """A check somebody else started, seen by a client that never asked for one.
+
+    Nothing here reads `/background-jobs/{id}` at any point: the observation is
+    the connection listing and only that. That is the whole of "a reload does not
+    lose a check", stated as a test rather than as a paragraph.
+    """
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+        assert dispatcher.run() == 1
+        queued = client.post(f"/inference/connections/{made['id']}/check-integrity").json()
+
+        row = client.get(f"/inference/connections/{made['id']}").json()
+
+        assert row["integrity_check"] == {
+            "job_id": queued["id"],
+            "state": "queued",
+            "files_read": 0,
+            "files_total": None,
+            "error": None,
+        }
+        # The connection is still `ready`: a check in flight is not a setup state.
+        assert row["setup_state"] == "ready"
+
+
+def test_a_live_check_does_not_change_what_the_connection_declares(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """**Today's answer, pinned rather than changed.**
+
+    `CONNECTION_GATES` is a function of setup state and connection type, and a job
+    moves neither — so a connection with a check in flight still declares
+    `check_integrity` *and* `download_weights`. Nothing in the kernel refuses a
+    second concurrent check or a download overlapping one.
+
+    That is defensible: the check job is registered idempotent, a second run reads
+    the same files and reaches the same verdict, and `require_checkable` passes at
+    `ready` precisely so a re-queued orphan and a person asking twice take one
+    path. Making the declaration job-aware would give `connection_actions` a third
+    dimension and change what `CONNECTION_GATES` is — a design decision, not a
+    consequence of putting a check on the wire. This test exists so that whoever
+    takes that decision has to come here and say so.
+    """
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+        assert dispatcher.run() == 1
+        client.post(f"/inference/connections/{made['id']}/check-integrity")
+
+        row = client.get(f"/inference/connections/{made['id']}").json()
+
+        assert row["integrity_check"]["state"] == "queued"
+        assert "check_integrity" in row["allowed_actions"]
+        assert "download_weights" in row["allowed_actions"]
+        # And a second request for either is accepted, which is what the
+        # declaration above promises.
+        assert (
+            client.post(f"/inference/connections/{made['id']}/check-integrity").status_code == 202
+        )
+        assert client.post(f"/inference/connections/{made['id']}/download").status_code == 202
+
+
+def test_a_check_that_failed_while_nobody_watched_still_says_why(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verdict is the row's; the sentence is the check's; both survive a reload.
+
+    Before this, a check that found damage while the tab was closed left a
+    connection at `Not set up` with nothing anywhere saying what had happened.
+    """
+
+    def _damaged(workspace: Any, connection_id: Any, **_: Any) -> None:
+        InferenceConnectionService(workspace).record_weights_missing(connection_id)
+        raise WeightsDamaged("1 file does not match (model.safetensors)")
+
+    monkeypatch.setattr(job_module, "check_integrity", _damaged)
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        client.post(f"/inference/connections/{made['id']}/check-integrity")
+
+        row = client.get(f"/inference/connections/{made['id']}").json()
+
+    assert row["setup_state"] == "not_set_up"
+    assert row["integrity_check"]["state"] == "failed"
+    assert "model.safetensors" in row["integrity_check"]["error"]
+    # The remedy the row now declares, which is what the prose can name.
+    assert "download_weights" in row["allowed_actions"]
+
+
+def test_a_hub_that_could_not_be_reached_is_a_failure_and_not_a_verdict(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#475's semantics, unchanged — and now readable after a reload.
+
+    A network that is not there is not evidence about the files, so nothing is
+    purged and no state moves. What changes is only that the sentence saying so
+    outlives the request.
+    """
+
+    def _unreachable(workspace: Any, connection_id: Any, **_: Any) -> None:
+        raise LocalInferenceUnavailable("could not read what the hub publishes")
+
+    monkeypatch.setattr(job_module, "check_integrity", _unreachable)
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        client.post(f"/inference/connections/{made['id']}/check-integrity")
+
+        row = client.get(f"/inference/connections/{made['id']}").json()
+
+    # No verdict: still ready, still checkable, nothing purged.
+    assert row["setup_state"] == "ready"
+    assert "check_integrity" in row["allowed_actions"]
+    assert row["integrity_check"]["state"] == "failed"
+    assert "could not read what the hub publishes" in row["integrity_check"]["error"]
+
+
+def test_a_finished_check_reports_every_file_it_read(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Files, and determinate: a check knows its total before it opens a file."""
+    monkeypatch.setattr(
+        job_module,
+        "check_integrity",
+        lambda workspace, connection_id, on_file=None, **_: (
+            on_file(11, 11) if on_file is not None else None,
+            IntegrityReport(files_checked=11, bytes_read=4_000),
+        )[1],
+    )
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        client.post(f"/inference/connections/{made['id']}/check-integrity")
+
+        row = client.get(f"/inference/connections/{made['id']}").json()
+
+    assert row["integrity_check"]["state"] == "succeeded"
+    assert (row["integrity_check"]["files_read"], row["integrity_check"]["files_total"]) == (11, 11)
+    # The pass leaves the connection exactly where it was.
+    assert row["setup_state"] == "ready"
+
+
+def test_the_two_runs_are_separate_records_on_one_row(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One connection, two questions, two records that never borrow each other's
+    numbers — bytes for the transfer, files for the re-read."""
+    monkeypatch.setattr(
+        job_module,
+        "check_integrity",
+        lambda *_, **__: IntegrityReport(files_checked=3, bytes_read=99),
+    )
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        client.post(f"/inference/connections/{made['id']}/check-integrity")
+
+        row = client.get(f"/inference/connections/{made['id']}").json()
+
+    assert row["download"]["bytes_total"] == FETCHED_BYTES
+    assert row["integrity_check"]["job_id"] != row["download"]["job_id"]
+    assert set(row["integrity_check"]) == {"job_id", "state", "files_read", "files_total", "error"}
+    assert set(row["download"]) == {"job_id", "state", "bytes_done", "bytes_total", "error"}
