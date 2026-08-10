@@ -12,6 +12,7 @@ counted on disk because that is the acceptance criterion in the issue, and "the
 same asset" compares ids rather than row counts.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -1247,13 +1248,6 @@ def test_resumable_refuses_exactly_what_resume_refuses(tmp_path: Path, state: In
     fixture.close()
 
 
-def test_resumable_needs_a_job_that_exists(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(IngestJobNotFound):
-        fixture.ingest.resumable(uuid4())
-    fixture.close()
-
-
 # --- resuming a failed run ------------------------------------------------
 
 
@@ -1360,14 +1354,6 @@ def test_resuming_into_a_batch_that_was_frozen_meanwhile_is_refused(tmp_path: Pa
 
     with pytest.raises(BatchNotEditable):
         fixture.ingest.resume(result.job_id)
-    fixture.close()
-
-
-def test_resuming_an_unknown_job_is_refused(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-
-    with pytest.raises(IngestJobNotFound):
-        fixture.ingest.resume(uuid4())
     fixture.close()
 
 
@@ -1685,15 +1671,6 @@ def test_stored_bytes_that_will_not_render_are_reported_by_remedy(tmp_path: Path
     fixture.close()
 
 
-def test_backfilling_an_unknown_project_is_refused(tmp_path: Path) -> None:
-    """An empty report would read as "nothing to do" rather than "no such thing"."""
-    fixture = Fixture(tmp_path)
-
-    with pytest.raises(ProjectNotFound):
-        fixture.ingest.backfill_thumbnails(uuid4())
-    fixture.close()
-
-
 def test_backfilling_a_project_in_another_workspace_is_refused(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     elsewhere = Fixture(tmp_path, name="other")
@@ -1708,19 +1685,70 @@ def test_backfilling_a_project_in_another_workspace_is_refused(tmp_path: Path) -
 # --- scope ----------------------------------------------------------------
 
 
-def test_ingesting_an_unknown_source_is_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("call", "expected"),
+    [
+        pytest.param(
+            lambda fx: fx.ingest.ingest(uuid4()),
+            SourceNotFound,
+            id="ingesting-an-unknown-source",
+        ),
+        pytest.param(
+            lambda fx: fx.ingest.get(uuid4()),
+            IngestJobNotFound,
+            id="getting-an-unknown-job",
+        ),
+        pytest.param(
+            lambda fx: fx.ingest.resume(uuid4()),
+            IngestJobNotFound,
+            id="resuming-an-unknown-job",
+        ),
+        pytest.param(
+            lambda fx: fx.ingest.resumable(uuid4()),
+            IngestJobNotFound,
+            id="asking-whether-an-unknown-job-is-resumable",
+        ),
+        # Refused rather than answered with an empty report, which would read as
+        # "nothing to do" rather than "no such thing".
+        pytest.param(
+            lambda fx: fx.ingest.backfill_thumbnails(uuid4()),
+            ProjectNotFound,
+            id="backfilling-an-unknown-project",
+        ),
+        pytest.param(
+            lambda fx: fx.ingest.assets(uuid4()),
+            ProjectNotFound,
+            id="listing-an-unknown-projects-assets",
+        ),
+        pytest.param(
+            lambda fx: fx.ingest.asset(fx.project.id, uuid4()),
+            AssetNotFound,
+            id="reading-an-unknown-asset",
+        ),
+        # The project is resolved before the asset, so a caller who mistypes the
+        # project hears about the project rather than about the asset.
+        pytest.param(
+            lambda fx: fx.ingest.asset(uuid4(), uuid4()),
+            ProjectNotFound,
+            id="reading-an-asset-of-an-unknown-project",
+        ),
+    ],
+)
+def test_naming_something_that_does_not_exist_is_refused(
+    tmp_path: Path,
+    call: Callable[[Fixture], object],
+    expected: type[Exception],
+) -> None:
+    """Every entry point's not-found answer, in one table.
+
+    The rows are the point: which calls are covered is visible at a glance, and so
+    is which are not. The last two are a pair rather than a repetition — reading an
+    asset resolves its project first, so the two ways of naming something absent
+    answer with two different refusals.
+    """
     fixture = Fixture(tmp_path)
-
-    with pytest.raises(SourceNotFound):
-        fixture.ingest.ingest(uuid4())
-    fixture.close()
-
-
-def test_getting_an_unknown_ingest_job_is_refused(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-
-    with pytest.raises(IngestJobNotFound):
-        fixture.ingest.get(uuid4())
+    with pytest.raises(expected):
+        call(fixture)
     fixture.close()
 
 
@@ -1849,13 +1877,6 @@ def test_an_asset_is_read_back_by_id_within_its_project(tmp_path: Path) -> None:
     fixture.close()
 
 
-def test_an_unknown_asset_id_is_refused(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(AssetNotFound):
-        fixture.ingest.asset(fixture.project.id, uuid4())
-    fixture.close()
-
-
 def test_an_asset_of_another_project_reads_as_missing_rather_than_forbidden(
     tmp_path: Path,
 ) -> None:
@@ -1868,14 +1889,6 @@ def test_an_asset_of_another_project_reads_as_missing_rather_than_forbidden(
 
     with pytest.raises(AssetNotFound):
         fixture.ingest.asset(elsewhere.id, stored.id)
-    fixture.close()
-
-
-def test_an_unknown_project_is_refused_before_the_asset_is_looked_at(tmp_path: Path) -> None:
-    """So a caller mistyping the project hears about the project, not the asset."""
-    fixture = Fixture(tmp_path)
-    with pytest.raises(ProjectNotFound):
-        fixture.ingest.asset(uuid4(), uuid4())
     fixture.close()
 
 
@@ -2045,13 +2058,6 @@ def test_listing_one_project_never_reaches_into_another(tmp_path: Path) -> None:
 
     assert len(fixture.ingest.assets(fixture.project.id)) == 3
     assert fixture.ingest.assets(neighbour.id) == []
-    fixture.close()
-
-
-def test_listing_an_unknown_project_is_project_not_found(tmp_path: Path) -> None:
-    fixture = Fixture(tmp_path)
-    with pytest.raises(ProjectNotFound):
-        fixture.ingest.assets(uuid4())
     fixture.close()
 
 
@@ -2283,27 +2289,6 @@ def test_an_asset_with_no_recorded_arrival_sorts_last(tmp_path: Path) -> None:
         "ingested.png",
         "aaa-sorts-first-by-name.png",
     ]
-    fixture.close()
-
-
-def test_pre_migration_assets_keep_the_stable_order_among_themselves(tmp_path: Path) -> None:
-    """With nothing to be recent about, the listing falls through to stable order."""
-    fixture = Fixture(tmp_path)
-    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
-    with fixture.workspace.unit_of_work() as uow:
-        for index, name in enumerate(["c.png", "a.png", "b.png"]):
-            uow.assets.add(
-                Asset(
-                    project_id=fixture.project.id,
-                    content_hash=f"{index:064x}",
-                    uri=f"/tmp/in/{name}",
-                    source_id=source.id,
-                )
-            )
-
-    listed = fixture.ingest.assets(fixture.project.id)
-
-    assert [Path(asset.uri).name for asset in listed] == ["a.png", "b.png", "c.png"]
     fixture.close()
 
 

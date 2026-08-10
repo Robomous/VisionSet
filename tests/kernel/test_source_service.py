@@ -12,6 +12,7 @@ can, because "returns the same source" is the contract; "wrote one row" is how i
 happens to be implemented.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -329,17 +330,27 @@ def test_registering_against_an_unknown_project_is_refused(tmp_path: Path) -> No
     fx.close()
 
 
-def test_getting_an_unknown_source_is_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("call", "expected"),
+    [
+        pytest.param(
+            lambda fx: fx.sources.get(uuid4()), SourceNotFound, id="getting-an-unknown-source"
+        ),
+        pytest.param(
+            lambda fx: fx.sources.list(uuid4()),
+            ProjectNotFound,
+            id="listing-an-unknown-projects-sources",
+        ),
+    ],
+)
+def test_naming_something_that_does_not_exist_is_refused(
+    tmp_path: Path, call: Callable[[Fixture], object], expected: type[Exception]
+) -> None:
+    """The two refusals differ in subject: an unknown source is a missing source, and
+    an unknown project is a missing project rather than a project holding no sources."""
     fx = Fixture(tmp_path)
-    with pytest.raises(SourceNotFound):
-        fx.sources.get(uuid4())
-    fx.close()
-
-
-def test_listing_an_unknown_project_is_refused(tmp_path: Path) -> None:
-    fx = Fixture(tmp_path)
-    with pytest.raises(ProjectNotFound):
-        fx.sources.list(uuid4())
+    with pytest.raises(expected):
+        call(fx)
     fx.close()
 
 
