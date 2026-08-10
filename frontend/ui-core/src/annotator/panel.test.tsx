@@ -486,11 +486,10 @@ describe("what a model produced, on the row a reviewer accepts it from", () => {
     };
   }
 
-  it("marks it, and says how sure the model was", () => {
+  it("marks it — that a model drew it, and no more than that", () => {
     render(mount(storeWith([predicted("m")])));
 
     expect(screen.getByTestId("object-model-0")).toBeDefined();
-    expect(screen.getByTestId("object-confidence-0").textContent).toBe("62%");
   });
 
   it("says in words what the glyph says in a picture", () => {
@@ -499,8 +498,20 @@ describe("what a model produced, on the row a reviewer accepts it from", () => {
     render(mount(storeWith([predicted("m")])));
 
     expect(screen.getByTestId("object-model-0").getAttribute("aria-label")).toBe(
-      "Model-produced by IDEA-Research/grounding-dino-tiny@abc123, confidence 62%",
+      "Model-produced by IDEA-Research/grounding-dino-tiny@abc123",
     );
+  });
+
+  it("shows no confidence anywhere on the row, nor in the name it announces", () => {
+    // The number is an accept-or-reject aid and this row is past that decision.
+    // Asserted on the whole row rather than on the element that used to hold
+    // it, so a percentage reappearing anywhere in it turns this red.
+    render(mount(storeWith([predicted("m")])));
+
+    const row = screen.getByTestId("object-row-0");
+    expect(row.textContent).not.toContain("%");
+    expect(row.textContent).not.toContain("62");
+    expect(screen.getByTestId("object-model-0").getAttribute("aria-label")).not.toContain("%");
   });
 
   it("puts nothing at all on a label a person drew", () => {
@@ -509,16 +520,16 @@ describe("what a model produced, on the row a reviewer accepts it from", () => {
     render(mount(storeWith([annotation("h", "vehicle", "bbox")])));
 
     expect(screen.queryByTestId("object-model-0")).toBeNull();
-    expect(screen.queryByTestId("object-confidence-0")).toBeNull();
   });
 
-  it("still marks the model's work when no score was recorded", () => {
+  it("marks the model's work the same whether or not a score was recorded", () => {
+    // `confidence` is optional on a model-produced annotation, and the mark no
+    // longer depends on it at all — which is what makes the mark's absence mean
+    // "a person drew this" rather than "the model did not score itself".
     render(mount(storeWith([predicted("m", { confidence: null })])));
 
     expect(screen.getByTestId("object-model-0")).toBeDefined();
-    // Absent reads as absent — never as a zero, and never as a low score.
-    expect(screen.queryByTestId("object-confidence-0")).toBeNull();
-    expect(screen.getByTestId("object-model-0").textContent).not.toContain("0");
+    expect(screen.getByTestId("object-row-0").textContent).not.toContain("0");
   });
 
   it("marks nothing for an imported label, which has no model to name", () => {
@@ -550,6 +561,7 @@ describe("what a model produced, on the row a reviewer accepts it from", () => {
     );
 
     expect(screen.queryByTestId("object-model-0")).toBeNull();
-    expect(screen.getByTestId("object-confidence-1").textContent).toBe("41%");
+    expect(screen.getByTestId("object-model-1")).toBeDefined();
+    expect(screen.getByTestId("object-row-1").textContent).not.toContain("41");
   });
 });

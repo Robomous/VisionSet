@@ -11,7 +11,6 @@ import { ASSET, SCHEMA, annotation } from "../../core/state/_sample";
 import { createDocument } from "../../core/state/document";
 import { EMPTY_SELECTION, selectionOf } from "../../core/state/selection";
 import type { Annotation } from "../../core/types";
-import { labelText } from "./Shapes";
 import {
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
@@ -327,7 +326,15 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
   });
 });
 
-describe("what a model produced, projected so the label can say so", () => {
+/**
+ * Where a model's confidence lives, and where the draw list refuses to carry it.
+ *
+ * The preview shows the number because it is what an accept-or-reject decision
+ * is made on; a committed annotation does not, because by then the decision has
+ * been made. The projection is what enforces the second half: a renderer cannot
+ * write a score it was never given.
+ */
+describe("a committed annotation's confidence is not the canvas's business", () => {
   function predicted(overrides: Partial<Annotation> = {}): Annotation {
     return {
       ...annotation("m1"),
@@ -349,45 +356,39 @@ describe("what a model produced, projected so the label can say so", () => {
     return painted;
   }
 
-  it("carries both fields onto the draw list", () => {
-    const shape = paintOne(predicted());
-    expect(shape.provenance).toBe("model");
-    expect(shape.confidence).toBe(0.62);
+  it("hands the renderer neither the score nor who produced it", () => {
+    // Absence in the projection, not a rule in the component: a `<text>` that
+    // has never been given a confidence cannot start writing one.
+    const shape: Record<string, unknown> = { ...paintOne(predicted()) };
+    expect("confidence" in shape).toBe(false);
+    expect("provenance" in shape).toBe(false);
   });
 
-  it("carries a person's own values too, so the label can tell them apart", () => {
-    const shape = paintOne(annotation("h1"));
-    expect(shape.provenance).toBe("human");
-    expect(shape.confidence).toBeNull();
+  it("paints a model's shape exactly as it paints a person's", () => {
+    // Every field the two share, and there is now nothing else: the canvas
+    // cannot tell them apart, which is the point.
+    const mine = paintOne(annotation("m1"));
+    const theirs = paintOne(predicted());
+    expect(theirs).toEqual({ ...mine, id: theirs.id });
   });
 
-  it("writes the model's score beside the class, at the shipped spelling", () => {
-    expect(labelText(paintOne(predicted()))).toBe("sign · 62%");
+  it("keeps the number on the live preview, which is where the decision is", () => {
+    // The one surface in the editor that shows it, and `paintSuggestion` is
+    // what puts it there — see the `#424` block above for the full range.
+    const asked = withPoint(armed("sign"), [100, 120], "positive");
+    const preview = answered(asked, asked.serial, {
+      geometry: { type: "bbox", x: 10, y: 20, width: 30, height: 40 },
+      confidence: 0.62,
+      modelRef: "facebook/sam2-hiera-base-plus@main",
+    });
+    const declared = SCHEMA.classes.find((one) => one.name === "sign");
+    expect(paintSuggestion(preview, declared)?.label).toBe("sign 62%");
   });
 
-  it("still marks a model's work when the model reported no score", () => {
-    // `confidence` is optional on a model-produced annotation, and a mark that
-    // appeared only when a model happened to score itself is a mark whose
-    // absence says nothing.
-    expect(labelText(paintOne(predicted({ confidence: null })))).toBe("sign · model");
-  });
-
-  it("leaves a person's label exactly as it shipped", () => {
-    expect(labelText(paintOne(annotation("h1")))).toBe("sign");
-  });
-
-  it("leaves an imported label alone, having no mark that would mean anything", () => {
-    const imported = predicted({ provenance: "import", model_ref: null, confidence: null });
-    expect(labelText(paintOne(imported))).toBe("sign");
-  });
-
-  it("spells the score the way the suggestion overlay already does", () => {
-    // One quantity, one spelling. `confidenceLabel` is the canvas's live
-    // suggestion; `labelText` is the committed annotation; a reader looking at
-    // both at once must not see two notations for the same number.
-    expect(labelText(paintOne(predicted({ confidence: 0.87 })))).toContain(
-      confidencePercent(0.87),
-    );
-    expect(confidenceLabel("sign", 0.87)).toContain(confidencePercent(0.87));
+  it("spells it one way, so no second surface can disagree with the first", () => {
+    // `confidencePercent` is exported for this: whoever shows the number
+    // imports it. Two `Math.round`s would be the same quantity in two
+    // notations, which is the defect the shared helper exists to prevent.
+    expect(confidenceLabel("sign", 0.87)).toBe(`sign ${confidencePercent(0.87)}`);
   });
 });
