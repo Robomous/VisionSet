@@ -14,11 +14,13 @@ of "what checking means" is how a terminal and an API come to disagree about
 whether a model is usable, and the disagreement would only show up on the day
 somebody used both.
 
-**This one has a real total, unlike the download.** The download hands its
-transfer to a library that reports through its own progress bar, so its handler
-can only honestly say "one connection". A check owns its loop and knows how many
-files it has left before it starts, so it reports file counts — a number that
-means what a reader will take it to mean.
+**Both have a real total, and they count different things.** A check owns its
+loop and knows how many files it has before it starts, so it reports files; a
+download hands its transfer to a library that reports nothing a caller can use,
+so it measures bytes off the disk. Either is an absolute count of the unit that
+run works in, which is all a job row's ``processed`` and ``total`` ever claimed
+to be — and which unit it is, is named where the job type is known and nowhere
+else.
 
 **Failure is a verdict, and the verdict is already written when it arrives.** A
 run that finds damage purges the bad blobs and records the connection

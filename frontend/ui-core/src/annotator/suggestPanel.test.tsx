@@ -69,6 +69,7 @@ function connection(
     // something has read one — which is why a row that never downloaded
     // declares nothing.
     capabilities: setup === "ready" ? ["point_suggest"] : [],
+    download: null,
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
     ...overrides,

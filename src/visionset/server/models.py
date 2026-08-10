@@ -106,6 +106,7 @@ from visionset.kernel.domain import (
     SplitAssignment,
     SplitRecipe,
     VideoProvenance,
+    WeightDownload,
     asset_actions,
     batch_actions,
     connection_actions,
@@ -1617,6 +1618,51 @@ class FormatPage(Page[FormatOut]):
 # where an HTTP connection's secret lives is still open, and a nullable field
 # added here "for later" would answer it by publishing a shape. A wire model is
 # the hardest thing in this repo to take back.
+class WeightDownloadOut(BaseModel):
+    """A connection's weight transfer: which job, how far it has got, how it ended.
+
+    Present whenever a download has ever been asked for on this connection, and
+    describing the most recent one. It is how a client shows a transfer it did not
+    itself start: a download outlives the request that launched it and the page
+    that asked, so a reload, a second tab or another machine all read the same
+    progress from here rather than from a job id somebody happened to keep.
+
+    Polling this — through the connection or through
+    `GET /background-jobs/{job_id}` — never affects the run. The job is dispatched
+    to a worker process the server owns; no client disconnect cancels or pauses
+    it, and closing the browser during a download is not a way to stop one.
+
+    **It is not a setup state.** `setup_state` says whether the weights are
+    *here*; this says whether something is currently fetching them. The two are
+    separate on purpose: a connection is `ready` only once a snapshot is complete,
+    so there is no moment at which one is half set up.
+    """
+
+    job_id: UUID
+    state: BackgroundJobState
+    #: Bytes that have arrived. Monotonic, and never above `bytes_total`.
+    bytes_done: int
+    #: Every byte the revision comes to, or `null` where the size could not be
+    #: read. Null is a real answer and not a failure: the size is read from the
+    #: publishing hub's file listing, which can fail while the transfer itself
+    #: runs perfectly — so it means *render this bar as indeterminate*, never
+    #: *something is wrong*.
+    bytes_total: int | None
+    #: Why it failed, in the handler's own sentence. `null` unless `state` is
+    #: `failed`.
+    error: str | None
+
+    @classmethod
+    def of(cls, download: WeightDownload) -> Self:
+        return cls(
+            job_id=download.job_id,
+            state=download.state,
+            bytes_done=download.bytes_done,
+            bytes_total=download.bytes_total,
+            error=download.error,
+        )
+
+
 class ConnectionOut(BaseModel):
     """One configured place a model can be asked to predict."""
 
@@ -1653,11 +1699,26 @@ class ConnectionOut(BaseModel):
     #: be relied on for a particular tool; the server still judges every request
     #: on its own.
     capabilities: list[ModelCapability]
+    #: The most recent weight download asked for on this connection, or `null`
+    #: where none ever was.
+    #:
+    #: **This is what makes a transfer observable from anywhere**, and it is why
+    #: it hangs off the connection rather than being something a client keeps: a
+    #: download runs in a worker the server owns and outlives the request that
+    #: started it, so the only way a fresh page can show one is for the resource
+    #: it lists to say so. A client that remembered a job id would lose the
+    #: download to the first navigation.
+    #:
+    #: The *latest* rather than only a live one, because both questions get asked:
+    #: *is something running now* and *what happened last time*. Dropping it the
+    #: moment it settles would leave a connection that failed while nobody was
+    #: watching sitting at `not_set_up` with nothing saying why.
+    download: WeightDownloadOut | None
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def of(cls, connection: InferenceConnection) -> Self:
+    def of(cls, connection: InferenceConnection, download: WeightDownload | None = None) -> Self:
         return cls(
             id=connection.id,
             name=connection.name,
@@ -1672,6 +1733,7 @@ class ConnectionOut(BaseModel):
                 connection.setup_state, connection_type=connection.connection_type
             ),
             capabilities=capabilities_of(connection.model_family),
+            download=None if download is None else WeightDownloadOut.of(download),
             created_at=connection.created_at,
             updated_at=connection.updated_at,
         )

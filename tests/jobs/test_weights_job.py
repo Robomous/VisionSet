@@ -21,7 +21,12 @@ import pytest
 from visionset.inference import weights as weights_module
 from visionset.jobs import REGISTRY
 from visionset.jobs.weights import JOB_TYPE, payload_for, run
-from visionset.kernel.domain import ConnectionSetupState, ConnectionType, ItemFailure
+from visionset.kernel.domain import (
+    ConnectionSetupState,
+    ConnectionType,
+    DownloadSize,
+    ItemFailure,
+)
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
 
@@ -87,8 +92,10 @@ def setup_state(root: Path) -> ConnectionSetupState:
 def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     seen: list[str] = []
 
-    def _download(connection: object, *, into: Path) -> Path:
+    def _download(connection: object, *, into: Path, on_bytes: object = None) -> Path:
         seen.append(connection.model_id)
+        if callable(on_bytes):
+            on_bytes(FETCHED_BYTES // 2)
         return tmp_path / "snapshot"
 
     monkeypatch.setattr(weights_module, "download", _download)
@@ -97,6 +104,10 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
 
 #: What the faked config declares, where a test needs one.
 DOWNLOADED_FAMILY = "sam2"
+
+#: What the faked revision weighs. A round number so the reports a test reads
+#: back are legible as bytes rather than as an arbitrary count.
+FETCHED_BYTES = 4_000_000_000
 
 
 @pytest.fixture(autouse=True)
@@ -109,6 +120,26 @@ def _the_config_read_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
     test, in another directory, in a run whose order decided it.
     """
     monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: DOWNLOADED_FAMILY)
+
+
+@pytest.fixture(autouse=True)
+def _the_size_lookup_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A download reads its total from the hub; here it does not.
+
+    The lookup is a metadata request over the network, so leaving it real would
+    make every test in this file reach one — and only on a machine with the extra
+    installed, which is the worst kind of intermittent.
+    """
+    monkeypatch.setattr(
+        weights_module,
+        "download_size",
+        lambda model_id, model_revision: DownloadSize(
+            model_id=model_id,
+            model_revision=model_revision,
+            total_bytes=FETCHED_BYTES,
+            file_count=2,
+        ),
+    )
 
 
 # --- registration -------------------------------------------------------------
@@ -148,7 +179,13 @@ def test_a_finished_run_reports_its_result_for_whoever_polls(
     assert result["setup_state"] == "ready"
     assert result["model_id"] == "some/model"
     assert result["model_revision"] == "abc123"
-    assert reporter.reports == [(1, 1)]
+    # Bytes, not items: zero before the first one arrives, the sampler's word
+    # while it runs, and the whole of it once the transfer is over.
+    assert reporter.reports == [
+        (0, FETCHED_BYTES),
+        (FETCHED_BYTES // 2, FETCHED_BYTES),
+        (FETCHED_BYTES, FETCHED_BYTES),
+    ]
     assert setup_state(root) is ConnectionSetupState.READY
     assert fetched == ["some/model"]
 
@@ -187,7 +224,7 @@ def test_a_second_run_verifies_and_settles_rather_than_failing(
     monkeypatch.setattr(
         weights_module,
         "download",
-        lambda connection, *, into: (calls.append(connection.model_id), tmp_path)[1],
+        lambda connection, *, into, on_bytes=None: (calls.append(connection.model_id), tmp_path)[1],
     )
     connection_id = only_connection(root)
     first = run(root, payload_for(connection_id), Reporter())
@@ -231,7 +268,7 @@ def test_a_failure_leaves_the_connection_where_it_was(
 ) -> None:
     """No half-ready row, because the state flip is the last statement."""
 
-    def _explode(connection: object, *, into: Path) -> Path:
+    def _explode(connection: object, *, into: Path, **_: object) -> Path:
         raise OSError("the disk filled")
 
     monkeypatch.setattr(weights_module, "download", _explode)

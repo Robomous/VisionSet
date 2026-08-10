@@ -157,13 +157,25 @@ class JobQueue(Protocol):
         """
         ...
 
-    def list(self, *, states: Collection[BackgroundJobState] | None = None) -> list[BackgroundJob]:
-        """Every job, newest first, optionally narrowed to some states.
+    def list(
+        self,
+        *,
+        states: Collection[BackgroundJobState] | None = None,
+        types: Collection[str] | None = None,
+    ) -> list[BackgroundJob]:
+        """Every job, newest first, optionally narrowed to some states or types.
 
         Newest first because the caller is a person looking at what is happening
         now, which is the opposite of :meth:`claim`'s order — and the two are
         stated separately rather than shared, because they are answering opposite
         questions.
+
+        ``types`` narrows to the kinds of work a caller is about, which is what a
+        resource asking *"is anything running against me right now"* needs: a
+        connection wants its weight downloads and nothing else, and reading every
+        ingest a workspace has ever queued to find them would make the answer's
+        cost a function of unrelated history. Both filters are conjunctive, and
+        ``None`` in either means *do not narrow on this*.
 
         Declared **last** in this protocol: a method named ``list`` shadows the
         builtin for every annotation after it in the same body, which is the rule

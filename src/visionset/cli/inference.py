@@ -116,8 +116,12 @@ def inference_show(
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
         found = connections.get(_resolve(connections, connection))
+        # A download runs in the server's worker against this same workspace, so
+        # a terminal can watch one it did not start — the property the REST
+        # listing has, published by the surface that shares its projection.
+        downloading = connections.downloads().get(found.id)
     if json_out:
-        document(wire.connection(found))
+        document(wire.connection(found, downloading))
         return
     table(_COLUMNS, [_row(found)])
 
@@ -311,10 +315,14 @@ def inference_list(
 ) -> None:
     """List this workspace's connections, oldest first."""
     with opened_workspace(workspace) as service:
-        connections = InferenceConnectionService(service).list()
+        configured = InferenceConnectionService(service)
+        connections = configured.list()
+        # One queue read for the page, on the REST listing's terms: a terminal
+        # watches a transfer the server's worker is running.
+        downloads = configured.downloads()
         root = service.root
     if json_out:
-        document(wire.page([wire.connection(one) for one in connections]))
+        document(wire.page([wire.connection(one, downloads.get(one.id)) for one in connections]))
         return
     table(_COLUMNS, [_row(one) for one in connections])
     if not connections:

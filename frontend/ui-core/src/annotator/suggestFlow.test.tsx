@@ -92,6 +92,9 @@ function connectionRow(
     // never been downloaded declares nothing, which is why the default only
     // makes sense beside `setup`.
     capabilities: setup === "ready" ? ["point_suggest"] : [],
+    // Not optional on the wire, so not optional here — the generated runtime
+    // check refuses a response missing it.
+    download: null,
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
     ...overrides,

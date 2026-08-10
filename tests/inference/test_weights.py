@@ -13,13 +13,14 @@ job and the route; this file is the sequence itself.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
-from tests.fixtures.local_inference import without_the_extra
+from tests.fixtures.local_inference import require_local_inference, without_the_extra
 
 from visionset.inference import cache_root, fetch_weights, with_families
 from visionset.inference import weights as weights_module
@@ -27,6 +28,7 @@ from visionset.inference.weights import MODELS_DIRNAME, download
 from visionset.kernel.domain import (
     ConnectionSetupState,
     ConnectionType,
+    DownloadSize,
     InferenceConnection,
 )
 from visionset.kernel.errors import (
@@ -76,6 +78,10 @@ def an_http(connections: InferenceConnectionService, name: str = "remote") -> An
 #: because the point of recording it is that a client can act on it.
 DOWNLOADED_FAMILY = "sam2"
 
+#: What the faked revision weighs. Big enough that halving it is a distinct
+#: number, so a test can tell a mid-transfer report from the final one.
+FETCHED_BYTES = 4_000_000_000
+
 
 @pytest.fixture()
 def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[str, Path]]:
@@ -89,13 +95,42 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[str, 
     """
     seen: list[tuple[str, Path]] = []
 
-    def _download(connection: InferenceConnection, *, into: Path) -> Path:
+    def _download(
+        connection: InferenceConnection,
+        *,
+        into: Path,
+        on_bytes: Callable[[int], None] | None = None,
+    ) -> Path:
         seen.append((f"{connection.model_id}@{connection.model_revision}", into))
+        if on_bytes is not None:
+            on_bytes(FETCHED_BYTES // 2)
         return tmp_path / "snapshot"
 
     monkeypatch.setattr(weights_module, "download", _download)
     monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: DOWNLOADED_FAMILY)
     return seen
+
+
+@pytest.fixture(autouse=True)
+def _the_size_lookup_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A download reads its total from the hub; here it does not.
+
+    Autouse rather than part of `fetched`, because the tests that break the
+    download take neither — and a metadata call is a metadata call whether or not
+    the transfer after it is going to succeed. Left real, it would reach the
+    network on a machine carrying the extra and not on one without it, which is
+    the worst kind of intermittent.
+    """
+    monkeypatch.setattr(
+        weights_module,
+        "download_size",
+        lambda model_id, model_revision: DownloadSize(
+            model_id=model_id,
+            model_revision=model_revision,
+            total_bytes=FETCHED_BYTES,
+            file_count=2,
+        ),
+    )
 
 
 # --- where the cache lives ----------------------------------------------------
@@ -239,7 +274,7 @@ def test_a_failed_download_leaves_the_connection_exactly_where_it_was(
     without a rollback, a sentinel state, or a version column.
     """
 
-    def _explode(connection: InferenceConnection, *, into: Path) -> Path:
+    def _explode(connection: InferenceConnection, *, into: Path, **_: object) -> Path:
         raise OSError("the disk filled")
 
     monkeypatch.setattr(weights_module, "download", _explode)
@@ -567,3 +602,184 @@ def _set_up_without_looking(
     settled = connections.get(connection_id)
     assert settled.setup_state is ConnectionSetupState.READY
     assert settled.model_family is None
+
+
+# --- how far it has got -------------------------------------------------------
+
+
+def test_the_progress_is_bytes_and_starts_before_the_first_one(
+    connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
+) -> None:
+    """Zero of the total, immediately, then whatever the transfer reports.
+
+    The leading report is not decoration. A row that said nothing until the first
+    sample landed would look queued for as long as that took, next to a button
+    somebody had just pressed.
+    """
+    said: list[tuple[int, int | None]] = []
+
+    fetch_weights(workspace, a_local(connections).id, on_bytes=lambda *pair: said.append(pair))
+
+    assert said == [
+        (0, FETCHED_BYTES),
+        (FETCHED_BYTES // 2, FETCHED_BYTES),
+        (FETCHED_BYTES, FETCHED_BYTES),
+    ]
+
+
+def test_a_finished_transfer_reports_the_whole_of_it(
+    connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
+) -> None:
+    """A sample cannot say this, and a bar left short beside a finished job reads
+    as a stall: the last sample landed up to an interval before the end, and a
+    snapshot sharing a blob between two files sits permanently under its total."""
+    said: list[tuple[int, int | None]] = []
+
+    fetch_weights(workspace, a_local(connections).id, on_bytes=lambda *pair: said.append(pair))
+
+    assert said[-1] == (FETCHED_BYTES, FETCHED_BYTES)
+
+
+def test_a_size_that_cannot_be_read_does_not_stop_the_download(
+    connections: InferenceConnectionService,
+    workspace: WorkspaceService,
+    fetched: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sizing reaches the hub's listing and the transfer reaches its files.
+
+    The two fail independently, so a metadata call that dies must not cancel a
+    download that would have run. `None` travels instead, which is what a bar
+    renders as indeterminate — and the number that *is* knowable, how far the
+    transfer has got, is still reported.
+    """
+
+    def _no_size(model_id: str, model_revision: str) -> Any:
+        raise LocalInferenceUnavailable("the hub could not be reached")
+
+    monkeypatch.setattr(weights_module, "download_size", _no_size)
+    said: list[tuple[int, int | None]] = []
+    made = a_local(connections)
+
+    ready = fetch_weights(workspace, made.id, on_bytes=lambda *pair: said.append(pair))
+
+    assert ready.setup_state is ConnectionSetupState.READY
+    assert [total for _, total in said] == [None, None]
+    assert said[-1][0] == FETCHED_BYTES // 2
+
+
+def test_a_sample_above_the_total_is_held_at_it(
+    connections: InferenceConnectionService,
+    workspace: WorkspaceService,
+    fetched: list,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The two numbers are measured and published respectively, so they can
+    disagree — and the way that shows is a bar filling past its own end."""
+
+    def _overshoots(connection: Any, *, into: Path, on_bytes: Any = None) -> Path:
+        on_bytes(FETCHED_BYTES * 2)
+        return into
+
+    monkeypatch.setattr(weights_module, "download", _overshoots)
+    said: list[tuple[int, int | None]] = []
+
+    fetch_weights(workspace, a_local(connections).id, on_bytes=lambda *pair: said.append(pair))
+
+    assert max(done for done, _ in said) == FETCHED_BYTES
+
+
+def test_reporting_bytes_is_optional(
+    connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
+) -> None:
+    """The CLI wants phases and the job wants bytes; neither is obliged to want
+    both, and `on_progress`'s own optionality is what this mirrors."""
+    assert fetch_weights(workspace, a_local(connections).id).setup_state is (
+        ConnectionSetupState.READY
+    )
+
+
+# --- what a transfer in flight looks like on the disk -------------------------
+
+
+def test_bytes_on_disk_counts_the_blobs_a_transfer_is_filling(tmp_path: Path) -> None:
+    """Including `.incomplete`, which is the whole reason this is measured here.
+
+    `scan_cache_dir`'s own `size_on_disk` counts only blobs a snapshot already
+    points at, so it reads zero for the entire duration of a first download —
+    which is exactly the window a progress bar exists for.
+    """
+    require_local_inference()
+    cache = tmp_path / MODELS_DIRNAME
+    blobs = cache / "models--some--model" / "blobs"
+    blobs.mkdir(parents=True)
+    (cache / "models--some--model" / "snapshots" / "abc123").mkdir(parents=True)
+    (blobs / "already-here").write_bytes(b"x" * 400)
+    (blobs / "still-arriving.incomplete").write_bytes(b"y" * 600)
+
+    assert weights_module._bytes_on_disk("some/model", cache_dir=cache) == 1000
+
+
+def test_bytes_on_disk_is_zero_for_a_cache_that_is_not_there_yet(tmp_path: Path) -> None:
+    """A sample that cannot be taken is a bar that does not move for a second.
+
+    Never an exception: losing a download to a failed directory read would be
+    trading the work for the commentary on it.
+    """
+    require_local_inference()
+    assert weights_module._bytes_on_disk("some/model", cache_dir=tmp_path / "nothing") == 0
+
+
+def test_the_sampler_does_nothing_when_nobody_asked(tmp_path: Path) -> None:
+    """No thread, no walk, no cost, for the caller that wants no progress."""
+    with weights_module._watching_bytes("some/model", cache_dir=tmp_path, on_bytes=None):
+        pass
+
+
+def test_the_sampler_reports_the_cache_growing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mechanism itself: a thread that measures while the transfer blocks.
+
+    `snapshot_download` is one blocking call that reports nothing a caller can
+    use, so the only honest source is the disk — and the only way to read it
+    during a transfer is beside one.
+    """
+    require_local_inference()
+    monkeypatch.setattr(weights_module, "SAMPLE_INTERVAL_S", 0.02)
+    cache = tmp_path / MODELS_DIRNAME
+    blobs = cache / "models--some--model" / "blobs"
+    blobs.mkdir(parents=True)
+    (cache / "models--some--model" / "snapshots" / "abc123").mkdir(parents=True)
+    said: list[int] = []
+
+    with weights_module._watching_bytes("some/model", cache_dir=cache, on_bytes=said.append):
+        for step in range(1, 4):
+            (blobs / f"part-{step}.incomplete").write_bytes(b"x" * 100)
+            time.sleep(0.08)
+
+    assert said, "the sampler reported nothing at all"
+    assert said == sorted(said), f"progress went backwards: {said}"
+    assert said[-1] == 300
+
+
+def test_the_sampler_never_moves_backwards(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transfer that retries re-reads bytes it already had, and a purge between
+    attempts shrinks the cache. Either way a bar that fell back would read as a
+    defect in the product rather than as a property of the network."""
+    require_local_inference()
+    monkeypatch.setattr(weights_module, "SAMPLE_INTERVAL_S", 0.02)
+    cache = tmp_path / MODELS_DIRNAME
+    blobs = cache / "models--some--model" / "blobs"
+    blobs.mkdir(parents=True)
+    (cache / "models--some--model" / "snapshots" / "abc123").mkdir(parents=True)
+    (blobs / "big.incomplete").write_bytes(b"x" * 500)
+    said: list[int] = []
+
+    with weights_module._watching_bytes("some/model", cache_dir=cache, on_bytes=said.append):
+        time.sleep(0.08)
+        (blobs / "big.incomplete").unlink()
+        time.sleep(0.08)
+
+    assert said and max(said) == 500
+    assert said == sorted(said), f"progress went backwards: {said}"

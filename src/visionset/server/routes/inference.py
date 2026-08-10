@@ -63,14 +63,23 @@ beside_connections = protected_router(prefix="/inference", tags=["inference"])
 def list_inference_connections(workspace: WorkspaceDep) -> ConnectionPage:
     """Every configured connection in this workspace, in the order they were made.
 
+    Each row carries its most recent weight download, so a client sees a transfer
+    it did not start — after a reload, in a second tab, on another machine. This
+    is therefore the read a screen polls while a download is live, and the reason
+    it can stop polling the moment none is.
+
     A set-up connection that has never been asked what kind of model it holds is
     asked here, once, from files already on this disk — see
     ``visionset.inference.weights.with_families``. It is the backfill for rows
     written before a connection recorded that, and it is on the read path because
     the kernel cannot reach a model cache and a migration runs in the kernel.
     """
-    connections = with_families(workspace, InferenceConnectionService(workspace).list())
-    items = [ConnectionOut.of(one) for one in connections]
+    service = InferenceConnectionService(workspace)
+    connections = with_families(workspace, service.list())
+    # One queue read for the whole page rather than one per row: this is a poll
+    # path while anything is downloading.
+    downloads = service.downloads()
+    items = [ConnectionOut.of(one, downloads.get(one.id)) for one in connections]
     return ConnectionPage(items=items, total=len(items))
 
 
@@ -94,12 +103,14 @@ def create_inference_connection(workspace: WorkspaceDep, body: ConnectionCreate)
 def get_inference_connection(workspace: WorkspaceDep, connection_id: UUID) -> ConnectionOut:
     """The connection with that id.
 
-    Carries the same backfill the listing does, so that reading one connection
-    and reading the list never disagree about what it can be asked for.
+    Carries the same backfill the listing does, and the same weight download, so
+    that reading one connection and reading the list never disagree about what it
+    can be asked for or about what is happening to it.
     """
-    connection = InferenceConnectionService(workspace).get(connection_id)
+    service = InferenceConnectionService(workspace)
+    connection = service.get(connection_id)
     (resolved,) = with_families(workspace, [connection])
-    return ConnectionOut.of(resolved)
+    return ConnectionOut.of(resolved, service.downloads().get(resolved.id))
 
 
 @router.patch("/{connection_id}", responses=documented(404, 409, 422))
@@ -107,17 +118,20 @@ def update_inference_connection(
     workspace: WorkspaceDep, connection_id: UUID, body: ConnectionUpdate
 ) -> ConnectionOut:
     """Edit a connection. Omitted fields are left alone; the kind cannot change."""
-    return ConnectionOut.of(
-        InferenceConnectionService(workspace).update(
-            connection_id,
-            name=body.name,
-            model_id=body.model_id,
-            model_revision=body.model_revision,
-            device=body.device,
-            precision=body.precision,
-            endpoint_url=body.endpoint_url,
-        )
+    service = InferenceConnectionService(workspace)
+    edited = service.update(
+        connection_id,
+        name=body.name,
+        model_id=body.model_id,
+        model_revision=body.model_revision,
+        device=body.device,
+        precision=body.precision,
+        endpoint_url=body.endpoint_url,
     )
+    # An edit can land while a download runs, so the response says the same thing
+    # the listing would. A shape that carried the field only on some routes would
+    # be a client having to know which reads it can believe.
+    return ConnectionOut.of(edited, service.downloads().get(edited.id))
 
 
 @router.post(

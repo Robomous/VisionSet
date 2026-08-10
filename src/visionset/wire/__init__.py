@@ -94,6 +94,7 @@ from visionset.kernel.domain import (
     SplitRecipe,
     ThumbnailBackfill,
     VideoProvenance,
+    WeightDownload,
     asset_actions,
     batch_actions,
     connection_actions,
@@ -585,12 +586,40 @@ def export_result(value: ExportResult) -> dict[str, Any]:
 # --- inference connections ----------------------------------------------------
 
 
-def connection(value: InferenceConnection) -> dict[str, Any]:
+def weight_download(value: WeightDownload) -> dict[str, Any]:
+    """A connection's weight transfer: which job, how far, and how it ended.
+
+    Bytes rather than a percentage or a formatted size, on ``download_size``'s
+    terms: how to say "312 MB of 1.4 GB" is a question about a locale and a
+    screen width, and a machine reading this wants the integers either way.
+
+    ``bytes_total`` is null where the published size could not be read, which is
+    a real answer rather than a failure — the transfer runs regardless and the
+    bar it feeds is indeterminate for that run.
+    """
+    return {
+        "job_id": str(value.job_id),
+        "state": value.state.value,
+        "bytes_done": value.bytes_done,
+        "bytes_total": value.bytes_total,
+        "error": value.error,
+    }
+
+
+def connection(
+    value: InferenceConnection, download: WeightDownload | None = None
+) -> dict[str, Any]:
     """One configured place a model can be asked to predict.
 
     No credential key, because the entity carries no credential — where an HTTP
     connection's secret lives is still open, and a key published here would be one
     every consumer starts parsing.
+
+    ``download`` is the transfer this connection most recently asked for, and it
+    is a parameter rather than something read here for the reason nothing in this
+    module reads anything: a projection takes what it publishes. A caller with no
+    view of the queue passes nothing and the key is null, which is also what a
+    connection nobody has ever downloaded publishes.
     """
     return {
         "id": str(value.id),
@@ -610,6 +639,7 @@ def connection(value: InferenceConnection) -> dict[str, Any]:
         # Empty until something has read the model's own config — see
         # ``InferenceConnection.model_family``.
         "capabilities": [c.value for c in capabilities_of(value.model_family)],
+        "download": None if download is None else weight_download(download),
         "created_at": _moment(value.created_at),
         "updated_at": _moment(value.updated_at),
     }
