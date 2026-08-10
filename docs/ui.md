@@ -371,12 +371,13 @@ the way to reach `annotated` from `skipped` is to un-skip and annotate, which is
 what the machine says. The zoom `−`/`%`/`+` and fit drive
 `AnnotatorCanvas`'s new `viewRef` handle, whose `fit` is the same implementation
 `mod+0` reaches, which is why that chord stays intercepted rather than forwarded.
-The version dropdown and Merge that `DESIGN.md` draws are **not on the bar**. They
-are #127, post-beta and blocked on a decision, and until 2026-08-05 they rendered
-disabled to keep the bar the shape the design shows. That is the one case
-disabled-with-reason cannot serve — the reason would be "this feature does not
-exist", which says nothing about what would enable the control — so they were
-removed. They return with the model behind them.
+The version dropdown and Merge that `DESIGN.md` draws are **not on the bar**. The
+branch-and-merge model behind them was settled on 2026-08-10 as superseded by the
+batch, review and release model the product already has (cf. #127), and until
+2026-08-05 they rendered disabled to keep the bar the shape the design shows. That
+is the one case disabled-with-reason cannot serve — the reason would be "this
+feature does not exist", which says nothing about what would enable the control —
+so they were removed.
 
 #### The tool strip, and the geometries with no tool behind them
 
