@@ -194,6 +194,22 @@ The two states stay the only two throughout. A check that cannot reach the hub �
 repository that moved — changes nothing and removes nothing: there are no published digests to
 compare against, and that is an absence of evidence rather than a verdict in either direction.
 
+## Pointing a connection somewhere else
+
+Editing a local connection's `model_id` or `model_revision` puts it back to `not_set_up`. The
+weights on your disk are the weights of the model it used to name, and `setup_state` answers *are
+the weights here* — so leaving it `ready` would have it claim to be set up over files nothing ever
+fetched. It forgets what kind of model it holds at the same time, and for the same reason.
+
+**The remedy is the ordinary one.** The row offers **Download weights** again, and the cache is
+keyed by model rather than by connection: the previous model's files are left where they are, so
+pointing a connection back at something it used to name costs a cache hit instead of a second
+transfer. Editing anything else — the name, the device, the precision — changes neither the state
+nor the family, and neither does sending the same model reference back unchanged.
+
+An `http` connection keeps no weights here, so a model edit resets nothing for it. It stays
+`ready`, which for that kind has always meant *there is nothing to set up on this machine*.
+
 ## Running on the CPU
 
 A connection asking for `cuda` on a machine with no GPU falls back to the CPU, in full precision,
@@ -243,9 +259,10 @@ connection.
 
 **It is recorded when the weights arrive**, because that is the first moment it is knowable
 without reaching a network. Editing a connection to point at another model or revision clears it
-again: nothing has read the new one, and a stale answer reads exactly like a fresh one. A
-connection created before this shipped acquires its answer the first time something reads it,
-from files already on your disk.
+again — nothing has read the new one, and a stale answer reads exactly like a fresh one — and
+takes the setup state with it, for the same reason: see [Pointing a connection somewhere
+else](#pointing-a-connection-somewhere-else). A connection created before this shipped acquires
+its answer the first time something reads it, from files already on your disk.
 
 ## Suggesting a shape from a click
 
@@ -381,9 +398,11 @@ what happened in the job's own words with what to do about it. There is no separ
 different reason — the damaged files were removed and the connection stood down before the row said
 so — and the retry is the same **Download weights**, which now has to fetch them again for real.
 
-Editing does not offer to change the kind, because the kind is not editable. Deleting asks once
-and says exactly what it destroys: *annotations keep their model provenance; only this
-configuration is removed.*
+Editing does not offer to change the kind, because the kind is not editable. Saving an edit that
+moves a local row to another model or revision returns it to **Not set up** in place, with
+**Download weights** as the next step — the files on the disk belong to the model it was pointing
+at before. Deleting asks once and says exactly what it destroys: *annotations keep their model
+provenance; only this configuration is removed.*
 
 Above twenty rows the list grows a filter, which matches a name substring and keeps saying how
 many it hid.
