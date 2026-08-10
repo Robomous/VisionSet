@@ -97,6 +97,10 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     endpoint_url: null,
     setup_state: "not_set_up",
     allowed_actions: ["download_weights", "update", "delete"],
+    // Not optional on the wire, so not optional here: the generated runtime
+    // check refuses a response missing it, and a stub that omitted one rendered
+    // this screen's error card in every case — which reads as a component bug.
+    capabilities: [],
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
     ...overrides,
