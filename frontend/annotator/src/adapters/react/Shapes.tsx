@@ -64,7 +64,7 @@ import type {
   PolygonGeometry,
   PolylineGeometry,
 } from "../../core/types";
-import { screenPx } from "./paint";
+import { confidencePercent, screenPx } from "./paint";
 import type { PaintedAnnotation } from "./paint";
 
 /** Stroke thickness, in screen pixels, for an unselected shape. */
@@ -274,6 +274,26 @@ export function Vertices({ points, color, zoom, hotIndex }: {
 }
 
 /**
+ * What a label says: the class, and for a model's work what the model claimed.
+ *
+ * A suffix rather than a second element, so the shipped label metrics are
+ * untouched — same size, same weight, same anchor, same lift. The label only
+ * gets longer, and only on a selected shape, which is the one place it renders
+ * at all.
+ *
+ * A model-produced annotation always carries the separator, because
+ * `confidence` is optional on one and a shape marked only when the model
+ * happened to score itself is not a mark a reviewer can trust the absence of.
+ * `import` provenance reads as a person's for now — the importers that would
+ * make that distinction mean something are not built.
+ */
+export function labelText(shape: PaintedAnnotation): string {
+  if (shape.provenance !== "model") return shape.labelClass;
+  const score = shape.confidence === null ? "model" : confidencePercent(shape.confidence);
+  return `${shape.labelClass} · ${score}`;
+}
+
+/**
  * The class name, above the shape.
  *
  * `y` is the anchor itself — a plain asset coordinate — and the screen-pixel lift
@@ -298,7 +318,7 @@ export function ShapeLabel({ shape }: { readonly shape: PaintedAnnotation }): JS
         translate: "0 var(--vs-label-lift)",
       }}
     >
-      {shape.labelClass}
+      {labelText(shape)}
     </text>
   );
 }

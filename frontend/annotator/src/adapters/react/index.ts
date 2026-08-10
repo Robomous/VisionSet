@@ -33,6 +33,7 @@ export {
   SUGGESTION_OPACITY,
   classColor,
   confidenceLabel,
+  confidencePercent,
   editedId,
   paintAnnotation,
   paintDocument,
