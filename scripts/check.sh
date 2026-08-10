@@ -168,8 +168,13 @@ run_generated() {
 # that is not installed, which is a resolution nothing here reviewed, no lockfile
 # names and no cool-down applies to. `pnpm exec` runs what the workspace already
 # has and fails if it is not there, which is the answer this script wants anyway.
+# `VISIONSET_PW_WORKERS` is separate from `CI` on purpose. `CI=1` is set here because
+# `reuseExistingServer: !CI` depends on it, and it used to carry a second meaning as
+# well — the worker count — so a local run of 250 tests inherited a number sized for a
+# two-core GitHub runner. Ten is for the machine a developer is sitting at; Actions sets
+# nothing and keeps the count its runners were measured at.
 browser_e2e() {
-  ( cd "$root/frontend/app" && CI=1 pnpm exec playwright test )
+  ( cd "$root/frontend/app" && CI=1 VISIONSET_PW_WORKERS=10 pnpm exec playwright test )
 }
 
 browser_cycle() {
