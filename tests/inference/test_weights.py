@@ -461,8 +461,7 @@ def test_a_set_up_row_with_no_family_acquires_one_and_keeps_it(
 ) -> None:
     """The backfill itself, and the bound that makes it cost once."""
     made = a_local(connections)
-    fetch_weights(workspace, made.id)
-    _forget_the_family(connections, made.id)
+    _set_up_without_looking(workspace, connections, made.id, monkeypatch)
 
     resolver = _Resolver("sam2")
     monkeypatch.setattr(weights_module, "family_of", resolver)
@@ -488,8 +487,7 @@ def test_a_config_that_declared_nothing_is_recorded_and_not_asked_again(
     config that has already answered — for the life of the workspace.
     """
     made = a_local(connections)
-    fetch_weights(workspace, made.id)
-    _forget_the_family(connections, made.id)
+    _set_up_without_looking(workspace, connections, made.id, monkeypatch)
 
     resolver = _Resolver("")
     monkeypatch.setattr(weights_module, "family_of", resolver)
@@ -514,8 +512,7 @@ def test_a_build_that_cannot_look_records_nothing(
     is never asked again.
     """
     made = a_local(connections)
-    fetch_weights(workspace, made.id)
-    _forget_the_family(connections, made.id)
+    _set_up_without_looking(workspace, connections, made.id, monkeypatch)
 
     monkeypatch.setattr(
         weights_module, "family_of", _Resolver(LocalInferenceUnavailable("no runtime"))
@@ -544,13 +541,29 @@ def test_nothing_that_has_no_config_here_is_ever_asked(
     assert resolver.calls == 0
 
 
-def _forget_the_family(connections: InferenceConnectionService, connection_id: Any) -> None:
-    """Put a row back the way one written before the column looked.
+def _set_up_without_looking(
+    workspace: WorkspaceService,
+    connections: InferenceConnectionService,
+    connection_id: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reach `ready` with nothing recorded about what kind of model it holds.
 
-    Through the service rather than by editing the row, so the state this starts
-    from is one the shipped code can actually produce: pointing a connection at a
-    different model forgets what kind of model it was.
+    The state the backfill exists for, produced the way a shipped build produces
+    it. Two things reach it: a migration, over a row that predates the column,
+    and a machine without the optional runtime, which downloads successfully and
+    records that it could not look. The second is the one a test can drive, and
+    it lands on the same row.
+
+    Not an edit. Pointing a connection at a different model does clear the
+    family, but it now clears the setup state with it — the weights on disk
+    belong to the model it no longer names — so an edited row is `not_set_up`
+    and the backfill correctly never looks at it.
     """
-    current = connections.get(connection_id)
-    connections.update(connection_id, model_id=current.model_id + "-again")
-    assert connections.get(connection_id).model_family is None
+    monkeypatch.setattr(
+        weights_module, "family_of", _Resolver(LocalInferenceUnavailable("no runtime"))
+    )
+    fetch_weights(workspace, connection_id)
+    settled = connections.get(connection_id)
+    assert settled.setup_state is ConnectionSetupState.READY
+    assert settled.model_family is None

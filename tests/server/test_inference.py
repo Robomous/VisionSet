@@ -20,7 +20,7 @@ from visionset.inference import weights as weights_module
 from visionset.inference.integrity import IntegrityReport
 from visionset.jobs import integrity as job_module
 from visionset.kernel.domain import BackgroundJobState
-from visionset.kernel.errors import WeightsDamaged
+from visionset.kernel.errors import LocalInferenceUnavailable, WeightsDamaged
 from visionset.kernel.services import InferenceConnectionService
 from visionset.server.routes import inference as inference_routes
 
@@ -358,6 +358,56 @@ def test_a_finished_download_leaves_the_connection_ready(
             "update",
             "delete",
         ]
+
+
+def test_editing_the_model_takes_the_integrity_check_off_the_row(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """The declaration follows the reset, because it is derived from the state.
+
+    `check_integrity` re-reads a snapshot. Pointing the connection at a model
+    whose snapshot was never fetched leaves nothing to read, so the action stops
+    being offered in the same response that performs the edit — a client never
+    sees a window in which it is declared over weights that are not there.
+    """
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        assert "check_integrity" in made["allowed_actions"]
+
+        edited = client.patch(
+            f"/inference/connections/{made['id']}", json={"model_id": "other/model"}
+        ).json()
+        assert edited["setup_state"] == "not_set_up"
+        assert edited["capabilities"] == []
+        assert edited["allowed_actions"] == ["download_weights", "update", "delete"]
+
+
+def test_renaming_a_ready_connection_leaves_it_ready(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """The whole shape arrives on every edit, and a mention is not a move.
+
+    The app's form PATCHes each field, so a rename carries the model id the row
+    already had. Reading that as a change would send a set-up connection back for
+    a download of weights that never left — the reset's own failure mode, and the
+    reason it compares values rather than counting what was supplied.
+    """
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+
+        renamed = client.patch(
+            f"/inference/connections/{made['id']}",
+            json={
+                "name": "renamed",
+                "model_id": LOCAL["model_id"],
+                "model_revision": LOCAL["model_revision"],
+                "device": LOCAL["device"],
+                "precision": LOCAL["precision"],
+            },
+        ).json()
+        assert renamed["setup_state"] == "ready"
+        assert renamed["capabilities"] == made["capabilities"]
+        assert "check_integrity" in renamed["allowed_actions"]
 
 
 def test_a_failed_download_leaves_the_connection_not_set_up(
@@ -761,15 +811,18 @@ def test_a_row_written_before_the_column_is_resolved_on_its_first_read(
     for the life of the workspace.
     """
     with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        # A row the way one written before the column looked: `ready`, with
+        # nothing recorded about what kind of model it holds. Downloading on a
+        # machine whose optional runtime cannot read a config lands exactly
+        # there, and it is the one producer of that state a test can drive — an
+        # edited row is `not_set_up`, so the backfill never reaches it.
+        def _no_runtime(*_: Any, **__: Any) -> str:
+            raise LocalInferenceUnavailable("'transformers' is not installed here")
+
+        monkeypatch.setattr(weights_module, "family_of", _no_runtime)
         made = _made_ready(client)
-        # A row the way one written before the column looked: still `ready`,
-        # with nothing recorded about what kind of model it holds. The edit's own
-        # answer is the honest empty one — it is a write, and nothing has read
-        # the new model's config.
-        patched = client.patch(
-            f"/inference/connections/{made['id']}", json={"model_id": "other/model"}
-        )
-        assert patched.json()["capabilities"] == []
+        assert made["setup_state"] == "ready"
+        assert made["capabilities"] == []
 
         reads: list[str] = []
 
@@ -780,9 +833,9 @@ def test_a_row_written_before_the_column_is_resolved_on_its_first_read(
         monkeypatch.setattr(weights_module, "family_of", _read)
         listed = client.get("/inference/connections").json()["items"]
         assert [one["capabilities"] for one in listed] == [["text_detect"]]
-        assert reads == ["other/model"]
+        assert reads == [LOCAL["model_id"]]
 
         # And the answer is now on the row, so no read of it looks again.
         client.get("/inference/connections")
         client.get(f"/inference/connections/{made['id']}")
-        assert reads == ["other/model"]
+        assert reads == [LOCAL["model_id"]]
