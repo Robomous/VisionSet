@@ -137,8 +137,9 @@ them, so it passes locally and fails in CI. Stage first, then run.
 pipeline's status is the *last* command's, so `uv run pytest -q | tail -20` exits 0 while
 the suite fails — `tail` succeeded at printing lines. That masked a real broken test
 through two task cycles during the #229–#233 run. If you need less output, redirect to a
-file and read it (`uv run pytest -q > /tmp/out.log 2>&1; echo $?`), or use the script
-above.
+file and read it (`uv run pytest > /tmp/out.log 2>&1; echo $?`), or use the script
+above. No `-q` on that command: `pyproject.toml` sets one already, and a second stacks
+to `-qq`, which drops the very summary line you redirected the output to read.
 
 The table below is the full list, and it is still wider than the script: the wheel build,
 the 30-minute flow, the two smoke suites and the annotator benchmark are left to CI or to

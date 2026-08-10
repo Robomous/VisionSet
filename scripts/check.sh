@@ -96,7 +96,11 @@ step() {
 }
 
 run_python() {
-  step "python tests" uv run pytest -q
+  # No `-q` here: `pyproject.toml` already sets it in `addopts`, verbosity is a
+  # counter, and a second one stacks to `-qq` — which drops the test count and the
+  # summary line, leaving the exit code as the only signal on a log that ends
+  # mid-progress and reads as truncated. The count is what makes a run auditable.
+  step "python tests" uv run pytest
   step "ruff (lint)" uv run ruff check .
   step "ruff (format)" uv run ruff format --check .
   # `src/visionset` here, `src/visionset/kernel` under strict settings — the
