@@ -35,7 +35,9 @@ from enum import StrEnum
 from typing import Final
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+
+from visionset.kernel.domain.job import BackgroundJob, BackgroundJobState
 
 
 class ConnectionType(StrEnum):
@@ -274,6 +276,125 @@ class DownloadSize(BaseModel):
     #: encode a lookup's policy, not because anything answers with it.
     total_bytes: int = Field(ge=0)
     file_count: int = Field(ge=0)
+
+
+WEIGHT_DOWNLOAD_JOB_TYPE: Final = "inference.download_weights"
+"""The background job that fetches a local connection's weights.
+
+**In the domain although the handler is not**, because two sides need the same
+word and only one of them may hold it: ``visionset.jobs.weights`` registers the
+handler under this type, and :meth:`InferenceConnectionService.downloads` finds a
+connection's transfer by it. The kernel is forbidden from importing ``jobs``, so
+a constant living there would have to be spelled a second time here — and two
+spellings of a job type is a mismatch that surfaces as a download nobody can
+observe rather than as an error anybody can see.
+
+The kernel already models background work (``BackgroundJobSpec``, ``JobQueue``);
+naming one type of it is that vocabulary used, not widened.
+"""
+
+WEIGHT_DOWNLOAD_CONNECTION_KEY: Final = "connection_id"
+"""Which connection a weight download is for, inside the job's payload.
+
+Here for the job type's reason, and it is the half that would actually bite: the
+handler reads this key and the lookup below matches on it, so a payload written
+under one spelling and read under another produces a job that runs correctly and
+is invisible to every screen watching for it.
+"""
+
+
+def weight_download_payload(connection_id: UUID) -> dict[str, JsonValue]:
+    """The payload a weight download carries. Built here, read here."""
+    return {WEIGHT_DOWNLOAD_CONNECTION_KEY: str(connection_id)}
+
+
+class WeightDownload(BaseModel):
+    """A connection's weight transfer: which job, how far, and how it ended.
+
+    **Derived, never stored.** The download's whole record is the background job
+    row, and this is that row read as the thing it is about. Persisting a copy on
+    the connection would be a second encoding of a number the job already holds,
+    and it would need an owner for the case the two disagree.
+
+    **Why the connection carries this rather than the client remembering a job
+    id.** A transfer outlives the request that started it and outlives the page
+    that asked; the only way a screen can show one it did not itself launch — a
+    reload, a second tab, a return visit — is for the resource it lists to say so.
+    A job id held in a component is lost by the first navigation, which is exactly
+    how a running download came to read as *Not set up*.
+
+    **It does not add a setup state, and must not.** ``ConnectionSetupState``
+    stays two-valued: the connection says whether the weights are *here*, and this
+    says whether something is currently fetching them. A ``downloading`` member
+    would reopen the half-fetched window that ordering closes, and would strand a
+    connection there whenever a worker died. A job settles itself — including
+    through ``sweep_orphans``, which settles what a dead process left running.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    connection_id: UUID
+    job_id: UUID
+    state: BackgroundJobState
+    #: Bytes that have arrived. Monotonic per job and never above
+    #: :attr:`bytes_total`: a transfer that retries re-reads bytes it already had,
+    #: and a bar that moves backwards reads as a bug in the product rather than as
+    #: a property of the network.
+    bytes_done: int = Field(default=0, ge=0)
+    #: The whole revision, or ``None`` where the size could not be read.
+    #:
+    #: Null is a real answer rather than a failure: sizing reaches the hub
+    #: independently of the transfer, so a lookup that fails leaves a download
+    #: that can still run — and an indeterminate bar is the honest rendering of a
+    #: total nobody knows. It is the rule ``BackgroundJob.total`` already states.
+    bytes_total: int | None = Field(default=None, ge=0)
+    #: Why it failed, in the sentence the handler wrote. ``None`` unless
+    #: :attr:`state` is ``failed``.
+    error: str | None = None
+
+    @model_validator(mode="after")
+    def _progress_is_within_its_total(self) -> WeightDownload:
+        if self.bytes_total is not None and self.bytes_done > self.bytes_total:
+            raise ValueError(
+                f"a download cannot have fetched {self.bytes_done} bytes of {self.bytes_total}"
+            )
+        return self
+
+    @classmethod
+    def of(cls, job: BackgroundJob) -> WeightDownload:
+        """That job read as a download, with its counts clamped into shape.
+
+        **This is the one place that knows what the job's counts mean.** A job row
+        carries ``processed`` and ``total`` — an absolute count of whatever unit
+        the handler works in, which is files for the integrity check and bytes for
+        this. Naming them here is what keeps every reader downstream from having
+        to know the mapping: a client reads ``bytes_done`` and formats bytes,
+        rather than reading ``processed`` and looking up the job type to find out
+        what it counted.
+
+        The clamp is applied rather than refused because the input is a row two
+        processes wrote: a sampler reports what is on disk while a separately
+        measured total is what the form was told, and a snapshot that shares a
+        blob between two files legitimately lands slightly under. Refusing there
+        would turn a cosmetic disagreement into a connection list that 500s.
+
+        Raises:
+            ValueError: the job is not a weight download, or its payload does not
+                name a connection.
+        """
+        if job.type != WEIGHT_DOWNLOAD_JOB_TYPE:
+            raise ValueError(f"job {job.id} is a {job.type!r}, not a weight download")
+        named = job.payload.get(WEIGHT_DOWNLOAD_CONNECTION_KEY)
+        if not isinstance(named, str):
+            raise ValueError(f"weight download {job.id} names no connection")
+        return cls(
+            connection_id=UUID(named),
+            job_id=job.id,
+            state=job.state,
+            bytes_done=job.processed if job.total is None else min(job.processed, job.total),
+            bytes_total=job.total,
+            error=job.error,
+        )
 
 
 class InferenceConnection(BaseModel):

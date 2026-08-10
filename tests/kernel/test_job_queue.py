@@ -352,3 +352,27 @@ def test_listing_with_no_filter_returns_every_state(queue: JobQueue) -> None:
     queue.claim("a")
 
     assert len(queue.list()) == 2
+
+
+def test_listing_narrows_to_the_types_asked_for(queue: JobQueue) -> None:
+    """What a resource asking *is anything running against me* needs.
+
+    Without it, a connection looking for its own weight download would read every
+    ingest the workspace has ever queued — an answer whose cost is a function of
+    unrelated history.
+    """
+    mine = queue.enqueue(BackgroundJobSpec(type="inference.download_weights"))
+    queue.enqueue(spec(n=1))
+
+    assert [job.id for job in queue.list(types=["inference.download_weights"])] == [mine.id]
+
+
+def test_the_two_filters_narrow_together(queue: JobQueue) -> None:
+    """Conjunctive, so a caller can ask for the live jobs of one kind."""
+    queue.enqueue(BackgroundJobSpec(type="inference.download_weights"))
+    queue.claim("a")
+    queue.enqueue(BackgroundJobSpec(type="inference.download_weights"))
+
+    narrowed = queue.list(states=[BackgroundJobState.QUEUED], types=["inference.download_weights"])
+
+    assert [job.state for job in narrowed] == [BackgroundJobState.QUEUED]

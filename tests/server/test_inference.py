@@ -19,7 +19,7 @@ from tests.server._jobs import InlineDispatcher, ManualDispatcher
 from visionset.inference import weights as weights_module
 from visionset.inference.integrity import IntegrityReport
 from visionset.jobs import integrity as job_module
-from visionset.kernel.domain import BackgroundJobState
+from visionset.kernel.domain import BackgroundJobState, DownloadSize
 from visionset.kernel.errors import LocalInferenceUnavailable, WeightsDamaged
 from visionset.kernel.services import InferenceConnectionService
 from visionset.server.routes import inference as inference_routes
@@ -71,8 +71,10 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     """
     seen: list[str] = []
 
-    def _download(connection: Any, *, into: Path) -> Path:
+    def _download(connection: Any, *, into: Path, on_bytes: Any = None) -> Path:
         seen.append(f"{connection.model_id}@{connection.model_revision}")
+        if on_bytes is not None:
+            on_bytes(FETCHED_BYTES // 4)
         return tmp_path / "snapshot"
 
     monkeypatch.setattr(weights_module, "download", _download)
@@ -81,6 +83,9 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
 
 #: What the faked config declares, where a test needs one.
 DOWNLOADED_FAMILY = "sam2"
+
+#: What the faked revision weighs, in bytes.
+FETCHED_BYTES = 4_000_000_000
 
 
 @pytest.fixture(autouse=True)
@@ -93,6 +98,26 @@ def _the_config_read_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
     test, in another directory, in a run whose order decided it.
     """
     monkeypatch.setattr(weights_module, "family_of", lambda *_, **__: DOWNLOADED_FAMILY)
+
+
+@pytest.fixture(autouse=True)
+def _the_size_lookup_is_faked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A download reads its total from the hub; here it does not.
+
+    The lookup is a metadata request over the network, and leaving it real would
+    make these tests reach one — but only on a machine carrying the extra, which
+    is the worst kind of intermittent.
+    """
+    monkeypatch.setattr(
+        weights_module,
+        "download_size",
+        lambda model_id, model_revision: DownloadSize(
+            model_id=model_id,
+            model_revision=model_revision,
+            total_bytes=FETCHED_BYTES,
+            file_count=2,
+        ),
+    )
 
 
 def created(client: TestClient, body: dict[str, Any]) -> dict[str, Any]:
@@ -420,7 +445,7 @@ def test_a_failed_download_leaves_the_connection_not_set_up(
     statement, so a run that dies before it has written nothing at all.
     """
 
-    def _explode(connection: Any, *, into: Path) -> Path:
+    def _explode(connection: Any, *, into: Path, on_bytes: Any = None) -> Path:
         raise OSError("the disk filled")
 
     monkeypatch.setattr(weights_module, "download", _explode)
@@ -455,7 +480,7 @@ def test_running_the_download_twice_is_a_verified_no_op(
     monkeypatch.setattr(
         weights_module,
         "download",
-        lambda connection, *, into: (calls.append(connection.model_id), into)[1],
+        lambda connection, *, into, on_bytes=None: (calls.append(connection.model_id), into)[1],
     )
     with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
         made = created(client, LOCAL)
@@ -839,3 +864,160 @@ def test_a_row_written_before_the_column_is_resolved_on_its_first_read(
         client.get("/inference/connections")
         client.get(f"/inference/connections/{made['id']}")
         assert reads == [LOCAL["model_id"]]
+
+
+# --- the download on the wire -------------------------------------------------
+
+
+def test_a_connection_that_was_never_downloaded_carries_no_download(
+    client: TestClient,
+) -> None:
+    """`null` and not a zeroed record, because *nobody has asked* and *it has
+    fetched nothing so far* are different things with different renderings."""
+    assert created(client, LOCAL)["download"] is None
+    assert created(client, HTTP)["download"] is None
+
+
+def test_the_download_is_on_the_connection_before_a_worker_touches_it(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """The `202` is enough to see it, which is what a pressed button needs.
+
+    `ManualDispatcher` runs nothing, so this is the state a real deployment is in
+    between the route answering and a worker claiming — the window in which a
+    client that showed nothing would be showing a button somebody just pressed
+    beside no explanation at all.
+    """
+    with api_client(tmp_path / "ws", dispatcher=ManualDispatcher()) as client:
+        made = created(client, LOCAL)
+        queued = client.post(f"/inference/connections/{made['id']}/download").json()
+
+        row = client.get(f"/inference/connections/{made['id']}").json()
+
+        assert row["download"] == {
+            "job_id": queued["id"],
+            "state": "queued",
+            "bytes_done": 0,
+            "bytes_total": None,
+            "error": None,
+        }
+        assert row["setup_state"] == "not_set_up"
+
+
+def test_a_download_finishes_with_nobody_polling_it(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """The transfer belongs to the server, and no client is holding it up.
+
+    Nothing here reads `/background-jobs/{id}` at any point — the observation is
+    the connection listing and only that — and the run still completes and lands
+    on the row. That is the whole of "closing the browser does not stop a
+    download", stated as a test rather than as a paragraph.
+    """
+    dispatcher = ManualDispatcher()
+    with api_client(tmp_path / "ws", dispatcher=dispatcher) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+
+        # The worker runs. No client is involved in this line.
+        assert dispatcher.run() == 1
+
+        listed = client.get("/inference/connections").json()["items"]
+
+    (row,) = listed
+    assert row["setup_state"] == "ready"
+    assert row["download"]["state"] == "succeeded"
+    assert row["download"]["bytes_done"] == row["download"]["bytes_total"] == FETCHED_BYTES
+    assert fetched == [f"{LOCAL['model_id']}@{LOCAL['model_revision']}"]
+
+
+def test_a_settled_download_stays_on_the_row_with_its_reason(
+    tmp_path: Path, runtime_present: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A transfer that failed while nobody was watching still has a sentence.
+
+    Dropping the record when a job settles would leave the connection at `not_set
+    _up` with nothing saying why — and the remedy on offer would look like the
+    thing that had just failed, for no stated reason.
+    """
+
+    def _explode(connection: Any, *, into: Path, on_bytes: Any = None) -> Path:
+        raise OSError("the disk filled")
+
+    monkeypatch.setattr(weights_module, "download", _explode)
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+
+        row = client.get(f"/inference/connections/{made['id']}").json()
+
+    assert row["setup_state"] == "not_set_up"
+    assert row["download"]["state"] == "failed"
+    assert "the disk filled" in row["download"]["error"]
+    # The remedy the row now declares, which is the one the prose can name.
+    assert "download_weights" in row["allowed_actions"]
+
+
+def test_a_second_download_replaces_the_first_on_the_row(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """One record, describing the most recent attempt.
+
+    A row that went on showing a failed transfer after a successful retry would
+    be describing a state the workspace has left.
+    """
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+        first = client.get(f"/inference/connections/{made['id']}").json()["download"]
+
+        client.post(f"/inference/connections/{made['id']}/download")
+        second = client.get(f"/inference/connections/{made['id']}").json()["download"]
+
+    assert first["job_id"] != second["job_id"]
+    assert second["state"] == "succeeded"
+
+
+def test_an_edit_answers_with_the_download_the_listing_would_show(
+    tmp_path: Path, runtime_present: None, fetched: list[str]
+) -> None:
+    """Every read of a connection says the same thing about it.
+
+    A field carried on some routes and not others is a client having to know
+    which answers it may believe.
+    """
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = created(client, LOCAL)
+        client.post(f"/inference/connections/{made['id']}/download")
+
+        renamed = client.patch(
+            f"/inference/connections/{made['id']}", json={"name": "renamed"}
+        ).json()
+        listed = client.get(f"/inference/connections/{made['id']}").json()
+
+    assert renamed["download"] == listed["download"]
+    assert renamed["download"]["state"] == "succeeded"
+
+
+def test_the_integrity_check_is_not_read_as_a_download(
+    tmp_path: Path, runtime_present: None, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two jobs over the same snapshot, and only one of them counts bytes.
+
+    The check reports files, so a row that read its progress as a download would
+    show a handful of bytes where gigabytes belong.
+    """
+    monkeypatch.setattr(
+        job_module,
+        "check_integrity",
+        lambda *_, **__: IntegrityReport(files=3, bytes_read=99),
+    )
+    with api_client(tmp_path / "ws", dispatcher=InlineDispatcher()) as client:
+        made = _made_ready(client)
+        before = client.get(f"/inference/connections/{made['id']}").json()["download"]
+
+        client.post(f"/inference/connections/{made['id']}/check-integrity")
+        after = client.get(f"/inference/connections/{made['id']}").json()["download"]
+
+    assert after == before
+    assert after["bytes_done"] == FETCHED_BYTES

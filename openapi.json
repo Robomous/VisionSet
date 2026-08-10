@@ -1599,6 +1599,16 @@
             ],
             "title": "Device"
           },
+          "download": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightDownloadOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "endpoint_url": {
             "anyOf": [
               {
@@ -1658,6 +1668,7 @@
           "setup_state",
           "allowed_actions",
           "capabilities",
+          "download",
           "created_at",
           "updated_at"
         ],
@@ -3526,6 +3537,54 @@
           "extraction_fps"
         ],
         "title": "VideoProvenanceOut",
+        "type": "object"
+      },
+      "WeightDownloadOut": {
+        "description": "A connection's weight transfer: which job, how far it has got, how it ended.\n\nPresent whenever a download has ever been asked for on this connection, and\ndescribing the most recent one. It is how a client shows a transfer it did not\nitself start: a download outlives the request that launched it and the page\nthat asked, so a reload, a second tab or another machine all read the same\nprogress from here rather than from a job id somebody happened to keep.\n\nPolling this \u2014 through the connection or through\n`GET /background-jobs/{job_id}` \u2014 never affects the run. The job is dispatched\nto a worker process the server owns; no client disconnect cancels or pauses\nit, and closing the browser during a download is not a way to stop one.\n\n**It is not a setup state.** `setup_state` says whether the weights are\n*here*; this says whether something is currently fetching them. The two are\nseparate on purpose: a connection is `ready` only once a snapshot is complete,\nso there is no moment at which one is half set up.",
+        "properties": {
+          "bytes_done": {
+            "title": "Bytes Done",
+            "type": "integer"
+          },
+          "bytes_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Total"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/BackgroundJobState"
+          }
+        },
+        "required": [
+          "job_id",
+          "state",
+          "bytes_done",
+          "bytes_total",
+          "error"
+        ],
+        "title": "WeightDownloadOut",
         "type": "object"
       }
     },
@@ -5962,7 +6021,7 @@
     },
     "/inference/connections": {
       "get": {
-        "description": "Every configured connection in this workspace, in the order they were made.\n\nA set-up connection that has never been asked what kind of model it holds is\nasked here, once, from files already on this disk \u2014 see\n``visionset.inference.weights.with_families``. It is the backfill for rows\nwritten before a connection recorded that, and it is on the read path because\nthe kernel cannot reach a model cache and a migration runs in the kernel.",
+        "description": "Every configured connection in this workspace, in the order they were made.\n\nEach row carries its most recent weight download, so a client sees a transfer\nit did not start \u2014 after a reload, in a second tab, on another machine. This\nis therefore the read a screen polls while a download is live, and the reason\nit can stop polling the moment none is.\n\nA set-up connection that has never been asked what kind of model it holds is\nasked here, once, from files already on this disk \u2014 see\n``visionset.inference.weights.with_families``. It is the backfill for rows\nwritten before a connection recorded that, and it is on the read path because\nthe kernel cannot reach a model cache and a migration runs in the kernel.",
         "operationId": "list_inference_connections",
         "responses": {
           "200": {
@@ -6194,7 +6253,7 @@
         ]
       },
       "get": {
-        "description": "The connection with that id.\n\nCarries the same backfill the listing does, so that reading one connection\nand reading the list never disagree about what it can be asked for.",
+        "description": "The connection with that id.\n\nCarries the same backfill the listing does, and the same weight download, so\nthat reading one connection and reading the list never disagree about what it\ncan be asked for or about what is happening to it.",
         "operationId": "get_inference_connection",
         "parameters": [
           {

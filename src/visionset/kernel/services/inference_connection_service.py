@@ -33,11 +33,13 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from visionset.kernel.domain import (
+    WEIGHT_DOWNLOAD_JOB_TYPE,
     WEIGHT_HOLDING_TYPES,
     ConnectionAction,
     ConnectionSetupState,
     ConnectionType,
     InferenceConnection,
+    WeightDownload,
     connection_actions,
     normalize_name,
 )
@@ -74,6 +76,42 @@ class InferenceConnectionService:
         """
         with self._workspace.unit_of_work() as uow:
             return self.require_connection(uow, connection_id)
+
+    def downloads(self) -> dict[UUID, WeightDownload]:
+        """The latest weight download for every connection that has had one.
+
+        **The answer that makes a transfer observable by somebody who did not
+        start it.** A download outlives the request that launched it and the page
+        that asked, so the only way a screen can show one it has no job id for —
+        a reload, a second tab, a colleague's browser — is for the connections it
+        lists to carry it. A client holding a job id in component state loses the
+        download to the first navigation, which is how a running transfer came to
+        render as *Not set up*.
+
+        **The latest rather than only the live one**, because the two questions a
+        reader has are *is something running* and *what happened last time*, and
+        dropping a download the moment it settles answers the first while making
+        the second unanswerable — a transfer that failed while nobody was looking
+        would leave a connection at ``not_set_up`` with no sentence saying why.
+        The queue answers newest-first, so the first job seen for a connection is
+        that connection's.
+
+        Every connection at once rather than one at a time, because the caller is
+        a listing: an ``InferenceConnection`` per query would put one queue read
+        per row on the screen's poll path.
+
+        A job whose payload does not name a connection is skipped rather than
+        raised over. It cannot be a download this method is about, and a listing
+        of connections is the wrong place to discover a malformed row.
+        """
+        latest: dict[UUID, WeightDownload] = {}
+        for job in self._workspace.job_queue.list(types={WEIGHT_DOWNLOAD_JOB_TYPE}):
+            try:
+                download = WeightDownload.of(job)
+            except ValueError:
+                continue
+            latest.setdefault(download.connection_id, download)
+        return latest
 
     def get_by_name(self, name: str) -> InferenceConnection:
         """The connection somebody would name, resolved case-insensitively.

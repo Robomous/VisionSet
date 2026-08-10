@@ -50,7 +50,10 @@ underneath it does not make.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+import os
+import threading
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Final
 from uuid import UUID
@@ -87,6 +90,18 @@ copies of six gigabytes.
 """
 
 
+SAMPLE_INTERVAL_S: Final = 1.0
+"""How often a running transfer is measured, in seconds.
+
+Bounded on both sides for different reasons. Below it, the measurement costs a
+directory walk and a row write per sample, and the row write is a commit against
+a store the work itself competes with — the constraint ``SqliteProgressReporter``
+already documents, whose own throttle is half this. Above it, a person watching a
+bar decides it has stopped: two seconds is the frontend's poll and a sampler
+slower than the poll would show the same number twice in a row.
+"""
+
+
 def cache_root(workspace_root: Path) -> Path:
     """This workspace's model cache. Not created here — the download creates it."""
     return workspace_root / MODELS_DIRNAME
@@ -97,6 +112,7 @@ def fetch_weights(
     connection_id: UUID,
     *,
     on_progress: Callable[[str], None] | None = None,
+    on_bytes: Callable[[int, int | None], None] | None = None,
 ) -> InferenceConnection:
     """Fetch the weights this connection names, then mark it ready.
 
@@ -116,11 +132,17 @@ def fetch_weights(
     a paragraph.
 
     ``on_progress`` is a plain callable rather than a ``ProgressReporter``,
-    because what this can honestly report is a *phase* and not a count: a
-    snapshot download reports bytes through its own library's bar, and inventing
-    an item count over files nobody asked about would be a number that looks like
-    progress. The job handler turns each phase into a reporter call; the CLI
-    prints it.
+    because what it reports is a *phase* and not a count. ``on_bytes`` is the
+    count, and it is separate for the same reason they are separate on screen: a
+    phase names what is happening now and a byte pair says how far it has got,
+    and a caller that wants one rarely wants the other in the same sentence. The
+    job handler turns bytes into reporter calls; the CLI prints phases.
+
+    **The total is read before the first byte, and a total that cannot be read
+    does not stop the transfer.** Sizing reaches the hub's file listing and the
+    download reaches its files; the two fail independently, so a lookup that dies
+    on a metadata call would otherwise cancel a download that could have run.
+    ``None`` travels instead, which is what a bar renders as indeterminate.
 
     Raises:
         InferenceConnectionNotFound: no such connection in this workspace.
@@ -131,10 +153,21 @@ def fetch_weights(
     connections = InferenceConnectionService(workspace)
     connection = connections.require_downloadable(connection_id)
     say = on_progress or (lambda _: None)
+    tell = on_bytes or (lambda _done, _total: None)
     cache = cache_root(workspace.root)
 
+    total = _size_if_it_can_be_read(connection)
+    # Immediately, so a row shows "0 of 1.4 GB" from the first poll rather than
+    # looking queued for as long as the first sample takes.
+    tell(0, total)
     say(f"fetching {connection.model_id} at {connection.model_revision}")
-    download(connection, into=cache)
+    download(connection, into=cache, on_bytes=lambda done: tell(_at_most(done, total), total))
+    # The transfer is over, so the honest reading is the whole of it. A sample
+    # cannot say this: the last one landed up to an interval before the end, and
+    # a snapshot sharing one blob between two files sits permanently under its
+    # published total. A bar left at 97% beside a finished job reads as a stall.
+    if total is not None:
+        tell(total, total)
     # Only knowable now, and knowable without a network only now: the config
     # that says what kind of model this is arrived with the weights. Reading it
     # here is what lets a client be told what this connection can be asked for
@@ -143,6 +176,40 @@ def fetch_weights(
     family = _family_if_it_can_be_read(connection, cache_dir=cache)
     say("recording the connection as ready")
     return connections.record_weights_ready(connection.id, model_family=family)
+
+
+def _size_if_it_can_be_read(connection: InferenceConnection) -> int | None:
+    """What this revision weighs, or ``None`` where nothing here could find out.
+
+    ``_family_if_it_can_be_read``'s shape, one step earlier in the sequence and
+    for the mirror of its reason: that one refuses to undo a download that
+    worked, and this refuses to prevent one that would. Sizing is a metadata call
+    against the hub and the transfer is a call against its files — a build with no
+    runtime, a hub that is unreachable, or a listing that does not size every file
+    all fail here without saying anything about whether the download can run.
+
+    So the cost of not knowing is an indeterminate bar rather than a refusal, and
+    the number that *is* known — how far the transfer has got — is reported either
+    way.
+    """
+    try:
+        return download_size(connection.model_id, connection.model_revision).total_bytes
+    except LocalInferenceUnavailable:
+        _logger.info("no published size for %s; the bar will be indeterminate", connection.name)
+        return None
+
+
+def _at_most(done: int, total: int | None) -> int:
+    """That count, held under the total it is a fraction of.
+
+    The clamp is here rather than only in the domain because this is where the
+    two numbers first meet, and they come from different places: one is measured
+    off the disk and the other was published by the hub. A snapshot whose files
+    share a blob lands under, and a cache that already held an unrelated file of
+    the same repository lands over — the second is the one a person sees, as a
+    bar that fills past its own end.
+    """
+    return done if total is None else min(done, total)
 
 
 def _family_if_it_can_be_read(connection: InferenceConnection, *, cache_dir: Path) -> str | None:
@@ -231,7 +298,12 @@ def _awaiting_a_family(connection: InferenceConnection) -> bool:
     )
 
 
-def download(connection: InferenceConnection, *, into: Path) -> Path:
+def download(
+    connection: InferenceConnection,
+    *,
+    into: Path,
+    on_bytes: Callable[[int], None] | None = None,
+) -> Path:
     """Put this connection's weights in that cache, and say where they landed.
 
     Original sources: the model id and the revision the connection pinned,
@@ -253,6 +325,11 @@ def download(connection: InferenceConnection, *, into: Path) -> Path:
     part-way resumes from what it had. So a re-run repairs a snapshot that is
     incomplete and cannot detect one that is complete but damaged.
 
+    ``on_bytes`` is called with how many bytes of this repository are on the disk,
+    about once a second, from a thread that lives exactly as long as the transfer
+    — see :func:`_watching_bytes` for why the progress is measured rather than
+    reported.
+
     Raises:
         LocalInferenceUnavailable: ``huggingface_hub`` is not installed, or the
             download failed for a reason a caller can act on.
@@ -269,13 +346,14 @@ def download(connection: InferenceConnection, *, into: Path) -> Path:
     into.mkdir(parents=True, exist_ok=True)
     _logger.info("fetching %s at %s into %s", connection.model_id, connection.model_revision, into)
     try:
-        return Path(
-            hub.snapshot_download(
-                repo_id=connection.model_id,
-                revision=connection.model_revision,
-                cache_dir=str(into),
+        with _watching_bytes(connection.model_id, cache_dir=into, on_bytes=on_bytes):
+            return Path(
+                hub.snapshot_download(
+                    repo_id=connection.model_id,
+                    revision=connection.model_revision,
+                    cache_dir=str(into),
+                )
             )
-        )
     except Exception as exc:  # noqa: BLE001 — see below
         # Every way a download can fail is one exception tree away from another
         # — a repository that is not there, a revision that does not resolve, a
@@ -287,6 +365,101 @@ def download(connection: InferenceConnection, *, into: Path) -> Path:
         raise LocalInferenceUnavailable(
             f"could not fetch {connection.model_id} at {connection.model_revision}: {exc}"
         ) from exc
+
+
+@contextmanager
+def _watching_bytes(
+    model_id: str, *, cache_dir: Path, on_bytes: Callable[[int], None] | None
+) -> Iterator[None]:
+    """Report this repository's bytes on disk while the block runs.
+
+    **Measured rather than reported, because the library reports nothing this can
+    use.** ``snapshot_download``'s one injection point is ``tqdm_class``, and it
+    is handed to the pool that walks *files* — so what a caller can observe
+    through it is "7 of 11 files", over a repository that is typically one
+    multi-gigabyte checkpoint beside ten small JSON files. A bar drawn from that
+    sits at 91% for the whole transfer. The per-file byte bars come from
+    ``http_get``, which builds its own and takes none from the caller.
+
+    So the number comes off the disk, where a transfer in flight actually
+    accumulates: every blob of this repository, ``.incomplete`` parts included.
+
+    **A thread, because the transfer is one blocking call.** It is a daemon and
+    it only ever reads the filesystem and calls ``on_bytes``; the block it wraps
+    touches no store, so the write that ``on_bytes`` performs contends with
+    nothing. It is stopped in a ``finally``, so a download that raises takes the
+    sampler with it.
+
+    Nothing here raises. A sample that cannot be taken is a bar that does not move
+    for a second, and losing a download to a failed ``scandir`` would be trading
+    the work for the commentary on it.
+    """
+    if on_bytes is None:
+        yield
+        return
+    stop = threading.Event()
+    highest = 0
+
+    def sample() -> None:
+        nonlocal highest
+        # Monotonic: a transfer that retries re-reads bytes it already had, and a
+        # bar that goes backwards reads as a defect rather than as a network.
+        while not stop.wait(SAMPLE_INTERVAL_S):
+            highest = max(highest, _bytes_on_disk(model_id, cache_dir=cache_dir))
+            on_bytes(highest)
+
+    watcher = threading.Thread(target=sample, name=f"weights-progress-{model_id}", daemon=True)
+    watcher.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        watcher.join(timeout=SAMPLE_INTERVAL_S * 2)
+
+
+def _bytes_on_disk(model_id: str, *, cache_dir: Path) -> int:
+    """How much of that repository's content this cache is currently holding.
+
+    The blobs directory and nothing else. That is where the content lives — the
+    snapshot tree is symlinks into it — so counting both would double every byte,
+    and a partly-fetched file is a ``<etag>.incomplete`` blob that only this side
+    of the cache knows about.
+
+    **The repository's path is asked of the library**, the rule ``cached_file``
+    states: the cache layout belongs to ``huggingface_hub`` and a path assembled
+    here is a mirror that breaks on the release that reorganises it.
+    ``scan_cache_dir`` answers with ``repo_path``; its own ``size_on_disk`` is not
+    the number wanted, because it counts only blobs a snapshot already points at
+    and therefore reads zero for the whole of a first download.
+
+    Zero for anything it cannot answer — a cache that does not exist yet, a
+    repository not in it, a directory that vanished between the scan and the walk.
+    """
+    repository = _cached_repo(model_id, cache_dir=cache_dir)
+    if repository is None:
+        return 0
+    held = 0
+    try:
+        with os.scandir(repository / "blobs") as entries:
+            for entry in entries:
+                if entry.is_file(follow_symlinks=False):
+                    held += entry.stat(follow_symlinks=False).st_size
+    except OSError:
+        return held
+    return held
+
+
+def _cached_repo(model_id: str, *, cache_dir: Path) -> Path | None:
+    """Where that repository lives in this cache, or ``None`` if it is not here."""
+    hub = imported("huggingface_hub")
+    try:
+        scanned = hub.scan_cache_dir(cache_dir)
+    except Exception:  # noqa: BLE001 — ``download``'s reason, for a courtesy read
+        return None
+    for repository in scanned.repos:
+        if repository.repo_id == model_id and repository.repo_type == "model":
+            return Path(repository.repo_path)
+    return None
 
 
 def measure(model_id: str, model_revision: str) -> DownloadSize:
