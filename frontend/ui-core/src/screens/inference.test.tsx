@@ -1208,6 +1208,57 @@ it("lands an edited row at Not set up without a reload", async () => {
   );
 });
 
+it("sends an edit carrying only the fields ConnectionUpdate declares", async () => {
+  // `ConnectionUpdate` forbids unknown fields and has no `connection_type` —
+  // the kind is not editable — so a PATCH that echoed the whole form back is a
+  // 422 nobody asked for. The create body is the one that carries the kind, and
+  // the case below proves it still does, so this is not passing on a client
+  // that stopped sending it anywhere.
+  listing([connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
+  handlers.push((request) =>
+    request.method === "PATCH" ? { status: 200, body: connection() } : undefined,
+  );
+
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+  await userEvent.click(await screen.findByTestId("connection-submit"));
+
+  const patch = await waitFor(() => {
+    const found = sent.find((request) => request.method === "PATCH");
+    expect(found).toBeDefined();
+    return found!;
+  });
+  expect(Object.keys(await patch.clone().json()).sort()).toEqual([
+    "device",
+    "endpoint_url",
+    "model_id",
+    "model_revision",
+    "name",
+    "precision",
+  ]);
+});
+
+it("sends a create carrying the kind, which only the create model declares", async () => {
+  listing([]);
+  handlers.push((request) =>
+    request.method === "POST" ? { status: 201, body: connection() } : undefined,
+  );
+
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(await screen.findByTestId("choose-local"));
+  await userEvent.type(await screen.findByTestId("connection-name"), "sam2-local");
+  await userEvent.click(await screen.findByTestId("connection-submit"));
+
+  const post = await waitFor(() => {
+    const found = sent.find((request) => request.method === "POST");
+    expect(found).toBeDefined();
+    return found!;
+  });
+  expect(await post.clone().json()).toMatchObject({ connection_type: "local" });
+});
+
 it("states the blast radius of a delete accurately", async () => {
   listing([connection()]);
   render(mount(<InferenceScreen />));

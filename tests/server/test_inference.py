@@ -155,12 +155,16 @@ def test_a_taken_name_is_a_conflict(client: TestClient) -> None:
 
 
 def test_a_caller_cannot_declare_a_connection_already_set_up(client: TestClient) -> None:
-    """`setup_state` is not an input, so supplying it changes nothing.
+    """`setup_state` is not an input, and supplying it is refused rather than dropped.
 
     Weights being present is a fact about the disk, and a client saying otherwise
-    must not be able to make the workspace believe it.
+    must not be able to make the workspace believe it. `ConnectionCreate` forbids
+    unknown fields, so a caller who thought they were setting this is told, rather
+    than handed a 201 carrying a value they did not ask for.
     """
-    assert created(client, LOCAL | {"setup_state": "ready"})["setup_state"] == "not_set_up"
+    response = client.post("/inference/connections", json=LOCAL | {"setup_state": "ready"})
+    assert response.status_code == 422, response.text
+    assert client.get("/inference/connections").json()["total"] == 0
 
 
 # --- reading ------------------------------------------------------------------
@@ -253,12 +257,54 @@ def test_an_edit_moves_the_updated_stamp(client: TestClient) -> None:
 
 
 def test_the_kind_is_not_editable(client: TestClient) -> None:
-    """`ConnectionUpdate` has no `connection_type`, so supplying one changes nothing."""
+    """`ConnectionUpdate` has no `connection_type`, so supplying one is refused."""
     made = created(client, LOCAL)
-    edited = client.patch(
+    response = client.patch(
         f"/inference/connections/{made['id']}", json={"connection_type": "http"}
-    ).json()
-    assert edited["connection_type"] == "local"
+    )
+    assert response.status_code == 422, response.text
+    read = client.get(f"/inference/connections/{made['id']}").json()
+    assert read["connection_type"] == "local"
+
+
+def test_a_misspelled_field_on_a_create_is_refused(client: TestClient) -> None:
+    """`ConnectionCreate` forbids unknown fields, so a typo cannot be silently dropped."""
+    response = client.post("/inference/connections", json=LOCAL | {"model_revison": "abc123"})
+    assert response.status_code == 422, response.text
+    assert client.get("/inference/connections").json()["total"] == 0
+
+
+def test_a_misspelled_field_on_an_edit_is_refused_rather_than_answered_200(
+    client: TestClient,
+) -> None:
+    """The whole point of `extra="forbid"` on `ConnectionUpdate`, in one case.
+
+    Accepted and ignored, this answers 200 carrying the *old* revision, and the
+    caller has no way at all to tell the edit did not take. The 422 is the only
+    thing that distinguishes "you misspelled it" from "it worked".
+    """
+    made = created(client, LOCAL)
+
+    response = client.patch(
+        f"/inference/connections/{made['id']}", json={"model_revison": "deadbeef"}
+    )
+    assert response.status_code == 422, response.text
+    assert client.get(f"/inference/connections/{made['id']}").json()["model_revision"] == "abc123"
+
+
+def test_the_spelling_the_typo_missed_still_works(client: TestClient) -> None:
+    """The positive path for the case above, so its 422 is about the *name*.
+
+    Without it, a `ConnectionUpdate` that had stopped accepting the field at all
+    would satisfy every assertion up there.
+    """
+    made = created(client, LOCAL)
+
+    response = client.patch(
+        f"/inference/connections/{made['id']}", json={"model_revision": "deadbeef"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["model_revision"] == "deadbeef"
 
 
 def test_an_edit_into_a_shape_the_kind_refuses_is_a_422(client: TestClient) -> None:

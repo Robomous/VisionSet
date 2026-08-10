@@ -2644,7 +2644,8 @@ export interface components {
          *     ``setup_state`` is absent on purpose: it is derived from the kind by the
          *     service, because it says what the kind still needs rather than what the
          *     caller wants. Accepting it would let a client declare weights present that
-         *     were never fetched.
+         *     were never fetched, so supplying it is refused along with any other field
+         *     this shape does not declare.
          */
         ConnectionCreate: {
             connection_type: components["schemas"]["ConnectionType"];
