@@ -14,20 +14,26 @@
  * 3. **The form stays usable when the size is unknown** (design principle 9).
  *    Creating a connection downloads nothing, so not knowing what a download
  *    would cost is not a reason to prevent one being configured.
+ * 4. **Where a connection appears is the wire's too.** Sections come off
+ *    `capabilities`, and the tests that matter are the ones with nowhere obvious
+ *    to put a row: two abilities on one connection, an ability nothing consumes
+ *    yet, and a connection that has not declared anything at all. A row in no
+ *    section is a connection nobody can download, edit or delete.
  *
  * The requests are stubbed, never the questions: every mutation goes out on the
  * path that reaches it, and the refusals come back from the stub.
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
-import { InferenceScreen, bytes } from "./InferenceScreen";
+import { CapabilitySection, InferenceScreen, bytes } from "./InferenceScreen";
 import { CURATED_MODELS, DEFAULT_MODEL } from "./inferenceCatalog";
+import { sectionsOf } from "./inferenceSections";
 import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries";
 
 const API = "http://visionset.test";
@@ -208,7 +214,7 @@ it("renders a failed listing as a refusal rather than as an empty list", async (
     body: { code: "SERVICE_UNAVAILABLE", message: "The workspace is busy." },
   });
   render(mount(<InferenceScreen />));
-  await waitFor(() => expect(screen.queryByTestId("connections-table")).toBeNull());
+  await waitFor(() => expect(screen.queryByTestId("connection-sections")).toBeNull());
   expect(screen.queryByText("Connect a model to enable auto-labeling")).toBeNull();
 });
 
@@ -231,7 +237,7 @@ it("shows the model and its revision the way a person reads them", async () => {
 it("carries no filter until a list could be long enough to need one", async () => {
   listing([connection()]);
   render(mount(<InferenceScreen />));
-  await screen.findByTestId("connections-table");
+  await screen.findByTestId("connection-sections");
   expect(screen.queryByTestId("connection-filter")).toBeNull();
 });
 
@@ -244,6 +250,153 @@ it("filters by name and keeps saying how many it hid", async () => {
   await userEvent.type(await screen.findByTestId("connection-filter"), "need");
   expect(screen.getByTestId("filter-count").textContent).toContain("1 of 24");
   expect(screen.getByTestId("connection-needle")).not.toBeNull();
+});
+
+// --- organised by what a connection enables ------------------------------------
+
+it("puts a connection under the ability its weights declare", async () => {
+  listing([
+    connection({
+      setup_state: "ready",
+      capabilities: ["point_suggest"],
+      allowed_actions: ["update", "delete"],
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+
+  const suggest = await screen.findByTestId("section-point_suggest");
+  expect(within(suggest).getByTestId("connection-sam2-local")).not.toBeNull();
+  expect(
+    within(screen.getByTestId("section-text_detect")).queryByTestId("connection-sam2-local"),
+  ).toBeNull();
+});
+
+it("names the surface that uses an ability, not the models that serve it", async () => {
+  listing([connection({ setup_state: "ready", capabilities: ["point_suggest"] })]);
+  render(mount(<InferenceScreen />));
+  expect((await screen.findByTestId("section-point_suggest")).textContent).toContain(
+    "suggest tool",
+  );
+});
+
+it("shows a connection serving two abilities under both, and edits the one connection", async () => {
+  listing([
+    connection({
+      setup_state: "ready",
+      capabilities: ["point_suggest", "text_detect"],
+      allowed_actions: ["update", "delete"],
+    }),
+  ]);
+  render(mount(<InferenceScreen />));
+
+  const detect = await screen.findByTestId("section-text_detect");
+  expect(
+    within(screen.getByTestId("section-point_suggest")).getByTestId("connection-sam2-local"),
+  ).not.toBeNull();
+  // The detail surface is the screen's rather than the section's, so acting from
+  // the second copy of a row opens the dialog for the same connection.
+  await userEvent.click(within(detect).getByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+  expect(value(await screen.findByTestId("connection-name"))).toBe("sam2-local");
+});
+
+it("keeps a connection that has declared nothing visible, beside its remedy", async () => {
+  // The commonest state on this screen: capability is read off weights, so a
+  // connection whose download has not run declares none. A dashboard organised by
+  // capability that dropped it would hide the very row whose button fixes that.
+  listing([connection()]);
+  render(mount(<InferenceScreen />));
+
+  const waiting = await screen.findByTestId("section-undeclared");
+  expect(within(waiting).getByTestId("connection-sam2-local")).not.toBeNull();
+  expect(within(waiting).getByTestId("download-weights")).not.toBeNull();
+});
+
+it("invites a first connection per ability rather than leaving a gap", async () => {
+  listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
+  render(mount(<InferenceScreen />));
+
+  const suggest = await screen.findByTestId("section-point_suggest");
+  expect(within(suggest).getByText("Add a connection the suggest tool can use")).not.toBeNull();
+  expect(
+    within(suggest).getByRole("button", { name: "Add a point-prompt connection" }),
+  ).not.toBeNull();
+});
+
+it("describes an ability nothing consumes yet, and offers no way into it", async () => {
+  // Principle 9 from the other side. The missing half is the surface that would
+  // ask, so there is nothing here somebody could press to get one — and an
+  // invitation to configure a connection nothing can use is that same offer.
+  listing([connection({ setup_state: "ready", capabilities: ["point_suggest"] })]);
+  render(mount(<InferenceScreen />));
+
+  const detect = await screen.findByTestId("section-text_detect");
+  expect(within(detect).getByTestId("section-nothing").textContent).toContain(
+    "nowhere to be used yet",
+  );
+  expect(within(detect).queryAllByRole("button")).toEqual([]);
+});
+
+it("answers what to do next exactly once, however many sections are on screen", async () => {
+  // The count, from both sides (`DESIGN.md`): a section CTA shipped as `primary`
+  // would put a filled button on the page for every ability nothing serves yet.
+  // The workspace below is chosen so an invitation is actually on screen — the
+  // sweep says nothing about a rule whose control never rendered.
+  listing([connection({ setup_state: "ready", capabilities: ["text_detect"] })]);
+  render(mount(<InferenceScreen />));
+  await screen.findByRole("button", { name: "Add a point-prompt connection" });
+
+  expect(document.body.querySelectorAll("button.bg-primary")).toHaveLength(1);
+});
+
+it("says a section has no matches rather than inviting mid-filter", async () => {
+  const many = Array.from({ length: 24 }, (_, index) =>
+    connection({
+      id: `id-${index}`,
+      name: index === 3 ? "needle" : `hay-${index}`,
+      setup_state: "ready",
+      capabilities: ["text_detect"],
+    }),
+  );
+  listing(many);
+  render(mount(<InferenceScreen />));
+  await userEvent.type(await screen.findByTestId("connection-filter"), "need");
+
+  const suggest = screen.getByTestId("section-point_suggest");
+  expect(within(suggest).getByTestId("section-filtered-out")).not.toBeNull();
+  // What somebody typed is not an occasion to invite them to configure anything.
+  expect(within(suggest).queryAllByRole("button")).toEqual([]);
+});
+
+it("renders an ability this build has no copy for from the value itself", async () => {
+  // It cannot arrive through a listing: the generated response check is an exact
+  // `oneOf` over the two shipped members, so a row carrying anything else is
+  // refused before a renderer sees it. The section is therefore asserted
+  // directly — the rule belongs to the layer that draws a value rather than to
+  // the one that decides whether it may arrive.
+  const row = connection({
+    setup_state: "ready",
+    capabilities: ["depth_estimate"] as unknown as Connection["capabilities"],
+    allowed_actions: ["update", "delete"],
+  });
+  const generic = sectionsOf([row]).find((section) => section.key === "depth_estimate")!;
+
+  render(
+    mount(
+      <CapabilitySection
+        section={generic}
+        filtering={false}
+        onAdd={() => undefined}
+        onEdit={() => undefined}
+        onDelete={() => undefined}
+      />,
+    ),
+  );
+
+  const section = await screen.findByTestId("section-depth_estimate");
+  expect(section.getAttribute("data-known")).toBe("false");
+  expect(within(section).getByText("depth_estimate")).not.toBeNull();
+  expect(within(section).getByTestId("connection-sam2-local")).not.toBeNull();
 });
 
 // --- what the wire declares, and only that -------------------------------------
@@ -260,14 +413,14 @@ it("does not offer Download weights when the wire withholds it", async () => {
   // gets this right.
   listing([connection({ allowed_actions: ["update", "delete"] })]);
   render(mount(<InferenceScreen />));
-  await screen.findByTestId("connections-table");
+  await screen.findByTestId("connection-sections");
   expect(screen.queryByTestId("download-weights")).toBeNull();
 });
 
 it("offers no overflow at all when neither edit nor delete is declared", async () => {
   listing([connection({ allowed_actions: [] })]);
   render(mount(<InferenceScreen />));
-  await screen.findByTestId("connections-table");
+  await screen.findByTestId("connection-sections");
   expect(screen.queryByTestId("actions-sam2-local")).toBeNull();
 });
 
@@ -371,7 +524,7 @@ it("never re-reads a list nothing is moving in", async () => {
 it("shows no progress for a connection that has never been downloaded", async () => {
   listing([connection()]);
   render(mount(<InferenceScreen />));
-  await screen.findByTestId("connections-table");
+  await screen.findByTestId("connection-sections");
   expect(screen.queryByTestId("download-progress")).toBeNull();
 });
 
@@ -756,7 +909,7 @@ it("offers the completeness check in the overflow once a connection is ready", a
     connection({ setup_state: "ready", allowed_actions: ["download_weights", "update", "delete"] }),
   ]);
   render(mount(<InferenceScreen />));
-  await screen.findByTestId("connections-table");
+  await screen.findByTestId("connection-sections");
   // Not the prominent control — there is nothing to fetch, only something to check.
   expect(screen.queryByTestId("download-weights")).toBeNull();
 
@@ -958,7 +1111,7 @@ it("stops showing a check once it has passed", async () => {
     }),
   ]);
   render(mount(<InferenceScreen />));
-  await screen.findByTestId("connections-table");
+  await screen.findByTestId("connection-sections");
 
   expect(screen.queryByTestId("integrity-progress")).toBeNull();
   expect(screen.queryByTestId("integrity-error")).toBeNull();
