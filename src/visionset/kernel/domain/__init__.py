@@ -135,6 +135,7 @@ from visionset.kernel.domain.prediction import (
     PredictionTarget,
     Prompt,
     TextPrompt,
+    require_points_on_asset,
 )
 from visionset.kernel.domain.project import Project, ProjectStats
 from visionset.kernel.domain.release import (
@@ -358,6 +359,7 @@ __all__ = [
     "progress_after_annotating",
     "report_name",
     "require_move",
+    "require_points_on_asset",
     "require_state",
     "sha256_hex",
 ]

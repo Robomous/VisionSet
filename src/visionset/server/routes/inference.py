@@ -321,11 +321,20 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     and a class that admits neither gets `region: null`. Answering in a kind the
     schema would refuse would produce a suggestion that cannot be accepted.
 
+    **Every point must be on the asset**, positive and negative alike — `x` in
+    `[0, width]` and `y` in `[0, height]`, both ends included, in the asset's own
+    pixel frame. One point off the picture refuses the whole request with 422
+    `PROMPT_POINT_OUT_OF_BOUNDS` rather than being dropped, because a gesture
+    with a point removed is a different gesture. Nothing is clamped: a
+    coordinate outside the frame is not a place on the image, and answering
+    about the nearest edge instead would return a mask, and a confidence, for a
+    question nobody asked.
+
     A null `region` is a successful answer with nothing to propose. Refusals are
     reserved for things the caller can act on: an unknown project, asset or
     connection is 404; a connection whose weights are not here yet, or whose kind
     this build cannot run, is 409 and names what to do; a connection whose model
-    answers words rather than places is 422.
+    answers words rather than places is 422, as is a prompt point off the asset.
     """
     prompt = PointPrompt(
         positive=tuple((point.x, point.y) for point in body.positive),
