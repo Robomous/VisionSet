@@ -171,6 +171,7 @@ import {
 import { Eye } from "lucide-react";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { CanvasReassign } from "./CanvasReassign";
+import { EditorNotice, EditorNotices } from "./EditorNotice";
 import { ShortcutSheet, modKey } from "./ShortcutSheet";
 import { ToolPalette } from "./ToolPalette";
 import { ZoomWidget } from "./ZoomWidget";
@@ -1639,11 +1640,10 @@ function Workspace({
             is now on screen rather than in a tooltip: **status is never colour
             alone** (`DESIGN.md`), and prose is the strongest form of that.
           */}
-          <OpeningRefusal error={openingRefusal} />
           <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-meta text-muted-foreground">
             <AssetProgressDot progress={asset.progress ?? "unannotated"} />
             <span aria-hidden="true">·</span>
-            <SaveState dirty={dirty} pending={save.isPending} error={save.isError ? save.error : null} />
+            <SaveState dirty={dirty} pending={save.isPending} />
           </span>
         </div>
 
@@ -1949,6 +1949,59 @@ function Workspace({
                 <ChevronRight className="size-4" />
               </Button>
             )}
+
+            {/*
+              The other half of the forward gesture, and the reason it is here
+              rather than a zone away on the right.
+
+              *Advance* and *persist in place* are one decision read two ways —
+              having finished with this frame, do you move on or stay on it — and
+              they were a bar apart, the second of them a ghost behind a `⌘S` chip
+              in the zone that also holds the progress readout and the overflow.
+              Adjacency is what says they are alternatives; a ghost at the far end
+              said the quieter thing, that saving without moving is a convenience.
+
+              **Filled `success`, which is the recorded exception to one filled
+              button per view** (`DESIGN.md`). Two filled controls compete when
+              they are two answers to *what do I do next*; these are two halves of
+              one answer, and colour is what separates their intent where a second
+              near-black would simply contend with the primary.
+
+              **No hotkey chip.** `Chip` is a muted box on a bordered ground,
+              which inverts into a smudge inside a filled control — the same
+              finding that keeps one off the flow verb. The chord is unchanged and
+              is taught by the tooltip instead, which is the tool strip's own
+              pattern (`Box (B)`). Native `disabled` rather than `aria-disabled`,
+              so the tooltip opens exactly while there is something to save — the
+              moment the chord is worth learning — and the shortcut sheet, which
+              derives its rows from the live registry, carries it unconditionally.
+
+              It keeps the frame verbs' lifetime rather than `readOnly`'s: a
+              closed batch or a finished job has nothing to save on any frame, and
+              inside a working job the slot holds so the cluster does not change
+              width as somebody walks a mixed job. Reabsorption is unchanged — it
+              is still the first control the bar gives up below `xl`.
+            */}
+            {frameVerbs && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="success"
+                    size="sm"
+                    className="hidden xl:inline-flex"
+                    data-testid="save-and-stay"
+                    disabled={readOnly || !dirty || save.isPending}
+                    onClick={() => attempt()}
+                  >
+                    <Check className="size-4" />
+                    Save and stay
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" data-testid="save-and-stay-shortcut">
+                  Save and stay ({modKey()}S)
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
 
@@ -1972,41 +2025,6 @@ function Workspace({
               ? "—"
               : `${Math.max(0, counts.total - counts.unannotated)} / ${counts.total} annotated`}
           </span>
-
-          {/*
-            The explicit save, on the bar.
-
-            Removing it on the grounds that it duplicates an automatic
-            behaviour misses this: ⌘S is
-            invisible, and the overflow put the one press meaning *store this now,
-            without going anywhere* two clicks from the work. It is a **ghost**,
-            which is the honest weight — most people never need it, because
-            navigating and settling both save.
-
-            First to be reabsorbed when the bar runs out of room (decision 4): it
-            is the one control on the right whose job the keyboard and every other
-            exit already do, and the overflow carries it below `xl`.
-
-            Reabsorbed at `xl`.
-            That move was what the centred cluster cost while the class field
-            still held 192px in the middle: the grid hands each side exactly half
-            of what is left, and the right zone is the heavier of the two. With
-            the field in the side panel the halves cover the demand again, so the
-            patch is reverted rather than kept — measured, not assumed, in
-            `e2e/annotate.spec.ts`.
-          */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden xl:inline-flex"
-            data-testid="save-and-stay"
-            disabled={readOnly || !dirty || save.isPending}
-            onClick={() => attempt()}
-          >
-            <Check className="size-4" />
-            Save and stay
-            <Chip>{modKey()}S</Chip>
-          </Button>
 
           {/*
             The review move, when the frame declares one — outline,
@@ -2071,16 +2089,21 @@ function Workspace({
             <DropdownMenuContent align="end">
               {/* `Save and stay`, reabsorbed — `xl:hidden` is the exact inverse of
                   the button's `hidden xl:inline-flex`, so the control exists once
-                  at every width. */}
-              <DropdownMenuItem
-                className="xl:hidden"
-                data-testid="menu-save"
-                disabled={readOnly || !dirty || save.isPending}
-                onSelect={() => attempt()}
-              >
-                <Check className="size-4" />
-                Save and stay
-              </DropdownMenuItem>
+                  at every width. Gated on `frameVerbs` for the same reason the
+                  button is: a closed batch or a finished job has nothing to save
+                  on any frame, and a reabsorbed copy that outlived its button
+                  would be the control existing in two states rather than one. */}
+              {frameVerbs && (
+                <DropdownMenuItem
+                  className="xl:hidden"
+                  data-testid="menu-save"
+                  disabled={readOnly || !dirty || save.isPending}
+                  onSelect={() => attempt()}
+                >
+                  <Check className="size-4" />
+                  Save and stay
+                </DropdownMenuItem>
+              )}
               {/* The review move, reabsorbed one breakpoint later. */}
               {reviewAction !== undefined && (
                 <DropdownMenuItem
@@ -2123,38 +2146,6 @@ function Workspace({
           </DropdownMenu>
         </div>
       </header>
-
-      {/*
-        Why the counter did not move, said where the work is happening.
-        Rendered whenever the asset is skipped rather than only after a save: the
-        user who is about to draw deserves it more than the one who already has.
-      */}
-      {/*
-        The refusals that had nowhere to go (audit F3 and F4).
-
-        `setProgress.isError` and `finishJob.isError` were read **nowhere in this
-        file**: pressing Skip, Un-skip, Accept or Finish job against a refusal did
-        nothing at all and said nothing about it — the button came back enabled,
-        the badge did not move, and the page looked like it had ignored the click.
-        Three of those four are one-press actions with no other feedback surface,
-        which is what made this the quietest failure in the product.
-
-        One line rather than four, because they are mutually exclusive in
-        practice — each is a single press and react-query clears the error on the
-        next attempt — and because a toolbar with four empty error slots in it is
-        a toolbar nobody can read. It sits with the banners rather than in the bar
-        for the same reason: the bar is full, and a refusal is a sentence.
-      */}
-      {actionRefusal !== null && (
-        <p
-          className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-meta text-destructive"
-          data-testid="action-refusal"
-          title={asApiError(actionRefusal).code}
-        >
-          <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
-          {refusalProse(actionRefusal)}
-        </p>
-      )}
 
       {/*
         Read-only, said out loud and at the top (F2). The `ui-capabilities` rule is
@@ -2345,30 +2336,108 @@ function Workspace({
           )}
 
           {/*
-            The suggest tool's own voice — a sibling of the canvas for
-            `ToolPalette`'s reason, and in the one corner the editor does not
-            already occupy.
+            Everything the editor floats over the picture, in one column.
 
-            Rendered for the whole session rather than only for its refusals: the
-            asking state, the found-nothing state and the accept affordance are
-            the same question answered differently, and scattering them would
-            leave a person assembling one answer from three places.
+            The order is *how much it stops you*, read downwards. An opening
+            refusal says nothing on this page can be written at all; a save
+            refusal says this frame's work did not land; an action refusal is one
+            button that did not fire; the suggest session is the tool talking
+            about itself. On the ordinary path only the last of the four is ever
+            present, so the ordering only decides what happens on the rare frame
+            where two things are true at once — and there, the one that is not
+            recoverable goes first.
+
+            All four used to live somewhere else: two as badges inside the top
+            bar's microtext, one as a full-bleed strip under the header, and the
+            suggest card bottom-right over the zoom cluster. Four placements for
+            one class of message meant *where* a sentence appeared depended on
+            which mutation produced it.
           */}
-          {suggesting !== null && (
-            <SuggestPanel
-              session={suggesting}
-              // The class the workspace is on, which the session's own only stops
-              // matching while parked — the one reading that has to name it.
-              heldClass={activeClass}
-              blocker={blocker}
-              refusal={suggesting.refusal}
-              onAccept={acceptSuggestion}
-              onDiscard={discardSuggestion}
-              {...(onConfigureInference === undefined
-                ? {}
-                : { onConfigure: onConfigureInference })}
-            />
-          )}
+          <EditorNotices>
+            {openingRefusal !== null && openingRefusal !== undefined && (
+              <EditorNotice
+                testId="opening-refusal"
+                tone="warn"
+                icon={<TriangleAlert className="size-4" />}
+                title={asApiError(openingRefusal).code}
+              >
+                {refusalProse(openingRefusal)}
+              </EditorNotice>
+            )}
+
+            {/*
+              Why the save did not happen. It left the top bar's `● annotated ·
+              Saved` microtext with the rest of the refusals — that readout says
+              *where the work is*, and after a failed save the honest answer there
+              is `unsaved`, which is what it now shows. The reason is a sentence
+              and a sentence needs room; a destructive badge in a 44px row had
+              neither.
+            */}
+            {save.isError && (
+              <EditorNotice
+                testId="save-refusal"
+                tone="warn"
+                icon={<TriangleAlert className="size-4" />}
+                title={asApiError(save.error).code}
+              >
+                <p className="font-medium text-foreground">This frame could not be saved</p>
+                <p className="text-muted-foreground">{refusalProse(save.error)}</p>
+                <p className="text-muted-foreground">
+                  Your work is still here — nothing has been discarded.
+                </p>
+              </EditorNotice>
+            )}
+
+            {/*
+              The refusals that had nowhere to go (audit F3 and F4).
+
+              `setProgress.isError` and `finishJob.isError` were read **nowhere in
+              this file**: pressing Skip, Un-skip, Accept or Finish job against a
+              refusal did nothing at all and said nothing about it — the button
+              came back enabled, the badge did not move, and the page looked like
+              it had ignored the click. Three of those four are one-press actions
+              with no other feedback surface, which is what made this the quietest
+              failure in the product.
+
+              One notice rather than four, because they are mutually exclusive in
+              practice: each is a single press, and react-query clears the error
+              on the next attempt.
+            */}
+            {actionRefusal !== null && (
+              <EditorNotice
+                testId="action-refusal"
+                tone="warn"
+                icon={<TriangleAlert className="size-4" />}
+                title={asApiError(actionRefusal).code}
+              >
+                {refusalProse(actionRefusal)}
+              </EditorNotice>
+            )}
+
+            {/*
+              The suggest tool's own voice.
+
+              Rendered for the whole session rather than only for its refusals:
+              the asking state, the found-nothing state and the accept affordance
+              are the same question answered differently, and scattering them
+              would leave a person assembling one answer from three places.
+            */}
+            {suggesting !== null && (
+              <SuggestPanel
+                session={suggesting}
+                // The class the workspace is on, which the session's own only stops
+                // matching while parked — the one reading that has to name it.
+                heldClass={activeClass}
+                blocker={blocker}
+                refusal={suggesting.refusal}
+                onAccept={acceptSuggestion}
+                onDiscard={discardSuggestion}
+                {...(onConfigureInference === undefined
+                  ? {}
+                  : { onConfigure: onConfigureInference })}
+              />
+            )}
+          </EditorNotices>
 
           <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-meta text-muted-foreground" data-testid="object-total">
             {drawn} object{drawn === 1 ? "" : "s"}
@@ -2684,52 +2753,28 @@ function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Elem
 }
 
 /**
- * Why the page could not open the batch or the job it was asked to open.
+ * `DESIGN.md`'s save-state indicator: saving, saved, or not yet stored.
  *
- * Nothing at all when there is nothing to say — the common case by far. It renders beside the
- * save state rather than inside it: the two answer different questions, and the
- * one that outlives every save must not be overwritten by the next one, nor
- * overwrite it.
- */
-function OpeningRefusal({ error }: { readonly error: unknown }): JSX.Element | null {
-  if (error === null || error === undefined) return null;
-  return (
-    <Badge variant="destructive" data-testid="opening-refusal" title={asApiError(error).code}>
-      {refusalProse(error)}
-    </Badge>
-  );
-}
-
-/**
- * `DESIGN.md`'s save-state indicator: saving, saved, or why it did not.
- *
- * It must not render the raw kernel `code` — `BATCH_NOT_IN_ANNOTATION` as a
- * destructive badge. A kernel identifier is what a bug report should
- * quote, not what a person should read, so the badge carries the sentence and the
- * code goes in the `title` where somebody filing that report can still find it.
+ * **Three readings, not four.** It used to carry a fourth — the refusal itself,
+ * as a destructive badge — and that reading has moved to the stage's notice
+ * column, where a sentence has room. What is left is the question this readout
+ * actually answers, *where is the work*, and after a refused save the honest
+ * answer is the one it now gives: `unsaved`. The two are not the same fact, and a
+ * readout that swapped one for the other left the person who had just been
+ * refused with no statement at all about whether their boxes still existed.
  */
 function SaveState({
   dirty,
   pending,
-  error,
 }: {
   readonly dirty: boolean;
   readonly pending: boolean;
-  /** The refusal itself, or `null`. Prose is derived; the code is not the message. */
-  readonly error: unknown;
 }): JSX.Element {
   if (pending) {
     return (
       <span className="animate-pulse text-meta text-muted-foreground" data-testid="save-state">
         Saving…
       </span>
-    );
-  }
-  if (error !== null && error !== undefined) {
-    return (
-      <Badge variant="destructive" data-testid="save-state" title={asApiError(error).code}>
-        {refusalProse(error)}
-      </Badge>
     );
   }
   if (dirty) {

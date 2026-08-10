@@ -62,7 +62,12 @@ export const COLOR = {
   // `tokens.test.ts` — a solid near-black ring on a near-black button is a smudge.
   ring: "rgba(30, 33, 48, 0.35)",
 
+  // The one status colour that is also a fill: the annotation editor's
+  // `Save and stay`. `success-hover` lifts it by `primary-hover`'s own channel
+  // deltas (+12, +12, +16), so the bar's two filled controls brighten alike.
   success: "#2e7d5b",
+  "success-hover": "#3a896b",
+  "success-foreground": "#ffffff",
   warning: "#b98217",
   destructive: "#c93b3b",
   "destructive-foreground": "#ffffff",

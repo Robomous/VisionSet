@@ -76,6 +76,12 @@ let jobCounts: {
 /** Whether the frames arrive carrying a box — what `drawn > 0` reads. */
 let annotated = false;
 
+/**
+ * Whether the batch has closed — the dimension that withholds every move on
+ * every frame at once, which is what the frame verbs' own lifetime keys on.
+ */
+let closedBatch = false;
+
 /** The nth asset's id, distinct enough to read in a failure message. */
 function assetId(index: number): string {
   return `4444444${index}-4444-4444-8444-444444444444`;
@@ -101,7 +107,10 @@ function answer(path: string): unknown {
       batch_id: BATCH,
       state: "in_progress",
       asset_count: 1,
-      allowed_actions: jobActions("in_progress", { settled: jobSettled }),
+      allowed_actions: jobActions("in_progress", {
+        batchState: closedBatch ? "completed" : "in_annotation",
+        settled: jobSettled,
+      }),
     };
   }
   if (path === `/batches/${BATCH}`) {
@@ -109,10 +118,10 @@ function answer(path: string): unknown {
       id: BATCH,
       project_id: PROJECT,
       name: "drive-01",
-      state: "in_annotation",
+      state: closedBatch ? "completed" : "in_annotation",
       schema_version: 1,
       asset_count: 1,
-      allowed_actions: batchActions("in_annotation"),
+      allowed_actions: batchActions(closedBatch ? "completed" : "in_annotation"),
       promoted_asset_count: 0,
       parent_batch_id: null,
       progress: {
@@ -142,7 +151,9 @@ function answer(path: string): unknown {
       ingested_at: null,
       job_id: JOB,
       progress,
-      allowed_actions: assetActions(progress, { batchState: "in_annotation" }),
+      allowed_actions: assetActions(progress, {
+        batchState: closedBatch ? "completed" : "in_annotation",
+      }),
     }));
     return { items, total: items.length };
   }
@@ -175,6 +186,7 @@ beforeEach(() => {
   jobSettled = false;
   assetCount = 1;
   annotated = false;
+  closedBatch = false;
   writeToken("a-token");
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
@@ -623,15 +635,15 @@ describe("the flow verb", () => {
     );
   });
 
-  it("carries no hotkey chip, unlike its two neighbours on the bar", async () => {
-    // `Chip` is a muted box on a bordered ground — right on the ghost and
-    // the outline controls, a smudge on the only filled one. The chord is
-    // unchanged, which is what the next test asserts; this is about the pixels.
+  it("carries no hotkey chip, and neither does the filled control beside it", async () => {
+    // `Chip` is a muted box on a bordered ground — right on the outline `Skip`,
+    // a smudge inside either fill. Both chords are unchanged, which is what the
+    // next test and the tooltip assert; this is about the pixels.
     assetCount = 2;
     await open();
 
     expect(screen.getByTestId("save-and-next").querySelector("kbd")).toBeNull();
-    expect(screen.getByTestId("save-and-stay").querySelector("kbd")?.textContent).toContain("S");
+    expect(screen.getByTestId("save-and-stay").querySelector("kbd")).toBeNull();
     expect(screen.getByTestId("skip").querySelector("kbd")?.textContent).toBe("X");
   });
 
@@ -684,6 +696,80 @@ describe("the flow verb", () => {
     await userEvent.keyboard("x");
 
     expect(sent.some((request) => request.path.endsWith("/progress"))).toBe(false);
+  });
+});
+
+/**
+ * The forward pair: two filled controls, and the exception that lets them be two.
+ *
+ * `DESIGN.md`'s *one filled button per view* is a count and is tested as one, so
+ * the recorded exception has to be a count too — otherwise "two fills are allowed
+ * here" degrades into "any number of fills are allowed here", which is the rule
+ * with nothing left of it. The sweep below is `filled()`'s twin over `bg-success`,
+ * and both are asserted as whole sets rather than as memberships.
+ */
+describe("the forward-action pair", () => {
+  /** Every `success`-filled control on the bar. `filled()`'s counterpart. */
+  function successFilled(): HTMLElement[] {
+    // `classList.contains`, for `filled()`'s reason: the substring form also
+    // matches `hover:bg-success-hover`.
+    return [...document.querySelectorAll<HTMLElement>("header button")].filter((button) =>
+      button.classList.contains("bg-success"),
+    );
+  }
+
+  it("puts Save and stay in the resolve group, immediately after the primary", async () => {
+    // Adjacency is the whole claim: *advance* and *persist in place* are one
+    // decision read two ways, and they used to be a zone apart. Document order
+    // inside the cluster is what a reader gets.
+    assetCount = 2;
+    await open();
+
+    const cluster = screen.getByTestId("frame-navigation");
+    const order = [...cluster.querySelectorAll<HTMLElement>("button[data-testid]")]
+      .map((button) => button.getAttribute("data-testid"))
+      .filter((id) => id === "skip" || id === "save-and-next" || id === "save-and-stay");
+    expect(order).toEqual(["skip", "save-and-next", "save-and-stay"]);
+  });
+
+  it("leaves exactly one primary fill and exactly one success fill", async () => {
+    assetCount = 2;
+    await open();
+
+    expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["save-and-next"]);
+    expect(successFilled().map((button) => button.getAttribute("data-testid"))).toEqual([
+      "save-and-stay",
+    ]);
+  });
+
+  it("keeps the pair a pair on the last frame, where Finish job holds the primary", async () => {
+    // The filled slot is contended by arithmetic rather than by a declaration,
+    // and the success half is not part of that contention: you can still save
+    // without leaving the frame you are finishing on.
+    assetCount = 1;
+    jobSettled = true;
+    progress = "annotated";
+    await open();
+
+    expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["finish-job"]);
+    expect(successFilled().map((button) => button.getAttribute("data-testid"))).toEqual([
+      "save-and-stay",
+    ]);
+  });
+
+  it("leaves with the frame verbs once the job is closed, in both its places", async () => {
+    // A closed batch has nothing to save on any frame, so a filled control that
+    // could never fire would be a fill with nothing behind it — principle 9 at
+    // the loudest weight the bar has. It goes with Skip and the flow verb, and
+    // the overflow copy goes with it, or the control would exist in two states
+    // rather than one.
+    closedBatch = true;
+    assetCount = 2;
+    await open();
+
+    expect(screen.queryByTestId("save-and-stay")).toBeNull();
+    expect(screen.queryByTestId("menu-save")).toBeNull();
+    expect(successFilled()).toEqual([]);
   });
 });
 
