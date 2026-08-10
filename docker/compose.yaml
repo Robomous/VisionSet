@@ -265,7 +265,7 @@ services:
   # why they sit behind profiles and are off by default.
   postgres:
     profiles: ["postgres"]
-    image: postgres:16
+    image: postgres:18
     environment:
       POSTGRES_DB: visionset
       POSTGRES_USER: visionset
