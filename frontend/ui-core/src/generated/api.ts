@@ -738,7 +738,7 @@ export interface paths {
          *
          *     No ``confirm`` gate, unlike deleting a project: nothing holds a key to this
          *     row, because an annotation copies its model's identity at write time rather
-         *     than pointing here (`cf. #417`). What is destroyed is a configuration.
+         *     than pointing here. What is destroyed is a configuration.
          */
         delete: operations["delete_inference_connection"];
         options?: never;
@@ -763,7 +763,7 @@ export interface paths {
          * Check Connection Integrity
          * @description Re-read every cached file and compare it against what the hub published.
          *
-         *     The `check_integrity` action (`cf. #471`). Distinct from `download_weights`
+         *     The `check_integrity` action. Distinct from `download_weights`
          *     over the same files, and the distinction is what each can prove: a download
          *     against a set-up connection establishes that nothing is **missing**, reading
          *     an index rather than the files; this establishes that nothing is
@@ -854,9 +854,9 @@ export interface paths {
          * Inference Download Size
          * @description How big fetching that model's weights would be, before anybody fetches them.
          *
-         *     What the local-connection form shows beside its confirm control, so the
-         *     decision recorded on #418 — that VisionSet downloads nothing on its own — is
-         *     one somebody can actually make (`cf. #421`, `#424`).
+         *     What the local-connection form shows beside its confirm control, so that
+         *     "VisionSet downloads nothing on its own" is a decision somebody can actually
+         *     make.
          *
          *     **This downloads nothing.** It reads the publishing hub's file listing, which
          *     is the one question answerable before the download it describes. The number
@@ -896,9 +896,8 @@ export interface paths {
          * Suggest Region
          * @description Propose a shape for the thing under those points.
          *
-         *     The server side of the editor's suggest gesture (`cf. #424`). One asset, one
-         *     prompt set, one answer — batch prediction is a separate path and is not this
-         *     one.
+         *     The server side of the editor's suggest gesture. One asset, one prompt set,
+         *     one answer — batch prediction is a separate path and is not this one.
          *
          *     **Nothing is written and nothing is remembered.** A suggestion is a proposal:
          *     accepting it is a later, ordinary annotation write carrying `provenance:
@@ -1478,7 +1477,7 @@ export interface paths {
          *     not change that: an ingest run puts what it gathered into one, which is where
          *     almost every batch comes from. What had no surface at all was curating one
          *     out of an arbitrary subset — the shape a correction batch is, and the shape
-         *     anybody re-cutting work by hand needs (cf. #281).
+         *     anybody re-cutting work by hand needs.
          *
          *     The batch is a `draft`, so its membership stays editable and approval is what
          *     freezes it and pins the schema. `asset_ids` may be empty: a batch nobody has
@@ -1686,9 +1685,9 @@ export interface paths {
          *     Nothing is decoded here — what the files turn out to be is read at ingest,
          *     and a file that is not an image is reported there rather than refused now.
          *
-         *     `name` exists because the staged path's basename is a digest (#245); a blank
-         *     one is refused by the kernel's own `InvalidName` (422), the #28 rule — the
-         *     domain already refuses with a mapped error, so no wire validator restates it.
+         *     `name` exists because the staged path's basename is a digest; a blank one is
+         *     refused by the kernel's own `InvalidName` (422) — the domain already refuses
+         *     with a mapped error, so no wire validator restates it.
          */
         post: operations["register_image_source"];
         delete?: never;
@@ -2952,10 +2951,10 @@ export interface components {
          *     operator noise, and a reason sentence cannot be grouped on.
          *
          *     ``PARTIAL`` is the third member and the only one that is not a total loss.
-         *     It was added by #452, and what earned it is that the two below could not say
-         *     the thing an operator most needs to hear about a damaged clip: *some of it is
-         *     in your batch*. A truncated video was filed as ``CORRUPT`` — true of the
-         *     file, and misleading about the run, which had just created assets from it.
+         *     It exists because the two below cannot say the thing an operator most needs
+         *     to hear about a damaged clip: *some of it is in your batch*. Filing a
+         *     truncated video as ``CORRUPT`` is true of the file and misleading about the
+         *     run, which had just created assets from it.
          * @enum {string}
          */
         IngestFailureKind: "unsupported" | "corrupt" | "partial";
