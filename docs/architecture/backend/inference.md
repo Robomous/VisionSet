@@ -48,6 +48,36 @@ A family this build does not serve is refused rather than guessed at — a fallb
 answers in the wrong adapter's vocabulary, which is a confident sentence about a
 model the user does not have.
 
+## One fact, two readings, one module
+
+`families.py` holds the family sets **and** the map from a family to what a
+connection may be asked for, because they are the same fact read twice: which
+adapter can run this model, and which prompts a caller may send it. The map is
+*derived* from the sets rather than listed beside them, so an adapter and its
+declaration are one edit — a family added to `SEGMENTER_FAMILIES` and forgotten in
+a hand-written map would run fine and declare nothing, and every client that
+filters on the declaration would stop offering it.
+
+The vocabulary itself is the kernel's (`ModelCapability`) and the mapping is not:
+what a tool can ask for is a domain word, while which `model_type` values this
+build serves is a fact about an optional runtime that the kernel has no view of.
+
+## The family is recorded, not only resolved
+
+Resolution used to happen on every provider build and be thrown away. A connection
+now stores what its config declared, written when the download finishes — the
+first moment the answer exists without reaching a network, and the reason nothing
+is read at connection *creation*.
+
+**The backfill for older rows is on the read path, and that is a layering fact.**
+A migration would be the natural home and cannot be one: migrations run inside the
+kernel, and the kernel may not import this package or address the model cache the
+answer lives in. So `with_families` fills a row in on the first read of it, from
+files already on the disk, once — a row that has an answer is never asked again,
+including when the answer is "the config declared nothing". A build without the
+optional runtime records nothing rather than recording that it found nothing,
+because a build that cannot look has not looked.
+
 ## Importing this package imports nothing heavy
 
 Every reference to torch, transformers, accelerate and huggingface_hub is inside a

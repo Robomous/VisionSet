@@ -213,10 +213,44 @@ on a machine that has one; `precision` is `fp16` or `fp32`, and `float16`, `half
 members. What this closes is a gap rather than a freedom: `gpu` used to be accepted and then
 resolved onto the CPU, so the connection described a run that never happened.
 
+## What a connection can be asked for
+
+A connection row says where a model runs and whether its weights are here. Neither answers the
+question a caller has to settle *before* asking: does this model take the kind of prompt I am
+about to send? So a connection also declares what it can be asked for.
+
+```json
+{ "setup_state": "ready", "capabilities": ["point_suggest"], … }
+```
+
+| Capability | Means | Families |
+| --- | --- | --- |
+| `point_suggest` | Give me the thing under these points | the SAM 2 family |
+| `text_detect` | Find everything these words name | the grounding-dino family |
+
+**Read from the model, never from its name.** The value comes from the `model_type` the
+downloaded config declares — the same fact that decides which adapter runs it, so a model that
+runs and a model that declares are the same list. Matching on a model id would answer confidently
+for every model this build has never heard of, and the wrongness would only surface as a refusal
+deep in a request.
+
+**Empty means nothing is known yet**, which happens four ways: the weights were never fetched, so
+nothing has read a config; the config declared no model type; it declared one this build has no
+adapter for; or it is an `http` connection, whose model runs elsewhere and which declares nothing
+until the remote contract says how an endpoint states what it can do. Empty is not a refusal —
+the server still judges every request on its own. It says only that no tool can rely on this
+connection.
+
+**It is recorded when the weights arrive**, because that is the first moment it is knowable
+without reaching a network. Editing a connection to point at another model or revision clears it
+again: nothing has read the new one, and a stale answer reads exactly like a fresh one. A
+connection created before this shipped acquires its answer the first time something reads it,
+from files already on your disk.
+
 ## Suggesting a shape from a click
 
-A connection whose model answers *places* rather than *words* can propose a shape for whatever
-sits under a point. One call, one asset, one set of points:
+A connection whose model answers *places* rather than *words* — one declaring `point_suggest` —
+can propose a shape for whatever sits under a point. One call, one asset, one set of points:
 
 ```http
 POST /inference/suggest
@@ -277,6 +311,10 @@ connection up, you should hear about the connection rather than about an asset t
 problem. A connection whose weights are not here yet is `INFERENCE_CONNECTION_NOT_SET_UP` and
 names `download` as the remedy; one whose model answers words rather than places is
 `UNSUPPORTED_PROMPT`.
+
+That last one is still the law and is still enforced on every call. It is simply no longer how a
+person finds out: a client with `capabilities` in hand can decline to ask, which is why the
+editor now says so once on the panel instead of collecting one refusal per click.
 
 ## What a connection is not
 
@@ -355,6 +393,11 @@ a panel naming what is missing and offering **Set up a connection**, which lands
 about that flow forces you out of the editor or loses work: the panel is an explanation with a
 door, and the door is optional — a host that wires no destination gets the explanation and no
 control.
+
+*No usable connection* covers one case more than it reads: a workspace can hold a connection that
+is configured, downloaded and running, and still have nothing that can answer a click, because
+the model it holds answers words. The panel says which of the two it is — nothing set up, nothing
+downloaded, or nothing of the right kind — and each names a different thing to do.
 
 ## At a terminal
 

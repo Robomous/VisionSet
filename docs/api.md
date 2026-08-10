@@ -208,6 +208,24 @@ set. `tests/architecture/test_capability_reachability.py` is what now measures i
 of `BatchAction` is resolved against the published paths and the MCP tool listing, computed from
 the enum rather than from a list somebody maintains.
 
+**What a resource *is* is a second declaration, and not the same question.** `ConnectionOut`
+carries `capabilities` beside its `allowed_actions`: an action is something you may do **to** the
+connection and is decided by its state, a capability is what its model **answers** and is decided
+by the weights. Offering a tool needs both — a connection being `ready` says its files are here,
+not that they are the right kind of model — and either list may be empty without the other being.
+
+```
+GET /inference/connections/{id}  →  { "setup_state": "ready",
+                                      "allowed_actions": ["download_weights", …],
+                                      "capabilities": ["point_suggest"], … }
+```
+
+An empty `capabilities` is not a refusal to act on: the server judges every request on its own
+either way. It says only that nothing can yet rely on this connection for a particular tool —
+because its weights never arrived, because its config declared a model type this build has no
+adapter for, or because it is an `http` connection, which declares nothing until the remote
+contract says how an endpoint states what it can do.
+
 **A client renders these; it never computes them.** Re-deriving the rules from `state` and
 `progress` is what the browser used to do, and its copy drifted by dropping the batch-state
 dimension — which is why skipping a frame was offered on a batch the kernel refused every write
