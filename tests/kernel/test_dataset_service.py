@@ -525,16 +525,18 @@ def test_deleting_some_other_batch_leaves_the_trunk_and_its_log_alone(tmp_path: 
 
 
 @pytest.mark.parametrize(
-    ("call", "id_"),
+    "call",
     [
-        (lambda fx: fx.datasets.get(uuid4()), "getting-an-unknown-dataset"),
-        (lambda fx: fx.datasets.stats(uuid4()), "stats-of-an-unknown-dataset"),
-        (lambda fx: fx.datasets.member_asset_ids(uuid4()), "members-of-an-unknown-dataset"),
+        pytest.param(lambda fx: fx.datasets.get(uuid4()), id="getting-an-unknown-dataset"),
+        pytest.param(lambda fx: fx.datasets.stats(uuid4()), id="stats-of-an-unknown-dataset"),
+        pytest.param(
+            lambda fx: fx.datasets.member_asset_ids(uuid4()),
+            id="members-of-an-unknown-dataset",
+        ),
     ],
-    ids=lambda value: value if isinstance(value, str) else "",
 )
 def test_naming_a_dataset_that_does_not_exist_is_refused(
-    tmp_path: Path, call: Callable[[Fixture], object], id_: str
+    tmp_path: Path, call: Callable[[Fixture], object]
 ) -> None:
     """Every read that takes a dataset id refuses the same way.
 
