@@ -489,13 +489,47 @@ export function AnnotatorCanvas({
     [store, activeClass, mint],
   );
 
-  /** The whole asset, centred. What `mod+0` answers and what a mount starts at. */
+  /**
+   * The whole asset, centred. What `mod+0` answers and what a mount starts at.
+   *
+   * **Its dependencies are the asset's three numbers, never the descriptor
+   * object**, and that distinction is the whole of a defect that cost people
+   * their place in the picture on every save.
+   *
+   * A fit is a function of the frame: an id and a size. The *object* carrying
+   * them is minted afresh by `documentFromWire` on every rebuild, and a host
+   * rebuilds its document for reasons that have nothing to do with the frame —
+   * `ui-core` refetches after a save so the kernel's own annotation ids replace
+   * its client-minted ones, which is a materially different payload and so a new
+   * document, a new descriptor, and — while this closed over `asset` — a new
+   * `fit` and a layout effect that ran again. Zoom into a detail, store your
+   * work, and the stage jumped back to the fitted view.
+   *
+   * Depending on the numbers makes the effect below fire when the *picture*
+   * changes and at no other time, which is what it always meant. It is not a
+   * throttle on an effect that was otherwise right: a document rebuild is not a
+   * reason to move a camera, and an equality check on the object could never
+   * have told the two apart.
+   *
+   * The primitives live in **this** list rather than in the effect's, because
+   * `react-hooks/exhaustive-deps` is an error in this package and reports an
+   * unnecessary dependency as loudly as a missing one — so the honest spelling
+   * is a callback whose identity already tracks the right thing.
+   */
+  const { id: assetId, width: assetWidth, height: assetHeight } = asset;
   const fit = useCallback(() => {
     const pane = paneRef.current;
     if (pane === null) return;
     const rect = pane.getBoundingClientRect();
-    applyViewport(fitToViewport(asset, rect.width, rect.height, FIT_PADDING_PX));
-  }, [asset, applyViewport]);
+    applyViewport(
+      fitToViewport(
+        { id: assetId, width: assetWidth, height: assetHeight },
+        rect.width,
+        rect.height,
+        FIT_PADDING_PX,
+      ),
+    );
+  }, [assetId, assetWidth, assetHeight, applyViewport]);
 
   // Before the first paint, so the asset does not flash at native scale first.
   useLayoutEffect(fit, [fit]);
