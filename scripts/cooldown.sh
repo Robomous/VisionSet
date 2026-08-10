@@ -121,4 +121,60 @@ echo "cooldown: ${COOLDOWN_DAYS} days — refusing anything published after ${cu
 # resolves — `add`, `lock`, `sync`, `pip install`, `build` — without this script
 # needing to know which spelling each of them accepts.
 export UV_EXCLUDE_NEWER="$cutoff"
-exec "$@"
+
+# ---------------------------------------------------------------------------
+# The cutoff resolves, and then it must not survive into the lockfile.
+# ---------------------------------------------------------------------------
+#
+# uv records a global exclude-newer in uv.lock's `[options]` table, and `--locked`
+# counts it as part of what the lock has to agree with. A lockfile resolved
+# through this script therefore carries a rolling timestamp that is already wrong
+# by the time it is committed, and the `uv sync --locked` every CI job runs
+# answers "Ignoring existing lockfile due to removal of global exclude newer" and
+# then refuses it.
+#
+# Dropping the recorded line is the rule at the top of this file rather than an
+# exception to it: the cool-down polices what gets *into* the lock, and a recorded
+# cutoff is the lock re-litigating it on every machine that installs it. Resolved
+# versions are untouched, so the cool-down's choices are exactly what stays.
+#
+# Re-running `uv lock` without the cutoff is not the fix and is the trap: uv
+# discards a lockfile whose recorded cutoff has gone and resolves again, walking
+# straight past the versions the cool-down excluded.
+scrub_recorded_cutoff() {
+  local lock="$1" tmp
+  grep -qxF "exclude-newer = \"$cutoff\"" "$lock" || return 0
+  tmp="$(mktemp "${lock}.cooldown.XXXXXX")"
+  # Drop the line, and the `[options]` table with it when the line was all it
+  # held, so the result is shaped exactly like a lock resolved without a cutoff.
+  awk -v drop="exclude-newer = \"$cutoff\"" '
+    $0 == drop { next }
+    $0 == "[options]" { held = 1; next }
+    held { held = 0; if ($0 == "") next; print "[options]" }
+    { print }
+  ' "$lock" >"$tmp"
+  mv "$tmp" "$lock"
+  echo "cooldown: removed the recorded cutoff from ${lock}" >&2
+}
+
+# Not `exec`, because the scrub happens after the command returns — its exit
+# status is carried out by hand instead.
+status=0
+"$@" || status=$?
+
+# uv finds the lockfile by walking up from the working directory, and a workspace
+# member's lock lives at the workspace root above it, so walk the same path and
+# scrub every lock on it. Matching this invocation's exact cutoff value is what
+# keeps the walk from touching a lockfile this run did not write.
+dir="$PWD"
+while :; do
+  if [[ -f "$dir/uv.lock" ]]; then
+    scrub_recorded_cutoff "$dir/uv.lock"
+  fi
+  if [[ "$dir" == "/" ]]; then
+    break
+  fi
+  dir="$(dirname "$dir")"
+done
+
+exit "$status"
