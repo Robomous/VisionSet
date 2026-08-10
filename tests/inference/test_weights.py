@@ -13,15 +13,15 @@ job and the route; this file is the sequence itself.
 
 from __future__ import annotations
 
-import importlib.util
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
+from tests.fixtures.local_inference import without_the_extra
 
-from visionset.inference import MODULES, cache_root, fetch_weights, with_families
+from visionset.inference import cache_root, fetch_weights, with_families
 from visionset.inference import weights as weights_module
 from visionset.inference.weights import MODELS_DIRNAME, download
 from visionset.kernel.domain import (
@@ -35,8 +35,6 @@ from visionset.kernel.errors import (
     LocalInferenceUnavailable,
 )
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
-
-EXTRA_INSTALLED = all(importlib.util.find_spec(name) is not None for name in MODULES)
 
 
 @pytest.fixture()
@@ -357,7 +355,7 @@ def test_downloading_for_an_http_connection_refuses_rather_than_fetching_nothing
         download(remote, into=Path("/nowhere"))
 
 
-@pytest.mark.skipif(EXTRA_INSTALLED, reason="the local runtime is installed here")
+@without_the_extra
 def test_a_missing_hub_client_names_the_install_command(tmp_path: Path) -> None:
     """The translation, unstubbed: an `ImportError` becomes a kernel error whose
     message is the remedy."""

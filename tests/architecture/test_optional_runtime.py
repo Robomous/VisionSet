@@ -18,6 +18,12 @@ A subprocess, on `test_kernel_purity.py`'s terms: `sys.modules` in *this*
 interpreter has already been filled by the rest of the suite, so the only honest
 place to ask "what did importing this load?" is an interpreter that has imported
 nothing else.
+
+**And an environment where the five are installed, or this proves nothing.** Where
+they are absent the assertion holds whatever the code does — a module-level
+`import torch` would raise rather than register — so the run that gives this file
+its meaning is CI's `inference-smoke` job, which installs the extra from the
+lockfile and runs it there.
 """
 
 from __future__ import annotations

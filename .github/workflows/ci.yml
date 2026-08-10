@@ -473,6 +473,80 @@ jobs:
           cd /tmp
           /tmp/flow-venv/bin/python "$GITHUB_WORKSPACE/examples/thirty_minute_flow.py" /tmp/flow
 
+  # The other half of the inference matrix, on the `format-smoke` mould below: a
+  # job of its own because the `local-inference` extra is roughly two gigabytes of
+  # CUDA wheels, which is a cost nobody in the `python` job is paying for.
+  #
+  # That job installs the base distribution *deliberately* and is untouched by
+  # this one. It is the half that proves a machine without the runtime imports
+  # none of it and refuses with the install command rather than an `ImportError`.
+  # What it cannot do is exercise the code that only exists when the runtime is
+  # present — and until this job, nothing did: `tests/architecture/
+  # test_optional_runtime.py` asserts that importing the server, the CLI, the job
+  # registry and `visionset.inference` leaves torch, torchvision, transformers,
+  # accelerate and huggingface_hub out of `sys.modules`, which is true by
+  # construction on a machine where none of them is installed. A module-level
+  # `import torch` under `visionset/inference` — or a lock bump that broke the
+  # adapter, family resolution or the download path — would have passed green.
+  #
+  # `uv sync --locked --extra local-inference`: from the lockfile, never from a
+  # side index, for the reason the `python` job gives — a resolution happening
+  # here would be one nobody applied the cool-down to. The locked torch wheels
+  # carry CUDA and run perfectly well on a runner that has no device.
+  #
+  # It runs whole directories, unlike `format-smoke`, and the difference is the
+  # shadowing that job's comment describes: none of these five distributions ships
+  # a top-level `tests` package, so this repository's namespace one is intact and
+  # `tests.fixtures` imports normally here.
+  inference-smoke:
+    name: inference smoke (transformers, torch on cpu)
+    runs-on: ubuntu-latest
+    env:
+      # A missing runtime is an error rather than a skip, the
+      # VISIONSET_REQUIRE_FFMPEG rule: a job that exists to exercise the runtime
+      # and quietly exercised nothing looks exactly like a passing one.
+      #
+      # It says nothing about a missing *GPU*. This runner has no CUDA device and
+      # never will, so the one test that reproduces the half-precision finding on
+      # real tensors asks for the runtime and the device as two separate
+      # questions and skips here on the second — see `tests/inference/test_fp16.py`.
+      VISIONSET_REQUIRE_LOCAL_INFERENCE: "1"
+      # Every hub call in these tests is faked, and this is what keeps that true:
+      # a test that regressed into a real fetch fails here instead of downloading
+      # gigabytes or hanging on somebody else's uptime.
+      HF_HUB_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Sync environment with the local-inference extra
+        run: uv sync --locked --extra local-inference
+
+      # The inference surface, named directory by directory rather than left to
+      # `testpaths`: the rest of the suite already runs in the `python` job, and
+      # what is wanted here is the code that reads a config, resolves a family,
+      # drives the hub client and converts tensors — with the real libraries
+      # loaded rather than a stand-in.
+      #
+      # No `-q`: `addopts` in pyproject.toml already carries one, and a second
+      # suppresses the count line this job exists to put on the record.
+      - name: The inference surface, with the runtime present
+        run: |
+          uv run pytest \
+            tests/inference \
+            tests/architecture/test_optional_runtime.py \
+            tests/server/test_inference.py \
+            tests/server/test_suggest.py \
+            tests/cli/test_inference_commands.py \
+            tests/jobs/test_weights_job.py \
+            -rs
+
   # #62's and #63's second acceptance criteria: the tools the exporters exist to
   # feed actually load what they wrote. Its own job because `ultralytics` brings
   # torch — roughly two gigabytes — and putting that in front of every `uv sync`
