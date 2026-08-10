@@ -55,7 +55,7 @@ upward, and the three surfaces do not point at each other.
 | [`formats`](../../../src/visionset/formats/) | Exporter plugins, discovered by entry point. | [formats.md](formats.md) |
 | [`wire`](../../../src/visionset/wire/) | The JSON shapes the CLI and MCP publish. | [wire.md](wire.md) |
 | [`jobs`](../../../src/visionset/jobs/) | Handlers for work that outlives a request. | [jobs.md](jobs.md) |
-| [`inference`](../../../src/visionset/inference/) | Where a model connection becomes a running model. | [inference.md](inference.md) |
+| [`inference`](../../../src/visionset/inference/) | Where a model connection becomes a running model, and which model families could run next. | [inference.md](inference.md) |
 
 ## What the rules are, and where they live
 
