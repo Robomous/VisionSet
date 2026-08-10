@@ -174,7 +174,12 @@ class SqliteJobQueue:
     # ``list`` shadows the builtin for every annotation after it in a class body,
     # so it is declared last. See ``BatchService`` for the precedent.
 
-    def list(self, *, states: Collection[BackgroundJobState] | None = None) -> list[BackgroundJob]:
+    def list(
+        self,
+        *,
+        states: Collection[BackgroundJobState] | None = None,
+        types: Collection[str] | None = None,
+    ) -> list[BackgroundJob]:
         """Newest first, optionally narrowed — the opposite order to ``claim``.
 
         Sorted here rather than in SQL because ``Repository.list`` returns
@@ -190,8 +195,11 @@ class SqliteJobQueue:
         to compare. Adding the id as a tie-break would *remove* that property.
         """
         wanted = None if states is None else frozenset(states)
+        kinds = None if types is None else frozenset(types)
         with self._store.unit_of_work() as uow:
             found = uow.jobs.list()
         if wanted is not None:
             found = [job for job in found if job.state in wanted]
+        if kinds is not None:
+            found = [job for job in found if job.type in kinds]
         return sorted(found, key=lambda job: job.created_at, reverse=True)

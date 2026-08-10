@@ -20,6 +20,12 @@ from visionset.cli import inference as cli_inference
 from visionset.cli.main import app
 from visionset.inference import weights as weights_module
 from visionset.inference.integrity import IntegrityReport
+from visionset.kernel.domain import (
+    WEIGHT_DOWNLOAD_JOB_TYPE,
+    BackgroundJobSpec,
+    DownloadSize,
+    weight_download_payload,
+)
 from visionset.kernel.errors import WeightsDamaged
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
@@ -253,11 +259,24 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     """
     seen: list[str] = []
 
-    def _download(connection: Any, *, into: Path) -> Path:
+    def _download(connection: Any, *, into: Path, on_bytes: Any = None) -> Path:
         seen.append(f"{connection.model_id}@{connection.model_revision}")
         return tmp_path / "snapshot"
 
     monkeypatch.setattr(weights_module, "download", _download)
+    # The size is a hub metadata call, and a fixture that left it real would put
+    # a network request behind every one of these — on a machine with the extra
+    # installed, and not otherwise, which is the worst kind of intermittent.
+    monkeypatch.setattr(
+        weights_module,
+        "download_size",
+        lambda model_id, model_revision: DownloadSize(
+            model_id=model_id,
+            model_revision=model_revision,
+            total_bytes=4_000_000_000,
+            file_count=2,
+        ),
+    )
     return seen
 
 
@@ -513,3 +532,45 @@ def test_check_integrity_reports_damage_as_a_sentence(
     result = run(root, "inference", "check-integrity", "local-gd")
     assert result.exit_code == 1, result.output
     assert "model.safetensors" in result.stderr
+
+
+def test_a_terminal_can_watch_a_transfer_the_server_is_running(
+    root: Path, fetched: list[str]
+) -> None:
+    """The same key the REST listing publishes, from the same projection.
+
+    A download is a background job against the workspace, so which process asked
+    for it decides nothing about who can see it. A `--json` that carried the key
+    as permanently null would be two surfaces disagreeing about a concept while
+    a key-set contract test called them identical.
+    """
+    ok(root, *LOCAL)
+    with WorkspaceService.open(root) as service:
+        connections = InferenceConnectionService(service)
+        made = connections.list()[0]
+        job = service.job_queue.enqueue(
+            BackgroundJobSpec(
+                type=WEIGHT_DOWNLOAD_JOB_TYPE,
+                payload=weight_download_payload(made.id),
+                idempotent=True,
+            )
+        )
+
+    shown = payload(root, "inference", "show", "local-gd")["download"]
+    (listed,) = payload(root, "inference", "list")["items"]
+
+    assert shown == listed["download"]
+    assert shown == {
+        "job_id": str(job.id),
+        "state": "queued",
+        "bytes_done": 0,
+        "bytes_total": None,
+        "error": None,
+    }
+
+
+def test_a_connection_nobody_downloaded_publishes_a_null_download(root: Path) -> None:
+    """`null` rather than a zeroed record: *nobody asked* is not *nothing has
+    arrived yet*, and only the first is true here."""
+    ok(root, *LOCAL)
+    assert payload(root, "inference", "show", "local-gd")["download"] is None

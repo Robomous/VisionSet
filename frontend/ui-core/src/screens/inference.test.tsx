@@ -101,6 +101,9 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     // check refuses a response missing it, and a stub that omitted one rendered
     // this screen's error card in every case — which reads as a component bug.
     capabilities: [],
+    // Also not optional on the wire, and `null` is its ordinary value: nobody
+    // has ever asked this connection to fetch anything.
+    download: null,
     created_at: "2026-08-08T00:00:00Z",
     updated_at: "2026-08-08T00:00:00Z",
     ...overrides,

@@ -27,7 +27,12 @@ from tests.server._jobs import InlineDispatcher
 
 from visionset.inference import suggestions as suggestions_module
 from visionset.inference import weights as weights_module
-from visionset.kernel.domain import AssetPrediction, PolygonGeometry, PredictedRegion
+from visionset.kernel.domain import (
+    AssetPrediction,
+    DownloadSize,
+    PolygonGeometry,
+    PredictedRegion,
+)
 from visionset.server.routes import inference as inference_routes
 
 
@@ -44,7 +49,20 @@ def downloadable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stub that hid a 409.
     """
     monkeypatch.setattr(inference_routes, "require_local_inference", lambda: None)
-    monkeypatch.setattr(weights_module, "download", lambda connection, *, into: into)
+    monkeypatch.setattr(weights_module, "download", lambda connection, *, into, on_bytes=None: into)
+    # The third seam, and the same rule: reading a published size is a hub
+    # request, so leaving it real would reach the network on a machine carrying
+    # the extra and quietly not on one without it.
+    monkeypatch.setattr(
+        weights_module,
+        "download_size",
+        lambda model_id, model_revision: DownloadSize(
+            model_id=model_id,
+            model_revision=model_revision,
+            total_bytes=4_000_000_000,
+            file_count=2,
+        ),
+    )
 
 
 @pytest.fixture()

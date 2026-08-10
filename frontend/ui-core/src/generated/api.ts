@@ -705,6 +705,11 @@ export interface paths {
          * List Inference Connections
          * @description Every configured connection in this workspace, in the order they were made.
          *
+         *     Each row carries its most recent weight download, so a client sees a transfer
+         *     it did not start — after a reload, in a second tab, on another machine. This
+         *     is therefore the read a screen polls while a download is live, and the reason
+         *     it can stop polling the moment none is.
+         *
          *     A set-up connection that has never been asked what kind of model it holds is
          *     asked here, once, from files already on this disk — see
          *     ``visionset.inference.weights.with_families``. It is the backfill for rows
@@ -735,8 +740,9 @@ export interface paths {
          * Get Inference Connection
          * @description The connection with that id.
          *
-         *     Carries the same backfill the listing does, so that reading one connection
-         *     and reading the list never disagree about what it can be asked for.
+         *     Carries the same backfill the listing does, and the same weight download, so
+         *     that reading one connection and reading the list never disagree about what it
+         *     can be asked for or about what is happening to it.
          */
         get: operations["get_inference_connection"];
         put?: never;
@@ -2667,6 +2673,7 @@ export interface components {
             created_at: string;
             /** Device */
             device: string | null;
+            download: components["schemas"]["WeightDownloadOut"] | null;
             /** Endpoint Url */
             endpoint_url: string | null;
             /**
@@ -3659,6 +3666,40 @@ export interface components {
             height: number;
             /** Width */
             width: number;
+        };
+        /**
+         * WeightDownloadOut
+         * @description A connection's weight transfer: which job, how far it has got, how it ended.
+         *
+         *     Present whenever a download has ever been asked for on this connection, and
+         *     describing the most recent one. It is how a client shows a transfer it did not
+         *     itself start: a download outlives the request that launched it and the page
+         *     that asked, so a reload, a second tab or another machine all read the same
+         *     progress from here rather than from a job id somebody happened to keep.
+         *
+         *     Polling this — through the connection or through
+         *     `GET /background-jobs/{job_id}` — never affects the run. The job is dispatched
+         *     to a worker process the server owns; no client disconnect cancels or pauses
+         *     it, and closing the browser during a download is not a way to stop one.
+         *
+         *     **It is not a setup state.** `setup_state` says whether the weights are
+         *     *here*; this says whether something is currently fetching them. The two are
+         *     separate on purpose: a connection is `ready` only once a snapshot is complete,
+         *     so there is no moment at which one is half set up.
+         */
+        WeightDownloadOut: {
+            /** Bytes Done */
+            bytes_done: number;
+            /** Bytes Total */
+            bytes_total: number | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            state: components["schemas"]["BackgroundJobState"];
         };
     };
     responses: never;
