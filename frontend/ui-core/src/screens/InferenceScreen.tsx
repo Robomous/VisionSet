@@ -6,6 +6,19 @@
  * objects — so a project tab would state a scope the object does not have.
  * `DESIGN.md` carries the rail's membership.
  *
+ * ## Organised by what a connection enables, not by what it is
+ *
+ * The screen is a list of sections, one per ability a model can be asked for, and
+ * a connection sits under every ability it declares. That is the question
+ * somebody arrives with — *what can I do in the app with this?* — and a flat
+ * table of names, kinds and model ids answered none of it.
+ *
+ * Which section a row lands in comes off `capabilities`, which the server derives
+ * from the downloaded model's own config. The grouping and the copy live in
+ * `inferenceSections.ts`; what a row may be *asked to do* is still
+ * `allowed_actions` and nothing else, which is a different field answering a
+ * different question.
+ *
  * ## Nothing here decides what is legal
  *
  * Every row action is rendered from `allowed_actions` on `ConnectionOut` and from
@@ -16,7 +29,7 @@
  * command with nowhere to be shown. So the refusal arrives from the request and
  * renders as prose (design principle 9, `ui-capabilities`).
  *
- * ## The status column has two values, not three
+ * ## The status has two values, not three
  *
  * The obvious third is `Unreachable`, and the wire has only two:
  * `setup_state` is deliberately **not** a reachability answer — whether an
@@ -120,6 +133,7 @@ import {
   type IntegrityCheck,
   type WeightDownload,
 } from "../data/inferenceQueries";
+import { EmptyState } from "../patterns/AsyncStates";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import { Progress } from "../primitives/Feedback";
@@ -146,7 +160,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import {
   CURATED_BY_ID,
   CURATED_MODELS,
@@ -158,6 +171,7 @@ import {
   precisionsFor,
   type Precision,
 } from "./inferenceCatalog";
+import { sectionsOf, type ConnectionSection } from "./inferenceSections";
 /** Above this many rows a list carries a filter input (`DESIGN.md`). */
 const FILTER_ABOVE = 20;
 
@@ -202,9 +216,10 @@ export function InferenceScreen(): JSX.Element {
         }}
       >
         {(page) => {
+          const filtering = needle.trim() !== "";
           const shown = matching(page.items, needle);
           return (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8" data-testid="connection-sections">
               {page.items.length > FILTER_ABOVE && (
                 <div className="flex items-center gap-2">
                   <Filter className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -225,27 +240,16 @@ export function InferenceScreen(): JSX.Element {
                   </span>
                 </div>
               )}
-              <Table data-testid="connections-table">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="w-24">Type</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead className="w-40">Status</TableHead>
-                    <TableHead className="w-56" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {shown.map((row) => (
-                    <ConnectionRow
-                      key={row.id}
-                      connection={row}
-                      onEdit={() => setEditing(row)}
-                      onDelete={() => setDoomed(row)}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
+              {sectionsOf(shown).map((section) => (
+                <CapabilitySection
+                  key={section.key}
+                  section={section}
+                  filtering={filtering}
+                  onAdd={() => setCreating(true)}
+                  onEdit={setEditing}
+                  onDelete={setDoomed}
+                />
+              ))}
             </div>
           );
         }}
@@ -269,6 +273,83 @@ function matching(rows: readonly Connection[], needle: string): readonly Connect
   return rows.filter((row) => row.name.toLowerCase().includes(wanted));
 }
 
+/**
+ * One ability: what it is, where the app uses it, and what serves it here.
+ *
+ * The three ways a section can be empty are three different sentences, and
+ * collapsing them is how a screen starts lying. **Nothing matches the filter** is
+ * a fact about what somebody typed and never an occasion to invite anything.
+ * **Nothing serves this yet** is an invitation, with a CTA naming what to add.
+ * **Nothing can use this yet** is prose and no control at all, because the
+ * missing half is the consuming surface rather than the connection — offering a
+ * button here would be offering the feature it goes to.
+ *
+ * Exported for the test that renders a capability this build has no copy for: the
+ * generated response check refuses an unrecognised member before a connection
+ * carrying one reaches the screen, so the generic section cannot be reached
+ * through a stubbed listing and is asserted against directly.
+ */
+export function CapabilitySection({
+  section,
+  filtering,
+  onAdd,
+  onEdit,
+  onDelete,
+}: {
+  readonly section: ConnectionSection;
+  readonly filtering: boolean;
+  readonly onAdd: () => void;
+  readonly onEdit: (connection: Connection) => void;
+  readonly onDelete: (connection: Connection) => void;
+}): JSX.Element {
+  return (
+    <section
+      className="flex flex-col gap-3"
+      data-testid={`section-${section.key}`}
+      data-known={section.known}
+    >
+      <div className="flex flex-col gap-1">
+        <h2 className="text-section font-semibold tracking-tight">{section.title}</h2>
+        <p className="max-w-3xl text-meta text-muted-foreground">{section.purpose}</p>
+      </div>
+      {section.connections.length > 0 ? (
+        <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+          {section.connections.map((row) => (
+            <ConnectionRow
+              key={row.id}
+              connection={row}
+              onEdit={() => onEdit(row)}
+              onDelete={() => onDelete(row)}
+            />
+          ))}
+        </div>
+      ) : filtering ? (
+        <p className="text-meta text-muted-foreground" data-testid="section-filtered-out">
+          Nothing here matches the filter.
+        </p>
+      ) : section.empty.kind === "invite" ? (
+        <EmptyState
+          title={section.empty.title}
+          description={section.empty.body}
+          icon={<Plug className="size-8" />}
+          // `secondary`, not `primary`: the header's "Add connection" is on
+          // screen and opens the same dialog. One filled action per view, and a
+          // section per capability would otherwise put four on one page.
+          action={
+            <Button variant="secondary" onClick={onAdd}>
+              {section.empty.cta}
+            </Button>
+          }
+        />
+      ) : (
+        <p className="text-meta text-muted-foreground" data-testid="section-nothing">
+          {section.empty.line}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ConnectionRow({
   connection,
   onEdit,
@@ -283,33 +364,33 @@ function ConnectionRow({
   const weights = useDownloadRun(connection);
   const integrity = useIntegrityRun(connection);
   return (
-    <TableRow data-testid={`connection-${connection.name}`}>
-      <TableCell className="font-medium">{connection.name}</TableCell>
-      <TableCell>
-        <Badge data-testid="connection-type">
-          {connection.connection_type === "local" ? "Local" : "HTTP"}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {/* One column, the way a person reads them — the CLI's listing agrees. */}
-        {connection.model_id} @ {connection.model_revision}
-      </TableCell>
-      <TableCell>
-        {/*
-          Semantic token **and** text, never colour alone: the word is what a
-          screen reader announces and what somebody who cannot tell the two
-          desaturated chips apart reads.
-        */}
-        <Badge
-          variant={ready ? "success" : "warning"}
-          data-testid="connection-status"
-          data-state={connection.setup_state}
-        >
-          {ready ? "Ready" : "Not set up"}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col gap-2 p-4" data-testid={`connection-${connection.name}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{connection.name}</span>
+            <Badge data-testid="connection-type">
+              {connection.connection_type === "local" ? "Local" : "HTTP"}
+            </Badge>
+            {/*
+              Semantic token **and** text, never colour alone: the word is what a
+              screen reader announces and what somebody who cannot tell the two
+              desaturated chips apart reads.
+            */}
+            <Badge
+              variant={ready ? "success" : "warning"}
+              data-testid="connection-status"
+              data-state={connection.setup_state}
+            >
+              {ready ? "Ready" : "Not set up"}
+            </Badge>
+          </div>
+          {/* One line, the way a person reads them — the CLI's listing agrees. */}
+          <span className="break-all text-meta text-muted-foreground">
+            {connection.model_id} @ {connection.model_revision}
+          </span>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
           <div className="flex items-center justify-end gap-2">
             {/*
               One declared action, two readings of it, and the row picks the
@@ -397,33 +478,37 @@ function ConnectionRow({
           */}
           {weights.live !== null && <DownloadProgress download={weights.live} />}
           {integrity.live !== null && <IntegrityProgress check={integrity.live} />}
-          {weights.failure !== null && (
-            <FieldError data-testid="download-error">
-              <Badge variant="destructive">{weights.failure.code}</Badge> {weights.failure.message}{" "}
-              {ready
-                ? "The connection is still Ready — nothing was changed. Check again to re-read the cache."
-                : "The connection is still Not set up: weights arrive or they do not, so there is nothing half-installed to clear up. Download weights again — an interrupted transfer resumes from what it had."}
-            </FieldError>
-          )}
-          {/*
-            The one failure on this screen that has already acted. A check that
-            found damage purged the bad files and stood the connection down
-            before the job row said so, so the sentence describes a state the
-            row is *already* in — and the remedy it names is the action the
-            connection now declares, one line above it in this very menu.
-          */}
-          {integrity.failure !== null && (
-            <FieldError data-testid="integrity-error">
-              <Badge variant="destructive">{integrity.failure.code}</Badge>{" "}
-              {integrity.failure.message}{" "}
-              {ready
-                ? "Nothing was removed and the connection is still Ready — a check that cannot reach the model's source is not an answer about the files here."
-                : "The damaged copies have been removed and the connection is back to Not set up. Download weights again: with the bad files gone, it is a real transfer rather than a cache hit."}
-            </FieldError>
-          )}
         </div>
-      </TableCell>
-    </TableRow>
+      </div>
+      {/*
+        The prose runs the width of the row rather than the action column's, so
+        an install command and a file name stay on one or two lines instead of
+        wrapping down the right-hand edge.
+      */}
+      {weights.failure !== null && (
+        <FieldError data-testid="download-error">
+          <Badge variant="destructive">{weights.failure.code}</Badge> {weights.failure.message}{" "}
+          {ready
+            ? "The connection is still Ready — nothing was changed. Check again to re-read the cache."
+            : "The connection is still Not set up: weights arrive or they do not, so there is nothing half-installed to clear up. Download weights again — an interrupted transfer resumes from what it had."}
+        </FieldError>
+      )}
+      {/*
+        The one failure on this screen that has already acted. A check that
+        found damage purged the bad files and stood the connection down
+        before the job row said so, so the sentence describes a state the
+        row is *already* in — and the remedy it names is the action the
+        connection now declares, in this row's own menu.
+      */}
+      {integrity.failure !== null && (
+        <FieldError data-testid="integrity-error">
+          <Badge variant="destructive">{integrity.failure.code}</Badge> {integrity.failure.message}{" "}
+          {ready
+            ? "Nothing was removed and the connection is still Ready — a check that cannot reach the model's source is not an answer about the files here."
+            : "The damaged copies have been removed and the connection is back to Not set up. Download weights again: with the bad files gone, it is a real transfer rather than a cache hit."}
+        </FieldError>
+      )}
+    </div>
   );
 }
 
