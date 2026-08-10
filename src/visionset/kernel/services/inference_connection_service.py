@@ -33,6 +33,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from visionset.kernel.domain import (
+    WEIGHT_HOLDING_TYPES,
     ConnectionAction,
     ConnectionSetupState,
     ConnectionType,
@@ -145,9 +146,13 @@ class InferenceConnectionService:
         """Edit a connection in place. Every argument is optional; ``None`` means
         *leave this alone*.
 
-        Pointing a connection at a different model or revision **forgets what
-        kind of model it was**, because that answer was read out of the old
-        model's config and nothing has read the new one.
+        Pointing a connection at a different model or revision **undoes its
+        setup**: it forgets what kind of model it was, and a connection whose
+        weights live on this machine goes back to ``not_set_up``. Both answers
+        were about the previous reference's files, and those files are still the
+        previous reference's. Fetching the weights again is the remedy, and it is
+        already among the actions such a connection offers. A field that arrives
+        holding the value it already had is not a move.
 
         The kind is deliberately not editable. Changing ``local`` to ``http``
         would empty every parameter the row carries and keep only its name, which
@@ -176,13 +181,29 @@ class InferenceConnectionService:
                 ):
                     if value is not None:
                         changes[field] = value
-                # A different model is a different config, and nobody has read
-                # the new one. Keeping the old family would leave the row
-                # declaring what its *previous* weights could be asked for —
-                # a stale answer that reads exactly like a fresh one. Forgetting
-                # is what sends it back through the resolver.
-                if "model_id" in changes or "model_revision" in changes:
+                # Everything this row had learned was learned from the weights of
+                # the model it used to name, so moving the reference drops all of
+                # it: the family, because that answer was read out of the old
+                # model's config and nothing has read the new one, and — for a
+                # kind that keeps weights here — the setup state, because the
+                # files on disk are the *previous* reference's. A row left
+                # `ready` over weights nobody fetched is not a stale display; it
+                # is what `allowed_actions` and the family backfill are derived
+                # from. Downloading again is the remedy, and it is already
+                # offered.
+                #
+                # Compared rather than merely supplied, because the only client
+                # there is sends the whole shape on every edit: a rename arrives
+                # carrying the model id it already had, and reading that as a
+                # move would send a set-up connection back for a download of
+                # weights that never left.
+                if any(
+                    field in changes and changes[field] != getattr(current, field)
+                    for field in ("model_id", "model_revision")
+                ):
                     changes["model_family"] = None
+                    if current.connection_type in WEIGHT_HOLDING_TYPES:
+                        changes["setup_state"] = ConnectionSetupState.NOT_SET_UP
                 # Rebuilt rather than mutated, so the cross-field rule runs on the
                 # result: ``model_copy`` does not validate, which is the whole
                 # reason ``Source`` had to turn on ``validate_assignment``.

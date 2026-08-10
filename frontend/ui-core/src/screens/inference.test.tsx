@@ -778,6 +778,52 @@ it("edits without offering to change the kind", async () => {
   expect(screen.queryByTestId("choose-type")).toBeNull();
 });
 
+it("lands an edited row at Not set up without a reload", async () => {
+  // The declaration is a cached answer, and this edit changes it: repinning the
+  // connection to another revision sends it back for a download, so the row's
+  // whole meaning changes underneath a screen that is already showing it. The
+  // list invalidation on a successful PATCH is what carries that across.
+  let edited = false;
+  handlers.push((request) => {
+    if (request.method !== "GET" || !new URL(request.url).pathname.endsWith("/connections")) return;
+    const row = edited
+      ? connection({
+          model_revision: "beefbeefbeefbeefbeefbeefbeefbeefbeefbeef",
+          setup_state: "not_set_up",
+          allowed_actions: ["download_weights", "update", "delete"],
+        })
+      : connection({
+          // Pinned to a revision the curated list does not name, so the form
+          // offers the revision as a field to edit rather than as a fixed pair.
+          model_revision: "0000000000000000000000000000000000000000",
+          setup_state: "ready",
+          capabilities: ["point_suggest"],
+          allowed_actions: READY_BOTH,
+        });
+    return { status: 200, body: { items: [row], total: 1 } };
+  });
+  handlers.push((request) => {
+    if (request.method !== "PATCH") return;
+    edited = true;
+    return { status: 200, body: connection({ setup_state: "not_set_up" }) };
+  });
+  sizeIs(1_200_000_000);
+
+  render(mount(<InferenceScreen />));
+  expect((await screen.findByTestId("connection-status")).textContent).toContain("Ready");
+
+  await userEvent.click(await screen.findByTestId("actions-sam2-local"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+  const revision = await screen.findByTestId("connection-revision");
+  await userEvent.clear(revision);
+  await userEvent.type(revision, "beefbeefbeefbeefbeefbeefbeefbeefbeefbeef");
+  await userEvent.click(await screen.findByTestId("connection-submit"));
+
+  await waitFor(() =>
+    expect(screen.getByTestId("connection-status").textContent).toContain("Not set up"),
+  );
+});
+
 it("states the blast radius of a delete accurately", async () => {
   listing([connection()]);
   render(mount(<InferenceScreen />));

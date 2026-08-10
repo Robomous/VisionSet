@@ -440,3 +440,115 @@ def test_editing_anything_else_keeps_the_family(connections) -> None:  # noqa: A
     connections.record_weights_ready(made.id, model_family="sam2")
     assert connections.update(made.id, name="renamed").model_family == "sam2"
     assert connections.update(made.id, device="cpu", precision="fp32").model_family == "sam2"
+
+
+def test_pointing_a_connection_at_another_model_sends_it_back_for_a_download(
+    connections,  # noqa: ANN001
+) -> None:
+    """The weights on disk belong to the model this connection no longer names.
+
+    `setup_state` answers *are the weights here*, so an edit that changes which
+    weights are meant makes the stored answer describe the wrong question. The
+    row would go on claiming to be set up over a reference nothing ever fetched.
+    """
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id, model_family="sam2")
+
+    edited = connections.update(made.id, model_id="other/model")
+    assert edited.setup_state is ConnectionSetupState.NOT_SET_UP
+    assert edited.model_family is None
+    assert connections.get(made.id).setup_state is ConnectionSetupState.NOT_SET_UP
+
+
+def test_pinning_a_connection_to_another_revision_sends_it_back_too(
+    connections,  # noqa: ANN001
+) -> None:
+    """The reference is the pair, so either half of it moving means new weights.
+
+    A revision is what makes provenance answerable; two revisions of one model id
+    are two different sets of files, and only one of them was downloaded.
+    """
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id, model_family="sam2")
+
+    assert (
+        connections.update(made.id, model_revision="beef1234").setup_state
+        is ConnectionSetupState.NOT_SET_UP
+    )
+
+
+def test_editing_anything_else_leaves_a_connection_set_up(connections) -> None:  # noqa: ANN001
+    """Renaming or moving devices changes nothing about which weights are meant.
+
+    The companion of the two above, and the reason the reset is conditioned on
+    the model reference rather than on "something was edited": sending a renamed
+    connection back for a download it does not need would be its own defect.
+    """
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id, model_family="sam2")
+
+    assert connections.update(made.id, name="renamed").setup_state is ConnectionSetupState.READY
+    assert (
+        connections.update(made.id, device=CUDA, precision=Precision.FP16).setup_state
+        is ConnectionSetupState.READY
+    )
+
+
+def test_resupplying_the_same_model_reference_is_not_a_change(connections) -> None:  # noqa: ANN001
+    """A mention is not an edit, and the only client there is mentions every field.
+
+    The app's edit form PATCHes the whole shape — a rename arrives carrying the
+    model id it already had. Reading "was this field supplied" as "did the model
+    move" would send a renamed connection back for a download of weights that
+    never left, so the reset compares values.
+    """
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id, model_family="sam2")
+
+    renamed = connections.update(
+        made.id,
+        name="renamed",
+        model_id=LOCAL["model_id"],
+        model_revision=LOCAL["model_revision"],
+    )
+    assert renamed.setup_state is ConnectionSetupState.READY
+    assert renamed.model_family == "sam2"
+
+
+def test_an_http_connection_keeps_its_readiness_when_its_model_moves(
+    connections,  # noqa: ANN001
+) -> None:
+    """There are no local weights to invalidate, so there is nothing to reset.
+
+    An `http` connection is born `ready` because nothing has to be set up on this
+    machine at all — a fact about the kind, not about a download that happened.
+    Sending it to `not_set_up` would offer a remedy it cannot perform.
+    """
+    made = connections.create("remote", **HTTP)
+    assert made.setup_state is ConnectionSetupState.READY
+
+    edited = connections.update(made.id, model_id="other/model", model_revision="beef1234")
+    assert edited.setup_state is ConnectionSetupState.READY
+
+
+def test_editing_back_and_downloading_again_restores_the_family(
+    connections,  # noqa: ANN001
+) -> None:
+    """The round trip, and the reason the old blobs are left where they are.
+
+    Pointing a connection back at a model it used to name is an ordinary edit
+    followed by an ordinary download; the cache is keyed by model, so the second
+    download finds what the first one fetched and the connection is set up again
+    cheaply.
+    """
+    made = connections.create("local", **LOCAL)
+    connections.record_weights_ready(made.id, model_family="sam2")
+    connections.update(made.id, model_id="other/model")
+
+    back = connections.update(made.id, model_id=LOCAL["model_id"])
+    assert back.setup_state is ConnectionSetupState.NOT_SET_UP
+    assert back.model_family is None
+
+    redownloaded = connections.record_weights_ready(made.id, model_family="sam2")
+    assert redownloaded.setup_state is ConnectionSetupState.READY
+    assert redownloaded.model_family == "sam2"
