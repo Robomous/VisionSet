@@ -11,8 +11,8 @@ So this loads a real export with `pycocotools` and asserts it found the images,
 resolved every category, rasterized a polygon, and read back the same area we
 computed.
 
-**Skips locally, fails in CI**, the ffmpeg rule from #22: a silently skipped smoke
-test looks exactly like a passing one.
+**Skips locally, fails in CI**, the rule every optional-binary check here follows:
+a silently skipped smoke test looks exactly like a passing one.
 
 **This module imports nothing from ``tests.``**, and neither does its YOLO
 sibling. It runs in the environment that also holds ``ultralytics``, whose wheel

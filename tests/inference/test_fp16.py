@@ -1,6 +1,6 @@
 """The half-precision shims, and the measurement that found they were needed.
 
-Finding 1 on #418's spike-findings comment: Grounding DINO in fp16 on
+Measured rather than assumed: Grounding DINO in fp16 on
 transformers 5.14.1 does not simply work. Several internals are built in float32
 regardless of the weights' dtype, and the forward dies on a dtype mismatch rather
 than on anything a caller did — the deformable-attention sampling grid reaching

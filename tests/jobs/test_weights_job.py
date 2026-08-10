@@ -186,7 +186,7 @@ def test_a_retry_is_still_refused_for_a_kind_with_no_weights(
 ) -> None:
     """The kind half of the gate is the half that never relaxed.
 
-    #469 made the state half unconditional — a `ready` connection can be asked
+    The state half is unconditional — a `ready` connection can be asked
     to re-check its own cache — and left this exactly where it was: a connection
     with no weights of its own has none on the second attempt either, so the
     handler refuses rather than reaching a download that would have nothing to

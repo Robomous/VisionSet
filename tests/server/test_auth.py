@@ -118,7 +118,7 @@ def test_the_exported_app_is_not_the_one_under_test() -> None:
 
 
 def test_dependency_overrides_replace_authentication_without_a_probe_app() -> None:
-    """What #25 bought: the provider is a dependency, not a module global.
+    """The provider is a dependency, not a module global.
 
     Before this, swapping authentication meant a bare ``FastAPI()`` carrying a
     hand-written route — which exercised neither the real handlers nor the real
@@ -166,7 +166,7 @@ def test_a_persisted_token_authenticates(tmp_path: Path, workspace: WorkspaceSer
 def test_a_revoked_token_is_refused_immediately(
     tmp_path: Path, workspace: WorkspaceService
 ) -> None:
-    """The #25 acceptance criterion. No restart, and no cache to invalidate.
+    """No restart, and no cache to invalidate.
 
     The same running application answers 200 and then 401 across one ``revoke``
     call made through a *different* handle on the same workspace — which is what

@@ -1,9 +1,9 @@
 """The generators are load-bearing for every M2 test, so they get tested themselves.
 
-What is pinned here is the part later tasks will *rely on*: that equal arguments give equal
-bytes (#20's dedup and idempotency), that the EXIF fixture really is rotated (#16), that a
-corrupt file really fails to decode (#16), that a clip carries the frame count it claims, and
-that the two damaged/rotated video generators really produce what their names say (#17) — both
+What is pinned here is the part everything else *relies on*: that equal arguments give equal
+bytes (dedup and idempotency), that the EXIF fixture really is rotated, that a
+corrupt file really fails to decode, that a clip carries the frame count it claims, and
+that the two damaged/rotated video generators really produce what their names say — both
 of those lean on ffmpeg behaviour that is easy to get subtly, silently wrong.
 """
 
@@ -81,7 +81,7 @@ def test_a_generated_directory_holds_distinct_images(tmp_path: Path) -> None:
 
 
 def test_the_exif_fixture_stores_one_size_and_means_another(tmp_path: Path) -> None:
-    """#16 must report dimensions *after* orientation; this is the fixture that catches it."""
+    """Dimensions are reported *after* orientation; this is the fixture that catches it."""
     path = write_exif_rotated_image(tmp_path / "rotated.jpg")
     with Image.open(path) as image:
         assert image.size == DEFAULT_IMAGE_SIZE == (32, 24)
@@ -103,7 +103,7 @@ def test_an_unsupported_file_is_not_an_image_at_all(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("image_format", ["BMP", "GIF", "TIFF"], ids=str.lower)
 def test_an_unaccepted_format_is_a_perfectly_good_image(tmp_path: Path, image_format: str) -> None:
-    """The third refusal: decodable, and still declined. #16 must not confuse it with garbage."""
+    """The third refusal: decodable, and still declined. Not to be confused with garbage."""
     path = write_image_in_unsupported_format(tmp_path / "photo.bin", image_format=image_format)
     with Image.open(path) as image:
         assert image.format == image_format
@@ -111,7 +111,7 @@ def test_an_unaccepted_format_is_a_perfectly_good_image(tmp_path: Path, image_fo
 
 
 def test_a_multi_picture_jpeg_announces_itself_as_mpo(tmp_path: Path) -> None:
-    """What a phone writes. #16 accepts it as a JPEG, which it can only do by knowing the name."""
+    """What a phone writes. Accepted as a JPEG, which is only possible by knowing the name."""
     path = write_multi_picture_jpeg(tmp_path / "burst.jpg")
     with Image.open(path) as image:
         assert image.format == "MPO"
@@ -148,7 +148,7 @@ def test_a_generated_clip_matches_the_dimensions_it_reports(tmp_path: Path) -> N
 
 
 def test_a_generated_clip_holds_the_frame_count_it_claims(tmp_path: Path) -> None:
-    """#17 extracts at 1/5/10 fps against this clip, so its frame count cannot be approximate."""
+    """Extraction runs at 1/5/10 fps against this clip, so its frame count cannot be approximate."""
     require_ffmpeg()
     video = write_video(tmp_path / "clip.mp4", fps=10, duration_seconds=2.0)
     assert video.frame_count == 20
@@ -163,7 +163,7 @@ def test_clip_length_and_rate_follow_the_arguments(tmp_path: Path) -> None:
 
 
 def test_two_runs_of_the_same_clip_are_byte_identical(tmp_path: Path) -> None:
-    """Determinism within one ffmpeg build — enough for #17's repeatability criterion. Across
+    """Determinism within one ffmpeg build — enough for extraction's repeatability. Across
     ffmpeg versions the bytes differ, so nothing may assert a hardcoded hash."""
     require_ffmpeg()
     first = write_video(tmp_path / "one.mp4")
@@ -174,8 +174,8 @@ def test_two_runs_of_the_same_clip_are_byte_identical(tmp_path: Path) -> None:
 def test_a_corrupt_clip_is_still_readable_enough_to_describe(tmp_path: Path) -> None:
     """The whole trick of the fixture: the faststart index survives, so ffprobe still answers.
 
-    A clip whose index went with its tail is unopenable, which is a different refusal (#17 maps
-    it to `UnsupportedMedia`) and `write_unsupported_file`'s job. This one has to break *during*
+    A clip whose index went with its tail is unopenable, which is a different refusal (mapped
+    to `UnsupportedMedia`) and `write_unsupported_file`'s job. This one has to break *during*
     a decode, not before one.
     """
     require_ffmpeg()

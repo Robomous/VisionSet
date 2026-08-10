@@ -116,7 +116,7 @@ def test_uploading_images_to_an_unknown_project_is_404(client: TestClient, tmp_p
     assert response.json()["code"] == "PROJECT_NOT_FOUND"
 
 
-# --- the display name (#245) -------------------------------------------------
+# --- the display name ---------------------------------------------------------
 
 
 def test_a_stated_name_becomes_the_source_name(
@@ -135,7 +135,7 @@ def test_a_stated_name_becomes_the_source_name(
 def test_an_unnamed_upload_is_still_called_by_its_staged_digest(
     client: TestClient, project: str, tmp_path: Path
 ) -> None:
-    """The pre-#245 default, pinned as the default rather than fixed by stealth.
+    """The unnamed default, pinned as the default rather than fixed by stealth.
 
     Staging is content-addressed, so the directory an upload registers is named
     by a sha-256 digest — which is what an upload that states no name is called.
@@ -184,7 +184,7 @@ def test_a_nameless_reupload_keeps_the_stated_name(
 def test_a_blank_name_is_422_with_the_kernel_wording(
     client: TestClient, project: str, tmp_path: Path
 ) -> None:
-    """#28's rule: the domain refuses with a mapped error, so no wire validator
+    """The rule: the domain refuses with a mapped error, so no wire validator
     restates it — the refusal below is ``InvalidName``'s own."""
     response = client.post(
         f"/projects/{project}/sources/images",

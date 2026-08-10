@@ -27,7 +27,7 @@ SIGN: Final[dict[str, Any]] = {
     "attributes": [{"name": "occluded", "kind": "boolean", "required": True}],
 }
 LANE: Final[dict[str, Any]] = {"name": "lane", "geometry": "polygon"}
-#: #223's geometry. NOT in the default schema: four tests elsewhere count the
+#: The lane geometry. NOT in the default schema: four tests elsewhere count the
 #: classes `project_with_schema` declares, so a suite that needs a lane passes
 #: `classes=[SIGN, LANE, CENTERLINE]` rather than widening what everyone gets.
 CENTERLINE: Final[dict[str, Any]] = {"name": "centerline", "geometry": "polyline"}

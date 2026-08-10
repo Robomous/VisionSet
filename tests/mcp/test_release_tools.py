@@ -152,7 +152,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
     assert payload(call("list_formats")) == {
         "items": [
             {
-                # #223. Every lane format is lossy — a lane file has fields for a
+                # The lane family. Every lane format is lossy — a lane file has fields for a
                 # lane, and none for an annotation's attributes, confidence or id.
                 # Only TuSimple degrades the geometry; the other four write the
                 # vertices they were given. See `visionset/formats/lanes`.
@@ -163,7 +163,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
             {
-                # #63. Lossless: boxes and polygons are native, and everything
+                # Lossless: boxes and polygons are native, and everything
                 # COCO has no field for rides in a `visionset` object.
                 "name": "coco",
                 "lossy": False,
@@ -188,7 +188,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
             {
                 "name": "dummy",
                 "lossy": False,
-                # #65: what the format can carry. `dummy` declares everything,
+                # What the format can carry. `dummy` declares everything,
                 # which is what makes it the format that never refuses.
                 "geometries": sorted(one.value for one in GeometryType),
                 "degraded_geometries": [],
@@ -202,10 +202,10 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
             {
-                # #223. The one lane format that does not write the vertices it
+                # The one lane format that does not write the vertices it
                 # was given: TuSimple's file *is* the X where a lane crosses each
                 # of a fixed set of rows, so a lane is resampled rather than
-                # copied. Carried, but reduced — #158's third state.
+                # copied. Carried, but reduced — the third export status.
                 "name": "tusimple",
                 "lossy": True,
                 "geometries": [],
@@ -213,7 +213,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
             {
-                # #414. Lossy because a VOC `<object>` has a fixed set of children
+                # Lossy because a VOC `<object>` has a fixed set of children
                 # its consumers index by tag name.
                 "name": "voc",
                 "lossy": True,
@@ -222,7 +222,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "modalities": ["image"],
             },
             {
-                # #62, and the first format in this repository that writes
+                # The first format in this repository that writes
                 # anything. Lossy because a label row is five numbers, so
                 # attributes, confidence and provenance never survive.
                 "name": "yolo",
@@ -292,7 +292,7 @@ class LossyExporter:
     format_name = "lossy-probe"
     lossy = True
 
-    #: #65's capability declaration. Everything, so this double's *subject* stays
+    #: The capability declaration. Everything, so this double's *subject* stays
     #: what it was — the file it writes, or the flag it sets — rather than a
     #: geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
@@ -349,7 +349,7 @@ def test_a_lossy_format_refuses_until_its_own_flag_is_passed(
 class PolygonsOnlyExporter:
     """Lossless by its own declaration, and unable to write the one geometry in play.
 
-    The pair #65 exists for: `lossy` is false, so a refusal against this one is
+    The pair the compatibility report exists for: `lossy` is false, so a refusal against this one is
     entirely about what the release holds.
     """
 

@@ -1,4 +1,4 @@
-"""The lane family, ported from v1's ``test_lane_export.py`` (#223).
+"""The lane family, ported from v1's ``test_lane_export.py``.
 
 v1 had 91 tests in one file, and they split cleanly in two:
 
@@ -618,8 +618,8 @@ def test_openlane_writes_every_point_visible_because_the_domain_has_no_other_ans
     tmp_path: Path,
 ) -> None:
     # The one loss worth naming: OpenLane marks each vertex visible or occluded
-    # and `PolylineGeometry.points` is coordinates alone. #223 declined to extend
-    # the annotation model for one format, so this is what is known rather than
+    # and `PolylineGeometry.points` is coordinates alone. Extending the annotation
+    # model for one format was declined, so this is what is known rather than
     # what was measured.
     dest = _export(
         OpenLane2dExporter(),

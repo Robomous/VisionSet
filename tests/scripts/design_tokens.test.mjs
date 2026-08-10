@@ -4,7 +4,7 @@
  *
  * v1 spent its life migrating away from hardcoded colours and never finished;
  * VisionSet starts clean, so the rule gets a gate on the day the design system
- * lands rather than a migration later. #128's third acceptance criterion asks for
+ * lands rather than a migration later. The design system asks for
  * exactly this, "lintable or greppable", and this is the greppable half.
  *
  * ## What it looks for, and why that is the whole rule
@@ -90,7 +90,7 @@ test("the scan finds a colour smuggled into a class, and nothing that merely loo
     [],
   );
   // A docstring explaining the rule must pass, or the gate forbids its own
-  // explanation — the mistake #46's boundary scan made on its first run.
+  // explanation — the mistake a boundary scan makes when it matches its own prose.
   assert.deepEqual(colouredClassesIn("h.tsx", `   * Never write \`bg-[${"#"}eb5a47]\`.`), []);
   // And a CSS custom property *declaration* is where colours are supposed to live.
   assert.deepEqual(colouredClassesIn("i.css", `  --color-primary: #eb5a47;`), []);

@@ -485,7 +485,7 @@ _SETTLED = (ANNOTATED, SKIPPED, ACCEPTED)
 #: otherwise; and a completed batch's jobs are all completed, because the batch
 #: cannot complete otherwise.
 #:
-#: The job dimension is #439's. It was absent, and what it left out was exactly
+#: The job dimension. Leaving it out omits exactly
 #: the row where the bug lived — a `completed` job in an `in_annotation` batch,
 #: whose assets went on declaring `annotate` and went on accepting labels.
 ASSET_SCENARIOS: list[tuple[BatchState, AnnotationJobState | None, AssetProgress | None]] = [
@@ -518,7 +518,7 @@ def test_an_asset_allows_exactly_what_it_declares(
 
     The completed-batch rows are the originally reported blocker: the gallery
     offered skip and restore there, the kernel refused every frame, and the
-    reason never reached the user. The completed-*job* rows are #439's, and they
+    reason never reached the user. The completed-*job* rows are the job gate's, and they
     were the same shape read one level down — declared is empty for both, and
     this proves the kernel agrees on both.
     """
@@ -623,7 +623,7 @@ def _assert_undeclared_is_refused(
         return
 
     if job_state is AnnotationJobState.COMPLETED:
-        # #439, and the same argument one level down: the job gate fires before
+        # The same argument one level down: the job gate fires before
         # the no-op check too, so even a move to the state the asset is already
         # in is refused rather than quietly accepted.
         with pytest.raises(JobFinished):
@@ -666,7 +666,7 @@ def test_a_completed_batch_offers_its_assets_nothing(tmp_path: Path) -> None:
 
 
 def test_a_finished_job_offers_its_assets_nothing_even_in_an_open_batch(tmp_path: Path) -> None:
-    """#439, as a sentence: the batch gate cannot cover this and never did.
+    """As a sentence: the batch gate cannot cover this.
 
     Completing a job does not complete its batch — `BatchService` derives that
     separately — so the ordinary state of a finished job is inside an
@@ -748,18 +748,17 @@ def test_declaration_order_is_stable(tmp_path: Path) -> None:
 
 
 def test_delete_is_declared_from_the_kernels_own_gate_and_not_from_a_copy() -> None:
-    """#376: the declaration returned with the route, and it reads one set.
+    """The declaration lands with the route, and it reads one set.
 
-    #331 withdrew the member because nothing outside the SDK could perform it,
-    and said it comes back "in the same change" as the route. This is the
-    replacement for that absence assertion, and it makes the stronger claim: not
-    that `delete` is declared, but that it is declared **exactly** where
-    `BatchService.delete` permits it — computed from `DELETABLE_STATES` rather
-    than from a list of states retyped here.
+    A member nothing outside the SDK can perform is withdrawn rather than
+    declared, and comes back in the same change as the route. So the claim here
+    is the stronger one: not that `delete` is declared, but that it is declared
+    **exactly** where `BatchService.delete` permits it — computed from
+    `DELETABLE_STATES` rather than from a list of states retyped here.
 
     A second frozenset beside the first is the hand-mirror the whole capabilities
-    module exists to remove, and it is the failure this repo has paid for twice
-    (`cf. #358`). Reading the set is what makes that impossible rather than
+    module exists to remove. Reading the set is what makes that impossible rather
+    than
     merely discouraged: a change to `DELETABLE_STATES` moves both sides at once,
     and a `BATCH_GATES` entry that stopped pointing at it turns this red.
     """
@@ -866,7 +865,7 @@ def _refuse_connection(
     `delete` are declared everywhere and so have no undeclared square to be
     refused in.
 
-    `check_integrity` has the most undeclared squares of anything here (#471):
+    `check_integrity` has the most undeclared squares of anything here:
     it is the first connection action narrow in *state* as well as in kind, so
     it is refused on three of the four the domain can hold.
     """
@@ -900,7 +899,7 @@ def test_a_connection_allows_exactly_what_it_declares(
 ) -> None:
     """Every square of kind x `ConnectionSetupState` x `ConnectionAction`, for real.
 
-    Three dimensions rather than two since #418's second slice, because
+    Three dimensions rather than two, because
     `download_weights` is the first connection action whose legality is not a
     function of state alone: an `http` connection has no weights of its own in
     any state, and a `local` one that already fetched them has nothing left to
@@ -935,8 +934,8 @@ def test_a_connections_declaration_is_read_from_the_kernels_own_gate() -> None:
     the same edit. Spelling the answers out here instead would be the hand-mirror
     this module exists to remove.
 
-    **The state half stopped being unconditional in #471**, and that is the one
-    line of this test worth reading. Every gate was total in state since #469 —
+    **The state half is not unconditional**, and that is the one
+    line of this test worth reading. Every other gate is total in state —
     `download_weights` at `ready` is the verification of a cache the download
     already filled — and `check_integrity` is the first that is not: it needs a
     snapshot to re-read, which `not_set_up` does not have. Each entry still
@@ -968,7 +967,7 @@ def test_download_weights_is_declared_on_both_local_squares_and_no_others() -> N
     """Local in either state, and no `http` square in any state.
 
     The pinned action set for the download capability, stated as the one
-    sentence a reader can check, and **deliberately moved** by #469: it used to
+    sentence a reader can check, and **deliberately widened**: it could
     read `{(local, not_set_up)}` and now reads both local squares, because a
     `ready` connection can be asked to verify the cache it already has. This
     file is where that becomes a decision rather than a drift — widening the
@@ -990,15 +989,15 @@ def test_download_weights_is_declared_on_both_local_squares_and_no_others() -> N
 def test_the_actions_a_connection_cannot_yet_be_asked_for_are_not_declared() -> None:
     """`test` is absent until something performs it.
 
-    The #376 rule stated as a test: a declared action obliges every client to
+    The rule stated as a test: a declared action obliges every client to
     offer it, so naming one before its surface exists makes the wire the source
     of a control that cannot work. `download_weights` is *here* now because the
     route, the command and the job that perform it are here in the same change —
-    which is the condition #331 set when it withdrew a member, and the shape #376
+    which is the condition a withdrawn member returns under, and the shape
     used to bring one back.
 
     This fails the moment somebody adds the remaining name without the slice
-    behind it. `check_integrity` joined it deliberately in #471, in the same
+    behind it. `check_integrity` joined it deliberately, in the same
     change as its route, its command, its job and its menu item — the set is
     updated by hand precisely so that arriving here is a decision.
     """

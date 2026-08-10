@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The canonical way to run VisionSet's checks. Humans and agents use this one.
 #
-# **Why this exists.** During the #229–#233 run, two background invocations of
-# `uv run pytest -q | tail -20` reported exit 0 while the suite was failing: a
+# **Why this exists.** Two background invocations of
+# `uv run pytest -q | tail -20` once reported exit 0 while the suite was failing: a
 # pipeline's status is the *last* command's, so `tail` succeeding at printing
-# lines masked pytest failing at running them. That hid a real broken test
+# lines masked pytest failing at running them, and hid a real broken test
 # through two full task cycles. `set -euo pipefail` below makes that impossible
 # here, and `docs`/`CONTRIBUTING.md` point everything at this script so nobody
 # has to remember the rule at the call site.
@@ -22,9 +22,9 @@
 #   bash scripts/check.sh python frontend # several
 #   pnpm check                            # the same thing, from the other half
 #
-# **The three suites, because there are three and two of them used to be
-# invisible here** (#314). Until that issue this script ran no browser at all,
-# while calling itself the canonical "before you say it works" invocation:
+# **The three suites, because there are three and two of them are easy to leave
+# invisible here.** A script that runs no browser at all while calling itself the
+# canonical "before you say it works" invocation is worse than no script:
 #
 #   python | frontend | generated   pytest, vitest, ruff, mypy, import-linter,
 #                                   eslint, and the four drift gates
@@ -36,20 +36,19 @@
 #                                   downloaded export
 #                                   (CI job: `browser cycle (chromium)`)
 #
-# That second browser suite is not a luxury. During the 2026-08 remediation run
-# it was three separate times the *only* suite to catch a regression: a job's
-# stale capability declaration (#306), a promote button whose only feedback was
-# its own label (#308), and a progress counter that ran backwards when a frame
-# was accepted (#309). One of those shipped on a green run of this script and
-# went red in CI.
+# That second browser suite is not a luxury. It has been three separate times the
+# *only* suite to catch a regression: a job's stale capability declaration, a
+# promote button whose only feedback was its own label, and a progress counter
+# that ran backwards when a frame was accepted. One of those shipped on a green
+# run of this script and went red in CI.
 #
 # **`CI=1` is set here, for the Playwright steps, and it is load-bearing.**
 # `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so without
 # it a stale vite server left on this worktree's e2e port answers instead of the
 # build under test — which produces failures in unrelated scenarios that read as
 # genuine code bugs. The lesson lived in a skill and in three people's memories;
-# it lives in the script now. (Which port that is depends on the worktree since
-# #346: `frontend/app/e2e-ports.ts` derives it, and each run prints it.)
+# it lives in the script instead. (Which port that is depends on the worktree:
+# `frontend/app/e2e-ports.ts` derives it, and each run prints it.)
 #
 # **Caveat that no exit code will tell you: several gates read `git ls-files`,
 # which is the index rather than the working tree.** A new file you have not
@@ -191,7 +190,7 @@ declare -a ALL_GROUPS=(python frontend generated browser)
 # length-checked for the same reason, and this way there is nothing to forget.
 ran=""
 
-# The last line on **stdout**, on every exit path, and the whole of #336.
+# The last line on **stdout**, on every exit path.
 #
 # `require_node_modules` aborts correctly and says so — on stderr, with nothing at
 # all on stdout. So a caller that captures stdout (an agent, a CI step, a
@@ -252,7 +251,7 @@ summary() {
   echo "           browser cycle, real server    CI job: browser cycle (chromium)" >&2
   echo "" >&2
   echo " The real-server cycle run was three separate times the ONLY suite to" >&2
-  echo " catch a regression during the 2026-08 remediation run (#306, #308, #309)." >&2
+  echo " catch a regression that every other suite reported green." >&2
   echo "" >&2
   echo " Run them:  bash scripts/check.sh browser" >&2
   echo "=============================================================================" >&2
@@ -272,8 +271,8 @@ for arg in "$@"; do
   esac
 done
 
-# The full run is the default and `--fast` is the exception, which is the whole
-# point of #314: the previous default was silently the fast one.
+# The full run is the default and `--fast` is the exception. A default that is
+# silently the fast one is how a browser suite stops being run at all.
 if [[ ${#groups[@]} -eq 0 ]]; then
   groups=(python frontend generated)
   [[ $fast -eq 1 ]] || groups+=(browser)

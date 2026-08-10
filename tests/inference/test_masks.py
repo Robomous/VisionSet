@@ -77,11 +77,11 @@ def test_an_isolated_pixel_has_no_ring_to_walk() -> None:
     assert outline(rect(3, 3, 3, 3)) == [(3.0, 3.0)]
 
 
-# --- which blob, when the mask holds more than one (#461) ----------------------
+# --- which blob, when the mask holds more than one ----------------------------
 
 
 def speckled() -> list[list[int]]:
-    """#461's repro, verbatim: a 1-px speck in the topmost row, a 36-px object below-left.
+    """The repro: a 1-px speck in the topmost row, a 36-px object below-left.
 
     The speck owns the topmost-leftmost lit pixel, which is where the tracer
     starts from when nothing points it anywhere — so a click on the object used
@@ -96,7 +96,7 @@ def speckled() -> list[list[int]]:
 
 
 def test_the_blob_under_the_click_wins_over_a_speck() -> None:
-    """#461's first symptom: a shape returned from somewhere the user did not click."""
+    """The first symptom: a shape returned from somewhere the user did not click."""
     traced = outline(speckled(), at=[(3.0, 5.0)])
     assert (9.0, 0.0) not in traced, "the speck is not the answer to a click on the object"
     assert traced[0] == (1.0, 3.0), "tracing starts at the clicked blob's own top-left"
@@ -104,7 +104,7 @@ def test_the_blob_under_the_click_wins_over_a_speck() -> None:
 
 
 def test_a_real_segmentation_is_not_reported_as_nothing() -> None:
-    """#461's second symptom, and the one that reads as "the model found nothing".
+    """The second symptom, and the one that reads as "the model found nothing".
 
     The speck traces to a single point, three are needed for a polygon, so the
     whole suggestion was dropped while a 36-px object sat under the click.

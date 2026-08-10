@@ -409,7 +409,7 @@ def test_completing_a_batch_announces_it(tmp_path: Path) -> None:
 
 
 def test_starting_a_batch_announces_nothing(tmp_path: Path) -> None:
-    """Only the two transitions #13 names emit; ``start`` is not one of them."""
+    """Only two transitions emit; ``start`` is not one of them."""
     fixture = Fixture(tmp_path)
     batch = fixture.batches.create(fixture.project.id, "first", fixture.asset_ids)
     fixture.batches.approve(batch.id)
@@ -488,7 +488,7 @@ def test_publishing_a_release_announces_what_it_froze(tmp_path: Path) -> None:
 
 
 def test_the_annotation_cycle_announces_no_ingest(tmp_path: Path) -> None:
-    """#20 wired the emitter, so this no longer says "nobody". It says what is
+    """Ingest wires the emitter, so this does not say "nobody". It says what is
     still true and still worth a guard: nothing on the batch → job → annotation
     → release path is an ingest, and none of it may quietly claim to be one.
 

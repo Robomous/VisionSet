@@ -91,7 +91,7 @@ def test_a_split_recipe_comes_back_on_the_release(client: TestClient, dataset: s
 
 
 def test_fractions_that_do_not_add_up_are_422_and_not_500(client: TestClient, dataset: str) -> None:
-    """#27's trap: a pydantic error from a route body reaches the catch-all as a 500."""
+    """The trap: a pydantic error from a route body reaches the catch-all as a 500."""
     response = client.post(
         f"/datasets/{dataset}/releases",
         json={"tag": "v1", "split": {"train": 0.5, "val": 0.2, "test": 0.2}},
@@ -347,7 +347,7 @@ def test_the_assignment_of_an_unknown_release_is_404(client: TestClient) -> None
 def exported(client: TestClient, release: str, **params: Any) -> Any:
     """Run an export to completion and hand back the artifact response.
 
-    The launch is a 202 since #328, so `response.content` is no longer the
+    The launch is a 202, so `response.content` is not the
     archive: the work happens in a job and the bytes come from a second route.
     This helper is what keeps the assertions below about *what was written*
     rather than about the plumbing that moved — and the job's own contract has
@@ -380,7 +380,7 @@ def test_exporting_streams_back_an_archive_of_what_the_plugin_wrote(
     response = exported(client, release, format="writing")
 
     assert response.headers["content-type"] == "application/zip"
-    # …plus the compatibility report, which #65 attaches to every export
+    # …plus the compatibility report, which is attached to every export
     # output so the answer to "what would this format have dropped" travels
     # with the bytes and not only with the refusal.
     assert _names_in(response.content) == {
@@ -495,7 +495,7 @@ def test_exporting_leaves_the_release_exactly_as_it_was(client: TestClient, rele
     assert client.get(f"/releases/{release}").json() == before
 
 
-# --- what a format would drop (#65) -------------------------------------------
+# --- what a format would drop -------------------------------------------------
 
 
 def test_the_pre_flight_says_a_release_is_carried_whole(client: TestClient, release: str) -> None:
@@ -558,7 +558,7 @@ def test_an_unknown_format_is_404_from_the_pre_flight_too(client: TestClient, re
 def test_a_lossless_format_that_would_drop_a_class_is_refused_with_the_report(
     client: TestClient, release: str
 ) -> None:
-    """#65's second acceptance criterion, and the reason the report is in `detail`.
+    """The reason the report is in `detail`.
 
     A client that gets this 409 can render a consent dialog from it without a
     second round trip, and it is the same document the pre-flight returns.

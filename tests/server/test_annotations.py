@@ -44,7 +44,7 @@ def working(client: TestClient, tmp_path: Path, runner: InlineDispatcher) -> tup
     """A started job over a three-asset batch. Returns ``(batch_id, job_id)``.
 
     The schema is named here rather than taken as the default because this suite
-    is the one that writes every geometry: `centerline` is #223's polyline class,
+    is the one that writes every geometry: `centerline` is the polyline class,
     and a route suite whose schema cannot express a lane cannot notice one being
     refused.
     """
@@ -132,7 +132,7 @@ def test_a_polygon_lands_under_the_class_that_declares_one(
 def test_a_polyline_lands_under_the_class_that_declares_one(
     client: TestClient, working: tuple[str, str], assets: list[str]
 ) -> None:
-    """#223: a lane written over REST, judged by the gates that already existed.
+    """A lane written over REST, judged by the gates that already exist.
 
     Nothing new gates a polyline — the batch must be `in_annotation` and the
     asset's progress must allow a write — so the assertion worth making is that
@@ -162,7 +162,7 @@ def test_a_polyline_lands_under_the_class_that_declares_one(
 def test_a_polyline_may_not_be_written_under_a_polygon_class(
     client: TestClient, working: tuple[str, str], assets: list[str]
 ) -> None:
-    """The per-class geometry rule, which #223 did not touch and must not have.
+    """The per-class geometry rule, which a new geometry must not weaken.
 
     `lane` declares `polygon`; a polyline under it is refused by
     `AnnotationService` exactly as any other mismatch is. Worth pinning because
@@ -558,7 +558,7 @@ def test_nothing_is_written_after_the_batch_closes(
 def test_nothing_is_written_after_the_job_finishes_even_with_the_batch_open(
     client: TestClient, working: tuple[str, str], assets: list[str]
 ) -> None:
-    """#439, over HTTP, and the batch is deliberately left open.
+    """The job gate, over HTTP, and the batch is deliberately left open.
 
     The sibling of the test above and the one it could not stand in for:
     completing a job does not complete its batch, so `BATCH_NOT_IN_ANNOTATION`

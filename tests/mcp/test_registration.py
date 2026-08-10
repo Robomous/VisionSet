@@ -64,11 +64,11 @@ SHIPPED = {
 
 Written out rather than derived from ``TOOLS``, so that adding a tool is a
 deliberate edit in two places. The ship-vs-fold decision is the whole point of
-#35; a set computed from the table would agree with itself no matter what
+a set computed from the table would agree with itself no matter what
 landed."""
 
 DESTRUCTIVE = {"delete_batch", "delete_project"}
-"""Offered only when the server was started with ``--allow-destructive`` (#108).
+"""Offered only when the server was started with ``--allow-destructive``.
 
 Absent from the listing by default rather than present and gated, because
 ``confirm`` is documented in the same listing an agent reads before choosing —
@@ -88,7 +88,7 @@ def test_every_registered_tool_reaches_the_listing() -> None:
 
 
 def test_the_gated_listing_is_exactly_the_shipped_set_plus_the_destructive_one() -> None:
-    # Named, never counted. A bare integer here was the whole point of #35 — 50
+    # Named, never counted. A bare integer here says nothing — 50
     # candidates evaluated one by one — but it reported an off-by-one where the
     # set reports *which* tool moved, and it went stale twice in one run while
     # the set beside it was already correct. What ships is still a decision to be
@@ -147,7 +147,7 @@ def test_the_destructive_set_is_exactly_these_two_and_both_are_marked() -> None:
 def test_the_destructive_tools_are_absent_until_the_server_is_started_for_them(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#108's whole answer, in one assertion.
+    """The destructive posture's whole answer, in one assertion.
 
     Absent from the listing rather than present and gated: a `confirm` parameter
     is documented in the same listing an agent reads before choosing, so the
@@ -177,7 +177,7 @@ def test_only_an_exact_one_opens_the_destructive_tools(
 def test_the_destructive_tools_keep_the_confirm_and_hint_agreement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The constraint #108 states: whatever *is* registered still agrees in both directions.
+    """Whatever *is* registered still agrees in both directions.
 
     Checked against the table rather than a live listing, because the server
     registers at import and this process imported it without the flag — building
@@ -189,7 +189,7 @@ def test_the_destructive_tools_keep_the_confirm_and_hint_agreement(
 
 
 def test_no_tool_administers_tokens() -> None:
-    # Argued in docs/auth.md with #25: minting a credential is a
+    # Argued in docs/auth.md: minting a credential is a
     # privilege-escalation primitive pointed at the agent's own sandbox, and an
     # agent's "shown exactly once" is a transcript.
     assert not [name for name in tool_names() if "token" in name]

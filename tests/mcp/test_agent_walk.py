@@ -6,7 +6,7 @@ uses **none** of `_flow.py`'s ladder helpers. Every call's outcome is asserted
 rather than only the final state, because a walk that quietly skipped a step and
 still ended up in the right place would prove nothing.
 
-It also stands in for #36, which owns the published transcript: if this passes, an
+It also stands in for the published agent transcript: if this passes, an
 agent holding nothing but a workspace can produce a released, verified, exported
 dataset — including looking at the pixels before labelling them.
 """
@@ -79,7 +79,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
     #    annotator rather than an operator.
     for job in started["jobs"]:
         job_id = job["id"]
-        # Nothing starts the job: there is no tool for it (#109). It is still
+        # Nothing starts the job: there is no tool for it. It is still
         # `pending` here, and the first write below is what moves it — which is
         # the whole point, since looking at a job is not working on it.
         assert ok(call("get_job", job_id=job_id))["state"] == "pending"
@@ -188,18 +188,18 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
         "voc",
         "yolo",
     }
-    # #63. Lossless: boxes and polygons are native, and everything COCO has no
+    # Lossless: boxes and polygons are native, and everything COCO has no
     # field for rides in a `visionset` object.
     assert formats["coco"]["lossy"] is False
     assert formats["coco"]["geometries"] == ["bbox", "polygon"]
-    # #62. A box format says so, and names the polygon it reduces rather than
+    # A box format says so, and names the polygon it reduces rather than
     # dropping it silently.
     assert formats["yolo"]["geometries"] == ["bbox"]
     assert formats["yolo"]["degraded_geometries"] == ["polygon"]
-    # #65: `dummy` declares every geometry, which is what makes it the format
+    # `dummy` declares every geometry, which is what makes it the format
     # that never refuses.
     assert formats["dummy"]["geometries"] == sorted(one.value for one in GeometryType)
-    # #223. The lane family, and the one of the five that reduces: TuSimple's
+    # The lane family, and the one of the five that reduces: TuSimple's
     # file *is* the X where a lane crosses each of a fixed set of rows.
     assert formats["tusimple"]["degraded_geometries"] == ["polyline"]
     assert formats["curvelanes"]["geometries"] == ["polyline"]

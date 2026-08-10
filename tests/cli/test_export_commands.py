@@ -55,7 +55,7 @@ class LossyExporter:
     lossy = True
 
     #: Everything, so the refusal under test is the *flag's* and not the report's
-    #: — #65 made consent required when either says so, and a double declaring a
+    #: — consent is required when either says so, and a double declaring a
     #: narrower set would make this test pass for the other reason.
     supported_geometries = frozenset(GeometryType)
     degraded_geometries: frozenset[GeometryType] = frozenset()
@@ -110,7 +110,7 @@ def test_format_list_names_the_installed_exporters() -> None:
     rows = result.stdout.splitlines()
     assert rows[0].split() == ["NAME", "LOSSY"]
     # Sorted by name, so `bdd100k-lane` leads and `yolo` closes. Five of the nine
-    # are #223's lane family, and every one of them is lossy — a lane file has
+    # are the lane family, and every one of them is lossy — a lane file has
     # fields for a lane and none for an annotation's attributes or confidence.
     assert [row.split() for row in rows[1:]] == [
         ["bdd100k-lane", "yes"],
@@ -139,12 +139,12 @@ def test_format_list_needs_no_workspace_at_all(
 def test_format_list_json_is_the_envelope() -> None:
     result = CliRunner().invoke(app, ["format", "list", "--json"])
     assert result.exit_code == 0, result.output
-    # #65 gave a format its capability declaration, so the row carries what it can
+    # A format declares its capabilities, so the row carries what it can
     # express as well as whether it loses anything. `dummy` writes nothing, so it
     # claims everything — declaring less would make the report describe a loss
     # that never happens.
     assert json.loads(result.stdout)["items"] == [
-        # #223's lane family. All five lossy; only `tusimple` reduces the geometry,
+        # The lane family. All five lossy; only `tusimple` reduces the geometry,
         # because its file *is* the X where a lane crosses each of a fixed set of
         # rows — vertices in, samples out.
         {
@@ -155,7 +155,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "modalities": ["image"],
         },
         {
-            # #63. Lossless: boxes and polygons are native, and everything COCO
+            # Lossless: boxes and polygons are native, and everything COCO
             # has no field for rides in a `visionset` object per annotation.
             "name": "coco",
             "lossy": False,
@@ -209,7 +209,7 @@ def test_format_list_json_is_the_envelope() -> None:
             "modalities": ["image"],
         },
         {
-            # #414. Lossy for a different reason from `yolo`'s: a VOC `<object>`
+            # Lossy for a different reason from `yolo`'s: a VOC `<object>`
             # has a fixed set of children its consumers index by tag name, so
             # there is nowhere to put an attribute or a confidence.
             "name": "voc",
@@ -221,7 +221,7 @@ def test_format_list_json_is_the_envelope() -> None:
         {
             "name": "yolo",
             "lossy": True,
-            # #62, the first format here that writes anything. Lossy because a
+            # Lossy because a
             # label row is five numbers: attributes, confidence and provenance
             # never survive, whatever a release happens to hold.
             "geometries": ["bbox"],
@@ -260,7 +260,7 @@ def test_the_dummy_exporter_reports_zero_files_and_that_is_correct(
         "--out",
         str(tmp_path / "out"),
     )
-    # Still zero, and #65 is why that took work: the compatibility report is
+    # Still zero, and the compatibility report is why that takes work: it is
     # written into the directory too, so it is excluded from the walk on both
     # sides — not counted when it is written, and skipped when an earlier run
     # left one behind.
@@ -351,8 +351,9 @@ def test_a_lossy_format_exits_one_until_the_flag(root: Path, tmp_path: Path, los
 class BoxesOnlyExporter:
     """Lossless by its own declaration, and unable to write the geometry in play.
 
-    The pair #65 exists for. `lossy` is false, so the refusal below is about what
-    the release holds and not about anything the format said about itself.
+    The pair the compatibility report exists for. `lossy` is false, so the refusal
+    below is about what the release holds and not about anything the format said
+    about itself.
     """
 
     format_name = "boxes-only"
@@ -391,8 +392,8 @@ def _labeled_release(root: Path, tmp_path: Path, tag: str = "v1.0") -> tuple[str
     asset while the CLI writes no labels — the wart ``docs/jobs.md`` states out
     loud — so every release built purely through this surface carries
     ``annotation_count: 0``, and a report over it is compatible with *any* format
-    however narrow. Writing one box through the kernel is what gives #65's
-    refusal something to exclude.
+    however narrow. Writing one box through the kernel is what gives the
+    compatibility refusal something to exclude.
     """
     name, batch = started_batch(root, tmp_path)
     workspace = WorkspaceService.open(root)
@@ -475,9 +476,9 @@ def test_the_excluded_classes_are_named_on_stderr_so_stdout_stays_the_path(
 
 # --- export --check ----------------------------------------------------------
 #
-# #163: the report `ReleaseService.check_export` computes reached REST and MCP and
-# stopped there, so the only way to learn what an export would cost from a
-# terminal was to attempt one and read a sentence naming neither the classes nor
+# Without it, the report `ReleaseService.check_export` computes reaches REST and
+# MCP and stops there, so the only way to learn what an export would cost from a
+# terminal is to attempt one and read a sentence naming neither the classes nor
 # the counts.
 
 
@@ -582,7 +583,7 @@ def test_check_json_is_the_report_the_other_two_surfaces_publish(
     assert document["format"] == "boxes-only"
     assert document["compatible"] is False
     assert document["excluded_annotations"] == 6
-    # "gone" and "coarser" stay apart, which is #158's whole finding.
+    # "gone" and "coarser" stay apart, because they are different decisions.
     assert document["degraded_annotations"] == 0
     assert [one["label_class"] for one in document["classes"]] == ["sign"]
     assert document["classes"][0]["status"] == "dropped"
@@ -606,7 +607,7 @@ def test_check_prints_the_table_on_stdout_and_the_prose_on_stderr(
 def test_the_refusal_names_the_flag_a_person_types(
     root: Path, tmp_path: Path, boxes_only: None
 ) -> None:
-    """#163's second half: the kernel says `allow_lossy`, the terminal wants `--allow-lossy`.
+    """The kernel says `allow_lossy`; the terminal wants `--allow-lossy`.
 
     The kernel's own sentence is unchanged — it is the domain's, and bending it
     toward one surface is what ``_HINTS`` exists to avoid. The remedy is added

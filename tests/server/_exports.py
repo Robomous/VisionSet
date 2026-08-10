@@ -43,7 +43,7 @@ class WritingExporter:
     format_name = "writing"
     lossy = False
 
-    #: #65's capability declaration. Everything, so this double's *subject* stays
+    #: The capability declaration. Everything, so this double's *subject* stays
     #: what it was — the file it writes, or the flag it sets — rather than a
     #: geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
@@ -71,7 +71,7 @@ class LossyExporter:
     format_name = "lossy"
     lossy = True
 
-    #: #65's capability declaration. Everything, so this double's *subject* stays
+    #: The capability declaration. Everything, so this double's *subject* stays
     #: what it was — the file it writes, or the flag it sets — rather than a
     #: geometry report nobody wrote this test for.
     supported_geometries = frozenset(GeometryType)
@@ -108,7 +108,7 @@ def with_exporters(app: FastAPI, *plugins: Exporter) -> None:
     it chose. `DummyExporter` is still covered — by the registry tests, and by
     the ones here that deliberately do not override.
 
-    **Two seams, because since #328 an export has two readers.** The route
+    **Two seams, because an export has two readers.** The route
     resolves through `get_exporters`, which is a dependency precisely so a test
     can override it; the *handler* runs in a worker with no dependency graph and
     reads `registry.exporters()` directly. Overriding only the first was the
@@ -129,7 +129,7 @@ def with_exporters(app: FastAPI, *plugins: Exporter) -> None:
 class BoxesOnlyExporter:
     """Lossless by its own declaration, and able to write only boxes.
 
-    The pair #65 exists for: nothing about the *format* asks for consent, so a
+    The pair the compatibility report exists for: nothing about the *format* asks for consent, so a
     refusal against this one is entirely about what the release holds.
     """
 

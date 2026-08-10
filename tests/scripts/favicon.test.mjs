@@ -1,7 +1,7 @@
 /**
  * The app declares an icon, and it survives the `/app/` base the wheel serves under.
  *
- * #161: without a declared icon a browser asks for `/favicon.ico` on its own. That
+ * Without a declared icon a browser asks for `/favicon.ico` on its own. That
  * request lands on the API root, which correctly answers 404 in the one error body
  * — the only console error in an otherwise clean load. Cosmetic on its own, and
  * worth closing anyway: a console that is empty when things are fine is worth more
@@ -16,7 +16,7 @@
  * icon that is silently missing, which is why this is asserted against the
  * **built** document rather than the source one.
  *
- * #49's trap is why it is not checked through `vite preview`: preview reports
+ * A trap is why it is not checked through `vite preview`: preview reports
  * `command` as `"serve"`, so it serves the build with the wrong base and the SPA
  * fallback answers 200 with `index.html` for the missing asset. Nothing errors. The
  * real server is driven by `frontend/app/cycle/cycle.spec.ts`, which asserts a
@@ -62,7 +62,7 @@ test("the built document points at the icon under the /app/ base", { skip: built
   const link = /<link[^>]*rel="icon"[^>]*>/.exec(html);
   assert.ok(link, "the built index.html declares no icon");
   // The assertion the whole file is for: the bundle the wheel serves is mounted at
-  // `/app/` because the API owns the root (#33), so this is where the icon has to be.
+  // `/app/` because the API owns the root, so this is where the icon has to be.
   assert.match(link[0], /href="\/app\/favicon\.svg"/);
   assert.ok(
     existsSync(path.join(repoRoot, "frontend", "app", "dist", "favicon.svg")),

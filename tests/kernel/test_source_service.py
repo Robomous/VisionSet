@@ -113,7 +113,7 @@ def test_a_relative_path_and_its_absolute_form_are_one_source(
 
 
 def test_a_video_source_stores_the_original_fps_from_the_probe(tmp_path: Path) -> None:
-    """Issue #18's second acceptance criterion, asserted against the generator."""
+    """Registration's probe, asserted against the generator."""
     fx = Fixture(tmp_path)
     clip = fx.clip(fps=10, duration_seconds=2.0)
     registered = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=5.0)
@@ -169,7 +169,7 @@ def test_registering_something_that_is_not_a_video_stores_nothing(tmp_path: Path
 def test_a_truncated_clip_registers_because_a_probe_only_reads_the_header(
     tmp_path: Path,
 ) -> None:
-    """Registration is not a validation pass, and #19/#20 must not assume it is.
+    """Registration is not a validation pass, and ingest must not assume it is.
 
     `write_corrupt_video` truncates a faststart clip, so the index at the front
     still describes the whole thing and ffprobe answers happily; ffmpeg only
@@ -251,7 +251,7 @@ def test_a_replaced_clip_refreshes_its_provenance_and_keeps_its_identity(tmp_pat
     fx.close()
 
 
-# --- the display name (#245) -------------------------------------------------
+# --- the display name ---------------------------------------------------------
 
 
 def test_a_stated_display_name_becomes_the_source_name(tmp_path: Path) -> None:
@@ -365,7 +365,7 @@ def test_a_source_in_another_workspace_reads_as_missing(tmp_path: Path) -> None:
 
 
 def test_require_source_resolves_inside_a_callers_transaction(tmp_path: Path) -> None:
-    """The shape #20's ingest needs: one lookup, one transaction, no re-entry."""
+    """The shape ingest needs: one lookup, one transaction, no re-entry."""
     fx = Fixture(tmp_path)
     registered = fx.sources.register_images(fx.project.id, fx.stills)
     with fx.workspace.unit_of_work() as uow:

@@ -1,6 +1,6 @@
 """`ModelProvider` stays implementable somewhere other than here.
 
-#418's acceptance criterion is a dual test: every element of the port's shape
+The port owes a dual test: every element of its shape
 must hold for a runner in this process **and** for a service across a network.
 Most of that is a design argument and lives in the port's docstring. One part of
 it is mechanical, and this file is that part.
@@ -89,7 +89,8 @@ def test_the_port_names_no_array_or_model_library(library: str) -> None:
 
 
 def test_the_protocol_takes_a_request_and_yields_answers() -> None:
-    """The two reshapings #418 asked for, asserted on the annotations.
+    """The two shapes that make the port implementable remotely, asserted on the
+    annotations.
 
     Per-batch rather than per-asset, so a hosted provider pays one round trip for
     a chunk instead of one per image; an iterator rather than a materialised

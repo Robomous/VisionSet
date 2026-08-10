@@ -230,7 +230,7 @@ def test_running_every_migration_again_changes_nothing(tmp_path: Path) -> None:
 #: The tail of every table whose last columns arrived by ``ALTER TABLE``, and
 #: which therefore must not be reordered. See the test below.
 _DECLARED_TAILS = {
-    # Migration 5 appends ``provenance`` after the two #230 added, so the tail is
+    # Migration 5 appends ``provenance`` after the two before it, so the tail is
     # three deep and its *order* is the assertion — swapping any two would split
     # the ``create_all`` path from the migration path.
     "annotation_schema": ["description", "created_at", "provenance"],
@@ -249,7 +249,7 @@ _DECLARED_TAILS = {
 def test_the_newest_columns_are_declared_last_on_their_row_class(
     tmp_path: Path, table: str, tail: list[str]
 ) -> None:
-    """The column-order assertion from #230, kept and widened against the baseline.
+    """The column-order assertion, widened against the baseline.
 
     SQLite *appends* a column added by ``ALTER TABLE``, so a column declared
     anywhere but last makes the ``create_all`` path and the migration path emit
@@ -281,7 +281,7 @@ def test_the_newest_columns_are_declared_last_on_their_row_class(
 # enforces that rule, and with one baseline every workspace anybody creates is
 # stamped ``1`` forever — so a file that missed a column is stamped exactly like
 # one that did not, and ``create_all`` will not notice: it creates missing
-# *tables* and leaves an existing one as it found it. #277 is what that looks
+# *tables* and leaves an existing one as it found it. This is what that looks
 # like from the outside: an opaque 500 out of a route with no connection to the
 # problem, and the real cause only in the server's log.
 
@@ -295,7 +295,7 @@ def _initialized(path: Path) -> SqliteMetadataStore:
 
 
 def test_a_file_missing_a_column_this_build_declares_is_refused_by_name(tmp_path: Path) -> None:
-    """#277, reproduced at the layer that should have caught it.
+    """A stale schema under a current stamp, at the layer that catches it.
 
     ``source.display_name`` is the column the real report was about, and the
     shape is what matters: the file is stamped at this build's own

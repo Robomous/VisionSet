@@ -312,7 +312,7 @@ def test_the_report_names_the_classes_a_polygon_will_be_flattened_from(
     fixture.close()
 
     # Degraded, not excluded: VOC writes the polygon as its bounding box, and
-    # #158 is what calling that an exclusion cost.
+    # Calling that an exclusion would report a shape the file actually carries.
     assert result.compatibility.excluded == ()
     assert [one.label_class for one in result.compatibility.degraded] == ["lane"]
 

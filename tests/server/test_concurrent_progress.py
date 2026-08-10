@@ -1,6 +1,6 @@
 """What overlapping progress writes to one job do to each other, over HTTP.
 
-**The invariant, and it is the whole reason #302 was a defect rather than a
+**The invariant, and it is the whole reason a lost update is a defect rather than a
 tuning matter: a `200` means the write is in the stored state.** Not "was
 attempted", not "was legal when it was sent". So most of what follows never
 asserts a particular winner or a particular count of refusals — it asserts that
@@ -120,7 +120,7 @@ def _all_read_before_any_decides(monkeypatch: pytest.MonkeyPatch, writers: int) 
     aligns the moment each thread *enters* `client.put`; it leaves the
     read-decide-write window free to serialize, and on a loaded machine it
     does. Overlap then stops being a property of the harness and becomes a
-    property of how busy the runner is, which is how #332 blocked unrelated
+    property of how busy the runner is, which is how a timing-sensitive assertion blocks unrelated
     PRs while passing every local run.
     """
     everyone_has_read = threading.Barrier(writers, timeout=TIMEOUT_SECONDS)
@@ -174,7 +174,7 @@ def test_a_move_answered_200_is_in_the_stored_state_whoever_else_was_writing(
     `unannotated -> annotated`, the same move again as a no-op, then
     `annotated -> skipped`, each legal and each stored when it was reported —
     and the final state matches only the last of them. That is not a lost
-    write, so weakening the assertion to admit it would stop pinning what #302
+    write, so weakening the assertion to admit it would stop pinning what this
     was about; holding the interleaving still is what keeps it pinned.
     """
     batch_id, job_id = working

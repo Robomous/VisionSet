@@ -31,7 +31,7 @@ if [[ ! -f "$index" ]]; then
   exit 1
 fi
 
-# The #33 trap, checked here because it is invisible in a built wheel: a bundle
+# A trap checked here because it is invisible in a built wheel: a bundle
 # built without `base: "/app/"` references `/assets/...`, which the SPA fallback
 # answers with `index.html` at **200**, so the page loads blank rather than
 # failing. Cheap to check, impossible to notice later.

@@ -39,7 +39,7 @@ def test_a_directory_of_stills_becomes_one_batch(
 def test_the_run_id_is_not_called_job_id_because_no_tool_can_read_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """#36's transcript, s1/opus/2: an agent took `job_id` straight to `get_job`.
+    """Observed on a real agent run: `job_id` taken straight to `get_job`.
 
     It was refused, correctly and unhelpfully — the two words named different
     things and only one of them was reachable, since `get_ingest_job` was
@@ -146,7 +146,7 @@ def test_a_clip_is_decomposed_into_frames(monkeypatch: pytest.MonkeyPatch, tmp_p
 def test_a_damaged_clip_reports_what_it_recovered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """#452: an agent decides in the moment on the same numbers a person does.
+    """An agent decides in the moment on the same numbers a person does.
 
     Which is the whole argument for putting the counts in the result rather than in the
     reason sentence — an agent that has to parse "after 8 frames" out of prose is an agent

@@ -82,7 +82,7 @@ SKIPPED = AssetProgress.SKIPPED
 REVIEW_PENDING = AssetProgress.REVIEW_PENDING
 ACCEPTED = AssetProgress.ACCEPTED
 
-#: The shortest legal walk from ``unannotated`` to each state, as in #9's tests.
+#: The shortest legal walk from ``unannotated`` to each state.
 _ROUTES: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     UNANNOTATED: (),
     ANNOTATED: (ANNOTATED,),
@@ -662,7 +662,7 @@ def test_the_batch_gate_fires_before_the_payload_is_looked_at(tmp_path: Path) ->
 
 
 def test_no_annotation_is_written_into_a_finished_job(tmp_path: Path) -> None:
-    """#439: the gate the batch gate above cannot stand in for.
+    """The gate the batch gate above cannot stand in for.
 
     `JobService.complete` does not complete the batch — `BatchService` derives
     that separately — so the ordinary state of a finished job is inside a batch
@@ -906,7 +906,7 @@ def _tag(asset_id: UUID, **overrides: Any) -> Annotation:
 
 
 def test_a_second_tag_of_the_same_class_on_one_asset_is_refused(tmp_path: Path) -> None:
-    """#121. A ``ClassificationGeometry`` has zero fields, so the second tag is the
+    """A ``ClassificationGeometry`` has zero fields, so the second tag is the
     same statement made twice — not a second fact the way two boxes are."""
     fixture = Fixture(tmp_path)
     job = fixture.working()
