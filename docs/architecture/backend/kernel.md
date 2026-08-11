@@ -12,15 +12,15 @@ them, and services as the only door in.
 ```mermaid
 flowchart LR
     subgraph Inside["visionset.kernel"]
-        Services["services<br/>the only door in"]
-        Domain["domain<br/>models · state tables · capabilities"]
-        Ports["ports<br/>protocols"]
+        Services["services\nthe only door in"]
+        Domain["domain\nmodels · state tables · capabilities"]
+        Ports["ports\nprotocols"]
         Services --> Domain
         Services --> Ports
     end
 
-    Adapters["adapters<br/>SqliteMetadataStore · FilesystemBlobStore<br/>PillowImageProcessor · FfmpegVideoProcessor"]
-    Callers["callers<br/>server · cli · mcp · your program"]
+    Adapters["adapters\nSqliteMetadataStore · FilesystemBlobStore\nPillowImageProcessor · FfmpegVideoProcessor"]
+    Callers["callers\nserver · cli · mcp · your program"]
 
     Callers --> Services
     Ports -.implemented by.-> Adapters

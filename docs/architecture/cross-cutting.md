@@ -44,8 +44,8 @@ declares and computes nothing.
 
 ```mermaid
 flowchart LR
-    Tables["domain tables<br/>BATCH_TRANSITIONS · BATCH_GATES<br/>ASSET_PROGRESS_TRANSITIONS"]
-    Cap["kernel/domain/capabilities.py<br/>batch_actions · job_actions · asset_actions"]
+    Tables["domain tables\nBATCH_TRANSITIONS · BATCH_GATES\nASSET_PROGRESS_TRANSITIONS"]
+    Cap["kernel/domain/capabilities.py\nbatch_actions · job_actions · asset_actions"]
     Wire["allowed_actions on the wire"]
     Client["a control, or none"]
     Service["the service gate"]

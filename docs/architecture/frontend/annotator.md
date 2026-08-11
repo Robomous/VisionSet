@@ -10,15 +10,15 @@ browser, and React is one renderer over the top of it.
 ```mermaid
 flowchart TB
     subgraph Core["src/core/ — headless"]
-        Geometry["geometry<br/>predicates · hit tests · transforms"]
-        Interaction["interaction<br/>states · events · effects · the table"]
-        State["state<br/>document · command log · store"]
-        Input["input<br/>keys · chords · actions"]
+        Geometry["geometry\npredicates · hit tests · transforms"]
+        Interaction["interaction\nstates · events · effects · the table"]
+        State["state\ndocument · command log · store"]
+        Input["input\nkeys · chords · actions"]
     end
 
     subgraph Adapters["src/adapters/ — hosts"]
-        Viewport["viewport.ts<br/>screen ↔ image, renderer-agnostic"]
-        ReactAd["react/<br/>AnnotatorCanvas, layers, hooks"]
+        Viewport["viewport.ts\nscreen ↔ image, renderer-agnostic"]
+        ReactAd["react/\nAnnotatorCanvas, layers, hooks"]
     end
 
     Host["a host application"]

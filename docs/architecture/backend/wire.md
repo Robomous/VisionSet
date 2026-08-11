@@ -9,8 +9,8 @@ result carries.
 ```mermaid
 flowchart LR
     Domain["kernel domain models"]
-    Wire["visionset.wire<br/>plain dicts"]
-    Models["server/models.py<br/>pydantic"]
+    Wire["visionset.wire\nplain dicts"]
+    Models["server/models.py\npydantic"]
     Cli["cli --json"]
     Mcp["mcp tool results"]
     Rest["REST responses"]
@@ -22,7 +22,7 @@ flowchart LR
     Wire --> Mcp
     Models --> Rest
     Models --> Spec
-    Wire <-.->|same keys<br/>tests/cli/test_json_contract.py| Models
+    Wire <-.->|same keys\ntests/cli/test_json_contract.py| Models
 ```
 
 The server keeps its own pydantic models because `openapi.json` is generated from
