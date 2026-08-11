@@ -15,12 +15,18 @@
 # matters".
 #
 # Usage:
-#   bash scripts/check.sh                 # everything: python, frontend,
-#                                         #   generated, browser
+#   bash scripts/check.sh                 # python, frontend, generated, browser
 #   bash scripts/check.sh --fast          # the same minus the browser suites
 #   bash scripts/check.sh browser         # one group
 #   bash scripts/check.sh python frontend # several
+#   bash scripts/check.sh docs            # the documentation site (opt-in)
 #   pnpm check                            # the same thing, from the other half
+#
+# **`docs` is the one group the default run does not include**, and the verdict
+# line says so (`skipped=docs`). It builds the Astro site over `docs/`, needs its
+# own pnpm install, and reaches nothing the suites above cover — so it belongs to a
+# change that touches `docs/` or `docs-site/`, not to every Python one. CI runs it
+# on every pull request either way, in the `docs site` job.
 #
 # **The three suites, because there are three and two of them are easy to leave
 # invisible here.** A script that runs no browser at all while calling itself the
@@ -195,11 +201,61 @@ run_browser() {
   step "browser cycle, real server (chromium)" browser_cycle
 }
 
+# The documentation site. **Not in the default set**, and that is the trade this
+# group exists to make explicit: it costs about ten seconds and reaches nothing any
+# other suite covers, so it belongs to a change that touches `docs/` or `docs-site/`
+# rather than to every Python one. The `docs site` CI job runs it on every pull
+# request regardless, which is where the safety net actually is.
+#
+# It is a separate pnpm install, in a separate workspace root — see
+# `docs-site/pnpm-workspace.yaml` for why the documentation site is not a member of
+# the frontend workspace. `require_node_modules` above therefore says nothing about
+# it, and this has to check for itself.
+require_docs_site_modules() {
+  if [[ ! -d docs-site/node_modules ]]; then
+    echo "error: docs-site/node_modules is missing — run 'pnpm --dir docs-site install' first" >&2
+    exit 2
+  fi
+}
+
+docs_build() {
+  ( cd "$root/docs-site" && pnpm build )
+}
+
+# **After the build, never before it**, and the reason is the whole shape of this
+# architecture: `docs-site/src/content/docs/` is generated and git-ignored, so on a
+# clean checkout there is nothing to be current *with* and a `sync:check` first
+# would report all forty-two pages stale on every fresh clone.
+#
+# Run here it asserts the property that is actually worth asserting: the projection
+# the build just produced is byte-for-byte what a fresh projection produces. That is
+# determinism — the rule `scripts/generate_client.mjs` states, arriving from the
+# other direction — and it is what would catch a transform that grew a timestamp, a
+# version, or an ordering that depends on the filesystem.
+docs_projection_is_deterministic() {
+  ( cd "$root/docs-site" && pnpm sync:check )
+}
+
+# Also after the build, and only meaningful after it: this reads `dist/`. The
+# Markdown gate in `tests/scripts/docs_links.test.mjs` checks `docs/` *before* the
+# projection rewrites its links, so neither covers the other — this is what a reader
+# actually clicks.
+docs_links() {
+  ( cd "$root/docs-site" && node scripts/check-links.mjs )
+}
+
+run_docs() {
+  require_docs_site_modules
+  step "docs site build" docs_build
+  step "docs projection is deterministic" docs_projection_is_deterministic
+  step "docs site internal links" docs_links
+}
+
 # Every group this script knows, in the order they run. Also the roster the
 # verdict line below measures coverage against, and what
 # `tests/scripts/check_stages.test.mjs` holds the dispatch `case` to — a group
 # that loses its arm, or an arm with no group, is a silently shortened run.
-declare -a ALL_GROUPS=(python frontend generated browser)
+declare -a ALL_GROUPS=(python frontend generated browser docs)
 
 # What actually *completed*, comma-joined — never what was asked for. A string
 # rather than an array because macOS still ships bash **3.2**, where an empty
@@ -306,8 +362,9 @@ for group in "${groups[@]}"; do
     frontend) run_frontend ;;
     generated) run_generated ;;
     browser) run_browser ;;
+    docs) run_docs ;;
     *)
-      echo "error: unknown group '$group' (want: python, frontend, generated, browser)" >&2
+      echo "error: unknown group '$group' (want: python, frontend, generated, browser, docs)" >&2
       exit 2
       ;;
   esac

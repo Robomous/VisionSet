@@ -14,7 +14,7 @@
  * So there is now one last line on stdout, from a `trap … EXIT` so no path out can
  * skip it:
  *
- *     check.sh: PASSED  ran=python,frontend,generated,browser  skipped=none
+ *     check.sh: PASSED  ran=python,frontend,generated,browser  skipped=docs
  *
  * Two halves are held here, and they fail differently. The **behavioural** half
  * runs the real script against a copied tree with no `node_modules` — the issue's
@@ -44,7 +44,7 @@ const SCRIPT = path.join(REPO, "scripts", "check.sh");
 const SOURCE = readFileSync(SCRIPT, "utf8");
 
 /** Every group the script knows. The roster the assertions below are measured in. */
-const GROUPS = ["python", "frontend", "generated", "browser"];
+const GROUPS = ["python", "frontend", "generated", "browser", "docs"];
 
 /**
  * The script, run against a directory that is only the script.
@@ -84,7 +84,7 @@ test("a run that stops before its groups says so on stdout, not only in the exit
   assert.match(result.stderr, /node_modules is missing/);
   assert.equal(
     verdictLine(result),
-    "check.sh: INCOMPLETE  ran=none  skipped=python,frontend,generated,browser",
+    "check.sh: INCOMPLETE  ran=none  skipped=python,frontend,generated,browser,docs",
   );
 });
 
@@ -97,7 +97,7 @@ test("INCOMPLETE and FAILED are different news, and the line tells them apart", 
   assert.equal(result.status, 1);
   assert.equal(
     verdictLine(result),
-    "check.sh: FAILED  ran=python  skipped=frontend,generated,browser",
+    "check.sh: FAILED  ran=python  skipped=frontend,generated,browser,docs",
   );
 });
 
@@ -108,7 +108,7 @@ test("a usage error is a verdict too, rather than a bare exit code", () => {
   assert.match(result.stderr, /unknown group 'nope'/);
   assert.equal(
     verdictLine(result),
-    "check.sh: INCOMPLETE  ran=none  skipped=python,frontend,generated,browser",
+    "check.sh: INCOMPLETE  ran=none  skipped=python,frontend,generated,browser,docs",
   );
 });
 
@@ -126,7 +126,7 @@ test("the banner follows what ran, not what was asked for", () => {
   // second one stays silent — which is the case it matters most in.
   const result = runCopied("python", "browser");
 
-  assert.equal(verdictLine(result), "check.sh: FAILED  ran=python  skipped=frontend,generated,browser");
+  assert.equal(verdictLine(result), "check.sh: FAILED  ran=python  skipped=frontend,generated,browser,docs");
   assert.match(result.stderr, /THE BROWSER SUITES DID NOT RUN/);
 });
 

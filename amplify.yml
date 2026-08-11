@@ -1,0 +1,70 @@
+# AWS Amplify Hosting — how to build the documentation site from this repository.
+#
+# **This file configures a build, not an account.** No credentials, no region, no
+# stack, nothing environment-specific: connecting the repository to an Amplify app
+# is a one-time action in the console, and everything it needs to know about *this*
+# repository is here.
+#
+# ## Why it is at the repository root rather than in `docs-site/`
+#
+# Amplify reads `amplify.yml` from the root of the branch it builds, so the file
+# has to be here even though the thing it builds is one directory down.
+#
+# That is also the honest place for it, because **the build has two inputs in two
+# sibling directories**: `docs/` is the documentation and `docs-site/` is the
+# renderer. Amplify's monorepo support points an app at a single directory and
+# deploys on changes below it, which cannot express "either of these two" — so this
+# is a root-level app that happens to build a subdirectory, and the narrowing is
+# done by whatever triggers it. A GitHub Actions workflow with
+#
+#     on: { push: { paths: ["docs/**", "docs-site/**"] } }
+#
+# calling Amplify's start-job API is the intended shape; it is deliberately not
+# added here, because it needs an app id and a role this repository does not hold.
+# Until it exists, every push to `main` rebuilds the site, which is correct if
+# wasteful.
+#
+# ## What it produces
+#
+# Static files. `astro.config.mjs` leaves `output` at Astro's default, so `pnpm
+# build` writes plain HTML, CSS and JS to `docs-site/dist/` — no SSR, no adapter,
+# no runtime. If that ever changes, this file changes with it, and so does the
+# argument for using a static host at all.
+#
+# Building it by hand, which is all Amplify does below:
+#
+#     corepack enable
+#     pnpm --dir docs-site install --frozen-lockfile
+#     pnpm --dir docs-site build          # → docs-site/dist/
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        # pnpm from corepack, pinned by the root package.json's `packageManager`
+        # field — the same source `docker/app.Dockerfile` and
+        # `docker/docs.Dockerfile` read, so no build of this repository can end up
+        # on a pnpm version nobody chose.
+        - corepack enable
+        - corepack prepare --activate "$(node -p "require('./package.json').packageManager")"
+        # `--frozen-lockfile`, so a deployment installs what the lockfile names or
+        # fails. A hosted build that silently re-resolves is one nobody reviewed,
+        # and it is exactly what the three-day cool-down exists to prevent.
+        - pnpm --dir docs-site install --frozen-lockfile
+    build:
+      commands:
+        # The projection of `docs/` into the content collection happens inside this
+        # command, in the `docsSource()` integration — so there is no separate sync
+        # step to forget, and a deployment cannot ship a stale copy of `docs/`.
+        - pnpm --dir docs-site build
+  artifacts:
+    baseDirectory: docs-site/dist
+    files:
+      - "**/*"
+  cache:
+    paths:
+      # pnpm's store, keyed by the lockfile Amplify hashes for us. Not
+      # `node_modules/`: pnpm's is a tree of symlinks into that store, and caching
+      # the links without the store is how a build fails on a module that is
+      # plainly installed.
+      - docs-site/node_modules/.pnpm/**/*

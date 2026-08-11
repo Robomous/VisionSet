@@ -35,6 +35,15 @@ playwright/.cache/
 # produced them; a committed file would just be one developer's laptop.
 frontend/app/bench-results.json
 
+# The documentation site. `docs/` is the source of truth and is committed; every
+# path below is derived from it by `docs-site/scripts/sync-docs.mjs` or by Astro,
+# and committing any of them would be the second copy this architecture exists to
+# avoid. The projection is rebuilt before every dev, build and preview run, so a
+# clean checkout needs nothing here. (`dist/` and `node_modules/` above already
+# cover this directory's build output and its install.)
+docs-site/src/content/docs/
+docs-site/.astro/
+
 # Compiled UI bundle travels in the wheel, never in git
 src/visionset/_static/*
 !src/visionset/_static/README.md

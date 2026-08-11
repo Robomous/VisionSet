@@ -1,0 +1,30 @@
+# This directory is its own pnpm workspace root, and that is the point of the file.
+#
+# pnpm resolves a workspace by walking up from the working directory to the nearest
+# `pnpm-workspace.yaml`. Without this one it would find the repository's, whose
+# `packages:` list is `frontend/*` — so `docs-site` would be a directory inside a
+# workspace that does not claim it, which pnpm refuses to install from.
+#
+# Making it a member instead was the alternative, and it was rejected for what it
+# would cost the things already here. `pnpm -r build`, `pnpm -r lint` and
+# `pnpm test` at the root would all pick up a package that has no business in the
+# inner loop, `docker/app.Dockerfile` would have to copy this manifest so its
+# `--frozen-lockfile` install still matched the lockfile, and that install would
+# then put Astro into the *application's* image. The documentation site is a
+# genuinely separate build with a separate deployment (see `../amplify.yml`); a
+# separate install is the honest shape for it.
+#
+# The cost, stated: a second `pnpm-lock.yaml`. `.github/dependabot.yml` has an npm
+# entry pointing at this directory so it is updated on the same schedule and under
+# the same cool-down as the root one.
+packages: []
+
+# The dependency cool-down, repeated here because a nested workspace root does not
+# inherit the parent's settings. Three days is one number with several spellings and
+# `tests/scripts/cooldown.test.mjs` holds them all to each other — see
+# `scripts/cooldown.sh` for the rule and the argument.
+minimumReleaseAge: 4320
+
+# Packages allowed to skip the wait. Empty, and a new entry should say why in the
+# commit that adds it.
+minimumReleaseAgeExclude: []

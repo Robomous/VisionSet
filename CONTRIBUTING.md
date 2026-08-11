@@ -5,19 +5,21 @@
 ```bash
 uv sync                        # Python 3.12+, installs the package editable + dev tools
 pnpm install                   # pnpm workspace under frontend/
+pnpm --dir docs-site install   # optional: the documentation site (its own workspace)
 bash scripts/setup_agents.sh   # optional: expose .agents/skills/ to coding agents
 ```
 
-Or skip all three and run the stack in containers — `docker compose -f docker/compose.yaml up`
+Or skip all four and run the stack in containers — `docker compose -f docker/compose.yaml up`
 needs nothing installed on the host and no build of any kind.
 
 | | |
 | --- | --- |
 | The app | **http://localhost:8080** — nginx, the only port you need |
+| The docs | **http://localhost:4321** — `docs/` rendered; useful on its own (`up docs`) |
 | Storage | `workspace-data/` (git-ignored): `visionset.db` + `blobs/`. Move it with `VISIONSET_DATA=/path` |
 | Token | minted on first boot, printed in the `api` logs |
 | Behind the proxy | API on :8000 and vite on :5173 are published too, for curl and for reading a vite error without nginx in the way |
-| Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, and `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from |
+| Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from, and `docs/` through Astro |
 | After a dependency change | `build` — in either language, and nothing else. No `node_modules` is mounted from the host or from a volume, so a rebuilt image is what the containers get |
 | After changing a `package.json`, a tsconfig, `vite.config.ts` or `index.html` | `build` — these are baked into the app image, beside the install they configure |
 | After changing a Dockerfile or an entry script | `build` for the first, `restart api` / `restart app` for the second — an entry script is read once, at container start |
@@ -228,6 +230,45 @@ tokens and `tokens.ts` mirrors them, gated against each other in both directions
 `tokens.test.ts`; `tests/scripts/design_tokens.test.mjs` fails the build on a hardcoded
 colour in any tracked frontend source. A screen that needs a value the file does not have
 is a reason to amend the file, never to inline the value.
+
+## Documentation
+
+**`docs/` is the documentation.** Plain Markdown, committed, rendering on GitHub and readable
+with nothing installed — which is a requirement rather than a convenience, because tools and
+coding agents read it that way. Edit the file that owns the topic; [`docs/README.md`](docs/README.md)
+is the index and says which one that is.
+
+`docs-site/` renders it as a website with [Astro](https://astro.build) and
+[Starlight](https://starlight.astro.build). It is a **rendering layer, never a second copy**:
+`docs-site/scripts/sync-docs.mjs` projects `docs/**/*.md` into a generated, git-ignored content
+collection, lifting each document's first `# H1` into the frontmatter title Starlight requires
+and rewriting the links that would otherwise break. No prose is changed, and the projection runs
+automatically before every dev, build and preview — there is no sync step to remember.
+
+```bash
+docker compose -f docker/compose.yaml up docs   # http://localhost:4321, nothing installed
+pnpm --dir docs-site install                    # or run it directly: its own workspace root
+pnpm --dir docs-site dev                        # http://localhost:4321
+pnpm --dir docs-site build                      # static output in docs-site/dist/
+```
+
+Either way, editing a file under `docs/` reloads the page.
+
+**Markdown, not MDX, in `docs/`.** `.mdx` does not render on GitHub, so a `.mdx` file there
+breaks the promise above. Reach for it only when a page genuinely needs a Starlight or Astro
+component — such a page is a *site* page and belongs in `docs-site/`. The link gate checks both
+extensions, so an MDX page cannot slip past it.
+
+Three gates cover this, and none of them is in `check.sh`'s default run:
+
+| | |
+| --- | --- |
+| `bash scripts/check.sh docs` | builds the site, asserts the projection is deterministic, and checks every internal link in the built output — anchors included. Opt-in: it needs its own install and reaches nothing the other groups cover. CI runs it on every pull request as `docs site` |
+| `tests/scripts/docs_links.test.mjs` | every link in `docs/` resolves — file *and* anchor — before the site rewrites anything. Part of `pnpm test` |
+| `tests/scripts/docs_sidebar.test.mjs` | every document appears in `docs-site/src/sidebar.mjs` exactly once, so a new page cannot land with nothing navigating to it. Part of `pnpm test` |
+
+The site deploys as static output through AWS Amplify Hosting; [`amplify.yml`](amplify.yml) is
+the build, and [`docs-site/README.md`](docs-site/README.md) covers the rest.
 
 ## Versioning
 

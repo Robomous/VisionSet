@@ -1,0 +1,98 @@
+/*
+ * Branding, and only branding.
+ *
+ * Starlight's own layout, spacing and typography are left alone — this file sets
+ * the accent, keeps the banner usable on a narrow screen, and gives the mermaid
+ * diagrams somewhere to sit. Anything beyond that is a second design system to keep
+ * current, for a site whose job is to render `docs/` faithfully.
+ *
+ * The accent and the two responsive rules are Robomous's documentation styling,
+ * shared with the other documentation sites so the family reads as one. Change them
+ * there and here together, or they stop matching — which is the whole point of them
+ * being these exact values.
+ */
+
+/*
+ * Starlight takes three accent tokens per theme, and **which one paints the links
+ * depends on the theme** — `props.css` resolves `--sl-color-text-accent` to
+ * `--sl-color-accent` in light and to `--sl-color-accent-high` in dark. So setting
+ * the middle one alone gets you a coral site in light mode and Starlight's default
+ * lavender in dark: the brand colour disappears exactly where nobody checks. All
+ * three are set here for that reason.
+ *
+ * `#f2594b` is the value, unchanged, in both themes. The other two are it lightened
+ * and darkened far enough to stay legible against each theme's background, which is
+ * what the ramp is for — one value used for all three leaves half of them
+ * unreadable.
+ */
+
+/* Dark is Starlight's default theme, so it goes on the bare root. */
+:root {
+  --sl-color-accent-low: #43140f;
+  --sl-color-accent: #f2594b;
+  --sl-color-accent-high: #f8b5ad;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #fde5e1;
+  --sl-color-accent: #f2594b;
+  --sl-color-accent-high: #8a2a1f;
+}
+
+/*
+ * Narrow screens: the wordmark carries the name, so the title text beside it is the
+ * same word twice and it is what pushes the search control off the bar.
+ */
+@media (max-width: 768px) {
+  .site-title span,
+  .header .site-title span,
+  a.site-title > span {
+    display: none !important;
+  }
+
+  /*
+   * Height only. `display` is deliberately untouched: Starlight switches between
+   * the light and dark banners with its own `light:sl-hidden` / `dark:sl-hidden`
+   * classes, and setting `display` here overrides that — both logos then show at
+   * once, or neither does, depending on which rule wins.
+   */
+  .site-title img,
+  .header .site-title img {
+    max-height: 32px !important;
+    width: auto !important;
+  }
+}
+
+/*
+ * A mermaid diagram before its script has run is the source text, and after it is
+ * an SVG. Both want the same box: no code-block chrome, centred, and free to be
+ * wider than the measure the prose is set to.
+ */
+pre.mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  overflow-x: auto;
+  background: var(--sl-color-black);
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+}
+
+pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/*
+ * Before mermaid has drawn, the element holds diagram source. Rendering it as prose
+ * gives a flash of reflowed arrow syntax on every load; as monospace with the
+ * newlines kept, the placeholder is at least the shape of the thing arriving.
+ */
+pre.mermaid:not([data-processed]) {
+  display: block;
+  font-family: var(--__sl-font-mono, monospace);
+  font-size: 0.8rem;
+  white-space: pre;
+  color: var(--sl-color-gray-3);
+}

@@ -2,6 +2,13 @@
  * Every internal link in every tracked Markdown file resolves — file *and* anchor
  *.
  *
+ * **`.mdx` counts as Markdown here.** `docs/` is `.md` today and the documentation
+ * site's own rule keeps it that way (see `docs-site/README.md`), but the site can
+ * take `.mdx` for a page that genuinely needs a component — and an extension this
+ * scan did not name would be a document exempt from every rule below, silently,
+ * from the moment somebody added one. The two are checked identically: a fragment
+ * into either is a heading question, and a link at either resolves or does not.
+ *
  * Renaming a `##` heading silently invalidates every inbound `#fragment` pointing
  * at it. Nothing fails, nothing warns; the link simply starts landing at the top of
  * the page, which is indistinguishable from working unless you already know which
@@ -60,11 +67,29 @@ import { test } from "node:test";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** Tracked Markdown, from the index. */
+/** The extensions this gate treats as Markdown. See the header for why `.mdx` is here. */
+export const MARKDOWN = [".md", ".mdx"];
+
+/**
+ * Tracked Markdown, from the index.
+ *
+ * The pathspecs are derived from `MARKDOWN` rather than written out, so the set of
+ * files this gate *finds* and the set whose anchors it *reads* cannot drift apart —
+ * which is the shape the bug would take: an extension added to one and not the
+ * other leaves those documents scanned for outbound links and never scanned for
+ * the headings other documents point at.
+ */
 function markdownFiles() {
-  const listed = spawnSync("git", ["-C", REPO, "ls-files", "*.md"], { encoding: "utf8" });
+  const listed = spawnSync("git", ["-C", REPO, "ls-files", ...MARKDOWN.map((e) => `*${e}`)], {
+    encoding: "utf8",
+  });
   assert.equal(listed.status, 0, "git ls-files must succeed");
   return listed.stdout.split("\n").filter(Boolean);
+}
+
+/** Is this a document whose headings this gate can read? */
+export function isMarkdown(file) {
+  return MARKDOWN.some((extension) => file.endsWith(extension));
 }
 
 /**
@@ -213,7 +238,7 @@ test("every anchor fragment resolves to a heading in the file it names", () => {
       const resolved = where === "" ? file : path.normalize(path.join(path.dirname(file), where));
       // A fragment into something that is not Markdown is not a heading question,
       // and a missing file is already the other test's finding.
-      if (!resolved.endsWith(".md") || !existsSync(path.join(REPO, resolved))) continue;
+      if (!isMarkdown(resolved) || !existsSync(path.join(REPO, resolved))) continue;
       if (!readAnchors(resolved).has(fragment)) {
         broken.push(`${file}:${line} → ${target}  (no heading in ${resolved} slugs to "${fragment}")`);
       }
@@ -269,6 +294,18 @@ test("a repeated heading gets GitHub's numeric suffix, so a live link is never m
   // today — this is here so that the day one does, it is not reported broken.
   const source = ["## Errors", "## Errors", "## Errors"].join("\n");
   assert.deepEqual([...anchorsOf(source)], ["errors", "errors-1", "errors-2"]);
+});
+
+test("an .mdx document is held to these rules, not exempt from them", () => {
+  // There is no `.mdx` in the repository today — `docs/` is Markdown and
+  // `docs-site/README.md` says why it stays that way. This is the forward guard:
+  // the day the documentation site takes one for a page that needs a component,
+  // it must arrive already covered rather than silently outside every rule above.
+  // Narrowing either half back to `.md` alone reddens this.
+  assert.ok(isMarkdown("docs-site/src/content/docs/example.mdx"));
+  assert.ok(isMarkdown("docs/api.md"));
+  assert.ok(!isMarkdown("openapi.json"));
+  assert.ok(!isMarkdown("README.mdx.txt"));
 });
 
 test("a slug drops punctuation, keeps hyphens, and unwraps a link in a heading", () => {
