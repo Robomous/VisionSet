@@ -296,13 +296,36 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
     expect(confidenceLabel("sign", 0.005)).toBe("sign 1%");
   });
 
-  it("draws nothing for every status but `shown` — each of those is a sentence", () => {
+  it("draws nothing where the session holds no shape — each of those is a sentence", () => {
+    // Named for the shape rather than for the status, and the difference is not
+    // cosmetic: this case used to claim it covered "every status but `shown`"
+    // while every state in it happened to carry a null suggestion, so the status
+    // half of the guard was never exercised at all. The refine case below is the
+    // one that tells them apart.
     const asked = withPoint(armed("sign"), [100, 120], "positive");
     expect(paintSuggestion(armed("sign"), SIGN)).toBeNull();
     expect(paintSuggestion(asked, SIGN)).toBeNull();
     expect(paintSuggestion(answered(asked, asked.serial, null), SIGN)).toBeNull();
     expect(paintSuggestion(refused(asked, asked.serial, "not here yet"), SIGN)).toBeNull();
     expect(paintSuggestion(cleared(shown()), SIGN)).toBeNull();
+  });
+
+  it("keeps drawing the held shape while a refine click is still unanswered", () => {
+    // `withPoint` keeps the suggestion across the ask precisely so the canvas
+    // does not blank and repaint on every press. This used to test `status`, so
+    // the renderer discarded what the engine had deliberately kept and the
+    // flicker that docstring argues against happened on every refine.
+    const refining = withPoint(shown(), [200, 210], "negative");
+    expect(refining.status).toBe("asking");
+
+    const painted = paintSuggestion(refining, SIGN);
+    expect(painted?.geometry).toEqual(A_BOX);
+    // And the newest click is carried with it, so the dots and the shape agree
+    // about what is being asked.
+    expect(painted?.points).toEqual([
+      { point: [100, 120], polarity: "positive" },
+      { point: [200, 210], polarity: "negative" },
+    ]);
   });
 
   it("draws nothing for a parked session, which has no class to draw it in (#472)", () => {

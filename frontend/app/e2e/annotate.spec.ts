@@ -2989,3 +2989,138 @@ test("saving leaves the viewport exactly where it was", async ({ page }) => {
     height: Math.round(frameBefore.height),
   });
 });
+
+/**
+ * The in-flight indicator, which only a browser can be asked about.
+ *
+ * Three of the four claims below are unreachable from jsdom. A cursor is a
+ * computed style on a laid-out element; `prefers-reduced-motion` is a media query
+ * with no implementation there; and where the halo sits is a coordinate, which
+ * every rectangle being zero makes meaningless. The thresholds themselves are not
+ * retested here — they are unit-tested on fake time in the annotator's
+ * `pending.test.ts`, and a wall-clock assertion on a shared runner fails for
+ * reasons nobody chose.
+ *
+ * The request is **held open** rather than delayed by a sleep. `e2e_discipline`
+ * bans fixed waits and is right to: a sleep racing a 200 ms threshold is a coin
+ * toss, while a route that has genuinely not answered keeps the wait true for as
+ * long as the assertions need it.
+ */
+test("a suggest request that is genuinely slow says so at the click and on the cursor", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+
+  // Registered after `serveApi`'s, so it wins: Playwright consults the most
+  // recently added matching handler first.
+  let answer = (): void => {};
+  const held = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await page.route("**/inference/suggest", async (route) => {
+    await held;
+    await route.fulfill({
+      json: {
+        model_ref: "facebook/sam2-hiera-base-plus@main",
+        region: {
+          geometry: { type: "bbox", x: 100, y: 100, width: 80, height: 60 },
+          confidence: 0.91,
+        },
+      },
+    });
+  });
+
+  await page.getByTestId("tool-suggest").click();
+  await expect(page.getByTestId("suggest-idle")).toBeVisible();
+
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+
+  const halo = page.getByTestId("suggest-halo");
+  await expect(halo).toBeVisible();
+  await expect(halo).toHaveAttribute("data-motion", "pulsing");
+
+  // Arrow *and* busy: the canvas is working and still takes a refine click.
+  await expect(page.getByTestId("annotator-pane")).toHaveCSS("cursor", "progress");
+
+  // The halo is on the click, not on the picture's origin — the claim jsdom's
+  // zero rectangles cannot carry.
+  const dot = page.getByTestId("prompt-points").locator("circle").last();
+  await expect(halo).toHaveAttribute("cx", (await dot.getAttribute("cx"))!);
+  await expect(halo).toHaveAttribute("cy", (await dot.getAttribute("cy"))!);
+
+  // The panel reports the same wait, off the same clock, and has not yet earned
+  // the sentence about a cold start.
+  await expect(page.getByTestId("suggest-asking")).toBeVisible();
+  await expect(page.getByTestId("suggest-cold-start")).toHaveCount(0);
+
+  answer();
+
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+  await expect(halo).toHaveCount(0);
+  await expect(page.getByTestId("annotator-pane")).not.toHaveCSS("cursor", "progress");
+});
+
+test("the halo holds still for somebody who asked not to be moved", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+
+  let answer = (): void => {};
+  const held = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await page.route("**/inference/suggest", async (route) => {
+    await held;
+    await route.fulfill({ status: 200, json: { model_ref: "m@1", region: null } });
+  });
+
+  await page.getByTestId("tool-suggest").click();
+  await expect(page.getByTestId("suggest-idle")).toBeVisible();
+
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+
+  const halo = page.getByTestId("suggest-halo");
+  await expect(halo).toHaveAttribute("data-motion", "still");
+  // The ring is still drawn — a preference about motion is not a preference
+  // about being told what is happening. It simply does not move.
+  await expect(halo).toBeVisible();
+  await expect(halo.locator("animate")).toHaveCount(0);
+
+  answer();
+  await expect(halo).toHaveCount(0);
+});
+
+test("escape takes the halo back without waiting out its visibility floor", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+
+  let answer = (): void => {};
+  const held = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await page.route("**/inference/suggest", async (route) => {
+    await held;
+    await route.fulfill({ status: 200, json: { model_ref: "m@1", region: null } });
+  });
+
+  await page.getByTestId("tool-suggest").click();
+  await expect(page.getByTestId("suggest-idle")).toBeVisible();
+
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+  await expect(page.getByTestId("suggest-halo")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  // Down with the points, and the cursor with it — the request is still out, so
+  // nothing but the explicit cancel could have done this.
+  await expect(page.getByTestId("suggest-halo")).toHaveCount(0);
+  await expect(page.getByTestId("prompt-points")).toHaveCount(0);
+  await expect(page.getByTestId("annotator-pane")).not.toHaveCSS("cursor", "progress");
+
+  answer();
+});

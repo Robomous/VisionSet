@@ -25,7 +25,13 @@ import type { Target } from "../../core/interaction/target";
 import type { InteractionState } from "../../core/interaction/state";
 import type { PromptPoint } from "../../core/interaction/suggestion";
 import type { AssetDescriptor, Point } from "../../core/types";
+import { useReducedMotion } from "./hooks";
 import {
+  HALO_MAX_PX,
+  HALO_MIN_PX,
+  HALO_OPACITY,
+  HALO_PERIOD,
+  HALO_STROKE,
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
   pendingPolygon,
@@ -72,6 +78,15 @@ export interface TransientLayerProps {
    * press look like it had been dropped.
    */
   readonly promptPoints?: readonly PromptPoint[];
+  /**
+   * Whether a suggest request has been out long enough to be worth saying so.
+   *
+   * The threshold is not this layer's to decide — `usePendingIndicator` owns it,
+   * once, in the host that owns the request — so what arrives here is already the
+   * answer. A warm click never raises it, which is what keeps a 90 ms round trip
+   * from flashing a halo nobody had time to read.
+   */
+  readonly suggestPending?: boolean;
 }
 
 const DASH = "6 4";
@@ -87,6 +102,7 @@ export function TransientLayer({
   asset,
   suggestion = null,
   promptPoints,
+  suggestPending = false,
 }: TransientLayerProps): JSX.Element {
   const band = rubberBand(state);
   const pending = pendingPolygon(state);
@@ -137,6 +153,13 @@ export function TransientLayer({
 
       {promptPoints !== undefined && promptPoints.length > 0 && (
         <PromptPoints points={promptPoints} zoom={zoom} />
+      )}
+
+      {/* After the points, so the ring sits over the marker it is about rather
+          than under it — and anchored to the newest click, which is the one the
+          answer being waited on belongs to. */}
+      {suggestPending && promptPoints !== undefined && promptPoints.length > 0 && (
+        <SuggestHalo at={promptPoints[promptPoints.length - 1]!.point} zoom={zoom} />
       )}
 
       <HotTarget hot={hot} zoom={zoom} />
@@ -258,6 +281,61 @@ function PromptPoints({
         />
       ))}
     </g>
+  );
+}
+
+/**
+ * A ring around the newest click, while the answer to it is still out.
+ *
+ * The panel already says "Looking at that…", and this exists because that card is
+ * in the top-right corner while the person who clicked is looking at the middle of
+ * the picture. On a cold start — model load plus inference on the CPU — the wait
+ * runs past a second, and a silent canvas is how *working* comes to look like
+ * *broken*.
+ *
+ * **SMIL rather than CSS**, and it is the boundary deciding rather than taste:
+ * this package ships no stylesheet at all, so there is nowhere for a `@keyframes`
+ * to live that would not also be a thing an embedder has to load. `<animate>`
+ * needs nothing but the SVG it is already inside.
+ *
+ * The pulse expands and fades to nothing, so its peak is the same opacity as the
+ * still ring a person who asked for reduced motion gets — the moving version is
+ * never the louder one.
+ */
+function SuggestHalo({ at, zoom }: { readonly at: Point; readonly zoom: number }): JSX.Element {
+  const reduced = useReducedMotion();
+  const min = screenPx(HALO_MIN_PX, zoom);
+  const max = screenPx(HALO_MAX_PX, zoom);
+  return (
+    <circle
+      data-testid="suggest-halo"
+      // Read by the e2e spec, which cannot ask an SVG whether it is animating.
+      data-motion={reduced ? "still" : "pulsing"}
+      cx={at[0]}
+      cy={at[1]}
+      r={reduced ? max : min}
+      fill="none"
+      stroke={HALO_STROKE}
+      strokeWidth={screenPx(2, zoom)}
+      opacity={HALO_OPACITY}
+    >
+      {!reduced && (
+        <>
+          <animate
+            attributeName="r"
+            values={`${min};${max}`}
+            dur={HALO_PERIOD}
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values={`${HALO_OPACITY};0`}
+            dur={HALO_PERIOD}
+            repeatCount="indefinite"
+          />
+        </>
+      )}
+    </circle>
   );
 }
 

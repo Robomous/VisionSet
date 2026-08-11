@@ -106,6 +106,7 @@ import {
   suggestibleClassIn,
   toolFor,
   useAnnotatorSnapshot,
+  usePendingIndicator,
   withClass,
   withPoint,
   type AnnotatorStore,
@@ -835,6 +836,18 @@ function Workspace({
   );
   const suggestRegion = useSuggestRegion();
 
+  /**
+   * One clock over the wait, read by the canvas and by the panel alike.
+   *
+   * Called **here**, in the component that owns the session, rather than in each
+   * surface that reports the wait: two calls would be two clocks, and the halo and
+   * the card would cross their thresholds at whatever moment their own renders
+   * happened to run. It takes a single boolean, so a refine click — which never
+   * lowers `asking` — reads as one continuous period and the halo stays put
+   * instead of blinking off and on.
+   */
+  const pending = usePendingIndicator(session?.status === "asking");
+
   function chooseConnection(connectionId: string): void {
     setPreferredConnection(connectionId);
     writePref(preferredConnectionKey(projectId), connectionId);
@@ -931,6 +944,11 @@ function Workspace({
   /** Escape: clear what is pending, or — with nothing pending — put the tool away. */
   function discardSuggestion(): void {
     if (session === null) return;
+    // Ahead of the state change and not merely as a consequence of it. Dropping
+    // `asking` would hide the halo through the ordinary path, which honours the
+    // visibility floor — so a take-back would leave its own indicator on screen
+    // for another quarter second, which is not a take-back.
+    pending.cancel();
     setSession(hasPending(session) ? cleared(session) : null);
   }
 
@@ -2296,6 +2314,10 @@ function Workspace({
                 // whole of `suggesting`.
                 suggestion={diverting}
                 onSuggestPoint={suggestAt}
+                // The halo and the busy cursor. Keyed to `diverting` for the same
+                // reason the session is: a parked tool has nothing in flight, so a
+                // halo over one would be reporting a wait nobody started.
+                suggestPending={diverting !== null && pending.shown}
               />
             )}
           </AssetImage>
@@ -2473,6 +2495,11 @@ function Workspace({
                 onChooseConnection={chooseConnection}
                 onAccept={acceptSuggestion}
                 onDiscard={discardSuggestion}
+                // The same two thresholds the halo is drawn from, off the same
+                // clock — which is what lets the card and the canvas be read as
+                // one report of one wait rather than as two.
+                pendingShown={pending.shown}
+                pendingEscalated={pending.escalated}
                 {...(onConfigureInference === undefined
                   ? {}
                   : { onConfigure: onConfigureInference })}
