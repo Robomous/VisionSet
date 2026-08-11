@@ -15,20 +15,20 @@ duplicating it and risking drift.
 
 ```mermaid
 flowchart TB
-    Browser["Browser<br/>@visionset/app"]
-    Agent["Agent<br/>MCP client"]
-    Shell["Shell<br/>visionset CLI"]
-    Program["Program<br/>import visionset"]
+    Browser["Browser\n@visionset/app"]
+    Agent["Agent\nMCP client"]
+    Shell["Shell\nvisionset CLI"]
+    Program["Program\nimport visionset"]
 
     subgraph Distribution["Python distribution — pip install visionset"]
-        Server["visionset.server<br/>FastAPI"]
-        Cli["visionset.cli<br/>Typer"]
-        Mcp["visionset.mcp<br/>MCP tools"]
-        Kernel["visionset.kernel<br/>domain · ports · services"]
-        Adapters["kernel.adapters<br/>SQLite · filesystem · Pillow · ffmpeg"]
+        Server["visionset.server\nFastAPI"]
+        Cli["visionset.cli\nTyper"]
+        Mcp["visionset.mcp\nMCP tools"]
+        Kernel["visionset.kernel\ndomain · ports · services"]
+        Adapters["kernel.adapters\nSQLite · filesystem · Pillow · ffmpeg"]
     end
 
-    Store[("Workspace<br/>one directory, one SQLite file")]
+    Store[("Workspace\none directory, one SQLite file")]
 
     Browser --> Server
     Agent --> Mcp

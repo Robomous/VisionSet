@@ -8,12 +8,12 @@ talks to the API. Everything except routing.
 
 ```mermaid
 flowchart TB
-    Screens["screens/ + annotator/<br/>the domain surfaces"]
-    Patterns["patterns/<br/>async states, back link, class fields, data display"]
-    Primitives["primitives/<br/>Button, Dialog, Select, Table, Tabs, Badge…"]
-    Data["data/<br/>ApiProvider, TokenGate, check, refusals"]
-    Generated["generated/<br/>api.ts + checks.ts — from openapi.json"]
-    Tokens["styles.css + tokens.ts<br/>the @theme block"]
+    Screens["screens/ + annotator/\nthe domain surfaces"]
+    Patterns["patterns/\nasync states, back link, class fields, data display"]
+    Primitives["primitives/\nButton, Dialog, Select, Table, Tabs, Badge…"]
+    Data["data/\nApiProvider, TokenGate, check, refusals"]
+    Generated["generated/\napi.ts + checks.ts — from openapi.json"]
+    Tokens["styles.css + tokens.ts\nthe @theme block"]
 
     Screens --> Patterns
     Screens --> Primitives
@@ -54,8 +54,8 @@ verifies **nothing** at runtime, so `unwrap` takes a generated *check* as well:
 
 ```mermaid
 flowchart LR
-    Spec["openapi.json"] -->|openapi-typescript| Api["generated/api.ts<br/>types"]
-    Spec -->|generator| Checks["generated/checks.ts<br/>runtime shape checks"]
+    Spec["openapi.json"] -->|openapi-typescript| Api["generated/api.ts\ntypes"]
+    Spec -->|generator| Checks["generated/checks.ts\nruntime shape checks"]
     Call["a screen's query"] --> Unwrap["unwrap(result, checkX)"]
     Api --> Unwrap
     Checks --> Unwrap

@@ -7,7 +7,7 @@ composition. It is deliberately the thinnest package in the repository.
 
 ```mermaid
 flowchart LR
-    Url["a URL"] --> Route["routes.tsx<br/>picks a screen, reads params"]
+    Url["a URL"] --> Route["routes.tsx\npicks a screen, reads params"]
     Route --> Screen["a ui-core screen"]
     Screen -->|onOpenBatch, onBack…| Route
     Route --> Nav["navigate() / setQuery()"]

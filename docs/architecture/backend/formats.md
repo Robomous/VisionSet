@@ -9,7 +9,7 @@ can ship one and VisionSet finds it without knowing it exists.
 
 ```mermaid
 flowchart LR
-    Meta["installed distributions"] -->|entry-point group<br/>visionset.formats| Reg["formats.registry"]
+    Meta["installed distributions"] -->|entry-point group\nvisionset.formats| Reg["formats.registry"]
     Reg -->|name -> instance| Surface["cli / server / jobs"]
     Surface -->|Exporter instance| RS["ReleaseService.export"]
     RS -->|manifest + ContentReader| Plugin["the plugin"]

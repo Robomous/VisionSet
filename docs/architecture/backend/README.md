@@ -9,19 +9,19 @@ makes that domain usable by callers, and the outer layer exposes protocols.
 ```mermaid
 flowchart TB
     subgraph Surfaces["Delivery surfaces — one protocol each, no logic"]
-        Server["server<br/>REST"]
-        Cli["cli<br/>terminal"]
-        Mcp["mcp<br/>agents"]
+        Server["server\nREST"]
+        Cli["cli\nterminal"]
+        Mcp["mcp\nagents"]
     end
 
     subgraph Composition["Composition — shared by every surface"]
-        Wire["wire<br/>JSON shapes"]
-        Jobs["jobs<br/>background handlers"]
-        Inference["inference<br/>model adapters"]
-        Formats["formats<br/>exporter plugins"]
+        Wire["wire\nJSON shapes"]
+        Jobs["jobs\nbackground handlers"]
+        Inference["inference\nmodel adapters"]
+        Formats["formats\nexporter plugins"]
     end
 
-    Kernel["kernel<br/>domain · ports · services · adapters"]
+    Kernel["kernel\ndomain · ports · services · adapters"]
 
     Server --> Wire
     Cli --> Wire

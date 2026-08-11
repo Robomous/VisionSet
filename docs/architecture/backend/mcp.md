@@ -8,12 +8,12 @@ tool is a thin mapping onto one or two service calls.
 
 ```mermaid
 flowchart TB
-    Main["main.py<br/>the registration table"]
-    Guard["guarded()<br/>wraps every body"]
-    Doc["inspect.cleandoc<br/>description="]
-    Ann["ToolAnnotations<br/>read / write hints"]
-    Tools["projects · schemas · sources · batches<br/>jobs · assets · annotations<br/>datasets · releases · formats"]
-    Dtools["DESTRUCTIVE_TOOLS<br/>registered only on request"]
+    Main["main.py\nthe registration table"]
+    Guard["guarded()\nwraps every body"]
+    Doc["inspect.cleandoc\ndescription="]
+    Ann["ToolAnnotations\nread / write hints"]
+    Tools["projects · schemas · sources · batches\njobs · assets · annotations\ndatasets · releases · formats"]
+    Dtools["DESTRUCTIVE_TOOLS\nregistered only on request"]
 
     Main --> Guard
     Main --> Doc

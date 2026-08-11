@@ -9,11 +9,11 @@ Python.
 
 ```mermaid
 flowchart LR
-    Argv["argv"] --> Cmd["command<br/>parses, resolves the workspace"]
+    Argv["argv"] --> Cmd["command\nparses, resolves the workspace"]
     Cmd --> Svc["one kernel service call"]
     Svc --> Ok{"accepted?"}
-    Ok -->|yes| Out["stdout: the datum<br/>stderr: the prose"]
-    Ok -->|no| Err["_errors.py<br/>sentence on stderr, exit code"]
+    Ok -->|yes| Out["stdout: the datum\nstderr: the prose"]
+    Ok -->|no| Err["_errors.py\nsentence on stderr, exit code"]
 ```
 
 Two rules make the output composable, and both are held by tests:

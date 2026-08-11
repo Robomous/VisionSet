@@ -8,9 +8,9 @@ defined by what it is *allowed to know*.
 
 ```mermaid
 flowchart TB
-    App["@visionset/app<br/>routes · shell · composition"]
-    UiCore["@visionset/ui-core<br/>screens · design system · generated client"]
-    Annotator["@visionset/annotator<br/>headless engine + React adapter"]
+    App["@visionset/app\nroutes · shell · composition"]
+    UiCore["@visionset/ui-core\nscreens · design system · generated client"]
+    Annotator["@visionset/annotator\nheadless engine + React adapter"]
 
     App --> UiCore
     App --> Annotator

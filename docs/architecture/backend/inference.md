@@ -17,9 +17,9 @@ and `jobs` is the only place left.
 
 ```mermaid
 flowchart LR
-    Conn["InferenceConnection<br/>a row somebody wrote"]
+    Conn["InferenceConnection\na row somebody wrote"]
     Kind{"connection kind"}
-    Cfg["the model's own config<br/>model_type"]
+    Cfg["the model's own config\nmodel_type"]
     Fam{"family"}
     Text["text-prompt adapter"]
     Point["point-prompt adapter"]
