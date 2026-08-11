@@ -37,6 +37,17 @@ ALLOWLIST: dict[str, int] = {
     # media guard it has nothing to do with, so the exemption is taken deliberately now rather
     # than under duress later. Same ceiling as the spec it is derived from.
     "frontend/ui-core/src/generated/api.ts": 512 * 1024,
+    # The documentation site's resolved dependency graph. `docs-site/` is its own pnpm workspace
+    # root, so it keeps its own lockfile — see docs-site/pnpm-workspace.yaml for why. Same
+    # exemption as uv.lock and for the same reason: text, machine-generated, and being large is
+    # the file's job.
+    #
+    # Taken on the same terms the generated client's entry above argues for. It lands at 164 KB,
+    # inside the default limit by about 36 KB — which is a dependency or two, and Astro brings
+    # dependencies. Left to trip on its own, the failure would land on some later Dependabot bump
+    # as a *media* guard refusing a lockfile, which reads as a broken check rather than as a
+    # deliberate limit.
+    "docs-site/pnpm-lock.yaml": 1024 * 1024,
 }
 """Path -> its own ceiling. An entry here is a deliberate exception and owes a reason above it;
 an exemption raises the limit for one file, it never removes it."""

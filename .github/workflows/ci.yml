@@ -669,6 +669,62 @@ jobs:
             exit 1
           }
 
+  # The documentation site. It builds `docs/` through Astro and Starlight, which is
+  # the one thing no other job here does — every other suite reads the documentation
+  # as text, and `tests/scripts/docs_links.test.mjs` checks its links *before* the
+  # site rewrites them.
+  #
+  # Three assertions, in an order that matters, and `scripts/check.sh docs` runs the
+  # same three:
+  #
+  #   build            every page compiles — a document that breaks Starlight is a
+  #                    document nobody can read, and it is invisible on GitHub
+  #   determinism      the projection the build produced is what a fresh projection
+  #                    produces. Never *before* the build: `docs-site/src/content/
+  #                    docs/` is generated and git-ignored, so on a clean checkout
+  #                    there is nothing to be current with
+  #   internal links   every link in `dist/`, anchors included — the half the
+  #                    Markdown gate structurally cannot see
+  #
+  # No Python. It reads `docs/`, which is committed, and installs only the
+  # documentation site's own dependencies — a separate pnpm workspace root, so
+  # nothing here can move the application's lockfile. See docs-site/README.md.
+  docs-site:
+    name: docs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6 # reads packageManager from package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          # The documentation site keeps its own lockfile, so the default —
+          # the root's — would key the cache on a file this job never installs from.
+          cache-dependency-path: docs-site/pnpm-lock.yaml
+
+      # `--frozen-lockfile` for the reason every install in this file uses it: a
+      # build that silently resolves something the lockfile does not name is one
+      # nobody reviewed, and it is what the three-day cool-down exists to prevent.
+      - name: Install
+        run: pnpm --dir docs-site install --frozen-lockfile
+
+      # The `docsSource()` integration projects `docs/` into the content collection
+      # as part of this command, so there is no separate sync step to forget and no
+      # way for the build to be reading a stale copy.
+      - name: Build
+        run: pnpm --dir docs-site build
+
+      - name: Projection is deterministic
+        run: pnpm --dir docs-site sync:check
+
+      - name: Internal links resolve
+        run: node docs-site/scripts/check-links.mjs
+
   # The only job that touches docker/. Every other job installs the environment its
   # own way, so until this existed the dev stack was unverified by construction —
   # which is how its image came to be missing ffmpeg without a single red build.

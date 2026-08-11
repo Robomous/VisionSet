@@ -122,6 +122,7 @@ frontend/
 tests/                  Python tests, incl. machine-enforced architecture contracts
 examples/               Six runnable end-to-end scripts, all exercised in CI
 docs/                   User and contributor documentation (planning lives in GitHub issues)
+docs-site/              Astro + Starlight renderer for docs/ — a view of it, never a second copy
 docker/                 Dev-only compose environment (never the release artifact)
 scripts/                Repo automation (OpenAPI export, version sync, bundling, dist build)
 .agents/skills/         Coding-agent skills, tool-agnostic (see AGENTS.md)
@@ -132,6 +133,17 @@ scripts/                Repo automation (OpenAPI export, version sync, bundling,
 Start with [docs/install.md](docs/install.md) and [docs/tutorial.md](docs/tutorial.md).
 [docs/README.md](docs/README.md) indexes the rest — one page per subsystem, each written to
 explain the decisions rather than restate the code.
+
+**`docs/` is the source of truth**, and it is plain Markdown so that it reads on GitHub with
+nothing installed. [`docs-site/`](docs-site/README.md) renders the same files as a searchable
+website; it adds no content of its own. To read it locally:
+
+```bash
+docker compose -f docker/compose.yaml up docs    # http://localhost:4321
+```
+
+or, without Docker, `pnpm --dir docs-site install && pnpm --dir docs-site dev`. Editing anything
+under `docs/` reloads the page.
 
 ## Development setup
 

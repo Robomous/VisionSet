@@ -41,6 +41,14 @@
 #   frontend/app/src/**     vite HMR
 #   frontend/ui-core/src/** tsc --watch → dist/ → vite  (docker/app-dev.sh)
 #   frontend/annotator/…    tsc --watch → dist/ → vite  (docker/app-dev.sh)
+#   docs/**                 astro dev                   (docker/docs-dev.sh)
+#   docs-site/src/**        astro dev
+#
+# The `docs/**` row is the one worth a second look, because Astro does not watch it
+# by default: it is a *sibling* of the docs site's project root. `docs-site/
+# integrations/docs-source.mjs` adds it to Vite's watcher and re-projects the one
+# file that changed into the content collection, which Astro is watching — so the
+# chain from keystroke to browser closes without a restart, the same as the others.
 #
 # The residual cases, all of them changes to how a container is *built* rather
 # than to what it runs, and each with the command it needs:
@@ -54,16 +62,21 @@
 #   either entry script             restart api / restart app (read once at start)
 #
 # **Only what a running service reads is mounted** — the api gets `src/`, the app
-# gets the three `src/` directories plus its static `public/`, and both get
-# `docker/` for their entry script. The whole checkout used to be mounted into
-# both, which meant a polling watcher walking `tests/`, `.git/`, the host `.venv/`
-# and the Playwright report directories on every tick, for services that read none
-# of them. A path that is not in the list above does not exist inside these
-# containers; adding one is a line in this file.
+# gets the three `src/` directories plus its static `public/`, the docs site gets
+# `docs/` and its own `src/`, and all three get `docker/` for their entry script.
+# The whole checkout used to be mounted into the first two, which meant a polling
+# watcher walking `tests/`, `.git/`, the host `.venv/` and the Playwright report
+# directories on every tick, for services that read none of them. A path that is
+# not in the list above does not exist inside these containers; adding one is a
+# line in this file.
 #
-#   The app is at http://localhost:8080
+#   The app is at   http://localhost:8080
+#   The docs are at http://localhost:4321
 #
-# That is the only address anyone needs, and there is nothing to sign in with:
+# The first is the only address anyone needs in order to *use* VisionSet, and the
+# second is this repository's `docs/` rendered — a separate service, on its own
+# port, useful with everything else switched off (`up docs`). There is nothing to
+# sign in with:
 # the server issues the browser its own session (#179), so the app opens on the
 # project list. nginx serves it: `/api/` reaches the API and everything else the
 # vite dev server, so the browser sees one origin. The two services behind it are
@@ -71,9 +84,12 @@
 # vite error without the proxy in the way — they are debugging doors, not the
 # front one.
 #
-# Every one of those three ports is published on **127.0.0.1 only**. See
-# VISIONSET_UI_SESSION on the api service: this stack signs in whoever asks,
-# which is safe exactly as long as "whoever asks" is somebody on this machine.
+# Every port this file publishes — those three, and the docs site's 4321 — is
+# published on **127.0.0.1 only**. See VISIONSET_UI_SESSION on the api service:
+# this stack signs in whoever asks, which is safe exactly as long as "whoever
+# asks" is somebody on this machine. The docs site has nothing to sign in to, and
+# is bound the same way anyway: a stack with one port open to the LAN and four
+# closed is a stack whose rule nobody can state.
 #
 # First boot creates a workspace and mints a token, printed in the `api` logs. The
 # browser does not need it; `curl` and an MCP client do.
@@ -250,6 +266,59 @@ services:
     ports:
       # Loopback only, for the reason the api service states.
       - "127.0.0.1:5173:5173"
+
+  # The documentation site: http://localhost:4321
+  #
+  # Deliberately *beside* nginx rather than behind it. The application's front door
+  # serves one origin so the browser sees `/api/` and the app as one thing; the
+  # documentation is not part of that origin — it deploys on its own, to its own
+  # host (see amplify.yml) — and putting it on a path of :8080 would invent a URL
+  # shape production does not have. 4321 is Astro's own default, and nothing else
+  # in this stack claims it (:8000, :5173, :8080, and :5432/:9000/:9001 behind
+  # profiles).
+  docs:
+    # Built, not pulled, for the reason `api` and `app` are: `pnpm install` belongs
+    # to a build. See docker/docs.Dockerfile — and note the install it makes is
+    # `docs-site/`'s own, so nothing about Astro reaches the application image.
+    build:
+      context: ..
+      dockerfile: docker/docs.Dockerfile
+    working_dir: /workspace/docs-site
+    # Nothing. The docs site reads no API and shares no storage — it is the one
+    # service here that is useful with the rest of the stack switched off.
+    volumes:
+      # **The canonical documentation.** This is the mount that matters: `docs/` is
+      # the source of truth, the Astro integration projects it into the content
+      # collection on every change, and that projection is what reloads the browser.
+      # Read-only, because the site renders the documentation and never writes it.
+      - ../docs:/workspace/docs:ro
+      # The site's own source — its components, styles, sidebar and content config.
+      # `src/` rather than `docs-site/`, and for exactly the reason the app service
+      # gives at length: mounting the package root would bury the `node_modules/`
+      # the image installed. It also keeps the generated `src/content/docs/` inside
+      # the container, where it belongs.
+      #
+      # Consequence, stated: `src/content/` is *below* this mount, so the projection
+      # is written to the host too. It is git-ignored, and it is the same directory
+      # a host-side `pnpm --dir docs-site dev` would write.
+      - ../docs-site/src:/workspace/docs-site/src
+      # The entry script, read once at container start; read-only for the reason
+      # the api service states.
+      - ../docker:/workspace/docker:ro
+    environment:
+      # A bind mount delivers no inotify events across the host boundary on macOS
+      # or Windows, and a watcher that receives none is silent rather than
+      # broken-looking — the same reason, and the same setting, as the app service.
+      # Astro's watcher is Vite's, which is chokidar, so this is the switch that
+      # makes an edit under `docs/` reach the browser.
+      CHOKIDAR_USEPOLLING: "true"
+    command: sh /workspace/docker/docs-dev.sh
+    ports:
+      # Loopback only. This service publishes no data and signs nobody in, so the
+      # reasoning is weaker here than it is for the api — but a dev stack with one
+      # port open to the LAN and three closed is a stack whose rule nobody can
+      # state, and the next service copies whichever line it lands next to.
+      - "127.0.0.1:4321:4321"
 
   # The front door, and the only port anybody needs: http://localhost:8080
   nginx:
