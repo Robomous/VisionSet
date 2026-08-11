@@ -125,6 +125,7 @@ dev = [
     "ruff>=0.16.1",
     "mypy>=1.10",
     "import-linter>=2.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 # The tool the YOLO exporter exists to feed, used by one smoke test (#62) and

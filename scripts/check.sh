@@ -100,7 +100,15 @@ run_python() {
   # counter, and a second one stacks to `-qq` — which drops the test count and the
   # summary line, leaving the exit code as the only signal on a log that ends
   # mid-progress and reads as truncated. The count is what makes a run auditable.
-  step "python tests" uv run pytest
+  #
+  # `-n auto` distributes across the machine's cores. The suite is 3200 tests at a
+  # 63 ms mean — no fat tail to cut, so the only way it gets faster is by running
+  # more than one at a time. It is `auto` rather than a fixed number because a
+  # number chosen for a twenty-core desktop would *slow* the gate on a four-core
+  # laptop, and this is the command a contributor runs on whatever they have.
+  # CI's `python` job invokes pytest directly and is untouched: how many workers a
+  # GitHub runner should use is a separate question from how many this machine has.
+  step "python tests" uv run pytest -n auto
   step "ruff (lint)" uv run ruff check .
   step "ruff (format)" uv run ruff format --check .
   # `src/visionset` here, `src/visionset/kernel` under strict settings — the
