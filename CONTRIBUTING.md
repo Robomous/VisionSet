@@ -154,8 +154,21 @@ a deliberate manual run, because each costs minutes or needs its own install.
 
 | Check | Command | In `check.sh` |
 | --- | --- | --- |
-| Python tests | `uv run pytest` | `python` |
+| Python tests | `uv run pytest` (the script adds `-n auto`) | `python` |
 | Import contracts | `uv run lint-imports` | `python` |
+
+**`scripts/check.sh` runs pytest under `pytest-xdist` with `-n auto`.** The suite is
+roughly 3200 tests averaging 63 ms, with only eight over a second — there is no expensive
+test to remove, so the only thing that makes it faster is running more than one at a time,
+and doing so takes it from about 190 seconds to about 30. Plain `uv run pytest` still
+works and is still what the table above names; the distribution is the script's, not the
+configuration's, so a single test or a single module runs the ordinary way with ordinary
+output.
+
+`auto` rather than a fixed worker count, because a number picked for a twenty-core desktop
+would make the gate *slower* on a four-core laptop. CI's `python` job calls pytest
+directly and is deliberately untouched — what a GitHub runner should use is a separate
+question from what the machine in front of you has.
 | Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` | `python` |
 | Lint/format | `uv run ruff check .` / `uv run ruff format .` | `python` |
 | Frontend build + tests | `pnpm -r build && pnpm test` | `frontend` |
