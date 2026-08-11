@@ -1,8 +1,8 @@
 # Persistence
 
-One workspace is one SQLite file. `SqliteMetadataStore` is the default
-`MetadataStore` adapter; everything above it — services, the REST surface, the CLI —
-talks to the **port**, never to SQLAlchemy.
+Each workspace has one SQLite file. `SqliteMetadataStore` is the default
+`MetadataStore` adapter. Services, the REST surface, and the CLI communicate through
+the **port**, never through SQLAlchemy.
 
 ```
 kernel/ports/metadata_store.py     Repository[T], UnitOfWork, MetadataStore — no SQL
@@ -18,7 +18,7 @@ mapping layer is the thing to extend.
 
 ## The repository contract
 
-Every persisted entity has a UUID primary key and **at most one parent** — a Project
+Every persisted entity has a UUID primary key and **at most one parent** - a Project
 belongs to a Workspace, an Annotation to an Asset. That regularity is why a single
 generic repository serves all seventeen entity types:
 
@@ -29,19 +29,19 @@ with store.unit_of_work() as uow:
 ```
 
 - `add` raises `EntityAlreadyExists` on a primary-key collision; `update` raises
-  `EntityNotFound`. They are deliberately not one upsert — a service that inserts a
+  `EntityNotFound`. They are deliberately not one upsert - a service that inserts a
   duplicate or updates something deleted has a bug and should hear about it.
 - `delete` returns `False` rather than raising when there was nothing to remove.
-- `list(parent_id)` on `workspaces` — the one root entity — raises `ValueError`.
+- `list(parent_id)` on `workspaces` - the one root entity - raises `ValueError`.
 - Ordering is insertion order (SQLite's implicit `rowid`).
-- Any write may raise `ConstraintViolated` — a missing parent, or a uniqueness rule the
+- Any write may raise `ConstraintViolated` - a missing parent, or a uniqueness rule the
   store enforces. **A violation ends the transaction it happened in**, so it cannot be
   caught and recovered from inside a unit of work. A service that needs a friendly error
   has to check before writing, not translate afterwards.
 
 ## Uniqueness
 
-The *rule* — which name, what counts as equal, which error the caller sees — is a service
+The *rule* - which name, what counts as equal, which error the caller sees - is a service
 concern. The store does not know that project names are compared case-insensitively, and it
 never raises `ProjectNameTaken`.
 
@@ -83,12 +83,12 @@ the operation and not the individual write.
 
 | Kind | Storage | Why |
 | --- | --- | --- |
-| Relations that get mutated element by element | Child table — `batch_asset`, `annotation_job_asset` | Membership and per-asset progress are edited one row at a time and queried from the asset side. `batch_asset.position` preserves order. |
-| Immutable nested values | JSON column — `annotation_schema.classes`, `annotation.geometry`, `annotation.attributes`, `release.split` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
-| An immutable value too large for a row | The **blob store**, with the row keeping its hash — `release.manifest_hash`, `asset.thumbnail_hash` | A release manifest lists every asset and every label; megabytes of it in a column would have to be read just to list a dataset's releases. Content-addressed, so it is verifiable and two identical releases share one document. See [releases.md](releases.md). A thumbnail is the same storage decision for a different reason: it is a *cache*, so the row keeps a pointer that may be NULL and losing the bytes costs only the time to render them again. |
+| Relations that get mutated element by element | Child table - `batch_asset`, `annotation_job_asset` | Membership and per-asset progress are edited one row at a time and queried from the asset side. `batch_asset.position` preserves order. |
+| Immutable nested values | JSON column - `annotation_schema.classes`, `annotation.geometry`, `annotation.attributes`, `release.split` | A schema version must rehydrate byte-identical, and nothing queries a single `LabelClass` in SQL. Child tables would only add ordering columns. |
+| An immutable value too large for a row | The **blob store**, with the row keeping its hash - `release.manifest_hash`, `asset.thumbnail_hash` | A release manifest lists every asset and every label; megabytes of it in a column would have to be read just to list a dataset's releases. Content-addressed, so it is verifiable and two identical releases share one document. See [releases.md](releases.md). A thumbnail is the same storage decision for a different reason: it is a *cache*, so the row keeps a pointer that may be NULL and losing the bytes costs only the time to render them again. |
 | Timestamps | TEXT holding ISO-8601 **with offset** | SQLite's `DATETIME` storage drops the timezone. Domain timestamps are timezone-aware UTC and a naive value is rejected at construction. |
 
-Foreign keys are declared `ON DELETE CASCADE` — and the store issues
+Foreign keys are declared `ON DELETE CASCADE` - and the store issues
 `PRAGMA foreign_keys = ON` for every connection, because SQLite ships with foreign keys
 **off**. Without that pragma every constraint here would be decorative.
 
@@ -103,7 +103,7 @@ Three settings, and they are applied in two different places for one reason:
 | `PRAGMA journal_mode = WAL` | `initialize()` only | **Switching to WAL writes the file header.** |
 
 That last row is the interesting one. WAL is recorded in the database header and persists, so
-it only ever needs setting once — but turning it on *grows an empty file to a full page*, and
+it only ever needs setting once - but turning it on *grows an empty file to a full page*, and
 `WorkspaceService.open` reads `format_version` before it has decided the file is a workspace
 at all. A connect-time pragma would therefore leave a 4 KB mark on any stranger's file merely
 inspected, breaking the invariant that **`open` creates nothing when it refuses**. Setting it
@@ -125,7 +125,7 @@ order of its tests is the dispatch:
 | SQLAlchemy raises | Becomes | Because |
 | --- | --- | --- |
 | `IntegrityError` | `ConstraintViolated` | A constraint refused the write. Ends the transaction. |
-| `OperationalError` with a `SQLITE_BUSY` / `SQLITE_LOCKED` result code | `WorkspaceBusy` | Contention. Transient — retry. |
+| `OperationalError` with a `SQLITE_BUSY` / `SQLITE_LOCKED` result code | `WorkspaceBusy` | Contention. Transient - retry. |
 | any other `DatabaseError`, including the rest of `OperationalError` | `WorkspaceCorrupt` | Cannot open the file, disk I/O error, disk full, not a database. Waiting will not fix it. |
 
 Contention is told apart from damage by SQLite's **result code** (`sqlite_errorname`), not by
@@ -137,7 +137,7 @@ invent errors nobody catches.
 `CASCADE` is the rule because the child is normally *part of* the parent. `ingest_job.batch_id`
 is the exception and states the other case: a run is a record of work done, not a child of the
 batch it filled, so deleting the batch nulls the link rather than erasing the run. The same
-argument applies to `asset.source_id` — a source is a receipt and an asset is data — except that
+argument applies to `asset.source_id` - a source is a receipt and an asset is data - except that
 one is not a foreign key at all: SQLite spells a key added by `ALTER TABLE` inline on the column
 while `create_all` spells one as a table constraint, the two texts differ, and `asset` is the one
 table that could not be rebuilt to escape that (four cascading children, and rows that were
@@ -167,7 +167,7 @@ FORMAT_VERSION: int = MIGRATIONS[-1].version  # 7
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
-the scaffolding needed to prove each one had really run — the last of which went wrong twice
+the scaffolding needed to prove each one had really run - the last of which went wrong twice
 and was caught twice. They are gone. `_tables.py` **is** generation 1, and a fresh database
 is created directly at it; the chain restarted from there, and the three rules below are in
 force again for every entry appended after the baseline.
@@ -176,7 +176,7 @@ force again for every entry appended after the baseline.
 `tests/kernel/test_migrations.py` that builds an old-looking file. The failure is the silent
 kind: a column left in place makes its own migration find the column already there and return
 early, so `test_a_fresh_database_and_a_migrated_one_have_the_same_schema` compares a file
-against itself and passes while proving nothing. The table-creating migrations — 4 and 6 — are
+against itself and passes while proving nothing. The table-creating migrations - 4 and 6 - are
 the standing exception: dropping a whole table in the helper would exercise SQLite rather than
 this module.
 
@@ -184,13 +184,13 @@ this module.
 one.** Migration 3 could attribute an annotation because the file already recorded enough to
 answer it; migration 7 cannot fill in a connection's model family at all, because that answer
 lives in a model cache the kernel is forbidden to reach. Where the value is unknowable here, the
-column arrives NULL and something outside the kernel fills it in later — and the column's own
+column arrives NULL and something outside the kernel fills it in later - and the column's own
 docstring says which, so a reader does not mistake an honest absence for a forgotten step.
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed
 to somebody: it comes back when there is a published release whose files this build has
-to keep opening, and not before. That is the trigger to watch for — the first tagged
+to keep opening, and not before. That is the trigger to watch for - the first tagged
 release that a user's workspace can outlive.
 
 `initialize()` reads the version stamped in `_visionset_meta` and runs whatever is
@@ -199,9 +199,9 @@ missing:
 | Stored | What happens |
 | --- | --- |
 | absent | every migration runs; the file is stamped at `FORMAT_VERSION` |
-| equal to `FORMAT_VERSION` | nothing — `initialize()` is idempotent |
+| equal to `FORMAT_VERSION` | nothing - `initialize()` is idempotent |
 | lower | the pending migrations run; the file is restamped |
-| higher | `WorkspaceFormatTooNew` — migrations only run forward |
+| higher | `WorkspaceFormatTooNew` - migrations only run forward |
 | not a readable database | `WorkspaceCorrupt` |
 | held by another writer past the timeout | `WorkspaceBusy` |
 
@@ -220,7 +220,7 @@ something is pending, which on an already-stamped file is nothing. The file open
 current and the first statement naming the absent column fails inside a request.
 
 That happened ([#277](https://github.com/Robomous/VisionSet/issues/277)): a workspace
-missing `source.display_name` opened cleanly and answered **500 `WORKSPACE_CORRUPT`** —
+missing `source.display_name` opened cleanly and answered **500 `WORKSPACE_CORRUPT`** -
 opaque, from three unrelated routes, with the cause only in the server's log.
 
 So after the migrations, `initialize()` compares the reflected schema against
@@ -230,7 +230,7 @@ column. Three things about it are deliberate:
 - **Only *missing* is a mismatch.** A file holding more than `_tables` declares was written
   by a later build; nothing here selects a column it does not name, so the extra one is
   inert, and the version stamp is what is supposed to catch that direction anyway.
-- **It is not a `WorkspaceCorrupt`.** Nothing is damaged — this is a valid database of a
+- **It is not a `WorkspaceCorrupt`.** Nothing is damaged - this is a valid database of a
   different generation, and "corrupt" sends the reader to look at their disk.
 - **It runs on its own connection, after the migrations commit.** Inside that transaction a
   raise would roll back the schema a fresh file had just been given.
@@ -241,7 +241,7 @@ reflection and `_tables` fail one named test rather than every workspace this bu
 ### Appending a migration
 
 Append a `Migration` with the next version and an `upgrade` taking a live `Connection`.
-Never edit an existing migration — a workspace already stamped at that version will never
+Never edit an existing migration - a workspace already stamped at that version will never
 run it again. `FORMAT_VERSION` is derived from the list, so it cannot drift.
 
 Four rules govern every entry after the baseline, and none of them applies to the baseline
@@ -252,7 +252,7 @@ deleted code:
 snapshot: adding a table, column or index to `_tables` retroactively changes what a fresh
 database gets. So a later migration exists only for already-stamped databases, and yet it
 still runs against the fresh one that already carries its change. Share the one schema
-object with `_tables` rather than repeating the DDL — `checkfirst=True` on a `Table` or an
+object with `_tables` rather than repeating the DDL - `checkfirst=True` on a `Table` or an
 `Index`, an inspector check for a column (SQLite has no `ADD COLUMN IF NOT EXISTS`), and
 `CreateColumn` / `CreateIndex` to compile the DDL from the object itself.
 
@@ -267,12 +267,12 @@ category: `uq_source_project_kind_path_fps` (its fourth term is
 it. Anywhere else, the `create_all` path and the migration path emit different
 `CREATE TABLE` text and a workspace's schema depends on when it was created. A `NOT NULL`
 column added this way also needs a `server_default`, because SQLite refuses to add one
-without a value for the rows already there — `annotation_job_asset.position`,
+without a value for the rows already there - `annotation_job_asset.position`,
 `annotation.attributes` and `ingest_job.processed` carry one for that reason and keep it.
 
 **A column carrying a foreign key cannot arrive by `ALTER` at all.** SQLite spells an added
 key inline on the column; `create_all` spells one as a table constraint; the two texts
-differ. Such a column needs a table rebuild — and under `PRAGMA foreign_keys = ON`, which
+differ. Such a column needs a table rebuild - and under `PRAGMA foreign_keys = ON`, which
 this store sets on every connection, `DROP TABLE` runs an implicit `DELETE` that cascades
 to children **silently, without raising**. So a rebuild has to count the children first,
 and a table that holds real rows cannot be rebuilt at all. `asset` is the standing example
@@ -280,7 +280,7 @@ of the second case: four `ON DELETE CASCADE` children and data nobody may lose, 
 why `asset.source_id` is the one reference in this schema that is not a foreign key.
 
 `format_version` here is the *database* generation. Validating the on-disk workspace layout
-around it — directories, the blob-store root, what makes a directory a workspace at all —
+around it - directories, the blob-store root, what makes a directory a workspace at all -
 belongs to `WorkspaceService`; see [workspaces.md](workspaces.md).
 
 ### What the tests still guard

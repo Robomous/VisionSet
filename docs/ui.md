@@ -1,8 +1,8 @@
 # The browser client
 
-How `@visionset/ui-core` talks to the API, and the three decisions every screen
-inherits: where the API is, which credential is in use, and what happens when that
-credential stops working.
+This page explains how `@visionset/ui-core` communicates with the API and the
+three decisions inherited by every screen: the API location, the active
+credential, and the response to an invalid credential.
 
 The **visual** contract is [`DESIGN.md`](../DESIGN.md) at the repository root. This
 document is the data half.
@@ -17,17 +17,17 @@ panel and the annotation page. `@visionset/app` is a router, a rail and nothing 
 | --- | --- | --- |
 | `ui-core` vitest | 0 | **107** |
 | Playwright (annotator) | 42 | **76** |
-| Playwright (browser cycle) | — | **1**, against a real server |
+| Playwright (browser cycle) | - | **1**, against a real server |
 | Python | 1923 | **1932** |
 
-The exit criterion — *"with `visionset server` running, a user completes the entire cycle
-in the browser"* — is not asserted, it is **driven**: `pnpm --filter @visionset/app
+The exit criterion - *"with `visionset server` running, a user completes the entire cycle
+in the browser"* - is not asserted, it is **driven**: `pnpm --filter @visionset/app
 cycle` walks token → project → schema → ingest → approve → annotate → finish →
 complete → promote → publish → verify → export → download against the built bundle
 and the real kernel, on every pull request.
 
 M5 moved neither the storage format nor `openapi.json`: the milestone's one deliberate
-Python touch — #58's SPA deep-link fallback — is an exception handler, and an exception
+Python touch - #58's SPA deep-link fallback - is an exception handler, and an exception
 handler is not an operation.
 
 ## Routes
@@ -43,8 +43,8 @@ handler is not an operation.
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
 | `/styleguide` | the rendered design system | **no** |
 
-The last two need no server and no credential — the showcase's picture is a `data:`
-URI and the styleguide is pure CSS — so putting them behind the gate would ask for a
+The last two need no server and no credential - the showcase's picture is a `data:`
+URI and the styleguide is pure CSS - so putting them behind the gate would ask for a
 token to look at a page that cannot use one. They are also what lets the browser
 suite run with no backend.
 
@@ -59,19 +59,19 @@ Two of those query parameters are kept true rather than only read, and it is the
 rule twice: `?tab=` on the project page (#171) and `?asset=` on the annotator (#353)
 are both **rewritten** as the page moves, with `replace` rather than `push`. A URL
 that no longer describes what is on screen is not a place you can send somebody, and
-`replace` is what stops Back from walking back through tabs — or, in the annotator,
+`replace` is what stops Back from walking back through tabs - or, in the annotator,
 one picture at a time through an annotation session. `ui-core` imports no router, so
 in both cases the screen reports and `routes.tsx` spells: `resolveProjectTab` and
 `assetParamFor` are those two decisions, pure and testable without a browser.
 
 The router's basename is `import.meta.env.BASE_URL`, which is what vite substitutes
-for its `base` option — so the router and the bundle cannot disagree about the `/app`
+for its `base` option - so the router and the bundle cannot disagree about the `/app`
 prefix the wheel serves under. A **reload** on a client route is a real request for a
 path no file backs; [`api.md`](api.md#where-the-ui-lives) describes the server-side
 fallback that answers it.
 
 The rail is the whole shell: logo, collapse toggle, Home, Projects, Inference, sign
-out. Anything richer growing on it is what the thin-app audit exists to catch — a
+out. Anything richer growing on it is what the thin-app audit exists to catch - a
 capability in `app/` is one the future enterprise UI cannot reuse. `Inference` joined by
 the decision recorded on #421 (2026-08-08): what earns an entry is a workspace-level
 object every project uses and that has nowhere else to live, never frequency of use.
@@ -91,7 +91,7 @@ A padded, capped column is right for a list or a form and wrong for the one scre
 somebody sits in front of for an hour. Boxing the annotator cost more than looks
 (#183): `fitToViewport` derives the zoom from `getBoundingClientRect` on the pane, so
 a shrunken pane opened every asset smaller than it needed to and applied the
-tolerance constants — all in *screen* pixels, divided by zoom — at a zoom nobody
+tolerance constants - all in *screen* pixels, divided by zoom - at a zoom nobody
 chose. `h-screen` *plus* `py-6` also made the document 948px tall in a 900px window,
 so the canvas's own badge was cut off and the whole page scrolled.
 
@@ -102,7 +102,7 @@ with it. Pinning the height is what makes "the canvas pane is the only thing wit
 
 The panes are nested under **one** `AppShell` rather than under two sibling shells,
 so there is a single copy to keep correct. That is *not* what preserves the rail's
-collapsed state across a pane change — measured: two sibling
+collapsed state across a pane change - measured: two sibling
 `<Route element={<AppShell />}>` branches are reconciled into one instance and
 preserve it too. The behaviour is asserted directly in `e2e/annotate.spec.ts`, which
 is the level that survives either structure.
@@ -114,27 +114,27 @@ takes **navigation as a callback**, never a router: a screen that called
 `useNavigate` would only work inside a `react-router` tree, which is a dependency
 the future enterprise UI has no reason to share.
 
-Query keys are hierarchical — `["projects"]` → `["projects", id]` →
-`["projects", id, "schema"]` — because TanStack Query matches a **prefix**. So
+Query keys are hierarchical - `["projects"]` → `["projects", id]` →
+`["projects", id, "schema"]` - because TanStack Query matches a **prefix**. So
 invalidating `["projects", id]` after a rename refreshes the project, its schema and
 its version list, and the mutation never has to enumerate what it affected.
 
 ### The project view, and the one screen whose section is in the URL
 
-A project has three sections — its schema, its batches, its version history — and
+A project has three sections - its schema, its batches, its version history - and
 they are **tabs**, not four things stacked in one column (#171). The header is not a
 tab: the project's name and the actions that apply to all of it (ingest, dataset,
 rename) sit above the tab list, and the tab list is what says the rest are
 alternatives rather than a sequence. `Schema` is the default, because a project
 starts schema-less on purpose and nothing downstream can be approved without one.
 
-The section travels as **`?tab=`**, so it survives a reload and can be linked to —
+The section travels as **`?tab=`**, so it survives a reload and can be linked to -
 which is most of the point of giving the version history a place of its own. That
 does not put a router inside `ui-core`: `ProjectScreen` takes `tab` as a raw string
 and hands a normalised one back through `onTabChange`, exactly as every other screen
 takes navigation. Normalising is the screen's job, so an unknown value opens on the
 default rather than on nothing. With `onTabChange` absent the tabs are uncontrolled
-and still work, which is what lets a component test — or a host with no router —
+and still work, which is what lets a component test - or a host with no router -
 render the screen unchanged.
 
 **Each tab owns its query.** Radix unmounts inactive content, so a query living in
@@ -145,7 +145,7 @@ is outside the tabs and always drawn.
 
 No panel repeats its own tab's name as a heading. Radix labels each panel with its
 trigger, so an `<h2>` saying "Batches" under a tab saying "Batches" is a stutter for
-a reader and for a screen reader both; what stays is the line the tab cannot carry —
+a reader and for a screen reader both; what stays is the line the tab cannot carry -
 where a batch comes from, which version a save would create, why a past version has
 no edit controls.
 
@@ -153,12 +153,12 @@ no edit controls.
 
 A release is the only truly immutable artifact, and the screen reflects that: the
 timeline offers no edit and no delete, because there is no `ReleaseService.delete`
-— only a project's own cascade removes one, and the manifest blob survives even
+ - only a project's own cascade removes one, and the manifest blob survives even
 that.
 
 **Verification is on demand.** `verify` re-reads and re-hashes every blob the
-manifest names — `BlobStore.exists` is `is_file()` on a path *named by* the hash and
-proves nothing — so it is not something to run because a list rendered. A broken
+manifest names - `BlobStore.exists` is `is_file()` on a path *named by* the hash and
+proves nothing - so it is not something to run because a list rendered. A broken
 manifest is reported on its own: the service stops with `checked: 0`, so every other
 number would be about a document that is not the one its hash names.
 
@@ -175,7 +175,7 @@ three questions.
 There is no pre-export validation route, so consent is the schema editor's shape:
 attempt → read `LOSSY_EXPORT_NOT_CONSENTED` off the 409 → ask → retry with the flag.
 `FormatOut.lossy` makes the question predictable in advance, because lossiness is
-declared by the **format** — a bbox-only format loses a polygon whether or not
+declared by the **format** - a bbox-only format loses a polygon whether or not
 today's dataset holds one.
 
 ### Downloads, and the fourth instance of one finding
@@ -183,7 +183,7 @@ today's dataset holds one.
 `<a href download>` sends no `Authorization` header, exactly as `<img src>` does not.
 So an export archive and a manifest are fetched through the typed client and saved
 with `saveBlob`: an object URL, an anchor, `a.click()`, and a revoke on the next
-tick. `a.click()` rather than a synthesised event — a `MouseEvent` built in script is
+tick. `a.click()` rather than a synthesised event - a `MouseEvent` built in script is
 not user activation, and a browser may refuse the download outright.
 
 ### The annotation page
@@ -194,7 +194,7 @@ Where M4's engine meets M3's API. Three findings shaped it.
 build `‹ filename n/m ›` is `GET /jobs/{id}/next?n=<count>`; it is wrong, because
 that route hands out **pending** assets, so the list shrinks as the user works,
 `n/m` counts down under them, and an asset already annotated cannot be navigated
-back to. The stable list is the batch's asset listing filtered to this job —
+back to. The stable list is the batch's asset listing filtered to this job -
 `BatchAssetOut` carries `job_id` and `progress`, exactly the pair a navigator
 needs.
 
@@ -207,14 +207,14 @@ the refusal would be correct while the screen looked broken. The page walks job 
 **Saving is a diff, and then a reload.** The annotator mints client-side ids and
 the kernel mints its own (#40 declined a `rebaseAnnotationId` for this reason), so
 a save cannot merge its own response back in. It computes created / updated /
-deleted against what was loaded, sends up to three all-or-nothing calls — **deletes
-first**, so a failure leaves the smaller document a retry can be built from — and
+deleted against what was loaded, sends up to three all-or-nothing calls - **deletes
+first**, so a failure leaves the smaller document a retry can be built from - and
 then refetches.
 
 #### There is no autosave, and that is the policy
 
 1. **A save is followed by a reload**, so a debounced autosave would rebuild the
-   document under the cursor every few seconds — and a rebuild mid-gesture is a
+   document under the cursor every few seconds - and a rebuild mid-gesture is a
    dropped drag.
 2. **Every call is all-or-nothing.** A partial autosave has no meaning: the kernel
    refuses a batch as a unit and reports the offending index, and firing that on a
@@ -227,19 +227,19 @@ then refetches.
 `annotated → review_pending → accepted | annotated` are three legal edges of
 `ASSET_PROGRESS_TRANSITIONS`, and until now the browser offered **none** of them.
 The gallery's "In review" segment could only be populated through the API or MCP,
-and `accepted` — the one state that records that a human checked the work — was
+and `accepted` - the one state that records that a human checked the work - was
 unreachable by any sequence of clicks.
 
 The annotator's toolbar carries all three, each drawn from the frame's own
 `allowed_actions`:
 
 - **Submit for review** on an `annotated` frame (`submit_for_review`);
-- **Return to annotator** on one in review (`return_to_annotator`) — named for the
+- **Return to annotator** on one in review (`return_to_annotator`) - named for the
   act rather than for the edge it rides, the same call `capabilities.py` makes:
   "back to annotated" describes the table, "return to annotator" describes what is
   being done;
 - **Accept** on one in review (`accept`), which is the only origin that edge has.
-  Offering Accept on an `annotated` frame — which the toolbar used to do — was
+  Offering Accept on an `annotated` frame - which the toolbar used to do - was
   offering a refusal, and a silent one.
 
 **There is one screen, not two.** Which controls appear is the frame's state, so
@@ -247,8 +247,8 @@ the annotator and the reviewer are the same page wearing what it is looking at.
 That is deliberate: the product has no annotator identity to assign work to, so
 "reviewer" is something somebody is *doing* rather than somebody they *are*.
 
-A frame out for review is **not writable** — `review_pending` is outside
-`WRITABLE_PROGRESS` — so the page is read-only and its banner names the control
+A frame out for review is **not writable** - `review_pending` is outside
+`WRITABLE_PROGRESS` - so the page is read-only and its banner names the control
 that undoes that, which is on the same toolbar. `accepted` has no exit at all,
 which is why correcting accepted work needs a correction batch rather than a
 progress move, and the banner says that instead.
@@ -262,13 +262,13 @@ caught it the moment the review moves landed, at 3 of 3 becoming 2 of 3.
 #### Read-only is a mode, not an accident
 
 The annotator opens as a **viewer** whenever the frame it is showing does not
-declare `annotate` — which the kernel derives from all three dimensions at once:
+declare `annotate` - which the kernel derives from all three dimensions at once:
 the batch must be `in_annotation`, the job must be in `OPEN_JOB_STATES`, *and*
 the frame's progress must be in `WRITABLE_PROGRESS`. One question, three causes.
 
 **And it is a transition, not only a way to open** (#439). Pressing `Finish job`
 closes the job under a window that is already open, so the workspace flips to the
-viewer *in place* — same page, no navigation, no reload, on every frame of the
+viewer *in place* - same page, no navigation, no reload, on every frame of the
 job rather than the last one. Nothing on the page computes that: the mutation
 invalidates the frames' declarations and the wire's answer has moved, because
 `asset_actions` reads the job's state. Before #439 it did not move, and the page
@@ -277,7 +277,7 @@ stayed a live editor over work it had just been told was over.
 Before this it had no such notion. `batchState` reached the page and was consumed
 only by the two auto-start effects, so a `completed` batch opened a fully live
 editor: the canvas drew, the palette armed tools, the panel deleted objects, and
-the first Save rendered `BATCH_NOT_IN_ANNOTATION` as a raw badge — with navigation
+the first Save rendered `BATCH_NOT_IN_ANNOTATION` as a raw badge - with navigation
 blocked while dirty, because moving between frames commits first. The only way out
 was to undo your own work.
 
@@ -291,7 +291,7 @@ What a viewer looks like:
   pointer input goes straight into the interaction machine, so a greyed-out toolbar
   would still let a drag draw a box. A **primary press does nothing at all** and a
   keystroke runs only if it resolves to a *host* action. Panning, the wheel zoom,
-  `mod+0`, hover and the cursor all stay live — a read-only mode you cannot move
+  `mod+0`, hover and the cursor all stay live - a read-only mode you cannot move
   around in is a screenshot.
 - the tool palette hidden outright (every control on it picks a drawing tool), and
   the side panel's writes gone: no delete, no class reassignment, no tag toggle.
@@ -314,8 +314,8 @@ still judged against the old one, and an error about a step nobody asked for.
 Three requests are not a transaction and cannot be, so the remedy is to **ask
 first**. The page reads the batch's `repin` declaration before anything is
 published; when it is absent the dialog says the batch will keep its current
-version — and that the version is still published, and that a correction batch
-approved from now on will pin to it — and the button reads **Publish without
+version - and that the version is still published, and that a correction batch
+approved from now on will pin to it - and the button reads **Publish without
 re-pinning**. Two acts, two words, and the user reads which one they are about to
 perform instead of learning it from a refusal.
 
@@ -324,26 +324,26 @@ perform instead of learning it from a refusal.
 `progress_after_annotating` moves an asset only `unannotated ↔ annotated`, because
 `skipped` is a person's decision and drawing a box does not contradict a decision.
 That rule is right, and until #187 the browser simply never offered the one exit
-`ASSET_PROGRESS_TRANSITIONS` allows — so a user could label a skipped asset, watch
+`ASSET_PROGRESS_TRANSITIONS` allows - so a user could label a skipped asset, watch
 the save succeed, and lose the work at promotion, since `PROMOTABLE_PROGRESS`
 excludes `skipped`.
 
 **The kernel now refuses that write outright**, so the silent loss is unreachable
 rather than merely un-offered: `WRITABLE_PROGRESS` gates all three annotation
 writes and a skipped asset answers `AssetNotWritable` (409 `ASSET_NOT_WRITABLE`)
-— see [jobs.md](jobs.md). Everything below still stands and is now the *good*
+ - see [jobs.md](jobs.md). Everything below still stands and is now the *good*
 path rather than the only guard: Un-skip first, then label. The batch asset's
 `allowed_actions` declares `annotate` exactly when the write will be accepted, so
 the page reads that rather than deriving it.
 
 The page closes that with the **explicit** move rather than an implicit one. The
 asset's own progress is always on the bar, and on a skipped asset `Skip` is replaced
-by **Un-skip**, which sends `unannotated` and stays on the asset — settling advances
+by **Un-skip**, which sends `unannotated` and stays on the asset - settling advances
 because you are finished with it, reversing does not because you have just come back
 to it. Automatic-on-save was rejected: it would overwrite a recorded decision without
 asking, and a decision is somebody's action here the same way `confirm=`,
 `allow_destructive=` and `allow_lossy` are one layer down. A prompt was rejected too
-— a modal in the middle of the annotation loop interrupts the one gesture the page
+ - a modal in the middle of the annotation loop interrupts the one gesture the page
 exists for, and it leaves a user who only wants to un-skip with nothing to press.
 What the automatic reading was right about is that `Save` must never look inert; it
 does not, because a notice beside the canvas says why the counter stayed put.
@@ -351,28 +351,28 @@ does not, because a notice beside the canvas says why the counter stayed put.
 #### `?` opens a sheet built from the binding table, not from a copy of it
 
 The page used to pass `onHostAction={(name) => name === TOGGLE_HELP}`. Returning `true`
-means *the host handled this action*, so pressing `?` — a real binding in
-`core/input/bindings.ts` — was consumed and then discarded: the user got nothing, and
+means *the host handled this action*, so pressing `?` - a real binding in
+`core/input/bindings.ts` - was consumed and then discarded: the user got nothing, and
 the engine had been told the request was served, so nothing else could pick it up
 (#189). An unhandled host action now returns `false`, which is what that value is for.
 
 `ShortcutSheet` takes a `Registry` and renders whatever is in it. It is the same map
 the canvas resolves keystrokes against, because both call **`defaultRegistry(schema,
-overrides)`** — one exported spelling of the fold, added so the two callers cannot
+overrides)`** - one exported spelling of the fold, added so the two callers cannot
 drift. Delete a binding and a row disappears; add a class to the schema and a digit
 appears. Both are mutation-tested, which is the check v1's hand-written
 `HelpModal.tsx` never had.
 
 The English is not derived: an action's `kind` is a discriminant, so a
 `Record<ActionKind, …>` turns one into a sentence, and an eleventh action kind fails to
-compile rather than rendering a blank row. Host actions stay open — core enumerates no
-capability — so an unknown name renders as itself. `mod+c` / `mod+v` were listed as
+compile rather than rendering a blank row. Host actions stay open - core enumerates no
+capability - so an unknown name renders as itself. `mod+c` / `mod+v` were listed as
 **deliberately unbound** until #123 claimed them; they are ordinary rows now, and the
-slot that held the note carries the fact that became the surprising one — inside a text
+slot that held the note carries the fact that became the surprising one - inside a text
 field the two chords are still the browser's.
 
 **Accept** calls the existing progress endpoint with `accepted`, and is enabled only
-where `ASSET_PROGRESS_TRANSITIONS` allows the move — offering it on an untouched
+where `ASSET_PROGRESS_TRANSITIONS` allows the move - offering it on an untouched
 asset would be offering a refusal. It is **not** loosened to cover a skipped asset:
 the way to reach `annotated` from `skipped` is to un-skip and annotate, which is
 what the machine says. The zoom `−`/`%`/`+` and fit drive
@@ -382,8 +382,8 @@ The version dropdown and Merge that `DESIGN.md` draws are **not on the bar**. Th
 branch-and-merge model behind them was settled on 2026-08-10 as superseded by the
 batch, review and release model the product already has (cf. #127), and until
 2026-08-05 they rendered disabled to keep the bar the shape the design shows. That
-is the one case disabled-with-reason cannot serve — the reason would be "this
-feature does not exist", which says nothing about what would enable the control —
+is the one case disabled-with-reason cannot serve - the reason would be "this
+feature does not exist", which says nothing about what would enable the control -
 so they were removed.
 
 #### The tool strip, and the geometries with no tool behind them
@@ -394,8 +394,8 @@ button and never will: there is nothing to draw, because the label is about the
 whole image, and the Labels tab is where it is toggled.
 
 **Three tools since #342**: box, polygon and polyline. `polyline` spent one release
-as this section's worked example of declared-but-not-drawable — #223 shipped the
-geometry end to end and stopped short of the tool — and it is a live button now.
+as this section's worked example of declared-but-not-drawable - #223 shipped the
+geometry end to end and stopped short of the tool - and it is a live button now.
 
 The rule that example demonstrated is unchanged, and `PENDING_TOOLS` still holds it
 with nothing in it: **a geometry a schema declares and no tool draws gets a disabled
@@ -407,21 +407,21 @@ still in that position the day a schema declares one.
 
 When a button is disabled it uses **`aria-disabled`, never the native `disabled`
 attribute**. A disabled `<button>` receives no pointer events, so the tooltip would
-never open — and a disabled-with-reason control whose reason cannot be read is a
+never open - and a disabled-with-reason control whose reason cannot be read is a
 bare disabled control. The press is refused in the handler instead, because
 activating a class whose tool does not exist would leave `toolFor` answering
 `select` with that class held: a canvas whose primary gesture is inert, which is the
 bug #198 fixed.
 
 Two things follow that are worth stating so they are not "fixed": a lane is **not
-selectable from the canvas** (`geometryContains` refuses an open path — hitting one
+selectable from the canvas** (`geometryContains` refuses an open path - hitting one
 is distance-to-segment with a zoom-independent tolerance, and it is only worth
 solving beside the tool that edits the result), and it is **not draggable**. The
 object list is how a lane is selected, which is a real affordance rather than a gap.
 
 #### Suggesting a shape from a click
 
-The sparkles button — hotkey `S` — arms the **suggest tool**: click the thing you
+The sparkles button - hotkey `S` - arms the **suggest tool**: click the thing you
 want and a segmentation model proposes its shape. It runs through a model
 connection (`docs/inference.md`), and the server side of it is
 `POST /inference/suggest`.
@@ -429,13 +429,13 @@ connection (`docs/inference.md`), and the server side of it is
 **It runs through a connection that can answer a click**, which is a narrower set
 than "the ones that are ready": only those declaring `point_suggest`. A workspace
 whose only downloaded model answers text prompts gets a panel saying so, and no
-request is sent — the server would refuse each one truthfully, which is a correct
+request is sent - the server would refuse each one truthfully, which is a correct
 answer to a question the editor should not have asked. The panel tells that case
 apart from having nothing configured and from having nothing downloaded, because
 each is a different thing to go and do.
 
 Where more than one connection can answer, the panel carries a picker naming the
-model under each, and the choice is remembered **per project** — it is a
+model under each, and the choice is remembered **per project** - it is a
 preference about this browser, so it survives leaving the editor and does not
 become a workspace setting that everybody annotating shares. With one candidate
 there is no control at all, only a line naming what is answering. The picker
@@ -451,7 +451,7 @@ The gesture:
 | `↵` | accepts the proposal as an annotation |
 | `Esc` | clears the points; pressing it again puts the tool away |
 
-Every click sends **all** the points placed so far — the route is stateless — and
+Every click sends **all** the points placed so far - the route is stateless - and
 the answer replaces the preview. The first click on a frame is the slow one,
 because the model reads the whole image once; refining after it is quick.
 
@@ -461,18 +461,18 @@ is in neither the document nor the undo history. `Esc` is its undo. Switching
 class, switching frames or leaving the page discards it, and nothing is written.
 
 **The tool stays armed while you change class.** Arming it is a decision about how
-to work, and picking the class to work on is the next thing you do — so a class
+to work, and picking the class to work on is the next thing you do - so a class
 switch ends the proposal on screen and not the tool. The next click asks under the
 new class, in its geometry and its colour. Only pressing the button again, or
 moving to another frame, puts the tool away.
 
-Land on a class that can hold no proposal — a tag, a lane — and the tool **parks**
+Land on a class that can hold no proposal - a tag, a lane - and the tool **parks**
 rather than switching itself off: the button dims and says why, the panel says what
 to pick, and the canvas goes back to drawing that class normally. Choose a box or a
 polygon class again and the tool carries on, with nothing to press.
 
 Accepting creates one ordinary annotation, in one undo step, carrying
-`provenance: model`, the `model_ref` the answer named and its `confidence` — the
+`provenance: model`, the `model_ref` the answer named and its `confidence` - the
 same write path a hand-drawn shape takes, so the same schema rules apply and the
 frame settles the same way.
 
@@ -485,14 +485,14 @@ holding, and it dims the button rather than removing it because the answer chang
 again the moment you pick another class.
 
 Arming it with no usable connection shows an in-editor panel saying what is
-missing — none configured, or configured with its weights not yet downloaded — and
+missing - none configured, or configured with its weights not yet downloaded - and
 one action to fix it. Nothing navigates away, and no exit loses work. A refusal
 from the server is rendered where the panel is, in the server's own words, which
 is what carries the install command when the optional runtime is absent.
 
 ### The annotation side panel
 
-`AnnotatorPanel` — Objects and Labels — lives in **`ui-core`**, not in the
+`AnnotatorPanel` - Objects and Labels - lives in **`ui-core`**, not in the
 annotator's adapters. The annotator's whole claim is that it *"owns no UI a product
 would want to restyle"*: it ships headless, with no Tailwind and no design tokens,
 so a styled panel inside `adapters/react` would be the first thing an embedder had
@@ -500,7 +500,7 @@ to fight. `ui-core` already depends on the annotator, so the dependency runs the
 right way.
 
 The *capability* went the other way and had to. Hiding an object must remove it
-from the **hit test** as well as the drawing — `resolveTarget` reads the document
+from the **hit test** as well as the drawing - `resolveTarget` reads the document
 the machine is given, so filtering only the render layer leaves an invisible shape
 catching every click over it, which is worse than not hiding it at all. Only the
 canvas owns that document, so `AnnotatorCanvas` grew a `hiddenIds` prop and the
@@ -514,12 +514,12 @@ Three rules the panel inherits:
   path the keyboard takes, so one history entry reads the same however it was
   asked for.
 - **Class reassignment offers only geometry-compatible classes**, because the
-  kernel judges geometry per class (`DisallowedGeometry`) — offering the rest would
+  kernel judges geometry per class (`DisallowedGeometry`) - offering the rest would
   be offering a refusal. It applies behind a button, so a keyboard-driven picker
   does not fill the undo history with states nobody chose.
 
 Visibility is view state and returns the **same document object** when nothing is
-hidden, which is what keeps `AnnotationLayer`'s `memo` bailing out — #49's finding
+hidden, which is what keeps `AnnotationLayer`'s `memo` bailing out - #49's finding
 about `skipId`, from the other side.
 
 ### The gallery, and the `<img>` that cannot work
@@ -528,13 +528,13 @@ about `skipId`, from the other side.
 `<img src>` sends no header.** The browser issues that request itself, with cookies
 and nothing else, so pointing an `<img>` at
 `GET /projects/{p}/assets/{a}/thumbnail` produces a 401 and a broken-image icon on
-every tile whenever the credential is a token — and the API takes no token in the
+every tile whenever the credential is a token - and the API takes no token in the
 query string. A browser *session* would in fact carry, since a cookie is exactly
 what an `<img>` does send; the mechanism stays because it must work for both, and a
 gallery that rendered only for locally-signed-in users would be the kind of bug
 nobody reproduces. So `AssetThumbnail` fetches the bytes with the credentialed
 client and
-hands the result over as an object URL — which it then **revokes**, because a
+hands the result over as an object URL - which it then **revokes**, because a
 gallery scrolling a thousand assets would otherwise hold a thousand JPEGs alive
 with nothing referencing them.
 
@@ -542,13 +542,13 @@ The cost is smaller than it looks: the route carries
 `Cache-Control: public, max-age=31536000, immutable` with the content hash as its
 `ETag`, and a `fetch` gets the browser's HTTP cache as much as an `<img>` does.
 
-A **NULL `thumbnail_hash` is a state, not a failure** — a preview that would not
+A **NULL `thumbnail_hash` is a state, not a failure** - a preview that would not
 render is deliberately not an `IngestFailure`, because the asset exists and nothing
 was lost. It draws a placeholder, and offers no button: the remedy,
 `backfill_thumbnails`, is reachable only from the CLI and MCP.
 
 **Paging and virtualization are two problems and both are solved.** `limit`/`offset`
-bound the *response*, so the network side is `useInfiniteQuery` — and "have I seen
+bound the *response*, so the network side is `useInfiniteQuery` - and "have I seen
 everything" is `seen < total`, because `total` is the size of the whole batch and
 does not move. Ten pages fetched is still ten pages in the DOM, so the render side
 virtualizes **rows** (a row is what the browser lays out; virtualizing tiles inside a
@@ -557,27 +557,27 @@ CSS grid means reimplementing the grid). The column count is measured with a
 
 ### Batches, and a machine that only goes forwards
 
-`draft → approved → in_annotation → completed`, with **no route back to `draft`** —
+`draft → approved → in_annotation → completed`, with **no route back to `draft`** -
 jobs are already cut against the pinned schema. So the table offers exactly one
 action per state and never a revert: an action that would be refused is an action
 that should not be drawn.
 
 Approval is when the project's active schema version **pins to the batch and stops
 moving**, which is why the version column is empty until then. `complete` is
-*derived* rather than automatic — the service reads the jobs and refuses while any
-is outstanding — so that button is offered and its refusal is real.
+*derived* rather than automatic - the service reads the jobs and refuses while any
+is outstanding - so that button is offered and its refusal is real.
 
 The partition dialog offers **single job** and **by size N**. `BySegments` is
 deliberately absent, the same call the CLI made: the only caller holding an exact
 partition is a program, it is the one strategy that can be *wrong*, and expressing
-it means typing tuples of UUIDs. Its `kind` is always sent explicitly — a
+it means typing tuples of UUIDs. Its `kind` is always sent explicitly - a
 discriminated union's tag emitted by default reads as optional in the schema while
 pydantic needs it in the dict to pick a variant.
 
 #### Deleting a batch, behind `⋯` and at two anchors
 
 The one control on either of these screens that ends a batch rather than moving it
-along, and the only irreversible one — so it lives in an overflow menu, where the
+along, and the only irreversible one - so it lives in an overflow menu, where the
 things you go looking for live, rather than beside the thing you press next. It is
 mounted twice, on the Batches row and in the gallery header, from **one component**
 (`screens/DeleteBatch.tsx`): a second spelling of which states may be deleted, of
@@ -585,7 +585,7 @@ the blast radius, or of the confirmation would be the hand-mirror one layer up
 from the one `capabilities.ts` removes.
 
 Availability is `delete` in the batch's own `allowed_actions`, so a `completed`
-batch renders the item **disabled with the reason** — there is an operation behind
+batch renders the item **disabled with the reason** - there is an operation behind
 it and a state that would enable it, which is the distinction #354 drew when it
 removed a control instead. The sentence is `withheldBecause`'s, shared with every
 other withheld control on these screens.
@@ -594,7 +594,7 @@ What the dialog says is the **verified** blast radius. The batch, its jobs and t
 per-frame progress go; the frames and their annotations stay, because
 `annotation.asset_id` is a label's only parent and a batch's cascade cannot reach
 one. Both numbers it quotes come off `BatchOut`, which is already loaded at both
-mounts — a count of *jobs* would need a second request the Batches row never makes,
+mounts - a count of *jobs* would need a second request the Batches row never makes,
 and a dialog that said "3 jobs" on one screen and nothing on the other would be two
 dialogs. From the gallery it navigates to the Batches tab, replacing history: the
 screen's whole subject has stopped existing.
@@ -605,8 +605,8 @@ The issue asks for an fps parameter "with original-fps display from the probe".
 Those two cannot happen in that order, and the screen says so rather than
 designing around it.
 
-`extraction_fps` belongs to the **source**, not to the run — "same source, same
-assets" only means something if the parameters are part of what the source *is* —
+`extraction_fps` belongs to the **source**, not to the run - "same source, same
+assets" only means something if the parameters are part of what the source *is* -
 and the probe result exists only once the clip is registered. So the rate is chosen
 first, the clip is registered, and then its native fps, duration, codec and
 resolution are shown. Registering the same clip at another rate produces a
@@ -619,25 +619,25 @@ Three more things it inherits:
   the launch is on the job: `error` is the one fatal cause, `failures` is the
   per-item report.
 - **`total` is `null` for a clip.** `VideoMetadata` carries no frame count by
-  design, so an extraction has no denominator until it is over — a directory states
+  design, so an extraction has no denominator until it is over - a directory states
   its total before the first file. The progress readout shows a count instead of a
   percentage rather than inventing one.
 - **The per-file report is grouped by kind**, which is the whole reason
   `IngestFailureKind` exists: `unsupported` is operator noise, `corrupt` is data
   loss, and reading fifty rows to notice the second is the mistake a table can
   prevent. Names are rendered as basenames with the full string in `title`, because
-  for a *directory* ingest `IngestFailure.name` is the full server path — a known
+  for a *directory* ingest `IngestFailure.name` is the full server path - a known
   kernel inconsistency, deliberately left alone.
 - **A `partial` entry is not in that table** (#452). It is the one kind that is not
-  a total loss — a damaged clip read as far as its bytes went, whose frames are in
-  the batch — so it renders as prose above the table: what arrived, roughly what the
+  a total loss - a damaged clip read as far as its bytes went, whose frames are in
+  the batch - so it renders as prose above the table: what arrived, roughly what the
   container claimed, and the remedy, which is a good copy re-ingested. The table
   below counts only the files that produced nothing. This card is the whole of where
   that fact is ever stated: nothing is stamped on the assets, no later view mentions
   it, and a run that read everything renders neither report.
 
 Nothing is filtered in the browser and there is no `react-dropzone`. Every filter
-the library would apply — MIME type, size, per-file rejection — is a rule the server
+the library would apply - MIME type, size, per-file rejection - is a rule the server
 already owns and refuses better, with the kernel's own reason; duplicating it here
 would be a second spelling of the accepted-format list.
 
@@ -645,7 +645,7 @@ would be a second spelling of the accepted-format list.
 
 A run that reaches `completed` or `failed` renders an outcome: the batch's name, a
 button that opens it (`onOpenBatch`, wired to `/projects/{id}/batches/{id}` in
-`routes.tsx` — `ui-core` may not import a router), and a second that clears the form
+`routes.tsx` - `ui-core` may not import a router), and a second that clears the form
 so another source can be ingested without reloading. Before #181 there was neither,
 and `Start ingest` stayed `disabled` for the rest of the page's life.
 
@@ -653,13 +653,13 @@ Three things decide the shape:
 
 - **It is offered, never taken.** No redirect on completion, because the same card
   carries the per-file report and a run with `corrupt` rows is exactly the one whose
-  report must be read. A `failed` run gets the outcome too — a partial run has a
+  report must be read. A `failed` run gets the outcome too - a partial run has a
   batch, and "some of it did land" is the thing nobody would otherwise be told.
 - **`batch_id` is not on the row from the first poll.** `enqueue` stores only the id
   it was *handed*, which is null whenever the run creates its own batch; the row
   learns the real one in the transaction that completes the job. So a run in flight
   has nothing to open, and one that failed before materializing a batch never gets
-  one — which is why the button is conditional rather than decorative. `batch_name`
+  one - which is why the button is conditional rather than decorative. `batch_name`
   *is* resolved at enqueue, so a partial run can still say where its assets are.
 - **The outcome quotes no number.** `processed` is not the size of the batch on
   either path: a directory ingest counts refused items into it and a video ingest
@@ -677,7 +677,7 @@ its keep, because both refusals are **409** and only one may be retried:
 | `SCHEMA_CHANGE_WOULD_ORPHAN` | annotations already exist under an affected class | **Close**, and nothing else |
 
 A client branching on the status would offer the override for both and loop forever
-on the second — the failure `SchemaChangeWouldOrphan`'s kernel docstring warns
+on the second - the failure `SchemaChangeWouldOrphan`'s kernel docstring warns
 about, and the reason it is deliberately *not* a subclass of
 `DestructiveSchemaChange`. The missing button is the feature.
 
@@ -686,7 +686,7 @@ is unrouted, so the only way to learn that the edit in front of you is destructi
 to attempt it and read the refusal. That is why the refusal surface is the editor's
 real subject.
 
-`compare` **is** routed since #231, and it answers the neighbouring question — what
+`compare` **is** routed since #231, and it answers the neighbouring question - what
 two *published* versions did to each other. The version navigator uses it, and never
 computes a diff here: `domain/schema_diff.py` is the one spelling of that rule, and a
 TypeScript copy would drift until the screen called a change safe that the API then
@@ -696,7 +696,7 @@ refused.
 
 Every version is reachable, newest first, with its description (#230's commit
 message), when it was published, and what it changed against its predecessor.
-Selecting a past version renders it with **no edit affordance at all** — not a
+Selecting a past version renders it with **no edit affordance at all** - not a
 disabled Save, not a greyed Add class; those controls are absent, because a
 published version is immutable and a disabled control says "not now" when there is
 no now. Version 1 shows no diff, because there is nothing before it, and a project
@@ -707,7 +707,7 @@ tab because a tab is a destination; a version somebody is glancing at is a lens 
 the tab they are already in. `DESIGN.md`'s navigation rules state the test.
 
 The description is written once, in a field beside Save, and there is nowhere to edit
-one afterwards — no route, because no service method, because a version is immutable.
+one afterwards - no route, because no service method, because a version is immutable.
 Blank omits the key rather than sending `""`.
 
 ### Adding a class from the annotation page
@@ -719,20 +719,20 @@ Schema tab so the two cannot drift on geometries, derived colours or how an
 attribute's options are typed), and the flow is three calls in one order:
 
 1. **save** the pending annotations,
-2. **publish** the next version — the *active* version's classes plus the new one,
+2. **publish** the next version - the *active* version's classes plus the new one,
    never the batch's pin, because versions are linear and composing on a stale pin
    would silently delete everything published since,
 3. **re-pin** the batch (#229) onto it.
 
 **Step 1 is first because the schema refetch rebuilds the annotator store.** The
 store is a `useMemo` keyed on the schema, so publishing before saving discards the
-user's last few boxes with a success toast on screen — no error, nothing to see.
+user's last few boxes with a success toast on screen - no error, nothing to see.
 `addClass.test.ts` asserts the sequence and fails if any pair flips.
 
 Three requests are not a transaction. What each failure leaves behind is stated
 rather than hidden, and the one worth naming is the last: **if the re-pin refuses,
 the version exists and the pin has not moved.** That refusal has no flag on purpose
-— it means somebody else narrowed the schema past this batch's pin — so the dialog
+ - it means somebody else narrowed the schema past this batch's pin - so the dialog
 names the Schema tab rather than offering a retry that cannot work.
 
 On success the new class becomes the active one. That state lives on the page rather
@@ -742,7 +742,7 @@ because the palette order *is* the hotkey order (#46).
 Three other decisions the editor inherits rather than invents:
 
 - **A version is immutable**, so the editor drafts and *publishes N+1*. Past
-  versions are read-only because they are read-only — there are no controls, not
+  versions are read-only because they are read-only - there are no controls, not
   disabled ones.
 - **`?confirm=true` and `?allow_destructive=true` are different words** and are
   never merged. `confirm=` guards destroying data (deleting a project);
@@ -751,20 +751,20 @@ Three other decisions the editor inherits rather than invents:
   schema-less on purpose, so that code becomes an empty draft rather than an error
   surface.
 
-The geometry picker offers `bbox`, `polygon`, `polyline` and `classification_tag` — the
+The geometry picker offers `bbox`, `polygon`, `polyline` and `classification_tag` - the
 four an `Annotation` can carry. `GeometryType` declares eight; the kernel refuses the rest
 at write time with `UnsupportedGeometry`, and offering a choice the API will refuse
 is worse than not offering it.
 
 `polyline` was offered here for a release before anything drew one (#223), and #342 closed
 that gap: a lane class now gets a real tool on the annotator's strip. The picker did not
-change, which is the point — the schema editor offers what an `Annotation` can carry, and
+change, which is the point - the schema editor offers what an `Annotation` can carry, and
 whether a tool exists for it is the annotator's business to state, not this screen's.
 
 The options are **grouped by category** rather than listed flat (#375): `bbox`, `polygon`
 and `classification_tag` under *Basic Computer Vision*, `polyline` under *Robotics and AD*.
-The headings are `SelectLabel`s — presentation, not selectable, walked past by the keyboard
-— and a category with nothing offered under it renders no heading at all. The same grouping
+The headings are `SelectLabel`s - presentation, not selectable, walked past by the keyboard
+ - and a category with nothing offered under it renders no heading at all. The same grouping
 appears in the annotator's add-a-class dialog without a second call site, because both
 render `patterns/ClassFields.tsx`.
 
@@ -775,7 +775,7 @@ one. Left out rather than stored where it would not survive a round trip.
 
 `frontend/ui-core/src/client.ts` is the only hand-written module that knows how a
 request is made, and `createApiClient` is the only thing that builds one. Everything
-about *what* can be requested — paths, parameters, bodies, response shapes — comes
+about *what* can be requested - paths, parameters, bodies, response shapes - comes
 from `src/generated/api.ts`, generated from the committed `openapi.json` and gated
 against it on every pull request. A screen that mistypes a route fails to compile.
 
@@ -790,7 +790,7 @@ const projects = useQuery({
 ```
 
 `unwrap` is the single adapter between the two models in play. `openapi-fetch` never
-throws — it answers `{data, error, response}` and leaves the branch to the caller —
+throws - it answers `{data, error, response}` and leaves the branch to the caller -
 while TanStack Query's entire model is resolve-or-reject, and "rejected" is what
 drives `isError`, retries and the error surface. Because every call goes through
 `unwrap`, no screen in this repository writes `if (error)` by hand.
@@ -799,7 +799,7 @@ drives `isError`, retries and the error surface. Because every call goes through
 
 The API emits [one error body](api.md) at every status: `{code, message, detail?}`.
 `unwrap` turns it into an `ApiError` whose **first** field is the code, because
-`docs/api.md`'s rule is that clients branch on the code and never on the status —
+`docs/api.md`'s rule is that clients branch on the code and never on the status -
 `DESTRUCTIVE_SCHEMA_CHANGE` and `SCHEMA_CHANGE_WOULD_ORPHAN` are both 409 and only
 the first is retryable with a flag.
 
@@ -807,7 +807,7 @@ Two codes are the client's own, for answers the contract cannot describe:
 
 | code | when |
 | --- | --- |
-| `NETWORK_ERROR` | the request never reached a server — the most likely failure on a tool whose server you start by hand |
+| `NETWORK_ERROR` | the request never reached a server - the most likely failure on a tool whose server you start by hand |
 | `MALFORMED_RESPONSE` | something answered, but not with the contract's shape: a proxy, a gateway, an HTML error page |
 
 `ApiError.incidentId` reads `detail.incident_id`, which is where a 5xx puts the one
@@ -819,15 +819,15 @@ There are no accounts, and since #179 there is usually nothing to type either.
 
 **On this machine, the server signs the browser in.** `ApiProvider` asks once, with
 `GET /session`; the server answers by setting an `HttpOnly` cookie when the request
-came from loopback *and* addressed the server as loopback. The whole argument — the
-modes, the DNS-rebinding case, why a cookie is safer here than what it replaced —
+came from loopback *and* addressed the server as loopback. The whole argument - the
+modes, the DNS-rebinding case, why a cookie is safer here than what it replaced -
 is in [auth.md](auth.md#the-browser-session). What matters on this side is that the
 credential is one **no script here can read**, so "am I signed in?" is a question
 the app has to ask rather than answer by looking.
 
 That is why `ApiSession.access` exists and the gate does not test `token !== null`.
 Four states: `checking` (the one round trip, during which `TokenGate` renders
-**nothing** — a login form that flashes in front of somebody who never has to see
+**nothing** - a login form that flashes in front of somebody who never has to see
 one is worse than a blank frame), `session`, `token`, `none`. The probe runs once
 per mount, which is what keeps `signOut` meaningful: one that could run again would
 sign a machine-local user straight back in, and a 401 on a session would oscillate
@@ -835,7 +835,7 @@ through the gate forever.
 
 **A token is the other credential**, minted out of band with
 `visionset token create --name ui`, presented as `Authorization: Bearer`, and the
-only way in for a browser the server will not sign in — a LAN client, a deployment
+only way in for a browser the server will not sign in - a LAN client, a deployment
 running `never`. The form **verifies before it adopts**: it spends one
 `GET /projects` with a throwaway client and only calls `signIn` on a 200. Storing
 whatever was pasted and letting the first screen fail would put the error on a
@@ -843,20 +843,20 @@ project list, which then reports a problem about projects when the real problem 
 the credential.
 
 In the rail, that same asymmetry is one word: the sign-out control reads **"Use a
-token"** during a session, because it cannot delete a cookie it cannot read — it
+token"** during a session, because it cannot delete a cookie it cannot read - it
 stops using it here, and a reload signs you back in.
 
 Refusals are told apart by what to do next, not by status: a 401 says the token was
-refused (mistyped, revoked, or minted for a different workspace — the API answers
+refused (mistyped, revoked, or minted for a different workspace - the API answers
 one identical 401 for all four cases and a client must not pretend otherwise), and a
 `NETWORK_ERROR` says the server is not answering and names `visionset server`.
 
 ### Where it is kept, and why
 
-**`sessionStorage`.** The credential survives a reload — which matters, because the
+**`sessionStorage`.** The credential survives a reload - which matters, because the
 annotation page is the one screen somebody sits on for an hour and losing the token
 on an accidental refresh, with unsaved geometry on the canvas, is the worst moment
-this product has — and it is per tab, so two workspaces in two tabs do not overwrite
+this product has - and it is per tab, so two workspaces in two tabs do not overwrite
 each other.
 
 `localStorage` was rejected: it writes a long-lived bearer credential to disk with no
@@ -864,7 +864,7 @@ expiry, and VisionSet tokens are valid until somebody runs `visionset token revo
 In-memory-only was rejected for the reload. A cookie would need a login endpoint the
 API does not have.
 
-Against XSS, `sessionStorage` is not meaningfully safer than a variable — an injected
+Against XSS, `sessionStorage` is not meaningfully safer than a variable - an injected
 script can read a React context just as easily, and does not need the token at all
 when it is already running on an authenticated page. The defence is a
 Content-Security-Policy, not a storage choice.
@@ -883,7 +883,7 @@ a prop, so a caller may supply their own, and a handler configured at constructi
 then simply absent for the whole application.
 
 Handling it per screen fails in a specific way. A token revoked while an annotator
-has a job open produces a 401 from whichever request fires next — usually a
+has a job open produces a 401 from whichever request fires next - usually a
 background refetch nobody is looking at. A per-screen check would leave that screen
 showing an error and every other screen showing stale data that will never refresh.
 
@@ -905,7 +905,7 @@ The three branches a hurried screen skips are the ones `Async` writes. Emptiness
 
 ## Polling
 
-`usePollingQuery` for the operations that finish on their own schedule — ingest, and
+`usePollingQuery` for the operations that finish on their own schedule - ingest, and
 anything else launched with a 202. The predicate is named for the **settled** state
 rather than for "keep going", because the terminal states are enumerated in the domain
 and the running ones are not; a predicate written the other way round silently keeps
@@ -913,7 +913,7 @@ polling a state somebody adds later.
 
 ## Where the API is
 
-`ApiProvider` takes `baseUrl` and the app decides it — a library that reads
+`ApiProvider` takes `baseUrl` and the app decides it - a library that reads
 `import.meta.env` is a library that can only be built one way.
 
 - **Production**: `""`. `visionset server` serves the API at the root and the bundle at
@@ -923,13 +923,13 @@ polling a state somebody adds later.
 
 The compose stack adds a third case that changes nothing here: nginx on :8080 answers
 `/api/` itself and forwards it to the API, so the app's request never reaches vite's
-proxy. The app is unchanged either way — it asks its own origin for `/api`, and
+proxy. The app is unchanged either way - it asks its own origin for `/api`, and
 something in front of it knows where the API is. Which is the point of the prefix.
 
 The proxy rather than CORS on the server, and the prefix rather than proxying the
 API's own paths. CORS would put a middleware in front of every response *in
 production too*, and the catch-all `Exception` handler lives in
-`ServerErrorMiddleware`, outside the user middleware stack — so a CORS layer would
+`ServerErrorMiddleware`, outside the user middleware stack - so a CORS layer would
 not run on a 500 anyway. The prefix exists because the API owns the root: `/projects`
 is both a real endpoint and a client route the SPA will want.
 
@@ -937,15 +937,15 @@ is both a real endpoint and a client route the SPA will want.
 ## Selectors
 
 Every control a test drives carries a **`data-testid`**, and that is the policy
-rather than a habit. Three suites depend on it — the annotator's 76 scenarios,
-`ui-core`'s component tests, and #59's browser cycle — and the alternatives each
+rather than a habit. Three suites depend on it - the annotator's 76 scenarios,
+`ui-core`'s component tests, and #59's browser cycle - and the alternatives each
 fail in their own way: a CSS class is the design system's to change, and a visible
 string is the copy's.
 
 The rules:
 
 - **Name the thing, not the widget.** `save`, `approve-${batch.name}`,
-  `object-row-0` — never `primary-button-2`.
+  `object-row-0` - never `primary-button-2`.
 - **Interpolate the domain's own identifier** when a control repeats:
   `class-${name}`, `release-${tag}`, `version-${n}`. A test then reads the way the
   product does.
@@ -955,7 +955,7 @@ The rules:
   than the behaviour, and it got *stronger* in the move, because a `data-` attribute
   can be asserted on every row at once.
 - **Roles where a role is the claim.** `getByRole("dialog")`,
-  `toHaveAccessibleName`, `aria-current` — if the assertion is about accessibility,
+  `toHaveAccessibleName`, `aria-current` - if the assertion is about accessibility,
   a `data-testid` would be testing the wrong thing.
 
 ## The browser cycle
@@ -972,8 +972,8 @@ and invisible. `test.step` gives the reporting a multi-test file would have boug
 **It found three gaps that every other suite was structurally blind to**, because
 each is about one screen's effect on another:
 
-1. Nothing invalidated the batch list when an ingest **completed** — only when it
-   launched, before the batch exists — so a user who ingested and then walked to the
+1. Nothing invalidated the batch list when an ingest **completed** - only when it
+   launched, before the batch exists - so a user who ingested and then walked to the
    batch list saw "No batches yet" about a batch that was right there.
 2. Nothing started or completed a **job**. `BatchService.complete` refuses while a
    job is outstanding and `JobService.complete` refuses while an asset is unsettled,
@@ -985,7 +985,7 @@ Each is now owned by the screen the domain says owns it, and the cycle asserts a
 three.
 
 It is also the only place a route's callback wiring is exercised at all. The cycle
-used to reach the batch by walking back through the project after an ingest —
-`jobIdOf`'s shape, the helper #160 deleted for the same reason — so since #181 it
+used to reach the batch by walking back through the project after an ingest -
+`jobIdOf`'s shape, the helper #160 deleted for the same reason - so since #181 it
 clicks the run card's own **Open batch** instead. Deleting the `onOpenBatch` prop in
 `routes.tsx` leaves every unit test green and fails this step.

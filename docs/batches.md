@@ -1,9 +1,8 @@
 # Batches
 
-A batch is the unit of annotation work: a curated slice of a project's assets that goes
-through annotation together. It exists because annotation needs a **frozen target** — which
-assets, under which version of the schema, cut into which jobs. Approval is where that
-freezing happens.
+A batch is the unit of annotation work: a curated set of project assets processed together.
+Annotation requires a **frozen target** that identifies the assets, schema version, and job
+partition. Approval freezes those values.
 
 ```python
 from visionset.kernel.domain import BySize
@@ -41,12 +40,12 @@ invalidate work already done. Making another batch is cheap; un-freezing one is 
 approval the batch has been cut into jobs: adding an asset would leave it in no job, and
 removing one would leave a job describing work that no longer exists.
 
-Membership is a **set** — adding an asset the batch already holds changes nothing, and
+Membership is a **set** - adding an asset the batch already holds changes nothing, and
 removing one it does not hold is a no-op. Order is the order assets were first added. Every
 asset must belong to the batch's project, else `AssetNotFound`.
 
 Reading it back is `batches.assets(batch_id)`, which answers with the `Asset` rows in that
-stored order — `DatasetService.assets` over the trunk, applied to a batch. It is how "what did
+stored order - `DatasetService.assets` over the trunk, applied to a batch. It is how "what did
 that ingest actually gather" is answered, and a member whose asset is not stored is
 `WorkspaceCorrupt` rather than a silently shorter list: `batch_asset.asset_id` cascades from
 `asset`, so that cannot happen while foreign keys are on, and a batch quietly holding less than
@@ -55,7 +54,7 @@ it says is worse than a refusal.
 Excluding an asset after approval is a different act: it is marked **`skipped`**, a per-asset
 progress decision the record keeps rather than a membership edit that erases it. Somebody
 decided not to label that asset, and that decision is worth more than a tidy list. The
-progress states themselves belong to the job service — see [jobs.md](jobs.md).
+progress states themselves belong to the job service - see [jobs.md](jobs.md).
 
 ## Approval pins the schema version
 
@@ -84,7 +83,7 @@ batches.repin(batch.id)  # → pinned to 3, the current active version
 ```
 
 This exists because the common case is *adding* a class, and without it a label class created
-after approval is invisible in every batch already in flight — the annotator would have to
+after approval is invisible in every batch already in flight - the annotator would have to
 abandon a batch to use the label they just made. What the pin protects is a stable validation
 target and jobs partitioned against it; neither is harmed by a wider contract. It does **not**
 protect release reproducibility, which the system already treats as mixed: `publish` stamps the
@@ -103,10 +102,10 @@ The orphan check is scoped to **this batch**: only labels judged by this pin are
 label written in some other batch does not block a re-pin here. That is the one place this
 refusal differs from `SchemaService`'s project-wide one.
 
-Legal only while the batch is `approved` or `in_annotation` — `REPINNABLE_STATES` in
+Legal only while the batch is `approved` or `in_annotation` - `REPINNABLE_STATES` in
 `kernel/domain/batch.py`. A draft has no pin yet; a completed batch's pin is **history**, and
 rewriting it would rewrite the record rather than the rules. Both refuse with
-`InvalidTransition`, asked through `require_state` in `kernel/domain/transitions.py` — the
+`InvalidTransition`, asked through `require_state` in `kernel/domain/transitions.py` - the
 sibling of `require_move` for the operations that need the batch to *be* somewhere rather than
 to *go* somewhere. Re-pinning is one: it moves the pin, not the batch, so it appears in no row
 of `BATCH_TRANSITIONS` and would otherwise be the one legality question asked outside the
@@ -114,12 +113,12 @@ funnel.
 
 Re-pinning onto the version already pinned is a no-op: the same batch comes back, nothing is
 written and nothing is announced. Annotations already written keep the `schema_version` they
-were stamped with — only new writes are judged against the new pin.
+were stamped with - only new writes are judged against the new pin.
 
 **The caller this exists for is the annotation page.** #233's *add a class without leaving the
 job* is save → `create_version` → `repin`, in that order, and on that path the change is
 additive by construction, so the gate never fires. It fires only when somebody else narrowed
-the schema past this batch's pin in the meantime — which is the gate doing its job rather than
+the schema past this batch's pin in the meantime - which is the gate doing its job rather than
 getting in the way. See [ui.md](ui.md).
 
 ## The partition is exact
@@ -137,13 +136,13 @@ function rather than trusting each caller.
 | --- | --- |
 | `SingleJob()` | One job for the whole batch. The default. |
 | `BySize(size=n)` | Jobs of `n` assets each; the last takes the remainder. |
-| `BySegments(segments=...)` | Exactly these segments — checked against the batch. |
+| `BySegments(segments=...)` | Exactly these segments - checked against the batch. |
 
 `BySegments` is checked, not trusted: a missing asset, a repeated one, an asset that is not
 in the batch, or an empty segment each raise `InvalidPartition` naming the offending ids. A
 caller who wrote the segments out by hand has a concrete list to fix.
 
-An empty batch cannot be approved (`EmptyBatch`) — it would partition into no jobs at all,
+An empty batch cannot be approved (`EmptyBatch`) - it would partition into no jobs at all,
 and a batch completes when all its jobs complete, so it could never finish.
 
 Approval is **one transaction**. A refusal anywhere leaves a `draft` batch with no task group
@@ -162,7 +161,7 @@ Batch "city centre" (60 assets)
      └─ AnnotationJob   assets 51–60
 ```
 
-An asset starts `unannotated` — unless it already carries labels, in which case it starts
+An asset starts `unannotated` - unless it already carries labels, in which case it starts
 `annotated`. See [Corrections open on the labels that are already there](#corrections-open-on-the-labels-that-are-already-there).
 A later review round would be a second group beside the first, with no schema change.
 
@@ -173,14 +172,14 @@ batches.complete(batch.id)  # BatchNotComplete: 2 of 5 jobs still unfinished
 ```
 
 `complete` reads the jobs and refuses if any is outstanding. Derived does not mean automatic
-— it means the service recomputes rather than taking the caller's word, because a completed
+ - it means the service recomputes rather than taking the caller's word, because a completed
 batch is what lets its annotated assets be promoted into the Dataset. Moving a job to
-`completed` is the job service's business — see [jobs.md](jobs.md); this service only reads it.
+`completed` is the job service's business - see [jobs.md](jobs.md); this service only reads it.
 
 ## Corrections open on the labels that are already there
 
 A `completed` batch has no exit, so the answer to "this frame is wrong" is a **correction
-batch** — a new batch over the same assets, carrying `parent_batch_id` back to the one it
+batch** - a new batch over the same assets, carrying `parent_batch_id` back to the one it
 corrects. What that batch *starts with* is the subject of this section, and it is settled
 policy (audit G5): the correction opens on the labels the earlier round left.
 
@@ -203,12 +202,12 @@ version; one it leaves alone keeps both.
 **A seeded asset starts `annotated`, not `unannotated`.** An asset displaying three boxes
 while a gallery filters it under "Unannotated" is a lie, and `annotated` is also the state
 the progress machine can move *out of* when somebody deletes the last box. The rule reads the
-asset, never the lineage — an ordinary batch cut by hand over already-labeled assets is
+asset, never the lineage - an ordinary batch cut by hand over already-labeled assets is
 seeded exactly the same way, because a rule that asked "is this a correction?" would be wrong
 about whichever case it had not been written for.
 
 The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
-asset seeded that way can be completed with no edits at all**. That is the intended reading —
+asset seeded that way can be completed with no edits at all**. That is the intended reading -
 a correction is opt-in per asset, and the alternative is making somebody re-declare work
 nobody disputed.
 
@@ -220,25 +219,25 @@ that rather than being implemented on top of it:
 | What happens in a correction | What the trunk projects afterwards |
 | --- | --- |
 | A box is edited | the edited box, and not also the original |
-| A box is deleted | nothing — deletion is expressible |
+| A box is deleted | nothing - deletion is expressible |
 | A box is added | the addition, beside what was kept |
 | An asset is left alone | exactly what the parent round left |
-| An asset is `skipped` | exactly what the parent round left — skipping is *no statement*, not *delete* |
+| An asset is `skipped` | exactly what the parent round left - skipping is *no statement*, not *delete* |
 
 Two completed batches over one asset therefore do not accumulate two rounds; there was only
 ever one set for them to write into. What the trunk holds is whoever wrote last, in whichever
-order the batches are promoted — defined behaviour rather than a race.
+order the batches are promoted - defined behaviour rather than a race.
 
 **That projection is live**, and it is the part that surprises: an edit inside an open batch
 reaches the trunk when it is saved, not when the batch is promoted. Membership is what
 promotion gates, and an asset already in the trunk needs no second admission for its labels
 to move. Snapshotting instead would mean the trunk naming annotations as well as assets,
-which is the second source of truth `DatasetMember` exists to refuse — see
+which is the second source of truth `DatasetMember` exists to refuse - see
 [datasets.md](datasets.md).
 
 A **Release** is unaffected either way. Its manifest is a frozen blob and its hash is the
 contract, so correcting the trunk afterwards cannot reach back into one that was already
-published — including through `verify`, which re-reads and re-hashes rather than trusting the
+published - including through `verify`, which re-reads and re-hashes rather than trusting the
 row. That is the immutability hierarchy doing its job: releases are content-immutable,
 `completed` batches are workflow-immutable, the trunk is live.
 
@@ -249,7 +248,7 @@ batches coordinate.
 ## What a batch says it allows
 
 Every `BatchOut` carries `allowed_actions`, derived in `kernel/domain/capabilities.py` from the
-same table and named sets this service enforces with — never a second copy of them:
+same table and named sets this service enforces with - never a second copy of them:
 
 | State | Declares | From |
 | --- | --- | --- |
@@ -258,7 +257,7 @@ same table and named sets this service enforces with — never a second copy of 
 | `in_annotation` | `complete`, `repin`, `delete` | as above |
 | `completed` | `promote`, `create_correction` | `PROMOTABLE_STATES`, `CORRECTABLE_STATES` |
 
-Five of the eight change no state at all and so appear in no row of `BATCH_TRANSITIONS` — which
+Five of the eight change no state at all and so appear in no row of `BATCH_TRANSITIONS` - which
 is why those sets are named rather than written inline. Promotion is the clearest: it moves
 assets into the trunk and leaves the batch exactly where it was.
 
@@ -267,21 +266,21 @@ along.** It was withdrawn in #331, when the rule and `BatchService.delete` were 
 outside the SDK reached them: `allowed_actions` is a promise a client is entitled to keep, so
 declaring an action nothing can perform obliges every conforming client to offer a control that
 cannot work. #376 brought it back with `DELETE /batches/{id}`, the `delete_batch` MCP tool and
-the two overflow controls, all in one change — which is what the withdrawal asked for. The gate
+the two overflow controls, all in one change - which is what the withdrawal asked for. The gate
 is `DELETABLE_STATES` itself, referenced from `BATCH_GATES` rather than restated, so the
 declaration and the refusal can never disagree.
 
-`completed` is therefore the one state that declares no `delete`, and no flag lifts it — see
+`completed` is therefore the one state that declares no `delete`, and no flag lifts it - see
 `BatchService.delete` below.
 
 `complete` is the one declaration that can still be refused. Completion is *derived* from the
 jobs, and a projection cannot read them, so it is declared wherever the transition table allows
-it and answers `BatchNotComplete` if the work is not done. The alternative — the same batch
-declaring differently depending on which endpoint answered — is worse than one honest caveat.
+it and answers `BatchNotComplete` if the work is not done. The alternative - the same batch
+declaring differently depending on which endpoint answered - is worse than one honest caveat.
 
 ## What approval and completion announce
 
-`approve` and `complete` each publish a [domain event](events.md) — `BatchApproved`, carrying
+`approve` and `complete` each publish a [domain event](events.md) - `BatchApproved`, carrying
 the pin and the job ids, and `BatchCompleted`, which is the announcement that this batch is now
 promotable. Both fire *after* the transaction commits, so a subscriber never sees a partition
 that was rolled back and a subscriber that raises cannot roll one back. `start` announces
@@ -301,7 +300,7 @@ The cascade is the database's: every foreign key into the batch subtree is
 progress and the membership rows.
 
 **Annotations are not touched.** They hang off assets, not off batches, so deleting the unit
-of work never deletes the work. Neither the assets nor any blob are touched either — see
+of work never deletes the work. Neither the assets nor any blob are touched either - see
 [projects.md](projects.md) for why blobs are never deleted.
 
 **A `completed` batch cannot be deleted, and no flag lifts it.**
@@ -312,7 +311,7 @@ batches.delete(finished_batch_id, confirm=True)  # BatchImmutable
 
 `DELETABLE_STATES` is everything else. `BATCH_TRANSITIONS` already says a completed batch has no
 exit; a delete that emptied one anyway would be an exit through the back door, and it would take
-the record with it — which assets were labeled, against which pinned schema version, and which
+the record with it - which assets were labeled, against which pinned schema version, and which
 were deliberately skipped. Promotion, releases and any later correction are all read against
 that.
 
@@ -338,13 +337,13 @@ state do not say whether anybody has started on it.
 
 **`--jobs-of N` is `BySize`; with no flag the batch becomes one job.** There is no flag for
 `BySegments`, and that is a decision rather than an omission: its own contract is that the caller
-has already decided the split, and the only caller that ever holds an exact partition is a program —
+has already decided the split, and the only caller that ever holds an exact partition is a program -
 which has the SDK and the API. It is also the one partition that can be *wrong*, with four distinct
 refusals, and putting it behind a shell's quoting of tuples of UUIDs is a way to meet all of them.
 If it is ever wanted it arrives as `--segments FILE.json`.
 
 `--jobs-of` carries `min=1` at the Click layer, because `BySize.size` is `gt=0` and a pydantic error
-is not a `VisionSetError` — it would print a traceback rather than a sentence.
+is not a `VisionSetError` - it would print a traceback rather than a sentence.
 
 **There is no `batch create`, and no membership editing.** Both are on the API and on MCP (#281),
 and the CLI is the one surface where they have found no caller: a batch is born from an ingest, and
@@ -352,7 +351,7 @@ picking an arbitrary subset of assets by pasting UUIDs into a shell is what a ga
 instead. `BatchService` still has all four methods; this is a decision about this surface alone.
 
 `promote` is here rather than under a dataset group because `DatasetService.promote` takes a *batch*
-id and derives the dataset from it — the same argument its route makes.
+id and derives the dataset from it - the same argument its route makes.
 
 ## Over HTTP
 
@@ -377,9 +376,9 @@ DELETE /batches/{id}?confirm=true                               → 204
 
 **A batch is born from an ingest in the ordinary case**, and that has not changed: an ingest run
 puts what it gathered into a batch (`batch_name` for a new one, `batch_id` to join an existing
-draft — see [ingest.md](ingest.md)). What the gallery needed and the API did not have was curating
+draft - see [ingest.md](ingest.md)). What the gallery needed and the API did not have was curating
 one by hand, so creation landed with #312 and membership editing with #281, and **deleting a
-batch landed with #376** — the last of the three, and the one that had to wait for somebody to
+batch landed with #376** - the last of the three, and the one that had to wait for somebody to
 ask for it.
 
 `DELETE /batches/{id}` takes the same `?confirm=true` gate every other destructive route takes,
@@ -390,17 +389,17 @@ naming a flag that does not work.
 ### Editing membership
 
 Both routes are `draft` only, which is what `edit_membership` in a batch's `allowed_actions`
-declares — read the declaration, do not re-derive it. Past `draft` they answer 409
+declares - read the declaration, do not re-derive it. Past `draft` they answer 409
 `BATCH_NOT_EDITABLE`, and no flag lifts it: the batch is already cut into jobs against a pinned
 schema, so an added asset would belong to no job and a removed one would leave a job describing
 work that no longer exists. From then on the way to exclude an asset is to mark it `skipped`.
 
-The ids go in a **body** to add and in **repeated query parameters** to remove — the shape
+The ids go in a **body** to add and in **repeated query parameters** to remove - the shape
 `DELETE /jobs/{id}/annotations` chose, because a request body on DELETE is legal in OpenAPI 3.1
 and stripped by enough proxies to be a bad thing to require. Both refuse an empty list: an edit
 naming no asset would be a 200 that did nothing, which a caller reads as success.
 
-The response is the batch **and** `changed` — the ids this call actually wrote:
+The response is the batch **and** `changed` - the ids this call actually wrote:
 
 ```json
 { "batch": { "asset_count": 47, "…": "…" }, "changed": ["…", "…"] }
@@ -415,7 +414,7 @@ gone" indistinguishable.
 annotations and its blob, and stays in every other batch that carries it. Deleting an asset from a
 project is not an operation this API has at all.
 
-The lifecycle *is* on the wire, because nothing downstream is reachable without it — an
+The lifecycle *is* on the wire, because nothing downstream is reachable without it - an
 annotation may only be written into a batch that is `in_annotation`. Each move keeps the
 refusal this service already makes: a non-draft approve and an unapproved start are 409
 `INVALID_TRANSITION`, an empty batch is 409 `EMPTY_BATCH`, a project with no schema to pin is
@@ -424,7 +423,7 @@ refusal this service already makes: a non-draft approve and an unapproved start 
 The **asset listing was the API's first paged collection**, and the gallery is why; the trunk's
 own listing is the other one. `limit` and `offset` bound the *response*, never the read: `total` is the size of the whole batch, so a
 client pages until it has seen `total` items rather than until the total moves. Each item
-carries the job that holds it and where it has got to, both null while the batch is a draft —
+carries the job that holds it and where it has got to, both null while the batch is a draft -
 because a draft has no jobs. That pair is a projection over `assets` and `jobs`, not a new
 query; the partition is exact, so every asset appears under exactly one job.
 
@@ -432,7 +431,7 @@ query; the partition is exact, so every asset appears under exactly one job.
 ## In the browser
 
 The batch table renders the row of `BATCH_TRANSITIONS` a batch is on and offers the
-one action that row allows — never a revert, because there is none. The version
+one action that row allows - never a revert, because there is none. The version
 column is empty until approval, since that is when the pin happens. The approval
 dialog offers `single` and `by_size`; `by_segments` is the SDK's and the API's. See
 [ui.md](ui.md#batches-and-a-machine-that-only-goes-forwards).

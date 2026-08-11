@@ -1,9 +1,9 @@
 # Ingest
 
-Where a registered [source](sources.md) becomes rows. `IngestService` hashes every item, stores
-the bytes once, records what the decoder made of them, and puts the result in a draft
-[batch](batches.md) somebody can approve. Nothing else in the kernel creates an `Asset` —
-`examples/sdk_end_to_end.py` used to, and no longer does.
+Ingest turns a registered [source](sources.md) into rows. `IngestService` hashes every item,
+stores its bytes once, records the decoder output, and adds the result to a draft
+[batch](batches.md) for approval. Nothing else in the kernel creates an `Asset`;
+`examples/sdk_end_to_end.py` once did so but no longer does.
 
 Everything below is executed by [`examples/ingest_end_to_end.py`](../examples/ingest_end_to_end.py),
 which is walked through in [examples.md](examples.md).
@@ -31,11 +31,11 @@ re-state what the source already knows.
 
 An asset **is** its bytes: `content_hash` is the SHA-256 of the file, and the same bytes ingested
 twice are one asset over one blob. `uq_asset_project_content_hash` is the index under that rule.
-Per project, not global — two projects ingesting one photograph are two assets sharing one blob,
+Per project, not global - two projects ingesting one photograph are two assets sharing one blob,
 which is exactly what makes `project_id` the asset's parent.
 
 `source_id`, `frame_index` and `frame_timestamp` are a different kind of fact. They record where
-the bytes were **first** seen, and a second sighting never rewrites them — the rule
+the bytes were **first** seen, and a second sighting never rewrites them - the rule
 `Source.registered_at` already follows. One image in two registered folders keeps the first
 folder's path in its `uri` and the first source's id in its origin, because the alternative is an
 asset whose recorded origin depends on which ingest happened to run last.
@@ -52,13 +52,13 @@ reports every item as deduplicated, and is how a folder that grew by three files
 | | image directory | video |
 | --- | --- | --- |
 | what is read | every file at the **top level**, in filename order | one frame per extraction slot, at the rate the source records |
-| decoded by | `ImageProcessor.probe` — dimensions and format from the bytes | `VideoProcessor.frames` — ffmpeg, deterministic within one build |
+| decoded by | `ImageProcessor.probe` - dimensions and format from the bytes | `VideoProcessor.frames` - ffmpeg, deterministic within one build |
 | `uri` | the file's absolute path | `/path/clip.mp4#frame=7` |
 | frame position | none | `frame_index` and `frame_timestamp` |
 | damage | one report line per file; the run carries on | the frames ffmpeg managed are kept, plus one report line |
 
 Subdirectories are stepped over and recorded nowhere. Recursion is not a per-run option but a
-question about what *the source is* — "the same source yields the same assets" — so it belongs to
+question about what *the source is* - "the same source yields the same assets" - so it belongs to
 a future `register_images(..., recursive=True)` rather than here, where it would silently change
 what an already-registered source means. There is no suffix filter either: a `notes.txt` is
 reported as unsupported rather than skipped, because guessing which files an operator meant to
@@ -67,7 +67,7 @@ offer is a policy the kernel would be inventing.
 **Frames are not re-probed.** `VideoProcessor` guarantees every frame is a complete image in
 `FRAME_FORMAT` at the dimensions `probe` reported, and that promise is asserted in the port's own
 tests. Decoding each one again to re-confirm it would also route our own encoder's output into an
-operator's per-file report — a failure nobody could act on.
+operator's per-file report - a failure nobody could act on.
 
 ## Asking for a run and doing it are two calls
 
@@ -77,14 +77,14 @@ result = ingest.resume(job.id)  # does the work
 ```
 
 `ingest(...)` is those two composed, and that is all it is. The split exists because a caller
-that cannot wait — the [REST API](api.md), and one day a queue — needs the **row before the
+that cannot wait - the [REST API](api.md), and one day a queue - needs the **row before the
 work**: the id it hands back has to name something the next request can find. Every refusal
 `enqueue` can make it makes before the insert, so a launch that fails leaves no job at all and
 a launch that succeeds leaves one that is already pollable.
 
 `resume` is what picks a `pending` job up, which is why `pending → running` was in the
 transition table from the start. `resumable(job_id)` is the same friendly pre-check without the
-work, for a caller that runs the second half elsewhere and needs the refusal on its own thread —
+work, for a caller that runs the second half elsewhere and needs the refusal on its own thread -
 a launch that answered "accepted" and only discovered in a worker that the job was already
 `completed` would give nobody a way to tell a redo from a no-op.
 
@@ -94,7 +94,7 @@ just calls `ingest`, and neither arrangement is visible in this module.
 
 **An ingest therefore has two rows**: the `ingest_job` this document is about, which is the
 domain record and what a client polls, and a generic `job` that records the *execution*. The
-duplication is transitional and known — collapsing them is a migration with its own
+duplication is transitional and known - collapsing them is a migration with its own
 wire-contract discussion, and until then progress for an ingest stays here.
 
 ## The run has a lifecycle, and it is a table
@@ -111,19 +111,19 @@ pending ──▶ running ──▶ completed
 A job is created `pending` and moved to `running` by whoever picks the work up. Through
 `ingest(...)` those are the same call and the state is over in microseconds; through
 `enqueue` + `resume` they are not, and a `pending` row is a run somebody asked for that has not
-started. That is why the state was spelled out before anything left one behind — adding it later
+started. That is why the state was spelled out before anything left one behind - adding it later
 would have meant changing what a stored row means.
 
 **`failed → running` is the only backward edge in this kernel**, and the argument against
 reopening a [batch](batches.md) does not carry over. A batch pins a schema version at approval
 and its jobs are already cut against that pin, so un-freezing one would invalidate work already
 done. Nothing is pinned against an ingest run. It is a record of work, not an artifact with
-dependents — so resuming is the same unit of work continuing, on the same row. A second row per
+dependents - so resuming is the same unit of work continuing, on the same row. A second row per
 attempt would fork `batch_id` and turn `IngestService.list` into a list of retries.
 
 **`running → running` is deliberately missing**, so a run stuck at `running` cannot be resumed.
 That state is a process that died without reporting anything, not a failure anybody can read.
-The remedy already exists — ingest the source again, which creates nothing — and it leaves the
+The remedy already exists - ingest the source again, which creates nothing - and it leaves the
 stuck row as the only evidence the crash left.
 
 ## Progress a caller can poll
@@ -135,13 +135,13 @@ about it is specific to being in the same process.
 
 | | what it means |
 | --- | --- |
-| `processed` | items dealt with — decoded and stored, or reported as unreadable |
+| `processed` | items dealt with - decoded and stored, or reported as unreadable |
 | `total` | items the source offered, or **NULL** when that is not knowable up front |
 
 A directory can be listed, so it states its total before the first file; an empty one records
-`0 of 0` rather than nothing. A clip cannot: `VideoMetadata` carries no frame count by design —
+`0 of 0` rather than nothing. A clip cannot: `VideoMetadata` carries no frame count by design -
 it would be a guess for a variable-rate clip, and the number an ingest wants is what extraction
-actually produced — so `total` stays NULL and `processed` climbs alone.
+actually produced - so `total` stays NULL and `processed` climbs alone.
 
 The counter is written **once per item**, not on a cadence. An interval that suits five files
 and one that suits fifty thousand are different numbers, and this service cannot know which it
@@ -151,7 +151,7 @@ cost an order of magnitude more.
 ## Resuming a failed run
 
 `IngestService.resume(job_id)` re-runs a failed job on its own row, into the batch the first
-attempt was headed for. What qualifies is whatever the table says can reach `running` — `failed`,
+attempt was headed for. What qualifies is whatever the table says can reach `running` - `failed`,
 and also `pending`, which a synchronous run never leaves behind but a queued one would. A
 `completed` or `running` job is refused with an ordinary `InvalidTransition` rather than an error
 of its own.
@@ -177,14 +177,14 @@ and quietly lose the name the caller asked for.
 3. Write the asset rows, reusing whatever content the project already holds.
 4. Put them in the batch (through `BatchService`), then mark the job `completed`.
 
-Then, and only after the last block has exited, `IngestCompleted` goes on the bus — the rule every
+Then, and only after the last block has exited, `IngestCompleted` goes on the bus - the rule every
 emitter in this kernel follows.
 
 Step 2 is outside a transaction because decoding is a Pillow pass over thousands of files or an
 out-of-process ffmpeg, and holding a write transaction open across either is how a single-writer
 SQLite store starts making every other writer wait out its `busy_timeout` and fail with
 `WorkspaceBusy`. The blob writes are out there too, before any
-row exists: `BlobStore.put` is not transactional and a rollback cannot unwrite it — but a blob
+row exists: `BlobStore.put` is not transactional and a rollback cannot unwrite it - but a blob
 nothing points at is harmless (content-addressed, shared, never deleted), while a row naming bytes
 that were never stored is not.
 
@@ -194,7 +194,7 @@ is a transaction held **across** the decode, not the existence of writes during 
 
 The honest consequence, stated rather than hidden: a process killed between transactions can leave
 assets in the project with no batch and a job stuck at `running`. Finding it is what the job
-record is for, and ingesting the source again is what fixes it — see the lifecycle above for why
+record is for, and ingesting the source again is what fixes it - see the lifecycle above for why
 that is the remedy rather than a resume.
 
 Within a run, each file is **probed before it is stored**, so a file that is going to be refused
@@ -206,7 +206,7 @@ A file that is not an image, or one whose bytes will not decode, is *reported*: 
 `IngestFailure` carrying the item's name, the reason, and which of the two it was. The run carries
 on, because an operator with five thousand files needs the other four thousand nine hundred. The
 name and the reason are kept apart so a report renders as a table rather than as a list of
-sentences, and `IngestFailureKind` exists so it can be **grouped** — real data loss must not be
+sentences, and `IngestFailureKind` exists so it can be **grouped** - real data loss must not be
 buried under ordinary operator noise.
 
 The report is on the row as well as in the return value, written as the run goes rather than at
@@ -214,7 +214,7 @@ the end: a report that only appeared once the run finished would be invisible fo
 long as it is interesting.
 
 A missing ffmpeg is not a file's fault at all. `MediaToolUnavailable` is recorded as the job's
-`error` — a separate column from the per-file `failures`, which stays empty — the job is marked
+`error` - a separate column from the per-file `failures`, which stays empty - the job is marked
 `failed`, and it is re-raised, which is precisely why it sits outside the `MediaError` family.
 One broken machine is not five thousand broken files.
 
@@ -233,13 +233,13 @@ reported.frames_expected_estimate  # 20 — an estimate, and may be None
 
 `frames_produced` is the length of what the loop kept. `frames_expected_estimate` is
 `duration_seconds × extraction_fps` off the probe the source has carried since it was registered
-— the same arithmetic the ingest screen shows as "Frames expected" before a run starts — so no
+ - the same arithmetic the ingest screen shows as "Frames expected" before a run starts - so no
 second pass over the clip is made for it. It is named an estimate because it is one:
 `VideoMetadata` deliberately carries no frame count (for a variable-rate stream the product is a
 guess), and a damaged container's own metadata is suspect besides. A partial with no denominator
 still states what it recovered.
 
-The two counts belong to `partial` alone, and the model refuses any other arrangement — an
+The two counts belong to `partial` alone, and the model refuses any other arrangement - an
 `unsupported` entry allowed to carry `frames_produced=0` would give the report two ways to say
 "nothing arrived" and force every reader to check both. Zero frames out of a clip is not a partial
 read of it: the adapter answers `UnsupportedMedia` there, and the report has a kind for it
@@ -250,7 +250,7 @@ A clip that put eight frames in a batch is not a file the run could not use, and
 both.
 
 **And the report is where it stops.** The decision recorded on #452 is that a partial extraction
-is reported once, at ingest time, to the person performing the ingest — and nowhere else. No flag
+is reported once, at ingest time, to the person performing the ingest - and nowhere else. No flag
 on the asset, none on the batch, nothing queryable afterwards, no chip in a later view. An asset
 lifted out of a damaged clip is an ordinary asset in every respect from the moment the ingest
 result has been read; the remedy, if the person wants one, is to obtain a good copy and ingest it
@@ -266,7 +266,7 @@ amortized here, where the bytes are already open and already decoded once.
 
 **A thumbnail hash is a cache key, not an identity.** It is absent from every release manifest,
 `ReleaseService.verify` never recomputes it, and two machines may legitimately hold different
-preview bytes for one image — [media.md](media.md) has the determinism argument. Losing every
+preview bytes for one image - [media.md](media.md) has the determinism argument. Losing every
 thumbnail blob loses only the time to render them again.
 
 Everything else follows from that sentence.
@@ -277,7 +277,7 @@ lost. So the hash stays NULL and the run carries on with no entry in the report.
 would tell an operator that data was lost when it was not, and would bury real loss under it. The
 NULL *is* the record, which is why nothing is logged: it is exactly what the backfill looks for.
 
-**Frames get previews too.** The frames of a clip are deliberately never re-probed — the port
+**Frames get previews too.** The frames of a clip are deliberately never re-probed - the port
 guarantees each one, and re-decoding would put our own encoder's output into an operator's
 report. That argument is about metadata a caller reads back as fact, and a preview is reported to
 nobody, so it does not carry over. A gallery with tiles for stills and blanks for frames would be
@@ -295,19 +295,19 @@ enough to give assets written before the cache existed their previews.
 ### The backfill
 
 `IngestService.backfill_thumbnails(project_id)` renders a preview for every asset in a project
-that has none — the remedy for all three things a NULL can mean, and idempotent, so a second pass
+that has none - the remedy for all three things a NULL can mean, and idempotent, so a second pass
 over a healthy project examines nothing.
 
 It reads the **blob**, never `asset.uri`: that path may be gone, renamed, or on another machine,
 while `blob_store.get(asset.content_hash)` is what the workspace actually holds.
 
-Three phases, and the rendering is in none of them — the same rule as a run. The first
+Three phases, and the rendering is in none of them - the same rule as a run. The first
 transaction collects ids and hashes, the rendering happens outside any transaction, and the last
 re-reads each asset before writing so an ingest that filled a preview meanwhile is not clobbered.
 
 It reports rather than raises, on `ReleaseService.verify`'s terms: someone repairing a damaged
 workspace needs the list, and one asset nobody can render must not abandon the other five
-thousand. `ThumbnailBackfill` keeps `missing` (the content blob is gone — damage a preview pass
+thousand. `ThumbnailBackfill` keeps `missing` (the content blob is gone - damage a preview pass
 cannot repair) apart from `unreadable` (the bytes are there and will not decode). The second
 reuses `IngestFailure` because the `UNSUPPORTED`/`CORRUPT` split says exactly the right thing
 about stored bytes; the first does not, because `IngestFailureKind` answers "what is wrong with
@@ -323,7 +323,7 @@ the only command for a kernel read that no route exposes.
 ## The target batch
 
 With no `batch_id`, the run creates a draft named `batch_name` or, failing that, after the
-source's own file or folder. With one, that batch must still be a draft — checked **before**
+source's own file or folder. With one, that batch must still be a draft - checked **before**
 anything is decoded, because finding out afterwards would mean finding out after the work.
 
 Membership is everything the run ingested, deduplicated assets included: a duplicate is not new
@@ -351,12 +351,12 @@ report goes to stderr, one line per refused file, so a redirected stdout stays a
 
 **`--fps` is video-only, and a usage error on a folder.** Silently ignoring it would let somebody
 believe they had chosen a rate. It is also checked for being positive before the call, because
-`register_video` refuses a non-positive rate with a bare `ValueError` — not a `VisionSetError`, so
+`register_video` refuses a non-positive rate with a bare `ValueError` - not a `VisionSetError`, so
 it would print a traceback rather than a sentence. A missing path is exit 2 for the same reason
 (`FileNotFoundError`), which is why the argument carries Click's own `exists=True`.
 
 **The run is synchronous, and the CLI never calls `enqueue`.** A queued job needs a worker to pick
-it up, and a CLI process has none — a detached job would simply never run. Polling is what the
+it up, and a CLI process has none - a detached job would simply never run. Polling is what the
 server is for: `visionset server`, then `GET /ingest-jobs/{id}`.
 
 **Interrupting a run leaves the job row at `running`, and there is no `--resume`.** The remedy needs
@@ -377,24 +377,24 @@ GET  /batches/{id}/assets                                                  → 2
 ```
 
 The launch calls `enqueue` on the request thread and hands the `pending` job to a **single
-background worker** — one, so that runs serialize against a single-writer store rather than
+background worker** - one, so that runs serialize against a single-writer store rather than
 racing each other. What that buys the *reader* is what [#80's concurrency posture](workspaces.md)
 was for: a client polling while the worker holds a write transaction reads through WAL instead
 of waiting on it.
 
 **Where a refusal appears depends on when it can be known.** An unknown source or a blank batch
-name is refused synchronously, with a 404 or a 422 — the launch never returns 202 pointing at a
+name is refused synchronously, with a 404 or a 422 - the launch never returns 202 pointing at a
 job row nobody wrote. Everything after that is on the job: `state` becomes `failed` and `error`
 carries the cause, while individual unreadable items sit in `failures` and do not fail the run
 at all. That split is the same one this service already makes; HTTP just changes where you read
 it.
 
-Registration over HTTP is **upload-only**, and the bytes are staged content-addressed — see
+Registration over HTTP is **upload-only**, and the bytes are staged content-addressed - see
 [sources.md](sources.md).
 
 `batch_id` on the launch body is how a second source joins the first one's batch, and it waited
 for batches to have endpoints. The objection was never the feature: it was that a refusal must
-not leave a caller holding a 202 pointing at a job row nobody wrote. It does not — `enqueue`
+not leave a caller holding a 202 pointing at a job row nobody wrote. It does not - `enqueue`
 resolves the batch in the same transaction that inserts the job, so an unknown batch is a **404**
 and one past `draft` is a **409 `BATCH_NOT_EDITABLE`**, both answered on the request that asked
 for them. See [batches.md](batches.md).
@@ -418,11 +418,11 @@ source, which the screen says out loud.
 
 It shows `processed` against `total` for a directory and a bare count for a clip
 (there is no denominator until an extraction is over), groups the per-file report by
-`IngestFailureKind`, and offers **Resume** only for a `failed` run — a stuck
+`IngestFailureKind`, and offers **Resume** only for a `failed` run - a stuck
 `running` job has no button, because `running → running` is deliberately not a
 transition. See [ui.md](ui.md#the-ingest-flow-and-the-order-the-domain-forces).
 
 A `partial` entry renders as prose above that table rather than as a row in it, with what it
-recovered and what to do — the frames are in the batch, and a good copy re-ingested replaces
+recovered and what to do - the frames are in the batch, and a good copy re-ingested replaces
 them. The table below counts only the files that produced nothing. That card is the whole of
 where the fact is ever stated, and a run that read everything renders neither.

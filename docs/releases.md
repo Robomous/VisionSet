@@ -1,9 +1,9 @@
 # Releases
 
-A Release is the one artifact in VisionSet that never changes. Everything else is alive — a
-[dataset](datasets.md) gains assets and loses them, a [schema](schemas.md) grows a version, a
-[batch](batches.md) moves through its states. A Release takes a moment of the trunk out of time
-and answers, forever, *which bytes and which labels did we train on?*
+A Release is the only VisionSet artifact that never changes. A [dataset](datasets.md) gains and
+loses assets, a [schema](schemas.md) gains versions, and a [batch](batches.md) moves through its
+states. A Release captures the trunk at one moment and permanently answers: *which bytes and
+labels did we train on?*
 
 There is no operation that edits one. An error in a release is fixed by publishing another
 release.
@@ -29,9 +29,9 @@ with WorkspaceService.open("./road-signs") as workspace:
 | Frozen into the manifest | Kept on the release row |
 | --- | --- |
 | Every asset in the trunk, by content hash, with its `uri` and dimensions | `tag`, `manifest_hash` |
-| Every annotation on those assets, **copied** — geometry, attributes, provenance | `created_at`, `visionset_version` |
+| Every annotation on those assets, **copied** - geometry, attributes, provenance | `created_at`, `visionset_version` |
 | The project's active schema version and its classes | The split recipe |
-| | `schema_version`, `asset_count`, `annotation_count` — a read cache |
+| | `schema_version`, `asset_count`, `annotation_count` - a read cache |
 
 Curating an asset out of the trunk afterwards, labeling one of those assets again in a later
 batch, or creating a new schema version changes **none** of the manifest. The labels are copies,
@@ -56,12 +56,12 @@ consequences fall out of it:
 - They share **one blob**. The store is content-addressed, so the second `put` is a no-op.
 
 Ordering is canonical rather than historical: assets sort by content hash and then by id, and an
-asset's labels sort by id. The `Manifest` model applies that itself, on construction — a rule the
+asset's labels sort by id. The `Manifest` model applies that itself, on construction - a rule the
 artifact depends on belongs to the artifact, not to the habits of whoever builds one. Which batch
 an asset arrived in, and on which day, must never reach the bytes.
 
 `Manifest.classes` is the one collection that is *not* sorted. A schema's class order is
-authored — it drives how a labeling surface lists them — so it is part of the frozen contract.
+authored - it drives how a labeling surface lists them - so it is part of the frozen contract.
 
 **The manifest hash is a snapshot identity, not a universal content identity.** `ManifestAsset.uri`
 is a workspace-local path, kept because an exporter names its output files from it. The same
@@ -69,7 +69,7 @@ images ingested on another machine produce a different manifest.
 
 ### Which schema version a release pins
 
-The project's **active** version — the highest one — with its classes. Each copied annotation
+The project's **active** version - the highest one - with its classes. Each copied annotation
 still carries the version its own batch pinned, and those can differ: two batches approved
 against two versions can both be promoted into one trunk. The mixture is safe rather than sloppy,
 because `SchemaChangeWouldOrphan` refuses to remove a class that annotations still depend on. Every
@@ -86,7 +86,7 @@ report.checked  # how many were actually read
 ```
 
 `verify` **re-reads and re-hashes**. `BlobStore.exists` answers whether a path *named by* a hash
-is there, which proves nothing about what is in it — a content-addressed store does not verify
+is there, which proves nothing about what is in it - a content-addressed store does not verify
 itself, and that is the whole reason this method exists. `exists` is used only to tell a missing
 blob from a corrupt one.
 
@@ -97,7 +97,7 @@ list would be worse than saying nothing.
 
 The row's cached `schema_version` and two counts are checked against the parsed document as well.
 Anything in `cache_mismatches` is a bug in the build that wrote the row, not damage to the
-workspace — a cache nobody checks is a fact nobody can trust.
+workspace - a cache nobody checks is a fact nobody can trust.
 
 ## The split recipe
 
@@ -109,7 +109,7 @@ SplitRecipe(train=0.8, val=0.1, test=0.1, seed=42)
 
 The fractions must add up to one, checked with a tolerance because `0.7 + 0.15 + 0.15` is
 `0.9999999999999999` in binary floating point. An all-train recipe is legal. An invalid recipe
-cannot be constructed at all — the refusal is pydantic's, like every other per-value rule in the
+cannot be constructed at all - the refusal is pydantic's, like every other per-value rule in the
 domain.
 
 `releases.assignment(release_id)` turns it into folds, **from the manifest's frozen asset set**.
@@ -118,7 +118,7 @@ the trunk afterwards, which is precisely what a release exists to make impossibl
 
 The assignment is deterministic without a random number generator. Each asset is keyed by
 `sha256(seed:content_hash)` and ordered by that key, so the result depends on the seed and on the
-set — never on the order assets are passed in, on how many there are, or on the Python
+set - never on the order assets are passed in, on how many there are, or on the Python
 implementation.
 
 Keying on the **content hash** rather than the asset id is a training decision. Two assets holding
@@ -134,13 +134,13 @@ error that loses it, and no asset can go missing to an argument about arithmetic
 ## What is deliberately not here
 
 - **No `delete`.** A release is the immutable artifact. The only thing that removes one is
-  deleting its project, whose cascade takes it — and even then the manifest blob survives, because
+  deleting its project, whose cascade takes it - and even then the manifest blob survives, because
   [blobs are never deleted](projects.md).
 - **No `confirm=`.** That guard is for destroying data, and publishing destroys nothing. This is
   not a third exemption from `ConfirmationRequired`.
 - **No change-log entry.** The [dataset log](datasets.md) records mutations of the trunk, and
-  publishing mutates nothing in it. "A release happened" is a [domain event](events.md) —
-  `ReleasePublished`, carrying the manifest hash — not a curation entry.
+  publishing mutates nothing in it. "A release happened" is a [domain event](events.md) -
+  `ReleasePublished`, carrying the manifest hash - not a curation entry.
 - **No mutation at all.** `Release` is a frozen model, so the refusal belongs to the type rather
   than to a service method that could be forgotten.
 
@@ -158,7 +158,7 @@ instance**, never a format name, and that is structural rather than stylistic: i
 forbids `visionset.kernel` from importing `visionset.formats` at all. Resolving a name to an
 implementation therefore belongs to whoever composed the call.
 
-`visionset.formats.registry` is where that happens — `exporters()` scans the
+`visionset.formats.registry` is where that happens - `exporters()` scans the
 `visionset.formats` entry-point group and `pick(installed, name)` refuses an unknown one with
 `ExportFormatNotFound`. Discovery is `importlib.metadata`, never a hardcoded map and never an
 `if fmt == "coco"` chain, because that is the whole plugin promise: a third-party distribution
@@ -168,7 +168,7 @@ naming convention.
 
 ### `lossy` is declared by the format, once
 
-`Exporter.lossy` says the format drops information the kernel can represent — a geometry
+`Exporter.lossy` says the format drops information the kernel can represent - a geometry
 variant, an attribute kind, per-annotation provenance. It is a property of the **format** and
 not of a particular release: a bbox-only format loses a polygon whether or not today's dataset
 happens to hold one, and asking per release would mean re-answering on every export and getting
@@ -218,7 +218,7 @@ system that were each internally consistent:
 - `_compatibility` read "not in `supported_geometries`" as **will not be in the output**, and
   counted it in `excluded_annotations`.
 - The YOLO and VOC exporters read the same declaration as **convert it to something I can
-  write**, and emitted the polygon as its axis-aligned bounding box — which is a real capability
+  write**, and emitted the polygon as its axis-aligned bounding box - which is a real capability
   #62 and #414 deliberately included, documented in both module docstrings.
 
 So a user exporting a release of 3 boxes, 2 polygons and 1 tag was told three annotations would
@@ -229,15 +229,15 @@ the report promised.
 
 The fix is vocabulary rather than capability. `Exporter` declares two geometry sets:
 
-- **`supported_geometries`** — written as they stand.
-- **`degraded_geometries`** — written, having lost something the kernel could represent. `{polygon}`
+- **`supported_geometries`** - written as they stand.
+- **`degraded_geometries`** - written, having lost something the kernel could represent. `{polygon}`
   for `yolo` and `voc`; empty for `coco`, which writes a polygon as a polygon, and empty for
   `dummy`, which writes nothing at all. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
 
-A geometry in neither set is **dropped**. `excluded_annotations` counts dropped only —
-the number that disappears is the number worth having under that name — and `degraded_annotations`
+A geometry in neither set is **dropped**. `excluded_annotations` counts dropped only -
+the number that disappears is the number worth having under that name - and `degraded_annotations`
 sits beside it. `compatible` is false for either, so **the `allow_lossy` gate did not move**: a
 polygon flattened to a box has lost its shape, and the consent it always required is still
 required. Only the accounting became true.
@@ -247,7 +247,7 @@ exports the same release through **every installed format** and counts the annot
 written label files, XML documents and COCO JSON. It asserts `excluded_annotations` equals what
 the artifacts are actually missing, rather than restating an expected number. A fourth exporter
 either lands a counter there or is declared non-writing, and the test fails until somebody
-chooses — which is how a format that converts silently stops being possible.
+chooses - which is how a format that converts silently stops being possible.
 
 Three more properties are worth stating, because each is a decision rather than a detail.
 
@@ -257,7 +257,7 @@ published, with its zeros, because "this format cannot write masks and you have 
 answer somebody is looking for.
 
 **The counts are per class and there are two of them.** `annotations` is what would be lost and
-`assets` is how wide the loss is — a thousand labels over a thousand images and the same thousand
+`assets` is how wide the loss is - a thousand labels over a thousand images and the same thousand
 over ten are the same total and a very different dataset, which is the argument `DatasetStats`
 already makes.
 
@@ -266,9 +266,9 @@ and a release is a snapshot: curating an asset out of the trunk afterwards does 
 answer. That is what lets one document be shown in a consent dialog, attached to a refusal and
 written into the output without three chances to disagree.
 
-**Modality is declared but not yet judged against.** A `ManifestAsset` carries no modality —
+**Modality is declared but not yet judged against.** A `ManifestAsset` carries no modality -
 adding one would change the shape of every manifest and therefore every release hash ever
-computed — and reading it off the live `Asset` would make the report depend on something that
+computed - and reading it off the live `Asset` would make the report depend on something that
 moves after publication. `supported_modalities` is published on `GET /formats` and in
 `list_formats` so a caller can see what a format claims; making it part of the verdict needs a
 field on `ManifestAsset` behind a `MANIFEST_VERSION` bump, which is its own decision.
@@ -277,12 +277,12 @@ field on `ManifestAsset` behind a `MANIFEST_VERSION` bump, which is its own deci
 
 `export` refuses with `LossyExportNotConsented` when the format declares itself lossy **or** when
 the report says this release would lose something. The first half is what #30 shipped and has not
-moved; the second is the case a capability list makes visible — a format declaring itself
+moved; the second is the case a capability list makes visible - a format declaring itself
 lossless still cannot silently drop a geometry it never claimed to write.
 
 The refusal carries the report, so a caller can say what it is consenting to without asking
 twice: `LossyExportNotConsented.compatibility` in Python, `detail.compatibility` on the API's 409,
-and — because the MCP envelope is four keys and stays four keys — a hint naming `check_export` for
+and - because the MCP envelope is four keys and stays four keys - a hint naming `check_export` for
 an agent.
 
 ### Every export writes its own report
@@ -290,7 +290,7 @@ an agent.
 A successful export writes **`visionset-export-report.json`** at the root of `dest`: the same
 document, key for key. It is the kernel's file rather than the format's, so it is written *after*
 the plugin runs (a plugin that clears its own subdirectory would otherwise take it along) and is
-**excluded from `ExportResult.file_count` on both sides** — not counted when written, and skipped
+**excluded from `ExportResult.file_count` on both sides** - not counted when written, and skipped
 when an earlier run left one behind. That is what keeps "an exporter that writes nothing reports
 zero" true, and keeps exporting twice into one directory agreeing with itself.
 
@@ -311,7 +311,7 @@ Four of v1's decisions are deliberately not kept, and each was a way to be wrong
 
 **Classes come from the frozen schema, never from the annotations present.** v1 built its class
 index by sorting the names it found in the labels, so a class nobody had used yet vanished from
-`data.yaml` — and, worse, drawing the first box of a new class *renumbered every other class*. A
+`data.yaml` - and, worse, drawing the first box of a new class *renumbered every other class*. A
 model trained against one export and evaluated against the next is then wrong with nothing to
 report it. Here the order is `Manifest.classes`, the project's authored schema order frozen at
 publication, and every class gets an index whether or not anything uses it.
@@ -322,7 +322,7 @@ carrying labels pointing at nothing. Every read goes through the `ContentReader`
 composes, and a missing or undecodable blob is `409 EXPORT_SOURCE_UNREADABLE` naming the asset.
 
 **Pixel dimensions are required.** v1 parsed `"WxH"` out of a string and fell back to `(1, 1)`,
-which does not fail — it divides by one and writes raw pixel coordinates into a file whose whole
+which does not fail - it divides by one and writes raw pixel coordinates into a file whose whole
 contract is that every number is a fraction. An asset with no recorded size is refused by name.
 
 **Files are named by content hash.** v1 used the original filename with a `_2` de-duplicating
@@ -334,7 +334,7 @@ Three details of `data.yaml` are ultralytics' contract rather than ours, and eac
 against its source rather than assumed:
 
 - **There is no `path:` key.** Ultralytics resolves a relative `path` against its own datasets
-  directory or the working directory of whatever process loads the file — so the obvious `path: .`
+  directory or the working directory of whatever process loads the file - so the obvious `path: .`
   breaks the moment the export is copied. Omitted, it falls back to the yaml's own parent, which
   is what makes the directory movable.
 - **`train` and `val` are both required**, and a missing key is a `SyntaxError` rather than a
@@ -348,20 +348,20 @@ An asset with nothing on it gets an **empty** label file rather than none: ultra
 missing file as "nobody looked" and an empty one as "somebody looked and there is nothing here",
 and a detector needs the second.
 
-`yolo` is `lossy = True` unconditionally, because a label row is five numbers — attributes,
-confidence and provenance never survive — so every export in this format asks for consent. Its
+`yolo` is `lossy = True` unconditionally, because a label row is five numbers - attributes,
+confidence and provenance never survive - so every export in this format asks for consent. Its
 `supported_geometries` is `{bbox}`: a polygon is still written, as its axis-aligned bounding box,
 but its shape is gone, so #65's report counts it as not carried and says which classes and how
 many. A classification tag has no location at all and is dropped rather than given an invented box.
 
 ### The COCO format
 
-`coco` writes COCO instances JSON — **one file per split**, under
+`coco` writes COCO instances JSON - **one file per split**, under
 `annotations/instances_<fold>.json`, beside the same `images/<fold>/` layout YOLO uses.
 
 **v1 had two COCO exporters and neither described a dataset.** One skipped every annotation that
-was not a box, the other every one that was not a polygon, so a project holding both — the
-ordinary case, and the reason a schema declares a geometry per class — had to pick an export and
+was not a box, the other every one that was not a polygon, so a project holding both - the
+ordinary case, and the reason a schema declares a geometry per class - had to pick an export and
 silently lose the other half. There is one exporter here: COCO has always carried both, and
 `bbox` is a required field on every annotation whether or not it also has a `segmentation`.
 
@@ -372,12 +372,12 @@ small/medium/large by it, so every evaluation against such a file reports the wr
 nothing says so.
 
 **This format is not lossy, and that is the point of having a second one.**
-`supported_geometries` is `{bbox, polygon}`, and everything COCO has no field for — attributes,
-confidence, provenance, the annotation's own id — rides in a `"visionset"` object on each
+`supported_geometries` is `{bbox, polygon}`, and everything COCO has no field for - attributes,
+confidence, provenance, the annotation's own id - rides in a `"visionset"` object on each
 annotation. COCO is JSON and every reader tolerates keys it does not know; one nested object
 cannot collide with a future COCO field the way four top-level keys could. So a release of boxes
 and polygons exports **clean, with no consent at all**, and #65's report is what refuses a release
-holding a classification tag — which COCO genuinely has nowhere to put.
+holding a classification tag - which COCO genuinely has nowhere to put.
 
 Smaller decisions, each of which a reader can see:
 
@@ -388,11 +388,11 @@ Smaller decisions, each of which a reader can see:
   and each is its own dataset; ids continuing across folds would leave `instances_val.json`
   starting at an arbitrary number, which reads as a file with rows missing.
 - **A box gets an empty `segmentation`**, not its own rectangle. A box says where something is,
-  not what shape it is, and writing the rectangle would claim the object fills it — which a mask
+  not what shape it is, and writing the rectangle would claim the object fills it - which a mask
   consumer takes literally.
 - **`iscrowd` is always 0.** A `1` means an RLE region covering many instances, which the domain
   cannot represent.
-- **`info` carries the release**: tag, publication moment, and the manifest hash — so an export
+- **`info` carries the release**: tag, publication moment, and the manifest hash - so an export
   traces back to a release that can be re-verified. Nothing reads the clock, which is why two
   exports of one release are byte-identical.
 - **`licenses` has one entry named `unspecified`.** VisionSet records no licensing information
@@ -405,18 +405,18 @@ folds as **listings** under `ImageSets/Main/<fold>.txt`.
 
 That last one is the structural difference from its two siblings, and it decides the layout:
 **VOC splits by listing rather than by directory.** A fold's file names stems, and a reader
-resolves each against the one `JPEGImages/` — so every image lives in one flat directory whatever
+resolves each against the one `JPEGImages/` - so every image lives in one flat directory whatever
 fold it is in. Putting them in per-fold directories, as YOLO and COCO do, would make every path in
 those files wrong.
 
 **Coordinates are 1-based and inclusive, which is what "Pascal VOC" means.** The original devkit's
-annotations index from 1, and evaluation code written against them subtracts one — detectron2's
+annotations index from 1, and evaluation code written against them subtracts one - detectron2's
 VOC loader does exactly that, with a comment saying why. A box stored as `x=8, width=16` covers
 0-based pixels 8..23 and is written `<xmin>9</xmin><xmax>24</xmax>`: sixteen pixels, counted the
 way the format counts them. Writing the domain's own numbers through would be off by one against
 every consumer that assumes the devkit, and off by one is the error nobody notices.
 
-Boxes are also **rounded outwards** — `floor` on the near edge, `ceil` on the far one — so the
+Boxes are also **rounded outwards** - `floor` on the near edge, `ceil` on the far one - so the
 integer box covers every pixel the float box touches. Rounding to nearest would shrink a box by up
 to a pixel on each side, which matters most for the small objects a detector is already worst at.
 They are clamped into the image for the reason YOLO's are, and a box whose extent rounds away
@@ -425,13 +425,13 @@ error.
 
 `lossy = True` and `supported_geometries` is `{bbox}`. The reason is not YOLO's: a VOC `<object>`
 has a fixed set of children its consumers index by tag name, so there is nowhere to put an
-attribute, a confidence or a provenance — where COCO can carry all three precisely because JSON
+attribute, a confidence or a provenance - where COCO can carry all three precisely because JSON
 readers ignore keys they do not know.
 
 Two values are constants rather than measurements, and both are said out loud rather than dressed
 up: `<depth>3</depth>`, because VisionSet records an asset's width and height and not its channel
 count while VOC readers expect the element; and `<difficult>0</difficult>` on every object, which
-matters more than it looks — VOC's evaluation *excludes* objects marked `1` from both the ground
+matters more than it looks - VOC's evaluation *excludes* objects marked `1` from both the ground
 truth and the false positives, so writing one anywhere would silently change what a score means.
 
 There is **no reference-reader smoke test** for this format, unlike the other two. VOC's devkit is
@@ -440,7 +440,7 @@ job to: the document is the contract, and the golden-file tests assert it as tex
 
 ### The lane formats
 
-Five plugins — `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` — over the
+Five plugins - `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` - over the
 `polyline` geometry #223 added. They are the port of the workload VisionSet's predecessor
 actually ran, and they are what makes a lane dataset a first-class product of this tool rather
 than a thing you write a script for.
@@ -450,18 +450,18 @@ anywhere to put an annotation's arbitrary attributes, its confidence, its proven
 Four of them write the vertices they were given, so `polyline` is in `supported_geometries`;
 **TuSimple does not**, because its file format is "the X where the lane crosses each of these
 rows", so a lane goes in as vertices and comes out as samples on a fixed grid. That is the third
-state — carried, but reduced — and it is why `tusimple` declares `polyline` under
+state - carried, but reduced - and it is why `tusimple` declares `polyline` under
 `degraded_geometries` while the other four do not.
 
-The lane vocabulary is a convention on attribute names — `style`, `color`, `position_role`, each
-a `select` — defined in `visionset/formats/lanes/_core.py` and not in the kernel, because the
+The lane vocabulary is a convention on attribute names - `style`, `color`, `position_role`, each
+a `select` - defined in `visionset/formats/lanes/_core.py` and not in the kernel, because the
 domain does not know what a road is and the same geometry labels railway tracks. A missing
 attribute resolves to `other` rather than refusing, and `position_role` falls back to the class
 name, so a schema whose classes *are* the road positions needs no attributes at all. See
 [`src/visionset/formats/lanes/README.md`](../src/visionset/formats/lanes/README.md).
 
 Two of the five refuse rather than invent: TuSimple will not write a lane whose points are not
-sorted by ascending Y — its row sampling has no meaning for a path that doubles back — and CULane
+sorted by ascending Y - its row sampling has no meaning for a path that doubles back - and CULane
 will not write two lanes claiming the same one of its four mask slots. Both name the asset, and
 both are the same `ExportSourceUnreadable` the YOLO exporter raises for a class the schema does
 not declare.
@@ -475,7 +475,7 @@ polyline class as **dropped**, and their label files contain no trace of one.
 
 ### The destination is the caller's
 
-`dest` is created if it is not there and is **not** emptied if it is — deleting files under a
+`dest` is created if it is not there and is **not** emptied if it is - deleting files under a
 path a caller named is not the kernel's to do. So `ExportResult`'s counts describe the directory
 once the plugin has run, which is the same thing as "this run" for a fresh directory and not for
 one holding an older export. A caller that needs the stricter reading clears the directory
@@ -496,15 +496,15 @@ visionset export --project road-signs --release v1.0 --format dummy --out ./out
 
 `--split` is **one** option rather than three, because a split is one concept, `0.7,0.15,0.15` is
 how it is written everywhere, and one flag means one refusal to word. `--seed` stays separate; it is
-not a fraction. Fractions that do not add up are exit 2 — `SplitRecipe` refuses them with a pydantic
-error, which is not a `VisionSetError` — so the CLI parses the recipe before the call.
+not a fraction. Fractions that do not add up are exit 2 - `SplitRecipe` refuses them with a pydantic
+error, which is not a `VisionSetError` - so the CLI parses the recipe before the call.
 
 **A tag is case-sensitive where a project name is not.** Both comparisons live in the kernel beside
 the index that enforces them (`ReleaseService.get_by_tag`, `ProjectService.get_by_name`), because
 they are opposites and a surface re-deriving either would eventually pick the wrong one.
 
-**`release verify` exits 1 when the answer is no.** Nothing refused — the check ran and found
-damage — but a non-zero exit is what `grep` and `diff` already mean, and the only way a script
+**`release verify` exits 1 when the answer is no.** Nothing refused - the check ran and found
+damage - but a non-zero exit is what `grep` and `diff` already mean, and the only way a script
 branches on the result without parsing output:
 
 ```bash
@@ -546,7 +546,7 @@ asset(s) in a reduced form.
 Re-run without --check and with --allow-lossy to export anyway.
 ```
 
-Exit **1**, on `release verify`'s precedent, and on the same predicate `export` gates on — see
+Exit **1**, on `release verify`'s precedent, and on the same predicate `export` gates on - see
 [Consent is required if *either* says so](#consent-is-required-if-either-says-so): a lossy format
 exits 1 here even when the table is clean, because otherwise `--check && export` would promise
 something the export then refuses.
@@ -605,8 +605,8 @@ GET  /background-jobs/{job_id}/artifact  →  200 application/zip
 **Everything a caller can be told now is still told now**, which is the half of the old shape
 that survived: an unknown format is a 404 and an unconsented lossy export is a 409, both on
 *this* request, and neither creates a job. So a caller holding a job id holds one that will run.
-The consent check therefore happens twice — once here as the answer, once in the worker as the
-guarantee — which is the same bargain a uniqueness pre-check and its unique index already strike.
+The consent check therefore happens twice - once here as the answer, once in the worker as the
+guarantee - which is the same bargain a uniqueness pre-check and its unique index already strike.
 
 The output is built in `<workspace>/exports/<release_id>/<format>/`, a server-owned directory
 like `uploads/`, and the handler clears it before each run so the archive describes *this* export
@@ -615,7 +615,7 @@ a re-export cannot sweep the previous one into the new one.
 
 **Nothing expires it, and that is the policy rather than a gap.** An export stays in
 `<workspace>/exports/` until somebody deletes it: there is no TTL, no size cap, no sweeper, and
-no `DELETE` route. VisionSet is local-first and the disk is the user's — a tool that quietly
+no `DELETE` route. VisionSet is local-first and the disk is the user's - a tool that quietly
 removed a training set somebody had exported, on a schedule they did not choose, would be
 solving a problem they did not report by taking an action they cannot undo. It is the same
 posture blobs and staged uploads already have, and it is stated here rather than left implicit
@@ -630,7 +630,7 @@ will need `allow_lossy=true`, instead of discovering it by getting a 409; `geome
 `modalities` beside it are what the format declares it can write.
 
 **`export-compatibility` is the pre-flight, and it is optional.** Same release, same format name,
-and the same document the export refuses with and writes into its own output — a client showing a
+and the same document the export refuses with and writes into its own output - a client showing a
 consent dialog asks first, one that would rather be refused does not have to. A GET, because it
 writes nothing and a release is immutable, so the answer is as stable as the release is. The 409
 carries the identical body under `detail.compatibility`.
@@ -639,17 +639,17 @@ carries the identical body under `detail.compatibility`.
 
 | Error | When |
 | --- | --- |
-| `DatasetNotFound` | No dataset with that id in this workspace — including one in a *different* workspace, which reads as missing rather than as forbidden. |
+| `DatasetNotFound` | No dataset with that id in this workspace - including one in a *different* workspace, which reads as missing rather than as forbidden. |
 | `ReleaseNotFound` | No release with that id in this workspace. |
 | `SchemaNotFound` | The project has no schema, so there is no version to pin. Checked before emptiness. |
-| `EmptyRelease` | The dataset has no assets. A release of nothing is an artifact nobody can train on. Zero *annotations* is fine — unlabeled images are legitimate training data. |
+| `EmptyRelease` | The dataset has no assets. A release of nothing is an artifact nobody can train on. Zero *annotations* is fine - unlabeled images are legitimate training data. |
 | `InvalidName` | The tag is blank once stripped. Tags go through `normalize_name` like every other name. |
 | `ReleaseTagTaken` | This dataset already has a release under that tag. **Case-sensitive**: a tag is an identifier like a git tag, so `v1.0` and `V1.0` are two releases. Enforced by a pre-check and by a unique index, the second so a race cannot slip past the first. |
 | `NoSplitRecipe` | `assignment` was asked of a release published without one. Not an error in the release: no recipe means one undivided set, and inventing an all-train answer would be indistinguishable from a real one. |
 | `UnserializableManifest` | An annotation carries a NaN or infinite coordinate. `Geometry` accepts any float, so such a label can be stored; canonical JSON cannot express it, and writing `null` or the bare token `NaN` would lose data or produce a document no other tool can parse. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
-| `ExportSourceUnreadable` | The release names bytes an export cannot use — the blob is gone, or is not an image the format can write. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
-| `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service — the kernel never sees a name. |
+| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, or is not an image the format can write. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
+| `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service - the kernel never sees a name. |
 | `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Raised when the format declares itself lossy **or** when this release's own report is not clean, and it carries that report. Retryable with the flag, which is why a client must branch on the code and never on the 409. |
 
 
@@ -661,5 +661,5 @@ re-deciding: a release is immutable, so nothing offers an edit; verification is 
 demand**, because it re-reads every blob; and a split's fractions are compared with
 the same tolerance the kernel uses, since `0.7 + 0.15 + 0.15` is not `1.0`.
 
-Export consent is `allow_lossy` and never `confirm` — see
+Export consent is `allow_lossy` and never `confirm` - see
 [ui.md](ui.md#the-dataset-its-releases-and-getting-the-data-out).

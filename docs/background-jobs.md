@@ -3,10 +3,9 @@
 Work that outlives the request that asked for it: a queue, a dispatcher, and four
 handlers. Introduced by #328.
 
-`docs/jobs.md` is about something else entirely — an **annotation** job, a slice
-of a batch a person sits down and labels. The two share a word and nothing else,
-which is why the surface here is `/background-jobs` and the models carry a
-`Background` prefix.
+`docs/jobs.md` describes an **annotation** job: a slice of a batch assigned
+to an annotator. Annotation jobs and background jobs share only a name. The API
+therefore uses `/background-jobs`, and the models use a `Background` prefix.
 
 ## The shape
 
@@ -41,7 +40,7 @@ minutes rather than seconds. Neither has a CLI equivalent that queues —
 no worker to hand it to.
 
 Verify, publish, promote and thumbnail backfill are still synchronous. They are
-future job types, not an oversight — each answers inside its request today and
+future job types, not an oversight - each answers inside its request today and
 nobody has been made to wait.
 
 ## The decisions, and why
@@ -49,31 +48,31 @@ nobody has been made to wait.
 **`spawn`, pinned.** `fork` is disqualified rather than discouraged: the metadata
 store keeps a live pooled SQLite connection, and a forked child that inherits an
 open handle can corrupt the file. Pinning the context also makes Linux behave
-like macOS and Windows — and like Python 3.14, where `spawn` becomes the default
-— so CI exercises what a laptop runs.
+like macOS and Windows - and like Python 3.14, where `spawn` becomes the default
+ - so CI exercises what a laptop runs.
 
 **One worker by default.** SQLite has a single writer and a run writes progress
 as it goes. `VISIONSET_JOB_WORKERS` takes a larger number and the contention
 degrades to `WorkspaceBusy`, which is a 503 with `Retry-After` and defined
-behaviour — but the shipped default is one, and that is a property of the store
+behaviour - but the shipped default is one, and that is a property of the store
 rather than a conservative guess.
 
 **Same database.** The queue is a table in `visionset.db`. A second file would
 mean a second family of WAL sidecars to enumerate, a second thing to copy when
 somebody backs a workspace up, and a second place for `format_version` to be
 wrong. What it would buy is relief from contention between the dispatcher's poll
-and the work — and the poll is a *read*, which WAL already makes free of the
+and the work - and the poll is a *read*, which WAL already makes free of the
 writer.
 
-**The claim is one guarded `UPDATE`.** `UPDATE job SET state='running' … WHERE
+**The claim is one guarded `UPDATE`.** `UPDATE job SET state='running' ... WHERE
 id = ? AND state='queued'`, and `rowcount` is the answer. The same shape
 `UnitOfWork.set_asset_progress` uses, for the same reason: a read followed by a
 write has a window a second dispatcher fits into, and the symptom is one job run
 twice with one row to report it. There is no version column, because the
 contended datum *is* the state.
 
-**No lease, no heartbeat.** A `running` row observed at startup — before this
-process has started anything — belongs to a process that is gone, so
+**No lease, no heartbeat.** A `running` row observed at startup - before this
+process has started anything - belongs to a process that is gone, so
 `sweep_orphans()` is exact rather than heuristic. That is licensed entirely by
 how VisionSet is deployed: one server process owns every worker. A queue shared
 by several servers needs both, and needs them in *its* adapter.
@@ -86,7 +85,7 @@ jobs would hide a history behind a single line. So the orphan sweep re-enqueues
 an idempotent job as a fresh one, and a list shows the crash *and* the recovery.
 
 **The `job` table has no `project_id`, and no foreign key at all.** Settled, not
-outstanding — it is the thing about this schema most likely to read as an
+outstanding - it is the thing about this schema most likely to read as an
 oversight, so: do not add one.
 
 A job is *workspace-scoped execution plumbing*. What a job is **about** lives in
@@ -101,14 +100,14 @@ cascade, and a cascade here would delete the record of work that already
 *happened*: "this export ran and here is where it put the archive" stays true
 after the release is gone, and a job row outliving its subject is the behaviour
 rather than a leak. It also leaves this the one table a later migration can widen
-freely — a column carrying a foreign key cannot arrive by `ALTER TABLE` in
+freely - a column carrying a foreign key cannot arrive by `ALTER TABLE` in
 SQLite, so a table with no keys never needs the rebuild that `_tables.py`
 documents for everything else.
 
 What it costs, stated: there is no `GET /projects/{id}/background-jobs` and there
 cannot be one without reading payloads. Nobody has asked. If somebody does, the
 honest shape is a nullable, unindexed, **no-key** `scope` column written by
-whoever enqueues — not a foreign key.
+whoever enqueues - not a foreign key.
 
 **Cancellation is cooperative.** A queued job is cancelled outright; a running
 one is only *told*, and its handler decides where stopping is safe. Nothing is
@@ -119,7 +118,7 @@ cancelled once it starts, which is an honest thing for a short job to be.
 **Progress is throttled.** At most one write per `VISIONSET_JOB_PROGRESS_MIN_INTERVAL_S`
 (half a second by default). `IngestService._record_progress` writes after every
 item and argues, correctly for its own case, that no cadence constant suits both
-five files and fifty thousand — but that argument held while exactly one thread
+five files and fifty thousand - but that argument held while exactly one thread
 ever wrote. The final numbers never depend on the throttle: they come off the
 outcome, precisely because the last item's write is the one most likely to be
 swallowed.
@@ -136,7 +135,7 @@ Three arguments, and each is what it is because of the process boundary:
 
 - **A path, not a `WorkspaceService`.** Measured against a real workspace, the
   service, the store, the SQLAlchemy engine, the auth provider and every kernel
-  service fail to pickle — each transitively holds an engine whose `connect` is a
+  service fail to pickle - each transitively holds an engine whose `connect` is a
   closure. `visionset.jobs.context.workspace_for(root)` is the one line that turns
   the path back into a handle, and it caches one **per worker**, because
   `WorkspaceService.open` runs the pragmas, the migration check *and* a full
@@ -160,7 +159,7 @@ inside a pool with no job id in the traceback.
 2. `register(HandlerRef(type=…, func=f"{__name__}:run", idempotent=…))` at module
    scope, and a `payload_for(...)` beside it so one place names the payload's keys
    and the same place reads them.
-3. Import the module from `visionset/jobs/__init__.py` — **the registry is
+3. Import the module from `visionset/jobs/__init__.py` - **the registry is
    populated by import**, so a type is known because something named it.
 4. Launch it from the route that owns the resource. There is no generic launch
    route, deliberately.
@@ -172,7 +171,7 @@ each had to argue it in its own module.
 ## Why `visionset.jobs` is not in the kernel
 
 The export handler resolves an `Exporter` through `visionset.formats.registry`,
-and import-linter forbids `visionset.kernel` from importing it — the same wall
+and import-linter forbids `visionset.kernel` from importing it - the same wall
 that makes `ReleaseService.export` take an instance rather than a format name. So
 handlers sit one package out, beside `visionset.formats` and `visionset.wire`.
 
@@ -181,14 +180,14 @@ load-bearing under `spawn`: a worker importing `visionset.server` would
 re-execute its module-level `app = create_app()` and build a second application
 inside a worker.
 
-The kernel still owns the vocabulary — `JobQueue` and `ProgressReporter` are
+The kernel still owns the vocabulary - `JobQueue` and `ProgressReporter` are
 ports, `BackgroundJob` is a domain model, `SqliteJobQueue` is a kernel adapter.
 What lives in `visionset.jobs` is *what the work is* and *where it runs*.
 
 ## Settings
 
 The repository's first `pydantic-settings` object, `server/settings.py`, and
-server-side only — the executor takes these as plain constructor arguments, so
+server-side only - the executor takes these as plain constructor arguments, so
 nothing below the delivery layer reads an environment variable.
 
 | Variable | Default | What it is |
@@ -206,7 +205,7 @@ is a change to four shipped surfaces for no behaviour.
 **dispatcher**, in the API process, when a future resolves. That placement is the
 point: a handler runs in another process where the bus is a different object with
 no subscribers, so an event it published would reach nobody. A cancellation
-announces nothing — it is something a person just did through an API that already
+announces nothing - it is something a person just did through an API that already
 answered them.
 
 ## Limits, stated
@@ -217,12 +216,12 @@ answered them.
 - **No hard cancellation.** See above.
 - **No cross-process events.** A durable outbox is pro/multi-node territory.
 - **No artifact retention policy.** What a job leaves in `<workspace>/exports/`
-  stays there until somebody deletes it — no TTL, no size cap, no sweeper, and no
+  stays there until somebody deletes it - no TTL, no size cap, no sweeper, and no
   `DELETE` route. Deliberate: the disk is the user's, and it is the posture blobs
   and staged uploads already have. `docs/releases.md` and `docs/workspaces.md`
   argue it; a deployment that wants a policy owns one, over plain files.
 - **No `project_id` on the `job` table**, and no foreign key at all. See "The
-  decisions, and why" above — scoping lives in the payload, and a key would
+  decisions, and why" above - scoping lives in the payload, and a key would
   cascade away the record of work that already happened.
 - **`ingest_job` and `job` coexist.** An ingest has two rows for one run: the
   `ingest_job` is the domain record and the wire contract, the `job` is execution

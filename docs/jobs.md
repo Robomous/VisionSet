@@ -1,13 +1,12 @@
 # Jobs
 
-A job is what an annotator is handed: a segment of an approved batch, plus a per-asset record
-of whether each one has been dealt with. `BatchService.approve` creates the jobs;
-`JobService` moves them.
+A job assigns an annotator a segment of an approved batch and records progress for each asset.
+`BatchService.approve` creates jobs, and `JobService` moves them through their lifecycle.
 
-That record is deliberately **not** the annotations. An asset can be *skipped* — a decision,
-with no labels — or *annotated and sent back for rework* — labels, but not done. Neither is
-expressible in a pile of `Annotation` rows, which is why the work is tracked apart from its
-result.
+The progress record is deliberately **not** the annotations. An asset can be *skipped*, a
+decision with no labels, or *annotated and sent back for rework*, which has labels but is not
+done. Neither state can be expressed through `Annotation` rows alone, so VisionSet tracks the
+work separately from its result.
 
 ```python
 from visionset.kernel.domain import AssetProgress
@@ -35,8 +34,8 @@ pending ──start──> in_progress ──complete──> completed
 ```
 
 The job's own lifecycle is one-way, like its batch. A completed job asserts that every asset
-in it was dealt with, and reopening one would leave the batch's completion — which is derived
-from these — quietly out of date.
+in it was dealt with, and reopening one would leave the batch's completion - which is derived
+from these - quietly out of date.
 
 Underneath it, each asset moves through `ASSET_PROGRESS_TRANSITIONS`:
 
@@ -52,7 +51,7 @@ Anything outside the table raises `InvalidTransition`, naming what the asset *ca
 
 ### Two of those edges are derived from the annotations
 
-Progress is still deliberately not the annotations — the paragraph at the top of this page
+Progress is still deliberately not the annotations - the paragraph at the top of this page
 holds. The two just share one derived edge each way: writing the first annotation on an asset
 moves it `unannotated → annotated`, and deleting its last one moves it back.
 `AnnotationService` does that itself, in the same transaction as the write, so no caller has to
@@ -64,7 +63,7 @@ reviewer took it. A box being drawn or erased contradicts none of them, so `mark
 door to a decision. The rule is `progress_after_annotating` in `kernel/domain/task.py`; see
 [annotations.md](annotations.md).
 
-### …and the other three refuse the write outright
+### ...and the other three refuse the write outright
 
 ```python
 WRITABLE_PROGRESS  # {unannotated, annotated}
@@ -75,7 +74,7 @@ in any of the other three answers `AssetNotWritable` (409 `ASSET_NOT_WRITABLE`),
 it is in.
 
 Storing the label and leaving the progress alone was the older answer, and it was worse than it
-looked. Nothing told the writer their work had gone nowhere — and for `skipped` it went further
+looked. Nothing told the writer their work had gone nowhere - and for `skipped` it went further
 than nowhere: `PROMOTABLE_PROGRESS` leaves that state out, so the labels were accepted, kept, and
 then **silently dropped at promotion**. The refusal is what makes that unreachable.
 
@@ -83,20 +82,20 @@ The remedy is the transition table. `skipped → unannotated` is the take-it-bac
 reversed while the job is open makes the asset writable again. `accepted` has no exit at all, by
 design, which is why correcting accepted work means a new batch rather than a progress move.
 
-### …and so does a job that has already finished
+### ...and so does a job that has already finished
 
 ```python
 OPEN_JOB_STATES  # {pending, in_progress}
 ```
 
 The third gate, and the one that arrived last (#439). `JobService.complete` does **not** complete
-the batch — `BatchService` derives that separately when asked — so the ordinary state of a
+the batch - `BatchService` derives that separately when asked - so the ordinary state of a
 finished job is *inside a batch that is still open*. The batch gate therefore had nothing to say
 about it, and until this existed a completed job went on accepting labels and progress moves: the
 word "finished" describing nothing, and work landing where nobody would look for it.
 
 `AnnotationService.add`, `update` and `delete` consult it, and so does `JobService.mark`; all four
-answer `JobFinished` (409 `JOB_FINISHED`). Reads are untouched — `AnnotationService.for_asset`
+answer `JobFinished` (409 `JOB_FINISHED`). Reads are untouched - `AnnotationService.for_asset`
 passes no gate but membership, because a viewer over finished work has to be able to show it.
 
 The remedy is not a move. `JOB_TRANSITIONS` gives `completed` no way back, by the same
@@ -105,7 +104,7 @@ correction batch.
 
 Three gates, three questions: `BatchNotInAnnotation` says nobody opened this batch, and its
 remedy is to start it. `JobFinished` says this job inside an open batch is over, and it has no
-remedy — a batch is partitioned into jobs that finish at different times, and the first to finish
+remedy - a batch is partitioned into jobs that finish at different times, and the first to finish
 freezes its own frames while its neighbours carry on. `AssetNotWritable` says this asset inside an
 open job is done being labeled.
 
@@ -121,16 +120,16 @@ deliberately unlike `BatchService.approve`, where a second call would re-partiti
 
 `mark` is one method rather than five intent-named ones because the table is the whole of what
 is legal, and a second spelling of it would only drift. Friendlier wrappers belong on the
-surfaces — a CLI `visionset job skip` maps onto this.
+surfaces - a CLI `visionset job skip` maps onto this.
 
 ## Two writers on one job, and what a success means (#302)
 
 A person annotating while an MCP agent works the same job is the ordinary case here, not an
-edge one — so it is worth saying exactly what the kernel promises about it.
+edge one - so it is worth saying exactly what the kernel promises about it.
 
 **A write that returns has happened.** It is not "was attempted", and it is not "was legal when
 it was decided". That was not true before: `mark` read the whole `AnnotationJob`, changed one
-entry of `progress`, and wrote the entity back — and `Repository.update` replaces a whole row.
+entry of `progress`, and wrote the entity back - and `Repository.update` replaces a whole row.
 Three overlapping moves over *different* assets of one job each read the same map, each wrote
 back its own copy of it, and the last one won. Three successes, one asset moved, nothing
 refused anywhere. SQLite's single writer does not prevent it: serializing the *writes* is not
@@ -139,7 +138,7 @@ reads is inside a transaction at all.
 
 Two things close it, and they are different halves:
 
-- **Progress is written one asset at a time**, through `UnitOfWork.set_asset_progress` — the
+- **Progress is written one asset at a time**, through `UnitOfWork.set_asset_progress` - the
   port's one write that is not a repository, for the reason `batches_holding` is its one read
   that is not. Two moves over different assets are two rows and cannot conflict at all.
 - **The write is guarded on the value the move was decided against**, in the same statement that
@@ -150,13 +149,13 @@ Two things close it, and they are different halves:
 
 `StaleWrite` is not `InvalidTransition`, and the difference is worth keeping: that one means the
 move is not in the table at all, this one means it was in the table from where the caller read
-and the state has moved since. A losing writer whose target is *already stored* is not refused —
+and the state has moved since. A losing writer whose target is *already stored* is not refused -
 the no-op rule above does not stop meaning what it means because somebody else got there first.
 
 Writing labels takes the same guard, for the same reason: `AnnotationService` moves progress
 through `progress_after_annotating`, and two annotators labeling two assets of one job used to
 put back each other's progress. That service is all-or-nothing, so a guard that fails there rolls
-the labels back with it — which is the honest outcome, since the move they implied was derived
+the labels back with it - which is the honest outcome, since the move they implied was derived
 from a state nobody is in.
 
 A consequence worth stating: **no write of a job touches its assets' progress.**
@@ -184,7 +183,7 @@ re-deriving the rules from `JOB_TRANSITIONS` would drop. `complete` is refined b
 | `review_pending` | `accept`, `return_to_annotator` |
 | `accepted` | *nothing* |
 
-Anywhere else — a draft, an approved batch, a completed one — every asset declares nothing,
+Anywhere else - a draft, an approved batch, a completed one - every asset declares nothing,
 because nothing may be written into a batch nobody opened or one that has closed. **A finished
 job empties the column the same way**, inside a batch that is still open: `asset_actions` reads
 `OPEN_JOB_STATES`, so the table above is what an asset says while its job is `pending` or
@@ -192,7 +191,7 @@ job empties the column the same way**, inside a batch that is still open: `asset
 
 `annotate` is not a progress move: it is the right to add, change or remove labels, which is
 `WRITABLE_PROGRESS` and the two lifecycle gates together. The five others each name one edge of
-`ASSET_PROGRESS_TRANSITIONS`. Two legal edges deliberately have **no** name — `unannotated ↔
+`ASSET_PROGRESS_TRANSITIONS`. Two legal edges deliberately have **no** name - `unannotated ↔
 annotated`, the pair an annotation appearing or disappearing makes on its own. They are the
 consequence of `annotate`, which is declared; offering either as its own control would mean
 changing the marker while the labels stay put.
@@ -206,7 +205,7 @@ SETTLED_PROGRESS  # {annotated, skipped, accepted}
 `complete` refuses while any asset is outside that set, with `JobNotComplete` naming how many
 are outstanding and in which states.
 
-The set is named for what it means — *does not block completion* — rather than "terminal",
+The set is named for what it means - *does not block completion* - rather than "terminal",
 which would be a lie: an `annotated` asset still has three moves left. What it does not have is
 outstanding work. `unannotated` blocks because the labeling has not happened; `review_pending`
 blocks because the review has not.
@@ -227,7 +226,7 @@ Every write here requires the job's batch to be `in_annotation`, else `BatchNotI
 Before that the batch is still being curated or has only just been approved; after it, the work
 is closed.
 
-`AnnotationService` raises the same error for the same reason — writing an annotation into a
+`AnnotationService` raises the same error for the same reason - writing an annotation into a
 job whose batch is not open is the same refusal, and one error for it beats two. It does not
 restate the check either: `JobService.require_job` and `JobService.require_open_batch` are
 public and take a unit of work, so the caller runs them inside its own transaction and there is
@@ -243,7 +242,7 @@ Only `unannotated` assets: this answers the annotator's question, and `review_pe
 waiting on a reviewer, not on a labeler. It returns fewer than asked when fewer remain, nothing
 at all once the job is done, and raises `ValueError` if asked for zero or fewer.
 
-Order is the batch's own asset order, which is ingest order, and it is **stored** —
+Order is the batch's own asset order, which is ingest order, and it is **stored** -
 `annotation_job_asset.position`, the same shape `batch_asset` already used. Before that column
 existed the round trip happened to work, because the whole child collection is rewritten on
 every save; that was an accident, not a contract, and "stable across calls" needs a contract.
@@ -258,12 +257,12 @@ jobs.project_progress(project_id)
 ```
 
 All three return a `dict[AssetProgress, int]` with **every** state as a key, including the ones
-nobody is in — a caller charting progress should never have to guard a lookup. Nothing is
+nobody is in - a caller charting progress should never have to guard a lookup. Nothing is
 stored; each call recounts.
 
 The project-level walk goes batches → task groups → jobs, because the persistence port has no
 cross-table query: `Repository.list` takes a single `parent_id`. That is N + 1 reads,
-deliberately — see [persistence.md](persistence.md). When it starts to cost, the fix is a
+deliberately - see [persistence.md](persistence.md). When it starts to cost, the fix is a
 method on the port, never a SQLAlchemy import in a service.
 
 ## At a terminal
@@ -278,7 +277,7 @@ visionset job complete "$JOB"
 ```
 
 Each is one `JobService` call. `next` and `mark` are what make the lifecycle drivable from a script
-at all — a batch cannot be completed until every asset has settled, and nothing else settles one.
+at all - a batch cannot be completed until every asset has settled, and nothing else settles one.
 `JobService.mark`'s own docstring invites the second by name.
 
 **Say the wart out loud: `--progress annotated` records that somebody labeled an asset, and the CLI
@@ -288,7 +287,7 @@ so. These commands exist because the *lifecycle* must be reachable from a termin
 is how labelling is meant to happen.
 
 `--progress` is rendered from `AssetProgress` itself, so a wrong value exits 2 listing every legal
-one, and `job progress`'s columns are read off the same enum — a sixth state cannot be silently
+one, and `job progress`'s columns are read off the same enum - a sixth state cannot be silently
 missing from the table. `-n` carries `min=1`, because `next_pending` refuses a non-positive count
 with a bare `ValueError`.
 
@@ -311,7 +310,7 @@ PUT  /jobs/{id}/assets/{asset_id}/progress        → 200 AssetProgressOut
 `JobOut` carries **`batch_id`**, which an `AnnotationJob` does not: the model records only its
 task group, and a client holding a job id would otherwise have no route to the schema version
 its work is judged against. `JobService.batch` is the read behind it. `task_group_id` is
-deliberately absent — no route reaches a task group, so publishing the id would be contract
+deliberately absent - no route reaches a task group, so publishing the id would be contract
 surface that could never be removed.
 
 `ProgressCounts` is five named integers plus a total rather than an open map, so a generated

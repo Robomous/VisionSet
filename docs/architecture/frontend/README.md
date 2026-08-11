@@ -1,7 +1,8 @@
 # The frontend
 
-[`frontend/`](../../../frontend/) is a pnpm workspace of three packages. The split
-is not a build convenience: each one is defined by what it is *allowed to know*.
+[`frontend/`](../../../frontend/) is a pnpm workspace containing three packages.
+The division is architectural, not merely a build convenience: each package is
+defined by what it is *allowed to know*.
 
 ## The three packages
 
@@ -37,7 +38,7 @@ Read down the right-hand column and the architecture falls out. The annotator
 ships with **zero runtime dependencies**, so an application can embed it without
 inheriting a stack. `ui-core` imports no router, so a screen takes navigation as a
 callback and works inside anybody's tree. The app is shell only, so a capability
-that lands there instead of in `ui-core` is an architecture bug by definition —
+that lands there instead of in `ui-core` is an architecture bug by definition -
 the future enterprise UI could not reuse it.
 
 ## What the workspace runs
@@ -56,10 +57,10 @@ product.
 
 ## Where to go next
 
-- [annotator.md](annotator.md) — the headless engine and the boundary that keeps
+- [annotator.md](annotator.md) - the headless engine and the boundary that keeps
   it headless.
-- [ui-core.md](ui-core.md) — screens, the design system, and the generated client.
-- [app.md](app.md) — the router shell.
+- [ui-core.md](ui-core.md) - screens, the design system, and the generated client.
+- [app.md](app.md) - the router shell.
 
 [`DESIGN.md`](../../../DESIGN.md) is the visual contract and the file to read
 before building any screen. [`docs/ui.md`](../../ui.md) covers how the browser

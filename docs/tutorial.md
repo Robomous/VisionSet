@@ -1,14 +1,13 @@
 # Your first dataset
 
-A clip of video to a YOLO dataset a trainer can read, in about half an hour of your attention.
-That sentence is the project's whole reason for existing, and this page is it step by step.
+This tutorial turns a video clip into a trainer-ready YOLO dataset in about half an hour.
 
-You will need [VisionSet installed](install.md) and — because this starts from video —
+You will need [VisionSet installed](install.md) and - because this starts from video -
 `ffmpeg` on the `PATH`. If you would rather start from a folder of photographs, skip step 3 and
 point `ingest` at the folder instead; everything after it is identical.
 
 > **On screenshots.** There are none here, deliberately. This repository refuses to track binary
-> media — an architecture test caps every tracked file at 200 KB and fails on committed pictures,
+> media - an architecture test caps every tracked file at 200 KB and fails on committed pictures,
 > which is what keeps a clone small and a history clean. So the browser sections describe what is
 > on screen and what to press. The app is two commands away and is the better screenshot.
 
@@ -27,7 +26,7 @@ cd ~/datasets/road-signs
 
 Everything from here lives in that directory: `visionset.db` for metadata, `blobs/` for pixels.
 `init` refuses a directory that already holds something, and it is the **only** command that
-creates one — every other command finds one rather than inventing it, which is why standing in the
+creates one - every other command finds one rather than inventing it, which is why standing in the
 wrong directory gives you a refusal instead of a second workspace.
 
 ## 2. A project and a labelling contract
@@ -36,7 +35,7 @@ wrong directory gives you a refusal instead of a second workspace.
 visionset project create road-signs
 ```
 
-A project owns one dataset — its *trunk*, the curated set that releases are cut from. Before
+A project owns one dataset - its *trunk*, the curated set that releases are cut from. Before
 anything can be labelled it needs a **schema**: the list of classes, and what geometry each one
 takes.
 
@@ -55,7 +54,7 @@ visionset schema apply schema.json --project road-signs
 ```
 
 Schema versions are numbered and **immutable**: applying a new list creates version 2, and version
-1 stays readable forever. That matters more than it sounds — every annotation records which
+1 stays readable forever. That matters more than it sounds - every annotation records which
 version it was judged against, and a release freezes the version it was cut with. Narrowing a
 schema (removing a class, tightening a geometry) needs `--allow-destructive`, and if annotations
 already depend on what you are removing it is refused outright with no override. See
@@ -71,7 +70,7 @@ Two things happen, and the split is worth understanding because it explains most
 behaviour.
 
 **A source is registered.** The clip's path, its probed metadata, and the extraction rate become a
-`Source`. The rate is part of *what the source is*, not a per-run flag — "the same source yields
+`Source`. The rate is part of *what the source is*, not a per-run flag - "the same source yields
 the same assets" only means something if the parameters deciding those assets are recorded with
 it. Register the same clip at 1 fps and at 2 fps and you have two sources, deliberately.
 
@@ -94,8 +93,8 @@ visionset batch start "$BATCH"
 ```
 
 `approve` does two things that cannot be undone. It **pins the project's active schema version** to
-this batch — every label written here will be judged against that version, whatever the project's
-schema does later — and it **partitions** the assets into jobs of the size you asked for. The
+this batch - every label written here will be judged against that version, whatever the project's
+schema does later - and it **partitions** the assets into jobs of the size you asked for. The
 partition is exact: every asset is in exactly one job.
 
 After approval the membership is frozen. Excluding an asset from then on is a per-asset `skipped`
@@ -117,7 +116,7 @@ The first screen asks for a token. Mint one in another terminal:
 visionset token create --name browser
 ```
 
-That prints the secret **exactly once** — it is stored as a digest, so there is no way to recover
+That prints the secret **exactly once** - it is stored as a digest, so there is no way to recover
 it and no "show token" anywhere. Paste it into the form; it is verified against the server before
 anything is stored, so a typo is refused immediately rather than becoming a broken session.
 
@@ -136,16 +135,16 @@ Objects/Labels panel on the right.
 | Zoom | scroll, or trackpad pinch; <kbd>Ctrl/⌘ 0</kbd> fits |
 | Next asset | the navigator at the top of the page |
 
-Every edit saves as you go — there is no save button and nothing to lose. The full shortcut table
+Every edit saves as you go - there is no save button and nothing to lose. The full shortcut table
 is in [annotations.md](annotations.md).
 
 Prefer not to click? [`examples/thirty_minute_flow.py`](../examples/thirty_minute_flow.py) writes
 fifty boxes through the SDK in one pass, and an agent can do the same over
-[MCP](mcp.md) — including *looking* at each frame.
+[MCP](mcp.md) - including *looking* at each frame.
 
 ## 6. Close the work and promote it
 
-When every asset in a job has been settled — annotated, skipped or accepted — close it, then close
+When every asset in a job has been settled - annotated, skipped or accepted - close it, then close
 the batch, then promote:
 
 ```bash
@@ -155,7 +154,7 @@ visionset batch promote "$BATCH"
 ```
 
 `complete` on the batch refuses while any job is still open: "derived" here means *recomputed*,
-not automatic. **Promotion** is what moves assets into the trunk — a union against what is already
+not automatic. **Promotion** is what moves assets into the trunk - a union against what is already
 there, so promoting twice adds nothing and re-promoting after a curator removed something puts it
 back.
 
@@ -173,7 +172,7 @@ hash and copying every label as it stood. Publish twice from an unchanged datase
 manifests are **byte-identical**, because nothing time-, machine- or identity-specific goes inside
 one.
 
-The split is stored as a *recipe* — three fractions and a seed — not as a materialised assignment,
+The split is stored as a *recipe* - three fractions and a seed - not as a materialised assignment,
 and folds are computed from the frozen manifest on demand. It keys on **content hash** rather than
 asset id, so two copies of the same image cannot straddle a train/test boundary, which is the
 classic way a benchmark quietly lies to you.
@@ -183,7 +182,7 @@ visionset release verify v1.0 --project road-signs
 ```
 
 `verify` re-reads and re-hashes every blob the manifest names. It exits **1** when the answer is
-no — so `visionset release verify v1.0 && ./train.sh` means something.
+no - so `visionset release verify v1.0 && ./train.sh` means something.
 
 ## 8. Export it
 
@@ -218,7 +217,7 @@ visionset export --project road-signs --release v1.0 \
 ```
 
 `--allow-lossy` is required here and the refusal without it is not bureaucracy. YOLO writes five
-numbers per label, so attributes, confidence and provenance never survive — and its
+numbers per label, so attributes, confidence and provenance never survive - and its
 `supported_geometries` is boxes only, so the `lane` polygons you drew are written as their bounding
 boxes. VisionSet works out exactly what that costs *before* writing anything, tells you by class
 with counts, and writes the same report into the export as
@@ -231,7 +230,7 @@ Written in a reduced form by yolo: lane (37). See visionset-export-report.json.
 Not carried by yolo: weather (12). See visionset-export-report.json.
 ```
 
-The `lane` polygons *are* in your labels, as boxes; the `weather` tags are not in them at all —
+The `lane` polygons *are* in your labels, as boxes; the `weather` tags are not in them at all -
 YOLO has nowhere to put a label with no location.
 
 Choose `--format coco` instead and no consent is needed at all: COCO carries boxes and polygons
@@ -256,7 +255,7 @@ That directory is a dataset `ultralytics` will load as it stands. You are done.
 | | |
 | --- | --- |
 | [cli.md](cli.md) | every command, `--json` for scripting, and the three exit codes |
-| [mcp.md](mcp.md) | pointing an agent at the workspace — the same cycle, with the tools to *look* |
+| [mcp.md](mcp.md) | pointing an agent at the workspace - the same cycle, with the tools to *look* |
 | [api.md](api.md) | the REST surface, and why clients branch on `code` rather than on the status |
 | [releases.md](releases.md) | manifests, splits, and what each export format can and cannot carry |
 | [examples.md](examples.md) | six runnable examples, including this flow with its assertions |

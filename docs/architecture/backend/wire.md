@@ -26,7 +26,7 @@ flowchart LR
 ```
 
 The server keeps its own pydantic models because `openapi.json` is generated from
-them and a dict cannot do that. So there are two spellings of each shape — and
+them and a dict cannot do that. So there are two spellings of each shape - and
 **two, never three**: this package exists because the CLI and MCP both needed the
 same twenty projections, and a second hand-written copy is what "promoted, not
 copied" exists to prevent.
@@ -55,7 +55,7 @@ like.
 Almost everything a projection reads is a domain model. The one exception is
 `capabilities_of` from `visionset.inference`, and it is here rather than spelled
 out because which model families this build serves is a fact this package has no
-way to know — a second copy of that map would be exactly the drift every other
+way to know - a second copy of that map would be exactly the drift every other
 rule in this file prevents. The direction is the usual one: a sibling below the
 surfaces, importing nothing from here.
 
@@ -68,7 +68,7 @@ close a loop and make a publication decision reachable from the place that decid
 what exists.
 
 Import-linter's independence contract keeps the three surfaces siblings, so
-`wire` cannot import `server/models.py` either — which is why the agreement is a
+`wire` cannot import `server/models.py` either - which is why the agreement is a
 test rather than a shared type.
 
 ## Related

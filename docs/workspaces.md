@@ -1,7 +1,7 @@
 # Workspaces
 
-A workspace is a directory on disk plus the stores inside it. Every kernel operation
-happens in the context of exactly one, so `WorkspaceService` is both the way in and the
+A workspace is a directory and the stores it contains. Every kernel operation runs in the
+context of exactly one workspace, making `WorkspaceService` both the entry point and the
 **single composition point** for the default adapters.
 
 ```
@@ -25,19 +25,19 @@ at no other time. One cache for the whole workspace, so two connections pinned t
 model and revision share the files.
 
 `uploads/` is where multipart uploads are staged, named by a digest of the part set, so that
-`SourceService` — which registers a source by *path* — has a path to be given.
+`SourceService` - which registers a source by *path* - has a path to be given.
 
 `exports/<release_id>/<format>/` is where a format plugin writes, and `<format>.zip` beside it
 is the archive `GET /background-jobs/{job_id}/artifact` streams back. The kernel does not choose
 the location: `ReleaseService.export` writes into whatever directory it is handed, and this one
-is chosen by the export *handler* (`visionset/jobs/export.py`) — since #328 an export runs in a
+is chosen by the export *handler* (`visionset/jobs/export.py`) - since #328 an export runs in a
 worker rather than in the request, and the handler is the caller that has to turn the result
 into something a later request can serve. It clears the directory before each run, which it can
 do safely precisely because it built the path out of the workspace root, a release id and a
 format name.
 
 The kernel neither writes nor reads either, `open` simply tolerates them the way it tolerates
-anything else beside the database and `blobs/`, and the CLI and MCP surfaces create neither —
+anything else beside the database and `blobs/`, and the CLI and MCP surfaces create neither -
 they already hold real paths. Like blobs, staged uploads and finished exports are never
 deleted: a workspace grows with what was offered to it and with what was asked of it, not only
 with what it kept.
@@ -46,12 +46,12 @@ with what it kept.
 sweeper for any of the three, and none is planned for the OSS product: the disk belongs to the
 user, and a local-first tool that deleted their staged uploads or their exported training set on
 a schedule they never chose would be taking an action they cannot undo. What that costs is
-honest — a workspace only grows — and the remedy is `rm`, which is safe for `uploads/` and
+honest - a workspace only grows - and the remedy is `rm`, which is safe for `uploads/` and
 `exports/` because both are reproducible, and is *not* safe for `blobs/`, which is the data.
 
 The store runs in **WAL mode**, which is why the two sidecars are
 part of the format: `close()` checkpoints them into `visionset.db` and removes them, so a
-workspace at rest is still just the database and the blobs — but a workspace that is *open*,
+workspace at rest is still just the database and the blobs - but a workspace that is *open*,
 or one whose process was killed, is all four entries.
 
 **Copying a workspace that is open loses committed data** if you take only `visionset.db`.
@@ -68,8 +68,8 @@ workspace, built by `event_bus_factory`, `image_processor_factory`, `video_proce
 workspaces open at once must not share.
 
 `auth_provider_factory` is the one that takes arguments: `(metadata_store, workspace_id)`, because
-it is the first port derived from another rather than from the path. No kernel service uses it —
-it exists for the surfaces above — and it is composed here anyway, because the alternative is a
+it is the first port derived from another rather than from the path. No kernel service uses it -
+it exists for the surfaces above - and it is composed here anyway, because the alternative is a
 delivery module naming a kernel adapter.
 
 A new port is appended **last** to `WorkspaceService.__init__`, never inserted: `init` and `open`
@@ -102,7 +102,7 @@ dataset it is supposed to be created with.
 `init` and `open` are classmethods rather than work done in `__init__` for a concrete
 reason: **both default adapters `mkdir` in their constructor**, so "this directory must be
 empty" and "this must already be a workspace" can only be decided *before* a store object
-exists. `__init__` stays the injection seam — hand it ports and it touches no filesystem.
+exists. `__init__` stays the injection seam - hand it ports and it touches no filesystem.
 The keyword-only `metadata_store_factory` / `blob_store_factory` arguments carry the
 defaults, because the default depends on the path and so cannot be an ordinary constructor
 default.
@@ -111,7 +111,7 @@ Paths are normalized once, with `expanduser().resolve()`. `workspace.root` is th
 always absolute, and a workspace reached through a symlink is not mistaken for a different
 place.
 
-### `init` — checks in order, first match wins
+### `init` - checks in order, first match wins
 
 | Condition | Result |
 | --- | --- |
@@ -135,18 +135,18 @@ If anything fails midway, `init` removes what it created and nothing else: the w
 directory if `init` made it, otherwise just the database and `blobs/`. "Fails safely" means
 a directory that already held something is never touched.
 
-### `open` — the decision table
+### `open` - the decision table
 
 | Condition | Result |
 | --- | --- |
 | does not exist / is not a directory | `NotAWorkspace` (the message distinguishes the two) |
-| no `visionset.db` — empty directory, unrelated directory, or `visionset.db` is itself a directory | `NotAWorkspace` |
+| no `visionset.db` - empty directory, unrelated directory, or `visionset.db` is itself a directory | `NotAWorkspace` |
 | `blobs` exists but is not a directory | `WorkspaceCorrupt` |
 | the database is not readable as SQLite | `WorkspaceCorrupt` |
-| `format_version` is `UNINITIALIZED` | `WorkspaceCorrupt` — "carries no VisionSet schema" |
+| `format_version` is `UNINITIALIZED` | `WorkspaceCorrupt` - "carries no VisionSet schema" |
 | stored version > `FORMAT_VERSION` | `WorkspaceFormatTooNew` |
 | stored version < `FORMAT_VERSION` | migrated forward in place, restamped, then opened |
-| `workspace` rows ≠ 1 | `WorkspaceCorrupt` — "expected exactly one" |
+| `workspace` rows ≠ 1 | `WorkspaceCorrupt` - "expected exactly one" |
 | `blobs/` missing | recreated; not an error |
 
 Two orderings in that table are load-bearing:
@@ -154,7 +154,7 @@ Two orderings in that table are load-bearing:
 - **The `UNINITIALIZED` check precedes `initialize()`.** SQLite treats a zero-length file as
   a valid empty database, so without this check `open` would happily create a VisionSet
   schema inside any unrelated file that happens to be named `visionset.db`. `open` creates,
-  migrates, and repairs — but it never *initializes*.
+  migrates, and repairs - but it never *initializes*.
 - **`open` creates nothing when it refuses.** Every check that decides "is this a workspace"
   runs before an adapter exists, because constructing one would `mkdir`.
 
@@ -174,8 +174,8 @@ backup-before-migrate belongs with the CLI.
 
 `workspace.root` is the path you opened. `Workspace.root_dir` records where the workspace
 *last* was, and `open` deliberately does not rewrite it when a directory has moved: writing
-on open would break opening a workspace on a read-only mount — a shared dataset over NFS, a
-read-only bind mount in a container — and would make `open` non-idempotent for no invariant
+on open would break opening a workspace on a read-only mount - a shared dataset over NFS, a
+read-only bind mount in a container - and would make `open` non-idempotent for no invariant
 gain. Read `root`; treat `root_dir` as a possibly-stale hint.
 
 ## Which workspace, when nobody said
@@ -183,7 +183,7 @@ gain. Read `root`; treat `root_dir` as a possibly-stale hint.
 `init` and `open` are handed a path. Deciding *which* path is a separate question, and it has one
 answer for every surface: `resolve_workspace_root(explicit=None)`, beside `DB_FILENAME` in
 `kernel/services/workspace_service.py`. It lives there because it is the same fact read from the
-other end — the database file is what marks a directory as a workspace, and this is what goes
+other end - the database file is what marks a directory as a workspace, and this is what goes
 looking for the mark. It cannot live in either caller: import-linter forbids `visionset.server`
 importing `visionset.cli`, so the rule the two share has to sit above both.
 
@@ -191,15 +191,15 @@ Precedence, first match wins:
 
 | | Source | Walks up? |
 | --- | --- | --- |
-| 1 | `explicit` — the CLI's `--workspace` / `-w` | no |
+| 1 | `explicit` - the CLI's `--workspace` / `-w` | no |
 | 2 | `VISIONSET_WORKSPACE`, when set to something non-empty | no |
 | 3 | the nearest directory at or above the working directory holding a `visionset.db` | **yes** |
-| 4 | the working directory | — |
+| 4 | the working directory | - |
 
 A server started by import string has no argv, so it reaches only 2, 3 and 4. When
 `visionset server` started it, it reaches only 2: that command resolves through all four branches,
 opens the result,
-and then *states* it in `VISIONSET_WORKSPACE` — one decision, made once, at the surface a person is
+and then *states* it in `VISIONSET_WORKSPACE` - one decision, made once, at the surface a person is
 standing at. It has to travel that way rather than as an argument, because `create_app()` takes no
 parameters and `--reload` runs the application in a separate process.
 
@@ -207,12 +207,12 @@ parameters and `--reload` runs the application in a separate process.
 four branches and states the answer, so the child it spawns reaches only 2; the child takes no
 arguments because stdin and stdout are the transport and there is nowhere else to put one. An MCP
 client that spawns `visionset` directly sets `VISIONSET_WORKSPACE` in the server entry's own `env`
-— see [mcp.md](mcp.md).
+ - see [mcp.md](mcp.md).
 
 **How long a workspace stays open differs by surface, deliberately.** The HTTP server builds one
 handle in `create_app()` and keeps it for the process's life, because it is one long-lived reader
 of many requests. The CLI and the MCP server open and close per command and per *tool call*: there
-is then no module-level state to tear down between tests, and — since SQLite has one writer — a
+is then no module-level state to tear down between tests, and - since SQLite has one writer - a
 stdio server that held the file between calls would keep `visionset server` and a second agent out
 of a workspace nobody is using. `close()` checkpoints the WAL, so neither leaves a `visionset.db-wal`
 behind.
@@ -220,8 +220,8 @@ behind.
 **Only case 3 walks, and that asymmetry is the whole rule.** A flag and an environment variable are
 somebody *stating* which workspace. If the stated directory holds none, walking to its parent and
 quietly minting a credential into whatever workspace lives up there is the worst thing this
-function could do. Git draws the line in the same place — discovery walks up, `--git-dir` and
-`GIT_DIR` do not — and for the same reason.
+function could do. Git draws the line in the same place - discovery walks up, `--git-dir` and
+`GIT_DIR` do not - and for the same reason.
 
 **Finding nothing is not an error here.** This names a directory; `open` owns "is this a
 workspace?" and already raises `NotAWorkspace` naming the path it was given. A refusal here would
@@ -247,14 +247,14 @@ Three decisions worth stating, because they are the opposite of every other comm
   this one names where to make one. The flag would read as "operate on this", which is not what is
   being said.
 - **It does not use `resolve_workspace_root`.** Walking upward to find a place to *create*
-  something is precisely the failure mode the resolver's precedence argues against — and here it
+  something is precisely the failure mode the resolver's precedence argues against - and here it
   would be irreversible, since the answer is a new workspace in somebody else's directory rather
   than a command that touched the wrong one. It does not read `$VISIONSET_WORKSPACE` either.
 - **It closes the workspace it just made.** `WorkspaceService.init` hands one back *open*; a command
   that returned without closing would strand `visionset.db-wal` beside it for the next reader to
   recover.
 
-The root goes to stdout alone, so `WS=$(visionset init ./robots)` is exactly the path — resolved,
+The root goes to stdout alone, so `WS=$(visionset init ./robots)` is exactly the path - resolved,
 which is the useful answer when you typed `.`. `WorkspaceNotEmpty` and `WorkspaceAlreadyExists` both
 arrive as one sentence at exit 1, and neither earns a hint: their own messages already name the
 remedy.
@@ -268,8 +268,8 @@ sync by hand, and a migration interrupted between the two would leave `open` gue
 to believe. The database file *is* the marker; the version lives inside the thing it
 describes.
 
-If a marker is ever wanted for ergonomics — say, for a `visionset` command that walks up
-parent directories the way `git` does — the constraint to preserve is that it must be
+If a marker is ever wanted for ergonomics - say, for a `visionset` command that walks up
+parent directories the way `git` does - the constraint to preserve is that it must be
 **content-free** (existence only, no version inside) and **tolerated when absent**, or the
 drift problem comes straight back.
 
@@ -285,7 +285,7 @@ halves are necessary:
   caller's unit of work, before the insert.
 
 The pre-check is not redundancy. A constraint violation ends the transaction it happened in
-— SQLAlchemy refuses further work on it — so a service cannot insert first and translate the
+ - SQLAlchemy refuses further work on it - so a service cannot insert first and translate the
 failure into a friendly domain error afterwards. Any caller that needs `ProjectNameTaken`
 *and* an atomic multi-row write (creating a project together with its dataset, for example)
 must check first. That is why `require_project_name` takes the caller's `uow` instead of
@@ -295,14 +295,14 @@ Normalization, and where each layer applies:
 
 | Rule | Where |
 | --- | --- |
-| NFC normalization, outer whitespace stripped | service, on the way in — this is the stored form |
+| NFC normalization, outer whitespace stripped | service, on the way in - this is the stored form |
 | case-insensitive comparison (Unicode `casefold`) | service |
 | case-insensitive comparison (ASCII, `COLLATE NOCASE`) | the index |
 | blank name rejected (`InvalidName`) | service |
 
 NFC matters concretely: macOS filesystems hand out decomposed strings, so `café` typed in
 Finder and `café` typed in a terminal are different byte sequences that must not become two
-projects. Internal whitespace is left alone — `road signs` and `road  signs` are distinct,
+projects. Internal whitespace is left alone - `road signs` and `road  signs` are distinct,
 because collapsing runs of spaces would rewrite the user's input for no invariant. There is
 no length limit.
 
@@ -330,27 +330,27 @@ work in progress.
 
 **Writers are serialized, and wait up to `busy_timeout` for their turn.** SQLite permits one
 writer at a time regardless of journal mode. A write that waits the timeout out raises
-`WorkspaceBusy` — a domain error, translated in the adapter like every other (see
+`WorkspaceBusy` - a domain error, translated in the adapter like every other (see
 [persistence.md](persistence.md#connection-posture)), and transient: the remedy is to retry.
 It is deliberately *not* `WorkspaceCorrupt`, which is
 where the adapter files the failures retrying cannot fix.
 
 **Still not guaranteed:** which error the loser of a name race sees. Two processes can both
 pass the pre-check; then either the second insert hits the index and raises
-`ConstraintViolated` — a caller re-raises that as `ProjectNameTaken`, so user-visible
-behavior stays correct — or one of them waits out the timeout and gets `WorkspaceBusy`. Both
+`ConstraintViolated` - a caller re-raises that as `ProjectNameTaken`, so user-visible
+behavior stays correct - or one of them waits out the timeout and gets `WorkspaceBusy`. Both
 are honest answers, and both are now domain errors.
 
 Opening the same path twice yields two independent engines with no shared cache and no
 in-process lock: **VisionSet is single-writer by convention, not by enforcement.** A long
 write transaction is therefore still a thing to avoid rather than a thing the store defends
-against — which is why, for example, `SourceService` probes a clip *outside* its write
+against - which is why, for example, `SourceService` probes a clip *outside* its write
 transaction. `busy_timeout` shortens the window; it does not make holding a transaction
 across a subprocess acceptable.
 
 Two hardenings remain untaken, and one of them is declined rather than merely pending.
 `BEGIN IMMEDIATE` for write transactions would make every contended write wait instead of
-ever failing fast — but `unit_of_work()` serves reads and writes alike, with no read-only
+ever failing fast - but `unit_of_work()` serves reads and writes alike, with no read-only
 variant, so an immediate transaction would take the write lock for *every* read and serialize
 exactly the concurrency WAL was adopted for. It stays off unless the unit of work grows a
 read-only form. An advisory lock file, which would turn "single-writer by convention" into
@@ -385,7 +385,7 @@ Four habits that keep the boundary honest:
 - Take a `WorkspaceService`, not a store and a path. One dependency, and it carries the
   workspace-level rules with it.
 - One `unit_of_work()` per operation, and do the whole operation inside it.
-- Reach the ports through the handle — `workspace.metadata_store`, `workspace.blob_store`,
+- Reach the ports through the handle - `workspace.metadata_store`, `workspace.blob_store`,
   `workspace.event_bus`, `workspace.image_processor`, `workspace.video_processor`,
   `workspace.auth_provider`, `workspace.job_queue`. No service other than `workspace_service`
   should name `SqliteMetadataStore`, `FilesystemBlobStore`, `InProcessEventBus`,

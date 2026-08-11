@@ -1,8 +1,8 @@
 # @visionset/annotator
 
 [`frontend/annotator/`](../../../frontend/annotator/) is the annotation engine. Its
-whole claim is that the part which *decides* anything — geometry, hit testing, the
-interaction state machine, undo — is pure TypeScript that has never heard of a
+whole claim is that the part which *decides* anything - geometry, hit testing, the
+interaction state machine, undo - is pure TypeScript that has never heard of a
 browser, and React is one renderer over the top of it.
 
 ## The boundary
@@ -46,7 +46,7 @@ All three run under `pnpm --filter @visionset/annotator lint`.
 | `tsconfig.core.json` | [`tsconfig.core.json`](../../../frontend/annotator/tsconfig.core.json) | a DOM type in a **signature** |
 
 The third is the one worth understanding. It compiles the shipped engine with
-`lib: ["ES2022"]` and `types: []` — no DOM library, no ambient `@types` — so
+`lib: ["ES2022"]` and `types: []` - no DOM library, no ambient `@types` - so
 `function onKey(e: KeyboardEvent)` inside core fails to compile. A lint rule
 reading *value* references is structurally blind to that, because a type
 annotation is not a value reference, and it is exactly the shape that leaked into
@@ -59,8 +59,8 @@ introduces a violation of each and asserts the corresponding gate rejects it.
 ## How a host talks to it
 
 The engine takes wire-shaped input and hands back wire-shaped output, with no
-mapping layer: `src/core/types.ts` mirrors the API's own shapes — `snake_case`
-fields, geometry nested under its own key, points as `[x, y]` pairs — and
+mapping layer: `src/core/types.ts` mirrors the API's own shapes - `snake_case`
+fields, geometry nested under its own key, points as `[x, y]` pairs - and
 `src/core/wire.ts` parses `unknown` into them.
 
 What travels the other way is a document, never HTTP. `AnnotatorCanvas` fetches
@@ -72,13 +72,13 @@ store reports. That is the same split the suggest tool has: the engine owns the
 
 `package.json` has no `dependencies` at all, and `react` is an optional
 `peerDependency` used only by the adapter. An application embedding the engine
-inherits nothing — which is also why the styled annotation panel lives in
+inherits nothing - which is also why the styled annotation panel lives in
 `ui-core` and not here: a design system inside `adapters/react` would be the first
 thing an embedder had to fight.
 
 ## Related
 
-[`docs/annotations.md`](../../annotations.md) covers the behaviour — the tools,
+[`docs/annotations.md`](../../annotations.md) covers the behaviour - the tools,
 the shortcut table, the ceiling on zoom. The
 [`annotator-core`](../../../.agents/skills/frontend/annotator-core/SKILL.md) skill
 is the one to read before touching interaction, geometry or a render adapter.
