@@ -1,26 +1,27 @@
 # VisionSet documentation
 
-Product and architecture docs land here. Start with the repo-root
+This directory contains the product and architecture documentation. Start with the repo-root
 [README](../README.md) and [CONTRIBUTING](../CONTRIBUTING.md); the architecture
 contracts (kernel purity, headless annotator) are described there and enforced in CI.
 
-**Want the shape of the system rather than what it does?**
-[architecture/](architecture/README.md) is a tree of short pages you can walk
-top-down — the layer stack, a page per package, and where each boundary is
-enforced. The pages below are the behavioural reference; that tree is the map.
+For the shape of the system, read [architecture/](architecture/README.md) from the
+top down. It covers the layer stack, each package, and the enforcement points for
+the architectural boundaries. The pages below are the behavioural reference; the
+architecture tree is the map.
 
-The **visual** contract is [DESIGN.md](../DESIGN.md), also at the repository root
-rather than here — it is the file to read *before* building any screen, and the one
-`frontend/ui-core/src/styles.css` implements. Read it beside
+The **visual** contract is [DESIGN.md](../DESIGN.md) at the repository root. Read
+it *before* building any screen; `frontend/ui-core/src/styles.css` implements that
+contract. Read it alongside
 [annotations.md](annotations.md), which covers the annotator itself.
 
-**New here?** [install.md](install.md), then [tutorial.md](tutorial.md).
+If you are new to VisionSet, start with [install.md](install.md), then continue to
+[tutorial.md](tutorial.md).
 
 | Doc | Covers |
 | --- | --- |
-| [architecture/](architecture/README.md) | The shape of the system, walkable top-down: the layer stack and the one-way dependency graph, a page per backend package and per frontend workspace package, and one page for what runs through all of them — the two machine-enforced boundaries, the capabilities contract, and the batch lifecycle at a glance. Every page links into the code and to the doc that owns the behaviour |
+| [architecture/](architecture/README.md) | The shape of the system, walkable top-down: the layer stack and the one-way dependency graph, a page per backend package and per frontend workspace package, and one page for what runs through all of them - the two machine-enforced boundaries, the capabilities contract, and the batch lifecycle at a glance. Every page links into the code and to the doc that owns the behaviour |
 | [install.md](install.md) | Getting it: requirements, the wheel, what `ffmpeg` is and is not needed for, the optional groups that check exports, and where your data goes |
-| [tutorial.md](tutorial.md) | A first dataset end to end — clip to YOLO in about half an hour — with what each step actually freezes and why |
+| [tutorial.md](tutorial.md) | A first dataset end to end - clip to YOLO in about half an hour - with what each step actually freezes and why |
 | [workspaces.md](workspaces.md) | The workspace on disk: layout, `init`/`open`, which workspace a surface resolves to, project-name uniqueness, and how services are composed |
 | [projects.md](projects.md) | The project lifecycle: the 1:1 dataset, renaming, and what deletion does and does not destroy |
 | [sources.md](sources.md) | Where raw data comes from: the two registration methods, what a video source records from the probe, why decomposition parameters live on the source, and the idempotency rule and its named uniqueness gap |
@@ -40,7 +41,7 @@ rather than here — it is the file to read *before* building any screen, and th
 | [auth.md](auth.md) | Who may call it: per-workspace API tokens, why only a digest is stored, why every refusal is one identical 401, immediate revocation, the `visionset token` commands, and how a protected route is built |
 | [mcp.md](mcp.md) | The agent surface: every tool and what each is for, why the one that destroys data is not advertised unless you ask, why fifty candidates became the set that ships (and what has been added since), how a client is configured, the coordinate-frame rule that makes `get_asset_image` safe to annotate from, the error envelope and its `retry_with` field, the three gate words, and the stated limits (synchronous ingest and export, local paths, one workspace per server) |
 | [mcp-tools.md](mcp-tools.md) | The complete tool listing, **generated** from the server's own descriptions so it cannot drift from what an agent is told |
-| [mcp-walkthrough.md](mcp-walkthrough.md) | A session over MCP, start to finish: the cycle in the order an agent meets it, and then what twelve real agent runs did with it — where the coordinate frame held, how refusals were read, and the two pieces of friction that changed the tools |
+| [mcp-walkthrough.md](mcp-walkthrough.md) | A session over MCP, start to finish: the cycle in the order an agent meets it, and then what twelve real agent runs did with it - where the coordinate frame held, how refusals were read, and the two pieces of friction that changed the tools |
 | [ui.md](ui.md) | The browser client: why no screen calls `fetch`, how a refusal is read (branch on `code`, and the two codes the client adds), where the token is kept and the three alternatives that were rejected, why a 401 is handled in one subscription, the loading/empty/error component, polling, and the dev proxy that keeps CORS out of production |
 | [releasing.md](releasing.md) | Cutting a release: what ships, why the beta goes to PyPI as a pre-release, the npm scope, the order the steps have to happen in, and the one step that needs credentials this repository does not hold |
 | [inference.md](inference.md) | Where models run: the connections auto-labeling is configured against, why nothing is ever downloaded on your behalf, the two kinds and the parameters each carries, why the model revision is pinned, how weights are fetched and where they land, the `local-inference` extra, and why deleting a connection never touches the provenance on a label |

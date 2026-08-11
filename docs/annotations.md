@@ -1,10 +1,9 @@
 # Annotations
 
-An annotation is a label on an asset: a class, a geometry, and whatever attribute values that
-class asks for. Everything else in the kernel exists to protect what lands here — a batch pins
-a schema version so the contract stops moving, a job says who is labeling which assets.
-`AnnotationService` is where those two meet the thing they were guarding, and it is the **only**
-door to an `Annotation`.
+An annotation labels an asset with a class, a geometry, and the attribute values required by
+that class. A batch pins the schema version so the contract cannot change, while a job assigns
+the assets to be labeled. `AnnotationService` brings those constraints together and is the
+**only** way to create an `Annotation`.
 
 ```python
 from visionset.kernel.domain import Annotation, BboxGeometry
@@ -53,7 +52,7 @@ the annotation, or to write a schema version that describes it.
 
 The geometry rule is **per class**, not per version: a `LabelClass` declares one `geometry`, so
 this is an equality test. `SchemaService.allowed_geometries` is the union across a version's
-classes — the right answer to "what may this project draw?" and the wrong tool here, where it
+classes - the right answer to "what may this project draw?" and the wrong tool here, where it
 would let a polygon through under a bbox class.
 
 ## The version is the batch's, not the project's
@@ -70,7 +69,7 @@ already in flight. See [batches.md](batches.md).
 
 The service **stamps** that version onto what it stores, the way it lets `id` generate itself:
 whatever the caller put in `schema_version` is replaced, because the pin is a fact about the
-batch rather than an opinion of the writer. `update` does the same with `asset_id` — the stored
+batch rather than an opinion of the writer. `update` does the same with `asset_id` - the stored
 one wins, because moving a label from one asset to another is a delete and an add, not an edit.
 
 `Annotation.schema_version` is still a required field with `ge=1`, so a caller has to write
@@ -84,7 +83,7 @@ cannot validate the class, the geometry or the attributes either.
 one bad box stores nothing at all: a half-labeled asset is not a state a caller can reach.
 
 Which is also why each publishes exactly one [`AnnotationsWritten`](events.md) after the commit,
-naming its operation — one per call, not one per box, because the call is the thing that
+naming its operation - one per call, not one per box, because the call is the thing that
 happened.
 
 ## Attributes are keyed by exact name
@@ -93,7 +92,7 @@ happened.
 attributes = {"occluded": False, "weather": "wet"}
 ```
 
-The keys are `Attribute.name` exactly — which is why that field is stored stripped: a trailing
+The keys are `Attribute.name` exactly - which is why that field is stored stripped: a trailing
 space would be a second attribute nobody can see. The same exact-name matching the change
 classifier uses, for the same reason (see [schemas.md](schemas.md)).
 
@@ -104,8 +103,8 @@ held to different standards.
 ## Whole-asset tags carry no coordinates, and there is at most one per class
 
 A ``classification_tag`` class produces an annotation whose geometry has **zero
-fields**. It says something about the asset, not about a place in it — "this frame is
-at night" — so it has nothing to move, nothing to resize and no vertices.
+fields**. It says something about the asset, not about a place in it - "this frame is
+at night" - so it has nothing to move, nothing to resize and no vertices.
 
 That is also why **an asset carries at most one tag of a given class**. Two boxes
 under one class are two facts, because each carries its own coordinates; two tags of
@@ -123,13 +122,13 @@ one class are the *same statement made twice*. Since #121 the kernel enforces it
 
 It sits in the `InvalidAnnotation` family even though it is the only one of the six
 that reads the store, because the *remedy* is the family's: fix the annotation. There
-is no flag that overrides it and no state to change first — the tag is already there.
+is no flag that overrides it and no state to change first - the tag is already there.
 The status is **422 and not 409** for the same reason: 409 means "change the state
 and resubmit", and deleting the existing tag to add an identical one is not a remedy
 anybody wants.
 
 `AnnotationService.update` may still *move* a tag to another class, and a no-op
-update of a tag is not a duplicate — the row being replaced leaves the comparison
+update of a tag is not a duplicate - the row being replaced leaves the comparison
 before its replacement is judged.
 
 **A migration collapsed the duplicates workspaces already carried**, because they were
@@ -160,19 +159,19 @@ another object is the service's.
 An annotation accepted from the editor's suggest tool is written this way and no other: an
 ordinary `add` carrying `provenance="model"`, the `model_ref` the suggestion named, and its
 `confidence`. There is no separate route for it, no relaxed validation, and no link back to the
-connection — the model's identity is **copied** at write time, so deleting the connection later
+connection - the model's identity is **copied** at write time, so deleting the connection later
 leaves the record intact. The gesture is in [ui.md](ui.md); what it proposes is in
 [inference.md](inference.md).
 
 ## `delete` has no `confirm=`
 
 The one exception to the rule in [projects.md](projects.md) and [batches.md](batches.md).
-Deleting a box is the ordinary annotator edit loop — draw it, look at it, take it off again —
+Deleting a box is the ordinary annotator edit loop - draw it, look at it, take it off again -
 not the destruction of a lifecycle entity the way deleting a project or a batch is. The
-lifecycle gates are the guard instead: once the work closes — the batch, or just this job —
+lifecycle gates are the guard instead: once the work closes - the batch, or just this job -
 nothing here can touch it at all.
 
-## Progress follows the annotations — two edges of it
+## Progress follows the annotations - two edges of it
 
 | Current | Has annotations | Becomes |
 | --- | --- | --- |
@@ -184,8 +183,8 @@ nothing here can touch it at all.
 existing, so annotations never move them. `JobService.mark` is the door for a decision; see
 [jobs.md](jobs.md).
 
-The rule is `progress_after_annotating` in `kernel/domain/task.py` — pure, so a test can sweep
-it against `ASSET_PROGRESS_TRANSITIONS` rather than against prose — and `AnnotationService`
+The rule is `progress_after_annotating` in `kernel/domain/task.py` - pure, so a test can sweep
+it against `ASSET_PROGRESS_TRANSITIONS` rather than against prose - and `AnnotationService`
 applies it inside its own transaction, so labels and progress commit together. It never calls
 `JobService.mark`, which would open a second session and write from it while the first is
 still open.
@@ -193,7 +192,7 @@ still open.
 ## Work only happens inside an open batch, and inside an open job
 
 Every write requires the job's batch to be `in_annotation`, else `BatchNotInAnnotation`, **and
-the job itself to be open** — `OPEN_JOB_STATES`, else `JobFinished` — the same two errors
+the job itself to be open** - `OPEN_JOB_STATES`, else `JobFinished` - the same two errors
 `JobService` raises, reached through the same three lookups (`require_job`,
 `require_open_batch`, `require_open_job`) rather than a second copy of the ladder.
 
@@ -226,32 +225,32 @@ legal in OpenAPI 3.1 and stripped by enough proxies to be a bad thing to require
 
 `schema_version` is on neither request body. The pinned version is stamped onto whatever is
 sent, so a field a client could set and never observe would be a lie; it comes back on the
-response. `asset_id` is likewise absent from `AnnotationUpdate` — the stored one wins.
+response. `asset_id` is likewise absent from `AnnotationUpdate` - the stored one wins.
 
 **A refusal that is about one item carries `detail.index`**, the position in the array the
 client sent. Nothing was written, and `LABEL_CLASS_NOT_IN_SCHEMA` on its own cannot say which
 of forty boxes meant it. That index is `VisionSetError.index`, set by this service on the way
-out of its per-item loop and published by the API — it is a fact about the call, so it lives in
+out of its per-item loop and published by the API - it is a fact about the call, so it lives in
 the kernel rather than being reconstructed at the boundary.
 
 The wire models re-spell the geometries rather than publishing the domain's, and each request
 body converts through `to_domain()` inside a **parsing-time validator**. That is not decoration:
 `provenance='model'` with no `model_ref`, a confidence outside [0, 1] and a zero-area box are
 refused by pydantic, and a `ValidationError` raised from a route body is neither a
-`VisionSetError` nor a `RequestValidationError` — without the validator it reaches the catch-all
+`VisionSetError` nor a `RequestValidationError` - without the validator it reaches the catch-all
 handler and answers **500** to a plainly malformed payload.
 
 ## In the editor
 
 `@visionset/annotator` mirrors this contract in TypeScript, and mirrors it **exactly**:
 `snake_case` fields, geometry nested under its own key, points as `[x, y]` pairs. There is no
-mapping layer, deliberately — a second spelling of twenty fields is free to drift, and a host
+mapping layer, deliberately - a second spelling of twenty fields is free to drift, and a host
 would pay the conversion whoever wrote it. What comes back from
 `GET /jobs/{id}/assets/{asset_id}/annotations` is what the editor takes; what the editor emits is
 what `POST`/`PATCH` accept.
 
 The annotator cannot read the pydantic models, and it must not depend on `@visionset/ui-core` to
-reach the generated client — that package carries `openapi-fetch`, and the editor's contract is
+reach the generated client - that package carries `openapi-fetch`, and the editor's contract is
 "no HTTP, no fetching". So the contract travels as bytes, the way `openapi.json` already does.
 `tests/fixtures/wire_annotations.json` is written by `scripts/export_wire_fixtures.py` from
 `AnnotationOut` itself, and two independent gates hold it in place: a pytest one keeps the file
@@ -262,23 +261,23 @@ job installs no Python and reads only what is committed. Regenerate with:
 uv run python scripts/export_wire_fixtures.py
 ```
 
-**Two vocabularies, one union — and the editor keeps both.** `GeometryType` names eight
+**Two vocabularies, one union - and the editor keeps both.** `GeometryType` names eight
 geometries because that is what a `LabelClass` declares (see [schemas](schemas.md)); `Geometry`
 has four variants because that is what an annotation can carry. So `parseGeometry` tells a
 `mask` apart from a typo: the first is a declared geometry with no model, refused in the
 kernel's own words (`UNSUPPORTED_GEOMETRY`), and the remedy is to wait for a variant rather than
 to fix the caller. `polyline` was the example here until #223 shipped its variant and #342 its
-tool — the remedy
+tool - the remedy
 arriving, which is exactly what the split predicted would happen.
 
 The parser is strict about unknown keys as well as missing ones. That is not fussiness: the editor
 hands back what it was given, so a key it silently dropped would be a field the kernel wrote and
-the editor erased. It does **not** re-check bounds — a zero-area box and a two-point polygon are
+the editor erased. It does **not** re-check bounds - a zero-area box and a two-point polygon are
 refused above, by the models that own the rule, and a second copy would drift.
 
 ## Keys are bound in one place, and the table is data
 
-v1 delivered its whole keyboard with one line — `document.addEventListener("keydown", onKey)` —
+v1 delivered its whole keyboard with one line - `document.addEventListener("keydown", onKey)` -
 over a 210-line `if`/`else` chain, and its polygon confirm button talked to that chain by calling
 `document.dispatchEvent(new KeyboardEvent("keydown", …))`. `frontend/annotator/src/core/input/`
 replaces both. A chord resolves to an **action**, which is plain data; `runAction` is the only
@@ -289,25 +288,25 @@ thing that turns one into a store call.
 | `escape` | cancel whatever is in flight | v1 |
 | `enter` | commit whatever is in flight (closes a polygon at ≥3 points) | v1 |
 | `delete` | delete the selected annotations | v1 |
-| `backspace` | take back the last polygon point (while drawing; silent otherwise) | **#129** — v1 spelled it as a right-click |
-| `mod+z` | undo | **new** — v1 has no undo at all |
+| `backspace` | take back the last polygon point (while drawing; silent otherwise) | **#129** - v1 spelled it as a right-click |
+| `mod+z` | undo | **new** - v1 has no undo at all |
 | `mod+shift+z` | redo | **new** |
 | `mod+a` | select all | **new** |
 | `mod+c` | copy the selection to the annotator's clipboard | v1 |
 | `mod+v` | paste it onto this frame, offset and selected | v1 |
 | `mod+0` | ask the host to zoom to 100% | v1 |
 | `?` | ask the host for the shortcut sheet | v1 |
-| `v` | select mode — no active class | v1 |
-| `1`–`9` | the schema's first nine classes, in authored order | **new** |
+| `v` | select mode - no active class | v1 |
+| `1`-`9` | the schema's first nine classes, in authored order | **new** |
 
-The three-part fold — defaults, then `classHotkeys(schema)`, then a host's overrides — is
+The three-part fold - defaults, then `classHotkeys(schema)`, then a host's overrides - is
 **`defaultRegistry(schema, overrides)`**, exported so the adapter that resolves a keystroke and
 the product's shortcut sheet read the same map (#189). A sheet that spelled the fold itself would
 be free to drift, which is what v1's hand-written `HelpModal.tsx` did by construction.
 
 `mod` is ctrl **or** meta, folded once, so one table serves both platforms. A class hotkey on a
-`classification_tag` class toggles the tag rather than making the class active — pressing it twice
-undoes it — and on any other class it sets the active class, emitting a tool change only when the
+`classification_tag` class toggles the tag rather than making the class active - pressing it twice
+undoes it - and on any other class it sets the active class, emitting a tool change only when the
 *derived tool* actually moved. A digit naming a class the schema no longer declares refuses and
 does nothing, which is the same posture `tagCommand` takes: a binding outlives the class it names,
 and losing a keystroke is better than losing the session.
@@ -321,26 +320,26 @@ a tool key *is* a class key; and the lane-attribute hotkeys, because attributes 
 had to be answered before they could be claimed. All four live in
 `core/interaction/clipboard.ts`.
 
-**A clipboard is not the store's.** There is one `AnnotatorStore` per open asset — the annotation
+**A clipboard is not the store's.** There is one `AnnotatorStore` per open asset - the annotation
 page makes that structural, remounting its workspace per frame so `mod+z` cannot walk into the
-previous picture's edits — so a clipboard inside one would die on every navigation. It is a
+previous picture's edits - so a clipboard inside one would die on every navigation. It is a
 session object instead: an interface and a five-line holder in `core/`, held by whoever outlives
 the asset. The annotation page holds one per **job**, which is what makes *copy the car on frame
 12, paste it on frame 13* work. `AnnotatorCanvas` makes its own when a host supplies none, so
 in-frame duplication needs no wiring at all.
 
 **It is never the system clipboard.** `navigator.clipboard` is a DOM global `core/` may not name,
-is asynchronous where a keystroke is not, and is permission-gated — but the deciding reason is
+is asynchronous where a keystroke is not, and is permission-gated - but the deciding reason is
 smaller: what is copied is a geometry in *this asset's* pixel frame, meaningless to any other
 application and silently wrong if pasted into one.
 
 **A paste re-mints.** Fresh id per annotation, `asset_id` and `schema_version` read off the
 document being pasted *into*, `provenance: "human"` whatever the source was, and `job_id` /
-`model_ref` / `confidence` left null — the fields a service stamps. It is deliberately not
+`model_ref` / `confidence` left null - the fields a service stamps. It is deliberately not
 `draftAnnotation`: that seeds the class's declared *defaults*, which is right for a shape somebody
 just drew and wrong for a copy, whose point is that it carries what the original carried.
 
-**The offset is 20 screen pixels**, v1's number, divided by the zoom in `tolerance.ts` — the one
+**The offset is 20 screen pixels**, v1's number, divided by the zoom in `tolerance.ts` - the one
 module in `core/` allowed to name one. A fixed asset-pixel offset would be invisible at a fitted
 zoom on a large frame and throw the copy half a pane away at 8×; "visibly distinct and grabbable"
 is a fact about a screen. Pasting onto a **smaller** frame clamps the way a drag into the edge
@@ -348,8 +347,8 @@ does: the shape shifts as far as it can, keeps its size, and one wider than the 
 rather than deforming.
 
 **A second paste steps further out.** The rule is stated in terms of the document rather than a
-counter — offset by one delta; if that lands on an annotation this document already carries with
-the same class and the same geometry, offset again — so an undo frees the slot it took and a
+counter - offset by one delta; if that lands on an annotation this document already carries with
+the same class and the same geometry, offset again - so an undo frees the slot it took and a
 paste onto a fresh frame starts at one delta. Against the asset's edge the search runs out of
 room and copies do stack there.
 
@@ -358,13 +357,13 @@ unrepresentable rather than refusing one. The kernel refuses a duplicate outrigh
 (`DUPLICATE_CLASSIFICATION_TAG`), which makes the local rule matter more: without it a paste would
 look like it worked and the whole save would refuse later, blaming an index.
 
-Copy is a **read** and runs in read-only mode — carrying a box out of a batch that can no longer
+Copy is a **read** and runs in read-only mode - carrying a box out of a batch that can no longer
 be edited is how a correction starts. Paste is a write and is refused there by the engine itself.
 Inside a text field both chords are the browser's, because the adapter checks `isTextEntry` before
 it runs anything.
 
 **Remapping is a fold.** `registryOf([...DEFAULT_BINDINGS, ...classHotkeys(schema), ...overrides])`
-— last wins, and an override with a `null` action unbinds a chord. Nothing throws on a duplicate,
+ - last wins, and an override with a `null` action unbinds a chord. Nothing throws on a duplicate,
 because the fold *is* the remap.
 
 **Nothing here is scoped by a global listener, and it could not be.** `src/core/` cannot name
@@ -372,8 +371,8 @@ because the fold *is* the remap.
 subtree bubbling, with no listener lifecycle at all. Two booleans do different jobs and should not
 be merged: `resolve(...) !== null` answers *is this keystroke ours*, which is what decides
 `preventDefault`, and `runAction(...).changed` answers *did it do anything*. The rest of what an
-adapter owes — the text-entry guard, Escape surviving it, IME filtering, the `code`-for-digits
-seam on layouts where the digit row is shifted — is listed in `core/input/index.ts`.
+adapter owes - the text-entry guard, Escape surviving it, IME filtering, the `code`-for-digits
+seam on layouts where the digit row is shifted - is listed in `core/input/index.ts`.
 
 ## The React adapter, and what "embeddable" means
 
@@ -398,7 +397,7 @@ what makes the canvas embeddable rather than a small application: a product rest
 palette and never forks the annotator to do it.
 
 The **store is a prop**, not something the canvas builds, so a host's controls read exactly the
-state the canvas draws. There is deliberately no `asset` or `schema` prop either — an
+state the canvas draws. There is deliberately no `asset` or `schema` prop either - an
 `AnnotationDocument` already carries both, and a second copy is a second spelling free to drift.
 What the document does not carry is the pixels, which is precisely what `imageSrc` is for.
 
@@ -410,7 +409,7 @@ every annotation is individually plausible and uniformly wrong.
 ### Who owns the transform
 
 The adapter, entirely. `geometry/tolerance.ts` is the only module inside `src/core/` allowed to
-name a zoom, so the screen↔image transform lives in `adapters/viewport.ts` — pure arithmetic, no
+name a zoom, so the screen↔image transform lives in `adapters/viewport.ts` - pure arithmetic, no
 DOM, no React, and therefore unit-tested without a browser:
 
 ```
@@ -420,12 +419,12 @@ screenToImage(v, x, y) = [ (x - v.panX) / v.zoom, (y - v.panY) / v.zoom ]
 The `<svg>` is laid out at the asset's native size inside one wrapper carrying
 `translate(pan) scale(zoom)`, so **an SVG user unit is an asset pixel** and nothing in the paint
 path converts anything. The corollary is the trap: a 2-pixel stroke written as `2` is two *asset*
-pixels — a hair at 8× and a slab at 10% — so every thickness, radius and font size goes through
+pixels - a hair at 8× and a slab at 10% - so every thickness, radius and font size goes through
 `screenPx(px, zoom)`. It is #41's tolerance finding pointed at drawing instead of at hit-testing.
 
 Zoom is the wheel, and `ctrlKey` on a wheel event **is** how a browser reports a trackpad pinch.
 Pan is a middle- or secondary-button drag. `mod+0` refits, and it is intercepted by the adapter
-rather than forwarded, because the zoom is the adapter's — it is the one row of the `InputHost`
+rather than forwarded, because the zoom is the adapter's - it is the one row of the `InputHost`
 port that is not a pass-through.
 
 ### Dragging repaints one layer
@@ -433,14 +432,14 @@ port that is not a pass-through.
 `AnnotatorStore.stage` leaves the committed document untouched and moves only the preview, which
 is what lets the committed annotation layer sit still through a whole gesture: it is `memo`'d on
 `(document, selection, skipId, hotId, zoom)`, and none of those move while the pointer does.
-`skipId` is a `string | null` and `hotId` is a `string` for that reason — a freshly allocated
+`skipId` is a `string | null` and `hotId` is a `string` for that reason - a freshly allocated
 `Set`, or the `Affordance.hot` target object, would be a new prop on every pointer-move and would
 defeat the bail-out before `memo` was consulted.
 
 Measured on the demo page with twelve boxes, dragging one across thirty pointer-moves: **1 DOM
 mutation in the committed layer and 601 in the transient layer**, plus one more in the committed
-layer on release. The committed layer mutates twice per gesture — once when the dragged shape
-leaves it, once when it comes back — and not at all in between.
+layer on release. The committed layer mutates twice per gesture - once when the dragged shape
+leaves it, once when it comes back - and not at all in between.
 
 React Compiler is installed nowhere in this repository, and the annotator ships as `tsc` output
 that a compiler pass in a consuming app could never reach, so those `memo`/`useMemo` calls are
@@ -450,7 +449,7 @@ load-bearing rather than decoration.
 
 `resolveTarget` is the only hit test, and nothing between the input surface and the pixels can be
 pressed. Without that rule the entire keyboard silently stops working after a polygon is closed by
-clicking its first vertex — the shape is the press's hit target, React 19 flushes discrete events
+clicking its first vertex - the shape is the press's hit target, React 19 flushes discrete events
 synchronously so the commit removes it *during* the event, and the browser's own focus fixup for
 the `mousedown` then resolves a detached node, finds nothing, and moves focus to `<body>`. No
 error is reported anywhere.
@@ -467,7 +466,7 @@ grabbed, a shape could not be selected by the part of it that overhangs, and a p
 surround did not clear the selection the way a press on empty canvas does.
 
 That was never a geometry problem. `screenToImage` has no clamp, `resolveTarget` works at negative
-coordinates, and the conversion already read the **pane's** rect — so moving the handlers up one
+coordinates, and the conversion already read the **pane's** rect - so moving the handlers up one
 element changed no arithmetic at all. The pane also spans the whole viewport and is a `<div>` no
 commit detaches, which makes it a strictly safer host for the focus rule than the `<svg>` was.
 
@@ -477,7 +476,7 @@ measurement, and every scenario in the suite converts coordinates through it.
 
 **Which declaration keeps a shape from being a hit target was measured, and it is not the obvious
 one.** `pointer-events` is inherited, so the topmost inert element under the pane decides for
-everything below — the **transform wrapper**. Against `e2e/surround.spec.ts`: removing the
+everything below - the **transform wrapper**. Against `e2e/surround.spec.ts`: removing the
 wrapper's `none` fails the scenario; removing the `<svg>`'s alone changes nothing; removing
 `AnnotationLayer`'s changes nothing either, although that same removal reproduced the focus bug
 back when the `<svg>` was the live surface. The redundant declarations stay as defence in depth,
@@ -491,7 +490,7 @@ pnpm --filter @visionset/annotator build && pnpm --filter @visionset/app dev
 
 The annotator builds first, deliberately: the app resolves `@visionset/annotator` through its
 `dist/`, so an unbuilt change is simply invisible in the browser rather than a compile error.
-The sample image is an SVG `data:` URI generated in code — fixture media is never committed here,
+The sample image is an SVG `data:` URI generated in code - fixture media is never committed here,
 and its rulers are what make a wrong transform visible by eye.
 
 ## The behavioural contract
@@ -520,12 +519,12 @@ than half of them describe things this build does not do.
 
 | v1 spec | LOC | Disposition |
 | --- | --- | --- |
-| `polygon-tool.spec.ts` | 233 | **Ported**, all seven scenarios — one of them inverted, see below |
-| `annotation-redesign.spec.ts` | 129 | **One of six ported.** The other five are v1's routing and chrome — a batch list, an `Annotate` link, a sidebar, an image picker, a back button. The demo has no router and no backend; those describe a product surface M5 builds, not a behaviour that moved |
-| `polyline-tool.spec.ts` | 257 | **Ported by #342**, as `e2e/polyline.spec.ts`. It was out of scope at #48 because `polyline` had no `Geometry` variant, and out of scope again after #223 for a narrower reason — it drives a *drawing tool*, and there was none. #342 shipped the tool. Six of its seven scenarios port; the seventh asserts a floating point-count bar this product does not have, and the point count lives on the Annotations panel |
+| `polygon-tool.spec.ts` | 233 | **Ported**, all seven scenarios - one of them inverted, see below |
+| `annotation-redesign.spec.ts` | 129 | **One of six ported.** The other five are v1's routing and chrome - a batch list, an `Annotate` link, a sidebar, an image picker, a back button. The demo has no router and no backend; those describe a product surface M5 builds, not a behaviour that moved |
+| `polyline-tool.spec.ts` | 257 | **Ported by #342**, as `e2e/polyline.spec.ts`. It was out of scope at #48 because `polyline` had no `Geometry` variant, and out of scope again after #223 for a narrower reason - it drives a *drawing tool*, and there was none. #342 shipped the tool. Six of its seven scenarios port; the seventh asserts a floating point-count bar this product does not have, and the point count lives on the Annotations panel |
 | `lane-export.spec.ts` | 206 | **Superseded rather than ported.** #223 landed the lane formats as `visionset.formats` plugins, and they are tested where the other exporters are: `tests/formats/test_lanes.py` ports v1's 53 unit tests, and `test_report_agreement.py` checks each one's report against the bytes it wrote. v1's spec drove per-item HTTP export endpoints that have no counterpart here |
 
-The demo's **sixth** class, `pose`, is that state made visible — it is declared `keypoints`,
+The demo's **sixth** class, `pose`, is that state made visible - it is declared `keypoints`,
 `toolFor` answers `select` for it, and a scenario asserts that activating it draws nothing.
 `centerline` held the role twice and lost it twice: #223 made it a carryable geometry with
 no drawing tool, and #342 gave it the tool. The role moved to a class genuinely still in
@@ -536,11 +535,11 @@ in it and the demo exists to show the states.
 
 v1: *clicking a vertex and pressing Delete removes that vertex, and since 3 − 1 = 2 is
 below the minimum, the whole triangle goes.* #44 answered the same question the other
-way — `removePolygonVertex` returns `null` at `MIN_POLYGON_POINTS`, `deleteVertex` does
+way - `removePolygonVertex` returns `null` at `MIN_POLYGON_POINTS`, `deleteVertex` does
 nothing, and the polygon survives. Destroying a shape somebody placed three clicks into
 because they aimed at a vertex is a punishment for a typo, and `Delete` on the selection
 is one key away. Two scenarios hold it: the refusal on a triangle, and the removal on a
-quadrilateral — because a refusal with no working sibling is indistinguishable from a
+quadrilateral - because a refusal with no working sibling is indistinguishable from a
 dead code path.
 
 ### Two engine behaviours have no adapter path, and #129 settled what to do
@@ -550,12 +549,12 @@ non-primary press with a pan and returns before the machine is told, which is th
 adapter honouring `state.ts`'s contract that a pan forwards nothing. Two
 interaction-table rows are therefore unreachable by that gesture in a browser.
 
-**The pan stays.** The alternative — forward the press and pan only when the machine
-did not consume it — loses twice. A conditional pan is unpredictable: right-drag
+**The pan stays.** The alternative - forward the press and pan only when the machine
+did not consume it - loses twice. A conditional pan is unpredictable: right-drag
 would pan on empty canvas and not over a vertex, so whether the gesture works
 depends on where the vertices happen to be. And on macOS **ctrl-click *is* a
 secondary press**, so routing it would make one ctrl-click raise both spellings of
-the vertex delete — v1's own bug, which #44 closed deliberately and
+the vertex delete - v1's own bug, which #44 closed deliberately and
 `machine.test.ts` still guards.
 
 What each capability costs then differs:
@@ -567,24 +566,24 @@ What each capability costs then differs:
   now raises a `take-back-point` intent, which only `drawing-polygon` answers.
 
 That freed a chord rather than inventing one: `delete` and `backspace` used to mean
-the same thing, and the split is the conventional one — `Delete` removes a *thing*,
+the same thing, and the split is the conventional one - `Delete` removes a *thing*,
 `Backspace` takes back the *last thing you did*. It costs a synonym and takes away
 no capability. `adapter-gaps.spec.ts` still pins the pan; `keyboard.spec.ts` holds
 the split and the take-back.
 
-### The two render layers guarded different halves — until the surface moved
+### The two render layers guarded different halves - until the surface moved
 
 #47 fixed a bug where closing a polygon on its first vertex moved focus to `<body>` and
 silently killed every shortcut, and put `pointer-events: none` on both `<g>` layers.
 Measured while writing this suite: they were not redundant. Restoring the attribute on
-`TransientLayer` alone reproduced the original bug exactly and failed **one** scenario —
+`TransientLayer` alone reproduced the original bug exactly and failed **one** scenario -
 the vertex pressed belongs to the polygon still being drawn. Restoring it on
 `AnnotationLayer` alone left that one green and failed **five** others, every one of
 which presses on a committed shape.
 
 **#186 removed the precondition rather than the finding.** With the input surface moved
 off the `<svg>` and the transform wrapper inert, `pointer-events` inheritance covers the
-whole subtree, and neither restoration reproduces anything — re-measured against the
+whole subtree, and neither restoration reproduces anything - re-measured against the
 whole suite, each leaves **90 of 90** green. The finding above is not falsified; it
 described a layout that no longer exists. The layers keep their attributes because they
 are what would still hold if the wrapper's were removed, but the scenario that fails
@@ -605,27 +604,27 @@ the fix is a `data-testid`.
 pnpm --filter @visionset/app e2e
 ```
 
-The config starts its own server — on **5273** in the main checkout and in CI, and on a
+The config starts its own server - on **5273** in the main checkout and in CI, and on a
 port derived from the worktree's own path in a linked worktree, so two of them can run
 this suite at once (#346; `frontend/app/e2e-ports.ts` argues the derivation, and every
 run prints the number it resolved). Never vite's 5173, which the first run of this suite
 found already held by an unrelated stack, and drove for twelve scenarios before failing.
 It builds the annotator first, deliberately: the app resolves
 `@visionset/annotator` through `dist/`, so an unbuilt engine is invisible rather than a
-compile error. `reuseExistingServer` skips that rebuild locally — if the demo behaves
+compile error. `reuseExistingServer` skips that rebuild locally - if the demo behaves
 like an older build, kill the dev server you already had open.
 
 ## The performance benchmark
 
 M4's exit criterion ends "at 60fps with 200+ annotations", and until #49 nothing had
-measured it. The answer is **yes, with roughly ten times the headroom for a drag** — and
+measured it. The answer is **yes, with roughly ten times the headroom for a drag** - and
 one gesture, the zoom, that is O(annotations) by construction and is where the ceiling
 will appear first.
 
 ### The scene
 
 `?scene=bench` on the demo page. `src/demo/benchScene.ts` builds **200 bboxes and 20
-polygons of 32 vertices — 220 annotations and 640 vertices — on a 3840x2160 asset**,
+polygons of 32 vertices - 220 annotations and 640 vertices - on a 3840x2160 asset**,
 every coordinate from one seeded PRNG so the scene is identical on every machine. The
 picture is a raster generated in a `<canvas>` at load and handed over as a blob URL: no
 fixture media is committed here any more than in `tests/fixtures/media.py`, and a bitmap
@@ -635,18 +634,18 @@ image understates.
 The page is `BenchmarkHost`, not `AnnotatorDemo`, and the difference is one panel: the
 demo's `<pre data-testid="wire">` runs `JSON.stringify` over every annotation on every
 snapshot change, and a drag invalidates the snapshot on every pointer-move. That is the
-host's debug surface, not the engine — so it is left out, and then *priced*, by a row
+host's debug surface, not the engine - so it is left out, and then *priced*, by a row
 that puts it back (`?scene=bench&chrome=wire`).
 
 ### Two instruments, and neither replaces the other
 
 | | asserted | runs | sees |
 | --- | --- | --- | --- |
-| `e2e/perf.spec.ts` | yes | every pull request | **DOM writes per gesture** — deterministic, hardware independent |
-| `bench/annotator.bench.ts` | a loose floor only | `pnpm --filter @visionset/app bench`, and a manual CI dispatch | **frame times** — the 60fps claim, and how much headroom is left |
+| `e2e/perf.spec.ts` | yes | every pull request | **DOM writes per gesture** - deterministic, hardware independent |
+| `bench/annotator.bench.ts` | a loose floor only | `pnpm --filter @visionset/app bench`, and a manual CI dispatch | **frame times** - the 60fps claim, and how much headroom is left |
 
-The split is #48's precedent — a wall-clock assertion on a shared runner fails for
-reasons nobody chose — and the boundary between them was measured rather than assumed.
+The split is #48's precedent - a wall-clock assertion on a shared runner fails for
+reasons nobody chose - and the boundary between them was measured rather than assumed.
 Three regressions were introduced deliberately and the drag scenario run against each:
 
 | broken on purpose | the drag scenario | caught |
@@ -661,8 +660,8 @@ because `paintDocument`'s output is unchanged and React's diff finds no work to 
 the counter cannot see a wasted render, and does not claim to: its guarantee is that the
 committed layer's **output** is constant through a gesture, which is the regression that
 costs frames. The price of a render that changes nothing is a question for the clock.
-The third is caught by the count going *down* — with nothing skipped the preview never
-takes the shape over, so the removal never happens — which is why the total is asserted
+The third is caught by the count going *down* - with nothing skipped the preview never
+takes the shape over, so the removal never happens - which is why the total is asserted
 with equality rather than as a ceiling.
 
 ### What is asserted every pull request
@@ -671,12 +670,12 @@ with equality rather than as a ceiling.
 | --- | --- |
 | the committed layer is one `<g>` per annotation | 220 groups, 660 elements: 200 `rect`, 20 `polygon`, 220 `text` |
 | a drag's moves cost the committed layer nothing | **0** mutations across the moves, at 4 moves and at 60 |
-| …and the whole gesture is a constant | **3** records: removal, re-insertion, hover fill |
+| ...and the whole gesture is a constant | **3** records: removal, re-insertion, hover fill |
 | a pan touches neither render layer | **0** and **0**; one style write per move on the stage `<div>` |
 | one wheel notch touches no annotation | **0** records, and **6** on the stage |
 | drawing a box reaches the committed layer once | **1** |
 
-That wheel row read **880** — four attributes on each of 220 shapes — until #131. Every
+That wheel row read **880** - four attributes on each of 220 shapes - until #131. Every
 stroke width, label size and label lift went through `screenPx(…, zoom)`, so that a
 2-pixel stroke is two *screen* pixels at every zoom (#41's tolerance finding, pointed at
 rendering); `zoom` was therefore an input to every shape, `AnnotationLayer`'s `memo`
@@ -691,7 +690,7 @@ Pan, drag and zoom are now all O(1) in the document.
 was measured rather than reasoned about. It compensates for transforms up to the *SVG
 viewport*, while this stage scales an HTML **ancestor** of the `<svg>` with a CSS
 transform. Two identical rects, one carrying the attribute and one not, paint the same
-width at every zoom — 2.05px at zoom 1, 4.05 at 2, 8.05 at 4.
+width at every zoom - 2.05px at zoom 1, 4.05 at 2, 8.05 at 4.
 
 ### The 880 was real, and it was not what cost the frames
 
@@ -707,7 +706,7 @@ Three measurements, each removing one candidate:
 | the React re-render (`memo` given a comparator that ignores `zoom`) | 83.3 | 74 |
 | the 4K image (`display: none` on the `<img>`) | 83.3 | 72 |
 | all 220 shapes (`display: none` on the committed layer) | 66.7 | 65 |
-| — the same gesture on the small demo scene | **16.8** | **1** |
+| - the same gesture on the small demo scene | **16.8** | **1** |
 
 So neither the DOM writes, nor React's render of 220 components, nor the 4K image is the
 cost; and hiding every shape recovers only about a fifth of it while still missing the
@@ -715,8 +714,8 @@ budget fourfold. What is left is the browser's own raster and compositing of a s
 stage, which is not work this codebase does and not work `vector-effect` or an unscaled
 grip layer would have avoided either.
 
-The document-size dependence is real — the small scene zooms perfectly at the same
-throttle — but it is a raster cost, not a React one. #131's diagnosis named the writes;
+The document-size dependence is real - the small scene zooms perfectly at the same
+throttle - but it is a raster cost, not a React one. #131's diagnosis named the writes;
 the writes are gone and the ceiling has not moved.
 
 ### The ceiling is raster, so it is a limit rather than a bug (#228)
@@ -730,17 +729,17 @@ at the bottom of the range".
 | --- | --- | --- |
 | `MAX_ZOOM` | **8** | one asset pixel as an eight-pixel block |
 | `PIXELATED_ABOVE_ZOOM` | **4** | past this the image layer renders `image-rendering: pixelated` |
-| `atZoomCeiling` / `atZoomFloor` | — | so a host's controls can be disabled *with the reason* |
+| `atZoomCeiling` / `atZoomFloor` | - | so a host's controls can be disabled *with the reason* |
 
 **8x is the depth past which the picture has nothing left to show.** An asset pixel is
 already an eight-pixel block there; magnifying further produces larger blocks of the same
-data, and no render architecture changes that — it is the image's own sampling grid. That
+data, and no render architecture changes that - it is the image's own sampling grid. That
 the browser's raster is also struggling by then is a second reason for the same number,
 not the primary one.
 
 **Above 4x the image is drawn as pixels rather than smoothed**, and only the image: the
 SVG chrome is untouched by the rule. Bilinear smoothing is right where the sampling grid
-is not the subject, and wrong once somebody has zoomed in *to look at* individual pixels —
+is not the subject, and wrong once somebody has zoomed in *to look at* individual pixels -
 it invents gradients between them, so a blurry magnification reads as a soft image where a
 blocky one reads as what it is. `imageRenderingAt` is strictly above the threshold, so 4x
 itself still smooths.
@@ -780,8 +779,8 @@ zoom (wheel)                            220  20x slower      268  16.7   200.0  
 ```
 
 `p50` and `p95` are stable run to run; the tail is not. `stalls` and `max` move by a
-few between runs on the same machine — the unthrottled zoom row has been seen at 1 and
-at 6 — so read them as an order of magnitude, and read the medians as the number.
+few between runs on the same machine - the unthrottled zoom row has been seen at 1 and
+at 6 - so read them as an order of magnitude, and read the medians as the number.
 
 **Acceptance criterion 1 is met**: pan and drag hold 60fps with 220 annotations on a 4K
 asset, with no stalls at all.
@@ -794,10 +793,10 @@ the main thread turns that into something the same instrument can read:
 
 - **a drag still holds 60fps at 10x slower** and breaks between 10x and 20x, so it has
   roughly an order of magnitude of headroom on this machine;
-- **the zoom breaks between 4x and 10x** — the first gesture to go. This baseline was
+- **the zoom breaks between 4x and 10x** - the first gesture to go. This baseline was
   recorded before #131 and is left as it was; #131 removed the 880 writes per notch and
   **these numbers did not move**, which is the finding written up above. The ceiling is
-  the browser's raster of a scaled stage, and it is still where it was — #228 accepted it
+  the browser's raster of a scaled stage, and it is still where it was - #228 accepted it
   as a limit and capped the zoom at 8x rather than chasing it further.
 
 An input-to-frame **latency** metric was built first and thrown away: with one input per
@@ -816,11 +815,11 @@ Three things about that command are deliberate and easy to get wrong:
   `StrictMode` double-invokes every render; numbers from there are two to five times
   pessimistic and describe a build nobody ships. `vite preview` fixes both.
 - **it passes `--base /app/` by hand.** `vite.config.ts` sets the base from `command`, and
-  `vite preview` reports `command` as `"serve"` — so without it the preview server
+  `vite preview` reports `command` as `"serve"` - so without it the preview server
   answers at `/` while the build has `/app/assets/…` baked into its HTML, the SPA fallback
   returns **200 with `index.html`** for the missing script, and every scenario fails
   hunting for a canvas on a blank page. Nothing errors.
-- **it never reuses an existing server**, on a port of its own — 5373 in the main
+- **it never reuses an existing server**, on a port of its own - 5373 in the main
   checkout, derived from the worktree's path in a linked one (#346). The build is part of
   what is being measured.
 
@@ -831,13 +830,13 @@ throttle-then-detach, and **292.4 ms** with the session held open. The first ver
 the headroom rows detached, and reported beautiful numbers about nothing.
 
 CI carries the benchmark only on `workflow_dispatch` (`annotator bench (chromium,
-manual)`), which is what #49 asks for. Compare a dispatch against a dispatch — a shared
+manual)`), which is what #49 asks for. Compare a dispatch against a dispatch - a shared
 runner is not the machine above.
 
 ## The showcase
 
 The demo page at `/` is the annotator's public showcase, and #50 is what made it one. It
-is the same page the behavioural contract drives — the shape did not move — restyled onto
+is the same page the behavioural contract drives - the shape did not move - restyled onto
 the repo-root `DESIGN.md` and given the two pieces of the annotation workspace that cost
 nothing to bring forward.
 
@@ -856,14 +855,14 @@ nothing to bring forward.
 Every one of those is **outside** `@visionset/annotator`. The canvas takes a store, a
 picture and an active class and gives back callbacks; it fetches nothing, routes nothing,
 and owns no UI a product would want to restyle. That is the embeddable contract, and the
-demo is the thing that keeps it honest — a control the package had to own would have to
+demo is the thing that keeps it honest - a control the package had to own would have to
 be built here first and would not fit.
 
 ### A tool strip over a tool that does not exist
 
 `core/interaction/tool.ts` is emphatic: the tool is **derived from the active class and
 never stored**. v1 stored both and spent two mechanisms keeping them from disagreeing. So
-the strip does not select a tool — it reports the derived one, and a press moves the
+the strip does not select a tool - it reports the derived one, and a press moves the
 active class to one that derives the tool asked for. Two consequences, both deliberate:
 
 - A press whose tool is **already active is a no-op.** The demo schema declares two bbox
@@ -871,7 +870,7 @@ active class to one that derives the tool asked for. Two consequences, both deli
   at `vehicle` would silently change what the next shape is labelled.
 - The strip lists **one button per distinct drawable geometry**, built from
   `drawableGeometry`. A `classification_tag` and a `keypoints` class both answer `null`,
-  and the demo schema declares both — so the two omissions are visible rather than
+  and the demo schema declares both - so the two omissions are visible rather than
   theoretical. `polyline` was the second of these until #342 gave it a tool.
 
 ### `onViewChange`, and the one place a default is a lie
@@ -882,19 +881,19 @@ prop is read-only and it is called **on mount**, unlike `onAnnotationsChange` an
 
 The asymmetry is the point. A document is handed *in*, so a host already knows the initial
 one. A viewport is not: the fit is computed in a `useLayoutEffect` against a pane rect only
-the component can measure, so a host that was never told would have to display `1` — and
+the component can measure, so a host that was never told would have to display `1` - and
 100% is the one number the fit is guaranteed not to be. `showcase.spec.ts` asserts the
 readout against the measured scale for exactly that reason; with no jsdom in this
 repository, a browser is the only place a mount-time call can be observed at all.
 
-Zoom **controls** — a `−`/`+` pair driving the stage from outside — need an imperative
+Zoom **controls** - a `−`/`+` pair driving the stage from outside - need an imperative
 handle the adapter still does not publish. They land with the top bar that has somewhere to
 put them (#56). Until then the readout reports and the wheel, the pinch and `mod+0` drive.
 
 ### The one deliberate departure from `DESIGN.md`
 
-**The canvas well is dark.** Everything around the image follows the contract exactly —
-white cards, `#d0d7de` borders, Robomous orange strictly as an accent, one type scale — but
+**The canvas well is dark.** Everything around the image follows the contract exactly -
+white cards, `#d0d7de` borders, Robomous orange strictly as an accent, one type scale - but
 the surround the picture sits in does not. A bright frame around a photograph shifts its
 apparent contrast, which is why every image tool ships a dark mat. It is a mat and not a
 second theme: the only interactive thing drawn on it is the tool strip, which is a `muted`
@@ -902,7 +901,7 @@ panel from the light palette.
 
 `frontend/app/src/demo/theme.ts` holds the tokens and records that exception once, rather
 than six components each making it. **#128 replaces that file** with `@visionset/ui-core`'s
-real `tokens.css` — today a superseded placeholder whose dark surfaces and blue accent
+real `tokens.css` - today a superseded placeholder whose dark surfaces and blue accent
 contradict the contract. The components above it do not change when it does, because they
 already name intents rather than colours.
 
@@ -919,7 +918,7 @@ adds no second door to the document: every write is a command that already exist
 and the selection is one `Selection` seen twice rather than two kept in step.
 
 **Hiding is a view decision.** The core document has no `hidden` flag and must not
-grow one — hiding is per viewer and per session, and a field would travel to the API
+grow one - hiding is per viewer and per session, and a field would travel to the API
 and change a release hash. `AnnotatorCanvas` takes a `hiddenIds` prop instead, and
 filters both what it draws **and** the document the machine hit tests against,
 because a shape you cannot see must not swallow a press. `withoutHidden` returns the
@@ -927,7 +926,7 @@ because a shape you cannot see must not swallow a press. `withoutHidden` returns
 `memo` bailing out during a drag.
 
 Hold that set in state. A freshly allocated `Set` on every render defeats the memo
-before it is consulted — #49's `skipId` finding, one prop over.
+before it is consulted - #49's `skipId` finding, one prop over.
 
 
 ## The annotation page
@@ -938,14 +937,14 @@ and three of its decisions are worth knowing before changing it:
 - **The schema is the batch's pinned version**, fetched by number. The project's
   active schema is a different question with often a different answer.
 - **The navigator is the batch's asset listing filtered to the job**, not
-  `next_pending_assets` — that route hands out *pending* assets, so it shrinks as
+  `next_pending_assets` - that route hands out *pending* assets, so it shrinks as
   the work is done and cannot go back.
 - **There is no autosave.** A save is a diff followed by a refetch (the kernel mints
   its own ids), so a timer would rebuild the document mid-gesture. Explicit Save,
   save-on-navigate, and a `beforeunload` guard.
 
 Zoom controls reach `AnnotatorCanvas`'s `viewRef` handle, whose `fit()` is the same
-implementation `mod+0` runs — one behaviour, two doors, which is why the chord is
+implementation `mod+0` runs - one behaviour, two doors, which is why the chord is
 still intercepted by the adapter rather than forwarded.
 
 
@@ -954,7 +953,7 @@ still intercepted by the adapter rather than forwarded.
 `@visionset/ui-core`'s `ToolPalette` is the floating strip on the canvas's left
 edge. It is a **second** implementation of the same rule as the showcase's
 `demo/ToolStrip.tsx`, deliberately: the showcase's whole claim is that the engine
-ships headless — no Tailwind, no tokens, no chrome — so a showcase importing
+ships headless - no Tailwind, no tokens, no chrome - so a showcase importing
 product UI would be demonstrating the opposite. What the two share is the rule
 below, not a file.
 
@@ -967,7 +966,7 @@ fall out and both are load-bearing:
   bbox tool, and re-pointing the class would silently change what the next shape is
   labelled without moving the tool. Choosing *which* class is the Labels tab's job.
 - The strip lists one button per distinct **drawable geometry**, from
-  `drawableGeometry` — never one per class, and never a hardcoded list. A
+  `drawableGeometry` - never one per class, and never a hardcoded list. A
   `classification_tag` and a `keypoints` class both answer `null` and neither gets
   a canvas tool; `polyline` did until #342.
 
@@ -984,7 +983,7 @@ palette in a test waits on the button's own `data-active` rather than on a timer
 
 **The buttons refuse the focus.** `AnnotatorCanvas` reads the keyboard off its own
 root, so a tool press that took the focus would leave every chord dead until the
-user clicked back on the picture — the silent failure #47 met from the other
+user clicked back on the picture - the silent failure #47 met from the other
 direction. `mousedown` is where a browser moves focus, so that is where it is
 refused.
 
@@ -1014,12 +1013,12 @@ in which the page believes a stale answer.
 
 **Nothing is mounted and hidden.** The check lives in the exported
 `AnnotationPage` and the whole of the old body moved into `JobScreen`, so under
-the floor there is no store, no canvas and no engine — because `AnnotatorCanvas`
+the floor there is no store, no canvas and no engine - because `AnnotatorCanvas`
 measures its pane to derive the fit zoom, and a canvas laid out inside a
 `display: none` ancestor measures **zero**. A CSS-only treatment would leave the
 editor holding a zoom nobody chose the moment somebody widened the window.
 
-The explanation runs exactly two reads — job → batch — so it can offer the way
+The explanation runs exactly two reads - job → batch - so it can offer the way
 out, and nothing else. On a phone there is no rail beside this page and, on a
 fresh tab, no history behind it, so an explanation with no exit would be the dead
 end #199 removed everywhere else.

@@ -1,12 +1,12 @@
 # The MCP server
 
-VisionSet speaks [Model Context Protocol](https://modelcontextprotocol.io) over stdio, so an
-agent can run the whole cycle — create a project, declare a schema, ingest images, **look at
-them**, write annotations, promote, publish, verify and export — without a browser, an HTTP
-client or a line of Python.
+VisionSet uses [Model Context Protocol](https://modelcontextprotocol.io) over stdio. An agent can
+run the entire workflow - create a project, declare a schema, ingest and **inspect** images,
+write annotations, promote, publish, verify, and export - without a browser, HTTP client, or
+Python code.
 
-It is the fourth client of the same kernel the API, the CLI and the SDK use. Nothing is decided
-here that is not decided in the kernel, and every rule the other surfaces follow holds unchanged.
+The MCP server is the fourth client of the kernel used by the API, CLI, and SDK. It introduces
+no domain decisions; the rules followed by the other surfaces apply unchanged.
 
 ```bash
 visionset mcp --workspace ~/datasets/road-signs
@@ -53,7 +53,7 @@ caller reads before choosing, so the description that exists to explain the gate
 instruction for clearing it. There is no version of a self-describing tool schema where that is
 not true.
 
-So the gate moved somewhere an agent cannot reach — the server's own startup. A tool that is not
+So the gate moved somewhere an agent cannot reach - the server's own startup. A tool that is not
 advertised cannot be called with a flag. `confirm` itself is unchanged, and stays: it is correct
 for every other surface, and when these tools *are* registered they behave exactly as before. The
 only decision is whether an agent is shown them at all.
@@ -61,8 +61,8 @@ only decision is whether an agent is shown them at all.
 `visionset mcp` prints which posture it started with, on stderr beside the workspace.
 
 `visionset mcp` resolves the workspace with the full precedence documented in
-[workspaces.md](workspaces.md) — `--workspace`, then `$VISIONSET_WORKSPACE`, then the nearest
-workspace at or above the working directory — and then **states** the answer in the environment,
+[workspaces.md](workspaces.md) - `--workspace`, then `$VISIONSET_WORKSPACE`, then the nearest
+workspace at or above the working directory - and then **states** the answer in the environment,
 so the server it starts cannot disagree with it. It also opens the workspace before starting
 anything, which runs any pending migration and turns "that is not a workspace" into one sentence
 at a terminal instead of a refusal inside the agent's first tool call.
@@ -73,8 +73,8 @@ are no token-administration tools either, for the reason [auth.md](auth.md) give
 credential is a privilege-escalation primitive pointed at the agent's own sandbox, and an agent's
 "shown exactly once" is a transcript.
 
-For the same cycle as a session rather than a reference — every call in the order an agent meets
-it, and what twelve real agent runs did with it — see
+For the same cycle as a session rather than a reference - every call in the order an agent meets
+it, and what twelve real agent runs did with it - see
 [mcp-walkthrough.md](mcp-walkthrough.md).
 
 ## The tools
@@ -144,14 +144,14 @@ is already cut into jobs — see [batches.md](batches.md).
 #### There is no `start_job`: the first write starts it
 
 A job moves `pending → in_progress → completed`, and over this surface **nothing asks you to make
-the first move**. Every tool that writes — the three annotation tools, `set_asset_progress`, and
-`complete_job` itself — starts a `pending` job on the way in, and every one of them publishes
+the first move**. Every tool that writes - the three annotation tools, `set_asset_progress`, and
+`complete_job` itself - starts a `pending` job on the way in, and every one of them publishes
 **`job_started`** in its answer, so the move is a fact you are told rather than one that happens
 behind you. `job_started` is `false` on every later call.
 
 Only `pending` moves. A job that is already `in_progress` reports no start; a `completed` one is
-left alone here and then **refused by the write's own gate** — `JobFinished` (409
-`JOB_FINISHED`), since #439 — so the auto-start neither re-opens finished work nor hides the
+left alone here and then **refused by the write's own gate** - `JobFinished` (409
+`JOB_FINISHED`), since #439 - so the auto-start neither re-opens finished work nor hides the
 refusal behind an `InvalidTransition` of its own. A job whose batch is not `in_annotation`
 refuses exactly as it always did: the batch gate is checked first, so a closed batch is not
 quietly marked as being worked on.
@@ -165,7 +165,7 @@ both hops still go through the same funnel; the REST API and the CLI keep their 
 because the annotator page is what drives REST and it has always started a job when a human opens
 one, while a CLI's explicitness is its contract. #109 has the measurements: two of #36's twelve
 real agent runs labeled a whole job and then had `complete_job` refuse, having had no reason to
-start it — writing was gated on the *batch* and not on the job, so nothing in the loop forced the
+start it - writing was gated on the *batch* and not on the job, so nothing in the loop forced the
 call until the end. #439 has since added a job gate, but it changes none of this: `pending` is an
 *open* state, so the first write still starts the job it walks into.
 
@@ -185,8 +185,8 @@ call until the end. #439 has since added a job gate, but it changes none of this
 
 | | |
 | --- | --- |
-| `delete_batch` | **Destructive.** Removes a batch, its task groups, its jobs and the per-asset progress on them. The **annotations survive** — labels hang off assets, not off batches — and so do the assets themselves. A `completed` batch is refused whatever `confirm` says. |
-| `delete_project` | **Destructive.** Removes the project, its dataset, its batches, its jobs and its annotations. Requires `confirm: true` as well — the parameter is unchanged; what changed is that the tool is not in the listing unless somebody started the server for it. |
+| `delete_batch` | **Destructive.** Removes a batch, its task groups, its jobs and the per-asset progress on them. The **annotations survive** - labels hang off assets, not off batches - and so do the assets themselves. A `completed` batch is refused whatever `confirm` says. |
+| `delete_project` | **Destructive.** Removes the project, its dataset, its batches, its jobs and its annotations. Requires `confirm: true` as well - the parameter is unchanged; what changed is that the tool is not in the listing unless somebody started the server for it. |
 
 ## `get_asset_image`, and the coordinate frame
 
@@ -211,7 +211,7 @@ It returns the image **and four numbers**, because they are not the same frame:
 
 That last line is the whole reason four numbers travel instead of two. An agent that measures a
 box on a 256-pixel preview and submits it unscaled produces annotations that are individually
-plausible and uniformly wrong — wrong in a way nothing downstream can detect, because every
+plausible and uniformly wrong - wrong in a way nothing downstream can detect, because every
 number is in range and every shape is well formed.
 
 `full: true` returns the original bytes at the asset's own size, where `scale` is 1.
@@ -224,7 +224,7 @@ measurements come back with an explanation rather than pixels.
 
 There are **two** failure shapes, and telling them apart is deliberate.
 
-A **malformed request** — an argument the schema refuses before the tool body runs — comes back
+A **malformed request** - an argument the schema refuses before the tool body runs - comes back
 as an MCP error carrying the validating library's own message, which names the offending field
 (`classes.0.name`, `annotations.2.geometry`). This is the API's 422, and it is a bug in the call.
 
@@ -242,13 +242,13 @@ A **domain refusal** is an ordinary successful call whose payload is the error e
 - `hint` is a next step this surface can suggest where the kernel's sentence names a remedy an
   agent cannot reach.
 - `index` names which item of a list you sent is at fault, for the three annotation writes. They
-  are all-or-nothing, so nothing landed and there is no partial result to count from — the
+  are all-or-nothing, so nothing landed and there is no partial result to count from - the
   position is the only thing identifying it.
 
 There is deliberately **no `code` field**. The REST API's codes live in `server/errors.py`, which
 this package may not import, and deriving one from a class name would make a refactor a silent
-breaking change. What a code was needed for here is one question — "may I retry this, and with
-what?" — and `retry_with` answers it directly.
+breaking change. What a code was needed for here is one question - "may I retry this, and with
+what?" - and `retry_with` answers it directly.
 
 ### The three gate words
 
@@ -260,8 +260,8 @@ Never merged into one, because they guard different things:
 | `allow_destructive` | narrowing a contract | `create_schema_version` |
 | `allow_lossy` | emitting an incomplete copy of something that stays intact | `export_release` |
 
-`confirm` is the one of the three that an agent will clear by itself — see
-[above](#destructive-tools-are-not-offered-unless-you-ask) — which is why the tool that takes it
+`confirm` is the one of the three that an agent will clear by itself - see
+[above](#destructive-tools-are-not-offered-unless-you-ask) - which is why the tool that takes it
 is not advertised by default. The other two guard *narrowing a contract* and *emitting an
 incomplete copy*, neither of which destroys anything: the release stays intact, the earlier schema
 version stays readable, and both refusals are recoverable by resubmitting. They stay advertised.
@@ -276,7 +276,7 @@ do the decode, and an agent driving a "resume" loop would block for exactly as l
 work in the first place. A long video makes `ingest` a long call.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
-`ingest` again — registration is idempotent on `(kind, path, extraction_fps)` and content
+`ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content
 addressing means the re-run creates nothing it created before. That is the same argument that
 gave the CLI no `--resume`.
 
@@ -290,7 +290,7 @@ opened and closed per tool call rather than held, so the file is never kept from
 or a second agent between calls.
 
 **A discriminated union's `type` must be spelled out.** `geometry` and the partition variants
-carry a default on their tag, so the generated schema shows `type` as optional — but it is read
+carry a default on their tag, so the generated schema shows `type` as optional - but it is read
 out of the object to pick the variant, and omitting it fails. Always send
 `{"type": "bbox", …}`.
 
@@ -314,12 +314,12 @@ kernel splits registration in two because a clip needs a rate and a probe while 
 neither; by the time ingest runs, the source already carries the kind, the path and the rate. The
 dispatch is whether the path is a directory.
 
-**Dropped, no poll to make**: `get_ingest_job`, `list_ingest_jobs`, `resume_ingest` — see the
+**Dropped, no poll to make**: `get_ingest_job`, `list_ingest_jobs`, `resume_ingest` - see the
 synchronous limit above.
 
 **Dropped, no agent caller**: `list_dataset_assets` (the annotation loop iterates batches, not the
 trunk), `list_dataset_changes` (an audit record a person reads), `remove_dataset_asset`
-(curation — a judgement about what a dataset should contain, not a step in producing one),
+(curation - a judgement about what a dataset should contain, not a step in producing one),
 `get_release_manifest` (the whole frozen document is a token bill an agent cannot afford;
 `verify_release` answers "is it intact" and `export_release` writes the contents somewhere
 usable), `get_release_assignment` (`export_release` puts the folds on disk in the form anything
@@ -328,7 +328,7 @@ downstream actually consumes), `rename_project`.
 **Never offered**: anything to do with tokens.
 
 Three tools are not on the parity list at all: `ingest` (one tool standing for three candidates),
-`preview_schema_change` and `backfill_thumbnails` — the last because it is the remedy
+`preview_schema_change` and `backfill_thumbnails` - the last because it is the remedy
 `get_asset_image` names, and a refusal naming an unreachable remedy is worse than no refusal.
 
 ## For contributors
@@ -338,8 +338,8 @@ Tool modules live in `src/visionset/mcp/`, one per noun, beside three private on
 name or a tag into the thing it names).
 
 A new tool is a plain function in the module for its noun plus one row in `main.py`'s `TOOLS`
-table. Registration lives there rather than at the definition site — a decorator in `projects.py`
-would make that module import `main.py`, which imports it — and it is also where `guarded`,
+table. Registration lives there rather than at the definition site - a decorator in `projects.py`
+would make that module import `main.py`, which imports it - and it is also where `guarded`,
 `inspect.cleandoc` and the read/write annotations are applied, so none of the three can be
 forgotten.
 
@@ -347,7 +347,7 @@ forgotten.
 `AssetProgress` all go straight into signatures: their docstrings become `$defs` on the tool's
 input schema, which is the best guidance an agent gets, and their own validators refuse malformed
 input without anything being restated. The exception is a model with a field the service
-overwrites — `Annotation.schema_version` — where a required input whose value is discarded would
+overwrites - `Annotation.schema_version` - where a required input whose value is discarded would
 be a lie, so `mcp/annotations.py` defines the two input models that omit it.
 
 **Publish through `visionset.wire`**, never `model_dump()`. The projections there are shared with
@@ -355,8 +355,8 @@ the CLI and gated key-for-key against the REST wire models by
 `tests/cli/test_json_contract.py`, so one concept has one shape across all three surfaces.
 
 **Mirror every domain bound in the parameter.** A kernel call that raises outside the
-`VisionSetError` tree — a bare `ValueError` from a non-positive rate, a `FileNotFoundError` from a
-missing path, a pydantic `ValidationError` from constructing a `BySize` — never reaches `guarded`,
+`VisionSetError` tree - a bare `ValueError` from a non-positive rate, a `FileNotFoundError` from a
+missing path, a pydantic `ValidationError` from constructing a `BySize` - never reaches `guarded`,
 and would arrive at the client as an exception's text. Either bound the parameter (`ge=1`) or
 refuse in the body with `_errors.refused`.
 
@@ -366,6 +366,6 @@ bridges the async client with `anyio.run`, so every test is plain synchronous py
 marker and no plugin, and it builds each rung by calling tools rather than by reaching past them
 into the SDK.
 
-Module basenames must be unique across the whole suite — there is no `__init__.py` anywhere, so
+Module basenames must be unique across the whole suite - there is no `__init__.py` anywhere, so
 `tests/mcp/test_batches.py` beside `tests/server/test_batches.py` would be a collection error
 rather than two modules. Hence `test_<noun>_tools.py`.

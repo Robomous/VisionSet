@@ -1,14 +1,14 @@
 # Installing VisionSet
 
-One wheel. The API, the CLI, the MCP server and the compiled browser app are all inside it, so
-there is nothing to download afterwards and no separate front end to serve.
+One wheel contains the API, CLI, MCP server, and compiled browser application. Nothing else must
+be downloaded afterward, and there is no separate frontend to serve.
 
 ## Requirements
 
 | | |
 | --- | --- |
 | **Python** | 3.12 or newer |
-| **ffmpeg** | only for video — see below |
+| **ffmpeg** | only for video - see below |
 | Disk | your images, plus a copy: assets are content-addressed into the workspace |
 
 Nothing else. No database server, no Node, no Docker. The metadata lives in one SQLite file
@@ -16,7 +16,7 @@ inside the workspace, and the pixels live beside it.
 
 ## Install
 
-VisionSet is not on PyPI yet — that lands with the first beta. Until then, install from a built
+VisionSet is not on PyPI yet - that lands with the first beta. Until then, install from a built
 wheel or straight from the repository:
 
 ```bash
@@ -27,7 +27,7 @@ uv tool install "git+https://github.com/Robomous/VisionSet"
 pip install "git+https://github.com/Robomous/VisionSet"
 ```
 
-To build the wheel yourself — which is what CI does, and what publishing will ship:
+To build the wheel yourself - which is what CI does, and what publishing will ship:
 
 ```bash
 git clone https://github.com/Robomous/VisionSet && cd VisionSet
@@ -49,7 +49,7 @@ visionset format list       # the formats this installation can write
 
 `format list` is the more useful of the two: it reads *installed* entry-point metadata, so a
 non-empty answer proves the wheel is properly installed rather than merely importable. Run it
-for the current set rather than trusting a list written down somewhere — third-party
+for the current set rather than trusting a list written down somewhere - third-party
 distributions register into the same entry-point group, so what a given installation can write
 is a property of that installation.
 
@@ -65,7 +65,7 @@ sudo apt-get install -y ffmpeg          # Debian / Ubuntu
 ```
 
 A missing binary is reported as `MediaToolUnavailable` with the same hint, at the moment a video
-is registered rather than at import — so a machine without ffmpeg still opens workspaces, ingests
+is registered rather than at import - so a machine without ffmpeg still opens workspaces, ingests
 images, annotates, publishes and exports.
 
 ## Running a model on this machine
@@ -78,8 +78,8 @@ auto-labeling feature is always present; what is optional is the runtime that ex
 pip install "visionset[local-inference]"
 ```
 
-That brings torch, torchvision, transformers, accelerate and huggingface_hub — roughly two
-gigabytes, most of it CUDA — which is exactly why it is not in the base install. Without it you can still create a
+That brings torch, torchvision, transformers, accelerate and huggingface_hub - roughly two
+gigabytes, most of it CUDA - which is exactly why it is not in the base install. Without it you can still create a
 local connection, list it, and see what it is configured for; what you cannot do is fetch its
 weights or ask it to predict. Both refusals name the command above rather than saying
 "unavailable", the way a missing `ffmpeg` does.
@@ -119,12 +119,12 @@ uploaded, nothing phones home, and no path outside that directory is written exc
 point an export. [workspaces.md](workspaces.md) has the whole layout.
 
 `init` is the only command that creates a workspace, and it refuses a directory that already holds
-something. Every other command *finds* one — `--workspace`, then `$VISIONSET_WORKSPACE`, then the
+something. Every other command *finds* one - `--workspace`, then `$VISIONSET_WORKSPACE`, then the
 nearest workspace at or above the working directory. The full precedence, and why only the last of
 those searches upward, is in [workspaces.md](workspaces.md).
 
 ## Next
 
-- [tutorial.md](tutorial.md) — a first dataset, end to end, in about half an hour.
-- [cli.md](cli.md) — the whole cycle from a terminal.
-- [mcp.md](mcp.md) — pointing an agent at a workspace.
+- [tutorial.md](tutorial.md) - a first dataset, end to end, in about half an hour.
+- [cli.md](cli.md) - the whole cycle from a terminal.
+- [mcp.md](mcp.md) - pointing an agent at a workspace.

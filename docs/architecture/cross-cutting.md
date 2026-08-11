@@ -6,7 +6,7 @@ this page says what they are and points at it.
 ## The two machine-enforced boundaries
 
 Everything else in this repository is a convention. These two are checked, and a
-change that fights one is wrong — the boundary does not move to make a build pass.
+change that fights one is wrong - the boundary does not move to make a build pass.
 
 ### Kernel purity
 
@@ -14,13 +14,13 @@ change that fights one is wrong — the boundary does not move to make a build p
 `visionset.mcp`, `visionset.formats`, `visionset.wire`, `visionset.jobs` or
 `visionset.inference`, nor `fastapi`, `typer`, `mcp` or `uvicorn`.
 
-- **Contract** — `[[tool.importlinter.contracts]]` in
+- **Contract** - `[[tool.importlinter.contracts]]` in
   [`pyproject.toml`](../../pyproject.toml), run by `uv run lint-imports`.
-- **Second check** —
+- **Second check** -
   [`tests/architecture/test_kernel_purity.py`](../../tests/architecture/test_kernel_purity.py)
   imports the kernel in a fresh interpreter and inspects `sys.modules`, which is
   what a deferred import inside a function cannot satisfy.
-- **Why it is drawn there** — [backend/kernel.md](backend/kernel.md).
+- **Why it is drawn there** - [backend/kernel.md](backend/kernel.md).
 
 ### The headless annotator
 
@@ -28,13 +28,13 @@ change that fights one is wrong — the boundary does not move to make a build p
 
 - **Three gates**, all run by `pnpm --filter @visionset/annotator lint`: ESLint
   `no-restricted-imports` and `no-restricted-globals` scoped to `src/core/`, plus
-  `tsconfig.core.json` — a `noEmit` pass compiling the shipped engine with no DOM
+  `tsconfig.core.json` - a `noEmit` pass compiling the shipped engine with no DOM
   `lib` and no ambient `@types`, and the only one of the three that can see a DOM
   type in a *signature*.
-- **Second check** —
+- **Second check** -
   [`tests/scripts/annotator_boundary.test.mjs`](../../tests/scripts/annotator_boundary.test.mjs)
   proves each gate fires by breaking it.
-- **Why it is drawn there** — [frontend/annotator.md](frontend/annotator.md).
+- **Why it is drawn there** - [frontend/annotator.md](frontend/annotator.md).
 
 ## The capabilities contract
 
@@ -79,7 +79,7 @@ skill, which also bans the two antipatterns this contract exists to remove.
 
 ## The batch lifecycle, at a glance
 
-Three state machines, and they do not cascade — each is derived separately.
+Three state machines, and they do not cascade - each is derived separately.
 
 ```mermaid
 stateDiagram-v2
@@ -111,15 +111,15 @@ And a job runs `pending → in_progress → completed`.
 
 The trap worth knowing before touching any of it: **a job completing does not
 complete its batch.** `BatchService` derives that separately, so the ordinary
-state of a finished job is *inside an open batch* — which is why writes are gated
+state of a finished job is *inside an open batch* - which is why writes are gated
 on the job as well as on the batch, and why `asset_actions` reads all three
 dimensions.
 
 There is no route back from `completed`, at any level. Correcting finished work is
 a new batch, not a reopened one.
 
-The settled model — and it *is* settled, not to be re-litigated in an
-implementation task — is the
+The settled model - and it *is* settled, not to be re-litigated in an
+implementation task - is the
 [`batch-lifecycle`](../../.agents/skills/domain/batch-lifecycle/SKILL.md) skill.
 [`docs/batches.md`](../batches.md) and [`docs/jobs.md`](../jobs.md) are the
 behavioural pages.

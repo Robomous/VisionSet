@@ -1,13 +1,13 @@
 # Releasing
 
-What ships, where it ships, and the order the steps have to happen in.
+This page describes what ships, where it ships, and the required order of operations.
 
-This page is for whoever cuts a release. It is not a policy document: every decision below is
-recorded with the reason it was taken, so the next person can disagree with it on the merits.
+It is a release operator's guide, not a policy document. Each decision includes its rationale
+so future maintainers can evaluate it on its merits.
 
 ## What ships
 
-**One wheel.** The API, the CLI, the MCP server and the compiled browser app are inside it —
+**One wheel.** The API, the CLI, the MCP server and the compiled browser app are inside it -
 that is the delivery thesis, and [`tests/packaging/`](../tests/packaging) is what stops a wheel
 shipping without the app in it. An sdist is built beside it and published too, so a source build
 is possible on a platform without a wheel; there is nothing platform-specific in either, so both
@@ -22,13 +22,13 @@ compatibility promises that implies, and nobody has taken it. See [the scope](#t
 
 Decided for #69, and the argument is short. It is written about the *first* beta because that is
 when it was made; the current version is **`0.0.1b2`**, the same beta with the three defects a
-manual pass over the wheel found (#164). A published version is never edited in place — a
+manual pass over the wheel found (#164). A published version is never edited in place - a
 correction is another release, which is the same rule a VisionSet release itself follows.
 
 **The whole product is designed around `pip install visionset`.** The README opens with it, the
 wheel carries the UI so there is nothing else to fetch, and #66 exists to prove the artifact
 works from a clean environment. A beta that could only be installed from a GitHub Release asset
-would be a beta whose install instruction is *not* the one the product is built around — so the
+would be a beta whose install instruction is *not* the one the product is built around - so the
 first real test of the delivery thesis would be deferred to 1.0, which is exactly the wrong place
 to discover it was wrong.
 
@@ -36,7 +36,7 @@ to discover it was wrong.
 pre-releases unless you ask: `pip install visionset` on a project whose only release is `0.0.1b1`
 reports that no matching distribution was found. Getting it takes `pip install --pre visionset`
 or `pip install visionset==0.0.1b1`. That property is what makes shipping a beta to PyPI safe
-rather than premature — the audience is people who were told the version number.
+rather than premature - the audience is people who were told the version number.
 
 **It secures the name with something real.** Defensive registration was the other half of #69;
 publishing an actual beta does it without a placeholder package that has to be explained later.
@@ -56,10 +56,10 @@ pnpm login --registry https://registry.npmjs.org   # then create the org in the 
 
 pnpm is the only Node package manager this repository uses, and `pnpm login` writes the same
 credential `pnpm publish` would later read. Creating the *organisation* is a registry
-administration action with no client-side equivalent in any package manager — it is done on the
+administration action with no client-side equivalent in any package manager - it is done on the
 npmjs.com website, not from a terminal.
 
-Creating the organisation reserves the scope. **No placeholder publishes** — an empty package on
+Creating the organisation reserves the scope. **No placeholder publishes** - an empty package on
 npm is a thing users find, file issues against, and depend on by accident, and un-publishing it
 later is a worse problem than the one it was meant to prevent.
 
@@ -73,7 +73,7 @@ page does not have them.
 
 ### 1. Bump the version
 
-`VERSION` at the repository root is the single source of truth — hatchling reads it for the
+`VERSION` at the repository root is the single source of truth - hatchling reads it for the
 Python distribution and `pnpm version:sync` propagates it to every `frontend/*` package.
 
 ```bash
@@ -84,7 +84,7 @@ uv run python scripts/export_openapi.py             # the spec embeds the versio
 ```
 
 `openapi.json` embeds `info.version`, so **a version bump always moves the spec**. The generated
-TypeScript client contains only `paths`, `components` and `operations`, so it does *not* move —
+TypeScript client contains only `paths`, `components` and `operations`, so it does *not* move -
 `pnpm generate:client:check` staying quiet after a bump is correct, not suspicious.
 
 ### 2. Green, all of it
@@ -116,8 +116,8 @@ Tag names are `v`-prefixed npm-semver (`v0.0.1-beta.2`); the distribution versio
 
 **This is the step that needs credentials, and nothing in the repository holds any.**
 
-The wheel and sdist to publish are the ones CI already built — every build uploads `dist/*` as an
-artifact — or a local `bash scripts/build_dist.sh`.
+The wheel and sdist to publish are the ones CI already built - every build uploads `dist/*` as an
+artifact - or a local `bash scripts/build_dist.sh`.
 
 ```bash
 uv publish dist/*                # or: python -m twine upload dist/*
@@ -128,7 +128,7 @@ gh release create v0.0.1-beta.2 dist/* --title "…" --notes-file CHANGELOG-exce
 GitHub Actions workflow in a specific repository through OIDC, so there is no secret to leak,
 rotate, or accidentally commit. It is configured on the PyPI project page and needs no value
 stored here. A release workflow is worth adding the first time this is done by hand and found
-tedious — not before, because a publish workflow nobody has ever run is a thing that fails on the
+tedious - not before, because a publish workflow nobody has ever run is a thing that fails on the
 day it matters.
 
 ### 5. Verify it from outside
@@ -144,4 +144,4 @@ visionset format list        # nine rows: yolo, coco, voc, dummy and the five la
 
 `format list` is the useful one: it reads installed entry-point metadata, so a non-empty answer
 proves the distribution was assembled correctly and not merely uploaded. Then confirm the other
-half of the thesis — `visionset init` somewhere, `visionset server`, and open `/app`.
+half of the thesis - `visionset init` somewhere, `visionset server`, and open `/app`.

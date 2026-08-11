@@ -27,8 +27,8 @@ flowchart TB
 
 This package imports **no router**. A screen that reached for `useNavigate` would
 only work inside a `react-router` tree, which is a dependency the future
-enterprise UI has no reason to share. So every destination is a prop — 
-`onOpenProject`, `onOpenGallery`, `onBack` — and [the app](app.md) turns each into
+enterprise UI has no reason to share. So every destination is a prop -
+`onOpenProject`, `onOpenGallery`, `onBack` - and [the app](app.md) turns each into
 a URL.
 
 The same rule runs the other way and is worth stating because it decides a lot of
@@ -43,7 +43,7 @@ credential stops working; screens get the typed client through a hook.
 
 The 401 is handled once, in a cache subscription, because a token revoked while an
 annotator has a job open produces a 401 from whichever background refetch happens
-to fire next — and a per-screen `if (error.status === 401)` would leave that
+to fire next - and a per-screen `if (error.status === 401)` would leave that
 screen showing an error and every other screen showing stale data forever.
 
 ## The generated client, and the check beside it
@@ -66,7 +66,7 @@ flowchart LR
 Without the check, a well-formed JSON document of the wrong type reaches a screen
 intact and one `undefined` in a formatter takes the page down. The check is
 required rather than optional because an optional gate is one every new call site
-may forget — and the ones that forgot would be the ones that broke. That the
+may forget - and the ones that forgot would be the ones that broke. That the
 *right* check is paired with each call is held by
 `tests/scripts/checks_wiring.test.mjs`, because a type predicate is assignable
 whenever its asserted type is and `tsc` cannot see the mismatch.
@@ -75,7 +75,7 @@ whenever its asserted type is and `tsc` cannot see the mismatch.
 
 `styles.css` carries the Tailwind v4 `@theme` block, so `bg-primary` in a
 component here and `bg-primary` in a screen mean the same colour by construction.
-There is no `tailwind.config.js` in this repository and there must not be one —
+There is no `tailwind.config.js` in this repository and there must not be one -
 the tokens would acquire a second home.
 
 `tests/scripts/design_tokens.test.mjs` scans every tracked frontend file for a hex

@@ -32,7 +32,7 @@ Two properties of that shape are decisions rather than mechanics.
 **A refusal a request can make is a refusal the request makes.** The export route
 checks the consent gate synchronously, before the job row exists, so a 409 arrives
 as the answer to the request that asked rather than as a failed row somebody has
-to go and read. The worker checks again — *that* one is the guarantee.
+to go and read. The worker checks again - *that* one is the guarantee.
 
 **There is no generic launch route.** Nothing creates a job by naming a type and a
 payload: an export is launched from `POST /releases/{id}/export`, an ingest from
@@ -43,14 +43,14 @@ would become public the day one shipped.
 ## Where it sits
 
 `visionset.jobs` may not import `visionset.server`, `visionset.cli`,
-`visionset.mcp`, `fastapi`, `typer` or `uvicorn` — the `Job handlers are below the
+`visionset.mcp`, `fastapi`, `typer` or `uvicorn` - the `Job handlers are below the
 surfaces` contract.
 
 The reason is sharper than layering. A handler runs in a worker the dispatcher
 started with `spawn`, so the child imports whatever the handler names. If it named
 `visionset.server`, the child would re-execute that module's `app = create_app()`
-and build a **second application** — with its own workspace handle and its own
-dispatcher — inside a worker.
+and build a **second application** - with its own workspace handle and its own
+dispatcher - inside a worker.
 
 The kernel, in turn, may not import `visionset.jobs`: a handler resolves a format
 plugin, so `jobs` imports `formats`, and a kernel that could reach a handler could
