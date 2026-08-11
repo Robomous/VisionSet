@@ -129,6 +129,13 @@ three numbers it resolved on stderr before it starts, and a port that is already
 a refusal naming the worktree it came from rather than four words from vite. Override one
 suite with `VISIONSET_E2E_PORT`, `VISIONSET_CYCLE_PORT` or `VISIONSET_BENCH_PORT`.
 
+**`VISIONSET_PW_WORKERS` sets how many workers the e2e suite runs.** `scripts/check.sh`
+sets it to 10, because the machine you are sitting at is not a two-core runner; unset, the
+count is what it always was — two under `CI`, Playwright's own choice otherwise. It is a
+variable of its own rather than more meaning loaded onto `CI`, which the browser steps set
+for `reuseExistingServer` and which used to decide the worker count as a side effect.
+Actions sets nothing, so CI keeps the count its runners were measured at.
+
 One caveat no exit code will tell you: several gates read `git ls-files`, which is the
 **index** rather than the working tree. A new file you have not `git add`ed is invisible to
 them, so it passes locally and fails in CI. Stage first, then run.
