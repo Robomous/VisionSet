@@ -1,7 +1,7 @@
 # Examples
 
 Every other document here explains one thing the kernel does. This one is about the runnable
-files that do several of them at once. There are five:
+files that do several of them at once. There are six:
 
 | Example | What it drives | Milestone |
 | --- | --- | --- |
@@ -10,6 +10,7 @@ files that do several of them at once. There are five:
 | [`http_end_to_end.py`](../examples/http_end_to_end.py) | the same cycle over HTTP, against a real server on a real port, with a bearer token | M3 |
 | [`cli_end_to_end.sh`](../examples/cli_end_to_end.sh) | the same cycle from a shell, using nothing but the `visionset` command | M3 |
 | [`mcp_end_to_end.py`](../examples/mcp_end_to_end.py) | the same cycle over MCP stdio, spawning `visionset mcp` and talking down its pipe | M3 |
+| [`thirty_minute_flow.py`](../examples/thirty_minute_flow.py) | a clip to a YOLO dataset a trainer loads, every stage timed against a wall-clock ceiling | M6 |
 
 ```bash
 uv run python examples/sdk_end_to_end.py
@@ -17,6 +18,7 @@ uv run python examples/ingest_end_to_end.py     # needs ffmpeg
 uv run python examples/http_end_to_end.py
 uv run bash examples/cli_end_to_end.sh
 uv run python examples/mcp_end_to_end.py
+uv run python examples/thirty_minute_flow.py    # needs ffmpeg
 ```
 
 **Why M3 has three.** The standing rule is one example per milestone. M3's exit criterion is
@@ -27,14 +29,18 @@ a failure names the surface that broke.
 Each example runs in CI **twice**: once as a pytest smoke test
 ([M1](../tests/examples/test_sdk_end_to_end.py), [M2](../tests/examples/test_ingest_end_to_end.py),
 [HTTP](../tests/examples/test_http_end_to_end.py), [CLI](../tests/examples/test_cli_end_to_end.py),
-[MCP](../tests/examples/test_mcp_end_to_end.py)) that asserts on outcomes, and once as a plain
-script, which is the only way to prove it still works from a clean checkout.
+[MCP](../tests/examples/test_mcp_end_to_end.py),
+[M6](../tests/examples/test_thirty_minute_flow.py)) that asserts on outcomes, and once as a plain
+script, which is the only way to prove it still works from a clean checkout. The last one runs its
+second pass from the **installed wheel** rather than from the source tree, which is the whole
+point of it — see [The thirty-minute flow](#the-thirty-minute-flow).
 
 They overlap by design and none subsumes another. The SDK example walks the whole cycle
 and treats ingest as one stage of thirteen; the ingest example stops at an approved batch and
 spends its length on where assets come from — two sources over one file, dedup, progress and the
 per-file report. The three surface examples walk the whole cycle again, and what they prove is not
-the cycle but the *surface*.
+the cycle but the *surface*. The thirty-minute flow walks it once more and ends outside the
+product, at a trainer loading what came out.
 
 ## What the three surfaces do not share
 
@@ -317,7 +323,7 @@ quietly leaving the impression that a terminal can label images.
 | --- | --- |
 | Setup | `WorkspaceService.init` — the only SDK line, and it has to be one: creating a workspace is deliberately not a tool |
 | Connect | `stdio_client(StdioServerParameters(command="visionset", args=["mcp", "--workspace", root]))` → `ClientSession` → `initialize()` |
-| Discover | `list_tools()` → 33, then `list_projects` on an empty workspace |
+| Discover | `list_tools()` → the tools this server advertises, then `list_projects` on an empty workspace |
 | Project | `create_project`, `create_schema_version`, `get_schema` |
 | Ingest | `ingest` with a **local path** — one call, and it returns when the work is done |
 | Batch | `approve_batch(jobs_of=2)` → `start_batch` |
@@ -363,3 +369,39 @@ distinction a status code could not carry, and the reason the envelope has no `c
 No development dependency: `mcp` is a runtime dependency, so its client half ships with the
 package, and the async bridge is `asyncio.run` from the standard library rather than the `anyio.run`
 the tests use. No server, no port, no ffmpeg. Its one requirement is `visionset` on `PATH`.
+
+---
+
+# The thirty-minute flow
+
+## What it does
+
+`examples/thirty_minute_flow.py` is the sentence the product exists for, written as a program:
+a ten-second clip becomes fifty frames, fifty boxes, a verified release and a YOLO dataset
+`ultralytics` agrees to load. It drives the SDK the way the [SDK example](#the-sdk-example) does
+and ends where none of the others do — at a trainer reading the output.
+
+## What makes it different from the other five
+
+**It is a gate rather than a demonstration.** Every stage is named, timed and asserted against a
+wall-clock ceiling, so a change that makes the cycle slower fails rather than being noticed later
+by somebody with a stopwatch. The other five assert on outcomes; this one asserts on outcomes and
+on how long they took.
+
+**CI runs it from the installed wheel.** The `30-minute flow (wheel, end to end)` job builds the
+distribution, installs it into an empty virtual environment together with `ultralytics`, and runs
+this file from a working directory that is not the repository. What it exercises is therefore what
+`pip install visionset` gives somebody — entry points and plugin discovery included — rather than
+what a source checkout happens to resolve. That is the half no source-tree suite can cover, and it
+is why this example is also the check the beta cannot ship without.
+
+**Locally it degrades honestly.** Run against the source tree it skips the `ultralytics` step when
+the library is absent and says so, rather than passing quietly with the last stage missing.
+`tests/examples/test_thirty_minute_flow.py` runs the same file in process on every push, which is
+the cheap half.
+
+## What it needs
+
+**ffmpeg**, because it generates its own clip — the requirement the ingest example has, for the
+same reason. `ultralytics` is optional locally and required in CI. It writes into
+`./thirty-minute-flow` with no argument, or wherever you name.

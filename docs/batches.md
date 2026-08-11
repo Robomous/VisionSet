@@ -421,8 +421,8 @@ refusal this service already makes: a non-draft approve and an unapproved start 
 `INVALID_TRANSITION`, an empty batch is 409 `EMPTY_BATCH`, a project with no schema to pin is
 404 `SCHEMA_NOT_FOUND`, and a batch with an unfinished job is 409 `BATCH_NOT_COMPLETE`.
 
-The **asset listing is the only paged collection in the API**, and M5's gallery is why. `limit`
-and `offset` bound the *response*, never the read: `total` is the size of the whole batch, so a
+The **asset listing was the API's first paged collection**, and the gallery is why; the trunk's
+own listing is the other one. `limit` and `offset` bound the *response*, never the read: `total` is the size of the whole batch, so a
 client pages until it has seen `total` items rather than until the total moves. Each item
 carries the job that holds it and where it has got to, both null while the batch is a draft —
 because a draft has no jobs. That pair is a projection over `assets` and `jobs`, not a new

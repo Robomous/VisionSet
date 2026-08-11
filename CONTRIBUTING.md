@@ -156,6 +156,27 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | --- | --- | --- |
 | Python tests | `uv run pytest` (the script adds `-n auto`) | `python` |
 | Import contracts | `uv run lint-imports` | `python` |
+| Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` | `python` |
+| Lint/format | `uv run ruff check .` / `uv run ruff format .` | `python` |
+| Frontend build + tests | `pnpm -r build && pnpm test` | `frontend` |
+| Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built | `frontend` |
+| Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
+| Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) | `browser` |
+| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset server`; needs `uv sync` and `playwright install chromium`. Repeatable in one workspace: `--repeat-each=N` costs one build rather than N | `browser` |
+| Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated | — manual |
+| Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server | part of `frontend` |
+| Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror | part of `frontend` |
+| Wire action rosters | part of `pnpm test` — `tests/scripts/wire_rosters.test.mjs` compares the two transcriptions of `allowed_actions` (`ui-core`'s `testing/wire.fixtures.ts` and the e2e suite's `_wire.ts`) in both directions. Only the first is typed against the generated union, so the second can drift silently; when it did, the failure surfaced as every gallery spec timing out. It proves the two agree with each other, not that either agrees with the kernel — see #358 | part of `frontend` |
+| Docs links | part of `pnpm test` — `tests/scripts/docs_links.test.mjs` resolves every internal link and every `#anchor` in every tracked Markdown file, naming the file, line and dead fragment. It reads `git ls-files`, so the set grows with the repository and no list is maintained by hand. External URLs are ignored on purpose: a gate that fails for somebody else's rate limit is one people re-run rather than read. Renaming a heading breaks inbound anchors *silently* — the link just lands at the top of the page — which was a near miss during the `visionset ui` → `visionset server` rename (#329) | part of `frontend` |
+| Format smoke (ultralytics, pycocotools) | `uv sync --group yolo --group coco && uv run pytest tests/formats/test_*_smoke.py` — their own groups because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run only those files and `uv sync` again afterwards; skips without them, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` / `VISIONSET_REQUIRE_PYCOCOTOOLS=1` so a broken install goes red | — CI |
+| Inference smoke (local-inference extra) | `uv sync --extra local-inference` then `VISIONSET_REQUIRE_LOCAL_INFERENCE=1 uv run pytest tests/inference tests/architecture/test_optional_runtime.py tests/server/test_inference.py tests/server/test_suggest.py tests/cli/test_inference_commands.py tests/jobs/test_weights_job.py -rs`, and `uv sync` again afterwards. The **with-runtime** half of the matrix — see [the two halves](#the-two-halves-of-the-inference-matrix) below. Roughly two gigabytes of CUDA wheels, which is why it is opt-in locally; CI's `inference-smoke` job runs it | — CI |
+| Wheel (build, install, serve) | `bash scripts/build_dist.sh && VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging` — builds the UI into `_static/`, builds the wheel, installs it in a fresh venv and serves `/app/` from it. Opt-in locally (it costs about a minute); CI's `wheel` job runs it and uploads the artifact | — CI |
+| The 30-minute flow | `uv run python examples/thirty_minute_flow.py` — the vision document's success metric end to end. CI's `30-minute flow (wheel, end to end)` job runs it from the **installed wheel** in an empty venv, with `ultralytics` required there | — CI |
+| Version sync | `pnpm version:check` | `generated` |
+| OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) | `generated` |
+| Generated API client | `pnpm generate:client` (commit the diff) — writes **two** artifacts under `frontend/ui-core/src/generated/`: `api.ts` (the types) and `checks.ts` (the runtime response checks `unwrap` takes). CI diffs the whole directory. | `generated` |
+| Annotator wire fixture | `uv run python scripts/export_wire_fixtures.py` (commit the diff) | part of `python` |
+| MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads | `generated` |
 
 **`scripts/check.sh` runs pytest under `pytest-xdist` with `-n auto`.** The suite is
 roughly 3200 tests averaging 63 ms, with only eight over a second — there is no expensive
@@ -169,34 +190,17 @@ output.
 would make the gate *slower* on a four-core laptop. CI's `python` job calls pytest
 directly and is deliberately untouched — what a GitHub runner should use is a separate
 question from what the machine in front of you has.
-| Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` | `python` |
-| Lint/format | `uv run ruff check .` / `uv run ruff format .` | `python` |
-| Frontend build + tests | `pnpm -r build && pnpm test` | `frontend` |
-| Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built | `frontend` |
-| Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
-| Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) | `browser` |
-| Browser cycle (chromium) | `pnpm --filter @visionset/app cycle` — the whole product against a real `visionset server`; needs `uv sync` and `playwright install chromium`. Repeatable in one workspace: `--repeat-each=N` costs one build rather than N | `browser` |
-| Annotator benchmark (manual) | `pnpm --filter @visionset/app bench` — frame times, recorded not gated | — manual |
-| Browser client | part of `pnpm test` — `ui-core`'s `data/` suite drives the 401 flow, the token form and the error envelope with a stubbed `fetch`, no server | part of `frontend` |
-| Design tokens | part of `pnpm test` — `tests/scripts/design_tokens.test.mjs` refuses a colour inside a class name, and `ui-core`'s `tokens.test.ts` gates the stylesheet against its TypeScript mirror | part of `frontend` |
-| Wire action rosters | part of `pnpm test` — `tests/scripts/wire_rosters.test.mjs` compares the two transcriptions of `allowed_actions` (`ui-core`'s `testing/wire.fixtures.ts` and the e2e suite's `_wire.ts`) in both directions. Only the first is typed against the generated union, so the second can drift silently; when it did, the failure surfaced as every gallery spec timing out. It proves the two agree with each other, not that either agrees with the kernel — see #358 | part of `frontend` |
-| Docs links | part of `pnpm test` — `tests/scripts/docs_links.test.mjs` resolves every internal link and every `#anchor` in all 46 tracked Markdown files (266 links, 551 headings), naming the file, line and dead fragment. External URLs are ignored on purpose: a gate that fails for somebody else's rate limit is one people re-run rather than read. Renaming a heading breaks inbound anchors *silently* — the link just lands at the top of the page — which was a near miss during the `visionset ui` → `visionset server` rename (#329) | part of `frontend` |
-| Format smoke (ultralytics, pycocotools) | `uv sync --group yolo --group coco && uv run pytest tests/formats/test_*_smoke.py` — their own groups because ultralytics brings torch **and its wheel ships a top-level `tests` package that shadows this repo's**, so run only those files and `uv sync` again afterwards; skips without them, and CI sets `VISIONSET_REQUIRE_ULTRALYTICS=1` / `VISIONSET_REQUIRE_PYCOCOTOOLS=1` so a broken install goes red | — CI |
-| Inference smoke (local-inference extra) | `uv sync --extra local-inference` then `VISIONSET_REQUIRE_LOCAL_INFERENCE=1 uv run pytest tests/inference tests/architecture/test_optional_runtime.py tests/server/test_inference.py tests/server/test_suggest.py tests/cli/test_inference_commands.py tests/jobs/test_weights_job.py -rs`, and `uv sync` again afterwards. The **with-runtime** half of the matrix — see [the two halves](#the-two-halves-of-the-inference-matrix) below. Roughly two gigabytes of CUDA wheels, which is why it is opt-in locally; CI's `inference-smoke` job runs it | — CI |
-| Wheel (build, install, serve) | `bash scripts/build_dist.sh && VISIONSET_REQUIRE_WHEEL=1 uv run pytest tests/packaging` — builds the UI into `_static/`, builds the wheel, installs it in a fresh venv and serves `/app/` from it. Opt-in locally (it costs about a minute); CI's `wheel` job runs it and uploads the artifact | — CI |
-| The 30-minute flow | `uv run python examples/thirty_minute_flow.py` — the vision document's success metric end to end. CI's `30-minute flow (wheel, end to end)` job runs it from the **installed wheel** in an empty venv, with `ultralytics` required there | — CI |
-| Version sync | `pnpm version:check` | `generated` |
-| OpenAPI contract | `uv run python scripts/export_openapi.py` (commit the diff) | `generated` |
-| Generated API client | `pnpm generate:client` (commit the diff) — writes **two** artifacts under `frontend/ui-core/src/generated/`: `api.ts` (the types) and `checks.ts` (the runtime response checks `unwrap` takes). CI diffs the whole directory. | `generated` |
-| Annotator wire fixture | `uv run python scripts/export_wire_fixtures.py` (commit the diff) | part of `python` |
-| MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads | `generated` |
 
 ## The two machine-enforced boundaries
 
 1. **Kernel purity** — `visionset.kernel` never imports `visionset.server`, `visionset.cli`,
-   `visionset.mcp`, `visionset.formats`, nor `fastapi`/`typer`/`mcp`/`uvicorn`. Enforced by
+   `visionset.mcp`, `visionset.formats`, `visionset.wire`, `visionset.jobs` or
+   `visionset.inference`, nor `fastapi`/`typer`/`mcp`/`uvicorn`. Enforced by
    `import-linter` (contracts in `pyproject.toml`) and a fresh-process pytest in
-   `tests/architecture/`.
+   `tests/architecture/`. The four packages that are not frameworks are on the list for
+   one shared reason: each is where a decision about the outside world is taken — which
+   plugin exists, what gets published, what runs in a worker, which model is loaded — and
+   a kernel that could reach one could reach the thing behind it.
 2. **Headless annotator** — `frontend/annotator/src/core/` never imports React and never reaches
    the DOM. Enforced by three gates, all run by `pnpm --filter @visionset/annotator lint`:
    an ESLint `no-restricted-imports` rule and an ESLint `no-restricted-globals` rule, both scoped
@@ -285,8 +289,8 @@ gh api -X PUT repos/<owner>/<repo>/branches/main/protection \
 
 ### Tags and publishing
 
-The road to the beta is cut into six internal milestones. Each one ends with a **git tag
-only**:
+The road to the beta is cut into six internal milestones. The first five each end with a
+**git tag only**, and the sixth is the beta itself:
 
 ```
 v0.0.1-alpha.1 … v0.0.1-alpha.5     git tags, never published to PyPI or npm

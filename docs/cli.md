@@ -42,7 +42,9 @@ visionset inference create NAME --type local|http --model ID --revision REV
                                [--endpoint URL]
 visionset inference list
 visionset inference show|update|delete NAME_OR_ID
+visionset inference size MODEL_ID --revision REV         # no --workspace: it opens none
 visionset inference download NAME_OR_ID
+visionset inference check-integrity NAME_OR_ID
 visionset server [--host] [--port] [--reload]            # no --json
 visionset mcp                                            # stdio; no --json
 ```
@@ -170,9 +172,10 @@ The contract:
 
 **The shapes deliberately agree, key for key, with the REST API's**, so a script moves between
 `curl | jq` and `visionset --json | jq` without relearning field names. That agreement is not a
-convention anybody remembers — `tests/cli/test_json_contract.py` asserts, for fifteen resources,
-that the CLI's projection has exactly the wire model's fields *and* that the wire model validates
-it, which catches a timestamp in the wrong format that a key comparison would miss.
+convention anybody remembers — `tests/cli/test_json_contract.py` asserts, for each of the
+thirty-one shapes it pairs, that the CLI's projection has exactly the wire model's fields *and*
+that the wire model validates it, which catches a timestamp in the wrong format that a key
+comparison would miss.
 
 Two shapes have no REST counterpart, because no route publishes them, and the CLI defines them
 first: `export`'s report (`release_id`, `format`, `directory`, `file_count`, `total_bytes`) and
@@ -191,9 +194,11 @@ the callback would have to *precede* the subcommand — `visionset --workspace X
 ci` would work and `visionset token create --name ci --workspace X` would fail with "No such
 option". Nobody types the first one.
 
-`--json` is per command for the identical reason, and so is every other option here. The two
-commands without `--workspace` are the ones that need none: `visionset format list` reads installed
-distributions, which is a fact about the process; `visionset init` takes a positional `PATH`,
+`--json` is per command for the identical reason, and so is every other option here. Three
+commands do without `--workspace`, each because it needs none: `visionset format list` reads
+installed distributions, which is a fact about the process, and `visionset inference size` asks
+the publishing hub about a model that no row has to name yet; `visionset init` takes a positional
+`PATH`,
 because it names where to *make* a workspace rather than which one to use — and for that reason it
 never walks, never reads `$VISIONSET_WORKSPACE`, and never trades the directory you named for its
 parent.
@@ -239,7 +244,7 @@ UI bundle at `/app`; `/` redirects to the app.
 
 ```
 $ visionset server
-VisionSet 0.0.1.dev0
+VisionSet 0.0.1b2
   workspace   /home/you/datasets/robots
   UI and API  http://127.0.0.1:8000/
   browser     signed in automatically
@@ -396,9 +401,17 @@ names. **`download` is the only command in this product that downloads a model, 
 one only because you asked it to** — nothing else here reaches a network, and creating a
 connection writes a row. It blocks, because there is no worker at a terminal to hand the work to,
 and it needs the `local-inference` extra; without it you get one line naming the exact
-`pip install`. Covered in full, including the two kinds, where the weights land and why deleting a
-connection never touches an annotation's provenance, in
-[inference.md](inference.md#at-a-terminal).
+`pip install`.
+
+Two commands beside it read rather than fetch. `size` says what a download would cost before
+anybody agrees to it, from the hub's own file listing, and is the one command in this group that
+opens no workspace — it asks about a published model rather than a configured row.
+`check-integrity` re-reads a `ready` connection's weights in full and compares each digest
+against the published one, which is the question `download` cannot answer: a file already in the
+cache is returned unread, so a truncated or rotted copy passes the completeness check for ever.
+
+Covered in full, including the two kinds, where the weights land and why deleting a connection
+never touches an annotation's provenance, in [inference.md](inference.md#at-a-terminal).
 
 ## `visionset mcp`
 

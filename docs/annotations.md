@@ -44,8 +44,9 @@ before anything is stored, and the whole call rolls back on the first refusal.
 | `MissingRequiredAttribute` | A `required` attribute has no value. A `default` is *not* filled in. |
 | `UnknownAttribute` | The annotation carries an attribute the class does not declare. |
 | `InvalidAttributeValue` | Wrong type for the kind, or outside a `select`'s options. |
+| `DuplicateClassificationTag` | A second whole-asset tag of a class the asset already carries — see below. |
 
-All five share `InvalidAnnotation`, so a delivery surface answers 422 without enumerating
+All six share `InvalidAnnotation`, so a delivery surface answers 422 without enumerating
 them. Catching the base is safe here in a way catching `DestructiveSchemaChange` is not: no
 flag overrides any of these, so there is nothing to retry into a loop. The remedy is to fix
 the annotation, or to write a schema version that describes it.
@@ -113,8 +114,9 @@ one class are the *same statement made twice*. Since #121 the kernel enforces it
 - a **partial unique index** on `(asset_id, label_class)`, restricted to tag
   geometry, so the second one cannot be stored;
 - `AnnotationService.add` and `.update` refuse first, with
-  `DuplicateClassificationTag` — one of the six `InvalidAnnotation` refusals — so a
-  caller meets a sentence and an `index` rather than a raw constraint failure;
+  `DuplicateClassificationTag` — the sixth `InvalidAnnotation` refusal in the table
+  above — so a caller meets a sentence and an `index` rather than a raw constraint
+  failure;
 - the check runs **within a call** as well as against the store, because `add` is
   all-or-nothing and the index would otherwise refuse at commit time, where the
   position at fault cannot be reconstructed.
@@ -130,18 +132,23 @@ anybody wants.
 update of a tag is not a duplicate — the row being replaced leaves the comparison
 before its replacement is judged.
 
-**Migration 12 collapses duplicates a workspace already carried.** They were legal
-before, so refusing to open would leave an owner with a remedy they cannot apply:
-this product ships no SQL console. The survivor is the lexicographically smallest
-`id`. Any tie-break is arbitrary by construction — the rows are one statement — so
-what matters is that it is deterministic, and two machines migrating the same copy of
-a workspace agree. It can discard a differing `attributes` map on the losing row,
-which is stated rather than hidden.
+**A migration collapsed the duplicates workspaces already carried**, because they were
+legal before the index existed and refusing to open would have left an owner with a
+remedy they cannot apply: this product ships no SQL console. It survives only as
+history — the whole pre-release chain was collapsed into the baseline, so
+`uq_annotation_asset_classification` is declared in `_tables.py` and a fresh database
+is created with it. The rule it applied is worth keeping on record: the survivor was
+the lexicographically smallest `id`, an arbitrary tie-break by construction — the rows
+are one statement — chosen for being deterministic, so two machines migrating the same
+copy of a workspace agreed. It could discard a differing `attributes` map on the losing
+row, which was stated rather than hidden. See
+[persistence.md](persistence.md#migrations-and-format_version).
 
 The annotator's own rule (`core/interaction/tags.ts`) is unchanged and is now a
 mirror rather than a compensation: `tagCommand` on an already-tagged class returns a
 command that changes nothing, so a second tag is never *requested*, and `untagCommand`
 still removes every tag of the class.
+
 ## Provenance is the model's own rule, not the service's
 
 There is no `InvalidProvenance`. `provenance="model"` requiring a `model_ref`, and `confidence`
@@ -491,19 +498,20 @@ and its rulers are what make a wrong transform visible by eye.
 
 Two suites, and the division is not by speed.
 
-**`pnpm --filter @visionset/annotator test`** — 700 vitest cases over 30 files, and they
-need no DOM because the engine cannot have one. It runs in **about four seconds**
-(6.7 s wall including process startup, measured on an idle developer machine), which
-is a property of the boundary rather than of the number of tests: there is no jsdom to
-build, no setup file, no vitest config at all. The things that would end it are adding
-a browser environment, adding jsdom, or adding a setup file — not adding more tests.
-If that budget ever needs raising, say which of the three bought it.
+**`pnpm --filter @visionset/annotator test`** — over nine hundred vitest cases across
+thirty-odd files, and they need no DOM because the engine cannot have one. The suite
+itself runs in **well under a second**, which is a property of the boundary rather than
+of the number of tests: there is no jsdom to build, no setup file, no vitest config at
+all. The things that would end that are adding a browser environment, adding jsdom, or
+adding a setup file — not adding more tests. If the budget ever needs raising, say which
+of the three bought it.
 
-**`pnpm --filter @visionset/app e2e`** — 42 Playwright scenarios against the demo page,
-in one chromium. They exist for the half a unit test structurally cannot reach: whether
-a browser delivers a real press to an element that still holds focus. Five of them are
-`perf.spec.ts`, which counts work rather than asserting behaviour — see
-[The performance benchmark](#the-performance-benchmark).
+**`pnpm --filter @visionset/app e2e`** — a couple of hundred Playwright scenarios in one
+chromium, over the demo page and over the product against a stubbed API. They exist for
+the half a unit test structurally cannot reach: whether a browser delivers a real press
+to an element that still holds focus, and how a layout behaves when jsdom reports every
+element as 0×0. `perf.spec.ts` is the handful that counts work rather than asserting
+behaviour — see [The performance benchmark](#the-performance-benchmark).
 
 ### What the port kept, and what it could not
 

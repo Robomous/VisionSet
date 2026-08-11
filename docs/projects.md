@@ -107,7 +107,7 @@ is gone.
 
 That is the safe default rather than an oversight: `BlobStore` has no `delete`, and
 reclaiming space correctly needs workspace-wide reachability (which hashes are still named
-by any asset or any release manifest, in any project). That pass does not exist in M1.
+by any asset or any release manifest, in any project). No such pass exists.
 Deleting a project therefore frees rows, not disk.
 
 ## Errors
