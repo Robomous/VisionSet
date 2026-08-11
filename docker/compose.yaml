@@ -24,14 +24,15 @@
 #
 # Every dependency is resolved, downloaded and installed at **build** time, in
 # docker/api.Dockerfile and docker/app.Dockerfile. Starting a container downloads
-# nothing. After changing a dependency:
+# nothing. After changing a dependency, in either language:
 #
 #   docker compose -f docker/compose.yaml build
-#   docker compose -f docker/compose.yaml down -v && … up
 #
-# The `down -v` is not optional for a frontend dependency: `frontend/*/node_modules`
-# lives in named volumes seeded from the image, and Docker seeds a volume only when
-# it is new, so a rebuilt image cannot reach one that already has contents.
+# That is the whole of it, and it did not used to be: a frontend dependency also
+# needed `down -v`, because `frontend/*/node_modules` lived in named volumes and
+# Docker seeds a volume only when it is **new**. No `node_modules` is mounted from
+# anywhere any more — see the `app` service's volume list — so a `build` is what
+# reaches every installed thing in this stack.
 #
 # **What reloads while the stack runs, and what does not.** Every layer of source
 # reaches the browser without restarting anything:
@@ -44,16 +45,17 @@
 # The residual cases, all of them changes to how a container is *built* rather
 # than to what it runs, and each with the command it needs:
 #
-#   a Python dependency          build
-#   a frontend dependency        build, then down -v      (the volumes above)
-#   either Dockerfile            build
-#   docker/nginx.conf            up --force-recreate nginx (mounted read-only,
-#                                nginx reads it once at start)
-#   either entry script          restart api / restart app (read once at start)
+#   a dependency, either language   build
+#   either Dockerfile               build
+#   a tsconfig, vite.config.ts,     build   (baked into the app image — see
+#   index.html, a package.json              docker/app.Dockerfile for why)
+#   docker/nginx.conf               up --force-recreate nginx (mounted read-only,
+#                                   nginx reads it once at start)
+#   either entry script             restart api / restart app (read once at start)
 #
 # **Only what a running service reads is mounted** — the api gets `src/`, the app
-# gets `frontend/` and the two root files pnpm needs to see a workspace, and both
-# get `docker/` for their entry script. The whole checkout used to be mounted into
+# gets the three `src/` directories plus its static `public/`, and both get
+# `docker/` for their entry script. The whole checkout used to be mounted into
 # both, which meant a polling watcher walking `tests/`, `.git/`, the host `.venv/`
 # and the Playwright report directories on every tick, for services that read none
 # of them. A path that is not in the list above does not exist inside these
@@ -82,8 +84,8 @@
 #
 #   docker compose -f docker/compose.yaml build api
 #
-# A rebuild, not `down -v`. That one is for the frontend's node_modules volumes and
-# takes nothing here; the api service has no volume holding an installed thing.
+# A rebuild, and nothing else — no service in this stack keeps an installed thing
+# in a volume any more, so `build` is the whole answer for every dependency here.
 #
 # Storage — the same shape MLflow's default mode has, because it is the only shape
 # VisionSet has: a local directory for files and SQLite for metadata, both inside
@@ -190,38 +192,46 @@ services:
     depends_on:
       - api
     volumes:
-      # What a running vite reads. The frontend workspace is the bulk of it —
-      # sources, per-package manifests, tsconfigs, vite config, index.html — and
-      # the two root files below are what makes pnpm recognise a workspace at all
-      # from `working_dir`. Without either of them `--filter @visionset/app` finds
-      # no such package and the container exits before vite is reached.
-      - ../frontend:/workspace/frontend
-      - ../package.json:/workspace/package.json
-      - ../pnpm-workspace.yaml:/workspace/pnpm-workspace.yaml
+      # The source directories, and nothing wider. This list is deliberately not
+      # `../frontend`, and the difference is what keeps this stack working across a
+      # dependency change.
+      #
+      # pnpm's workspace layout puts a `node_modules/` at the root *and* inside
+      # every package, so mounting a package **directory** buries the install the
+      # image made — with the host's own `frontend/*/node_modules/`, or, on a clean
+      # checkout, with nothing at all. That used to be answered with a named volume
+      # per package, and it is exactly the wrong tool: Docker seeds a named volume
+      # only when it is **new**, so the first `up` filled three volumes and every
+      # later `build` was invisible to them. A dependency bump then left the
+      # container holding symlinks into a virtual store the image no longer had —
+      # `lucide-react 1.28.0 → 1.29.0` was one — and the app died at exit 2 naming a
+      # package that is plainly in `package.json`, which reads as a broken checkout
+      # rather than as a stale mount. It happened at least twice.
+      #
+      # Mounting `src/` leaves every `node_modules/` the image's own. So `build` is
+      # sufficient by itself, `down -v` is no longer part of any frontend workflow,
+      # and the container cannot reach the host's darwin-only native packages
+      # (esbuild, rollup, @tailwindcss/oxide, lightningcss) either — the second job
+      # the volumes used to do, now done by construction.
+      #
+      # These are the paths a person edits and expects to see reload. Everything
+      # else the app needs — the four package.json files, pnpm-lock.yaml,
+      # pnpm-workspace.yaml, the tsconfigs, vite.config.ts, index.html — is baked
+      # into the image by docker/app.Dockerfile, so editing one of those needs a
+      # `build`, the same rule a dependency change has.
+      #
+      # Consequence worth knowing: `frontend/{annotator,ui-core}/dist` is now built
+      # inside the container rather than into the checkout, so the two `tsc
+      # --watch` builds no longer write to the host at all.
+      - ../frontend/annotator/src:/workspace/frontend/annotator/src
+      - ../frontend/ui-core/src:/workspace/frontend/ui-core/src
+      - ../frontend/app/src:/workspace/frontend/app/src
+      # Vite's static directory — a directory rather than the one file in it, so
+      # adding an asset needs no rebuild.
+      - ../frontend/app/public:/workspace/frontend/app/public
       # The entry script, read once at container start; read-only for the reason
       # the api service states.
       - ../docker:/workspace/docker:ro
-      # One volume per `node_modules/` that the bind mount above would otherwise
-      # cover, and only those. pnpm's workspace layout puts a `node_modules/` at
-      # the root *and* in every package; the root one is no longer under any bind
-      # mount, so it is simply the image's own directory now and needs no volume.
-      # These three are still inside `../frontend`, and still do two jobs.
-      #
-      # First, they carry the build's output past the bind mount: without them the
-      # host's `frontend/*/node_modules/` — or its absence — would shadow what the
-      # image installed. Docker seeds a *new* named volume from the image content
-      # at that path, which is what makes the install survive.
-      #
-      # Second, they keep the container off the host's tree. A macOS checkout holds
-      # darwin-only native packages (esbuild, rollup, @tailwindcss/oxide,
-      # lightningcss) that a Linux install would overwrite.
-      #
-      # Consequence worth knowing: these are seeded once, at creation. After
-      # changing a dependency, `build` then `down -v` — a rebuilt image does not
-      # reach a volume that already has contents.
-      - app-annotator-modules:/workspace/frontend/annotator/node_modules
-      - app-ui-core-modules:/workspace/frontend/ui-core/node_modules
-      - app-app-modules:/workspace/frontend/app/node_modules
     environment:
       # Where vite's own `/api` proxy points. Requests arriving through nginx
       # never reach it — nginx has already routed `/api/` to the API by then — so
@@ -303,8 +313,5 @@ services:
       - minio-data:/data
 
 volumes:
-  app-annotator-modules:
-  app-ui-core-modules:
-  app-app-modules:
   postgres-data:
   minio-data:

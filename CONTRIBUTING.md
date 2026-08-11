@@ -18,7 +18,8 @@ needs nothing installed on the host and no build of any kind.
 | Token | minted on first boot, printed in the `api` logs |
 | Behind the proxy | API on :8000 and vite on :5173 are published too, for curl and for reading a vite error without nginx in the way |
 | Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, and `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from |
-| After a dependency change | `build`, then `down -v` before `up` — `frontend/*/node_modules` lives in volumes seeded from the image, and Docker seeds a volume only when it is new |
+| After a dependency change | `build` — in either language, and nothing else. No `node_modules` is mounted from the host or from a volume, so a rebuilt image is what the containers get |
+| After changing a `package.json`, a tsconfig, `vite.config.ts` or `index.html` | `build` — these are baked into the app image, beside the install they configure |
 | After changing a Dockerfile or an entry script | `build` for the first, `restart api` / `restart app` for the second — an entry script is read once, at container start |
 
 Every dependency is installed at **image build** (`docker/api.Dockerfile`,
@@ -26,11 +27,13 @@ Every dependency is installed at **image build** (`docker/api.Dockerfile`,
 nothing — the stack comes up offline. What is left at start is compiling the repository's own two
 TypeScript libraries, which no image can hold because the source does not exist until you write it.
 
-Only the directories a running service actually reads are mounted — `src/` into the api,
-`frontend/` into the app, `docker/` into both, and the storage directory. The whole checkout is
-not, so `tests/` is absent from the api container and `docker compose exec api pytest` collects
-nothing: run the suite on the host with `bash scripts/check.sh python`. The mount list is in
-`docker/compose.yaml`, next to the reasoning.
+Only the directories a running service actually reads are mounted — `src/` into the api, the three
+frontend `src/` directories plus `frontend/app/public` into the app, `docker/` into both, and the
+storage directory. The whole checkout is not, so `tests/` is absent from the api container and
+`docker compose exec api pytest` collects nothing: run the suite on the host with
+`bash scripts/check.sh python`. The mount list is in `docker/compose.yaml`, next to the reasoning —
+including why the app mounts source directories rather than package roots, which is what keeps a
+`build` sufficient after a dependency change.
 
 Dev only; the release artifact is always the pip package, and these images are never it. Running
 it on the host stays faster, because a bind mount has to poll for file changes rather than being

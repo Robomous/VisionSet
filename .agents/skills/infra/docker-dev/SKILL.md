@@ -179,12 +179,20 @@ from this table does not exist inside these containers, and adding one is a line
 | Service | Mounts |
 | --- | --- |
 | `api` | `../src` → `/workspace/src`, `../docker` → `/workspace/docker` (ro), `${VISIONSET_DATA:-../workspace-data}` → `/data` |
-| `app` | `../frontend` → `/workspace/frontend`, `../package.json`, `../pnpm-workspace.yaml`, `../docker` (ro), plus a named volume per `frontend/*/node_modules` |
+| `app` | `../frontend/{annotator,ui-core,app}/src`, `../frontend/app/public`, `../docker` (ro) |
 | `nginx` | `./nginx.conf` → `/etc/nginx/nginx.conf` (ro) |
 
 Everything else the containers show under `/workspace` — `pyproject.toml`, `uv.lock`, `VERSION`,
-`pnpm-lock.yaml`, the root `node_modules/` — is the **image's own copy**, put there at build time
-and not connected to the host. Editing one of those on the host changes nothing until a `build`.
+`pnpm-lock.yaml`, every `package.json`, the tsconfigs, `vite.config.ts`, `index.html`, and **every
+`node_modules/`** — is the **image's own copy**, put there at build time and not connected to the
+host. Editing one of those on the host changes nothing until a `build`.
+
+**The `app` service mounts source directories, never package roots, and that is load-bearing.**
+pnpm puts a `node_modules/` inside every workspace package, so mounting `../frontend` buries all
+three installs. That used to be patched with a named volume per package — the wrong tool, because
+Docker seeds a named volume only when it is **new**, so the first `up` filled them and every later
+`build` was invisible. Mounting `src/` means no `node_modules` comes from the host or from a
+volume at all, so a `build` reaches every installed thing. See the gotchas.
 
 **Every layer of source reloads in a running stack.** No restart, no rebuild:
 
@@ -206,8 +214,8 @@ container is *built* rather than to what it runs:
 
 | Changed | Needed |
 | --- | --- |
-| a Python dependency | `build` |
-| a frontend dependency | `build`, then `down -v` (see the gotcha below) |
+| a dependency, either language | `build` |
+| a `package.json`, a tsconfig, `vite.config.ts`, `index.html` | `build` — baked into the app image |
 | `api.Dockerfile` / `app.Dockerfile` | `build` |
 | `docker/nginx.conf` | `up --force-recreate nginx` — read once at start |
 | `api-dev.sh` / `app-dev.sh` | `restart api` / `restart app` — read once at start |
@@ -250,27 +258,34 @@ docker run --rm -v "$PWD:/workspace" -w /workspace visionset-api \
   `docker/api.Dockerfile` and `docker/app.Dockerfile`; both entrypoints deliberately contain no
   `pnpm install` and no `uv sync`. If one ever grows an install, the build has stopped doing its
   job. A slow first `up` is a build, not a hang.
-- **After changing a frontend dependency, `build` alone is not enough — you also need `down -v`.**
-  `frontend/*/node_modules` lives in named volumes (`app-annotator-modules`, `app-ui-core-modules`,
-  `app-app-modules`), and Docker seeds a volume only when it is **new**, so a rebuilt image cannot
-  reach one that already has contents. The *root* `node_modules/` needs no volume any more — it is
-  no longer under a bind mount, so it is simply the image's own directory and a `build` refreshes
-  it. That is why the two states can disagree, and why `down -v` is the answer rather than a
-  puzzle.
+- **After changing a dependency in either language, plain `build` is enough.** No service keeps an
+  installed thing in a volume, and no `node_modules` is mounted from anywhere.
+
+  This is worth knowing because it was false twice, and the failure it produced reads as a broken
+  checkout rather than a stale mount: **a compiler error naming a package that is plainly in
+  `package.json`**, killing the `app` container at exit 2 and leaving nginx with no upstream and
+  `localhost:8080` serving 502. It happened with `error TS2688: Cannot find type definition file
+  for 'node'` (2026-08-03, `@types/node`) and again with `error TS2307: Cannot find module
+  'lucide-react'` (2026-08-10, a `1.28.0 → 1.29.0` bump). Both times the cause was the same: the
+  per-package `node_modules` volumes still held symlinks into a virtual-store path — literally
+  `../../../node_modules/.pnpm/lucide-react@1.28.0_react@19.2.8/…` — that the rebuilt image no
+  longer had. `down -v` was the remedy; mounting `src/` instead of the package roots removed the
+  cause.
+
+  **CI structurally cannot catch this class**, which is why it kept reaching developers: every job
+  installs `--frozen-lockfile` into an empty tree, so a stale install is a state CI never has. A
+  host checkout has the same exposure by a different route — run `pnpm install` after pulling a
+  dependency change.
+
+  One-time cleanup on a machine that ran the old stack, since compose no longer declares them:
 
   ```bash
-  docker compose -f docker/compose.yaml build
-  docker compose -f docker/compose.yaml down -v
-  docker compose -f docker/compose.yaml up
+  docker volume rm visionset_app-annotator-modules visionset_app-ui-core-modules \
+                   visionset_app-app-modules
   ```
-
-  The symptom is a compiler error naming a package that *is* in `package.json` — e.g.
-  `error TS2688: Cannot find type definition file for 'node'`, which kills the `app` container at
-  exit 2 and leaves nginx with no upstream. CI cannot catch this class of failure: it always
-  installs `--frozen-lockfile` into an empty tree. Run `pnpm install` on the host too, because the
-  same staleness hits a developer checkout.
-- After changing a *Python* dependency, plain `build` is enough — the api service has no volume
-  holding an installed thing.
+- **`frontend/{annotator,ui-core}/dist` is built inside the container**, not into the checkout —
+  the two `tsc --watch` builds write nowhere on the host. A `dist/` in your checkout came from a
+  host-side `pnpm -r build`, and the two no longer interfere.
 - **`frontend/*/dist` is written by root**, because the `app` container runs as root and `dist/`
   is inside a bind mount. The stack has always done this; the watch builds only make it happen
   more often. The symptom is a host-side `pnpm -r build` failing with a wall of
