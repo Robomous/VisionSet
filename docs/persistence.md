@@ -20,7 +20,7 @@ mapping layer is the thing to extend.
 
 Every persisted entity has a UUID primary key and **at most one parent** — a Project
 belongs to a Workspace, an Annotation to an Asset. That regularity is why a single
-generic repository serves all fifteen entity types:
+generic repository serves all seventeen entity types:
 
 ```python
 with store.unit_of_work() as uow:
@@ -48,16 +48,18 @@ never raises `ProjectNameTaken`.
 But a rule with no backstop is a wish, so the store carries the constraint too:
 `uq_project_workspace_name` on `project (workspace_id, name COLLATE NOCASE)`, alongside
 `uq_schema_project_version`, `uq_member_dataset_asset`, `uq_release_dataset_tag`,
-`uq_asset_project_content_hash`, `uq_source_project_kind_path_fps` and
-`uq_token_workspace_name`. The invariant then survives
+`uq_asset_project_content_hash`, `uq_source_project_kind_path_fps`,
+`uq_annotation_asset_classification`, `uq_token_workspace_name` and
+`uq_inference_connection_name`. The invariant then survives
 a service bug, a forgotten code path, and a second process.
 
-The last of those is the only index here whose terms are not all columns: its fourth is
-`coalesce(json_extract(video, '$.extraction_fps'), 0)`. SQLite treats NULLs in a unique index as
+`uq_source_project_kind_path_fps` is one of the two whose terms are not all columns: its fourth
+is `coalesce(json_extract(video, '$.extraction_fps'), 0)`. SQLite treats NULLs in a unique index as
 distinct, so a nullable column would let every image directory collide with nothing at all — and
-an index is not a query, so no service gains a JSON path from it. It is also one of the two that
-could never use `checkfirst`, because SQLAlchemy cannot *reflect* an expression-based index — see
-[Adding the second migration](#adding-the-second-migration) for what a migration does instead.
+an index is not a query, so no service gains a JSON path from it. That is also why neither it nor
+`uq_annotation_asset_classification`, which is partial, can use `checkfirst`: SQLAlchemy cannot
+*reflect* an index built from an expression or a predicate — see
+[Appending a migration](#appending-a-migration) for what a migration does instead.
 
 The two layers reach different distances on purpose. `COLLATE NOCASE` folds ASCII only;
 `WorkspaceService` compares with Unicode `casefold` over an NFC-normalized, stripped string.
@@ -161,7 +163,7 @@ MIGRATIONS: list[Migration] = [
 FORMAT_VERSION: int = MIGRATIONS[-1].version  # 7
 ```
 
-**Generation 1 is the baseline, and everything after it is an ordinary migration.** A long
+**Generation 1 is the baseline, and the six entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -209,9 +211,10 @@ missing:
 ### The stamp is a claim, and it is checked
 
 Every row of that table rests on one rule: **a schema change arrives with a version to go
-with it.** Nothing enforces the rule, and with a single baseline every workspace anybody
-creates carries the same number forever — so the second row above, "nothing", is also what
-a file that missed a column gets. `create_all` will not repair it: it creates missing
+with it.** Nothing enforces the rule, so a column added to `_tables.py` without a migration
+beside it leaves every already-stamped workspace short of it while the stamp still reads
+current — which means the second row above, "nothing", is also what a file that missed a
+column gets. `create_all` will not repair it: it creates missing
 *tables*, leaves an existing one exactly as it found it, and in any case only runs while
 something is pending, which on an already-stamped file is nothing. The file opens as
 current and the first statement naming the absent column fails inside a request.
@@ -235,15 +238,15 @@ column. Three things about it are deliberate:
 It runs on every open, fresh ones included, which is what makes a disagreement between
 reflection and `_tables` fail one named test rather than every workspace this build creates.
 
-### Adding the second migration
+### Appending a migration
 
 Append a `Migration` with the next version and an `upgrade` taking a live `Connection`.
 Never edit an existing migration — a workspace already stamped at that version will never
 run it again. `FORMAT_VERSION` is derived from the list, so it cannot drift.
 
-Four rules come back into force with that second migration. None of them applies to a
-lone baseline, which is exactly why they are written down here rather than left in the
-history of the deleted code:
+Four rules govern every entry after the baseline, and none of them applies to the baseline
+itself — which is why they are written down here rather than left in the history of the
+deleted code:
 
 **It must be idempotent.** Migration 1 is `create_all` of *today's* metadata, not a frozen
 snapshot: adding a table, column or index to `_tables` retroactively changes what a fresh
@@ -288,10 +291,10 @@ What remains is what a second migration will be judged against:
 - `_schema()`, which normalizes every `CREATE` statement SQLite has on file. This is the
   comparison that caught a column declared in the wrong position, and it is the piece that
   would otherwise be rewritten from memory under time pressure.
-- `test_two_fresh_databases_have_the_same_schema` — today only a determinism check, since
-  with one baseline both paths coincide. It becomes the fresh-versus-migrated comparison
-  again as soon as there is something to migrate.
-- `test_running_every_migration_again_changes_nothing`, which now covers the baseline
+- `test_two_fresh_databases_have_the_same_schema`, the determinism half, and
+  `test_a_fresh_database_and_a_migrated_one_have_the_same_schema` beside it, which builds a
+  generation-one file with `_at_generation_one` and migrates it forward to compare.
+- `test_running_every_migration_again_changes_nothing`, which covers the baseline
   rather than starting at `MIGRATIONS[1:]`.
 - `test_the_baseline_carries_each_uniqueness_index`, because a service-level uniqueness
   rule with no index under it is a wish, and nothing else asserts the indexes exist.
