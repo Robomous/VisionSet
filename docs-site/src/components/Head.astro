@@ -1,0 +1,59 @@
+---
+/**
+ * Starlight's `<Head>`, plus the browser half of mermaid support.
+ *
+ * `integrations/remark-mermaid.mjs` turns every ```` ```mermaid ```` fence into a
+ * `<pre class="mermaid">`; this draws them. It is a component override rather than
+ * an entry in Astro's `head` config because the script has to be **bundled** — a
+ * raw tag injected into `<head>` is not processed by Vite, so its `import` would
+ * never resolve.
+ *
+ * The import is dynamic and guarded on there being a diagram, so mermaid (which is
+ * megabytes) is fetched on the fifteen architecture pages and on none of the other
+ * twenty-seven.
+ */
+import Default from "@astrojs/starlight/components/Head.astro";
+---
+
+<Default><slot /></Default>
+
+<script>
+  // The unrendered source, kept on the element, because mermaid replaces the
+  // element's content with an SVG — so a theme change has nothing left to redraw
+  // from unless it was saved first.
+  const DIAGRAM = "pre.mermaid[data-mermaid]";
+
+  let mermaid: typeof import("mermaid").default | undefined;
+
+  async function draw() {
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>(DIAGRAM));
+    if (nodes.length === 0) return;
+
+    mermaid ??= (await import("mermaid")).default;
+
+    for (const node of nodes) {
+      node.dataset.source ??= node.textContent ?? "";
+      node.textContent = node.dataset.source;
+      // mermaid.run() skips anything it has already drawn; this is how a redraw
+      // after a theme change is allowed to happen at all.
+      node.removeAttribute("data-processed");
+    }
+
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: document.documentElement.dataset.theme === "dark" ? "dark" : "default",
+    });
+    await mermaid.run({ nodes });
+  }
+
+  void draw();
+  // Present whether or not client-side routing is on, so this keeps working if
+  // Starlight's view transitions are ever enabled.
+  document.addEventListener("astro:page-load", () => void draw());
+
+  // Starlight's theme toggle writes `data-theme` on `<html>`. A diagram drawn in
+  // the dark palette is unreadable on a light page and the other way round.
+  new MutationObserver(() => void draw()).observe(document.documentElement, {
+    attributeFilter: ["data-theme"],
+  });
+</script>
