@@ -12,11 +12,17 @@ happens in the context of exactly one, so `WorkspaceService` is both the way in 
   blobs/            FilesystemBlobStore root, sharded <hh>/<hh>/<hash>
   uploads/          written only by the REST server — see below
   exports/          likewise
+  models/           the model cache, written only when somebody fetches weights
 ```
 
-Nothing the kernel writes is outside the first four entries. `uploads/` and `exports/` are the
-exceptions and both belong to somebody else — the [REST API](api.md) — for the same underlying
-reason: HTTP has bytes where the kernel has paths.
+Nothing the kernel writes is outside the first four entries. The other three all belong to
+somebody else. `uploads/` and `exports/` belong to the [REST API](api.md), for the same
+underlying reason: HTTP has bytes where the kernel has paths. `models/` belongs to
+`visionset.inference`, which the kernel may not import at all — see
+[inference.md](inference.md) — and it appears only after somebody has run
+`visionset inference download`, because this product fetches a model when it is asked to and
+at no other time. One cache for the whole workspace, so two connections pinned to the same
+model and revision share the files.
 
 `uploads/` is where multipart uploads are staged, named by a digest of the part set, so that
 `SourceService` — which registers a source by *path* — has a path to be given.
@@ -52,14 +58,14 @@ or one whose process was killed, is all four entries.
 Everything written since the last checkpoint lives in `visionset.db-wal` until then. Close the
 workspace first, or copy all three files together.
 
-Four of the six ports have no line in that layout, and that is the point: the [event
+Five of the seven ports have no line in that layout, and that is the point: the [event
 bus](events.md) is in-process, the two [media processors](media.md) are decoders, and the
-[auth provider](auth.md) reads a table inside the database above, so none of them leaves anything
-behind. They are composed here anyway, because a workspace is what services
-are handed and every port has to arrive with it. One of each per open workspace, built by
-`event_bus_factory`, `image_processor_factory`, `video_processor_factory` and
-`auth_provider_factory` — never a module-level singleton, which two workspaces open at once must
-not share.
+[auth provider](auth.md) and the [job queue](background-jobs.md) both read a table inside the
+database above, so none of them leaves anything behind. They are composed here anyway, because a
+workspace is what services are handed and every port has to arrive with it. One of each per open
+workspace, built by `event_bus_factory`, `image_processor_factory`, `video_processor_factory`,
+`auth_provider_factory` and `job_queue_factory` — never a module-level singleton, which two
+workspaces open at once must not share.
 
 `auth_provider_factory` is the one that takes arguments: `(metadata_store, workspace_id)`, because
 it is the first port derived from another rather than from the path. No kernel service uses it —
@@ -71,8 +77,8 @@ bind those arguments positionally, so a parameter added in the middle silently r
 after it.
 
 `WorkspaceService` is the only place in the kernel that names `SqliteMetadataStore`,
-`FilesystemBlobStore`, `InProcessEventBus`, `PillowImageProcessor`, `FfmpegVideoProcessor` or
-`StoredTokenAuthProvider`.
+`FilesystemBlobStore`, `InProcessEventBus`, `PillowImageProcessor`, `FfmpegVideoProcessor`,
+`StoredTokenAuthProvider` or `SqliteJobQueue`.
 Everything above it — later
 surface, the CLI, MCP — gets an open service and reaches the ports through it, so swapping
 an adapter is a change to two functions and to nowhere else.
@@ -119,11 +125,11 @@ The already-a-workspace check runs *before* the emptiness check on purpose: a wo
 directory is also non-empty, and "open it instead" is the useful message.
 
 Emptiness is strict — a stray `.DS_Store` is enough to refuse. That matches the contract
-literally and keeps `init` from ever writing into, say, a git repository root. Worth
-revisiting when the `visionset init` CLI command lands, where a friendlier rule may earn
-its keep — that command is also the one that will have to decide whether `init` with no
-path means "here" or means the resolver's answer, since the resolver deliberately walks
-upward and `init` must not.
+literally and keeps `init` from ever writing into, say, a git repository root. A friendlier
+rule may yet earn its keep at the terminal, where somebody is standing in a directory
+rather than passing a path; `visionset init` settled the neighbouring question the other
+way, and [At a terminal](#at-a-terminal) below has it — with no path it means *here*, never
+the resolver's answer, because the resolver walks upward and `init` must not.
 
 If anything fails midway, `init` removes what it created and nothing else: the whole
 directory if `init` made it, otherwise just the database and `blobs/`. "Fails safely" means
@@ -155,14 +161,14 @@ Two orderings in that table are load-bearing:
 A missing `blobs/` is repaired rather than rejected: zip archives and git both drop empty
 directories, so its absence says nothing about the workspace's health.
 
-**Older workspaces are migrated, not refused** — that is what the migration list is for.
-There are none to migrate today: the list holds a single baseline, so every workspace this
-build can open is already at `FORMAT_VERSION`. See
-[persistence.md](persistence.md#migrations-and-format_version) for why the chain that
-preceded it was collapsed, and what comes back with the second migration. The honest cost
-of an in-place upgrade — a workspace the older build can no longer open, with no backup —
-is unchanged for whenever that happens. A `migrate=False` flag is keyword-only and
-source-compatible to add later; backup-before-migrate belongs with the CLI.
+**Older workspaces are migrated, not refused** — that is what the migration list is for. It
+holds seven entries today: the baseline, and six that have appended a column or a table since.
+A workspace stamped below `FORMAT_VERSION` runs whatever is pending and is restamped, in place
+and on the way in. See [persistence.md](persistence.md#migrations-and-format_version) for the
+list itself and for the rules a new entry has to satisfy. The honest cost of an in-place
+upgrade — a workspace the older build can no longer open, with no backup — is the price of
+that convenience. A `migrate=False` flag is keyword-only and source-compatible to add later;
+backup-before-migrate belongs with the CLI.
 
 ### `root` is authoritative, `root_dir` is advisory
 
@@ -298,7 +304,7 @@ NFC matters concretely: macOS filesystems hand out decomposed strings, so `café
 Finder and `café` typed in a terminal are different byte sequences that must not become two
 projects. Internal whitespace is left alone — `road signs` and `road  signs` are distinct,
 because collapsing runs of spaces would rewrite the user's input for no invariant. There is
-no length limit in M1.
+no length limit.
 
 The two comparison rules differ in reach (Unicode vs ASCII), and that split is deliberate:
 the index catches the collision users actually make at the storage layer, while the service
@@ -317,8 +323,8 @@ rows whose names are equal under ASCII case folding. That holds because the guar
 index evaluated inside SQLite's write transaction, not the service's `SELECT`. Every write
 is a transaction, so no half-finished operation can be observed.
 
-**Readers never block, and are never blocked.** That is what WAL buys, and it is the reason
-this milestone adopted it: a background ingest holding a write transaction does not stall the
+**Readers never block, and are never blocked.** That is what WAL buys, and it is why the store
+uses it: a background ingest holding a write transaction does not stall the
 request handlers reading beside it. A reader sees the last committed state, not the writer's
 work in progress.
 
@@ -381,10 +387,10 @@ Four habits that keep the boundary honest:
 - One `unit_of_work()` per operation, and do the whole operation inside it.
 - Reach the ports through the handle — `workspace.metadata_store`, `workspace.blob_store`,
   `workspace.event_bus`, `workspace.image_processor`, `workspace.video_processor`,
-  `workspace.auth_provider`. No service other than `workspace_service` should name
-  `SqliteMetadataStore`, `FilesystemBlobStore`, `InProcessEventBus`, `PillowImageProcessor`,
-  `FfmpegVideoProcessor` or `StoredTokenAuthProvider` — if a second one does, the composition
-  point has stopped being single.
+  `workspace.auth_provider`, `workspace.job_queue`. No service other than `workspace_service`
+  should name `SqliteMetadataStore`, `FilesystemBlobStore`, `InProcessEventBus`,
+  `PillowImageProcessor`, `FfmpegVideoProcessor`, `StoredTokenAuthProvider` or `SqliteJobQueue`
+  — if a second one does, the composition point has stopped being single.
 - Publish [events](events.md) *after* the `unit_of_work()` block, never inside it. An
   announcement is about work that committed, and a subscriber that raises must have nothing
   left to roll back.

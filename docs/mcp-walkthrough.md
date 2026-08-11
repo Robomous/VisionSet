@@ -301,8 +301,11 @@ That is not a bug — the flags did exactly what they are specified to do, and t
 still three rather than one. But it does settle a question that was open: **`confirm` is not a
 human-in-the-loop check when the caller is a model.** It is a speed bump the description tells the
 caller how to step over. If a real gate is ever wanted for this surface, it has to live somewhere
-the agent cannot reach — the server's own configuration, not a parameter. That is
-[#108](https://github.com/Robomous/VisionSet/issues/108), deliberately not decided here.
+the agent cannot reach — the server's own configuration, not a parameter. That was
+[#108](https://github.com/Robomous/VisionSet/issues/108), open when this was written and since
+settled the way the sentence above predicts: the two destructive tools are not registered at all
+without `--allow-destructive`, so the verb is absent from the listing rather than present and
+gated. `confirm` itself is untouched. See [mcp.md](mcp.md#destructive-tools-are-not-offered-unless-you-ask).
 
 ## Two pieces of friction, and both were about names rather than shapes
 
@@ -370,14 +373,17 @@ Three things were deliberately **not** changed:
   considered and dropped — every run worked that out from the kernel's own sentence, and a hint
   suggesting a destructive remedy for a refusal whose whole point is refusing to destroy is the
   wrong thing to put in front of a model.
-- **The thirty-three tools stay thirty-three.** Nothing was missed and nothing was confused for
-  something else. The twenty that folded stay folded.
+- **The thirty-three tools stayed thirty-three.** Nothing was missed and nothing was confused for
+  something else, and the twenty that folded stayed folded. Eight tools have been added in the
+  time since, each because a surface grew a capability an agent had no way to reach; the count
+  the runs measured is thirty-three because that is what the runs saw.
 
 ## What was left
 
 - [#108](https://github.com/Robomous/VisionSet/issues/108) — `confirm` is satisfiable from the tool
-  description, so a destructive tool self-authorises in one call. If this surface wants a real gate
-  it belongs in the server's configuration, out of the agent's reach. Post-beta.
+  description, so a destructive tool self-authorises in one call. **Settled: the gate moved to the
+  server's configuration**, out of the agent's reach. `delete_project` and `delete_batch` are
+  registered only when the server was started with `--allow-destructive`.
 - [#109](https://github.com/Robomous/VisionSet/issues/109) — whether `start_job` earned its place
   at all, given that writes were gated on the batch and not on the job. **Settled: it did not.**
   The tool is gone and every write starts a `pending` job, reporting `job_started` — and #439's

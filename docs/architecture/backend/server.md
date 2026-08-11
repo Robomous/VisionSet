@@ -44,6 +44,8 @@ invented at a call site.
 | [`errors.py`](../../../src/visionset/server/errors.py) | `ERROR_RULES` — every domain error's status and code |
 | [`dependencies.py`](../../../src/visionset/server/dependencies.py) | which workspace a request serves, and the bearer-token gate |
 | [`session.py`](../../../src/visionset/server/session.py) | the cookie the server issues to the page it served |
+| [`settings.py`](../../../src/visionset/server/settings.py) | the executor's three environment variables, and the only `pydantic-settings` object in the repository |
+| [`uploads.py`](../../../src/visionset/server/uploads.py) | staging multipart bytes under a digest of the part set, so a path exists for `SourceService` to register |
 
 ## `openapi.json` is a committed artifact
 

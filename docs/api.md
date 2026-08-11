@@ -57,12 +57,16 @@ POST   /ingest-jobs/{job_id}/resume
 GET    /projects/{project_id}/assets/{asset_id}
 GET    /projects/{project_id}/assets/{asset_id}/content   bytes
 GET    /projects/{project_id}/assets/{asset_id}/thumbnail bytes
+GET    /projects/{project_id}/assets/{asset_id}/batches    which batches carry it
 GET    /projects/{project_id}/batches
+POST   /projects/{project_id}/batches                     curate one by hand
 GET    /batches/{batch_id}
+DELETE /batches/{batch_id}                                ?confirm=true
 POST   /batches/{batch_id}/approve                        with a partition spec
 POST   /batches/{batch_id}/start
 POST   /batches/{batch_id}/repin                          ?allow_destructive=
 POST   /batches/{batch_id}/complete
+POST   /batches/{batch_id}/corrections                    a new batch over a completed one
 GET    /batches/{batch_id}/jobs
 GET    /batches/{batch_id}/assets                         paged
 POST   /batches/{batch_id}/assets                         draft only
@@ -91,9 +95,32 @@ GET    /releases/{release_id}/manifest                    bytes
 GET    /releases/{release_id}/verify
 GET    /releases/{release_id}/assignment
 GET    /releases/{release_id}/export-compatibility        ?format=
-POST   /releases/{release_id}/export                      ?format=&allow_lossy=, bytes
+POST   /releases/{release_id}/export                      ?format=&allow_lossy=, launch
 GET    /formats
+
+GET    /inference/connections
+POST   /inference/connections
+GET    /inference/connections/{connection_id}
+PATCH  /inference/connections/{connection_id}
+DELETE /inference/connections/{connection_id}             no confirmation gate
+POST   /inference/connections/{connection_id}/download    launch
+POST   /inference/connections/{connection_id}/check-integrity   launch
+GET    /inference/download-size                           ?model_id=&model_revision=
+POST   /inference/suggest                                 a shape under some points
+
+GET    /background-jobs                                   every launched job
+GET    /background-jobs/{job_id}                          poll
+GET    /background-jobs/{job_id}/artifact                 bytes
+POST   /background-jobs/{job_id}/cancel
+
+GET    /health                                            the one route needing no token
 ```
+
+Two families sit outside the project tree, and both are workspace-scoped for the same
+reason: an [inference connection](inference.md) carries no project id — every project uses
+the same ones — and a [background job](background-jobs.md) is about whatever its payload
+names, which for different job types is a different resource. `/health` is outside it
+because it answers before any workspace has been resolved.
 
 A project's dataset is reached at a **singular** path, because the relation is 1:1 and there is
 no collection to list. `POST /batches/{id}/promote` sits under the batch rather than the dataset
@@ -110,15 +137,15 @@ property of the schema rather than a version number a client could guess.
 `GET /datasets/{id}/assets` is the curated trunk's. A project page reads the first, a gallery
 the second, a release the third.
 
-The project listing is **ordered by arrival, newest first**, which #216 is what made possible:
-until `Asset.ingested_at` existed nothing recorded when an asset arrived, and the listing was
-deterministic but arbitrary. A whole ingest run shares one timestamp, so *within* a run the
+The project listing is **ordered by arrival, newest first**, which `Asset.ingested_at` is what
+made possible: until that field existed nothing recorded when an asset arrived, and the listing
+was deterministic but arbitrary. A whole ingest run shares one timestamp, so *within* a run the
 order falls through to the one that means something — grouped by source, then by frame index
 within a clip, then by path, then by id, so a clip's frames come back in order and a directory's
 stills in filename order, and two calls can never disagree.
 
-**An asset with no recorded arrival sorts last.** That is every asset ingested before v0.1.0,
-and it cannot be backfilled — the information exists nowhere, and `Source.registered_at` is not
+**An asset with no recorded arrival sorts last.** That is every asset ingested before
+`Asset.ingested_at` existed, and it cannot be backfilled — the information exists nowhere, and `Source.registered_at` is not
 the proxy it looks like, because registration is idempotent on `(kind, path, extraction_fps)`
 and is never rewritten. Sorting them last is the only reading that degrades quietly: treating
 the missing value as the epoch invents a date, and treating it as *now* would pin the oldest
@@ -145,7 +172,7 @@ declares**, so a project that has authored an ontology and labeled nothing still
 classes, while `classes` lists only the ones somebody has used; `annotated_pct` is **`0` for
 a project with no assets**, never `null` and never an error; and `last_ingest_at` is the newest
 `Asset.ingested_at` in the project, **`null` when unknown**. Null there means *unknown*, not
-*never*: a project whose assets all predate v0.1.0 reads null, and so does an empty one, and the
+*never*: a project whose assets all predate the field reads null, and so does an empty one, and the
 two are deliberately not distinguished because no caller can act differently on them. A count
 has an honest identity element and a date does not, which is why this one is not defaulted the
 way `annotated_pct` is.
@@ -479,7 +506,7 @@ sentence. The real message and traceback go to the server log under the same id 
 greps one string, and a response body never becomes a channel for filesystem paths, SQL text, or
 a stack trace.
 
-Four errors opt out and expose their real message, each because that message *is* the remedy:
+Six errors opt out and expose their real message, each because that message *is* the remedy:
 
 | Code | Why the message is published |
 | --- | --- |
@@ -487,6 +514,8 @@ Four errors opt out and expose their real message, each because that message *is
 | `WORKSPACE_FORMAT_TOO_NEW` | Says which of the two things happened — a later VisionSet wrote it, or one that numbered its generations differently — and only one of those has a fix. |
 | `WORKSPACE_SCHEMA_MISMATCH` | Names the table and column the workspace lacks. Opaque, this is a 500 with no cause on a route with no connection to it, and the answer is only in the server's log. |
 | `MEDIA_TOOL_UNAVAILABLE` | Carries the install hint. Without it the error says nothing an operator did not suspect. |
+| `LOCAL_INFERENCE_UNAVAILABLE` | Carries the `pip install` for the optional runtime, on the same licence `ffmpeg` gets. |
+| `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says this build has no adapter for that kind of connection, which is a fact about the installation rather than about the request. |
 
 A **mapped** 5xx keeps its own code (`WORKSPACE_CORRUPT`, `CONSTRAINT_VIOLATED`). An exception no
 rule covers — a bug — gets `INTERNAL_ERROR`. That difference is how the two are told apart in a
@@ -514,13 +543,18 @@ argument for branching on `code`.
 
 | Status | Codes |
 | --- | --- |
-| **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `NOT_FOUND` (no such route) |
-| **405** | `METHOD_NOT_ALLOWED` |
 | **401** | `UNAUTHORIZED` — with a `WWW-Authenticate: Bearer` challenge |
-| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `BATCH_NOT_EDITABLE` · `BATCH_NOT_IN_ANNOTATION` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` |
-| **422** | `VALIDATION_ERROR` · `INVALID_NAME` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `PROMPT_POINT_OUT_OF_BOUNDS` |
+| **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `BACKGROUND_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `TOKEN_NOT_FOUND` · `INFERENCE_CONNECTION_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `NOT_FOUND` (no such route) |
+| **405** | `METHOD_NOT_ALLOWED` |
+| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `TOKEN_NAME_TAKEN` · `INFERENCE_CONNECTION_NAME_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `BATCH_NOT_EDITABLE` · `BATCH_IMMUTABLE` · `BATCH_NOT_IN_ANNOTATION` · `ASSET_NOT_WRITABLE` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` · `EXPORT_SOURCE_UNREADABLE` · `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` · `INFERENCE_CONNECTION_NOT_CHECKABLE` · `WEIGHTS_DAMAGED` · `INFERENCE_CONNECTION_NOT_SET_UP` |
+| **422** | `VALIDATION_ERROR` · `ASSET_NOT_IN_BATCH` · `INVALID_NAME` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` |
 | **503** | `WORKSPACE_BUSY` |
-| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `INTERNAL_ERROR` |
+| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INTERNAL_ERROR` |
+
+Every row but `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED` and
+`INTERNAL_ERROR` — the five the framework and the auth guard raise — comes from `ERROR_RULES`
+in `server/errors.py`, which `tests/server/test_errors.py` holds in exact correspondence with
+`kernel/errors.py`. A new kernel error fails that suite until somebody maps it.
 
 `CORRUPT_MEDIA` and `UNSUPPORTED_MEDIA` carry `detail.reason`. The file's *name* is deliberately
 absent from both the detail and the message: on the ingest path it is an absolute path inside a

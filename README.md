@@ -26,6 +26,7 @@ without a server, an account, or your pixels leaving the machine.
 | **Version** | schema versions are immutable and every label records the one it was judged against. A release freezes the whole thing into a manifest; publish twice from unchanged data and the bytes are identical. |
 | **Split** | a stored recipe rather than a materialised assignment, keyed on **content hash** — so two copies of one image cannot straddle a train/test boundary. |
 | **Export** | YOLO, COCO, Pascal VOC and [the lane family](docs/releases.md#the-lane-formats), each declaring what it can carry. VisionSet works out exactly what a format would drop *before* writing anything, and refuses to drop it silently. |
+| **Auto-label** | a model you configure and fetch yourself, never one that arrives on its own. Click a point and SAM 2 proposes the shape under it; type words and Grounding DINO finds what they name. Every suggestion is a proposal until you accept it, and an accepted one records which model produced it. |
 | **Automate** | one SDK under everything, reachable as a Python API, a REST API, a CLI, and an MCP server an agent can drive. |
 
 ## Quickstart
@@ -108,8 +109,11 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   wire/                 The JSON shapes the CLI and MCP publish (gated against the REST models)
   server/               FastAPI — exposes the SDK via REST; openapi.json is a committed contract
   cli/                  Typer CLI (`visionset` console script)
-  mcp/                  MCP server (stdio) — 33 agent tools over the same SDK
-  formats/              Exporter plugins: yolo, coco, voc (entry-point group `visionset.formats`)
+  mcp/                  MCP server (stdio) — 38 agent tools over the same SDK
+  formats/              Exporter plugins: yolo, coco, voc and the five lane formats
+                        (entry-point group `visionset.formats`)
+  jobs/                 Handlers for work that outlives a request: ingest, export, weights
+  inference/            Where a model connection becomes a running model (optional runtime)
   _static/              Compiled UI bundle lands here at build time (ships in the wheel)
 frontend/
   annotator/            @visionset/annotator — headless annotation engine (no React in core/)

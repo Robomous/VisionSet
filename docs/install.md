@@ -112,9 +112,11 @@ Nowhere you did not name. A workspace is a directory you create:
 visionset init ~/datasets/road-signs
 ```
 
-Inside it: `visionset.db` (metadata) and `blobs/` (content-addressed pixels). Nothing is uploaded,
-nothing phones home, and no path outside that directory is written except where you point an
-export.
+Inside it: `visionset.db` (metadata) and `blobs/` (content-addressed pixels), plus three
+directories that appear only once something puts them there — `uploads/` for bytes sent to the
+REST API, `exports/` for what an export wrote, and `models/` for weights you fetched. Nothing is
+uploaded, nothing phones home, and no path outside that directory is written except where you
+point an export. [workspaces.md](workspaces.md) has the whole layout.
 
 `init` is the only command that creates a workspace, and it refuses a directory that already holds
 something. Every other command *finds* one — `--workspace`, then `$VISIONSET_WORKSPACE`, then the

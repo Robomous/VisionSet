@@ -130,8 +130,8 @@ stuck row as the only evidence the crash left.
 
 `processed` and `total` are written to the row **as the run goes**, so
 `IngestService.get(job_id)` answers "where is it now" rather than "where did it end". That is
-what `GET /ingest-jobs/{id}` returns and what the UI will poll; nothing about it is specific to
-being in the same process.
+what `GET /ingest-jobs/{id}` returns and what the [ingest screen](#in-the-browser) polls; nothing
+about it is specific to being in the same process.
 
 | | what it means |
 | --- | --- |

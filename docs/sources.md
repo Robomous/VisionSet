@@ -36,9 +36,19 @@ every other writer wait out its `busy_timeout` and fail with `WorkspaceBusy`.
 | --- | --- |
 | `kind` | `image_directory` or `video` — a `SourceKind` |
 | `path` | the canonical absolute path of the origin |
+| `display_name` | what somebody asked this source to be *called*, or `None` for nobody said |
 | `registered_at` | timezone-aware UTC, the **first** registration |
 | `capture_params` | opaque operator-supplied provenance; nothing branches on it |
 | `video` | a `VideoProvenance`, present exactly when `kind` is `video` |
+
+`display_name` exists because not every path has a readable last segment: an HTTP upload of
+stills is staged under a content-addressed directory, so its basename is a 64-character digest,
+while a directory or a clip named at a terminal carries something a person chose. Like
+`capture_params` it is outside the identity key — renaming must not fork one origin into two —
+and unlike `registered_at` a stated value *does* refresh the stored one, because a label is
+curation rather than provenance. `Source.name` is the one spelling of the resolution: the stated
+name, else the path's last segment, and it is what both wire projections publish. Only
+`register_images` takes it, because a clip's basename is already its filename.
 
 `VideoProvenance` is the port's own `VideoMetadata` — original fps, duration, displayed
 dimensions, codec — plus the `extraction_fps` a decomposition will run at. The probe result is

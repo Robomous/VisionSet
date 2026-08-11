@@ -194,12 +194,21 @@ visionset format list
 ```
 
 ```
-NAME    LOSSY
-coco    no
-dummy   no
-voc     yes
-yolo    yes
+NAME          LOSSY
+bdd100k-lane  yes
+coco          no
+culane        yes
+curvelanes    yes
+dummy         no
+openlane-2d   yes
+tusimple      yes
+voc           yes
+yolo          yes
 ```
+
+The five lane formats write polylines and the rest write boxes and polygons; the whole set is
+described in [releases.md](releases.md#exporting). Run the command rather than trusting this
+listing — it reads installed entry-point metadata, so a third-party plugin appears in it too.
 
 Then export:
 

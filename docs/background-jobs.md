@@ -1,6 +1,6 @@
 # Background jobs
 
-Work that outlives the request that asked for it: a queue, a dispatcher, and two
+Work that outlives the request that asked for it: a queue, a dispatcher, and four
 handlers. Introduced by #328.
 
 `docs/jobs.md` is about something else entirely — an **annotation** job, a slice
@@ -31,6 +31,14 @@ handling for one GIL.
 | --- | --- | --- |
 | `ingest.resume` | `visionset/jobs/ingest.py` | `POST /sources/{id}/ingest-jobs`, `POST /ingest-jobs/{id}/resume` |
 | `export.release` | `visionset/jobs/export.py` | `POST /releases/{id}/export` |
+| `inference.download_weights` | `visionset/jobs/weights.py` | `POST /inference/connections/{id}/download` |
+| `inference.check_integrity` | `visionset/jobs/integrity.py` | `POST /inference/connections/{id}/check-integrity` |
+
+The last two are why the throttled progress below matters: a weight download is
+gigabytes and an integrity check reads every byte of them, so both report for
+minutes rather than seconds. Neither has a CLI equivalent that queues —
+`visionset inference download` runs the same body inline, because a terminal has
+no worker to hand it to.
 
 Verify, publish, promote and thumbnail backfill are still synchronous. They are
 future job types, not an oversight — each answers inside its request today and
@@ -158,8 +166,8 @@ inside a pool with no job id in the traceback.
    route, deliberately.
 
 `idempotent` is the whole retry policy, and it is one boolean because the only
-decision is whether running the work twice is safe. Both of today's are, and both
-had to argue it in their own module.
+decision is whether running the work twice is safe. All four of today's are, and
+each had to argue it in its own module.
 
 ## Why `visionset.jobs` is not in the kernel
 
