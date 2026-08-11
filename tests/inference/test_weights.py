@@ -300,6 +300,12 @@ def test_the_phases_are_reported_in_order(
 def test_reporting_is_optional(
     connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
 ) -> None:
+    """Neither callback is obliged to be supplied, and one call shows both.
+
+    ``on_progress`` and ``on_bytes`` are independent — the CLI wants phases and
+    the job wants bytes, and neither is obliged to want both — so omitting the
+    pair is what demonstrates each is omissible on its own.
+    """
     assert fetch_weights(workspace, a_local(connections).id).setup_state is (
         ConnectionSetupState.READY
     )
@@ -690,8 +696,14 @@ def test_a_sample_above_the_total_is_held_at_it(
 def test_reporting_bytes_is_optional(
     connections: InferenceConnectionService, workspace: WorkspaceService, fetched: list
 ) -> None:
-    """The CLI wants phases and the job wants bytes; neither is obliged to want
-    both, and `on_progress`'s own optionality is what this mirrors."""
+    """Kept although its body duplicates `test_reporting_is_optional`.
+
+    Deleting it leaves one line of `sqlite_metadata_store.py` uncovered that no other
+    test reaches — not through anything this test asserts, but because the adapter has
+    a branch only a further workspace lifecycle arrives at. The duplication is
+    load-bearing for a reason outside its own assertion, so removing it needs that
+    branch covered on purpose first.
+    """
     assert fetch_weights(workspace, a_local(connections).id).setup_state is (
         ConnectionSetupState.READY
     )

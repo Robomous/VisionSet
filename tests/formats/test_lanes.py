@@ -218,22 +218,29 @@ def test_only_polylines_are_lanes() -> None:
     assert len(lanes_of(asset)) == 1
 
 
-def test_position_falls_back_to_a_class_name_that_names_one() -> None:
-    asset = _asset(_lane([(1.0, 1.0), (2.0, 40.0)], label_class="ego_left"))
+@pytest.mark.parametrize(
+    ("label_class", "attribute", "expected"),
+    [
+        pytest.param("ego_left", None, "ego_left", id="the-class-name-names-a-position"),
+        pytest.param("centerline", None, OTHER, id="the-class-name-names-none"),
+        pytest.param("ego_left", "road_edge", "road_edge", id="the-attribute-wins"),
+    ],
+)
+def test_a_lanes_position_is_resolved_in_one_order(
+    label_class: str, attribute: str | None, expected: str
+) -> None:
+    """Attribute first, then the class name, then `other`.
+
+    The three rows are one rule read in order, and the last is what makes the
+    order matter: a lane whose class name *would* have answered still takes the
+    attribute, so a schema that says both does not get an arbitrary winner.
+    """
+    extra = {} if attribute is None else {"position": attribute}
+    asset = _asset(_lane([(1.0, 1.0), (2.0, 40.0)], label_class=label_class, **extra))
+
     (lane,) = lanes_of(asset)
-    assert lane.position == "ego_left"
 
-
-def test_a_class_name_that_names_no_position_resolves_to_other() -> None:
-    asset = _asset(_lane([(1.0, 1.0), (2.0, 40.0)], label_class="centerline"))
-    (lane,) = lanes_of(asset)
-    assert lane.position == OTHER
-
-
-def test_the_attribute_wins_over_the_class_name() -> None:
-    asset = _asset(_lane([(1.0, 1.0), (2.0, 40.0)], label_class="ego_left", position="road_edge"))
-    (lane,) = lanes_of(asset)
-    assert lane.position == "road_edge"
+    assert lane.position == expected
 
 
 def test_a_value_outside_the_vocabulary_resolves_to_other() -> None:
