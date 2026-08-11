@@ -99,7 +99,7 @@ A decision you cannot see the price of is not a decision, so the size is readabl
 ahead of anything being fetched:
 
 ```bash
-visionset inference size facebook/sam2-hiera-base-plus --revision main
+visionset inference size facebook/sam2.1-hiera-base-plus --revision b7320756a133
 ```
 
 It prints the byte count on stdout and the file count on stderr, and `--json` gives the document
@@ -462,6 +462,7 @@ workspace, compared without regard to case, so `local` and `Local` cannot name t
 | `INFERENCE_CONNECTION_INVALID` | 422 | The parameters do not describe a usable connection of that kind |
 | `INVALID_NAME` | 422 | The name is blank once stripped |
 | `UNSUPPORTED_PROMPT` | 422 | The model does not answer that way of asking |
+| `PROMPT_POINT_OUT_OF_BOUNDS` | 422 | A suggest point falls outside the asset; the message names the coordinate and the size |
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | The `local-inference` extra is not installed; the message carries the command |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | This build has no adapter for that kind of connection |
 
