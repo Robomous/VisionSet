@@ -1,9 +1,8 @@
 # The backend
 
-One Python distribution, [`src/visionset/`](../../../src/visionset/), holding eight
-packages. They are not peers: there is a core that knows the domain, a ring of
-packages that turn the domain into something a caller can use, and a ring of
-surfaces that speak a protocol.
+The Python distribution in [`src/visionset/`](../../../src/visionset/) contains
+eight packages. They are not peers. The core defines the domain, the next layer
+makes that domain usable by callers, and the outer layer exposes protocols.
 
 ## The stack
 
@@ -76,7 +75,7 @@ imports the kernel in a **fresh interpreter** and asserts no forbidden module
 appears in `sys.modules`. A static contract can be satisfied by a deferred import
 inside a function; a fresh-process check cannot.
 
-If a change fights one of these, the change is wrong — see
+If a change fights one of these, the change is wrong - see
 [cross-cutting.md](../cross-cutting.md) for why the boundary sits where it does,
 and the [`kernel-architecture`](../../../.agents/skills/backend/kernel-architecture/SKILL.md)
 skill for how to add a port, an adapter or a plugin without breaking it.

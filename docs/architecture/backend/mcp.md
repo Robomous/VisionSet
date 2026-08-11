@@ -1,7 +1,7 @@
 # mcp
 
 [`src/visionset/mcp/`](../../../src/visionset/mcp/) is the surface an agent uses.
-It speaks MCP over stdio, and it is the fourth client of the same kernel — every
+It speaks MCP over stdio, and it is the fourth client of the same kernel - every
 tool is a thin mapping onto one or two service calls.
 
 ## Registration is a table
@@ -26,9 +26,9 @@ Registration happens in one table in
 [`main.py`](../../../src/visionset/mcp/main.py) rather than as a decorator at each
 definition site. That is not style: `@server.tool()` inside `projects.py` would
 make that module import `main`, which imports it. Doing it in one place also gives
-the three cross-cutting decisions exactly one home — the error wrapper, the
+the three cross-cutting decisions exactly one home - the error wrapper, the
 cleaned docstring that becomes the tool description, and the read/write
-annotations — and lets
+annotations - and lets
 [`tests/mcp/test_registration.py`](../../../tests/mcp/test_registration.py) assert
 that every registered tool went through all three.
 
@@ -53,7 +53,7 @@ machine-readable field:
 ```
 
 There is deliberately no `code`. The codes live in `server/errors.py`, which this
-package may not import — the `Delivery clients are siblings` contract — and
+package may not import - the `Delivery clients are siblings` contract - and
 deriving one from a class name would key a public contract to a Python identifier.
 What a code was actually needed for here is one question, *may I retry this, and
 with what?*, and `RETRY_WITH` in
@@ -70,6 +70,6 @@ with what?*, and `RETRY_WITH` in
 
 ## Related
 
-[`docs/mcp.md`](../../mcp.md) is the surface itself — every tool and what it is
+[`docs/mcp.md`](../../mcp.md) is the surface itself - every tool and what it is
 for, the coordinate-frame rule, the three gate words, and the stated limits.
 [`docs/mcp-walkthrough.md`](../../mcp-walkthrough.md) is a session start to finish.

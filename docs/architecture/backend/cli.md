@@ -1,8 +1,8 @@
 # cli
 
 [`src/visionset/cli/`](../../../src/visionset/cli/) is Typer over the kernel. Its
-claim is that the whole cycle — create a project, define a schema, ingest, approve,
-annotate, promote, publish, export — is reachable from a shell without touching
+claim is that the whole cycle - create a project, define a schema, ingest, approve,
+annotate, promote, publish, export - is reachable from a shell without touching
 Python.
 
 ## The shape of a command
@@ -27,7 +27,7 @@ Two rules make the output composable, and both are held by tests:
 
 ## Exit codes
 
-Three, and one of them carries two meanings deliberately — `visionset release
+Three, and one of them carries two meanings deliberately - `visionset release
 verify` and `visionset export --check` both use `1` for *the check ran and the
 answer is no*, which is distinct from *the command failed*. Both meanings are
 written down in [`_errors.py`](../../../src/visionset/cli/_errors.py).
@@ -36,7 +36,7 @@ written down in [`_errors.py`](../../../src/visionset/cli/_errors.py).
 
 The `Delivery clients are siblings` contract forbids `visionset.cli` importing
 `visionset.server` or `visionset.mcp`. Anything two surfaces need is promoted
-downward instead — which is the whole reason [`visionset.wire`](wire.md) is its own
+downward instead - which is the whole reason [`visionset.wire`](wire.md) is its own
 package rather than a `cli/_json.py`.
 
 Resolving a format name to an exporter plugin happens *here*, not in the kernel:

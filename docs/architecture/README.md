@@ -1,17 +1,15 @@
 # Architecture
 
-VisionSet is an SDK with clients attached. There is one Python package that knows
-what a dataset *is*, and everything a person or a program can touch — the REST
-API, the CLI, the MCP server, the browser — is a thin translation layer over it.
-Reading the code in that order is the fastest way to understand it, and this tree
-is written to be walked that way: start here, then follow whichever branch you are
-about to work in.
+VisionSet is an SDK with clients attached. One Python package defines what a
+dataset *is*. Every user-facing or programmatic surface - the REST API, CLI, MCP
+server, and browser - is a thin translation layer over that package. This section
+follows the same order: start here, then continue into the area you plan to change.
 
-These pages describe *shape* — what each layer is, what it may depend on, and
-where the rule is enforced. They do not restate behaviour. Where a topic has an
+These pages describe the system's *shape*: what each layer is, what it may depend
+on, and where those rules are enforced. They do not restate behavior. Where a topic has an
 authoritative page under [`docs/`](../README.md) or a skill under
-`.agents/skills/`, this tree links to it rather than paraphrasing it, because a
-restated rule is a rule that goes stale silently.
+`.agents/skills/`, this tree links to the authoritative source instead of
+duplicating it and risking drift.
 
 ## The system
 
@@ -44,7 +42,7 @@ flowchart TB
 ```
 
 Every arrow points one way. The kernel never imports a surface, and the surfaces
-never import each other — both are checked by import-linter contracts in
+never import each other - both are checked by import-linter contracts in
 [`pyproject.toml`](../../pyproject.toml) and by a fresh-process test in
 [`tests/architecture/`](../../tests/architecture/).
 
@@ -61,10 +59,10 @@ whole thing.
 
 ## Where to go next
 
-- [backend/](backend/README.md) — the layer stack, and a page per package.
-- [frontend/](frontend/README.md) — the three workspace packages and how they
+- [backend/](backend/README.md) - the layer stack, and a page per package.
+- [frontend/](frontend/README.md) - the three workspace packages and how they
   depend on each other.
-- [cross-cutting.md](cross-cutting.md) — the two machine-enforced boundaries, the
+- [cross-cutting.md](cross-cutting.md) - the two machine-enforced boundaries, the
   capabilities contract, and the batch lifecycle at a glance.
 
 For what the system *does* rather than how it is arranged, the index at

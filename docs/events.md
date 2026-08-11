@@ -4,8 +4,8 @@ The kernel announces what it did. Nothing in it listens — the bus exists so th
 which *will* want to react (search indexing, notifications, webhooks, enterprise hooks) have
 somewhere to attach without a service growing a dependency on them.
 
-An event is a **statement about the past**. It is not a request, not a queue message, and not a
-record: nothing reads one back, and nothing is stored.
+An event is a **statement about the past**. It is not a request, queue message, or stored record;
+nothing reads it back.
 
 ```python
 from visionset.kernel.domain import BatchApproved, DomainEvent, ReleasePublished
@@ -25,7 +25,7 @@ handler)` is the catch-all, because the bus matches with `isinstance` and every 
 from `DomainEvent`. A topic string would put the same information somewhere the type checker
 cannot read it, and a handler would have to re-check what it received.
 
-Delivery is **registration order**. That is not a claim about causality or priority — it is
+Delivery is **registration order**. That is not a claim about causality or priority - it is
 simply the only order that is reproducible, said out loud so nobody infers a scheme from it.
 
 ## Two rules, and they are the whole contract
@@ -33,7 +33,7 @@ simply the only order that is reproducible, said out loud so nobody infers a sch
 ### Emission happens after the commit
 
 Every emitting service does the same thing: the work happens inside `unit_of_work()`, the result
-is bound to a local, the block exits — which is where SQLite actually commits — and only then is
+is bound to a local, the block exits - which is where SQLite actually commits - and only then is
 the event published.
 
 ```python
@@ -60,14 +60,14 @@ release that does not exist.
 
 `InProcessEventBus` runs each handler inside `try/except Exception`. A handler that raises is
 logged with its traceback, the handlers registered after it still run, and `publish` returns
-normally. `BaseException` is deliberately not caught — a `KeyboardInterrupt` is the operator
+normally. `BaseException` is deliberately not caught - a `KeyboardInterrupt` is the operator
 talking, and swallowing it would make Ctrl-C depend on whether an event happened to be in flight.
 
 There is no circuit breaker. A subscriber that failed on one event is offered the next one:
 at-most-once is a property of each delivery, not a verdict on the subscriber.
 
 The log is the kernel's only logger, `visionset.kernel.adapters.in_process_event_bus`. It is
-never configured here — a library that calls `basicConfig` has taken a decision belonging to the
+never configured here - a library that calls `basicConfig` has taken a decision belonging to the
 program embedding it, so the CLI, the REST server and MCP each set up handlers for themselves.
 
 ## At most once
@@ -86,7 +86,7 @@ annotation progress already are.
 
 Every event carries `id`, `name` and `occurred_at` (timezone-aware UTC, a naive value is
 refused). All of them are frozen with tuple collections, and all of them dump to JSON with no
-custom encoder — which is what makes a webhook a subscriber rather than a rewrite.
+custom encoder - which is what makes a webhook a subscriber rather than a rewrite.
 
 | Event | Emitted by | Carries |
 | --- | --- | --- |
@@ -97,7 +97,7 @@ custom encoder — which is what makes a webhook a subscriber rather than a rewr
 | `IngestCompleted` | `IngestService.ingest` | `ingest_job_id`, `project_id`, `source_id`, `asset_count` |
 
 `AnnotationsWritten` is one per **call**, not one per box: the three writes are all-or-nothing
-over a whole payload, so one call is one thing that happened. Its `asset_ids` are deduplicated —
+over a whole payload, so one call is one thing that happened. Its `asset_ids` are deduplicated -
 several boxes on one image are one asset touched.
 
 `ReleasePublished` carries `manifest_hash` so a subscriber can read the entire frozen snapshot
@@ -105,7 +105,7 @@ out of the blob store without being handed it. It is also why publishing writes 
 [dataset change-log](datasets.md) entry: the log records mutations of the trunk, and publishing
 mutates nothing in it. "A release happened" is an event.
 
-`IngestCompleted` was declared in M1 and emitted by nothing until [ingest](ingest.md) wired it —
+`IngestCompleted` was declared in M1 and emitted by nothing until [ingest](ingest.md) wired it -
 the vocabulary was settled in one pass so a subscriber written then already compiled against the
 shape it would be handed, and a test held the line until the emitter arrived deliberately. Its
 `asset_count` is what the run **put in the batch**: assets it created plus assets whose content
@@ -122,7 +122,7 @@ outlives the build that wrote it.
 ## Composition
 
 The bus is the third port on the [workspace](workspaces.md), beside the metadata store and the
-blob store, and it is reached the same way — `workspace.event_bus`. So a service still takes one
+blob store, and it is reached the same way - `workspace.event_bus`. So a service still takes one
 dependency, and `WorkspaceService` is still the only module in the kernel that names an adapter.
 
 One bus per open workspace, built by `event_bus_factory` on `init`/`open`. Never a module-level
@@ -133,7 +133,7 @@ workspace must not inherit the last one's.
 workspace = WorkspaceService.open("./road-signs", event_bus_factory=lambda: my_bus)
 ```
 
-The bus is not closed by `WorkspaceService.close()` and has nothing to close — it holds a list of
+The bus is not closed by `WorkspaceService.close()` and has nothing to close - it holds a list of
 callables. Only the database keeps a connection.
 
 ## What is deliberately not here
@@ -142,7 +142,7 @@ callables. Only the database keeps a connection.
   untouched by this. An event log would be a second account of what happened beside the one the
   transaction wrote.
 - **No async, no threads.** `publish` calls handlers on the caller's thread and returns when they
-  are done. A slow subscriber slows the call that emitted the event — which is a reason to keep
+  are done. A slow subscriber slows the call that emitted the event - which is a reason to keep
   subscribers cheap, and a reason a durable bus is the eventual answer for anything that is not.
 - **No ordering guarantee beyond one process.** Registration order within one bus is all that is
   promised.

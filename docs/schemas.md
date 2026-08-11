@@ -1,13 +1,13 @@
 # Annotation schemas
 
-A schema is a project's ontology: which classes it labels, what shape each one takes, and
-what extra information a label carries. It is what the previous system called the "task
-type", except that a task type was fixed for the life of a project and a schema is not —
-it is **versioned**, and every version is immutable.
+A schema is a project's ontology. It defines the classes being labeled, the geometry for each
+class, and the additional information carried by a label. The previous system called this the
+"task type," but a task type remained fixed for the life of a project. A schema is
+**versioned**, and every version is immutable.
 
-`SchemaService` owns that lifecycle, and it is the **only** way a version comes into
-existence. `ProjectService` deliberately does not seed one, so a project starts without an
-ontology and gets version 1 the moment somebody decides what it labels.
+`SchemaService` owns that lifecycle and is the **only** way to create a version.
+`ProjectService` deliberately does not seed one, so a project starts without an ontology and
+receives version 1 when somebody defines what it labels.
 
 ```python
 from visionset.kernel.domain import Attribute, GeometryType, LabelClass
@@ -41,7 +41,7 @@ for the version in force. Narrowing needs `?allow_destructive=true`, exactly as
 `allow_destructive=` does here. `compare` has one too:
 `GET /projects/{project_id}/schema/compare?from={n}&to={m}` returns the classification below,
 which is what a version history renders and what a client reads before deciding whether it needs
-the flag. `allowed_geometries` still has no route — it gets one when a surface needs it. See
+the flag. `allowed_geometries` still has no route - it gets one when a surface needs it. See
 [api.md](api.md).
 
 **Over MCP:** `get_schema`, `create_schema_version`, `compare_schema_versions` and
@@ -54,7 +54,7 @@ whether it needs `allow_destructive`. See [mcp.md](mcp.md).
 ## Versions are 1..N, and none of them changes
 
 The next version is one past the highest stored, so the numbers have no gaps and no reuse.
-`create_version` always **inserts** — there is no `update` and no `delete` on this service —
+`create_version` always **inserts** - there is no `update` and no `delete` on this service -
 and the domain models are frozen, so a rehydrated version cannot be edited even by
 accident:
 
@@ -74,7 +74,7 @@ a no-op would need an equality rule that then has to defend itself against reord
 attributes and changed colors.
 
 Schema rows are deleted only as part of deleting their project, through the database's
-`ON DELETE CASCADE` — see [projects.md](projects.md).
+`ON DELETE CASCADE` - see [projects.md](projects.md).
 
 ## A version says why it exists, and when
 
@@ -86,7 +86,7 @@ schemas.create_version(project.id, classes, description="split 'vehicle' into ca
 service at publish. Together they are what makes a version history readable as history
 rather than as a pile of class lists.
 
-**The description is written once and can never be edited.** That is not a missing feature —
+**The description is written once and can never be edited.** That is not a missing feature -
 it is the immutability rule this whole page is about, applied to one more field. There is no
 `update` on `SchemaService`, no `PATCH` route, and the model is frozen, so the three doors
 that would have to exist all deliberately do not:
@@ -100,14 +100,14 @@ Ongoing, editable discussion *about* a version is a different feature and does n
 a frozen artifact. Write the description the way you would write a commit message: for
 whoever reads it later, not for yourself this afternoon.
 
-A blank description is legal and stored as `None` — an empty commit message is an ordinary
+A blank description is legal and stored as `None` - an empty commit message is an ordinary
 thing to publish, so this is not [`normalize_name`](../src/visionset/kernel/domain/names.py)
 and it does not refuse. What it *does* borrow from that rule is the tidying: NFC-normalized
 and stripped, in a validator on the domain model, so no door can write an untidied one.
 
 **`description` is `None` when nobody wrote one, and nothing invents one.** `created_at` is
 stamped by `SchemaService` at publication, which is the only moment that can answer it
-honestly — a timestamp taken anywhere else names when somebody ran something, not when the
+honestly - a timestamp taken anywhere else names when somebody ran something, not when the
 version was written, and a plausible-looking wrong timestamp is worse than an admitted gap
 because nothing downstream can tell it is wrong. `Asset.ingested_at` made the same call for
 the same reason.
@@ -142,7 +142,7 @@ happening is the surface the person is using. It is not a gate, it does not appe
 [diff](#additive-versus-destructive), and two versions differing only in provenance are the
 same contract.
 
-**Absent is not a third kind — it means nobody said**, and a reader groups it with `curated`.
+**Absent is not a third kind - it means nobody said**, and a reader groups it with `curated`.
 Every version published before this field existed is absent and nothing backfills them: no
 build ever recorded which surface published a version, so the alternative is a guess, and a
 history that groups on a guess is confidently wrong about exactly the milestones somebody
@@ -158,12 +158,12 @@ opened it to find. Showing a version that deserved collapsing is the smaller err
 
 `get_active` returns the highest version. There is no `active` column, because the version
 numbers already carry that fact and a second copy of it is one more thing to keep in sync.
-A project with no schema yet raises `SchemaNotFound` — that is the ordinary starting state,
+A project with no schema yet raises `SchemaNotFound` - that is the ordinary starting state,
 not damage.
 
 ## Geometries a class may use
 
-`GeometryType` names eight geometries; four have a model in the `Geometry` union today —
+`GeometryType` names eight geometries; four have a model in the `Geometry` union today -
 `bbox`, `polygon`, `polyline` and `classification_tag`.
 `IMPLEMENTED_GEOMETRIES` is read *off* the union, so shipping a variant widens it with no
 second edit, and `create_version` refuses anything outside it:
@@ -185,11 +185,11 @@ script, or by an agent with a person checking.
 
 ### The categories a picker groups them by
 
-The eight fall into two families, and the grouping is **presentation only** — the kernel has
+The eight fall into two families, and the grouping is **presentation only** - the kernel has
 no category concept and takes none (#375). "Basic Computer Vision" holds the geometries an
 ordinary image task produces: `bbox`, `polygon`, `mask`, `keypoints` and
 `classification_tag`. "Robotics and AD" holds the ones that describe a scene the camera
-alone does not give you — `polyline` for lanes today, and the reserved `cuboid_3d` and
+alone does not give you - `polyline` for lanes today, and the reserved `cuboid_3d` and
 `polyline_3d`.
 
 The map lives in `frontend/ui-core/src/data/geometryCategory.ts`, declared total over the
@@ -200,7 +200,7 @@ supports `polyline` and has said nothing at all about `cuboid_3d`.
 
 `allowed_geometries` is the flip side, derived the same way: the set of geometries a
 version's classes are bound to. It is what an annotation's `geometry.type` is
-membership-tested against — the union's discriminator values *are* `GeometryType` members,
+membership-tested against - the union's discriminator values *are* `GeometryType` members,
 so nothing translates in between.
 
 ## Additive versus destructive
@@ -235,7 +235,7 @@ labels.
 Within one version, class names must be unique ignoring case, for the same reason: `Car`
 beside `car` is two classes that read as one to everybody except the code.
 
-The classifier lives in `kernel/domain/schema_diff.py` and is pure — two sequences in, a
+The classifier lives in `kernel/domain/schema_diff.py` and is pure - two sequences in, a
 verdict out. `preview` runs it against the active version without writing, so a surface can
 warn before it asks:
 
@@ -275,7 +275,7 @@ describes. `SchemaChangeWouldOrphan` is deliberately **not** a subclass of
 `DestructiveSchemaChange`: a caller that caught the base class and retried with the flag
 would loop forever.
 
-The order matters — the missing flag is reported before the labels are counted. The first
+The order matters - the missing flag is reported before the labels are counted. The first
 refusal is about intent, the second about facts on disk, and they have different fixes.
 Only classes named by a *destructive* change are checked, so labels under a class the
 version merely widened never block anything, and neither do labels in another project.
@@ -290,7 +290,7 @@ SQLAlchemy import in a service.
 
 An attribute is `string`, `number`, `boolean` or `select` (the roadmap sometimes calls the
 last one "enum"). `required` says an annotation must carry a value; `default` says which
-value a surface should offer when it does not. They are independent — a required attribute
+value a surface should offer when it does not. They are independent - a required attribute
 with a default is an ordinary, useful thing.
 
 Per-value validity is the model's, enforced in `kernel/domain/schema.py`, so a malformed
@@ -301,13 +301,13 @@ attribute cannot be constructed at all and never reaches a service:
 - names are stripped and never blank, and one class cannot carry two attributes whose names
   differ only by case.
 
-Rules that need the *whole* version — duplicate class names, an unimplemented geometry —
+Rules that need the *whole* version - duplicate class names, an unimplemented geometry -
 are `SchemaService`'s, and both raise `InvalidSchema` (`UnsupportedGeometry` is a subclass,
 so one `except` covers every way a version can be malformed).
 
 What is validated here is attribute **definitions**. Attribute **values** are validated
 somewhere else and at a different time: at annotation write time, by `AnnotationService`,
-against the version the annotation's batch pinned at approval — not against the project's
+against the version the annotation's batch pinned at approval - not against the project's
 active version. The judgement itself is shared rather than reimplemented: `Attribute.rejects`
 is the one method that answers "does this attribute take this value", and both a default and
 a label go through it. See [annotations.md](annotations.md).
@@ -342,7 +342,7 @@ That is a tested claim rather than a promise: `tests/cli/test_json_contract.py` 
 `AttributeBody`'s fields, and `tests/cli/test_schemas.py` validates the example document as a request body.
 
 **JSON and not YAML.** A second format means a runtime dependency in every wheel, a second parser
-to keep honest, and two shapes that can disagree — while the surface a schema file has to
+to keep honest, and two shapes that can disagree - while the surface a schema file has to
 interoperate with speaks JSON already. `yq . schema.yaml | visionset schema apply /dev/stdin` is one
 pipe away for whoever wants one.
 
@@ -352,8 +352,8 @@ own validators do the refusing and no rule here is restated in the CLI. Those re
 error in the same sense a malformed request body is a 422. The message carries the domain's own
 words and the path to the offending field (`classes.0.name`).
 
-`--allow-destructive` is the flag for the first of the two gates above. The second — a change that
-would orphan annotations — has no flag, here as everywhere.
+`--allow-destructive` is the flag for the first of the two gates above. The second - a change that
+would orphan annotations - has no flag, here as everywhere.
 
 ## Concurrency
 
@@ -364,7 +364,7 @@ maximum and lands on the version after.
 
 The translation happens **outside** the `unit_of_work` block: a constraint violation ends
 its transaction, so it cannot be caught and recovered from inside one. Any other constraint
-travels on unchanged — it is not this service's to reinterpret. See
+travels on unchanged - it is not this service's to reinterpret. See
 [persistence.md](persistence.md).
 
 

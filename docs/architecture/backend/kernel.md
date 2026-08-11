@@ -26,7 +26,7 @@ flowchart LR
     Ports -.implemented by.-> Adapters
 ```
 
-`ports` declares protocols and nothing else — a `MetadataStore`, a `BlobStore`, an
+`ports` declares protocols and nothing else - a `MetadataStore`, a `BlobStore`, an
 `ImageProcessor`, a `VideoProcessor`, an `EventBus`, a `JobQueue`, an
 `AuthProvider`, a `ProgressReporter`, an `Exporter`, an `Importer`, a
 `ModelProvider`. `adapters` holds the implementations this distribution ships.
@@ -51,18 +51,18 @@ nor `fastapi`, `typer`, `mcp` or `uvicorn`.
 The obvious half is that a domain must not depend on a delivery mechanism. The
 less obvious half is why `formats`, `wire`, `jobs` and `inference` are on the list
 when none of them is a web framework: each is a place where a *decision about the
-outside world* is made — which plugin exists, what gets published, what runs in a
-worker, which model is loaded — and a kernel that could reach one could reach the
+outside world* is made - which plugin exists, what gets published, what runs in a
+worker, which model is loaded - and a kernel that could reach one could reach the
 thing behind it. `ReleaseService.export` takes an `Exporter` **instance** for
 exactly this reason: resolving a format name to a plugin is discovery at runtime,
 and the kernel is the part that must not do any.
 
 Enforced twice, and the second one is the one that catches a lazy import:
 
-- [`pyproject.toml`](../../../pyproject.toml) — the `Kernel purity` import-linter
+- [`pyproject.toml`](../../../pyproject.toml) - the `Kernel purity` import-linter
   contract, run by `uv run lint-imports`.
 - [`tests/architecture/test_kernel_purity.py`](../../../tests/architecture/test_kernel_purity.py)
-  — imports the kernel in a fresh interpreter and inspects `sys.modules`.
+ - imports the kernel in a fresh interpreter and inspects `sys.modules`.
 
 The kernel is also the one package `mypy` runs in strict mode over:
 `uv run mypy src/visionset/kernel`.

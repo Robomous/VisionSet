@@ -26,12 +26,12 @@ architecture bug**, because the future enterprise UI cannot reuse it.
 
 | Region | Routes | Inside the token gate? |
 | --- | --- | --- |
-| the product | `/`, `/projects`, `/projects/:projectId`, `/inference`, … | yes |
+| the product | `/`, `/projects`, `/projects/:projectId`, `/inference`, ... | yes |
 | the annotator showcase | `/demo` | **no** |
 | the design system | `/styleguide` | **no** |
 
-The last two need no server and no credential — the showcase's picture is a
-`data:` URI and the styleguide is pure CSS — so putting them behind the gate would
+The last two need no server and no credential - the showcase's picture is a
+`data:` URI and the styleguide is pure CSS - so putting them behind the gate would
 ask for a token to look at a page that cannot use one. It is also what lets the
 browser suite run with no backend at all.
 
@@ -39,7 +39,7 @@ browser suite run with no backend at all.
 
 Every sub-view names its parent in one table, `PARENT` in
 [`routes.tsx`](../../../frontend/app/src/routes.tsx). A back affordance wired to
-`navigate(-1)` means a different thing depending on how the page was reached — it
+`navigate(-1)` means a different thing depending on how the page was reached - it
 leaves the app on a fresh tab, and after walking forward through several frames it
 walks back through them one at a time.
 
@@ -57,7 +57,7 @@ signs in there, so history is empty and only a structural parent can satisfy it.
 
 The first two are what `bash scripts/check.sh browser` runs. They exist because
 jsdom reports every element as 0×0, so anything about layout, a `ResizeObserver`,
-or a real focus move is a claim only a browser can check — a component test in
+or a real focus move is a claim only a browser can check - a component test in
 jsdom would assert the broken value as though it were the design.
 
 Each worktree derives its own three ports from its absolute path
