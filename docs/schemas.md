@@ -282,9 +282,9 @@ version merely widened never block anything, and neither do labels in another pr
 
 Counting those labels walks the project's assets and reads each one's annotations, because
 the persistence port has no cross-table query: `Repository.list` takes a single `parent_id`,
-and an annotation's parent is its asset. That is N + 1 reads, and deliberately so at M1
-scale — when it starts to cost, the fix is a method on the port, never a SQLAlchemy import
-in a service.
+and an annotation's parent is its asset. That is N + 1 reads, and deliberately so at the
+scale this runs at — when it starts to cost, the fix is a method on the port, never a
+SQLAlchemy import in a service.
 
 ## Attributes
 
@@ -377,5 +377,6 @@ refusals are **both 409** with only one override between them, so it branches on
 `code` and shows "Save anyway" for `DESTRUCTIVE_SCHEMA_CHANGE` and nothing but
 "Close" for `SCHEMA_CHANGE_WOULD_ORPHAN`.
 
-It has no preview, because `preview` and `compare` are unrouted — see
-[ui.md](ui.md#the-schema-editor-and-the-two-409s).
+It has no preview of the change being drafted, because `SchemaService.preview` is unrouted;
+`compare` is routed, and the version navigator uses it to show what two *published* versions did
+to each other. See [ui.md](ui.md#the-schema-editor-and-the-two-409s).

@@ -46,7 +46,7 @@ Underneath it, each asset moves through `ASSET_PROGRESS_TRANSITIONS`:
 | `annotated` | `unannotated`, `skipped`, `review_pending` | Its last annotation was deleted; it was decided against after all; it was submitted. |
 | `skipped` | `unannotated` | The decision was reversed while the job is open. |
 | `review_pending` | `annotated`, `accepted` | A reviewer sent it back, or took it. |
-| `accepted` | *nothing* | Reversing it needs a reviewer, and M1 has no review surface. |
+| `accepted` | *nothing* | Reversing it needs a reviewer, and there is no review surface yet. |
 
 Anything outside the table raises `InvalidTransition`, naming what the asset *can* become.
 
@@ -211,7 +211,7 @@ which would be a lie: an `annotated` asset still has three moves left. What it d
 outstanding work. `unannotated` blocks because the labeling has not happened; `review_pending`
 blocks because the review has not.
 
-Review is **optional** in M1, so the set is generous on purpose. Making it
+Review is **optional**, so the set is generous on purpose. Making it
 `{accepted, skipped}` would mean no job could ever finish without a reviewer, and there is no
 review surface yet.
 

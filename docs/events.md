@@ -1,8 +1,8 @@
 # Events
 
 The kernel announces what it did. Nothing in it listens — the bus exists so that the things
-which *will* want to react (search indexing, notifications, webhooks, the background ingest of
-M2, enterprise hooks) have somewhere to attach without a service growing a dependency on them.
+which *will* want to react (search indexing, notifications, webhooks, enterprise hooks) have
+somewhere to attach without a service growing a dependency on them.
 
 An event is a **statement about the past**. It is not a request, not a queue message, and not a
 record: nothing reads one back, and nothing is stored.
