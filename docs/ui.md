@@ -13,7 +13,7 @@ document is the data half.
 the whole product: a design system, a data shell, six screens, the annotator's side
 panel and the annotation page. `@visionset/app` is a router, a rail and nothing else.
 
-| | before M5 | after |
+| | before M5 | after it |
 | --- | --- | --- |
 | `ui-core` vitest | 0 | **107** |
 | Playwright (annotator) | 42 | **76** |
@@ -37,7 +37,7 @@ handler is not an operation.
 | route | what | behind the token gate |
 | --- | --- | --- |
 | `/` | Home | yes |
-| `/projects`, `/projects/:id` (`?tab=schema\|batches\|versions`), `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
+| `/projects`, `/projects/:id` (`?tab=overview\|schema\|batches\|dataset`), `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
 | `/inference` | model connections, workspace-scoped | yes |
 | `/jobs/:jobId` (`?asset=<id>`) | the annotation page | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
@@ -47,6 +47,13 @@ The last two need no server and no credential — the showcase's picture is a `d
 URI and the styleguide is pure CSS — so putting them behind the gate would ask for a
 token to look at a page that cannot use one. They are also what lets the browser
 suite run with no backend.
+
+Two of the tab values are not in that list. `?tab=versions` is honoured and lands on
+Schema, because version history lives inside that tab and a URL somebody bookmarked is a
+promise; and `/projects/:id/dataset` is the Dataset tab's old address, kept as a redirect
+for the same reason. Neither appears in the tab bar. The
+[`information-architecture`](../.agents/skills/frontend/information-architecture/SKILL.md)
+skill is the canonical sitemap.
 
 Two of those query parameters are kept true rather than only read, and it is the same
 rule twice: `?tab=` on the project page (#171) and `?asset=` on the annotator (#353)
