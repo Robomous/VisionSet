@@ -176,12 +176,12 @@ schemas.create_version(project.id, [that])  # UnsupportedGeometry
 Declaring a class whose geometry has no implementation would create a class nobody could
 ever label. Refusing at the schema is better than discovering it at the first annotation.
 
-**`polyline` is the one that is writable before it is drawable.** It joined the union in
-#223 so that lane datasets work end to end — the SDK, the REST API and MCP all accept one,
-`visionset.formats.lanes` exports five lane formats from it, and the annotator renders and
-reviews them. What does not exist yet is an interactive tool for *drawing* a lane; that is
-0.2. A polyline class is therefore a perfectly ordinary class that an agent or a script
-fills in and a person checks, which is the workflow it was added for.
+**`polyline` is the newest of the four, and it is now complete end to end.** It joined the
+union in #223 so that lane datasets work — the SDK, the REST API and MCP all accept one, and
+`visionset.formats.lanes` exports five lane formats from it — and its interactive drawing
+tool followed in #342, so a lane is drawn, hit-tested and edited on the canvas like any other
+shape. A polyline class is an ordinary class whichever way it is filled in: by hand, by a
+script, or by an agent with a person checking.
 
 ### The categories a picker groups them by
 
