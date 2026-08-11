@@ -39,8 +39,10 @@ RUN --mount=type=cache,target=/pnpm-store \
 # The site's own build inputs: its config, its integrations, its scripts and its
 # components. These are baked in for the reason `docker/app.Dockerfile` states about
 # vite's config — they are read once, at start, and none of them changes in an
-# ordinary editing session. `docs/` and the two directories under `docs-site/src`
-# that a person actually edits arrive on bind mounts; see `docker/compose.yaml`.
+# ordinary editing session. `docs/`, `docs-site/src` and `docs-site/public` — the
+# three trees a person actually edits — arrive on bind mounts; see
+# `docker/compose.yaml`, which is also where the reason `public/` is a mount rather
+# than a `COPY` is written down.
 #
 # `src/content/docs/` is deliberately absent: it is generated from `docs/` at every
 # start by the `docsSource()` integration, and copying a stale projection into the

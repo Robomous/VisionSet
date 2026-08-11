@@ -63,7 +63,8 @@
 #
 # **Only what a running service reads is mounted** — the api gets `src/`, the app
 # gets the three `src/` directories plus its static `public/`, the docs site gets
-# `docs/` and its own `src/`, and all three get `docker/` for their entry script.
+# `docs/` and its own `src/` and `public/`, and all three get `docker/` for their
+# entry script.
 # The whole checkout used to be mounted into the first two, which meant a polling
 # watcher walking `tests/`, `.git/`, the host `.venv/` and the Playwright report
 # directories on every tick, for services that read none of them. A path that is
@@ -302,6 +303,15 @@ services:
       # is written to the host too. It is git-ignored, and it is the same directory
       # a host-side `pnpm --dir docs-site dev` would write.
       - ../docs-site/src:/workspace/docs-site/src
+      # Astro's static directory — a directory rather than the one file in it, so
+      # adding an asset needs no rebuild, exactly as the app service mounts its own
+      # `public/`. It is not optional and its absence is not quiet: the site config
+      # declares `favicon: "/favicon.ico"`, so without this line every page in this
+      # container asks for a file nothing serves — a 404 in the browser console, a
+      # tab with no icon, and a `getStaticPaths()` warning in this service's log on
+      # every request. None of that is visible to `curl http://localhost:4321/`,
+      # which is why it survived: the page itself is a perfectly good 200.
+      - ../docs-site/public:/workspace/docs-site/public:ro
       # The entry script, read once at container start; read-only for the reason
       # the api service states.
       - ../docker:/workspace/docker:ro
