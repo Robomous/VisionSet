@@ -64,6 +64,35 @@ announce();
  */
 const VIEWPORT = { width: 1440, height: 900 };
 
+/**
+ * How many workers, from a variable of its own rather than from `CI`.
+ *
+ * `CI` used to decide two unrelated things here. It still decides
+ * `reuseExistingServer` below — that one is load-bearing, because without it a stale
+ * vite server on this worktree's port answers instead of the build under test — and it
+ * used to decide the worker count as well. `scripts/check.sh` sets `CI=1` for the
+ * server reason, so a local gate inherited a worker count sized for a two-core GitHub
+ * runner and ran 250 tests two at a time on whatever the machine actually has.
+ *
+ * Splitting them costs one variable and changes nothing by default: unset, this is
+ * exactly what it was. `check.sh` sets it, so the local gate uses the machine; Actions
+ * does not, so CI keeps the count its runners were measured at.
+ */
+function resolveWorkers(): number | undefined {
+  const override = process.env["VISIONSET_PW_WORKERS"];
+  if (override !== undefined && override.trim() !== "") {
+    const parsed = Number(override);
+    // A typo must not silently become one worker, or `NaN`, which Playwright reads as
+    // "decide for me" — the two failure modes are a suite that crawls and a suite whose
+    // count nobody chose.
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new Error(`VISIONSET_PW_WORKERS must be a positive integer, got ${override}`);
+    }
+    return parsed;
+  }
+  return process.env.CI ? 2 : undefined;
+}
+
 export default defineConfig({
   testDir: "./e2e",
   // v1 could not parallelise: its specs shared one server and deleted every
@@ -73,7 +102,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // A flake is reported as flaky rather than hidden, and the retry carries a trace.
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  workers: resolveWorkers(),
   timeout: 20_000,
   expect: { timeout: 5_000 },
   reporter: process.env.CI
