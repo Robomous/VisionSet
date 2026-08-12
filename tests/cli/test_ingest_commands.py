@@ -13,7 +13,15 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from tests.cli._flow import ok, payload, run, schemad_project, stills, workspace
+from tests.cli._flow import (
+    ok,
+    payload,
+    run,
+    schemad_project,
+    stills,
+    usage_error,
+    workspace,
+)
 from tests.fixtures.media import require_ffmpeg, write_corrupt_video, write_video
 
 from visionset.kernel.domain import SourceKind
@@ -123,7 +131,7 @@ def test_a_non_positive_rate_exits_two(root: Path, tmp_path: Path) -> None:
     clip.write_bytes(b"")
     result = run(root, "ingest", str(clip), "-p", "road-signs", "--fps", "0")
     assert result.exit_code == 2, result.output
-    assert "greater than zero" in result.output
+    assert "greater than zero" in usage_error(result)
 
 
 def test_fps_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
@@ -131,7 +139,7 @@ def test_fps_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
     # somebody believe they had chosen one.
     result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--fps", "5")
     assert result.exit_code == 2, result.output
-    assert "directory of stills" in result.output
+    assert "directory of stills" in usage_error(result)
 
 
 def test_an_unknown_project_exits_one(root: Path, tmp_path: Path) -> None:
