@@ -128,7 +128,9 @@ class SummaryService:
                                 count=waiting,
                             )
                         )
-                    best = _preferred(best, _candidate(project, batch, jobs))
+                    candidate = _candidate(project, batch, jobs)
+                    if candidate is not None:
+                        best = _preferred(best, candidate)
 
         attention.extend(_job_attention(self._workspace))
         activity.sort(key=lambda entry: entry.occurred_at, reverse=True)
@@ -327,7 +329,7 @@ def _in_state(jobs: list[AnnotationJob], progress: AssetProgress) -> int:
     return sum(1 for job in jobs for value in job.progress.values() if value is progress)
 
 
-def _candidate(project: Project, batch: Batch, jobs: list[AnnotationJob]) -> _Candidate:
+def _candidate(project: Project, batch: Batch, jobs: list[AnnotationJob]) -> _Candidate | None:
     """Rank one open batch, and work out where inside it to land.
 
     The landing place is the first ``unannotated`` asset **in batch order**, and
@@ -335,7 +337,14 @@ def _candidate(project: Project, batch: Batch, jobs: list[AnnotationJob]) -> _Ca
     partition cuts a batch into several jobs, so no single job's ordering is the
     batch's. The per-asset states are merged across the jobs first, which is the
     same projection the batch asset listing builds for the same reason.
+
+    A batch with no jobs is not a candidate. Nothing can open it — the editor is
+    keyed on a job — and the kernel already makes it unreachable by refusing to
+    approve an empty batch, so this is the guard that keeps that guarantee
+    stated here rather than assumed from two services away.
     """
+    if not jobs:
+        return None
     holders = {
         asset_id: (job.id, value) for job in jobs for asset_id, value in job.progress.items()
     }
@@ -348,10 +357,6 @@ def _candidate(project: Project, batch: Batch, jobs: list[AnnotationJob]) -> _Ca
         ),
         None,
     )
-    # A batch with no jobs at all cannot be resumed into — there is nothing to
-    # open — but it is still ranked, so it can hold the card when it is the only
-    # thing open. Its job id is the first one it has, or nothing.
-    job_id = landing[1] if landing else next((job.id for job in jobs), None)
     return _Candidate(
         settled=settled,
         has_work=landing is not None,
@@ -360,7 +365,9 @@ def _candidate(project: Project, batch: Batch, jobs: list[AnnotationJob]) -> _Ca
             project_name=project.name,
             batch_id=batch.id,
             batch_name=batch.name,
-            job_id=job_id,
+            # The job holding the landing frame, or — with nothing left to
+            # label — the batch's first, so the gallery still has a way in.
+            job_id=landing[1] if landing else jobs[0].id,
             next_asset_id=landing[0] if landing else None,
             annotated=settled,
             total=len(holders),
@@ -394,8 +401,4 @@ def _preferred(best: _Candidate | None, other: _Candidate) -> _Candidate:
         return other
     if best.has_work != other.has_work:
         return other if other.has_work else best
-    # A job-less batch cannot be opened, so it never displaces one that can be,
-    # however far along it is. It can still win when it is all there is.
-    if (best.target.job_id is None) != (other.target.job_id is None):
-        return other if best.target.job_id is None else best
     return other if other.settled >= best.settled else best

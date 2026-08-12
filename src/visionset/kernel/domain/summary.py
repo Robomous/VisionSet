@@ -110,11 +110,11 @@ class ResumeTarget(BaseModel):
     #: The annotation job holding ``next_asset_id``. The editor is keyed on a
     #: job, not on a batch, so a caller with only a batch cannot open it.
     #:
-    #: NULL for a batch that has no jobs at all, which is possible while a batch
-    #: is open but unpartitioned. Such a batch is still worth offering — it may
-    #: be the only thing open — but it can only be opened as a gallery, so a
-    #: caller treats a NULL here the way it treats a NULL ``next_asset_id``.
-    job_id: UUID | None = None
+    #: Never NULL, and that is a guarantee the kernel already enforces upstream:
+    #: approving an empty batch raises ``EmptyBatch``, so a batch that reached
+    #: ``in_annotation`` has at least one job. A batch with none is not offered
+    #: at all rather than offered with nothing to open.
+    job_id: UUID
     #: The first ``unannotated`` asset in batch order, or NULL — see above.
     next_asset_id: UUID | None = None
     #: Settled assets, i.e. those not blocking the job from completing. Counted

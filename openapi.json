@@ -1,6 +1,77 @@
 {
   "components": {
     "schemas": {
+      "ActivityEntryOut": {
+        "description": "One thing that happened, derived from a timestamp that already existed.",
+        "properties": {
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ActivityKind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "occurred_at",
+          "project_id",
+          "project_name",
+          "subject_id",
+          "label",
+          "count"
+        ],
+        "title": "ActivityEntryOut",
+        "type": "object"
+      },
+      "ActivityKind": {
+        "description": "What sort of thing a row of the activity feed is.\n\nFour kinds, and two of them are approximations the interface must not\noverstate. See :class:`ActivityEntry` for which and why.",
+        "enum": [
+          "release_published",
+          "batch_promoted",
+          "ingest",
+          "schema_version"
+        ],
+        "title": "ActivityKind",
+        "type": "string"
+      },
       "AnnotationCreate": {
         "additionalProperties": false,
         "description": "One annotation to store, judged against the version its batch pinned.",
@@ -582,6 +653,113 @@
         ],
         "title": "AssetProgressSet",
         "type": "object"
+      },
+      "AttentionItemOut": {
+        "description": "One thing in the workspace that is waiting on somebody.",
+        "properties": {
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AttentionKind"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "processed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processed"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "kind",
+          "subject_id",
+          "project_id",
+          "project_name",
+          "label",
+          "count",
+          "processed",
+          "total",
+          "detail"
+        ],
+        "title": "AttentionItemOut",
+        "type": "object"
+      },
+      "AttentionKind": {
+        "description": "What sort of thing a row of the attention list is.\n\nA ``StrEnum`` rather than a plain ``str`` on the ``SourceKind`` test: no\nwriter outside this build produces one, the value decides how a row renders,\nand the set grows deliberately. Contrast ``DatasetChange.operation``, which\nis a plain ``str`` precisely because a log outlives the build that wrote it.",
+        "enum": [
+          "review_pending",
+          "job_failed",
+          "job_running"
+        ],
+        "title": "AttentionKind",
+        "type": "string"
       },
       "AttributeBody": {
         "additionalProperties": false,
@@ -2193,6 +2371,54 @@
         "title": "GeometryType",
         "type": "string"
       },
+      "HomeOut": {
+        "description": "Everything the workspace's front page asks for, in one answer.",
+        "properties": {
+          "activity": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityEntryOut"
+            },
+            "title": "Activity",
+            "type": "array"
+          },
+          "attention": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionItemOut"
+            },
+            "title": "Attention",
+            "type": "array"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectSummaryOut"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeTargetOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totals": {
+            "$ref": "#/components/schemas/WorkspaceTotalsOut"
+          }
+        },
+        "required": [
+          "totals",
+          "resume",
+          "attention",
+          "projects",
+          "activity"
+        ],
+        "title": "HomeOut",
+        "type": "object"
+      },
       "ImageFormat": {
         "description": "Every still-image encoding VisionSet accepts. See the module docstring.\n\nA ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one\nhas a single member, where an enum would be ceremony, and this one is a\nclosed set whose whole purpose is to grow deliberately. It costs the\npersistence layer nothing \u2014 a ``StrEnum`` member *is* a ``str``, and the\ntables already store every other enum as ``String``.",
         "enum": [
@@ -2936,6 +3162,36 @@
         "title": "ProjectStatsOut",
         "type": "object"
       },
+      "ProjectSummaryOut": {
+        "description": "One project, as a shortcut rather than as the project list.",
+        "properties": {
+          "annotated_fraction": {
+            "title": "Annotated Fraction",
+            "type": "number"
+          },
+          "asset_count": {
+            "title": "Asset Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "name",
+          "asset_count",
+          "annotated_fraction"
+        ],
+        "title": "ProjectSummaryOut",
+        "type": "object"
+      },
       "ReleaseCreate": {
         "additionalProperties": false,
         "description": "What publishing a release needs.",
@@ -3108,6 +3364,79 @@
           "cache_mismatches"
         ],
         "title": "ReleaseVerificationOut",
+        "type": "object"
+      },
+      "ResumeTargetOut": {
+        "description": "The batch to carry on with, and where inside it to land.",
+        "properties": {
+          "annotated": {
+            "title": "Annotated",
+            "type": "integer"
+          },
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "batch_name": {
+            "title": "Batch Name",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "next_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Asset Id"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "thumbnail_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Asset Id"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_name",
+          "batch_id",
+          "batch_name",
+          "job_id",
+          "next_asset_id",
+          "annotated",
+          "total",
+          "thumbnail_asset_id"
+        ],
+        "title": "ResumeTargetOut",
         "type": "object"
       },
       "SchemaChangeOut": {
@@ -3742,6 +4071,35 @@
           "error"
         ],
         "title": "WeightDownloadOut",
+        "type": "object"
+      },
+      "WorkspaceTotalsOut": {
+        "description": "Four counts over the whole workspace.",
+        "properties": {
+          "annotations": {
+            "title": "Annotations",
+            "type": "integer"
+          },
+          "assets": {
+            "title": "Assets",
+            "type": "integer"
+          },
+          "projects": {
+            "title": "Projects",
+            "type": "integer"
+          },
+          "releases": {
+            "title": "Releases",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "projects",
+          "assets",
+          "annotations",
+          "releases"
+        ],
+        "title": "WorkspaceTotalsOut",
         "type": "object"
       }
     },
@@ -6174,6 +6532,73 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/home": {
+      "get": {
+        "description": "Everything the workspace's front page shows, in one response.\n\n`totals` counts the whole workspace. `projects` is a short shortcut into the\nproject list, not a copy of it, and `activity` is capped \u2014 both have a screen\nthat owns them in full.\n\n`resume` is the batch to carry on with: the one furthest through that still\nhas an unannotated frame. It is **derived on every call and never stored**,\nand it is ranked by progress rather than by recency because nothing in the\nworkspace records when a batch was last worked on. When `next_asset_id` is\nnull the batch has no unlabeled frame left \u2014 open its gallery rather than the\neditor. `resume` itself is null when no batch is open for annotation.\n\n`attention` carries batches with frames awaiting review, and background jobs\nthat failed or are still running. A job row has no `project_id`: a job names\nan ingest run or a release, never a project.\n\nAn empty workspace answers zeros, nulls and empty lists. That is the\nfirst-run state, and `totals.projects` is how a client recognises it.",
+        "operationId": "get_home",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Home",
+        "tags": [
+          "home"
+        ]
       }
     },
     "/inference/connections": {

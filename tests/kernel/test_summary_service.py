@@ -472,7 +472,9 @@ def test_a_batch_holding_frames_for_review_asks_for_attention(tmp_path: Path) ->
         for asset_id in assets[:2]:
             fixture.jobs.mark(job, asset_id, AssetProgress.REVIEW_PENDING)
 
-        rows = [row for row in fixture.summary().attention if row.kind is AttentionKind.REVIEW_PENDING]
+        rows = [
+            row for row in fixture.summary().attention if row.kind is AttentionKind.REVIEW_PENDING
+        ]
 
         assert len(rows) == 1
         assert rows[0].subject_id == batch
@@ -561,7 +563,9 @@ def test_a_schema_version_is_activity(tmp_path: Path) -> None:
     try:
         fixture.project("p")
 
-        rows = [row for row in fixture.summary().activity if row.kind is ActivityKind.SCHEMA_VERSION]
+        rows = [
+            row for row in fixture.summary().activity if row.kind is ActivityKind.SCHEMA_VERSION
+        ]
 
         assert len(rows) == 1
         assert rows[0].label == "v1"
@@ -615,7 +619,9 @@ def test_a_promotion_names_the_batch_and_counts_what_it_contributed(
         fixture.batches.complete(batch)
         DatasetService(fixture.workspace).promote(batch)
 
-        rows = [row for row in fixture.summary().activity if row.kind is ActivityKind.BATCH_PROMOTED]
+        rows = [
+            row for row in fixture.summary().activity if row.kind is ActivityKind.BATCH_PROMOTED
+        ]
 
         assert len(rows) == 1
         assert rows[0].subject_id == batch
