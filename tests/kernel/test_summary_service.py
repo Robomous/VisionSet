@@ -29,6 +29,7 @@ from visionset.kernel.domain import (
     BackgroundJob,
     BackgroundJobState,
     BboxGeometry,
+    BySize,
     GeometryType,
     LabelClass,
     ResumeKind,
@@ -92,6 +93,19 @@ class Fixture:
         job = self.batches.jobs(batch.id)[0]
         self.jobs.start(job.id)
         return batch.id, job.id
+
+    def split_batch(self, project_id: UUID, name: str, assets: list[UUID]) -> list[UUID]:
+        """A batch cut into one job per asset. Returns the job ids, in batch order."""
+        batch = self.batches.create(project_id, name, assets)
+        self.batches.approve(batch.id, BySize(size=1))
+        self.batches.start(batch.id)
+        jobs = self.batches.jobs(batch.id)
+        # The caller indexes these against `assets`, so the pairing is asserted
+        # here rather than assumed from the partition's own ordering.
+        assert [next(iter(job.progress)) for job in jobs] == assets
+        for job in jobs:
+            self.jobs.start(job.id)
+        return [job.id for job in jobs]
 
     def annotate(self, job_id: UUID, asset_ids: list[UUID]) -> None:
         for asset_id in asset_ids:
@@ -345,6 +359,39 @@ def test_the_batch_you_worked_last_wins(tmp_path: Path) -> None:
         assert resume is not None
         assert resume.batch_id == recent
         assert resume.batch_name == "behind"
+    finally:
+        fixture.close()
+
+
+def test_a_split_batch_is_as_recent_as_its_newest_job(tmp_path: Path) -> None:
+    """A partition cuts a batch into several jobs, and somebody works one at a time.
+
+    The batch's recency is the newest of its jobs', never any single job's — and
+    a batch with only one job, which is every other fixture in this file, cannot
+    tell the two apart.
+    """
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        # Three assets, so one is left unlabeled and both batches below stay in
+        # the same kind — otherwise the priority decides this before recency is
+        # ever consulted, and the test would pass without exercising anything.
+        split = fixture.assets(project, 3)
+        other = fixture.assets(project, 2)
+        jobs = fixture.split_batch(project, "split", split)
+        fixture.annotate(jobs[0], split[:1])
+
+        _, plain_job = fixture.open_batch(project, "plain", other)
+        fixture.annotate(plain_job, other[:1])
+
+        # Back to the split batch, in a *different* job. Taking the oldest of its
+        # jobs would leave the plain batch looking like the more recent one.
+        fixture.annotate(jobs[1], split[1:2])
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.batch_name == "split"
     finally:
         fixture.close()
 
