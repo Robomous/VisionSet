@@ -87,6 +87,8 @@ export {
   SAVE_AND_NEXT,
   SKIP_FRAME,
   TOGGLE_HELP,
+  COARSER_SUGGESTION,
+  FINER_SUGGESTION,
   TOGGLE_SUGGEST,
   type Action,
   type ActionKind,

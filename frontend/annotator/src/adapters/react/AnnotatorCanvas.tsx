@@ -178,7 +178,8 @@ import type { Viewport } from "../viewport";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
-import { classColor, editedId, paintAnnotation, paintSuggestion } from "./paint";
+import { classColor, editedId, paintAnnotation, paintSuggestions } from "./paint";
+import type { PaintedSuggestion } from "./paint";
 import { stageScreenSizes } from "./Shapes";
 import { withoutHidden } from "./visibility";
 import { TransientLayer } from "./TransientLayer";
@@ -419,6 +420,9 @@ export interface AnnotatorView {
   /** The whole asset, centred — `mod+0`'s own implementation. */
   fit(): void;
 }
+
+/** See `TransientLayer`'s `NO_SUGGESTIONS`: one reference, so `memo` can bail. */
+const EMPTY_SUGGESTIONS: readonly PaintedSuggestion[] = [];
 
 export function AnnotatorCanvas({
   store,
@@ -967,8 +971,8 @@ export function AnnotatorCanvas({
   // will actually be written as.
   const painted =
     suggestion === null
-      ? null
-      : paintSuggestion(
+      ? EMPTY_SUGGESTIONS
+      : paintSuggestions(
           suggestion,
           schema.classes.find((row) => row.name === suggestion.labelClass),
         );
@@ -1097,7 +1101,7 @@ export function AnnotatorCanvas({
               closeRing={tolerances.closePolygon}
               crosshair={tool === "select" ? null : hover}
               asset={asset}
-              suggestion={painted}
+              suggestions={painted}
               {...(suggestion === null ? {} : { promptPoints: suggestion.points })}
               suggestPending={suggestPending}
             />
