@@ -88,13 +88,7 @@ def test_the_same_document_is_a_valid_request_body(tmp_path: Path) -> None:
 # --- refusing a bad file: exit 2 ---------------------------------------------
 
 
-def test_a_file_that_is_not_json_exits_two(
-    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Narrowed so the rich panel Typer renders a usage error in is *guaranteed*
-    # to wrap the message — see the sibling in ``test_ingest_commands.py`` and
-    # ``usage_error`` itself for why an unforced wrap point is not a test (#535).
-    monkeypatch.setenv("COLUMNS", "40")
+def test_a_file_that_is_not_json_exits_two(root: Path, tmp_path: Path) -> None:
     path = tmp_path / "broken.json"
     path.write_text("{not json", encoding="utf-8")
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
@@ -132,7 +126,12 @@ def test_a_select_with_no_options_exits_two_in_the_domains_words(
     )
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 2, result.output
-    assert "options" in usage_error(result)
+    # The kernel's own wording, singular. ``"options"`` used to stand here and
+    # passed for the wrong reason: pytest names ``tmp_path`` after the test, so
+    # ``test_a_select_with_no_options_…`` was interpolated into the message and
+    # matched — the assertion would have held with the CLI printing anything at
+    # all, as long as it echoed the path back.
+    assert "needs at least one option" in usage_error(result)
 
 
 def test_a_blank_class_name_exits_two_and_says_where(root: Path, tmp_path: Path) -> None:

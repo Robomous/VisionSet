@@ -134,20 +134,9 @@ def test_a_non_positive_rate_exits_two(root: Path, tmp_path: Path) -> None:
     assert "greater than zero" in usage_error(result)
 
 
-def test_fps_on_a_directory_exits_two(
-    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_fps_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
     # A rate has no meaning for stills, and silently ignoring it would let
     # somebody believe they had chosen one.
-    #
-    # ``COLUMNS`` is narrowed so that the rich panel Typer renders this in is
-    # *guaranteed* to wrap the message, on every machine and under any runner.
-    # Left alone the wrap point is an accident of the terminal's width and of how
-    # long ``tmp_path`` happens to be, which is how this assertion came to pass
-    # under ``pytest`` and fail under ``pytest -n auto`` (#535). Forcing the
-    # narrow case is what keeps ``usage_error`` load-bearing rather than
-    # decorative.
-    monkeypatch.setenv("COLUMNS", "40")
     result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--fps", "5")
     assert result.exit_code == 2, result.output
     assert "directory of stills" in usage_error(result)

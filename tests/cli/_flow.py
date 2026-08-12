@@ -44,9 +44,22 @@ IMAGE_COUNT = 6
 """Six stills, so ``--jobs-of 3`` cuts exactly two jobs with no remainder."""
 
 
+NARROW = "40"
+"""The width every invocation renders at, so no test depends on the terminal's.
+
+Only rich output responds to ``COLUMNS`` — ``cli/_output.py``'s listings and
+``cli/_errors.py``'s domain errors are plain ``typer.echo`` and do not wrap — so
+in practice this pins the one thing that does: the panel Typer renders a usage
+error in. Pinning it *narrow* rather than wide is deliberate. Wide would hide
+the wrap, and hiding it is what let ``bash scripts/check.sh python`` fail on
+messages CI reads correctly (#535); narrow makes every ``exit_code == 2``
+assertion prove it survives a wrap, on every machine and under any runner.
+"""
+
+
 def run(root: Path, *argv: str) -> Result:
     """Invoke the real app against a workspace, without asserting anything."""
-    return runner.invoke(app, [*argv, "--workspace", str(root)])
+    return runner.invoke(app, [*argv, "--workspace", str(root)], env={"COLUMNS": NARROW})
 
 
 def ok(root: Path, *argv: str) -> str:
