@@ -72,6 +72,24 @@ let connections: readonly Record<string, unknown>[] = [];
 /** What `POST /inference/suggest` answers, or the refusal it answers with. */
 let suggestion: Record<string, unknown> | null = null;
 let suggestRefusal: { status: number; code: string; message: string } | null = null;
+/**
+ * A latch the suggest route waits on, for the cases about *how long* a wait is.
+ *
+ * A held response rather than a sleep: the indicator's thresholds are real
+ * milliseconds, so a test about them has to keep a request genuinely out, and the
+ * one thing it must not do is race a timer against a fixed delay. `held()` opens
+ * the latch and the test decides when to close it.
+ */
+let suggestHold: { readonly wait: Promise<void>; readonly release: () => void } | null = null;
+
+function held(): { readonly release: () => void } {
+  let open = (): void => {};
+  const wait = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  suggestHold = { wait, release: open };
+  return { release: open };
+}
 
 function connectionRow(
   setup: "ready" | "not_set_up",
@@ -196,6 +214,7 @@ beforeEach(() => {
     },
   };
   suggestRefusal = null;
+  suggestHold = null;
   writeToken("a-token");
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
@@ -208,6 +227,7 @@ beforeEach(() => {
     if (request.method !== "GET") {
       sent.push({ method: request.method, path, body: await request.clone().text() });
       if (path === "/inference/suggest") {
+        if (suggestHold !== null) await suggestHold.wait;
         if (suggestRefusal !== null) {
           return new Response(
             JSON.stringify({
@@ -595,6 +615,152 @@ describe("a press outside the asset is not a prompt", () => {
 
     await waitFor(() => expect(asks()).toHaveLength(1));
     expect(asks()[0]["positive"]).toEqual([{ x: 560, y: 80 }]);
+  });
+});
+
+describe("what the wait looks like while it is happening", () => {
+  /*
+    These are about the *wiring* — that the host's one clock reaches both the card
+    and the canvas — and not about the thresholds themselves, which are unit-tested
+    on fake time in `adapters/react/pending.test.ts`. Real timers here, because the
+    request is real: the route is held open, so the wait is genuine rather than
+    simulated, and `findBy*` does the waiting that a fixed sleep would guess at.
+
+    jsdom's `matchMedia` stub answers `matches: true` to every query, so the halo
+    renders in its reduced-motion form throughout. That is asserted rather than
+    worked around: a stub that lies in one direction should be visible in what the
+    test claims.
+  */
+
+  it("puts a halo at the click and a busy cursor on the canvas once the wait is real", async () => {
+    const gate = held();
+    await open();
+    await arm();
+    clickCanvas();
+
+    const halo = await screen.findByTestId("suggest-halo");
+    expect(halo.getAttribute("data-motion")).toBe("still");
+    expect(screen.getByTestId("annotator-pane").style.cursor).toBe("progress");
+
+    gate.release();
+
+    await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
+    expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
+  });
+
+  it("says nothing anywhere about a wait that is over before the threshold", async () => {
+    // The ordinary case: nothing held, so the answer lands almost at once. The
+    // preview arriving is the proof the request really happened, which is what
+    // makes the two absences below mean something.
+    await open();
+    await arm();
+    clickCanvas();
+
+    expect(screen.queryByTestId("suggest-halo")).toBeNull();
+    expect(screen.queryByTestId("suggest-asking")).toBeNull();
+
+    await screen.findByTestId("suggestion-shape");
+    expect(screen.queryByTestId("suggest-halo")).toBeNull();
+    expect(screen.queryByTestId("suggest-asking")).toBeNull();
+  });
+
+  it("reports the wait in the card and on the canvas off the same clock", async () => {
+    const gate = held();
+    await open();
+    await arm();
+    clickCanvas();
+
+    await screen.findByTestId("suggest-halo");
+    expect(screen.getByTestId("suggest-asking")).toBeTruthy();
+    // The cold-start sentence is a second threshold away and has not been earned.
+    expect(screen.queryByTestId("suggest-cold-start")).toBeNull();
+
+    gate.release();
+    await waitFor(() => expect(screen.queryByTestId("suggest-asking")).toBeNull());
+  });
+
+  it("takes the halo back on Escape without waiting out the visibility floor", async () => {
+    const gate = held();
+    await open();
+    await arm();
+    clickCanvas();
+    await screen.findByTestId("suggest-halo");
+
+    await userEvent.keyboard("{Escape}");
+
+    // Synchronous: `discardSuggestion` cancels the indicator itself rather than
+    // letting the status drop do it, because the ordinary path honours the floor
+    // and a take-back that lingers a quarter second is not one.
+    expect(screen.queryByTestId("suggest-halo")).toBeNull();
+    expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
+
+    gate.release();
+  });
+
+  it("keeps the shape's card up, with accept dimmed, while a refine is out", async () => {
+    await open();
+    await arm();
+    clickCanvas();
+    await screen.findByTestId("suggestion-shape");
+    expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(false);
+
+    const gate = held();
+    clickCanvas();
+
+    await waitFor(() =>
+      expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(true),
+    );
+    // The card itself does not change — this is the flicker the threshold exists
+    // to prevent, and falling through to the invitation would be a different one.
+    expect(screen.getByTestId("suggest-shown")).toBeTruthy();
+    expect(screen.getByTestId("suggestion-shape")).toBeTruthy();
+
+    gate.release();
+    await waitFor(() =>
+      expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(false),
+    );
+  });
+
+  it("anchors the halo on the newest click, which is the one being waited for", async () => {
+    await open();
+    await arm();
+    clickCanvasAt(100, 100);
+    await screen.findByTestId("suggestion-shape");
+
+    const gate = held();
+    clickCanvasAt(140, 160);
+
+    const halo = await screen.findByTestId("suggest-halo");
+    const dots = screen.getByTestId("prompt-points").children;
+    const newest = dots[dots.length - 1]!;
+    expect(halo.getAttribute("cx")).toBe(newest.getAttribute("cx"));
+    expect(halo.getAttribute("cy")).toBe(newest.getAttribute("cy"));
+
+    gate.release();
+  });
+
+  it("clears the indicator when the answer is a refusal", async () => {
+    // A refusal is an answer. The one thing this must not do is leave a halo
+    // pulsing over a request that is over — the panel carries the sentence.
+    const gate = held();
+    suggestRefusal = {
+      status: 409,
+      code: "INFERENCE_CONNECTION_NOT_RUNNABLE",
+      message: "Install the local-inference extra to run this model.",
+    };
+    await open();
+    await arm();
+    clickCanvas();
+    await screen.findByTestId("suggest-halo");
+
+    gate.release();
+
+    await screen.findByTestId("suggest-refusal");
+    // `waitFor`, not an immediate read: a refusal *is* an answer, so it goes out
+    // through the ordinary path and pays the visibility floor like any other. The
+    // claim is that it goes, not that it goes on the same tick.
+    await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
+    expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
   });
 });
 

@@ -401,6 +401,15 @@ export interface AnnotatorCanvasProps {
    * which would draw a shape somebody was trying to point at.
    */
   readonly onSuggestPoint?: (point: Point, polarity: Polarity) => void;
+  /**
+   * Whether a suggest request has been out long enough to report.
+   *
+   * A prop rather than something derived here from `suggestion.status`, because
+   * the panel reports the same wait and the two have to agree about the threshold.
+   * One `usePendingIndicator` in the host is one clock; a copy on each side would
+   * be two, free to drift by however long a render took.
+   */
+  readonly suggestPending?: boolean;
 }
 
 /** What a host can do to the stage. Read the position through `onViewChange`. */
@@ -430,6 +439,7 @@ export function AnnotatorCanvas({
   readOnly = false,
   suggestion = null,
   onSuggestPoint,
+  suggestPending = false,
 }: AnnotatorCanvasProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const { asset, schema } = snapshot.document;
@@ -988,7 +998,16 @@ export function AnnotatorCanvas({
           inset: 0,
           overflow: "hidden",
           touchAction: "none",
-          cursor: affordance.cursor,
+          // `progress` — arrow *plus* busy, which is the honest pair: the canvas
+          // is working and still takes input, because a refine click during the
+          // wait is a supported gesture rather than something to be blocked.
+          //
+          // Applied here and not in `affordanceAt`, because `Cursor` answers
+          // "what would a press do here" off the tool and the shape under the
+          // pointer, and a request being out is neither. It has nothing to do
+          // with where the pointer is, which is exactly why it is not an
+          // affordance.
+          cursor: suggestPending ? "progress" : affordance.cursor,
         }}
         // (7) The input surface, and the only one. It spans the whole viewport,
         // so a press in the margin around the picture reaches the machine with the
@@ -1080,6 +1099,7 @@ export function AnnotatorCanvas({
               asset={asset}
               suggestion={painted}
               {...(suggestion === null ? {} : { promptPoints: suggestion.points })}
+              suggestPending={suggestPending}
             />
           </svg>
         </div>
