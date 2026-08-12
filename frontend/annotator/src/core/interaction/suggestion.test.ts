@@ -19,7 +19,6 @@ import { DETAIL_STEPS, polygonAt } from "../geometry/simplify";
 import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass, Point } from "../types";
 import type { Answer } from "./suggestion";
 import {
-  DEFAULT_ADJUSTMENTS,
   vertexCount,
   withDetail,
   SUGGESTIBLE_GEOMETRY_TYPES,

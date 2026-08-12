@@ -674,7 +674,7 @@ describe("what the wait looks like, and where it is not reported", () => {
     await screen.findByTestId("suggestion-shape");
 
     const gate = held();
-    clickCanvas(140, 160);
+    clickCanvasAt(140, 160);
     await screen.findByTestId("suggest-asking");
     // The best answer anyone has stays on screen while the next one is fetched.
     expect(screen.getByTestId("suggestion-shape")).toBeTruthy();
