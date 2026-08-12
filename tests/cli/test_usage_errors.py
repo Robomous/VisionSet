@@ -19,12 +19,20 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from click.testing import Result
 from tests.cli._flow import NARROW, run, usage_error
 
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
-WRAPPED = "directory of stills"
-"""A phrase the pinned width is narrow enough to split. See below."""
+WRAPPED = "greater than zero"
+"""A phrase the pinned width splits, chosen because nothing about it varies.
+
+``--fps 0`` is refused in the CLI's own words and **interpolates no path**, so the
+panel's layout is a function of the pinned width alone. The sibling refusal —
+``--fps`` against a folder — embeds ``tmp_path``, whose length moves the wrap
+point and differs under xdist, which is the very accident this module exists to
+take out of the suite. A guard written on that one fails the way #535 failed.
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -33,11 +41,11 @@ def _no_ambient_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(WORKSPACE_ENV_VAR, raising=False)
 
 
-def _refusal(tmp_path: Path) -> object:
-    """``--fps`` against a folder: refused before the workspace is ever opened."""
-    folder = tmp_path / "incoming"
-    folder.mkdir()
-    return run(tmp_path / "ws", "ingest", str(folder), "-p", "road-signs", "--fps", "5")
+def _refusal(tmp_path: Path) -> Result:
+    """A non-positive rate: refused before the workspace is ever opened."""
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"")
+    return run(tmp_path / "ws", "ingest", str(clip), "-p", "road-signs", "--fps", "0")
 
 
 def test_the_panel_is_rendered_at_the_pinned_width(tmp_path: Path) -> None:
