@@ -1395,11 +1395,49 @@ describe("the project header", () => {
     last_ingest_at: null as unknown,
   };
 
+  /**
+   * One batch as the wire spells it.
+   *
+   * `batchState` builds a single batch and answers most of this suite. The CTA's
+   * own tests need several at once, in a stated order and with different pinned
+   * versions, so both go through here rather than through two spellings of the
+   * same twelve fields.
+   */
+  function batchStub(fields: {
+    readonly id: string;
+    readonly name: string;
+    readonly state: string;
+    readonly schemaVersion?: number | null;
+    readonly unannotated?: number;
+  }): Record<string, unknown> {
+    return {
+      id: fields.id,
+      project_id: PROJECT,
+      name: fields.name,
+      state: fields.state,
+      asset_count: 4,
+      schema_version: fields.schemaVersion === undefined ? 1 : fields.schemaVersion,
+      progress: {
+        unannotated: fields.unannotated ?? 4,
+        annotated: 0,
+        skipped: 0,
+        review_pending: 0,
+        accepted: 0,
+        total: 4,
+      },
+      allowed_actions: batchActions(fields.state as BatchState),
+      promoted_asset_count: 0,
+      parent_batch_id: null,
+    };
+  }
+
   function headerFor(options: {
     description?: string | null;
     schema?: boolean;
     stats?: boolean;
     batchState?: string;
+    /** Several batches, in wire order. Takes the place of `batchState`. */
+    batches?: readonly Parameters<typeof batchStub>[0][];
     lastIngest?: unknown;
     /** `asset_count`, which is half of what the Overview's invitation reads. */
     assets?: number;
@@ -1426,36 +1464,19 @@ describe("the project header", () => {
               last_ingest_at: options.lastIngest ?? null,
             },
     });
-    on("GET", /\/batches$/, {
-      status: 200,
-      body:
-        options.batchState === undefined
-          ? { items: [], total: 0 }
-          : {
-              items: [
-                {
-                  id: "22222222-2222-4222-8222-222222222222",
-                  project_id: PROJECT,
-                  name: "drive-01",
-                  state: options.batchState,
-                  asset_count: 4,
-                  schema_version: 1,
-                  progress: {
-                    unannotated: 4,
-                    annotated: 0,
-                    skipped: 0,
-                    review_pending: 0,
-                    accepted: 0,
-                    total: 4,
-                  },
-                  allowed_actions: batchActions(options.batchState as BatchState),
-                  promoted_asset_count: 0,
-                  parent_batch_id: null,
-                },
-              ],
-              total: 1,
-            },
-    });
+    const items =
+      options.batches !== undefined
+        ? options.batches.map(batchStub)
+        : options.batchState === undefined
+          ? []
+          : [
+              batchStub({
+                id: "22222222-2222-4222-8222-222222222222",
+                name: "drive-01",
+                state: options.batchState,
+              }),
+            ];
+    on("GET", /\/batches$/, { status: 200, body: { items, total: items.length } });
     on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
   }
 
@@ -1578,9 +1599,95 @@ describe("the project header", () => {
     headerFor({ batchState: "in_annotation" });
     render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />));
 
-    await userEvent.click(await screen.findByTestId("go-annotate"));
+    const cta = await screen.findByTestId("go-annotate");
+    // With nothing to choose between, the button is shaped like one that jumps:
+    // it announces no menu, and it carries the pen and no chevron.
+    expect(cta.getAttribute("aria-haspopup")).toBeNull();
+    expect(cta.querySelectorAll("svg")).toHaveLength(1);
+
+    await userEvent.click(cta);
 
     expect(opened).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222");
+    expect(screen.queryByTestId("annotate-batch-drive-01")).toBeNull();
+  });
+
+  /*
+   * The three shapes of one control.
+   *
+   * A batch pins the project's active schema version at approval and the pin never
+   * moves, so with two batches open for annotation the header used to make a
+   * semantic choice on somebody's behalf — a `find` over the wire's own order —
+   * and never say that it had. These fix the shape of each arm, and the second
+   * one is the guard: reverting to a `find` turns it red.
+   */
+  const OPEN_PAIR = [
+    { id: "44444444-4444-4444-8444-444444444444", name: "closed-run", state: "completed" },
+    {
+      id: "55555555-5555-4555-8555-555555555555",
+      name: "drive-02",
+      state: "in_annotation",
+      schemaVersion: 2,
+      unannotated: 7,
+    },
+    {
+      id: "66666666-6666-4666-8666-666666666666",
+      name: "drive-03",
+      state: "in_annotation",
+      schemaVersion: 2,
+      unannotated: 12,
+    },
+  ] as const;
+
+  it("asks which batch when two are open for annotation, instead of picking one", async () => {
+    const opened = vi.fn();
+    headerFor({ batches: OPEN_PAIR });
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />));
+
+    const cta = await screen.findByTestId("go-annotate");
+    expect(cta.getAttribute("aria-haspopup")).toBe("menu");
+    // The pen and the chevron: the shape is what says a press opens a choice.
+    expect(cta.querySelectorAll("svg")).toHaveLength(2);
+
+    await userEvent.click(cta);
+
+    // Pressing it navigated nowhere. This is the whole defect, stated once.
+    expect(opened).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("annotate-batch-drive-03")).not.toBeNull();
+    expect(screen.getByTestId("annotate-batch-drive-02")).not.toBeNull();
+  });
+
+  it("lists only the batches work can happen in, newest first, with their remaining count and pinned version", async () => {
+    headerFor({ batches: OPEN_PAIR });
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />));
+
+    await userEvent.click(await screen.findByTestId("go-annotate"));
+    await screen.findByTestId("annotate-batch-drive-03");
+
+    // A completed batch refuses every save, so it is not somewhere to be sent.
+    expect(screen.queryByTestId("annotate-batch-closed-run")).toBeNull();
+    // `BatchOut` carries no timestamp, so newest-first is the wire's order
+    // reversed — `drive-03` arrived last and leads.
+    const rows = [...document.querySelectorAll("[data-testid^='annotate-batch-']")];
+    expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+      "annotate-batch-drive-03",
+      "annotate-batch-drive-02",
+    ]);
+    // Remaining work in the batch table's own words, and the version the pick
+    // actually decides — the one consequence invisible everywhere else here.
+    expect(rows[0]?.textContent).toContain("12 to do");
+    expect(rows[0]?.textContent).toContain("v2");
+    expect(rows[1]?.textContent).toContain("7 to do");
+  });
+
+  it("opens the batch the menu row names", async () => {
+    const opened = vi.fn();
+    headerFor({ batches: OPEN_PAIR });
+    render(mount(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />));
+
+    await userEvent.click(await screen.findByTestId("go-annotate"));
+    await userEvent.click(await screen.findByTestId("annotate-batch-drive-02"));
+
+    expect(opened).toHaveBeenCalledWith("55555555-5555-4555-8555-555555555555");
   });
 
   it("does not render Annotate at all when no batch is open for annotation", async () => {
