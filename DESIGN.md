@@ -434,6 +434,84 @@ Focus is **not** styled here at all: `styles.css`'s base layer gives every
 so it never depended on the segmented chip's fill. The trigger adds
 `focus-visible:bg-muted` only so the ring encloses a fill rather than the page.
 
+## Home
+
+The workspace's front page, and the rail's first entry. It was a redirect to the project
+list until there were numbers worth showing; what makes it a page rather than a second
+list is that it answers a different question. A list answers *what exists*. Home answers
+**what is waiting on me, and where do I carry on** — which is a question no single project
+can answer, because the state that matters is spread across all of them.
+
+It carries nothing project-scoped. No class distribution, no samples, no schema state:
+those belong to the project's own Overview, and a second copy here is the drift this
+document exists to prevent. Every row is a *pointer*, and pressing it goes to the screen
+that owns the thing.
+
+**Two states, and the first one is gone for good.** A workspace with no projects renders
+one invitation and nothing else — a headline, a line of body, the filled **Create
+project**, and three quiet cards naming the cycle (ingest, annotate, release) with no
+controls on them. The cards are there so somebody can see what the tool does before
+committing to it; a button on each would be three more things competing with the one that
+matters. Once a project exists this state never returns, and the dashboard renders with
+real zeros wherever the numbers are genuinely zero.
+
+**Layout** is the two-column detail contract, `1fr / 320px`, stacking below `lg`. The main
+column is the resume card, then what needs attention, then a short list of recent
+projects. The 320px aside is four stat cards in a 2×2 grid — projects, images,
+annotations, releases — and beneath them the activity feed.
+
+**A section with nothing in it is not rendered.** Not as a placeholder, not as a zero, not
+as "nothing here yet" — absent. A dashboard whose every section is an apology has taught
+the reader nothing and taken a screen to do it. The stat cards are the deliberate
+exception: a count of zero is a *measurement*, and four cards that came and went would
+make the aside jump on every visit.
+
+### Continue where you left off
+
+The card names a project, a batch, `n / m annotated` in tabular figures, and a picture of
+the frame it would open. It holds the view's one filled button.
+
+**It is ranked by progress, not by recency, and that is forced rather than chosen.** There
+is no timestamp anywhere on a batch, an annotation, or an asset's progress, so *the batch
+I touched last* has no source in the storage format and deriving one would mean a
+migration. What the rows can answer is which batch is furthest through and not yet
+finished, which is what the card offers. It degrades correctly — one open batch is offered
+whatever its progress — and the accepted limit is that two batches part-way through
+resolve to the further-along one rather than the more recent.
+
+**The label is load-bearing.** With a frame left to label the control reads **Continue
+annotating** and opens the editor at that frame. With none left it reads **Open batch** and
+goes to the gallery, because there is no frame to open and a button claiming otherwise
+would land somewhere empty. Same card, same slot, different promise.
+
+### Needs your attention, and activity
+
+Attention rows are one line each: a batch holding frames awaiting review, a background job
+that failed, a background job still running. A review row links to its batch. **A job row
+links nowhere and says so by not being a link** — a background job names an ingest run or a
+release in its payload, never a project, and no screen shows one. That is the rule for a
+section whose consuming surface does not exist yet, and inventing a destination would be
+principle 9's dead button with a friendlier label.
+
+Activity is a projection over timestamps that already exist, never an event log, capped at
+about eight and newest first. Two of its four kinds say less than they might, and the copy
+must not overstate them: an ingest row reports *the last data that arrived in this
+project*, not one run finishing, because an ingest records no time at all; and a schema row
+reports a version being **created**, because which version is active is derived — it is the
+highest — so there is no activation to date.
+
+### The one filled button, in all three states
+
+Principle 8 is a count, so Home answers it in every state and there is never a fourth:
+first run offers **Create project**, a workspace with somewhere to carry on offers
+**Continue annotating**, and one with nothing open offers **New project** — because when
+every batch is finished, starting the next piece of work genuinely is what comes next.
+When the resume card renders, the header's own New project steps back to `secondary`.
+
+The first-run CTA opens the **same dialog** the project list's button opens, rather than
+navigating to the screen that carries it. A filled button labelled *Create project* that
+only moved somewhere else would promise an action it does not perform.
+
 ## Project surfaces
 
 The project view is the face of a project, and principle 6 is the rule it kept failing: it
