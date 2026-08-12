@@ -3740,7 +3740,7 @@ export interface components {
          */
         SuggestedRegion: {
             /** Contour */
-            contour?: [
+            contour: [
                 number,
                 number
             ][];
@@ -3771,17 +3771,14 @@ export interface components {
          */
         SuggestionOut: {
             applied: components["schemas"]["AppliedParameters"];
-            /**
-             * Confidence
-             * @default 0
-             */
+            /** Confidence */
             confidence: number;
             /** Model Ref */
             model_ref: string;
             /** Parameters */
-            parameters?: components["schemas"]["SuggestParameter"][];
+            parameters: components["schemas"]["SuggestParameter"][];
             /** Regions */
-            regions?: components["schemas"]["SuggestedRegion"][];
+            regions: components["schemas"]["SuggestedRegion"][];
         };
         /**
          * VideoProvenanceOut

@@ -1944,7 +1944,10 @@ class SuggestedRegion(BaseModel):
     #: The unsimplified outline, in the asset's own pixels — what lets a client
     #: re-run `detail` locally instead of asking again. Empty for a box, which is
     #: an extent rather than something reduced from anything.
-    contour: list[tuple[float, float]] = Field(default_factory=list)
+    #:
+    #: Required rather than defaulted: it is on every answer, and a field a
+    #: client has to check for is one it will eventually forget to check for.
+    contour: list[tuple[float, float]]
 
 
 class AppliedParameters(BaseModel):
@@ -1978,7 +1981,7 @@ class SuggestionOut(BaseModel):
     """
 
     model_ref: str
-    confidence: float = Field(0.0, ge=0.0, le=1.0)
-    regions: list[SuggestedRegion] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    regions: list[SuggestedRegion]
     applied: AppliedParameters
-    parameters: list[SuggestParameter] = Field(default_factory=list)
+    parameters: list[SuggestParameter]

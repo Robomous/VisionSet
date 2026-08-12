@@ -208,10 +208,17 @@ beforeEach(() => {
   connections = [connectionRow("ready")];
   suggestion = {
     model_ref: MODEL_REF,
-    region: {
-      geometry: { type: "bbox", x: 12, y: 34, width: 56, height: 78 },
-      confidence: 0.9125,
-    },
+    confidence: 0.9125,
+    regions: [
+      {
+        geometry: { type: "bbox", x: 12, y: 34, width: 56, height: 78 },
+        contour: [],
+      },
+    ],
+    applied: { detail: "balanced", fill_holes: 0.002, fragments: "one" },
+    // Declared as the server declares it for a box class: `fragments` alone.
+    // The panel renders what this names and works none of it out itself.
+    parameters: ["fragments"],
   };
   suggestRefusal = null;
   suggestHold = null;

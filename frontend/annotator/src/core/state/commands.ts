@@ -72,6 +72,28 @@ export function addAnnotationCommand(annotation: Annotation): Command {
 }
 
 /**
+ * Add several annotations as **one** history entry.
+ *
+ * The plural sibling of {@link addAnnotationCommand}, and it exists for the one
+ * caller that genuinely creates several shapes from a single gesture: accepting
+ * a suggestion that proposed every piece of a mask. Several `add` commands in a
+ * row would be several undo steps, so one press of accept would take three
+ * presses of undo to take back — which is not what the person did.
+ *
+ * Materialized at construction, for `removeAnnotationsCommand`'s reason: a
+ * command built from a live iterable and run later would add whatever the
+ * iterable had become by then.
+ */
+export function addAnnotationsCommand(annotations: Iterable<Annotation>): Command {
+  const wanted = [...annotations];
+  const what = wanted.length === 1 ? "annotation" : "annotations";
+  return {
+    label: `add ${wanted.length} ${what}`,
+    apply: (document) => wanted.reduce((into, one) => addAnnotation(into, one), document),
+  };
+}
+
+/**
  * Replace one annotation whole, keeping its place in the draw order.
  *
  * The command a finished drag commits: the geometry it carries is the one the

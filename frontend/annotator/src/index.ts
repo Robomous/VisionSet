@@ -47,6 +47,7 @@ export {
 export { CommandLog, type Command } from "./core/state/commandLog";
 export {
   addAnnotationCommand,
+  addAnnotationsCommand,
   composeCommands,
   documentCommand,
   removeAnnotationsCommand,

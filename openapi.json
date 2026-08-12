@@ -3610,7 +3610,8 @@
           }
         },
         "required": [
-          "geometry"
+          "geometry",
+          "contour"
         ],
         "title": "SuggestedRegion",
         "type": "object"
@@ -3622,7 +3623,6 @@
             "$ref": "#/components/schemas/AppliedParameters"
           },
           "confidence": {
-            "default": 0.0,
             "maximum": 1.0,
             "minimum": 0.0,
             "title": "Confidence",
@@ -3649,7 +3649,10 @@
         },
         "required": [
           "model_ref",
-          "applied"
+          "confidence",
+          "regions",
+          "applied",
+          "parameters"
         ],
         "title": "SuggestionOut",
         "type": "object"
