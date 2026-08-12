@@ -4,12 +4,38 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from visionset.kernel.domain.geometry import Geometry
 from visionset.kernel.domain.schema import AttributeValue
 
 Provenance = Literal["human", "model", "import"]
+
+
+class AnnotationTotals(BaseModel):
+    """Two counts over a project's labels, taken together because they share a scan.
+
+    They are one model rather than two port methods because they are one
+    aggregate: both fall out of the same join between annotations and the assets
+    that carry them, and asking separately would walk it twice to learn two
+    numbers a single ``SELECT`` already has.
+
+    The pairing is also what keeps a definition from forking. ``annotated_assets``
+    is the numerator of ``ProjectStats.annotated_fraction``, so any surface
+    reporting how far along a project is derives it from here rather than from a
+    convenient nearby number. The tempting substitute — assets a job has marked
+    settled — is a **different** quantity: a skipped frame is settled and carries
+    no labels, so the two disagree exactly where somebody would notice and have
+    no way to tell which screen was right.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Every annotation drawn on any asset in the project.
+    annotations: int = Field(ge=0)
+    #: Assets carrying at least one, which is never more than the project's
+    #: asset count and is what a completion share divides by.
+    annotated_assets: int = Field(ge=0)
 
 
 class Annotation(BaseModel):

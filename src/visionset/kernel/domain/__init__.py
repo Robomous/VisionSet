@@ -7,7 +7,7 @@ Convention reminders encoded here:
   normalization is an exporter concern.
 """
 
-from visionset.kernel.domain.annotation import Annotation, Provenance
+from visionset.kernel.domain.annotation import Annotation, AnnotationTotals, Provenance
 from visionset.kernel.domain.asset import Asset
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
@@ -190,6 +190,16 @@ from visionset.kernel.domain.suggestion import (
     SuggestParameter,
     suggest_parameters,
 )
+from visionset.kernel.domain.summary import (
+    ActivityEntry,
+    ActivityKind,
+    AttentionItem,
+    AttentionKind,
+    ProjectSummary,
+    ResumeTarget,
+    WorkspaceSummary,
+    WorkspaceTotals,
+)
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
@@ -272,6 +282,7 @@ __all__ = [
     "AnnotationJobState",
     "AnnotationOperation",
     "AnnotationSchema",
+    "AnnotationTotals",
     "AnnotationsWritten",
     "Asset",
     "AssetPrediction",
@@ -362,6 +373,14 @@ __all__ = [
     "DEFAULT_FILL_HOLES",
     "DEFAULT_FRAGMENTS",
     "suggest_parameters",
+    "ActivityEntry",
+    "ActivityKind",
+    "AttentionItem",
+    "AttentionKind",
+    "ProjectSummary",
+    "ResumeTarget",
+    "WorkspaceSummary",
+    "WorkspaceTotals",
     "SplitAssignment",
     "SplitRecipe",
     "TaskGroup",
