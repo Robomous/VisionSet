@@ -101,7 +101,18 @@ def test_a_document_with_no_classes_key_exits_two(root: Path, tmp_path: Path) ->
     path.write_text(json.dumps({"labels": []}), encoding="utf-8")
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 2, result.output
-    assert "classes" in usage_error(result)
+    # The whole phrase, not the bare word, and the reason is a coincidence worth
+    # not depending on. The message interpolates ``file``, which is under
+    # ``tmp_path``, which pytest names after this test — and ``"classes"`` is a
+    # word in that name. It does not collide only because pytest truncates the
+    # directory to **30 characters**, which lands on
+    # ``test_a_document_with_no_classe0``, one character short. Rename the test,
+    # or nest the file one directory deeper, and a one-word assertion starts
+    # matching the path instead of the message with nothing to show for it.
+    # ``test_a_select_with_no_options_…`` is the same rule falling the other way:
+    # its truncation keeps ``options``, and its assertion was reading the path
+    # (#535).
+    assert 'must be an object with a "classes" list' in usage_error(result)
 
 
 def test_a_file_that_is_not_there_exits_two(root: Path, tmp_path: Path) -> None:
