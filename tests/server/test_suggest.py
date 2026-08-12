@@ -573,7 +573,7 @@ def test_a_request_that_sends_no_parameters_gets_the_defaults_back(
 
     body = ask(client, project=project, asset=asset, connection=connection).json()
 
-    assert body["applied"] == {"detail": "balanced", "fill_holes": 0.002, "fragments": "one"}
+    assert body["applied"] == {"detail": "balanced"}
 
 
 def test_the_answer_echoes_the_parameters_it_was_given(
@@ -588,14 +588,12 @@ def test_the_answer_echoes_the_parameters_it_was_given(
         asset=asset,
         connection=connection,
         detail="fine",
-        fill_holes=0.0,
-        fragments="all",
     ).json()
 
-    assert body["applied"] == {"detail": "fine", "fill_holes": 0.0, "fragments": "all"}
+    assert body["applied"] == {"detail": "fine"}
 
 
-def test_a_polygon_class_is_told_every_parameter_applies(
+def test_a_polygon_class_is_told_the_one_parameter_applies(
     client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
 ) -> None:
     connection = a_connection(client)
@@ -603,15 +601,16 @@ def test_a_polygon_class_is_told_every_parameter_applies(
 
     body = ask(client, project=project, asset=asset, connection=connection).json()
 
-    assert body["parameters"] == ["detail", "fill_holes", "fragments"]
+    assert body["parameters"] == ["detail"]
 
 
-def test_a_box_class_is_told_only_fragments_applies(
+def test_a_box_class_is_told_nothing_applies(
     client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
 ) -> None:
     """What the editor renders on a box class, and the whole of why it renders it.
 
-    A client works none of this out. Remove `fill_holes` from the polygon row of
+    A client works none of this out: an empty list is what tells it to render no
+    adjustments at all. Remove `detail` from the polygon row of
     `PARAMETER_APPLIES_TO` and the assertion above goes red; declare it for a box
     and this one does.
     """
@@ -620,7 +619,7 @@ def test_a_box_class_is_told_only_fragments_applies(
 
     body = ask(client, project=project, asset=asset, connection=connection, allowed=["bbox"]).json()
 
-    assert body["parameters"] == ["fragments"]
+    assert body["parameters"] == []
 
 
 def test_an_answer_with_nothing_in_it_still_carries_its_controls(
@@ -635,7 +634,7 @@ def test_an_answer_with_nothing_in_it_still_carries_its_controls(
     connection = a_connection(client)
     asset = an_asset(client, runner, project, tmp_path)
 
-    body = ask(client, project=project, asset=asset, connection=connection, fragments="all").json()
+    body = ask(client, project=project, asset=asset, connection=connection).json()
     empty = ask(
         client,
         project=project,
@@ -690,34 +689,58 @@ def test_a_coarser_setting_comes_back_with_no_more_vertices(
     assert counts[0] < counts[1] < counts[2], counts
 
 
-def test_every_piece_comes_back_when_every_piece_was_asked_for(
+def test_a_split_mask_is_one_polygon_and_one_union_box(
     client: TestClient,
     runner: InlineDispatcher,
     project: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`fragments` over HTTP, and the plural answer acceptance is all-or-nothing over."""
+    """Decision 4 over HTTP: a click asks about one object, however it arrived.
+
+    A polygon class gets the piece under the click; a box class gets one box over
+    both, because a mask in two pieces is nearly always one object seen around an
+    occlusion.
+    """
     scripted(monkeypatch, two_blocks())
     connection = a_connection(client)
     asset = an_asset(client, runner, project, tmp_path)
 
-    one = ask(client, project=project, asset=asset, connection=connection).json()
-    every = ask(client, project=project, asset=asset, connection=connection, fragments="all").json()
+    outlined = ask(client, project=project, asset=asset, connection=connection).json()
+    boxed = ask(
+        client, project=project, asset=asset, connection=connection, allowed=["bbox"]
+    ).json()
 
-    assert len(one["regions"]) == 1
-    assert len(every["regions"]) == 2
+    assert len(outlined["regions"]) == 1
+    assert len(boxed["regions"]) == 1
+    box = boxed["regions"][0]["geometry"]
+    outline = outlined["regions"][0]["geometry"]["points"]
+    assert box["width"] > max(x for x, _ in outline) - min(x for x, _ in outline), (
+        "the box spans both pieces, so it is wider than the piece the outline traced"
+    )
 
 
-def test_a_share_outside_nought_to_one_is_refused_by_the_schema(
+def test_a_setting_the_request_no_longer_takes_is_refused(
     client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
 ) -> None:
+    """`extra="forbid"`, doing the work of the deprecation nobody has to write.
+
+    A client still sending the two settings that came out (#557) is told plainly
+    rather than having them silently ignored.
+    """
     connection = a_connection(client)
     asset = an_asset(client, runner, project, tmp_path)
 
-    answer = ask(client, project=project, asset=asset, connection=connection, fill_holes=1.5)
-
-    assert answer.status_code == 422
+    assert (
+        ask(client, project=project, asset=asset, connection=connection, fill_holes=0.5).status_code
+        == 422
+    )
+    assert (
+        ask(
+            client, project=project, asset=asset, connection=connection, fragments="all"
+        ).status_code
+        == 422
+    )
 
 
 def test_a_detail_step_the_vocabulary_does_not_have_is_refused(

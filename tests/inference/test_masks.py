@@ -16,6 +16,7 @@ from __future__ import annotations
 import pytest
 
 from visionset.inference.masks import (
+    MAXIMUM_CLOSING_RADIUS,
     MINIMUM_FRAGMENT_SHARE,
     MINIMUM_TOLERANCE,
     bbox_from,
@@ -32,7 +33,6 @@ from visionset.inference.masks import (
 from visionset.kernel.domain import (
     BboxGeometry,
     Detail,
-    Fragments,
     GeometryType,
     PolygonGeometry,
 )
@@ -118,7 +118,7 @@ def islands() -> list[list[int]]:
 
 def test_one_piece_is_the_piece_under_the_click() -> None:
     """The first symptom this rule was written for: a shape from somewhere nobody clicked."""
-    pieces = components(speckled(), fragments=Fragments.ONE, at=[(3.0, 5.0)])
+    pieces = components(speckled(), at=[(3.0, 5.0)])
     assert len(pieces) == 1
     assert (pieces[0].x, pieces[0].y) == (1, 3)
     assert lit(list(pieces[0].mask)) == 36, "the 36-px object, not the 1-px speck"
@@ -140,25 +140,37 @@ def test_several_points_spanning_pieces_prefer_the_largest_of_them() -> None:
     assert (pieces[0].x, pieces[0].y) == (1, 3), "the 36-px object beats the 1-px speck"
 
 
-def test_without_a_point_the_topmost_piece_still_wins() -> None:
-    """The no-point call is unchanged — nothing outside a point prompt has an opinion."""
+def test_without_a_point_the_noise_filter_still_answers_with_the_object() -> None:
+    """Nothing outside a point prompt has an opinion — but the speck is gone first.
+
+    The topmost-leftmost rule only ever ran over pieces that survived, and a 1-px
+    speck against a 36-px object does not. What used to need a click to beat the
+    speck no longer needs one (#557).
+    """
     pieces = components(speckled())
-    assert (pieces[0].x, pieces[0].y) == (9, 0)
+    assert len(pieces) == 1
+    assert (pieces[0].x, pieces[0].y) == (1, 3)
 
 
-def test_every_piece_is_offered_when_every_piece_was_asked_for() -> None:
-    pieces = components(islands(), fragments=Fragments.ALL)
+def test_every_surviving_piece_comes_back_biggest_first_behind_the_pointed_at_one() -> None:
+    pieces = components(islands())
     assert [lit(list(piece.mask)) for piece in pieces] == [25, 16], "biggest first"
     assert [(piece.x, piece.y) for piece in pieces] == [(1, 2), (14, 3)]
 
 
-def test_a_speck_is_dropped_even_when_every_piece_was_asked_for() -> None:
+def test_the_piece_under_the_click_leads_even_when_it_is_not_the_biggest() -> None:
+    """The ordering the two geometries both read: head for a polygon, all of it for a box."""
+    pieces = components(islands(), at=[(15.0, 4.0)])
+    assert [lit(list(piece.mask)) for piece in pieces] == [16, 25]
+
+
+def test_a_speck_is_dropped_before_anything_else_looks_at_the_mask() -> None:
     """One click must not become a cleanup job.
 
-    The speck is 1 px against a 36-px object — far under the share — so asking
-    for everything still answers with the thing that was clicked.
+    The speck is 1 px against a 36-px object — far under the share — so it never
+    reaches a shape, whichever geometry asked.
     """
-    pieces = components(speckled(), fragments=Fragments.ALL)
+    pieces = components(speckled())
     assert len(pieces) == 1
     assert lit(list(pieces[0].mask)) == 36
 
@@ -166,19 +178,23 @@ def test_a_speck_is_dropped_even_when_every_piece_was_asked_for() -> None:
 def test_a_piece_is_kept_when_it_clears_the_share() -> None:
     """The other side of the same rule, so the threshold is not merely "drop small things"."""
     assert 25 * MINIMUM_FRAGMENT_SHARE <= 16
-    assert len(components(islands(), fragments=Fragments.ALL)) == 2
+    assert len(components(islands())) == 2
 
 
 def test_an_empty_mask_has_no_pieces() -> None:
     assert components(empty(), at=[(5.0, 5.0)]) == []
-    assert components(empty(), fragments=Fragments.ALL) == []
+    assert components(empty()) == []
 
 
 # --- step 2: closing the gaps --------------------------------------------------
 
 
-def notched(depth: int, size: int = 13) -> list[list[bool]]:
-    """A solid square with a one-row bite ``depth`` pixels deep, cut in from the right."""
+def notched(depth: int, size: int = 64) -> list[list[bool]]:
+    """A solid square with a one-row bite ``depth`` pixels deep, cut in from the right.
+
+    64 on a side by default, because the reach is a share of the piece's own area
+    and a 13-px square is under the floor where it works out at nothing.
+    """
     mask = [[True] * size for _ in range(size)]
     for x in range(size - depth, size):
         mask[size // 2][x] = False
@@ -193,43 +209,53 @@ def test_a_narrow_notch_is_closed_and_the_outline_gets_simpler() -> None:
     comes back the shape somebody meant.
     """
     mask = notched(2)
-    after = filled(mask, fill_holes=0.05)
+    after = filled(mask)
     assert lit([list(row) for row in after]) > lit(mask)
     assert len(contour(after)) < len(contour(mask))
 
 
 def test_a_bay_wider_than_the_reach_is_kept() -> None:
     """Concavity at that scale is shape rather than noise, and it survives untouched."""
-    mask = notched(2, size=13)
-    for y in (5, 6, 7):
-        for x in (10, 11, 12):
+    mask = [[True] * 64 for _ in range(64)]
+    for y in range(28, 36):
+        for x in range(56, 64):
             mask[y][x] = False
-    assert filled(mask, fill_holes=0.05) is mask
+    assert filled(mask) is mask
 
 
 def test_closing_never_moves_the_extent() -> None:
-    """Why `fill_holes` is declared for a polygon and not for a box.
+    """Why the close is declared for a polygon and does nothing to a box.
 
     A close only ever adds pixels whose whole neighbourhood was already reachable,
     so it cannot push an edge outward. The applicability table says the same
     thing; this is the behaviour under it.
     """
     mask = notched(2)
-    assert bbox_from(filled(mask, fill_holes=0.05)) == bbox_from(mask)
+    assert bbox_from(filled(mask)) == bbox_from(mask)
 
 
 def test_the_reach_scales_with_the_piece_rather_than_the_frame() -> None:
-    """One setting, every size — the property an absolute pixel count cannot have."""
-    small = closing_radius(rect(0, 0, 39, 39, width=40, height=40), fill_holes=0.002)
-    large = closing_radius(rect(0, 0, 199, 199, width=200, height=200), fill_holes=0.002)
+    """One default, every size — the property an absolute pixel count cannot have."""
+    small = closing_radius(rect(0, 0, 63, 63, width=64, height=64))
+    large = closing_radius(rect(0, 0, 199, 199, width=200, height=200))
     assert small < large
 
 
-def test_closing_nothing_is_a_request_the_pipeline_honours() -> None:
-    """A mask of foliage is mostly gaps and every one of them is real."""
-    mask = notched(2)
-    assert filled(mask, fill_holes=0.0) is mask
-    assert closing_radius(mask, fill_holes=0.0) == 0
+def test_the_reach_stops_at_the_cap_however_large_the_piece() -> None:
+    """A gap wider than a few pixels is shape, and the pass costs a step per unit.
+
+    Uncapped this worked out at 22 on a 4K frame — 44 bitset passes on the path
+    somebody is waiting on after a click, to bridge gaps that were never there.
+    """
+    huge = closing_radius(rect(0, 0, 799, 799, width=800, height=800))
+    assert huge == MAXIMUM_CLOSING_RADIUS
+
+
+def test_a_piece_too_small_to_have_artefacts_is_closed_not_at_all() -> None:
+    """Rounded down, so the smallest shapes keep every feature they have."""
+    tiny = rect(0, 0, 11, 11, width=12, height=12)
+    assert closing_radius(tiny) == 0
+    assert filled(tiny) is tiny
 
 
 def test_an_enclosed_hole_is_closed_in_the_mask_and_invisible_in_the_shape() -> None:
@@ -242,23 +268,27 @@ def test_an_enclosed_hole_is_closed_in_the_mask_and_invisible_in_the_shape() -> 
     pixels to 400 and left the traced outline byte-identical.
     """
     piece = components(holed(2))[0]
-    after = filled(piece.mask, fill_holes=0.02)
-    assert lit(list(piece.mask)) == 400 - 4
-    assert lit([list(row) for row in after]) == 400
+    after = filled(piece.mask)
+    assert lit(list(piece.mask)) == 64 * 64 - 4
+    assert lit([list(row) for row in after]) == 64 * 64
     assert outline(piece.mask) == outline(after), "the hole was never on the outer ring"
 
 
 def holed(hole: int) -> list[list[bool]]:
-    """A 20x20 square with a centred square hole ``hole`` pixels on a side."""
-    low = 10 - hole // 2
+    """A 64x64 square with a centred square hole ``hole`` pixels on a side.
+
+    64 rather than 20 for :func:`notched`'s reason: the reach is a share of the
+    piece's area, so a small square is under the floor where it reaches nothing.
+    """
+    low = 32 - hole // 2
     return [
         [
-            5 <= x <= 24
-            and 5 <= y <= 24
+            5 <= x <= 68
+            and 5 <= y <= 68
             and not (low <= x - 5 < low + hole and low <= y - 5 < low + hole)
-            for x in range(40)
+            for x in range(80)
         ]
-        for y in range(40)
+        for y in range(80)
     ]
 
 
@@ -407,25 +437,50 @@ def test_a_piece_too_thin_to_be_a_polygon_is_dropped_rather_than_demoted() -> No
     assert shapes_from(rect(10, 10, 11, 10), allowed=BOTH) == []
 
 
-def test_every_island_becomes_its_own_shape() -> None:
-    shaped = shapes_from(islands(), allowed=POLYGON_ONLY, fragments=Fragments.ALL)
-    assert len(shaped) == 2
-    assert [s.geometry.type for s in shaped] == [GeometryType.POLYGON, GeometryType.POLYGON]
+def test_a_polygon_is_the_piece_that_was_clicked_and_only_that_piece() -> None:
+    """A click asks about one object, so a polygon class gets one outline."""
+    shaped = shapes_from(islands(), allowed=POLYGON_ONLY, at=[(3.0, 4.0)])
+    assert len(shaped) == 1
+    assert shaped[0].geometry.type is GeometryType.POLYGON
 
 
-def test_one_fragment_is_still_the_default() -> None:
-    assert len(shapes_from(islands(), allowed=POLYGON_ONLY, at=[(3.0, 4.0)])) == 1
+def test_a_box_is_one_union_over_every_surviving_piece() -> None:
+    """Decision 4: an occluded object is one thing, however many pieces it arrives in.
+
+    `islands()` is 25 px at (1,2) and 16 px at (14,3) — a railing's worth apart.
+    Largest-only would cut the object off at the occlusion; a box per piece would
+    annotate it twice. One box covers both.
+    """
+    shaped = shapes_from(islands(), allowed=BOX_ONLY, at=[(3.0, 4.0)])
+    assert len(shaped) == 1
+    assert shaped[0].geometry == BboxGeometry(x=1.0, y=2.0, width=17.0, height=5.0)
+
+
+def test_the_union_leaves_out_the_specks_the_noise_filter_dropped() -> None:
+    """The other half of the same rule: a union of everything would follow speckle.
+
+    `speckled()` is a 36-px object at (1,3) and a 1-px speck at (9,0). The speck
+    is under the share, so the box stops at the object rather than stretching to
+    the corner of the frame.
+    """
+    shaped = shapes_from(speckled(), allowed=BOX_ONLY, at=[(3.0, 5.0)])
+    assert shaped[0].geometry == BboxGeometry(x=1.0, y=3.0, width=6.0, height=6.0)
 
 
 def test_closing_a_notch_reaches_the_polygon_and_leaves_the_box_alone() -> None:
-    """Both halves at once, because each is how the other's mistake stays hidden."""
-    ragged = shapes_from(notched(2, size=41), allowed=POLYGON_ONLY, fill_holes=0.0)
-    smoothed = shapes_from(notched(2, size=41), allowed=POLYGON_ONLY, fill_holes=0.005)
+    """Both halves at once, because each is how the other's mistake stays hidden.
+
+    The reach is fixed now, so the comparison is against a piece small enough to
+    fall under it rather than against a setting of zero.
+    """
+    ragged = shapes_from(notched(2, size=40), allowed=POLYGON_ONLY)
+    smoothed = shapes_from(notched(2, size=64), allowed=POLYGON_ONLY)
+    assert closing_radius(notched(2, size=40)) == 0, "under the reach: nothing bridged"
+    assert closing_radius(notched(2, size=64)) >= 1, "over it: the notch is bridged"
     assert len(ragged[0].contour) > len(smoothed[0].contour)
-    assert (
-        shapes_from(notched(2, size=41), allowed=BOX_ONLY, fill_holes=0.005)[0].geometry
-        == shapes_from(notched(2, size=41), allowed=BOX_ONLY, fill_holes=0.0)[0].geometry
-    )
+    assert shapes_from(notched(2, size=64), allowed=BOX_ONLY)[0].geometry == shapes_from(
+        notched(2, size=40), allowed=BOX_ONLY
+    )[0].geometry.model_copy(update={"width": 64.0, "height": 64.0})
 
 
 def test_a_mask_with_nothing_in_it_proposes_nothing() -> None:
