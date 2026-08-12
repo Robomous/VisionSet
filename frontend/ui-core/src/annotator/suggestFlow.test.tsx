@@ -667,9 +667,19 @@ describe("what the wait looks like while it is happening", () => {
     await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
   });
 
-  it("holds it a moment even when the answer is immediate", async () => {
-    // Nothing held, so the stub answers about as fast as anything can. With the
-    // delay gone the floor is the only thing keeping this from being two frames.
+  it("comes up on a fast answer too, and goes away on its own", async () => {
+    // Nothing held, so the stub answers about as fast as anything can, and the
+    // halo is still up on the click — which is the delay's removal seen from the
+    // case the delay existed for.
+    //
+    // What is deliberately **not** asserted here is the floor holding the halo
+    // past the answer. That is real behaviour and it is pinned in the machine's
+    // own unit tests, but its rendered consequence is not observable from this
+    // harness: a jsdom round trip through react-query routinely runs past 250ms
+    // — an attempt at exactly this assertion measured 273ms and failed on a
+    // floor that had honestly expired — and the alternative, driving the hook
+    // under fake timers, does not deliver the effect-driven state update at all.
+    // A racy assertion here would be worse than the gap it papers over.
     await open();
     await arm();
     clickCanvas();
