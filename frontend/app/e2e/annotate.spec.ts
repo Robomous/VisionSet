@@ -3235,6 +3235,59 @@ test("the preview draws its vertices, and a committed shape does not", async ({ 
   await expect(committed.locator("polygon")).not.toHaveAttribute("stroke-dasharray", "10 6");
 });
 
+test("the detail slider moves under the pointer, and hands the keyboard back", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+  await servePolygonSuggestion(page);
+
+  await page.getByTestId("tool-suggest").click();
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+  await page.getByTestId("suggest-adjust-open").click();
+
+  const slider = page.getByTestId("suggest-detail");
+  await expect(slider).toHaveValue("1");
+  const before = asks(sent);
+
+  // A real drag: press the thumb, travel, release. `fill()` and `click()` both
+  // set the value without ever exercising the default action, which is exactly
+  // the gap that let a slider ship unmovable — `preventDefault` on the press
+  // cancelled the drag and every jsdom assertion still passed (#563).
+  const track = (await slider.boundingBox())!;
+  await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(track.x + track.width - 1, track.y + track.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(slider).toHaveValue("2");
+  await expect(page.getByTestId("suggest-detail-label")).toContainText("Fine");
+  const fine = await drawnVertices(page);
+  // Still no round trip: the drag is arithmetic, like the brackets.
+  expect(asks(sent)).toBe(before);
+
+  // Dragging the other way, to the coarsest stop. Two *client* simplifications
+  // compared against each other — the answer's own geometry arrives already
+  // reduced by the server and is not one of the three steps.
+  await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(track.x + 1, track.y + track.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect(slider).toHaveValue("0");
+  await expect(page.getByTestId("suggest-detail-label")).toContainText("Coarse");
+  expect(fine).toBeGreaterThan(await drawnVertices(page));
+
+  // And the canvas has its keyboard back the moment the drag ended — without
+  // this the brackets, Esc and Enter are all dead and nothing says why.
+  await page.keyboard.press("]");
+  await expect(slider).toHaveValue("1");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+});
+
 test("a press on the suggest panel never reaches the picture underneath", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, undefined, undefined, undefined, true);

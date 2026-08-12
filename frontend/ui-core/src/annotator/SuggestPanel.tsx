@@ -508,14 +508,31 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
  * would stop stepping, and `Esc` would stop being the preview's undo, both with
  * nothing on screen to say why. Found in a browser: jsdom has no focus to move.
  *
- * On every control here, the slider included: all of them act on the canvas, so
- * none of them has any business holding focus. `mousedown` rather than the whole
- * control, so Tab still reaches the slider for somebody who wants to drive it
- * from the keyboard — that is a deliberate arrival, not a side effect of pointing
- * at it.
+ * On the buttons only. **A range input drags on the default action**, so
+ * cancelling its `mousedown` leaves a slider that looks alive and cannot be moved
+ * by hand at all — which is what shipped, and what nothing caught, because the
+ * test asserted the guard fired rather than that the thumb followed the pointer.
+ * The slider uses {@link returnFocusToCanvas} instead: it takes focus for the
+ * duration of the drag, like any form control, and hands it back on release.
  */
 function keepFocusOnCanvas(event: { preventDefault: () => void }): void {
   event.preventDefault();
+}
+
+/**
+ * Give the canvas its keyboard back once a pointer gesture on a control is over.
+ *
+ * The other half of the same rule, for a control whose default action is the
+ * whole point of it. `FrameGallery` already returns focus this way after its
+ * overlay closes, and by the same route — `ui-core` holds no ref to the
+ * annotator's root, and threading one down for this would be a prop on every
+ * layer between here and there.
+ *
+ * On release rather than on change: a drag emits a change per step, and pulling
+ * focus mid-drag would end the gesture under the pointer.
+ */
+function returnFocusToCanvas(): void {
+  document.querySelector<HTMLElement>('[data-testid="annotator-root"]')?.focus();
 }
 
 /**
@@ -593,11 +610,12 @@ function Adjustments({
               aria-label="Detail"
               aria-valuetext={`${labelFor(detail)}, ${vertexCount(session)} points`}
               data-testid="suggest-detail"
-              // Dragging this must not take focus off the canvas: every chord in
-              // the editor is a keydown on the annotator's own root, so a control
-              // that took focus would switch `[`, `]`, Esc and Enter off with
-              // nothing on screen to say why. Tab still reaches it deliberately.
-              onMouseDown={keepFocusOnCanvas}
+              // No `preventDefault` here: a range input *drags* on its default
+              // action, so cancelling the press is what made this unmovable by
+              // hand (#563). Focus goes back to the canvas on release instead, so
+              // `[`, `]`, Esc and Enter are live again the moment the drag ends.
+              onMouseUp={returnFocusToCanvas}
+              onTouchEnd={returnFocusToCanvas}
               onChange={(event) => onDetail(DETAIL_STEPS[Number(event.target.value)] ?? detail)}
             />
             {/*
