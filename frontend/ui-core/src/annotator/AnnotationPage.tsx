@@ -114,14 +114,12 @@ import {
   usePendingIndicator,
   withClass,
   withDetail,
-  withMaskAdjustment,
   withPoint,
   type Answer,
   type AnnotatorStore,
   type AnnotatorView,
   type Clipboard,
   type Detail,
-  type Fragments,
   type Point,
   type Polarity,
   type Suggestion,
@@ -1019,40 +1017,6 @@ function Workspace({
     if (next === session.adjustments.detail) return false;
     applyDetail(next);
     return true;
-  }
-
-  /** A setting only the server can honour: record it and ask again. */
-  function adjustMask(adjustment: { fillHoles?: number; fragments?: Fragments }): void {
-    if (session === null || connection === null) return;
-    const declared = store.document.schema.classes.find(
-      (candidate) => candidate.name === session.labelClass,
-    );
-    if (declared === undefined) return;
-    const next = withMaskAdjustment(session, adjustment);
-    if (next === session) return;
-    setSession(next);
-    if (next.status !== "asking") return;
-    const asked = next.serial;
-    const prompt = promptOf(next);
-    suggestRegion.mutate(
-      {
-        projectId,
-        assetId: asset.id,
-        connectionId: connection.id,
-        positive: prompt.positive,
-        negative: prompt.negative,
-        allowedGeometries: allowedGeometriesFor(declared),
-        adjustments: next.adjustments,
-      },
-      {
-        onSuccess: (answer) => {
-          setSession((live) => (live === null ? live : answered(live, asked, readAnswer(answer))));
-        },
-        onError: (error: unknown) => {
-          setSession((live) => (live === null ? live : refused(live, asked, refusalProse(error))));
-        },
-      },
-    );
   }
 
   /**
@@ -2449,7 +2413,6 @@ function Workspace({
                 // The halo and the busy cursor. Keyed to `diverting` for the same
                 // reason the session is: a parked tool has nothing in flight, so a
                 // halo over one would be reporting a wait nobody started.
-                suggestPending={diverting !== null && pending.shown}
               />
             )}
           </AssetImage>
@@ -2630,7 +2593,6 @@ function Workspace({
                 adjusting={adjusting}
                 onAdjusting={setAdjusting}
                 onDetail={applyDetail}
-                onMaskAdjustment={adjustMask}
                 // Off the same clock the halo is drawn from, which is what lets
                 // the card and the canvas be read as one report of one wait
                 // rather than as two. The card's own appearance follows the

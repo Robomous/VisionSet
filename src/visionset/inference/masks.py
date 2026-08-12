@@ -17,15 +17,20 @@ for every segmenter there will ever be.
 
 **The pipeline is fixed and its order is not configurable.**
 
-1. :func:`components` — which pieces of the mask survive.
-2. :func:`filled` — the gaps in them narrower than a reach, closed or kept.
+1. :func:`components` — which pieces of the mask survive the noise filter.
+2. :func:`filled` — the gaps in them narrower than a reach, closed.
 3. :func:`contour` — the boundary of what is left.
 4. :func:`polygon_at` — that boundary, reduced to a vertex count somebody can edit.
 
-The geometry branch happens after step 2: a polygon class takes steps 3 and 4, a
-box class takes the filled piece's extent. **A box therefore does not depend on
-``detail``**, which is what "applies to polygon only" means once it is code
-rather than a table.
+The geometry branch happens after step 2: a polygon class takes steps 3 and 4 on
+the piece the prompt points at, a box class takes one extent over *every*
+surviving piece. **A box therefore does not depend on ``detail``**, which is what
+"applies to polygon only" means once it is code rather than a table.
+
+**Only one of these is a question anybody is asked.** The reach of the close and
+the noise floor are fixed here, because on the ordinary single clean piece every
+setting of either produced the same shape — controls wired to nothing (#557).
+``detail`` is the one that moves something a person can see.
 
 **Which shape is produced is the caller's schema decision, not this module's
 guess.** :func:`shapes_from` takes the geometry kinds the active class actually
@@ -61,11 +66,8 @@ from typing import Final
 
 from visionset.kernel.domain import (
     DEFAULT_DETAIL,
-    DEFAULT_FILL_HOLES,
-    DEFAULT_FRAGMENTS,
     BboxGeometry,
     Detail,
-    Fragments,
     Geometry,
     GeometryType,
     Mask,
@@ -102,14 +104,43 @@ its own coordinates are integers — and the vertex count runs away for nothing.
 """
 
 MINIMUM_FRAGMENT_SHARE: Final = 0.05
-"""How big a piece has to be, against the biggest one, to be worth proposing.
+"""How big a piece has to be, against the biggest one, to survive the noise filter.
 
-Only consulted when the caller asked for every piece. A segmenter's mask
-routinely carries specks a twentieth the size of the thing that was clicked —
-antialiasing along an edge, a reflection, a scrap of the same colour across the
-frame — and proposing each of them as its own annotation turns one click into a
-cleanup job. Relative to the largest piece rather than to the frame, so it means
-the same thing on a mask covering everything and a mask covering a corner.
+A segmenter's mask routinely carries specks a twentieth the size of the thing
+that was clicked — antialiasing along an edge, a reflection, a scrap of the same
+colour across the frame. None of them is ever the answer to a click, so they are
+dropped before anything else looks at the mask. Relative to the largest piece
+rather than to the frame, so it means the same thing on a mask covering
+everything and a mask covering a corner.
+
+Applied unconditionally, and that is a decision rather than a simplification
+(#557): as a setting it did nothing on the ordinary single clean piece and could
+only be got wrong on the unusual one.
+"""
+
+CLOSING_REACH: Final = 0.002
+"""The largest gap closed, as a share of the piece's own lit area.
+
+A share rather than a pixel count, so it means the same thing on a thing fifty
+pixels across and a thing five hundred across. Two parts in a thousand puts the
+reach at about one pixel on an object fifty across, two on one a hundred across
+and four on one two hundred across — the scale of the notches and bays a
+segmenter leaves along an edge, and well under anything somebody would call a
+feature of the shape.
+
+Fixed rather than asked for (#557). It lives here rather than in the domain
+because it is a number about *this* pipeline, the way :data:`EPSILON` is.
+"""
+
+MAXIMUM_CLOSING_RADIUS: Final = 6
+"""However large the piece, the reach stops here.
+
+Two reasons that agree. A gap wider than a few pixels is a feature of the shape
+rather than an artefact of tracing it, so a reach that keeps growing with the
+object eventually closes a real bay somebody wanted; and the close costs a pass
+per unit of radius, on the path somebody is waiting on after a click — an
+unbounded reach worked out at 22 on a 4K frame, which is 44 passes to bridge
+gaps that were never there.
 """
 
 
@@ -334,16 +365,20 @@ def _cropped(label: int, found: Sequence[tuple[int, int, int]], labels: Sequence
     return Piece(x=left, y=top, mask=grid)
 
 
-def components(
-    mask: Mask, *, fragments: Fragments = DEFAULT_FRAGMENTS, at: Sequence[Point] = ()
-) -> list[Piece]:
+def components(mask: Mask, *, at: Sequence[Point] = ()) -> list[Piece]:
     """Step 1 — the pieces of the mask worth turning into shapes.
 
-    ``ONE`` is the piece the prompt points at, per :func:`_pointed_at`. ``ALL``
-    is every piece at or above :data:`MINIMUM_FRAGMENT_SHARE` of the largest,
-    ordered biggest first so that a panel showing several proposals leads with
-    the one most likely to be the thing that was clicked; ties keep reading
-    order, so the result is stable for a given mask.
+    Everything below :data:`MINIMUM_FRAGMENT_SHARE` of the largest piece is
+    dropped as noise, first and unconditionally. What survives is ordered with
+    the piece the prompt points at (:func:`_pointed_at`) at the head and the rest
+    biggest-first behind it, ties in reading order, so the answer is stable for a
+    given mask.
+
+    **That one ordering is the whole difference between the two geometries.** A
+    polygon takes the head of the list, because a click asks about one object; a
+    box takes the union of all of it, because a mask arriving in several pieces
+    is nearly always one object seen around an occlusion. Neither branch needs a
+    setting to say which it wants.
 
     An empty mask answers with no pieces, which is an ordinary answer and not an
     error — the click landed on sky.
@@ -354,15 +389,12 @@ def components(
     labels = _components(found)
     size = _areas(found, labels)
 
-    if fragments is Fragments.ONE:
-        chosen = [_pointed_at(found, labels, size, at)]
-    else:
-        floor = max(size.values()) * MINIMUM_FRAGMENT_SHARE
-        chosen = sorted(
-            (label for label, area in size.items() if area >= floor),
-            key=lambda label: (-size[label], label),
-        )
-    return [_cropped(label, found, labels) for label in chosen]
+    floor = max(size.values()) * MINIMUM_FRAGMENT_SHARE
+    survived = {label for label, area in size.items() if area >= floor}
+    kept = [(run, label) for run, label in zip(found, labels, strict=True) if label in survived]
+    first = _pointed_at([run for run, _ in kept], [label for _, label in kept], size, at)
+    rest = sorted(survived - {first}, key=lambda label: (-size[label], label))
+    return [_cropped(label, found, labels) for label in (first, *rest)]
 
 
 def _bits(mask: Mask, *, pad: int) -> tuple[list[int], int]:
@@ -433,23 +465,22 @@ def _met(rows: Sequence[int]) -> int:
     return met
 
 
-def closing_radius(mask: Mask, *, fill_holes: float) -> int:
-    """How far to reach, for a piece of this size and that share.
+def closing_radius(mask: Mask) -> int:
+    """How far to reach, for a piece of this size.
 
-    The share names the largest *hole* to close, and a hole of area ``a`` needs a
-    reach of about ``sqrt(a) / 2`` to be bridged — so the radius comes from the
-    piece's own lit area rather than from a pixel count, and the setting means
-    the same thing on a thing fifty pixels across and a thing five hundred
+    :data:`CLOSING_REACH` names the largest *hole* to close, and a hole of area
+    ``a`` needs a reach of about ``sqrt(a) / 2`` to be bridged — so the radius
+    comes from the piece's own lit area rather than from a pixel count, and it
+    means the same thing on a thing fifty pixels across and a thing five hundred
     across. Rounded down, so the smallest shapes get no closing at all rather
-    than one that would swallow a feature.
+    than one that would swallow a feature, and capped at
+    :data:`MAXIMUM_CLOSING_RADIUS` at the other end.
     """
-    if fill_holes <= 0.0:
-        return 0
     lit = sum(last - first + 1 for _, first, last in runs(mask))
-    return int((lit * fill_holes) ** 0.5 / 2)
+    return min(int((lit * CLOSING_REACH) ** 0.5 / 2), MAXIMUM_CLOSING_RADIUS)
 
 
-def filled(mask: Mask, *, fill_holes: float = DEFAULT_FILL_HOLES) -> Mask:
+def filled(mask: Mask) -> Mask:
     """Step 2 — close the small gaps in a piece, wherever they are.
 
     A morphological close: grow the shape, then shrink it back by the same
@@ -466,14 +497,11 @@ def filled(mask: Mask, *, fill_holes: float = DEFAULT_FILL_HOLES) -> Mask:
     bites out of an edge, the notch where two strokes almost meet, the pinhole at
     a corner.
 
-    ``0.0`` closes nothing and is a legitimate request rather than a disabled
-    feature: a mask of foliage is mostly gaps and every one of them is real.
-
     Returns the mask unchanged — the same object — when the reach works out at
     nothing or the shape has no gap that narrow, which is the common case and
     saves rebuilding a grid to say so.
     """
-    radius = closing_radius(mask, fill_holes=fill_holes)
+    radius = closing_radius(mask)
     if radius < 1:
         return mask
     before, width = _bits(mask, pad=radius)
@@ -689,22 +717,51 @@ def target_kind(allowed: Sequence[GeometryType]) -> GeometryType | None:
     return None
 
 
+def _union_of(pieces: Sequence[Piece]) -> BboxGeometry | None:
+    """One box over every piece, or ``None`` if none of them holds anything.
+
+    The answer to a point prompt is *this object*, and a mask that arrives in
+    several pieces is nearly always one object seen around an occlusion — a
+    railing across an animal, a post in front of a car. Both of the alternatives
+    are wrong in exactly that case: the largest piece alone cuts the object off
+    at the occlusion, and a box per piece annotates one thing twice (#557).
+    """
+    boxes = [box for box in (_boxed(piece) for piece in pieces) if box is not None]
+    if not boxes:
+        return None
+    left = min(box.x for box in boxes)
+    top = min(box.y for box in boxes)
+    right = max(box.x + box.width for box in boxes)
+    bottom = max(box.y + box.height for box in boxes)
+    return BboxGeometry(x=left, y=top, width=right - left, height=bottom - top)
+
+
 def shapes_from(
     mask: Mask,
     *,
     allowed: Sequence[GeometryType],
     detail: Detail = DEFAULT_DETAIL,
-    fill_holes: float = DEFAULT_FILL_HOLES,
-    fragments: Fragments = DEFAULT_FRAGMENTS,
     at: Sequence[Point] = (),
 ) -> list[Shaped]:
     """The whole pipeline: a mask and a class's geometries in, proposals out.
 
     The four steps in their fixed order, with the geometry branch after the
-    second. A class that admits polygons gets outlines; one that admits only
-    boxes gets extents, measured off the filled piece rather than off a
-    simplified outline's corners — which is what keeps ``detail`` from quietly
+    first. A class that admits polygons gets the outline of the piece the prompt
+    points at; one that admits only boxes gets a single box over every piece that
+    survived the noise filter, measured off the mask's own extent rather than off
+    a simplified outline's corners — which is what keeps ``detail`` from quietly
     moving a box.
+
+    **The branch is before the close, and the close is paid for once.** A close
+    only ever adds pixels whose whole neighbourhood was already reachable, so it
+    cannot push an edge outward and a box is the same box either way
+    (``test_closing_never_moves_the_extent``). So a box skips it entirely, and a
+    polygon runs it on the one piece it is about to trace — rather than on every
+    piece that survived, which is work thrown away for all but one of them.
+
+    **A list, though today it holds at most one.** The plural shape is kept
+    because accepting part of a plural proposal is tracked work (#548) and
+    because an empty list is how "nothing to propose" is already said.
 
     **Nothing is ever widened.** A class admitting neither kind gets an empty
     list, and a piece too thin to be a polygon is dropped rather than demoted to
@@ -715,16 +772,16 @@ def shapes_from(
     if kind is None:
         return []
 
-    shaped: list[Shaped] = []
-    for piece in components(mask, fragments=fragments, at=at):
-        whole = Piece(x=piece.x, y=piece.y, mask=filled(piece.mask, fill_holes=fill_holes))
-        if kind is GeometryType.POLYGON:
-            traced = _shifted(contour(whole.mask), piece=whole)
-            polygon = polygon_at(traced, detail=detail)
-            if polygon is not None:
-                shaped.append(Shaped(geometry=polygon, contour=tuple(traced)))
-            continue
-        box = _boxed(whole)
-        if box is not None:
-            shaped.append(Shaped(geometry=box))
-    return shaped
+    pieces = components(mask, at=at)
+    if not pieces:
+        return []
+
+    if kind is GeometryType.BBOX:
+        box = _union_of(pieces)
+        return [] if box is None else [Shaped(geometry=box)]
+
+    pointed = pieces[0]
+    whole = Piece(x=pointed.x, y=pointed.y, mask=filled(pointed.mask))
+    traced = _shifted(contour(whole.mask), piece=whole)
+    polygon = polygon_at(traced, detail=detail)
+    return [] if polygon is None else [Shaped(geometry=polygon, contour=tuple(traced))]

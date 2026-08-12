@@ -16,7 +16,6 @@ export {
   useAnnotatorSnapshot,
   useAnnotatorStore,
   usePendingIndicator,
-  useReducedMotion,
   type PendingIndicatorState,
 } from "./hooks";
 export {
@@ -42,11 +41,6 @@ export {
   Vertices,
 } from "./Shapes";
 export {
-  HALO_MAX_PX,
-  HALO_MIN_PX,
-  HALO_OPACITY,
-  HALO_PERIOD,
-  HALO_STROKE,
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
   classColor,

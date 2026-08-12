@@ -387,9 +387,10 @@ async function serveApi(
               contour: [],
             },
           ],
-          applied: { detail: "balanced", fill_holes: 0.002, fragments: "one" },
-          // A box class, so the wire names only the setting that moves a box.
-          parameters: ["fragments"],
+          applied: { detail: "balanced" },
+          // A box class, so the wire names no settings at all — which is how the
+          // editor is told to render no adjustments section (#557).
+          parameters: [],
         },
       });
     }
@@ -2999,24 +3000,18 @@ test("saving leaves the viewport exactly where it was", async ({ page }) => {
 });
 
 /**
- * The in-flight indicator, which only a browser can be asked about.
+ * Where a wait is reported, and where it must not be.
  *
- * Three of the four claims below are unreachable from jsdom. A cursor is a
- * computed style on a laid-out element; `prefers-reduced-motion` is a media query
- * with no implementation there; and where the halo sits is a coordinate, which
- * every rectangle being zero makes meaningless. The remaining thresholds — the
- * visibility floor and the escalation — are not retested here; they are unit-
- * tested on fake time in the annotator's `pending.test.ts`, and a wall-clock
- * assertion on a shared runner fails for reasons nobody chose.
+ * jsdom cannot answer either half: a cursor is a computed style on a laid-out
+ * element, and "nothing is drawn near the click" is a claim about coordinates
+ * that every rectangle being zero makes meaningless.
  *
  * The request is **held open** rather than delayed by a sleep. `e2e_discipline`
  * bans fixed waits and is right to: a sleep is a coin toss against any real
  * timing, while a route that has genuinely not answered keeps the wait true for
  * as long as the assertions need it.
  */
-test("a suggest request that is out says so at the click and on the cursor", async ({
-  page,
-}) => {
+test("a suggest request that is out says so on the panel and nowhere else", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, undefined, undefined, undefined, true);
 
@@ -3038,8 +3033,8 @@ test("a suggest request that is out says so at the click and on the cursor", asy
             contour: [],
           },
         ],
-        applied: { detail: "balanced", fill_holes: 0.002, fragments: "one" },
-        parameters: ["fragments"],
+        applied: { detail: "balanced" },
+        parameters: [],
       },
     });
   });
@@ -3050,34 +3045,26 @@ test("a suggest request that is out says so at the click and on the cursor", asy
   const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
   await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
 
-  const halo = page.getByTestId("suggest-halo");
-  await expect(halo).toBeVisible();
-  await expect(halo).toHaveAttribute("data-motion", "pulsing");
-
-  // Arrow *and* busy: the canvas is working and still takes a refine click.
-  await expect(page.getByTestId("annotator-pane")).toHaveCSS("cursor", "progress");
-
-  // The halo is on the click, not on the picture's origin — the claim jsdom's
-  // zero rectangles cannot carry.
-  const dot = page.getByTestId("prompt-points").locator("circle").last();
-  await expect(halo).toHaveAttribute("cx", (await dot.getAttribute("cx"))!);
-  await expect(halo).toHaveAttribute("cy", (await dot.getAttribute("cy"))!);
-
-  // The panel reports the same wait, off the same clock, and has not yet earned
-  // the sentence about a cold start.
+  // The card is the report, and it is up on the frame the request left.
   await expect(page.getByTestId("suggest-asking")).toBeVisible();
   await expect(page.getByTestId("suggest-cold-start")).toHaveCount(0);
+
+  // The mutation test for the removal: restore the ring or the busy cursor and
+  // one of these turns red (#557).
+  await expect(page.getByTestId("suggest-halo")).toHaveCount(0);
+  await expect(page.getByTestId("annotator-pane")).not.toHaveCSS("cursor", "progress");
+
+  // The clicks themselves are still drawn — those are what makes a refine
+  // legible, and they are not an indicator.
+  await expect(page.getByTestId("prompt-points")).toBeVisible();
 
   answer();
 
   await expect(page.getByTestId("suggestion-shape")).toBeVisible();
-  await expect(halo).toHaveCount(0);
   await expect(page.getByTestId("annotator-pane")).not.toHaveCSS("cursor", "progress");
 });
 
-test("the halo holds still for somebody who asked not to be moved", async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-
+test("escape takes the wait back while the request is still out", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, undefined, undefined, undefined, true);
 
@@ -3095,45 +3082,14 @@ test("the halo holds still for somebody who asked not to be moved", async ({ pag
 
   const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
   await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
-
-  const halo = page.getByTestId("suggest-halo");
-  await expect(halo).toHaveAttribute("data-motion", "still");
-  // The ring is still drawn — a preference about motion is not a preference
-  // about being told what is happening. It simply does not move.
-  await expect(halo).toBeVisible();
-  await expect(halo.locator("animate")).toHaveCount(0);
-
-  answer();
-  await expect(halo).toHaveCount(0);
-});
-
-test("escape takes the halo back without waiting out its visibility floor", async ({ page }) => {
-  const sent: Request[] = [];
-  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
-
-  let answer = (): void => {};
-  const held = new Promise<void>((resolve) => {
-    answer = resolve;
-  });
-  await page.route("**/inference/suggest", async (route) => {
-    await held;
-    await route.fulfill({ status: 200, json: { model_ref: "m@1", region: null } });
-  });
-
-  await page.getByTestId("tool-suggest").click();
-  await expect(page.getByTestId("suggest-idle")).toBeVisible();
-
-  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
-  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
-  await expect(page.getByTestId("suggest-halo")).toBeVisible();
+  await expect(page.getByTestId("suggest-asking")).toBeVisible();
 
   await page.keyboard.press("Escape");
 
-  // Down with the points, and the cursor with it — the request is still out, so
-  // nothing but the explicit cancel could have done this.
-  await expect(page.getByTestId("suggest-halo")).toHaveCount(0);
+  // Down with the points — the request is still out, so nothing but the explicit
+  // cancel could have done this.
+  await expect(page.getByTestId("suggest-asking")).toHaveCount(0);
   await expect(page.getByTestId("prompt-points")).toHaveCount(0);
-  await expect(page.getByTestId("annotator-pane")).not.toHaveCSS("cursor", "progress");
 
   answer();
 });
@@ -3142,11 +3098,12 @@ test("escape takes the halo back without waiting out its visibility floor", asyn
  * The adjustments, in a real browser.
  *
  * jsdom can say the section renders. What it cannot say is that a bracket
- * reaches it from the keyboard, that the counter changes without a request
- * leaving, or that `Esc` closes this before it clears the gesture — all three
- * are about a live document with focus in it.
+ * reaches it from the keyboard, that the shape changes without a request
+ * leaving, that pressing a control leaves the keyboard working, or that a press
+ * on the card never reaches the picture underneath — all of which are about a
+ * live document with focus and hit-testing in it.
  */
-test("a box class is offered only the setting that moves a box", async ({ page }) => {
+test("a box class is offered no adjustments at all", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, undefined, undefined, undefined, true);
 
@@ -3155,37 +3112,47 @@ test("a box class is offered only the setting that moves a box", async ({ page }
   await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
   await expect(page.getByTestId("suggestion-shape")).toBeVisible();
 
-  await page.getByTestId("suggest-adjust-open").click();
-
-  // The stub declares `["fragments"]`, which is what the kernel declares for a
-  // box — and the editor renders exactly that. No condition in the app mentions
-  // a box at all.
-  await expect(page.getByTestId("suggest-fragments")).toBeVisible();
-  await expect(page.getByTestId("suggest-detail-balanced")).toHaveCount(0);
-  await expect(page.getByTestId("suggest-fill-holes")).toHaveCount(0);
+  // The stub declares `[]`, which is what the kernel declares for a box — and the
+  // editor renders exactly that. No condition in the app mentions a box at all.
+  await expect(page.getByTestId("suggest-adjust-open")).toHaveCount(0);
+  await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
+  await expect(page.getByTestId("suggest-detail")).toHaveCount(0);
 });
 
-test("a polygon class steps its detail from the keyboard, with no request", async ({ page }) => {
-  const sent: Request[] = [];
-  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+/** A traced ring big enough that the three steps genuinely differ. */
+const RING = Array.from({ length: 64 }, (_, index) => {
+  const angle = (index / 64) * 2 * Math.PI;
+  return [Math.round(160 + 90 * Math.cos(angle)), Math.round(160 + 90 * Math.sin(angle))];
+});
 
-  // A traced ring big enough that the three steps genuinely differ: a rectangle
-  // is four corners at every setting and would report a dead control as working.
-  const ring = Array.from({ length: 64 }, (_, index) => {
-    const angle = (index / 64) * 2 * Math.PI;
-    return [Math.round(160 + 90 * Math.cos(angle)), Math.round(160 + 90 * Math.sin(angle))];
-  });
+/** A polygon answer over that ring, with `detail` declared as the one setting. */
+async function servePolygonSuggestion(page: Page): Promise<void> {
   await page.route("**/inference/suggest", async (route) =>
     route.fulfill({
       json: {
         model_ref: "facebook/sam2-hiera-base-plus@main",
         confidence: 0.9,
-        regions: [{ geometry: { type: "polygon", points: ring }, contour: ring }],
-        applied: { detail: "balanced", fill_holes: 0.002, fragments: "one" },
-        parameters: ["detail", "fill_holes", "fragments"],
+        regions: [{ geometry: { type: "polygon", points: RING }, contour: RING }],
+        applied: { detail: "balanced" },
+        parameters: ["detail"],
       },
     }),
   );
+}
+
+/** The vertex count the canvas is actually drawing, read off the polygon itself. */
+async function drawnVertices(page: Page): Promise<number> {
+  const points = (await page.getByTestId("suggestion-shape").getAttribute("points")) ?? "";
+  return points.trim().split(/\s+/).filter(Boolean).length;
+}
+
+const asks = (sent: readonly Request[]): number =>
+  sent.filter((one) => one.url().includes("/inference/suggest")).length;
+
+test("a polygon class steps its detail from the keyboard, with no request", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+  await servePolygonSuggestion(page);
 
   await page.getByTestId("tool-suggest").click();
   const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
@@ -3193,46 +3160,36 @@ test("a polygon class steps its detail from the keyboard, with no request", asyn
   await expect(page.getByTestId("suggestion-shape")).toBeVisible();
 
   // The bracket first, with nothing opened — which is the whole point of it.
-  // The shape on the canvas is what has to move, so that is what is measured;
-  // the counter is a second reading of the same fact, checked below.
-  const shape = page.getByTestId("suggestion-shape");
-  const vertices = async (): Promise<number> =>
-    ((await shape.getAttribute("points")) ?? "").trim().split(/\s+/).filter(Boolean).length;
-  const before = sent.filter((one) => one.url().includes("/inference/suggest")).length;
+  // The shape on the canvas is what has to move, so that is what is measured.
+  const before = asks(sent);
 
   await page.keyboard.press("[");
-  const coarse = await vertices();
+  const coarse = await drawnVertices(page);
   // The claim that only a real request log can settle: no round trip.
-  expect(sent.filter((one) => one.url().includes("/inference/suggest")).length).toBe(before);
+  expect(asks(sent)).toBe(before);
 
   await page.keyboard.press("]");
   await page.keyboard.press("]");
-  const fine = await vertices();
+  const fine = await drawnVertices(page);
   expect(fine).toBeGreaterThan(coarse);
-  expect(sent.filter((one) => one.url().includes("/inference/suggest")).length).toBe(before);
+  expect(asks(sent)).toBe(before);
 
   // And it stops at the end rather than wrapping round to the coarsest.
   await page.keyboard.press("]");
-  expect(await vertices()).toBe(fine);
+  expect(await drawnVertices(page)).toBe(fine);
 
   await page.keyboard.press("[");
   await page.keyboard.press("[");
 
-  // Opening the section must not switch the keyboard off, which is what a control
-  // taking focus would silently do.
   await page.getByTestId("suggest-adjust-open").click();
-  const counter = page.getByTestId("suggest-vertex-count");
-  await expect(counter).toHaveText(`${coarse} pts`);
-  await expect(page.getByTestId("suggest-detail-coarse")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("suggest-detail-label")).toHaveText(`Coarse · ${coarse} pts`);
+  await expect(page.getByTestId("suggest-detail")).toHaveValue("0");
 
   // Opening the section must not switch the keyboard off, which is what a control
   // taking focus would silently do — and does, in a browser, where jsdom has no
   // focus to move and would report this working.
   await page.keyboard.press("]");
-  await expect(page.getByTestId("suggest-detail-balanced")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.getByTestId("suggest-detail")).toHaveValue("1");
 
   // Escape closes the adjustments and stops there: the points and the shape are
   // both still on screen, and the second press is what takes them.
@@ -3243,4 +3200,72 @@ test("a polygon class steps its detail from the keyboard, with no request", asyn
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("suggestion-shape")).toHaveCount(0);
   await expect(page.getByTestId("suggest-idle")).toBeVisible();
+});
+
+test("the preview draws its vertices, and a committed shape does not", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+  await servePolygonSuggestion(page);
+
+  await page.getByTestId("tool-suggest").click();
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+
+  const preview = page.getByTestId("suggestion-preview");
+  await expect(preview.getByTestId("suggestion-shape")).toBeVisible();
+
+  // Dashed, and carrying one dot per vertex. Without the dots the detail control
+  // moves a number and nothing anybody can see (#557).
+  await expect(preview.locator("polygon")).toHaveAttribute("stroke-dasharray", "10 6");
+  const drawn = await drawnVertices(page);
+  expect(drawn).toBeGreaterThan(3);
+  await expect(preview.locator("circle")).toHaveCount(drawn);
+
+  // The set follows the detail, with no request — the same fact the counter
+  // reports, read off the canvas instead.
+  await page.keyboard.press("[");
+  await expect(preview.locator("circle")).toHaveCount(await drawnVertices(page));
+
+  // Accept it, and it becomes an ordinary shape: solid, and no vertices until it
+  // is selected. That is the contrast the preview state exists to make.
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("suggestion-preview")).toHaveCount(0);
+  const committed = page.getByTestId("annotator-canvas").locator("g[data-annotation-id]");
+  await expect(committed).toHaveCount(1);
+  await expect(committed.locator("polygon")).not.toHaveAttribute("stroke-dasharray", "10 6");
+});
+
+test("a press on the suggest panel never reaches the picture underneath", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+  await servePolygonSuggestion(page);
+
+  await page.getByTestId("tool-suggest").click();
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+
+  const seeded = await page.getByTestId("prompt-points").locator("circle").count();
+  const before = asks(sent);
+
+  // Every interactive control on the card, in turn. None of them may fire a
+  // suggest or move the seed point — the card sits over the picture, so a press
+  // that fell through would place a prompt point where somebody was aiming at a
+  // button (#557).
+  await page.getByTestId("suggest-adjust-open").click();
+  await expect(page.getByTestId("suggest-adjustments")).toBeVisible();
+
+  const slider = page.getByTestId("suggest-detail");
+  const box = (await slider.boundingBox())!;
+  await page.mouse.click(box.x + 2, box.y + box.height / 2);
+  await slider.click();
+
+  expect(asks(sent)).toBe(before);
+  await expect(page.getByTestId("prompt-points").locator("circle")).toHaveCount(seeded);
+
+  // And the keyboard still belongs to the canvas after all of it, which is the
+  // half a click that merely *took focus* would break.
+  await page.keyboard.press("]");
+  await expect(page.getByTestId("suggest-adjustments")).toBeVisible();
+  expect(asks(sent)).toBe(before);
 });

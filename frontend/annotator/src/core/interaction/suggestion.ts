@@ -200,7 +200,7 @@ export interface Suggestion {
   /** The model that proposed it, carried onto the annotation if it is accepted. */
   readonly modelRef: string;
   /**
-   * The unsimplified outline this shape was reduced from, empty for a box.
+   * The outline this shape was reduced from, empty for a box.
    *
    * What makes {@link withDetail} arithmetic rather than a round trip. It is the
    * *same* points the server reduced, which matters because Douglas-Peucker is
@@ -210,11 +210,8 @@ export interface Suggestion {
   readonly contour: readonly Point[];
 }
 
-/** How many of a mask's separate pieces become shapes. The wire's `fragments`. */
-export type Fragments = "one" | "all";
-
 /** A setting the server says has some effect here. The wire's `parameters`. */
-export type SuggestParameter = "detail" | "fill_holes" | "fragments";
+export type SuggestParameter = "detail";
 
 /** What an answer carries back, beside the shapes themselves. */
 export interface Answer {
@@ -246,25 +243,21 @@ export interface Answer {
  */
 export type SuggestionStatus = "idle" | "asking" | "shown" | "none" | "refused";
 
-/** The three settings, as they stand right now. Sent on every ask. */
+/** The one setting, as it stands right now. Sent on every ask. */
 export interface Adjustments {
   readonly detail: Detail;
-  readonly fillHoles: number;
-  readonly fragments: Fragments;
 }
 
 /**
  * What a session starts with, and what the server means by "nothing was sent".
  *
- * The numbers are the kernel's own defaults. They are restated here because this
- * package has no HTTP and cannot read them from an answer that has not arrived —
- * and `simplify.test.ts` holds `EPSILON` to the kernel's table, which is the half
+ * The value is the kernel's own default. It is restated here because this package
+ * has no HTTP and cannot read it from an answer that has not arrived — and
+ * `simplify.test.ts` holds `EPSILON` to the kernel's table, which is the half
  * that could silently differ.
  */
 export const DEFAULT_ADJUSTMENTS: Adjustments = {
   detail: "balanced",
-  fillHoles: 0.002,
-  fragments: "one",
 };
 
 /** The whole of a suggest session. `null`, in a host, is a tool that is not armed. */
@@ -283,14 +276,14 @@ export interface SuggestionState {
   /**
    * The previews, when there are any. Kept across `asking` so they do not flicker.
    *
-   * Plural because `fragments` can answer with every piece of a mask. Accepting
-   * is all of them or none, in one history entry — see
-   * {@link acceptedAnnotations}.
+   * Plural though today an answer carries at most one, because accepting part of
+   * a plural proposal is tracked work (#548). Accepting is all of them or none,
+   * in one history entry — see {@link acceptedAnnotations}.
    */
   readonly suggestions: readonly Suggestion[];
-  /** Where the three settings stand. Sent on every ask, echoed by every answer. */
+  /** Where the setting stands. Sent on every ask, echoed by every answer. */
   readonly adjustments: Adjustments;
-  /** Which of them the server says apply here. Empty until an answer arrives. */
+  /** Which settings the server says apply here. Empty until an answer arrives. */
   readonly parameters: readonly SuggestParameter[];
   /** What the server refused with, in prose. Non-null only while `refused`. */
   readonly refusal: string | null;
@@ -467,9 +460,12 @@ export function isAcceptable(state: SuggestionState): boolean {
  * A step that is already set returns the state **by identity**, so a host can
  * fold this through unconditionally without a render.
  *
- * A shape that simplifies away to fewer than three points is dropped, and losing
- * every shape lands on `none` rather than on an empty `shown` — a status that
- * claims a preview nobody can see.
+ * **A step can never lose a shape, and that was measured rather than assumed.**
+ * `polygonAt` answers `null` only for a contour with no area — three or more
+ * collinear points — and collinearity is a property of the contour rather than of
+ * the tolerance, so a shape drawable at one step is drawable at all three. The
+ * empty branch below is the type's, not a reachable state: a zero-area outline is
+ * dropped by the server before it is ever sent (#557).
  */
 export function withDetail(state: SuggestionState, detail: Detail): SuggestionState {
   if (detail === state.adjustments.detail) return state;
@@ -489,33 +485,6 @@ function resimplified(one: Suggestion, detail: Detail): Suggestion | null {
   const points = polygonAt(one.contour, detail);
   if (points === null) return null;
   return { ...one, geometry: { ...one.geometry, type: "polygon", points } as Geometry };
-}
-
-/**
- * A different mask, which only the server can produce.
- *
- * `fill_holes` and `fragments` change the pixels the shape is traced from, and
- * the client never had those — so unlike {@link withDetail} this cannot be
- * answered locally. It records the setting and bumps the serial, which is
- * `withPoint`'s shape: the host sees `asking` and sends the same accumulated
- * points again with the new value.
- *
- * The previews stay up while the answer is in flight, for `withPoint`'s reason:
- * what is drawn is still the best answer anyone has.
- */
-export function withMaskAdjustment(
-  state: SuggestionState,
-  adjustment: Partial<Pick<Adjustments, "fillHoles" | "fragments">>,
-): SuggestionState {
-  const adjustments = { ...state.adjustments, ...adjustment };
-  if (
-    adjustments.fillHoles === state.adjustments.fillHoles &&
-    adjustments.fragments === state.adjustments.fragments
-  ) {
-    return state;
-  }
-  if (state.points.length === 0) return { ...state, adjustments };
-  return { ...state, adjustments, status: "asking", refusal: null, serial: state.serial + 1 };
 }
 
 /** How many vertices the preview is currently spending. What the counter reads. */

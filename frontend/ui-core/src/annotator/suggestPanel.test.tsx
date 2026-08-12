@@ -9,7 +9,7 @@
  * never a dead button.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
@@ -35,7 +35,7 @@ function answerOf(...suggestions: readonly Suggestion[]): Answer {
     modelRef: MODEL_REF,
     confidence: suggestions[0]?.confidence ?? null,
     suggestions,
-    parameters: ["detail", "fill_holes", "fragments"],
+    parameters: ["detail"],
   };
 }
 
@@ -453,7 +453,7 @@ describe("the adjustments, which are a section and never a popup", () => {
           contour: [[0, 0], [10, 0], [10, 10], [0, 10]],
         },
       ],
-      parameters: ["detail", "fill_holes", "fragments"],
+      parameters: ["detail"],
     };
   }
 
@@ -468,28 +468,26 @@ describe("the adjustments, which are a section and never a popup", () => {
     expect(screen.queryByTestId("suggest-adjustments")).toBeNull();
   });
 
-  it("renders exactly the parameters the server declared, in its order", () => {
+  it("renders exactly the parameters the server declared, and nothing else", () => {
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn(), onMaskAdjustment: vi.fn() }));
-    expect(screen.getByTestId("suggest-detail-balanced")).toBeTruthy();
-    expect(screen.getByTestId("suggest-fill-holes")).toBeTruthy();
-    expect(screen.getByTestId("suggest-fragments")).toBeTruthy();
+      onDetail: vi.fn() }));
+    expect(screen.getByTestId("suggest-detail")).toBeTruthy();
+    // The two that were here and are not (#557). A control wired to nothing on
+    // the ordinary mask is worse than no control.
+    expect(screen.queryByTestId("suggest-fill-holes")).toBeNull();
+    expect(screen.queryByTestId("suggest-fragments")).toBeNull();
   });
 
-  it("offers a box class only what moves a box, because the wire says only that", () => {
+  it("offers a box class no section at all, because the wire declared nothing", () => {
     // The whole of the rule: no condition in this file mentions a box. Declare
-    // `fill_holes` for a box in the kernel's table and this test goes red there.
+    // `detail` for a box in the kernel's table and this test goes red there.
     const session = asked();
-    const boxy = answered(session, session.serial, {
-      ...polygonAnswer(),
-      parameters: ["fragments"],
-    });
-    render(mount({ session: boxy, adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn(), onMaskAdjustment: vi.fn() }));
+    const boxy = answered(session, session.serial, { ...polygonAnswer(), parameters: [] });
+    render(mount({ session: boxy, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }));
 
-    expect(screen.getByTestId("suggest-fragments")).toBeTruthy();
-    expect(screen.queryByTestId("suggest-detail-balanced")).toBeNull();
-    expect(screen.queryByTestId("suggest-fill-holes")).toBeNull();
+    expect(screen.queryByTestId("suggest-adjustments")).toBeNull();
+    expect(screen.queryByTestId("suggest-adjust-open")).toBeNull();
+    expect(screen.queryByTestId("suggest-detail")).toBeNull();
   });
 
   it("renders nothing at all where the server declared no parameters", () => {
@@ -501,28 +499,39 @@ describe("the adjustments, which are a section and never a popup", () => {
     expect(screen.queryByTestId("suggest-adjust-open")).toBeNull();
   });
 
-  it("says what the current setting costs, beside the control that sets it", () => {
+  it("names the step and what it costs in one label, beside the control", () => {
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn(), onMaskAdjustment: vi.fn() }));
-    expect(screen.getByTestId("suggest-vertex-count").textContent).toBe("4 pts");
+      onDetail: vi.fn() }));
+    expect(screen.getByTestId("suggest-detail-label").textContent).toBe("Balanced · 4 pts");
   });
 
-  it("reports a step through the door that needs no request", async () => {
+  it("puts the slider on the step the session is holding", () => {
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
+      onDetail: vi.fn() }));
+    const slider = screen.getByTestId("suggest-detail") as HTMLInputElement;
+    expect(slider.value).toBe("1");
+    expect(slider.min).toBe("0");
+    expect(slider.max).toBe("2");
+  });
+
+  it("reports a step through the door that needs no request", () => {
     const onDetail = vi.fn();
-    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail, onMaskAdjustment: vi.fn() }));
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(), onDetail }));
 
-    await userEvent.click(screen.getByTestId("suggest-detail-coarse"));
+    fireEvent.change(screen.getByTestId("suggest-detail"), { target: { value: "0" } });
     expect(onDetail).toHaveBeenCalledWith("coarse");
+    fireEvent.change(screen.getByTestId("suggest-detail"), { target: { value: "2" } });
+    expect(onDetail).toHaveBeenCalledWith("fine");
   });
 
-  it("reports a mask setting through the other door, which asks again", async () => {
-    const onMaskAdjustment = vi.fn();
+  it("does not let a press on the slider take focus off the canvas", () => {
+    // Every chord in the editor is a keydown on the annotator's own root, so a
+    // control that took focus would switch `[`, `]`, Esc and Enter off with
+    // nothing on screen to say why (#557).
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn(), onMaskAdjustment }));
-
-    await userEvent.click(screen.getByTestId("suggest-fragments"));
-    expect(onMaskAdjustment).toHaveBeenCalledWith({ fragments: "all" });
+      onDetail: vi.fn() }));
+    const press = fireEvent.mouseDown(screen.getByTestId("suggest-detail"));
+    expect(press).toBe(false);
   });
 
   it("keeps the controls operable on an answer with nothing in it", () => {
@@ -534,11 +543,10 @@ describe("the adjustments, which are a section and never a popup", () => {
       ...polygonAnswer(),
       suggestions: [],
     });
-    render(mount({ session: empty, adjusting: true, onAdjusting: vi.fn(),
-      onDetail: vi.fn(), onMaskAdjustment: vi.fn() }));
+    render(mount({ session: empty, adjusting: true, onAdjusting: vi.fn(), onDetail: vi.fn() }));
 
     expect(screen.getByTestId("suggest-none")).toBeTruthy();
     expect(screen.getByTestId("suggest-adjustments")).toBeTruthy();
-    expect(screen.getByTestId("suggest-detail-balanced")).toBeTruthy();
+    expect(screen.getByTestId("suggest-detail")).toBeTruthy();
   });
 });

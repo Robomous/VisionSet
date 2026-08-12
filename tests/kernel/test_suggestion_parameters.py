@@ -7,7 +7,7 @@ written to prevent: a parameter with no row would either vanish from every panel
 or, under a kinder default, appear on a box class where it does nothing.
 
 So the first test here is the one that matters. It sweeps `SuggestParameter`
-itself, so a fourth parameter arrives with its applicability stated or the suite
+itself, so a second parameter arrives with its applicability stated or the suite
 goes red naming it.
 """
 
@@ -15,11 +15,8 @@ import pytest
 
 from visionset.kernel.domain import (
     DEFAULT_DETAIL,
-    DEFAULT_FILL_HOLES,
-    DEFAULT_FRAGMENTS,
     PARAMETER_APPLIES_TO,
     Detail,
-    Fragments,
     GeometryType,
     SuggestParameter,
     suggest_parameters,
@@ -52,17 +49,14 @@ def test_a_declared_geometry_is_one_the_domain_actually_stores(
 
 
 def test_a_polygon_is_offered_every_parameter() -> None:
-    assert suggest_parameters(GeometryType.POLYGON) == (
-        SuggestParameter.DETAIL,
-        SuggestParameter.FILL_HOLES,
-        SuggestParameter.FRAGMENTS,
-    )
+    assert suggest_parameters(GeometryType.POLYGON) == (SuggestParameter.DETAIL,)
 
 
-def test_a_box_is_offered_only_the_one_that_moves_it() -> None:
-    # `detail` and `fill_holes` change an outline, and a box has none: its extent
-    # is the same whichever way either is set.
-    assert suggest_parameters(GeometryType.BBOX) == (SuggestParameter.FRAGMENTS,)
+def test_a_box_is_offered_nothing_at_all() -> None:
+    # `detail` changes an outline and a box has none, so a box class declares no
+    # parameters — which is what tells a client to render no adjustments rather
+    # than an empty section (#557).
+    assert suggest_parameters(GeometryType.BBOX) == ()
 
 
 def test_a_kind_that_holds_no_shape_is_offered_nothing() -> None:
@@ -77,10 +71,5 @@ def test_the_reader_answers_in_declaration_order() -> None:
         assert list(offered) == [p for p in SuggestParameter if p in offered]
 
 
-def test_the_defaults_are_members_of_their_own_vocabularies() -> None:
+def test_the_default_is_a_member_of_its_own_vocabulary() -> None:
     assert DEFAULT_DETAIL in Detail
-    assert DEFAULT_FRAGMENTS in Fragments
-
-
-def test_the_default_hole_share_is_a_share() -> None:
-    assert 0.0 <= DEFAULT_FILL_HOLES <= 1.0

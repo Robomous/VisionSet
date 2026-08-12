@@ -504,50 +504,59 @@ Every click sends **all** the points placed so far - the route is stateless - an
 the answer replaces the preview. The first click on a frame is the slow one,
 because the model reads the whole image once; refining after it is quick.
 
-**A wait says so where you are looking, from the moment it starts.** A ring appears
-around the click you are waiting on, the cursor picks up the busy arrow, and the
-panel says `Looking at that…` - all of it on the same frame the request leaves.
-Past a second and a half - long enough that this is plausibly the first click on
-the frame - the panel adds the sentence explaining why that one is slow. Once the
-ring is up it stays a quarter second even if the answer beats it, so a fast answer
-cannot leave it on screen for two frames.
+**A wait says so on the panel, and nowhere else.** The card reads
+`Looking at that…` on the same frame the request leaves. Past a second and a half -
+long enough that this is plausibly the first click on the frame - it adds the
+sentence explaining why that one is slow.
+
+Nothing appears at the cursor or the click point. A ring and a busy cursor used to,
+and both were taken away: sitting on the picture beside the pointer, they read as
+the machine having seized rather than as work in progress, and they were in the way
+of the thing being looked at.
 
 Refining while an answer is still out is fine and is the ordinary way to work: the
-ring moves to the newest click and the shape already on screen stays drawn, so you
-keep the best answer so far while the next one is fetched. The panel goes back to
-`Looking at that…` for the duration, which is why `Accept` is not offered until the
-newer shape arrives. `Esc` takes the whole thing back at once - points, ring and
-cursor - without waiting the quarter second out. A refusal clears the ring and
-renders as prose on the panel, so nothing is ever left spinning over a request
-that is over.
-
-Somebody whose system asks for reduced motion gets the same ring, drawn still. A
-preference about motion is not a preference about being told what is happening.
+shape already on screen stays drawn, so you keep the best answer so far while the
+next one is fetched. The panel goes back to `Looking at that…` for the duration,
+which is why `Accept` is not offered until the newer shape arrives. `Esc` takes the
+whole thing back at once. A refusal replaces the card with prose, so nothing is ever
+left saying a request is out when it is over.
 
 **The proposal is not an annotation until it is accepted.** It is drawn faintly
-with a dashed outline, carries its class and the model's confidence beside it, and
-is in neither the document nor the undo history. `Esc` is its undo. Switching
-class, switching frames or leaving the page discards it, and nothing is written.
+with a dashed outline - solid is what an accepted annotation gets - carries its
+class and the model's confidence beside it, and is in neither the document nor the
+undo history. `Esc` is its undo. Switching class, switching frames or leaving the
+page discards it, and nothing is written.
+
+**Its vertices are drawn the whole time it is up**, which is what makes the detail
+setting something you can see rather than a number that changes. A committed shape
+shows its vertices only while it is selected; a proposal is not selected and shows
+them anyway, because choosing how much outline to keep is exactly a question about
+where the points are.
 
 **The shape can be adjusted before it is accepted**, from a section inside the
 same card - never a second panel over the picture, which would cover the thing
-being adjusted. It is closed until you ask for it, because the defaults are right
+being adjusted. It is closed until you ask for it, because the default is right
 most of the time.
 
-Three settings, and which of them appear is the server's answer rather than the
-editor's guess (`docs/inference.md`). **Detail** is three steps with a live count
-of the vertices beside it, and `[` and `]` move it without opening anything -
-that one costs no request at all, because the answer carried the full outline and
-the editor re-simplifies it here. **Close gaps** smooths the notches a segmenter
-bites out of an edge. **Every separate piece** proposes each part of the mask
-rather than only the one you pointed at - which is what it offers otherwise, and
-it is chosen from your clicks rather than by size, so a stray speck elsewhere on
-the frame never wins. Those last two change what the model's mask
-*is*, so they ask again - the frame is already read, so it is quick.
+One setting, and whether it appears is the server's answer rather than the
+editor's guess (`docs/inference.md`). **Detail** is a three-position slider -
+coarse, balanced, fine - with a label beside it naming the step and what it costs,
+`Fine · 41 pts`. `[` and `]` move it without opening anything. Either way it costs
+no request at all: the answer carried the outline it was reduced from, and the
+editor re-simplifies it here, so the shape and its vertices move under a held key.
 
-On a class that stores a box only the last of the three appears, because the
-other two change an outline and a box has none. The editor does not know that;
-the answer says so.
+Pressing the slider never takes focus off the canvas, so `[`, `]`, `Esc` and `↵`
+keep working while you drag it. Tab still reaches it, for driving it from the
+keyboard on purpose.
+
+On a class that stores a box the section does not appear at all, because detail
+changes an outline and a box has none. The editor does not know that; the answer
+says so, by naming no settings.
+
+**Two settings were here and are not.** Closing the gaps in the mask and proposing
+every separate piece are still done, at fixed defaults. As controls they did
+nothing to an ordinary clean mask - every position gave the same shape - and each
+touch of one re-ran the model to produce it.
 
 **Adjusting into nothing says so and leaves the controls up.** A setting can
 empty the proposal - every piece too small, or an outline reduced past being a
@@ -555,10 +564,9 @@ shape - and when it does, the card says what happened and every control stays
 where it was, so the way back is the way you came. The preview never simply
 vanishes.
 
-**Accepting several pieces is one action and one undo.** Where the answer
-proposed more than one shape, `Accept` writes all of them and a single `mod+z`
-takes all of them back. Accepting some and not others is planned rather than
-present (#548).
+**Accepting is one action and one undo.** Where an answer proposes more than one
+shape, `Accept` writes all of them and a single `mod+z` takes all of them back.
+Accepting some and not others is planned rather than present (#548).
 
 **The tool stays armed while you change class.** Arming it is a decision about how
 to work, and picking the class to work on is the next thing you do - so a class

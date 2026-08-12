@@ -118,38 +118,3 @@ export function usePendingIndicator(active: boolean): PendingIndicatorState {
   const cancel = useCallback(() => indicator.cancel(), [indicator]);
   return { shown: active || phase.shown, escalated: phase.escalated, cancel };
 }
-
-/** The query, named once so the hook and its documentation cannot disagree. */
-const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
-
-/** Whether the host has one, and whether it says to stop moving things. */
-function askedForStillness(): boolean {
-  // `typeof` rather than a truthiness check, and it is load-bearing: this package
-  // is unit-tested under **node**, and `ui-core` renders it under jsdom, and
-  // neither implements `matchMedia`. A bare read would throw in both.
-  return typeof matchMedia === "function" && matchMedia(REDUCED_MOTION).matches;
-}
-
-/**
- * The one accessibility preference this renderer reads.
- *
- * The engine cannot: `matchMedia` is a browser global, and `eslint.config.js`
- * bans every one of those under `src/core/**`. That is the boundary working —
- * whether an indicator pulses is a fact about a screen, not about an annotation.
- */
-export function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(askedForStillness);
-
-  useEffect(() => {
-    if (typeof matchMedia !== "function") return;
-    const query = matchMedia(REDUCED_MOTION);
-    const read = (): void => setReduced(query.matches);
-    // Read once on attach as well: the preference can have moved between the
-    // lazy initializer and here, and a listener alone would never hear about it.
-    read();
-    query.addEventListener("change", read);
-    return () => query.removeEventListener("change", read);
-  }, []);
-
-  return reduced;
-}
