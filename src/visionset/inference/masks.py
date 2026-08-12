@@ -1,5 +1,5 @@
-# usage: from visionset.inference.masks import geometry_from
-"""A binary mask in, one domain geometry out — and nothing about torch in between.
+# usage: from visionset.inference.masks import shapes_from
+"""A binary mask in, domain geometry out — and nothing about torch in between.
 
 A segmenter answers with a grid of booleans; this domain stores boxes and
 polygons. That conversion is the whole of this module, and it is written over
@@ -7,42 +7,91 @@ plain Python sequences rather than tensors for the reason ``nms`` is: it is the
 part of a segmentation adapter that can be wrong in a way no GPU is needed to
 see, so it is the part a test drives with literals.
 
+**It lives above the adapter now, and that is the point.** Every choice below —
+which pieces of the mask are shapes, whether the holes inside them are closed,
+how much of the outline survives — used to be made inside the segmentation
+adapter with a constant nobody could reach. They are product decisions, they are
+the ones a person adjusts, and an adapter is the one place a caller cannot reach
+them from. ``PointSegmenter`` stops at the mask precisely so that this runs once
+for every segmenter there will ever be.
+
+**The pipeline is fixed and its order is not configurable.**
+
+1. :func:`components` — which pieces of the mask survive.
+2. :func:`filled` — the gaps in them narrower than a reach, closed or kept.
+3. :func:`contour` — the boundary of what is left.
+4. :func:`polygon_at` — that boundary, reduced to a vertex count somebody can edit.
+
+The geometry branch happens after step 2: a polygon class takes steps 3 and 4, a
+box class takes the filled piece's extent. **A box therefore does not depend on
+``detail``**, which is what "applies to polygon only" means once it is code
+rather than a table.
+
 **Which shape is produced is the caller's schema decision, not this module's
-guess.** ``geometry_from`` takes the geometry kinds the active class actually
-admits and produces one of those or nothing: a class allowing polygons gets the
-outline, a class allowing only boxes gets the mask's extent, and a class allowing
-neither is not offered the gesture at all.
+guess.** :func:`shapes_from` takes the geometry kinds the active class actually
+admits and produces those or nothing: a class allowing polygons gets outlines, a
+class allowing only boxes gets extents, and a class allowing neither is not
+offered the gesture at all. Nothing is ever widened — a box cannot become the
+outline it never held.
 
 **Tolerance is relative, and that is what makes one "detail" setting work.** The
-design asks for a single knob that lands typical objects in a 10-40 vertex range.
-An
+design asks for a knob that lands typical objects in a 10-40 vertex range. An
 absolute pixel tolerance cannot: three pixels is nothing on a car and is the
 whole of a bottle cap. So the tolerance handed to Douglas-Peucker is a fraction
 of the region's own bounding diagonal, which makes the vertex count a property of
 the *shape* rather than of how much of the frame it happens to fill.
+
+**The canonical contour, and why step 3 reduces before step 4 gets a choice.**
+Douglas-Peucker is not nested: reducing at half a pixel and then at five pixels
+does not give what reducing once at five pixels gives. The editor re-simplifies
+locally so that moving ``detail`` costs no round trip, while this module stays
+authoritative on what is finally written — and those two can only be proved to
+agree if they start from the same points. So :func:`contour` is *defined* as the
+traced boundary reduced once at :data:`MINIMUM_TOLERANCE`, that is what travels
+to a client, and :func:`polygon_at` takes it rather than a raw trace. It also
+bounds a payload that would otherwise run to tens of thousands of integer-pixel
+points on a large object.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Final
 
-from visionset.kernel.domain import BboxGeometry, Geometry, GeometryType, PolygonGeometry
-
-Mask = Sequence[Sequence[bool]]
-"""Rows of columns, ``mask[y][x]`` — the orientation every image library agrees
-on and the one ``post_process_masks`` produces."""
+from visionset.kernel.domain import (
+    DEFAULT_DETAIL,
+    DEFAULT_FILL_HOLES,
+    DEFAULT_FRAGMENTS,
+    BboxGeometry,
+    Detail,
+    Fragments,
+    Geometry,
+    GeometryType,
+    Mask,
+    PolygonGeometry,
+)
 
 Point = tuple[float, float]
 
-DEFAULT_DETAIL: Final = 0.01
-"""D3's single "detail" setting, as a fraction of the region's bounding diagonal.
+EPSILON: Final[Mapping[Detail, float]] = {
+    Detail.COARSE: 0.025,
+    Detail.BALANCED: 0.01,
+    Detail.FINE: 0.004,
+}
+"""What each step means, as a fraction of the region's bounding diagonal.
 
-Chosen against the shape the range was written for rather than by taste: for a
-roughly circular object this keeps the vertices where the sagitta of a chord
-exceeds the tolerance, which works out at ~13 vertices — inside D3's 10-40 band
-with room on both sides for shapes more and less convoluted than a circle.
-Smaller means more faithful and more vertices; larger means fewer.
+``BALANCED`` is calibrated rather than chosen by taste, and the other two are
+placed around it. For a roughly circular object it keeps the vertices where the
+sagitta of a chord exceeds the tolerance, which works out at ~13 — inside the
+10-40 band with room on both sides for shapes more and less convoluted than a
+circle. ``COARSE`` is two and a half times as tolerant and ``FINE`` two and a
+half times as strict, which moves the same circle to roughly 8 and roughly 21:
+three settings a person can tell apart without any of them being useless.
+
+It is a mapping here and not a member value on ``Detail`` because the numbers are
+a property of *this* simplification algorithm. A second one would want its own
+table and the same three names.
 """
 
 MINIMUM_TOLERANCE: Final = 0.5
@@ -51,6 +100,49 @@ MINIMUM_TOLERANCE: Final = 0.5
 Below this the simplification is arguing about detail the mask does not have —
 its own coordinates are integers — and the vertex count runs away for nothing.
 """
+
+MINIMUM_FRAGMENT_SHARE: Final = 0.05
+"""How big a piece has to be, against the biggest one, to be worth proposing.
+
+Only consulted when the caller asked for every piece. A segmenter's mask
+routinely carries specks a twentieth the size of the thing that was clicked —
+antialiasing along an edge, a reflection, a scrap of the same colour across the
+frame — and proposing each of them as its own annotation turns one click into a
+cleanup job. Relative to the largest piece rather than to the frame, so it means
+the same thing on a mask covering everything and a mask covering a corner.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class Piece:
+    """One connected piece of a mask, cropped to its own extent.
+
+    ``x`` and ``y`` are where the crop sits in the asset, and every coordinate
+    this module finally emits has them added back.
+
+    Cropped rather than carried at full size, which is what keeps a plural answer
+    affordable: a 4K mask is eight million booleans, and materialising one of
+    those per piece would cost more than the forward pass that produced it. A
+    piece is the size of the thing, not the size of the picture.
+    """
+
+    x: int
+    y: int
+    mask: Mask
+
+
+@dataclass(frozen=True, slots=True)
+class Shaped:
+    """One proposal: the geometry, and the contour it was reduced from.
+
+    ``contour`` is empty for a box, because a box is not reduced from anything —
+    it is the piece's extent, and there is nothing a client could re-derive from
+    a different setting. That emptiness is the same fact
+    ``PARAMETER_APPLIES_TO`` states from the other end.
+    """
+
+    geometry: Geometry
+    contour: tuple[Point, ...] = ()
 
 
 def spans(mask: Mask) -> list[tuple[int, int, int]]:
@@ -132,7 +224,7 @@ def _adjacent(one: tuple[int, int, int], other: tuple[int, int, int]) -> bool:
 
 
 def _components(found: Sequence[tuple[int, int, int]]) -> list[int]:
-    """One label per run: which blob it belongs to, 8-connected.
+    """One label per run: which piece it belongs to, 8-connected.
 
     Union-find over *runs* rather than a flood fill over pixels. The row-pair
     walk is two pointers over lists already sorted by ``x``, so the whole pass
@@ -149,7 +241,7 @@ def _components(found: Sequence[tuple[int, int, int]]) -> list[int]:
     def join(left: int, right: int) -> None:
         one, other = root(left), root(right)
         if one != other:
-            # The earlier run wins, so a label is always its blob's first run.
+            # The earlier run wins, so a label is always its piece's first run.
             parent[max(one, other)] = min(one, other)
 
     rows: dict[int, list[int]] = {}
@@ -179,36 +271,40 @@ def _gap(point: Point, run: tuple[int, int, int]) -> float:
     return (across * across + (row - y) * (row - y)) ** 0.5
 
 
-def _start_of(mask: Mask, at: Sequence[Point]) -> tuple[int, int] | None:
-    """The pixel to begin tracing from: top-left of the blob the prompt asks about.
-
-    A point-prompted segmenter is asked *about a place*, so the blob that answers
-    is the one under the point —
-    not the one that happens to own the topmost-leftmost lit pixel, which is a
-    property of where the speckle fell rather than of what was clicked.
-
-    Three cases, in order. A point inside a blob picks that blob; several points
-    inside several blobs pick the largest of them, because two positives are a
-    caller describing one object rather than proposing two. A point inside none
-    of them — the model's mask need not cover the exact pixel clicked — picks the
-    blob nearest the point, which is still an answer about where the user
-    pointed. Negatives never select: they say what the shape is not, and a blob
-    is chosen before its shape is known.
-
-    Without any point at all the topmost-leftmost blob still wins. Nothing but a
-    point prompt has an opinion about which blob was meant.
-    """
-    found = runs(mask)
-    if not found:
-        return None
-    if not at:
-        return (found[0][1], found[0][0])
-
-    labels = _components(found)
+def _areas(found: Sequence[tuple[int, int, int]], labels: Sequence[int]) -> dict[int, int]:
+    """Lit pixels per label, summed off the runs rather than counted."""
     size: dict[int, int] = {}
     for (_, first, last), label in zip(found, labels, strict=True):
         size[label] = size.get(label, 0) + last - first + 1
+    return size
 
+
+def _pointed_at(
+    found: Sequence[tuple[int, int, int]],
+    labels: Sequence[int],
+    size: Mapping[int, int],
+    at: Sequence[Point],
+) -> int:
+    """The label of the piece the prompt asks about.
+
+    A point-prompted segmenter is asked *about a place*, so the piece that
+    answers is the one under the point — not the one that happens to own the
+    topmost-leftmost lit pixel, which is a property of where the speckle fell
+    rather than of what was clicked.
+
+    Three cases, in order. A point inside a piece picks that piece; several
+    points inside several pieces pick the largest of them, because two positives
+    are a caller describing one object rather than proposing two. A point inside
+    none of them — the model's mask need not cover the exact pixel clicked —
+    picks the piece nearest the point, which is still an answer about where the
+    user pointed. Negatives never select: they say what the shape is not, and a
+    piece is chosen before its shape is known.
+
+    Without any point at all the topmost-leftmost piece still wins. Nothing but a
+    point prompt has an opinion about which piece was meant.
+    """
+    if not at:
+        return labels[0]
     under = {
         labels[index]
         for point in at
@@ -216,18 +312,186 @@ def _start_of(mask: Mask, at: Sequence[Point]) -> tuple[int, int] | None:
         if row == round(point[1]) and first <= round(point[0]) <= last
     }
     if under:
-        chosen = max(under, key=lambda label: size[label])
+        return max(under, key=lambda label: size[label])
+    nearest = min(
+        range(len(found)), key=lambda index: min(_gap(point, found[index]) for point in at)
+    )
+    return labels[nearest]
+
+
+def _cropped(label: int, found: Sequence[tuple[int, int, int]], labels: Sequence[int]) -> Piece:
+    """That label's runs, painted into a mask the size of their own extent."""
+    mine = [run for run, owner in zip(found, labels, strict=True) if owner == label]
+    top = mine[0][0]
+    bottom = mine[-1][0]
+    left = min(first for _, first, _ in mine)
+    right = max(last for _, _, last in mine)
+    grid = [[False] * (right - left + 1) for _ in range(bottom - top + 1)]
+    for row, first, last in mine:
+        line = grid[row - top]
+        for x in range(first - left, last - left + 1):
+            line[x] = True
+    return Piece(x=left, y=top, mask=grid)
+
+
+def components(
+    mask: Mask, *, fragments: Fragments = DEFAULT_FRAGMENTS, at: Sequence[Point] = ()
+) -> list[Piece]:
+    """Step 1 — the pieces of the mask worth turning into shapes.
+
+    ``ONE`` is the piece the prompt points at, per :func:`_pointed_at`. ``ALL``
+    is every piece at or above :data:`MINIMUM_FRAGMENT_SHARE` of the largest,
+    ordered biggest first so that a panel showing several proposals leads with
+    the one most likely to be the thing that was clicked; ties keep reading
+    order, so the result is stable for a given mask.
+
+    An empty mask answers with no pieces, which is an ordinary answer and not an
+    error — the click landed on sky.
+    """
+    found = runs(mask)
+    if not found:
+        return []
+    labels = _components(found)
+    size = _areas(found, labels)
+
+    if fragments is Fragments.ONE:
+        chosen = [_pointed_at(found, labels, size, at)]
     else:
-        nearest = min(
-            range(len(found)), key=lambda index: min(_gap(point, found[index]) for point in at)
+        floor = max(size.values()) * MINIMUM_FRAGMENT_SHARE
+        chosen = sorted(
+            (label for label, area in size.items() if area >= floor),
+            key=lambda label: (-size[label], label),
         )
-        chosen = labels[nearest]
-    first_run = next(index for index, label in enumerate(labels) if label == chosen)
-    return (found[first_run][1], found[first_run][0])
+    return [_cropped(label, found, labels) for label in chosen]
 
 
-def outline(mask: Mask, *, at: Sequence[Point] = ()) -> list[Point]:
-    """The boundary of one blob — the one the prompt points at, if it points anywhere.
+def _bits(mask: Mask, *, pad: int) -> tuple[list[int], int]:
+    """The mask as one integer per row, offset by ``pad`` on every side.
+
+    A bitset because the two morphological passes below are then whole-row
+    shifts and ORs, which CPython does on machine words inside one big-integer
+    operation. The same passes written as nested loops over pixels would be a
+    Python-level step per pixel per radius step, on the path somebody is waiting
+    on after a click.
+    """
+    width = len(mask[0]) + 2 * pad
+    rows = [0] * (len(mask) + 2 * pad)
+    for y, first, last in runs(mask):
+        rows[y + pad] |= ((1 << (last - first + 1)) - 1) << (first + pad)
+    return rows, width
+
+
+def _grown(rows: Sequence[int], *, radius: int, width: int) -> list[int]:
+    """Every lit pixel spread by ``radius`` in each direction — a square dilation."""
+    frame = (1 << width) - 1
+    across = []
+    for row in rows:
+        spread = row
+        for step in range(1, radius + 1):
+            spread |= (row << step) | (row >> step)
+        across.append(spread & frame)
+    height = len(rows)
+    return [
+        _joined(across[max(0, y - radius) : min(height, y + radius + 1)]) for y in range(height)
+    ]
+
+
+def _shrunk(rows: Sequence[int], *, radius: int, width: int) -> list[int]:
+    """The dual: a pixel survives only with its whole square neighbourhood lit.
+
+    Outside the frame counts as unlit, which the shifts give for free — bits move
+    off the end and zeros arrive — and which is right here because the frame was
+    padded wide enough that nothing real sits against its edge.
+    """
+    frame = (1 << width) - 1
+    across = []
+    for row in rows:
+        kept = row
+        for step in range(1, radius + 1):
+            kept &= (row << step) & (row >> step) & frame
+        across.append(kept & frame)
+    height = len(rows)
+    return [
+        _met(across[max(0, y - radius) : min(height, y + radius + 1)])
+        if radius <= y < height - radius
+        else 0
+        for y in range(height)
+    ]
+
+
+def _joined(rows: Sequence[int]) -> int:
+    joined = 0
+    for row in rows:
+        joined |= row
+    return joined
+
+
+def _met(rows: Sequence[int]) -> int:
+    met = rows[0]
+    for row in rows[1:]:
+        met &= row
+    return met
+
+
+def closing_radius(mask: Mask, *, fill_holes: float) -> int:
+    """How far to reach, for a piece of this size and that share.
+
+    The share names the largest *hole* to close, and a hole of area ``a`` needs a
+    reach of about ``sqrt(a) / 2`` to be bridged — so the radius comes from the
+    piece's own lit area rather than from a pixel count, and the setting means
+    the same thing on a thing fifty pixels across and a thing five hundred
+    across. Rounded down, so the smallest shapes get no closing at all rather
+    than one that would swallow a feature.
+    """
+    if fill_holes <= 0.0:
+        return 0
+    lit = sum(last - first + 1 for _, first, last in runs(mask))
+    return int((lit * fill_holes) ** 0.5 / 2)
+
+
+def filled(mask: Mask, *, fill_holes: float = DEFAULT_FILL_HOLES) -> Mask:
+    """Step 2 — close the small gaps in a piece, wherever they are.
+
+    A morphological close: grow the shape, then shrink it back by the same
+    amount. Anything narrower than the reach is bridged on the way out and not
+    re-opened on the way back, and everything wider is left exactly as it was.
+
+    **A close rather than a flood fill of enclosed holes, and the reason is
+    measurable.** Boundary tracing walks a shape's *outer* ring, and
+    ``PolygonGeometry`` is one ring with no interior — so an enclosed hole is
+    invisible to the contour and to the extent alike, and filling one changes the
+    mask and nothing a caller ever sees. Filling an 8x8 hole in a 20x20 square
+    moves the mask from 336 lit pixels to 400 and leaves the traced outline
+    byte-identical. A close reaches the gaps that *do* show: the bays a segmenter
+    bites out of an edge, the notch where two strokes almost meet, the pinhole at
+    a corner.
+
+    ``0.0`` closes nothing and is a legitimate request rather than a disabled
+    feature: a mask of foliage is mostly gaps and every one of them is real.
+
+    Returns the mask unchanged — the same object — when the reach works out at
+    nothing or the shape has no gap that narrow, which is the common case and
+    saves rebuilding a grid to say so.
+    """
+    radius = closing_radius(mask, fill_holes=fill_holes)
+    if radius < 1:
+        return mask
+    before, width = _bits(mask, pad=radius)
+    after = _shrunk(_grown(before, radius=radius, width=width), radius=radius, width=width)
+    if after == before:
+        return mask
+    height = len(mask)
+    return [
+        [
+            bit == "1"
+            for bit in format(after[y + radius], f"0{width}b")[::-1][radius : radius + len(mask[0])]
+        ]
+        for y in range(height)
+    ]
+
+
+def outline(mask: Mask) -> list[Point]:
+    """The boundary of the piece this mask holds.
 
     Moore-neighbourhood tracing with Jacob's stopping criterion: walk the ring of
     lit pixels, at each one resuming the search from where the previous step
@@ -236,14 +500,15 @@ def outline(mask: Mask, *, at: Sequence[Point] = ()) -> list[Point]:
     classic bug — a shape with a one-pixel isthmus revisits its start mid-trace
     and the outline comes back truncated.
 
-    **One blob, not all of them** — but which one is :func:`_start_of`'s
-    decision, and ``at`` is what informs it. The walk itself cannot leave the
-    blob it starts in: it only ever steps to an 8-adjacent lit pixel, and two
-    pixels 8-adjacent to each other are the same blob by definition.
+    The walk cannot leave the piece it starts in: it only ever steps to an
+    8-adjacent lit pixel, and two pixels 8-adjacent to each other are the same
+    piece by definition. Which piece it starts in is no longer a question here —
+    :func:`components` has already made the mask hold exactly one.
     """
-    start = _start_of(mask, at)
-    if start is None:
+    found = runs(mask)
+    if not found:
         return []
+    start = (found[0][1], found[0][0])
     height, width = len(mask), len(mask[0])
 
     def lit(point: tuple[int, int]) -> bool:
@@ -294,6 +559,11 @@ def simplified(points: Sequence[Point], *, tolerance: float) -> list[Point]:
     Iterative rather than recursive: a traced boundary is thousands of points
     long and the recursive spelling of this algorithm is depth-unbounded on
     exactly the input it is given here.
+
+    **Ported line for line into TypeScript**, so the editor can re-simplify a
+    contour without asking. `tests/fixtures/simplification.json` is what holds
+    the two spellings to the same answers; change one and the gate fails until
+    the other follows.
     """
     if len(points) < 3:
         return list(points)
@@ -316,7 +586,7 @@ def simplified(points: Sequence[Point], *, tolerance: float) -> list[Point]:
     return [point for point, kept in zip(points, keep, strict=True) if kept]
 
 
-def tolerance_for(points: Sequence[Point], *, detail: float) -> float:
+def tolerance_for(points: Sequence[Point], *, detail: Detail = DEFAULT_DETAIL) -> float:
     """The pixel tolerance ``detail`` means for a region of this size.
 
     See the module docstring: a fraction of the bounding diagonal, floored so it
@@ -327,33 +597,20 @@ def tolerance_for(points: Sequence[Point], *, detail: float) -> float:
     xs = [x for x, _ in points]
     ys = [y for _, y in points]
     diagonal = ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2) ** 0.5
-    return max(MINIMUM_TOLERANCE, detail * diagonal)
+    return max(MINIMUM_TOLERANCE, EPSILON[detail] * diagonal)
 
 
-def polygon_from(
-    mask: Mask, *, detail: float = DEFAULT_DETAIL, at: Sequence[Point] = ()
-) -> PolygonGeometry | None:
-    """The mask's outline, simplified — or ``None`` if no polygon can be made.
+def contour(mask: Mask) -> list[Point]:
+    """Step 3 — the canonical boundary: traced, then reduced once at the floor.
 
-    ``None`` covers both an empty mask and a blob too thin to have three distinct
-    corners: the domain requires three points, and a two-point "polygon" is a
-    line somebody would have to fix by hand rather than a suggestion worth
-    offering.
-
-    ``at`` is the prompt's positive points, and it reaches :func:`outline` to
-    choose *which* blob. It matters here and not only there because a stray blob
-    is usually a speck, a speck traces to fewer than three points, and the answer
-    would otherwise be this ``None`` — "no suggestion" reported over a mask that
-    segmented the object perfectly well.
+    The reduction is part of the definition rather than an optimisation, and the
+    module docstring says why: Douglas-Peucker is not nested, so a client that
+    re-simplifies and a server that stays authoritative can only be proved to
+    agree when both start here. At half a pixel it discards nothing a mask of
+    integer coordinates could express, and it turns a staircase of thousands of
+    single-pixel steps into the handful of segments those steps were drawing.
     """
-    traced = outline(mask, at=at)
-    if len(traced) < 3:
-        return None
-    tolerance = tolerance_for(traced, detail=detail)
-    kept = _closed(simplified(traced, tolerance=tolerance), tolerance=tolerance)
-    if len(kept) < 3:
-        return None
-    return PolygonGeometry(points=kept)
+    return simplified(outline(mask), tolerance=MINIMUM_TOLERANCE)
 
 
 def _closed(kept: list[Point], *, tolerance: float) -> list[Point]:
@@ -377,44 +634,97 @@ def _closed(kept: list[Point], *, tolerance: float) -> list[Point]:
     return kept
 
 
-def bounds_of(points: Sequence[Point]) -> BboxGeometry | None:
-    """The smallest box containing those points, or ``None`` if there are none.
+def polygon_at(
+    points: Sequence[Point], *, detail: Detail = DEFAULT_DETAIL
+) -> PolygonGeometry | None:
+    """Step 4 — that contour at the requested vertex density, or ``None``.
 
-    Zero-area is widened to one unit rather than refused, for the reason
-    :func:`bbox_from` gives about a single lit pixel: the domain will not store a
-    degenerate box, and a perfectly flat or vertical outline is a real thing for
-    a segmenter to find at the edge of an image.
+    ``None`` covers a contour with nothing in it and one too thin to have three
+    distinct corners: the domain requires three points, and a two-point "polygon"
+    is a line somebody would have to fix by hand rather than a suggestion worth
+    offering.
+
+    Takes a contour rather than a mask, which is what lets the editor call the
+    same step on the same input without another forward pass.
     """
-    if not points:
+    if len(points) < 3:
         return None
-    xs = [x for x, _ in points]
-    ys = [y for _, y in points]
-    return BboxGeometry(
-        x=min(xs),
-        y=min(ys),
-        width=max(max(xs) - min(xs), 1.0),
-        height=max(max(ys) - min(ys), 1.0),
-    )
+    tolerance = tolerance_for(points, detail=detail)
+    kept = _closed(simplified(points, tolerance=tolerance), tolerance=tolerance)
+    if len(kept) < 3:
+        return None
+    return PolygonGeometry(points=kept)
 
 
-def narrowed(geometry: Geometry, *, allowed: Sequence[GeometryType]) -> Geometry | None:
-    """That shape in a kind the active class admits, or ``None`` if there is none.
+def _shifted(points: Sequence[Point], *, piece: Piece) -> list[Point]:
+    """A cropped piece's coordinates put back where the asset has them."""
+    return [(x + piece.x, y + piece.y) for x, y in points]
 
-    D3's rule, and it lives here — above the adapter and below the route —
-    because it is a *schema* decision rather than a model one. The port carries
-    no notion of what a class allows, deliberately: widening it would push a
-    project's schema into a protocol that has to be implementable by a service
-    that has never heard of this workspace.
 
-    So a segmenter answers with the most informative shape it has, and the
-    narrowing happens here: a polygon stands where polygons are allowed, becomes
-    its own bounding box where only boxes are, and is refused where neither is —
-    the tag-only class D3 says the gesture is not offered for at all. Nothing is
-    ever widened, because a box cannot become the outline it never held.
+def _boxed(piece: Piece) -> BboxGeometry | None:
+    """The piece's extent, in the asset's coordinates."""
+    box = bbox_from(piece.mask)
+    if box is None:
+        return None
+    return box.model_copy(update={"x": box.x + piece.x, "y": box.y + piece.y})
+
+
+def target_kind(allowed: Sequence[GeometryType]) -> GeometryType | None:
+    """The kind an answer for that class will come back in, before there is one.
+
+    Polygon where a class admits it, because it is the more informative shape and
+    a box can always be read off it; a box where that is all there is; nothing at
+    all for a class that holds no shape.
+
+    A function rather than a branch inside :func:`shapes_from`, because a caller
+    has to declare *which parameters apply* before it knows whether the model
+    found anything — and a second spelling of this rule in a route would be free
+    to disagree with the one that actually decides.
     """
     kinds = set(allowed)
-    if geometry.type in kinds:
-        return geometry
-    if isinstance(geometry, PolygonGeometry) and GeometryType.BBOX in kinds:
-        return bounds_of(geometry.points)
+    if GeometryType.POLYGON in kinds:
+        return GeometryType.POLYGON
+    if GeometryType.BBOX in kinds:
+        return GeometryType.BBOX
     return None
+
+
+def shapes_from(
+    mask: Mask,
+    *,
+    allowed: Sequence[GeometryType],
+    detail: Detail = DEFAULT_DETAIL,
+    fill_holes: float = DEFAULT_FILL_HOLES,
+    fragments: Fragments = DEFAULT_FRAGMENTS,
+    at: Sequence[Point] = (),
+) -> list[Shaped]:
+    """The whole pipeline: a mask and a class's geometries in, proposals out.
+
+    The four steps in their fixed order, with the geometry branch after the
+    second. A class that admits polygons gets outlines; one that admits only
+    boxes gets extents, measured off the filled piece rather than off a
+    simplified outline's corners — which is what keeps ``detail`` from quietly
+    moving a box.
+
+    **Nothing is ever widened.** A class admitting neither kind gets an empty
+    list, and a piece too thin to be a polygon is dropped rather than demoted to
+    a box: answering in a kind the caller did not ask for is how a suggestion
+    arrives that the schema will refuse to store.
+    """
+    kind = target_kind(allowed)
+    if kind is None:
+        return []
+
+    shaped: list[Shaped] = []
+    for piece in components(mask, fragments=fragments, at=at):
+        whole = Piece(x=piece.x, y=piece.y, mask=filled(piece.mask, fill_holes=fill_holes))
+        if kind is GeometryType.POLYGON:
+            traced = _shifted(contour(whole.mask), piece=whole)
+            polygon = polygon_at(traced, detail=detail)
+            if polygon is not None:
+                shaped.append(Shaped(geometry=polygon, contour=tuple(traced)))
+            continue
+        box = _boxed(whole)
+        if box is not None:
+            shaped.append(Shaped(geometry=box))
+    return shaped

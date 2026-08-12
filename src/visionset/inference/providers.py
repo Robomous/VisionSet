@@ -56,9 +56,20 @@ from visionset.kernel.errors import (
     InferenceConnectionNotRunnable,
     InferenceConnectionNotSetUp,
 )
-from visionset.kernel.ports import ModelProvider
+from visionset.kernel.ports import ModelProvider, PointSegmenter
 
 _Key = tuple[str, str]
+
+type Runner = ModelProvider | PointSegmenter
+"""Either kind of thing a connection can resolve to.
+
+A union rather than one widened port, because the two answer different
+questions: a detector is asked what it sees and answers in boxes, a segmenter is
+asked what is under a point and answers in pixels. Resolution is the same for
+both — a connection names a model, and its family decides which adapter is built
+— so it is only the return type that has to admit both, and the caller narrows
+with ``isinstance`` on the protocol it needs.
+"""
 
 
 class ProviderPool:
@@ -70,7 +81,7 @@ class ProviderPool:
     """
 
     def __init__(self, capacity: int = DEFAULT_PROVIDER_CAPACITY) -> None:
-        self._held: BoundedCache[_Key, ModelProvider] = BoundedCache(capacity)
+        self._held: BoundedCache[_Key, Runner] = BoundedCache(capacity)
         self._builds = 0
 
     @property
@@ -82,7 +93,7 @@ class ProviderPool:
         """
         return self._builds
 
-    def get(self, connection: InferenceConnection, *, workspace_root: Path) -> ModelProvider:
+    def get(self, connection: InferenceConnection, *, workspace_root: Path) -> Runner:
         """The provider for that connection, built once and kept.
 
         Every refusal ``provider_for`` can raise is raised here too, and raised
@@ -118,7 +129,7 @@ def resident() -> ProviderPool:
     return _RESIDENT
 
 
-def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> ModelProvider:
+def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
     """The thing that will answer for this connection, or the reason nothing can.
 
     Builds a provider without loading any weights — the load is lazy, in the
@@ -144,7 +155,7 @@ def provider_for(connection: InferenceConnection, *, workspace_root: Path) -> Mo
             )
 
 
-def _local(connection: InferenceConnection, *, workspace_root: Path) -> ModelProvider:
+def _local(connection: InferenceConnection, *, workspace_root: Path) -> Runner:
     """A local provider of whichever family this connection's model belongs to.
 
     The order of the two checks is deliberate and unchanged from the slice that

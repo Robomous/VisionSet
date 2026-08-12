@@ -1,5 +1,5 @@
 # usage: from visionset.inference import LocalSamProvider
-"""A ``ModelProvider`` that answers a pointing gesture, here, in this process.
+"""A ``PointSegmenter`` that answers a pointing gesture, here, in this process.
 
 The counterpart to ``transformers_provider``: that one answers words and refuses
 points, this one answers points and refuses words. Neither guesses at the other,
@@ -15,11 +15,20 @@ design does: :meth:`get_image_embeddings` is the encode, and the processor
 accepts ``original_sizes`` *without* ``images``, so the decode never touches a
 pixel. The cache sits exactly on that seam.
 
-**Nothing about the cache is visible through the port.** ``ModelProvider`` must
+**Nothing about the cache is visible through the port.** ``PointSegmenter`` must
 stay implementable by something running in another building, so the caching is an
 adapter's private business: the protocol
-gets ``predict``, and a hosted segmenter is free to cache in whatever way its
+gets ``segment``, and a hosted segmenter is free to cache in whatever way its
 own deployment allows, or not at all.
+
+**And nothing about shapes happens here.** This answers with the mask the model
+produced and stops. Which of its pieces are worth proposing, whether the holes
+inside them are closed, how many vertices survive — every one of those is a
+product decision a person adjusts, and it lives in ``masks`` above this line so
+that a second segmenter inherits it rather than reimplementing it. The prompt's
+points do not even reach this file's mask handling any more: choosing which
+piece was meant is a question about the gesture, and it is answered where the
+gesture's other consequences are.
 
 The fp16 shims and the missing-extra error are ``transformers_provider``'s,
 reused rather than respelled — same ``_fp16.forward_guard``, same
@@ -29,7 +38,7 @@ reused rather than respelled — same ``_fp16.forward_guard``, same
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Final
@@ -40,13 +49,12 @@ from PIL import Image
 from visionset.inference import _fp16
 from visionset.inference._extra import imported
 from visionset.inference.cache import DEFAULT_EMBEDDING_CAPACITY, BoundedCache
-from visionset.inference.masks import DEFAULT_DETAIL, polygon_from
 from visionset.kernel.domain import (
-    AssetPrediction,
+    AssetSegmentation,
     PointPrompt,
-    PredictedRegion,
     PredictionRequest,
     PredictionTarget,
+    SegmentedMask,
 )
 from visionset.kernel.errors import UnsupportedPrompt
 
@@ -106,9 +114,10 @@ def best_of(iou_scores: list[float]) -> tuple[int, float]:
 class LocalSamProvider:
     """Runs a point-promptable segmenter here, on this machine.
 
-    Satisfies :class:`~visionset.kernel.ports.ModelProvider` structurally, like
-    its sibling, and is built by the composition root that has already decided
-    this connection's model is of this family.
+    Satisfies :class:`~visionset.kernel.ports.PointSegmenter` structurally — its
+    sibling satisfies ``ModelProvider`` the same way — and is built by the
+    composition root that has already decided this connection's model is of this
+    family.
 
     One instance per connection, held across requests by the provider cache —
     which is what makes the embedding cache inside it worth anything. A provider
@@ -125,7 +134,6 @@ class LocalSamProvider:
         precision: str | None,
         cache_dir: Path,
         connection_name: str = "",
-        detail: float = DEFAULT_DETAIL,
         embedding_capacity: int = DEFAULT_EMBEDDING_CAPACITY,
     ) -> None:
         self._model_id = model_id
@@ -134,7 +142,6 @@ class LocalSamProvider:
         self._precision = precision
         self._cache_dir = cache_dir
         self._connection_name = connection_name
-        self._detail = detail
         self._loaded: tuple[Any, Any, str, bool] | None = None
         self._embeddings: BoundedCache[UUID, tuple[Any, tuple[int, int]]] = BoundedCache(
             embedding_capacity
@@ -158,7 +165,7 @@ class LocalSamProvider:
         """
         return self._encodes
 
-    def predict(self, request: PredictionRequest) -> Iterator[AssetPrediction]:
+    def segment(self, request: PredictionRequest) -> Iterator[AssetSegmentation]:
         """One answer per target, yielded as each finishes.
 
         Raises:
@@ -190,8 +197,8 @@ class LocalSamProvider:
         labels: list[int],
         torch: Any,
         minimum_confidence: float,
-    ) -> AssetPrediction:
-        """One image, one prompt, one region at most."""
+    ) -> AssetSegmentation:
+        """One image, one prompt, one mask at most."""
         processor, model, device, half = self._ready()
         embedding, size = self._embedding(target, processor=processor, model=model, device=device)
         height, width = size
@@ -208,49 +215,37 @@ class LocalSamProvider:
                 image_embeddings=embedding,
                 multimask_output=True,
             )
-        return AssetPrediction(
+        return AssetSegmentation(
             asset_id=target.asset_id,
             model_ref=self.model_ref,
-            regions=self._regions(
-                outputs,
-                processor=processor,
-                size=size,
-                minimum_confidence=minimum_confidence,
-                at=[
-                    (point[0], point[1])
-                    for point, label in zip(points, labels, strict=True)
-                    if label == POSITIVE
-                ],
+            segments=self._segments(
+                outputs, processor=processor, size=size, minimum_confidence=minimum_confidence
             ),
         )
 
-    def _regions(
+    def _segments(
         self,
         outputs: Any,
         *,
         processor: Any,
         size: tuple[int, int],
         minimum_confidence: float,
-        at: Sequence[tuple[float, float]] = (),
-    ) -> tuple[PredictedRegion, ...]:
-        """The chosen mask as a domain polygon, or nothing at all.
+    ) -> tuple[SegmentedMask, ...]:
+        """The chosen mask and its score, or nothing at all.
 
-        Empty rather than raising, in all three of the ways this can come back
-        with no answer — the model was not sure enough, the mask was empty, or
-        the blob was too thin to be a polygon. A click on a patch of sky is an
-        ordinary thing to do and "no suggestion" is the honest reply to it.
+        Empty rather than raising, in both of the ways this can come back with no
+        answer — the model was not sure enough, or the mask it produced is empty.
+        A click on a patch of sky is an ordinary thing to do and "no suggestion"
+        is the honest reply to it.
 
-        **The prompt's positive points travel with the mask.** A mask can hold
-        more than one blob, and which of them the caller meant is a question only
-        the points can answer; without them the outline is whichever blob the
-        speckle put nearest the top-left. Negatives stay behind — they
-        shape the mask, and by here the mask is already made.
+        **No shape is decided here.** This used to trace and simplify an outline
+        and return a polygon, which put a product's choices behind a port. The
+        mask crosses intact and the pipeline above makes the shape.
 
-        **The label is deliberately empty.** Pointing says *where*, not *what*:
-        this model has no vocabulary and answers with a shape. The editor already
-        knows which class is active — that is what chose the geometry kinds — so
-        a name invented here would be a second, worse source for something the
-        caller already holds.
+        **There is no label.** Pointing says *where*, not *what*: this model has
+        no vocabulary. The editor already knows which class is active — that is
+        what chose the geometry kinds — so a name invented here would be a
+        second, worse source for something the caller already holds.
         """
         lifted = processor.post_process_masks(
             outputs.pred_masks, original_sizes=[list(size)], binarize=True
@@ -260,10 +255,7 @@ class LocalSamProvider:
         if confidence < minimum_confidence:
             return ()
         mask = lifted.reshape(-1, *lifted.shape[-2:])[chosen]
-        polygon = polygon_from(mask.tolist(), detail=self._detail, at=at)
-        if polygon is None:
-            return ()
-        return (PredictedRegion(label="", confidence=confidence, geometry=polygon),)
+        return (SegmentedMask(mask=mask.tolist(), score=confidence),)
 
     def _embedding(
         self, target: PredictionTarget, *, processor: Any, model: Any, device: str

@@ -169,11 +169,26 @@ from visionset.kernel.domain.schema_diff import (
     SchemaDiff,
     diff_classes,
 )
+from visionset.kernel.domain.segmentation import (
+    AssetSegmentation,
+    Mask,
+    SegmentedMask,
+)
 from visionset.kernel.domain.source import (
     Source,
     SourceKind,
     VideoProvenance,
     canonical_path,
+)
+from visionset.kernel.domain.suggestion import (
+    DEFAULT_DETAIL,
+    DEFAULT_FILL_HOLES,
+    DEFAULT_FRAGMENTS,
+    PARAMETER_APPLIES_TO,
+    Detail,
+    Fragments,
+    SuggestParameter,
+    suggest_parameters,
 )
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
@@ -336,6 +351,17 @@ __all__ = [
     "SingleJob",
     "Source",
     "SourceKind",
+    "AssetSegmentation",
+    "Mask",
+    "SegmentedMask",
+    "Detail",
+    "Fragments",
+    "SuggestParameter",
+    "PARAMETER_APPLIES_TO",
+    "DEFAULT_DETAIL",
+    "DEFAULT_FILL_HOLES",
+    "DEFAULT_FRAGMENTS",
+    "suggest_parameters",
     "SplitAssignment",
     "SplitRecipe",
     "TaskGroup",

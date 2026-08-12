@@ -65,11 +65,24 @@ from visionset.inference.integrity import (
     published_digests,
     purge,
 )
-from visionset.inference.masks import DEFAULT_DETAIL, narrowed, polygon_from
+from visionset.inference.masks import (
+    EPSILON,
+    MINIMUM_FRAGMENT_SHARE,
+    MINIMUM_TOLERANCE,
+    Piece,
+    Shaped,
+    components,
+    contour,
+    filled,
+    polygon_at,
+    shapes_from,
+    simplified,
+    tolerance_for,
+)
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
 from visionset.inference.providers import ProviderPool, provider_for, resident
 from visionset.inference.sam_provider import LocalSamProvider
-from visionset.inference.suggestions import suggest
+from visionset.inference.suggestions import Suggestion, suggest
 from visionset.inference.transformers_provider import LocalTransformersProvider
 from visionset.inference.weights import (
     DEFAULT_SIZE_CAPACITY,
@@ -85,7 +98,7 @@ from visionset.inference.weights import (
 )
 
 __all__ = [
-    "DEFAULT_DETAIL",
+    "EPSILON",
     "DEFAULT_EMBEDDING_CAPACITY",
     "DEFAULT_IOU_THRESHOLD",
     "DEFAULT_PROVIDER_CAPACITY",
@@ -119,8 +132,18 @@ __all__ = [
     "measure",
     "published_digests",
     "purge",
-    "narrowed",
-    "polygon_from",
+    "MINIMUM_FRAGMENT_SHARE",
+    "MINIMUM_TOLERANCE",
+    "Piece",
+    "Shaped",
+    "Suggestion",
+    "components",
+    "contour",
+    "filled",
+    "polygon_at",
+    "shapes_from",
+    "simplified",
+    "tolerance_for",
     "provider_for",
     "require",
     "resident",

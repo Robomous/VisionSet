@@ -47,6 +47,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from visionset.inference import capabilities_of
 from visionset.kernel.domain import (
+    DEFAULT_DETAIL,
+    DEFAULT_FILL_HOLES,
+    DEFAULT_FRAGMENTS,
     Annotation,
     AnnotationJob,
     AnnotationJobState,
@@ -74,8 +77,10 @@ from visionset.kernel.domain import (
     Dataset,
     DatasetChange,
     DatasetStats,
+    Detail,
     DownloadSize,
     ExportCompatibility,
+    Fragments,
     Geometry,
     GeometryType,
     ImageFormat,
@@ -106,6 +111,7 @@ from visionset.kernel.domain import (
     SourceKind,
     SplitAssignment,
     SplitRecipe,
+    SuggestParameter,
     VideoProvenance,
     WeightDownload,
     asset_actions,
@@ -1920,29 +1926,59 @@ class SuggestRequest(BaseModel):
     #: to refuse. Sent by the caller because the class is the caller's state —
     #: the server would otherwise be guessing which class a click was meant for.
     allowed_geometries: list[GeometryType] = Field(min_length=1)
+    #: How much of an outline survives simplification. Omitted means `balanced`,
+    #: which is what every suggestion used before there was a choice.
+    detail: Detail = DEFAULT_DETAIL
+    #: The largest gap closed in the model's mask, as a share of the piece's own
+    #: area. Zero closes nothing.
+    fill_holes: float = Field(DEFAULT_FILL_HOLES, ge=0.0, le=1.0)
+    #: Whether the piece under the click is the answer, or every piece big enough
+    #: to be worth proposing.
+    fragments: Fragments = DEFAULT_FRAGMENTS
 
 
 class SuggestedRegion(BaseModel):
-    """One proposed shape and how sure the model is of it."""
+    """One proposed shape, and the contour it was reduced from."""
 
     geometry: Geometry
-    confidence: float = Field(ge=0.0, le=1.0)
+    #: The unsimplified outline, in the asset's own pixels — what lets a client
+    #: re-run `detail` locally instead of asking again. Empty for a box, which is
+    #: an extent rather than something reduced from anything.
+    contour: list[tuple[float, float]] = Field(default_factory=list)
+
+
+class AppliedParameters(BaseModel):
+    """The parameter values this answer was actually produced with."""
+
+    detail: Detail
+    fill_holes: float
+    fragments: Fragments
 
 
 class SuggestionOut(BaseModel):
     """What the model proposes, or an honest nothing.
 
-    ``region`` is null when there is no suggestion, and that is an ordinary
+    `regions` is empty when there is no suggestion, and that is an ordinary
     answer rather than an error: a click can land on sky, the model can be less
-    sure than the caller asked for, and the shape found can be one this class
-    cannot hold. A 404 or a 409 for any of those would be telling the caller they
-    did something wrong when they did not.
+    sure than the caller asked for, the shape found can be one this class cannot
+    hold, and the parameters as set can leave nothing. A 404 or a 409 for any of
+    those would be telling the caller they did something wrong when they did not.
 
-    ``model_ref`` is echoed on every answer, including the empty one, because it
+    `model_ref` is echoed on every answer, including the empty one, because it
     is what an accepted suggestion has to carry into its annotation — and a
     caller that had to remember which connection it asked would be keeping a
-    second copy of something the response can simply state.
+    second copy of something the response can simply state. `confidence` is the
+    same: one number for the answer, because the model scored one mask and the
+    pieces cut out of it are that same claim seen in parts.
+
+    `parameters` names which settings have any effect on the kind of shape this
+    request will come back in, so a client renders exactly those and works none
+    of it out for itself. It is present on an empty answer too, which is what
+    lets somebody who adjusted their way into nothing adjust their way back out.
     """
 
     model_ref: str
-    region: SuggestedRegion | None = None
+    confidence: float = Field(0.0, ge=0.0, le=1.0)
+    regions: list[SuggestedRegion] = Field(default_factory=list)
+    applied: AppliedParameters
+    parameters: list[SuggestParameter] = Field(default_factory=list)
