@@ -422,7 +422,8 @@ object list is how a lane is selected, which is a real affordance rather than a 
 #### Suggesting a shape from a click
 
 The sparkles button - hotkey `S` - arms the **suggest tool**: click the thing you
-want and a segmentation model proposes its shape. It runs through a model
+want and a segmentation model proposes its shape, which you can then adjust
+before accepting. It runs through a model
 connection (`docs/inference.md`), and the server side of it is
 `POST /inference/suggest`.
 
@@ -449,7 +450,8 @@ The gesture:
 | left-click | adds a point on the object, and asks again |
 | alt-click | adds a point that is **not** on the object, and asks again |
 | `↵` | accepts the proposal as an annotation |
-| `Esc` | clears the points; pressing it again puts the tool away |
+| `[` / `]` | coarser or finer, without opening anything |
+| `Esc` | closes the adjustments; then clears the points; then puts the tool away |
 
 Every click sends **all** the points placed so far - the route is stateless - and
 the answer replaces the preview. The first click on a frame is the slow one,
@@ -480,6 +482,35 @@ with a dashed outline, carries its class and the model's confidence beside it, a
 is in neither the document nor the undo history. `Esc` is its undo. Switching
 class, switching frames or leaving the page discards it, and nothing is written.
 
+**The shape can be adjusted before it is accepted**, from a section inside the
+same card - never a second panel over the picture, which would cover the thing
+being adjusted. It is closed until you ask for it, because the defaults are right
+most of the time.
+
+Three settings, and which of them appear is the server's answer rather than the
+editor's guess (`docs/inference.md`). **Detail** is three steps with a live count
+of the vertices beside it, and `[` and `]` move it without opening anything -
+that one costs no request at all, because the answer carried the full outline and
+the editor re-simplifies it here. **Close gaps** smooths the notches a segmenter
+bites out of an edge. **Every separate piece** proposes each part of the mask
+rather than only the one you clicked. Those last two change what the model's mask
+*is*, so they ask again - the frame is already read, so it is quick.
+
+On a class that stores a box only the last of the three appears, because the
+other two change an outline and a box has none. The editor does not know that;
+the answer says so.
+
+**Adjusting into nothing says so and leaves the controls up.** A setting can
+empty the proposal - every piece too small, or an outline reduced past being a
+shape - and when it does, the card says what happened and every control stays
+where it was, so the way back is the way you came. The preview never simply
+vanishes.
+
+**Accepting several pieces is one action and one undo.** Where the answer
+proposed more than one shape, `Accept` writes all of them and a single `mod+z`
+takes all of them back. Accepting some and not others is planned rather than
+present (#548).
+
 **The tool stays armed while you change class.** Arming it is a decision about how
 to work, and picking the class to work on is the next thing you do - so a class
 switch ends the proposal on screen and not the tool. The next click asks under the
@@ -491,7 +522,7 @@ rather than switching itself off: the button dims and says why, the panel says w
 to pick, and the canvas goes back to drawing that class normally. Choose a box or a
 polygon class again and the tool carries on, with nothing to press.
 
-Accepting creates one ordinary annotation, in one undo step, carrying
+Accepting creates ordinary annotations, in one undo step, carrying
 `provenance: model`, the `model_ref` the answer named and its `confidence` - the
 same write path a hand-drawn shape takes, so the same schema rules apply and the
 frame settles the same way.
