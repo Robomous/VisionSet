@@ -129,30 +129,29 @@ describe("hovering, with nothing in flight", () => {
     }
   });
 
-  it("offers a move over a body, and names the body it would move", () => {
+  it("answers default over a body, and names the body a press would take", () => {
     expect(at(IDLE, BOX_BODY)).toEqual({
-      cursor: "move",
+      cursor: "default",
       hot: { kind: "body", id: BOX_ID },
     });
   });
 
-  it("offers a move over a vertex of the picked polygon", () => {
+  it("answers default over a vertex of the picked polygon", () => {
     const answer = at(IDLE, POLY_VERTEX, "select", scene(selectOnly(POLY_ID)));
-    expect(answer.cursor).toBe("move");
+    expect(answer.cursor).toBe("default");
     expect(answer.hot).toEqual({ kind: "vertex", id: POLY_ID, index: 0, point: POLY_VERTEX });
   });
 
-  it("offers a move over an edge, because a press on one starts a move", () => {
-    // `IDLE_ROW` groups edge with body — `if (kind === "body" || kind === "edge")
-    // return pressOnShape(...)`. Showing `default` here would be the drawing-tool
-    // lie inverted: under-promising, and still a disagreement with the table. The
-    // press is asserted in the same test so the two cannot drift apart.
+  it("answers default over an edge, where the press still starts a move", () => {
+    // The cursor stopped advertising the move (#567), so the press is the half
+    // that matters here: asserted below, in the same test, so the two cannot
+    // drift apart.
     // Seven pixels outside the polygon's top edge: past the 4-px shape tolerance
     // that would make it a body hit, inside the 15-px edge band.
     const point: Point = [350, 293];
     const where = scene(selectOnly(POLY_ID));
     const answer = affordanceAt(IDLE, where, "select", point);
-    expect(answer.cursor).toBe("move");
+    expect(answer.cursor).toBe("default");
     expect(answer.hot.kind).toBe("edge");
 
     const pressed = transition(IDLE, down(point), {
@@ -174,7 +173,7 @@ describe("hovering, with nothing in flight", () => {
     // `resolveTarget` ranks grips for selected boxes only, and the body underneath
     // is what a press would actually take.
     const answer = at(IDLE, BOX_NW, "select", scene());
-    expect(answer.cursor).toBe("move");
+    expect(answer.cursor).toBe("default");
     expect(answer.hot).toEqual({ kind: "body", id: BOX_ID });
   });
 
@@ -405,12 +404,15 @@ describe("the cursor table", () => {
   it("can actually produce every cursor the union declares", () => {
     // The union is vocabulary, and vocabulary nobody speaks is dead weight that
     // reads as capability. Every member has to come out of a real call: the four
-    // resize keywords from the grips, `move` from a body, `crosshair` from a
-    // drawing tool, `default` from empty canvas, `pointer` from the first vertex of
-    // a polygon long enough to close.
+    // resize keywords from the grips, `move` from a drag in flight — its only
+    // source since a hover stopped offering it (#567) — `crosshair` from a drawing
+    // tool, `default` from empty canvas, `pointer` from the first vertex of a
+    // polygon long enough to close.
     const closeable = drawing(...PENDING);
+    const dragging = worldIn("moving");
     const produced = new Set<Cursor>([
       ...BBOX_HANDLES.map((handle) => at(IDLE, GRIP_POSITIONS[handle]).cursor),
+      affordanceAt(dragging.state, sceneOfWorld(dragging), "select", EMPTY_POINT).cursor,
       at(IDLE, BOX_BODY).cursor,
       at(IDLE, EMPTY_POINT, "bbox").cursor,
       at(IDLE, EMPTY_POINT).cursor,
@@ -459,10 +461,13 @@ describe("the viewer's affordance (#426)", () => {
     expect(affordance.hot).toEqual({ kind: "body", id: BOX_ID });
   });
 
-  it("answers default over a body, where the editor's select tool says move", () => {
-    expect(affordanceAt(IDLE, viewerScene(), "select", BOX_BODY).cursor).toBe("move");
-    expect(viewerAffordanceAt(viewerScene(), BOX_BODY).cursor).toBe("default");
-    expect(viewerAffordanceAt(viewerScene(), BOX_BODY).hot).toEqual({ kind: "body", id: BOX_ID });
+  it("resolves no grip at all, which is what the editor still does differently", () => {
+    // Both modes answer `default` over a body since #567, so the cursor no longer
+    // tells them apart. What does: a viewer never resolves a grip or a vertex, so
+    // no resize keyword can appear anywhere in it.
+    expect(viewerAffordanceAt(viewerScene(), BOX_NW).cursor).toBe("default");
+    expect(viewerAffordanceAt(viewerScene(), BOX_NW).hot).toEqual({ kind: "body", id: BOX_ID });
+    expect(at(IDLE, BOX_NW, "select", scene(selectOnly(BOX_ID))).hot.kind).toBe("handle");
   });
 
   it("answers default and no target over empty canvas", () => {

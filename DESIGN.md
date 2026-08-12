@@ -1079,9 +1079,10 @@ What a viewer is (decisions of 2026-08-07, #426, and 2026-08-08, #439):
   viewer can ask.
 - **Selection highlights; it does not advertise.** A selected shape renders the
   selected treatment — stroke 3, the label — with **no grips and no vertex
-  dots**, and the cursor is the **default arrow everywhere**: no `move`, no
-  resize keywords, because no such gesture exists. The tool strip is not
-  rendered at all, for the same reason it never was.
+  dots**, and the cursor is the **default arrow everywhere**: no resize keywords,
+  because no such gesture exists. The tool strip is not rendered at all, for the
+  same reason it never was. Since #567 the editor also shows the plain arrow over
+  a shape, so what separates the modes is the grips rather than the cursor.
 - **Selection is one state, reflected everywhere.** A press on a shape selects
   it — the one pointer gesture a viewer keeps, resolved by the same hit rule the
   right-click menu uses — and the objects panel's row highlights and scrolls
@@ -1162,6 +1163,13 @@ gallery badges (#55) — and it **already exists, shipped and unit-tested**:
   *is* what the detail control is about — a live vertex count beside the slider and nothing
   on the picture made it a control somebody moved blind. Its outline is dashed and an
   accepted annotation's is solid, which is what tells proposed from committed at a glance.
+
+**The cursor promises the common outcome, not the rare one** (#567). In Select mode,
+hovering a shape — its body, its edge band, or a vertex — is the **plain arrow**: a press
+there *selects*, and only becomes a move if the pointer then travels. What reports which
+shape a press would take is the hover **highlight**, not the cursor. The four-arrow `move`
+appears only while a drag is actually in flight, and the directional resize keywords only on
+a selected box's grips, where they name an axis the arrow cannot.
 
 **The canvas label is part of what selection looks like.** A frame carrying forty boxes drew
 forty class names over the picture at all times, which hides the asset behind the annotations

@@ -1421,12 +1421,12 @@ function storedBox(assetId: string): Record<string, unknown> {
 }
 
 /**
- * Read-only selection highlights — stroke and
- * label — and advertises nothing. No move cursor anywhere, no grips or vertex
- * dots on the selected shape. The editor is asserted beside it, so the claim is
- * about the mode and not about the fixture.
+ * Read-only selection highlights and advertises nothing: no grips, no vertex
+ * dots. The editor is asserted beside it, so the claim is about the mode and not
+ * about the fixture. The cursor no longer separates them (#567) and is not
+ * compared here.
  */
-test("read-only selection shows no move cursor and no handles; the editor shows both", async ({
+test("read-only selection grows no handles, where the editor's does", async ({
   page,
 }) => {
   const sent: Request[] = [];
@@ -1447,16 +1447,9 @@ test("read-only selection shows no move cursor and no handles; the editor shows 
   await expect(page.locator("[data-handle]")).toHaveCount(0);
   await expect(page.locator("[data-vertex]")).toHaveCount(0);
 
-  // (b) …and hovering the body promises nothing: the pane's cursor is the
-  // default arrow, not `move`.
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  const viewing = await page
-    .getByTestId("annotator-pane")
-    .evaluate((node) => getComputedStyle(node).cursor);
-  expect(viewing).toBe("default");
 });
 
-test("the editor still offers what the viewer withholds — move cursor and grips", async ({
+test("the editor grows grips on selection, and hovering a shape stays a plain arrow", async ({
   page,
 }) => {
   const sent: Request[] = [];
@@ -1469,11 +1462,14 @@ test("the editor still offers what the viewer withholds — move cursor and grip
   await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "true");
 
   await expect(page.locator("[data-handle]").first()).toBeVisible();
+
+  // Hovering the body is a plain arrow, not the four-arrow `move` (#567). Only a
+  // browser has a computed cursor at all.
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   const editing = await page
     .getByTestId("annotator-pane")
     .evaluate((node) => getComputedStyle(node).cursor);
-  expect(editing).toBe("move");
+  expect(editing).toBe("default");
 });
 
 /**

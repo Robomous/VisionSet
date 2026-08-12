@@ -194,15 +194,13 @@ function hovering(scene: Scene, tool: Tool, point: Point): Affordance {
     case "vertex":
     case "body":
     case "edge":
-      // `edge` is grouped with `body` because `IDLE_ROW` groups them:
-      // `if (target.kind === "body" || target.kind === "edge") return pressOnShape(...)`.
-      // A press in the 15-px band around a selected polygon picks it and starts a
-      // move, so `move` is what the cursor owes. Showing `default` there would be
-      // the drawing-tool lie inverted — under-promising rather than over — and
-      // still a disagreement with the table. The double-click that inserts a
-      // vertex is a second meaning for the same band, not the only one; a renderer
-      // that wants to hint at it has the `edge` target in `hot`.
-      return { cursor: "move", hot: target };
+      // `edge` is grouped with `body` because `IDLE_ROW` groups them.
+      //
+      // `default`, reversing an earlier `move` (#567): a press here *selects*,
+      // and only becomes a move if the pointer travels — so `move` advertised the
+      // rarer outcome. `hot` is unchanged, so the shape still highlights, and a
+      // drag in flight still answers `move` below.
+      return { cursor: "default", hot: target };
     case "empty":
       return { cursor: "default", hot: NO_TARGET };
   }
@@ -257,11 +255,12 @@ export function affordanceAt(
 /**
  * The affordance a **viewer** answers, where selection is the only gesture.
  *
- * The cursor is `default` everywhere: a read-only page never
- * shows `move`, because no move exists to promise. What survives is the hot
- * body, so hovering still says *this is the shape a press would pick*: a
- * highlight aids selection, which is a read, where a cursor change advertises
- * an edit.
+ * The cursor is `default` everywhere: a read-only page never shows a resize
+ * keyword, because no such gesture exists. What survives is the hot body, so
+ * hovering still says *this is the shape a press would pick*.
+ *
+ * The editor now answers `default` over a shape too (#567); what still separates
+ * the modes is below — a viewer resolves no grip and no vertex at all.
  *
  * It deliberately does not call `resolveTarget`: that resolver offers grips and
  * vertices on the selected shape, and a viewer draws none (the same mirror as
