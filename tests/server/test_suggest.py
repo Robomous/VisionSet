@@ -35,7 +35,6 @@ from visionset.kernel.domain import (
 )
 from visionset.server.routes import inference as inference_routes
 
-
 ASSET_WIDTH = 32
 ASSET_HEIGHT = 24
 """What ``write_image`` makes, and therefore the frame every mask here lives in."""
