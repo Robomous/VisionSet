@@ -39,12 +39,18 @@ def get_home(workspace: WorkspaceDep) -> HomeOut:
     project list, not a copy of it, and `activity` is capped — both have a screen
     that owns them in full.
 
-    `resume` is the batch to carry on with: the one furthest through that still
-    has an unannotated frame. It is **derived on every call and never stored**,
-    and it is ranked by progress rather than by recency because nothing in the
-    workspace records when a batch was last worked on. When `next_asset_id` is
-    null the batch has no unlabeled frame left — open its gallery rather than the
-    editor. `resume` itself is null when no batch is open for annotation.
+    `resume` is the batch to carry on with, **derived on every call and never
+    stored**. Read its `kind` first: `annotate` means `next_asset_id` is a frame
+    nobody has labeled, `review` means it is one awaiting a reviewer, and `open`
+    means the batch is settled throughout and `next_asset_id` is null — open its
+    gallery rather than the editor. The three are in priority order, decided
+    here, and a client renders what it is told rather than working it out again.
+    `resume` itself is null when no batch is open for annotation.
+
+    Batches are ranked by when somebody last worked them. Ones nobody has worked
+    since that became recordable rank last, ordered among themselves by how far
+    through they are — which is every batch in a workspace created before the
+    stamp existed, since it was added without a backfill.
 
     `attention` carries batches with frames awaiting review, and background jobs
     that failed or are still running. A job row has no `project_id`: a job names

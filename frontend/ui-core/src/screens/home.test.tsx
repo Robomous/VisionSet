@@ -76,6 +76,7 @@ function homeBody(overrides: Record<string, unknown> = {}): Record<string, unkno
 
 function resume(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
+    kind: "annotate",
     project_id: PROJECT,
     project_name: "Highway pilot",
     batch_id: BATCH,
@@ -84,6 +85,7 @@ function resume(overrides: Record<string, unknown> = {}): Record<string, unknown
     next_asset_id: ASSET,
     annotated: 148,
     total: 200,
+    review_pending: 0,
     thumbnail_asset_id: ASSET,
     ...overrides,
   };
@@ -164,11 +166,57 @@ it("offers the batch to carry on with, and where inside it", async () => {
   render(mount(<HomeScreen onContinue={() => {}} />));
 
   const card = await screen.findByTestId("home-resume");
-  expect(card.getAttribute("data-has-frame")).toBe("true");
+  expect(card.getAttribute("data-kind")).toBe("annotate");
   expect(card.textContent).toContain("Highway pilot");
   expect(card.textContent).toContain("Batch 3");
   expect(card.textContent).toContain("148 / 200 annotated");
   expect(screen.getByTestId("home-resume-cta").textContent).toContain("Continue annotating");
+});
+
+it("sends the reviewer to the frame awaiting review, on the same route", async () => {
+  const opened: [string, string | null][] = [];
+  on("GET", /\/home$/, {
+    status: 200,
+    body: homeBody({
+      resume: resume({ kind: "review", annotated: 200, total: 200, review_pending: 12 }),
+    }),
+  });
+  render(
+    mount(
+      <HomeScreen
+        onContinue={(job, asset) => opened.push([job, asset])}
+        onOpenBatch={() => expect.unreachable("review opens the editor, not the gallery")}
+      />,
+    ),
+  );
+
+  const card = await screen.findByTestId("home-resume");
+  expect(card.getAttribute("data-kind")).toBe("review");
+  // The count line follows the label: how much of the batch is labeled is not
+  // the number anybody is here for once the labeling is done.
+  expect(card.textContent).toContain("12 waiting on review");
+  expect(card.textContent).not.toContain("annotated");
+
+  const cta = screen.getByTestId("home-resume-cta");
+  expect(cta.textContent).toContain("Review annotations");
+  await userEvent.click(cta);
+  expect(opened).toEqual([[JOB, ASSET]]);
+});
+
+it("renders what the wire declares rather than deriving it from the other fields", async () => {
+  // A batch with a frame to label *and* frames awaiting review. The kernel
+  // resolved this to `annotate`; a screen that worked the priority out again
+  // would be keeping a second copy of a rule that can drift, and this fixture is
+  // where the two spellings would disagree.
+  on("GET", /\/home$/, {
+    status: 200,
+    body: homeBody({ resume: resume({ kind: "annotate", review_pending: 7 }) }),
+  });
+  render(mount(<HomeScreen onContinue={() => {}} />));
+
+  const card = await screen.findByTestId("home-resume");
+  expect(screen.getByTestId("home-resume-cta").textContent).toContain("Continue annotating");
+  expect(card.textContent).toContain("148 / 200 annotated");
 });
 
 it("hands the annotator the frame the card named", async () => {
@@ -185,7 +233,9 @@ it("falls back to opening the batch when no frame is left to label", async () =>
   const opened: [string, string][] = [];
   on("GET", /\/home$/, {
     status: 200,
-    body: homeBody({ resume: resume({ next_asset_id: null, annotated: 200 }) }),
+    body: homeBody({
+      resume: resume({ kind: "open", next_asset_id: null, annotated: 200 }),
+    }),
   });
   render(
     mount(
@@ -359,15 +409,29 @@ it("shows exactly one filled button in the first-run state", async () => {
   expect(filledButtons(container)).toEqual(["Create project"]);
 });
 
-it("shows exactly one filled button when there is somewhere to carry on", async () => {
-  on("GET", /\/home$/, { status: 200, body: homeBody({ resume: resume() }) });
-  const { container } = render(mount(<HomeScreen onContinue={() => {}} />));
+it.each([
+  ["annotate", "Continue annotating"],
+  ["review", "Review annotations"],
+  ["open", "Open batch"],
+] as const)(
+  "shows exactly one filled button when the card is offering %s",
+  async (kind, label) => {
+    on("GET", /\/home$/, {
+      status: 200,
+      body: homeBody({
+        resume: resume({ kind, next_asset_id: kind === "open" ? null : ASSET }),
+      }),
+    });
+    const { container } = render(
+      mount(<HomeScreen onContinue={() => {}} onOpenBatch={() => {}} />),
+    );
 
-  await screen.findByTestId("home-resume");
-  // "New project" is on screen too and must have stepped back to `secondary`;
-  // asserting the whole set is what catches it not having.
-  expect(filledButtons(container)).toEqual(["Continue annotating"]);
-});
+    await screen.findByTestId("home-resume");
+    // "New project" is on screen too and must have stepped back to `secondary`;
+    // asserting the whole set is what catches it not having.
+    expect(filledButtons(container)).toEqual([label]);
+  },
+);
 
 it("still shows exactly one filled button when nothing is open for annotation", async () => {
   on("GET", /\/home$/, { status: 200, body: homeBody({ resume: null }) });

@@ -159,11 +159,12 @@ MIGRATIONS: list[Migration] = [
     Migration(version=5, name="schema_provenance", upgrade=_add_schema_provenance),
     Migration(version=6, name="inference_connections", upgrade=_add_inference_connections),
     Migration(version=7, name="model_family", upgrade=_add_model_family),
+    Migration(version=8, name="progress_touched", upgrade=_add_progress_touched),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 7
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 8
 ```
 
-**Generation 1 is the baseline, and the six entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the seven entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus

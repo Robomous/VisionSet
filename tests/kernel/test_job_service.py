@@ -7,6 +7,7 @@ rather than restating them, so neither test can drift from the table it guards.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -338,9 +339,17 @@ def test_a_stale_write_names_where_the_asset_actually_is(tmp_path: Path) -> None
     with fixture.workspace.unit_of_work() as uow:
         # What another writer's commit leaves behind, from this caller's side:
         # the row moved and nothing told it.
-        assert uow.set_asset_progress(job.id, asset, expected=UNANNOTATED, progress=SKIPPED) is None
+        now = datetime.now(UTC)
         assert (
-            uow.set_asset_progress(job.id, asset, expected=UNANNOTATED, progress=ANNOTATED)
+            uow.set_asset_progress(
+                job.id, asset, expected=UNANNOTATED, progress=SKIPPED, touched_at=now
+            )
+            is None
+        )
+        assert (
+            uow.set_asset_progress(
+                job.id, asset, expected=UNANNOTATED, progress=ANNOTATED, touched_at=now
+            )
             is SKIPPED
         )
     fixture.close()

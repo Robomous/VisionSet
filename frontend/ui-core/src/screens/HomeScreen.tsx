@@ -245,13 +245,26 @@ function Stage({
   );
 }
 
+/** What the control promises, per kind. Presentation only — the order is the wire's. */
+const RESUME_LABEL: Record<ResumeTarget["kind"], string> = {
+  annotate: "Continue annotating",
+  review: "Review annotations",
+  open: "Open batch",
+};
+
 /**
  * Where to carry on, and the page's one filled button when it renders.
  *
- * The label is not decoration. With a frame to open it says **Continue
- * annotating** and goes into the editor; with none left it says **Open batch**
- * and goes to the gallery, because the batch is still worth opening and there is
- * no frame to open it at.
+ * The label is not decoration, and neither is the destination. Under `annotate`
+ * and `review` there is a frame, so the control opens the editor at it — the same
+ * screen either way, because a frame awaiting review opens read-only with the
+ * review actions on it and there is no second screen to send anybody to. Under
+ * `open` there is no frame at all, so it goes to the gallery rather than offering
+ * a link that would land somewhere empty.
+ *
+ * Which of the three applies is `resume.kind`, decided by the kernel. This
+ * component reads it; it does not work it out from the other fields, because the
+ * order between the three is a decision and a second copy of it here would drift.
  */
 function Resume({
   resume,
@@ -262,7 +275,7 @@ function Resume({
   readonly onContinue?: (jobId: string, assetId: string | null) => void;
   readonly onOpenBatch?: (projectId: string, batchId: string) => void;
 }): JSX.Element {
-  const hasFrame = resume.next_asset_id !== null;
+  const hasFrame = resume.kind !== "open";
   const share = resume.total === 0 ? 0 : (resume.annotated / resume.total) * 100;
   const act = hasFrame
     ? onContinue === undefined
@@ -276,7 +289,7 @@ function Resume({
     <section
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
       data-testid="home-resume"
-      data-has-frame={String(hasFrame)}
+      data-kind={resume.kind}
     >
       <h2 className="text-meta font-medium text-muted-foreground">Continue where you left off</h2>
       <div className="flex items-center gap-4">
@@ -299,14 +312,17 @@ function Resume({
           <span className="truncate text-meta text-muted-foreground">{resume.project_name}</span>
           <span className="truncate font-medium text-foreground">{resume.batch_name}</span>
           <span className="text-meta tabular-nums text-muted-foreground">
-            {formatCount(resume.annotated)} / {formatCount(resume.total)} annotated ·{" "}
-            {formatPercent(share)}
+            {/* Under `review` the labeling is finished, so how much of it is
+                labeled is not the number anybody is here for. */}
+            {resume.kind === "review"
+              ? `${formatCount(resume.review_pending)} waiting on review`
+              : `${formatCount(resume.annotated)} / ${formatCount(resume.total)} annotated · ${formatPercent(share)}`}
           </span>
         </div>
         {act !== undefined && (
           <Button variant="primary" className="ml-auto" data-testid="home-resume-cta" onClick={act}>
             <Play className="size-4" aria-hidden="true" />
-            {hasFrame ? "Continue annotating" : "Open batch"}
+            {RESUME_LABEL[resume.kind]}
           </Button>
         )}
       </div>
