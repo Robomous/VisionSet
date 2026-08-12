@@ -124,6 +124,7 @@ import {
   useProjectStats,
   useRenameProject,
   useSchemaVersions,
+  type Batch,
   type Project,
   type SchemaVersion,
 } from "./queries";
@@ -558,6 +559,20 @@ function DeleteDialog({
  * would enable it is forbidden.
  * Ingest becomes the primary in that state, which is also the honest next step.
  *
+ * ## With more than one open batch the CTA asks which, and says that it is asking
+ *
+ * The button used to resolve its destination with a `find`, so a project holding
+ * two batches in `in_annotation` sent everybody to whichever the wire returned
+ * first and never mentioned having chosen. A batch **pins the project's active
+ * schema version at approval and that pin never moves**, so the batch you land in
+ * decides which schema you annotate under — the pick is a semantic one, and one
+ * nobody made.
+ *
+ * So the cost of the choice tracks the ambiguity. One open batch is no ambiguity
+ * and still jumps. Two or more renders `Annotate ▾` and opens the menu below, and
+ * **the chevron is the load-bearing half**: a button that opens a choice must not
+ * be shaped like one that jumps. See `AnnotateAction` for what a row carries.
+ *
  * ## Two queries the header runs
  *
  * The schema queries live in the tab that shows them, so opening a
@@ -595,11 +610,20 @@ function ProjectHeader({
   const stats = useProjectStats(project.id);
   const batches = useBatches(project.id);
 
-  // The batch work can actually happen in. `in_annotation` is the only state an
+  // The batches work can actually happen in. `in_annotation` is the only state an
   // annotation may be written into, so this is not a preference — anything
   // else would send somebody to a gallery that refuses every save.
-  const open = batches.data?.items.find((batch) => batch.state === "in_annotation");
-  const annotate = open !== undefined && onOpenBatch !== undefined ? () => onOpenBatch(open.id) : undefined;
+  //
+  // Newest first, and that is the wire's own order **reversed** rather than a
+  // timestamp read: `BatchOut` carries no timestamp of any kind, and the metadata
+  // store lists by `rowid`, so what arrives is creation order, oldest first.
+  // Inventing a field to sort on would be the "No description." mistake in the
+  // other direction. The copy is not decoration — the array belongs to the query
+  // cache, and `reverse` mutates in place.
+  const active = [...(batches.data?.items ?? [])]
+    .filter((batch) => batch.state === "in_annotation")
+    .reverse();
+  const annotate = active.length > 0 && onOpenBatch !== undefined ? onOpenBatch : undefined;
 
   return (
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
@@ -644,14 +668,11 @@ function ProjectHeader({
 
       <div className="flex items-center gap-2">
         {annotate !== undefined && (
-          <Button
+          <AnnotateAction
+            batches={active}
+            onOpenBatch={annotate}
             variant={panelOwnsTheAction ? "secondary" : "primary"}
-            data-testid="go-annotate"
-            onClick={annotate}
-          >
-            <PenLine className="size-4" aria-hidden="true" />
-            Annotate
-          </Button>
+          />
         )}
         {onIngest !== undefined && (
           <Button
@@ -692,6 +713,88 @@ function ProjectHeader({
         </DropdownMenu>
       </div>
     </header>
+  );
+}
+
+/**
+ * One open batch jumps; two or more ask which, in three data points a row.
+ *
+ * ## What a row has to carry, and why it is exactly these three
+ *
+ * The **name**, which already carries the `— correction` suffix where one applies,
+ * because `suggestedCorrectionName` builds that suffix before the batch exists and
+ * the server stores what it was given. The **remaining count**, in the batch
+ * table's own words (`N to do`, which is `unannotated` there and here — the
+ * annotator's `outstandingWork` sums a second state and answers a different
+ * question). And the **pinned schema version**, which is the whole reason the
+ * choice is worth stopping for: it is invisible everywhere else on this page, and
+ * it is what the pick actually decides.
+ *
+ * `schema_version` is non-null for anything that has reached `in_annotation` —
+ * approval is what pins it — but the wire types it nullable, so a null renders as
+ * the em dash the batch table uses rather than as `vnull`.
+ *
+ * ## No split button, no remembered default
+ *
+ * A split button would put a direct jump and a chooser in one control, which is
+ * the ambiguity it was drawn to resolve. A remembered "last batch" default makes
+ * the destination a function of session history, which is the same defect as the
+ * `find` this replaced, only harder to see. `DropdownMenu` is the primitive the
+ * `⋯` overflow beside it already uses, so `Esc`, outside-click, arrow keys and the
+ * focus ring arrive with it rather than being written again.
+ */
+function AnnotateAction({
+  batches,
+  onOpenBatch,
+  variant,
+}: {
+  /** Only the batches work can be written into, most recent first. */
+  readonly batches: readonly Batch[];
+  readonly onOpenBatch: (batchId: string) => void;
+  readonly variant: "primary" | "secondary";
+}): JSX.Element | null {
+  if (batches.length <= 1) {
+    const [only] = batches;
+    // Nowhere to send anybody: absent, never grey. The caller does not render
+    // this component in that state, and the branch is here so that it cannot
+    // matter which of the two says so.
+    if (only === undefined) return null;
+    return (
+      <Button variant={variant} data-testid="go-annotate" onClick={() => onOpenBatch(only.id)}>
+        <PenLine className="size-4" aria-hidden="true" />
+        Annotate
+      </Button>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        {/* Same `data-testid` and same variant as the jumping form: it is one
+            control with two shapes, and the chevron is what tells them apart. */}
+        <Button variant={variant} data-testid="go-annotate">
+          <PenLine className="size-4" aria-hidden="true" />
+          Annotate
+          <ChevronDown className="size-4" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {batches.map((batch) => (
+          <DropdownMenuItem
+            key={batch.id}
+            data-testid={`annotate-batch-${batch.name}`}
+            onSelect={() => onOpenBatch(batch.id)}
+          >
+            <div className="flex flex-col items-start">
+              <span>{batch.name}</span>
+              <span className="text-meta text-muted-foreground">
+                {batch.progress.unannotated} to do ·{" "}
+                {batch.schema_version == null ? "—" : `v${batch.schema_version}`}
+              </span>
+            </div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
