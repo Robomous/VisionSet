@@ -455,21 +455,20 @@ Every click sends **all** the points placed so far - the route is stateless - an
 the answer replaces the preview. The first click on a frame is the slow one,
 because the model reads the whole image once; refining after it is quick.
 
-**A wait says so where you are looking, and only once it is a wait.** Nothing
-appears for the first fifth of a second, which is longer than most answers take:
-an indicator that flashed on and off on every click would read as a glitch rather
-than as work. Past that, a ring appears around the click you are waiting on and
-the cursor picks up the busy arrow, and the panel says `Looking at that…`. Past a
-second and a half - long enough that this is plausibly the first click on the
-frame - the panel adds the sentence explaining why that one is slow. Once the ring
-is up it stays for a moment even if the answer beats it, so an answer landing right
-on the threshold does not produce the blink the delay is there to prevent.
+**A wait says so where you are looking, from the moment it starts.** A ring appears
+around the click you are waiting on, the cursor picks up the busy arrow, and the
+panel says `Looking at that…` - all of it on the same frame the request leaves.
+Past a second and a half - long enough that this is plausibly the first click on
+the frame - the panel adds the sentence explaining why that one is slow. Once the
+ring is up it stays a quarter second even if the answer beats it, so a fast answer
+cannot leave it on screen for two frames.
 
 Refining while an answer is still out is fine and is the ordinary way to work: the
-ring moves to the newest click, the shape already on screen stays drawn, and
-`Accept` dims until the newer answer arrives, because accepting the older one is
-not what pressing it would do. `Esc` takes the whole thing back at once - points,
-ring and cursor - without waiting the moment out. A refusal clears the ring and
+ring moves to the newest click and the shape already on screen stays drawn, so you
+keep the best answer so far while the next one is fetched. The panel goes back to
+`Looking at that…` for the duration, which is why `Accept` is not offered until the
+newer shape arrives. `Esc` takes the whole thing back at once - points, ring and
+cursor - without waiting the quarter second out. A refusal clears the ring and
 renders as prose on the panel, so nothing is ever left spinning over a request
 that is over.
 

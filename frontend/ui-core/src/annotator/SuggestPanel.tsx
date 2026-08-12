@@ -118,22 +118,13 @@ export interface SuggestPanelProps {
   readonly onAccept: () => void;
   readonly onDiscard: () => void;
   /**
-   * Whether the wait has lasted long enough to report at all.
-   *
-   * `session.status === "asking"` is true the instant a click leaves, and most
-   * clicks are answered in well under the blink of an eye, because a segmenter
-   * reads the frame once and every later click is nearly free. Reporting on that
-   * status directly is what made this card flash on every refine. The threshold
-   * is the host's `usePendingIndicator`, shared with the canvas so the halo and
-   * this card cannot disagree about when a wait has become a wait.
-   */
-  readonly pendingShown?: boolean;
-  /**
-   * Whether it has lasted long enough to be worth explaining.
+   * Whether the wait has lasted long enough to be worth explaining.
    *
    * The cold-start sentence used to ride along with the spinner on every click,
    * including the fast ones it is not about. It is true of the first click on a
-   * frame, so it waits for a wait that is plausibly that one.
+   * frame, so it waits for a wait that is plausibly that one. Decided by the
+   * host's `usePendingIndicator`, which the canvas reads too, so the sentence and
+   * the halo cannot disagree about how long this has been going.
    */
   readonly pendingEscalated?: boolean;
 }
@@ -199,7 +190,6 @@ export function SuggestPanel({
   onConfigure,
   onAccept,
   onDiscard,
-  pendingShown = false,
   pendingEscalated = false,
 }: SuggestPanelProps): JSX.Element {
   /*
@@ -295,10 +285,12 @@ export function SuggestPanel({
     );
   }
 
-  // Gated on the threshold rather than on the status. A click answered in 90 ms —
-  // which is most of them — used to swap this card in and back out again, and a
-  // panel that flickers on every press teaches somebody to stop reading it.
-  if (session.status === "asking" && pendingShown) {
+  // Back to the status alone. This was gated on a 200ms threshold, on the theory
+  // that a warm answer would beat it and the card would never appear; dogfooding
+  // showed inference never resolves that fast, so the gate suppressed nothing.
+  // The floor that stops the card leaving too *soon* is what survives, and it
+  // lives in `usePendingIndicator` rather than here.
+  if (session.status === "asking") {
     return (
       <EditorNotice testId="suggest-panel" tone="calm" icon={<Loader2 className="size-4 animate-spin" />}>
         <p className="font-medium text-foreground" data-testid="suggest-asking">
@@ -333,22 +325,19 @@ export function SuggestPanel({
   }
 
   /*
-    A refine click whose answer is not back and whose wait has not yet earned the
-    screen. `withPoint` keeps the previous preview on purpose — the shape a person
-    is refining stays drawn, because blanking it would flicker the canvas as well
-    as the panel — so below the threshold the card that shape put here is still
-    the true one, and falling through to the idle card would swap one flicker for
-    another.
+    There is no longer a reading between these two. While the 200ms gate existed,
+    a refine click spent that window here — the ask had gone out, the card above
+    was still suppressed, and the shape `withPoint` keeps on screen needed a card
+    that described it, with `Accept` dimmed because `acceptedAnnotation` answers
+    `null` for any status but `shown`. With the gate gone the ask reaches the card
+    above on the same frame it leaves, so that window has no duration and the
+    branch that filled it is deleted rather than left unreachable.
 
-    The one thing that changes is Accept. `acceptedAnnotation` answers `null` for
-    any status but `shown`, so an enabled button here would be a live no-op, which
-    is the shape of feedback this file exists to avoid. Disabled with a reason is
-    the house rule; `Discard` stays live, so `Esc` is never a trap.
+    The shape itself still stays drawn through a refine — that is `paintSuggestion`
+    testing what the session holds rather than what its status is, and it is why
+    this card going away mid-refine costs nothing on the canvas.
   */
-  const quietRefine =
-    session.status === "asking" && !pendingShown && session.suggestion !== null;
-
-  if (isAcceptable(session) || quietRefine) {
+  if (isAcceptable(session)) {
     return (
       <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-shown">
@@ -358,14 +347,7 @@ export function SuggestPanel({
           Click again to refine it — alt-click to take a part away.
         </p>
         <div className="mt-1 flex gap-2">
-          <Button
-            variant="primary"
-            size="sm"
-            data-testid="suggest-accept"
-            disabled={quietRefine}
-            {...(quietRefine ? { title: "Waiting for the newer suggestion" } : {})}
-            onClick={onAccept}
-          >
+          <Button variant="primary" size="sm" data-testid="suggest-accept" onClick={onAccept}>
             <Check className="size-4" aria-hidden="true" />
             Accept
             <Chip>↵</Chip>
@@ -394,10 +376,11 @@ export function SuggestPanel({
         changing which model answers cannot pull the ground out from under
         something already on screen.
 
-        Gated on `hasPending` rather than on reaching this branch, which used to
-        be the same thing and is not any more: a first click below the indicator's
-        threshold now leaves this card up while its answer is genuinely out, and
-        the picker's whole rule is that it is absent exactly then.
+        Gated on `hasPending` rather than on reaching this branch, which is the
+        same thing today and has already stopped being it once — while the show
+        threshold existed, a first click below it left this card up with its answer
+        genuinely out. Stating the rule where it is enforced is what makes the
+        branch ordering an implementation detail rather than the guarantee.
       */}
       {!hasPending(session) && (
         <Through

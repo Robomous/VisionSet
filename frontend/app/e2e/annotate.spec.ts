@@ -2996,17 +2996,17 @@ test("saving leaves the viewport exactly where it was", async ({ page }) => {
  * Three of the four claims below are unreachable from jsdom. A cursor is a
  * computed style on a laid-out element; `prefers-reduced-motion` is a media query
  * with no implementation there; and where the halo sits is a coordinate, which
- * every rectangle being zero makes meaningless. The thresholds themselves are not
- * retested here — they are unit-tested on fake time in the annotator's
- * `pending.test.ts`, and a wall-clock assertion on a shared runner fails for
- * reasons nobody chose.
+ * every rectangle being zero makes meaningless. The remaining thresholds — the
+ * visibility floor and the escalation — are not retested here; they are unit-
+ * tested on fake time in the annotator's `pending.test.ts`, and a wall-clock
+ * assertion on a shared runner fails for reasons nobody chose.
  *
  * The request is **held open** rather than delayed by a sleep. `e2e_discipline`
- * bans fixed waits and is right to: a sleep racing a 200 ms threshold is a coin
- * toss, while a route that has genuinely not answered keeps the wait true for as
- * long as the assertions need it.
+ * bans fixed waits and is right to: a sleep is a coin toss against any real
+ * timing, while a route that has genuinely not answered keeps the wait true for
+ * as long as the assertions need it.
  */
-test("a suggest request that is genuinely slow says so at the click and on the cursor", async ({
+test("a suggest request that is out says so at the click and on the cursor", async ({
   page,
 }) => {
   const sent: Request[] = [];
