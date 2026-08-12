@@ -31,6 +31,8 @@ import {
   SAVE,
   SKIP_FRAME,
   TOGGLE_HELP,
+  COARSER_SUGGESTION,
+  FINER_SUGGESTION,
   TOGGLE_SUGGEST,
 } from "./actions";
 import type { Action } from "./actions";
@@ -97,6 +99,8 @@ const DISPATCH: readonly DispatchRow[] = [
   // reason: accepting and discarding a suggestion are substitutions the adapter
   // makes over the two rows above, and a row here would shadow both.
   { chord: "s", key: "s", action: { kind: "host", name: TOGGLE_SUGGEST } },
+  { chord: "[", key: "[", action: { kind: "host", name: COARSER_SUGGESTION } },
+  { chord: "]", key: "]", action: { kind: "host", name: FINER_SUGGESTION } },
   { chord: "v", key: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 

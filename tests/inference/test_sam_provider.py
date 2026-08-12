@@ -3,6 +3,14 @@
 Every test here runs with no torch, no GPU and no ``local-inference`` extra —
 the adapter's own seams (``_ready``, and ``imported`` for torch) are the two
 places a stand-in goes in, and the rest of the path is the shipped code.
+
+**What it answers is a mask, and nothing here is about shape any more.** Which
+piece of a mask is the answer, whether its gaps are closed and how many vertices
+survive all moved above this port so a caller can reach them; those rules are
+tested in ``test_masks``, and the whole stack from a click to a polygon is
+tested through the route in ``tests/server/test_suggest.py``. What is left here
+is the adapter's own job: refuse a prompt it cannot take, hand over the
+highest-scoring mask intact, and encode an image once.
 """
 
 from __future__ import annotations
@@ -24,7 +32,6 @@ from visionset.inference.sam_provider import (
 )
 from visionset.kernel.domain import (
     PointPrompt,
-    PolygonGeometry,
     PredictionRequest,
     PredictionTarget,
     TextPrompt,
@@ -110,39 +117,41 @@ def test_a_text_prompt_is_refused_because_this_model_answers_places(
     """The counterpart of the detector adapter's refusal, which stays as it is."""
     provider, _, _ = built(monkeypatch)
     with pytest.raises(UnsupportedPrompt, match="point prompts"):
-        list(provider.predict(asked(TextPrompt(phrases=("cat",)))))  # type: ignore[arg-type]
+        list(provider.segment(asked(TextPrompt(phrases=("cat",)))))  # type: ignore[arg-type]
 
 
 # --- what it answers ----------------------------------------------------------
 
 
-def test_a_click_comes_back_as_one_polygon_carrying_the_models_confidence(
+def test_a_click_comes_back_as_the_mask_carrying_the_models_confidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider, _, _ = built(monkeypatch, masks=[disc(20)], scores=[0.87])
-    (answer,) = list(provider.predict(asked(one_click())))
+    (answer,) = list(provider.segment(asked(one_click())))
 
     assert answer.model_ref == "some/segmenter@abc123"
-    (region,) = answer.regions
-    assert isinstance(region.geometry, PolygonGeometry)
-    assert region.confidence == pytest.approx(0.87)
+    (segment,) = answer.segments
+    assert segment.score == pytest.approx(0.87)
+    assert segment.mask == disc(20), "handed over intact, with no shape decided"
 
 
-def test_the_label_is_empty_because_pointing_says_where_and_not_what(
+def test_the_mask_crosses_at_the_assets_own_size(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The editor already knows the active class; a name invented here would be a worse copy."""
-    provider, _, _ = built(monkeypatch)
-    (answer,) = list(provider.predict(asked(one_click())))
-    assert answer.regions[0].label == ""
+    """Coordinates downstream are the asset's pixels, so the grid has to be too."""
+    provider, _, _ = built(monkeypatch, masks=[disc(20)], scores=[0.9])
+    (answer,) = list(provider.segment(asked(one_click())))
+    grid = answer.segments[0].mask
+    assert (len(grid), len(grid[0])) == (len(disc(20)), len(disc(20)[0]))
 
 
 def test_an_empty_mask_is_an_ordinary_answer_with_nothing_in_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A click on sky. Empty rather than raising, and still saying who was asked."""
     provider, _, _ = built(monkeypatch, masks=[blank()], scores=[0.9])
-    (answer,) = list(provider.predict(asked(one_click())))
-    assert answer.regions == ()
+    (answer,) = list(provider.segment(asked(one_click())))
+    assert answer.segments[0].mask == blank(), "an empty grid is a mask, not an absence"
 
 
 def test_a_model_less_sure_than_the_caller_asked_answers_nothing(
@@ -150,49 +159,9 @@ def test_a_model_less_sure_than_the_caller_asked_answers_nothing(
 ) -> None:
     provider, _, _ = built(monkeypatch, masks=[disc(20)], scores=[0.3])
     request = PredictionRequest(targets=(target(),), prompt=one_click(), minimum_confidence=0.8)
-    (answer,) = list(provider.predict(request))
-    assert answer.regions == ()
+    (answer,) = list(provider.segment(request))
+    assert answer.segments == ()
     assert answer.model_ref == "some/segmenter@abc123", "still says who was asked"
-
-
-def test_the_polygon_is_the_blob_under_the_click_and_not_a_speck(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Through the adapter: the positive points have to actually reach the tracer.
-
-    A speck in the topmost row owns the topmost-leftmost lit pixel, so without
-    the points this answers ``()`` — the speck traces to one point and a polygon
-    needs three. The click is on the disc, and the disc is what comes back.
-    """
-    speckled = [list(row) for row in disc(20)]
-    speckled[0][63] = True
-    provider, _, _ = built(monkeypatch, masks=[speckled], scores=[0.9])
-
-    prompt = PointPrompt(positive=((32.0, 32.0),))
-    (answer,) = list(provider.predict(asked(prompt)))
-
-    (region,) = answer.regions
-    assert isinstance(region.geometry, PolygonGeometry)
-    xs = [x for x, _ in region.geometry.points]
-    ys = [y for _, y in region.geometry.points]
-    assert min(xs) >= 12 and max(xs) <= 52, "the disc's extent, not the speck at x=63"
-    assert max(ys) > 40, "and its full height, so this is the disc and not a fragment"
-
-
-def test_negative_points_do_not_choose_the_blob(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A negative says what the shape is not; by selection time the shape is already made."""
-    speckled = [list(row) for row in disc(20)]
-    speckled[0][63] = True
-    provider, _, _ = built(monkeypatch, masks=[speckled], scores=[0.9])
-
-    prompt = PointPrompt(positive=((32.0, 32.0),), negative=((63.0, 0.0),))
-    (answer,) = list(provider.predict(asked(prompt)))
-
-    (region,) = answer.regions
-    assert isinstance(region.geometry, PolygonGeometry)
-    assert max(x for x, _ in region.geometry.points) <= 52, "still the disc"
 
 
 def test_negative_points_reach_the_model_alongside_the_positive_ones(
@@ -200,7 +169,7 @@ def test_negative_points_reach_the_model_alongside_the_positive_ones(
 ) -> None:
     provider, _, model = built(monkeypatch)
     prompt = PointPrompt(positive=((10.0, 12.0),), negative=((30.0, 30.0),))
-    list(provider.predict(asked(prompt)))
+    list(provider.segment(asked(prompt)))
     (points, labels) = model.prompts[0]
     assert points == [[[[10.0, 12.0], [30.0, 30.0]]]]
     assert labels == [[[POSITIVE, NEGATIVE]]]
@@ -222,8 +191,8 @@ def test_a_second_click_on_the_same_asset_decodes_without_encoding_again(
     provider, processor, model = built(monkeypatch)
     asset = uuid4()
 
-    list(provider.predict(asked(one_click(), target(asset))))
-    list(provider.predict(asked(PointPrompt(positive=((11.0, 13.0),)), target(asset))))
+    list(provider.segment(asked(one_click(), target(asset))))
+    list(provider.segment(asked(PointPrompt(positive=((11.0, 13.0),)), target(asset))))
 
     assert provider.encodes == 1, "the image is read once"
     assert model.encodes == 1
@@ -234,8 +203,8 @@ def test_a_second_click_on_the_same_asset_decodes_without_encoding_again(
 
 def test_a_different_asset_pays_its_own_encode(monkeypatch: pytest.MonkeyPatch) -> None:
     provider, _, model = built(monkeypatch)
-    list(provider.predict(asked(one_click(), target())))
-    list(provider.predict(asked(one_click(), target())))
+    list(provider.segment(asked(one_click(), target())))
+    list(provider.segment(asked(one_click(), target())))
     assert provider.encodes == 2
     assert model.embeddings_seen == ["embedding-1", "embedding-2"]
 
@@ -248,6 +217,6 @@ def test_the_cache_is_bounded_and_evicts_the_least_recently_used(
     first, second, third = target(), target(), target()
 
     for one in (first, second, third, first):
-        list(provider.predict(asked(one_click(), one)))
+        list(provider.segment(asked(one_click(), one)))
 
     assert provider.encodes == 4, "the first asset was evicted by the third and re-encoded"

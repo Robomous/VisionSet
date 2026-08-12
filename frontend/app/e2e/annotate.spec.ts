@@ -371,17 +371,25 @@ async function serveApi(
       return route.fulfill({ json: { items, total: items.length } });
     }
     if (path === "/inference/suggest" && request.method() === "POST") {
-      // `SuggestionOut`: a `model_ref` and a `region` that wraps the geometry
-      // beside the score. A flatter shape is refused by the generated runtime
-      // check, which reads as "the server answered something this app does not
-      // recognise" and looks nothing like a stub bug.
+      // `SuggestionOut`, in full: the score rides on the answer, the shapes are
+      // a list, each carries the contour it was reduced from, and `parameters`
+      // declares which settings apply to this kind. Every field is required, and
+      // a shape missing one is refused by the generated runtime check — which
+      // reads as "the server answered something this app does not recognise" and
+      // looks nothing like a stub bug.
       return route.fulfill({
         json: {
           model_ref: "facebook/sam2-hiera-base-plus@main",
-          region: {
-            geometry: { type: "bbox", x: 100, y: 100, width: 80, height: 60 },
-            confidence: 0.91,
-          },
+          confidence: 0.91,
+          regions: [
+            {
+              geometry: { type: "bbox", x: 100, y: 100, width: 80, height: 60 },
+              contour: [],
+            },
+          ],
+          applied: { detail: "balanced", fill_holes: 0.002, fragments: "one" },
+          // A box class, so the wire names only the setting that moves a box.
+          parameters: ["fragments"],
         },
       });
     }
@@ -3023,10 +3031,15 @@ test("a suggest request that is out says so at the click and on the cursor", asy
     await route.fulfill({
       json: {
         model_ref: "facebook/sam2-hiera-base-plus@main",
-        region: {
-          geometry: { type: "bbox", x: 100, y: 100, width: 80, height: 60 },
-          confidence: 0.91,
-        },
+        confidence: 0.91,
+        regions: [
+          {
+            geometry: { type: "bbox", x: 100, y: 100, width: 80, height: 60 },
+            contour: [],
+          },
+        ],
+        applied: { detail: "balanced", fill_holes: 0.002, fragments: "one" },
+        parameters: ["fragments"],
       },
     });
   });
@@ -3123,4 +3136,111 @@ test("escape takes the halo back without waiting out its visibility floor", asyn
   await expect(page.getByTestId("annotator-pane")).not.toHaveCSS("cursor", "progress");
 
   answer();
+});
+
+/**
+ * The adjustments, in a real browser.
+ *
+ * jsdom can say the section renders. What it cannot say is that a bracket
+ * reaches it from the keyboard, that the counter changes without a request
+ * leaving, or that `Esc` closes this before it clears the gesture — all three
+ * are about a live document with focus in it.
+ */
+test("a box class is offered only the setting that moves a box", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+
+  await page.getByTestId("tool-suggest").click();
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+
+  await page.getByTestId("suggest-adjust-open").click();
+
+  // The stub declares `["fragments"]`, which is what the kernel declares for a
+  // box — and the editor renders exactly that. No condition in the app mentions
+  // a box at all.
+  await expect(page.getByTestId("suggest-fragments")).toBeVisible();
+  await expect(page.getByTestId("suggest-detail-balanced")).toHaveCount(0);
+  await expect(page.getByTestId("suggest-fill-holes")).toHaveCount(0);
+});
+
+test("a polygon class steps its detail from the keyboard, with no request", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+
+  // A traced ring big enough that the three steps genuinely differ: a rectangle
+  // is four corners at every setting and would report a dead control as working.
+  const ring = Array.from({ length: 64 }, (_, index) => {
+    const angle = (index / 64) * 2 * Math.PI;
+    return [Math.round(160 + 90 * Math.cos(angle)), Math.round(160 + 90 * Math.sin(angle))];
+  });
+  await page.route("**/inference/suggest", async (route) =>
+    route.fulfill({
+      json: {
+        model_ref: "facebook/sam2-hiera-base-plus@main",
+        confidence: 0.9,
+        regions: [{ geometry: { type: "polygon", points: ring }, contour: ring }],
+        applied: { detail: "balanced", fill_holes: 0.002, fragments: "one" },
+        parameters: ["detail", "fill_holes", "fragments"],
+      },
+    }),
+  );
+
+  await page.getByTestId("tool-suggest").click();
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+
+  // The bracket first, with nothing opened — which is the whole point of it.
+  // The shape on the canvas is what has to move, so that is what is measured;
+  // the counter is a second reading of the same fact, checked below.
+  const shape = page.getByTestId("suggestion-shape");
+  const vertices = async (): Promise<number> =>
+    ((await shape.getAttribute("points")) ?? "").trim().split(/\s+/).filter(Boolean).length;
+  const before = sent.filter((one) => one.url().includes("/inference/suggest")).length;
+
+  await page.keyboard.press("[");
+  const coarse = await vertices();
+  // The claim that only a real request log can settle: no round trip.
+  expect(sent.filter((one) => one.url().includes("/inference/suggest")).length).toBe(before);
+
+  await page.keyboard.press("]");
+  await page.keyboard.press("]");
+  const fine = await vertices();
+  expect(fine).toBeGreaterThan(coarse);
+  expect(sent.filter((one) => one.url().includes("/inference/suggest")).length).toBe(before);
+
+  // And it stops at the end rather than wrapping round to the coarsest.
+  await page.keyboard.press("]");
+  expect(await vertices()).toBe(fine);
+
+  await page.keyboard.press("[");
+  await page.keyboard.press("[");
+
+  // Opening the section must not switch the keyboard off, which is what a control
+  // taking focus would silently do.
+  await page.getByTestId("suggest-adjust-open").click();
+  const counter = page.getByTestId("suggest-vertex-count");
+  await expect(counter).toHaveText(`${coarse} pts`);
+  await expect(page.getByTestId("suggest-detail-coarse")).toHaveAttribute("aria-pressed", "true");
+
+  // Opening the section must not switch the keyboard off, which is what a control
+  // taking focus would silently do — and does, in a browser, where jsdom has no
+  // focus to move and would report this working.
+  await page.keyboard.press("]");
+  await expect(page.getByTestId("suggest-detail-balanced")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  // Escape closes the adjustments and stops there: the points and the shape are
+  // both still on screen, and the second press is what takes them.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("suggestion-shape")).toHaveCount(0);
+  await expect(page.getByTestId("suggest-idle")).toBeVisible();
 });

@@ -18,12 +18,25 @@ import { answered, armed, refused, withClass, withPoint } from "@visionset/annot
 import type { Suggestion, SuggestionState } from "@visionset/annotator";
 
 import { SuggestPanel } from "./SuggestPanel";
+import type { Answer } from "@visionset/annotator";
 import { usableConnection, type Connection } from "../data/inferenceQueries";
 
 const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;
 
+const MODEL_REF = "facebook/sam2-hiera-base-plus@main";
+
 function proposal(): Suggestion {
-  return { geometry: A_BOX, confidence: 0.9, modelRef: "facebook/sam2-hiera-base-plus@main" };
+  return { geometry: A_BOX, confidence: 0.9, modelRef: MODEL_REF, contour: [] };
+}
+
+/** An answer carrying those shapes, with every parameter declared as applying. */
+function answerOf(...suggestions: readonly Suggestion[]): Answer {
+  return {
+    modelRef: MODEL_REF,
+    confidence: suggestions[0]?.confidence ?? null,
+    suggestions,
+    parameters: ["detail", "fill_holes", "fragments"],
+  };
 }
 
 function asked(): SuggestionState {
@@ -32,7 +45,7 @@ function asked(): SuggestionState {
 
 function shown(): SuggestionState {
   const session = asked();
-  return answered(session, session.serial, proposal());
+  return answered(session, session.serial, answerOf(proposal()));
 }
 
 function mount(overrides: Partial<Parameters<typeof SuggestPanel>[0]> = {}): JSX.Element {
@@ -252,7 +265,7 @@ describe("what the panel says while the tool is working", () => {
 
   it("offers accept again the moment the newer answer lands", () => {
     const refining = withPoint(shown(), [140, 160], "positive");
-    const back = answered(refining, refining.serial, proposal());
+    const back = answered(refining, refining.serial, answerOf(proposal()));
     render(mount({ session: back }));
 
     expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(false);
@@ -272,7 +285,7 @@ describe("what the panel says while the tool is working", () => {
 
   it("treats an answer with nothing in it as an answer, and says what to try", () => {
     const session = asked();
-    render(mount({ session: answered(session, session.serial, null) }));
+    render(mount({ session: answered(session, session.serial, answerOf()) }));
     expect(screen.getByTestId("suggest-none")).toBeTruthy();
     expect(screen.queryByTestId("suggest-accept")).toBeNull();
   });
@@ -422,5 +435,110 @@ describe("which connection a click goes through, on the card", () => {
       }),
     );
     expect(screen.queryByTestId("suggest-connection-select")).toBeNull();
+  });
+});
+
+
+describe("the adjustments, which are a section and never a popup", () => {
+  /** An answer declaring the parameters a polygon class gets. */
+  function polygonAnswer(): Answer {
+    return {
+      modelRef: MODEL_REF,
+      confidence: 0.9,
+      suggestions: [
+        {
+          geometry: { type: "polygon", points: [[0, 0], [10, 0], [10, 10], [0, 10]] },
+          confidence: 0.9,
+          modelRef: MODEL_REF,
+          contour: [[0, 0], [10, 0], [10, 10], [0, 10]],
+        },
+      ],
+      parameters: ["detail", "fill_holes", "fragments"],
+    };
+  }
+
+  function showingPolygon(): SuggestionState {
+    const session = asked();
+    return answered(session, session.serial, polygonAnswer());
+  }
+
+  it("stays closed until it is asked for, because the defaults are usually right", () => {
+    render(mount({ session: showingPolygon(), onAdjusting: vi.fn() }));
+    expect(screen.getByTestId("suggest-adjust-open")).toBeTruthy();
+    expect(screen.queryByTestId("suggest-adjustments")).toBeNull();
+  });
+
+  it("renders exactly the parameters the server declared, in its order", () => {
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
+      onDetail: vi.fn(), onMaskAdjustment: vi.fn() }));
+    expect(screen.getByTestId("suggest-detail-balanced")).toBeTruthy();
+    expect(screen.getByTestId("suggest-fill-holes")).toBeTruthy();
+    expect(screen.getByTestId("suggest-fragments")).toBeTruthy();
+  });
+
+  it("offers a box class only what moves a box, because the wire says only that", () => {
+    // The whole of the rule: no condition in this file mentions a box. Declare
+    // `fill_holes` for a box in the kernel's table and this test goes red there.
+    const session = asked();
+    const boxy = answered(session, session.serial, {
+      ...polygonAnswer(),
+      parameters: ["fragments"],
+    });
+    render(mount({ session: boxy, adjusting: true, onAdjusting: vi.fn(),
+      onDetail: vi.fn(), onMaskAdjustment: vi.fn() }));
+
+    expect(screen.getByTestId("suggest-fragments")).toBeTruthy();
+    expect(screen.queryByTestId("suggest-detail-balanced")).toBeNull();
+    expect(screen.queryByTestId("suggest-fill-holes")).toBeNull();
+  });
+
+  it("renders nothing at all where the server declared no parameters", () => {
+    // A host that cannot honour a control renders no control rather than a dead one.
+    const session = asked();
+    const bare = answered(session, session.serial, { ...polygonAnswer(), parameters: [] });
+    render(mount({ session: bare, adjusting: true, onAdjusting: vi.fn() }));
+    expect(screen.queryByTestId("suggest-adjustments")).toBeNull();
+    expect(screen.queryByTestId("suggest-adjust-open")).toBeNull();
+  });
+
+  it("says what the current setting costs, beside the control that sets it", () => {
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
+      onDetail: vi.fn(), onMaskAdjustment: vi.fn() }));
+    expect(screen.getByTestId("suggest-vertex-count").textContent).toBe("4 pts");
+  });
+
+  it("reports a step through the door that needs no request", async () => {
+    const onDetail = vi.fn();
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
+      onDetail, onMaskAdjustment: vi.fn() }));
+
+    await userEvent.click(screen.getByTestId("suggest-detail-coarse"));
+    expect(onDetail).toHaveBeenCalledWith("coarse");
+  });
+
+  it("reports a mask setting through the other door, which asks again", async () => {
+    const onMaskAdjustment = vi.fn();
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
+      onDetail: vi.fn(), onMaskAdjustment }));
+
+    await userEvent.click(screen.getByTestId("suggest-fragments"));
+    expect(onMaskAdjustment).toHaveBeenCalledWith({ fragments: "all" });
+  });
+
+  it("keeps the controls operable on an answer with nothing in it", () => {
+    // Decision 9: adjusting into an empty result must leave the way back. Losing
+    // the section here would leave a blank canvas and nothing to press but Esc,
+    // which throws the gesture away rather than undoing what emptied it.
+    const session = asked();
+    const empty = answered(session, session.serial, {
+      ...polygonAnswer(),
+      suggestions: [],
+    });
+    render(mount({ session: empty, adjusting: true, onAdjusting: vi.fn(),
+      onDetail: vi.fn(), onMaskAdjustment: vi.fn() }));
+
+    expect(screen.getByTestId("suggest-none")).toBeTruthy();
+    expect(screen.getByTestId("suggest-adjustments")).toBeTruthy();
+    expect(screen.getByTestId("suggest-detail-balanced")).toBeTruthy();
   });
 });

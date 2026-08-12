@@ -251,3 +251,28 @@ export const ACCEPT_SUGGESTION = "accept-suggestion";
  * document, so there is nothing for `mod+z` to step back to.
  */
 export const DISCARD_SUGGESTION = "discard-suggestion";
+
+/**
+ * Move the suggestion's vertex density one step — `[` coarser, `]` finer.
+ *
+ * Ordinary rows rather than a substitution, because unlike `enter` and `escape`
+ * these two chords mean nothing else: there is no drawing gesture and no
+ * selection rule they would shadow, so the table can carry them and the registry
+ * can list them as chips.
+ *
+ * Host rows for `TOGGLE_SUGGEST`'s reason with one addition of its own. The
+ * *arithmetic* is core's — `geometry/simplify.ts`, held to the kernel's answers
+ * by a golden fixture — but which step the session is on is part of a session
+ * the host holds, and the host is also what decides whether the control is
+ * offered at all: the server declares whether `detail` applies to the kind of
+ * shape this class holds, and a bracket pressed on a box class answers `false`
+ * and falls through.
+ *
+ * Two rows and not one signed row, because a chord is bound to an action name
+ * and `[` and `]` are two chords. It is also what lets a host offer one and
+ * refuse the other at either end of the vocabulary.
+ */
+export const COARSER_SUGGESTION = "coarser-suggestion";
+
+/** The other bracket. See {@link COARSER_SUGGESTION}. */
+export const FINER_SUGGESTION = "finer-suggestion";

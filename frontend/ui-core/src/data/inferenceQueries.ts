@@ -43,7 +43,13 @@
  * written: acceptance is a separate, ordinary annotation create.
  */
 
-import type { GeometryType } from "@visionset/annotator";
+import type {
+  Adjustments,
+  Detail,
+  Fragments,
+  GeometryType,
+  SuggestParameter,
+} from "@visionset/annotator";
 import {
   useMutation,
   useQuery,
@@ -84,12 +90,34 @@ export type ConnectionPage = components["schemas"]["ConnectionPage"];
  */
 export interface SuggestedRegion {
   readonly geometry: unknown;
-  readonly confidence: number | null;
+  /**
+   * The unsimplified outline, in the asset's own pixels. Empty for a box.
+   *
+   * Typed here rather than left `unknown` because, unlike `geometry`, nothing
+   * downstream re-narrows it: it goes straight into the annotator's simplifier
+   * as a list of points.
+   */
+  readonly contour: readonly (readonly number[])[];
 }
 
 export interface SuggestionOut {
   readonly model_ref: string;
-  readonly region?: SuggestedRegion | null;
+  readonly confidence: number;
+  readonly regions: readonly SuggestedRegion[];
+  readonly applied: {
+    readonly detail: Detail;
+    readonly fill_holes: number;
+    readonly fragments: Fragments;
+  };
+  /**
+   * Which settings have any effect on the kind of shape this class holds.
+   *
+   * Read and rendered as given. The editor works none of it out for itself —
+   * that a box has no use for `detail` is the kernel's rule, and a second copy
+   * of it here would be the hand-mirrored table the capabilities contract exists
+   * to forbid.
+   */
+  readonly parameters: readonly SuggestParameter[];
 }
 
 export type ConnectionType = components["schemas"]["ConnectionType"];
@@ -400,6 +428,8 @@ export interface SuggestInput {
    * narrows or answers nothing rather than proposing something unusable.
    */
   readonly allowedGeometries: readonly GeometryType[];
+  /** Where the three settings stand. Sent on every ask, echoed by every answer. */
+  readonly adjustments: Adjustments;
 }
 
 /** Ask the model. Nothing is written and nothing is remembered. */
@@ -416,6 +446,9 @@ export function useSuggestRegion() {
             positive: input.positive.map(([x, y]) => ({ x, y })),
             negative: input.negative.map(([x, y]) => ({ x, y })),
             allowed_geometries: [...input.allowedGeometries],
+            detail: input.adjustments.detail,
+            fill_holes: input.adjustments.fillHoles,
+            fragments: input.adjustments.fragments,
           } as never,
         }),
         checkSuggestRegion,

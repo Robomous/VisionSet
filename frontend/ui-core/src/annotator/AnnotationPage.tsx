@@ -77,14 +77,17 @@ import {
   DISCARD_SUGGESTION,
   MAX_ZOOM,
   MIN_ZOOM,
+  COARSER_SUGGESTION,
+  DEFAULT_ADJUSTMENTS,
+  FINER_SUGGESTION,
   FOCUS_CLASS_FIELD,
   SAVE,
   SAVE_AND_NEXT,
   SKIP_FRAME,
   TOGGLE_HELP,
   TOGGLE_SUGGEST,
-  acceptedAnnotation,
-  addAnnotationCommand,
+  acceptedAnnotations,
+  addAnnotationsCommand,
   allowedGeometriesFor,
   answered,
   armed,
@@ -102,16 +105,23 @@ import {
   randomUuid,
   refused,
   selectOnly,
+  selectionOf,
+  steppedDetail,
   suggestClassFor,
   suggestibleClassIn,
   toolFor,
   useAnnotatorSnapshot,
   usePendingIndicator,
   withClass,
+  withDetail,
+  withMaskAdjustment,
   withPoint,
+  type Answer,
   type AnnotatorStore,
   type AnnotatorView,
   type Clipboard,
+  type Detail,
+  type Fragments,
   type Point,
   type Polarity,
   type Suggestion,
@@ -200,6 +210,7 @@ import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { FrameGallery } from "./FrameGallery";
 import { SuggestPanel } from "./SuggestPanel";
 import { useConnections, useSuggestRegion, usableConnection } from "../data/inferenceQueries";
+import type { SuggestionOut } from "../data/inferenceQueries";
 import { readPref, writePref } from "../data/prefs";
 
 /**
@@ -277,25 +288,32 @@ const ZOOM_STEP = 1.25;
  * it — because the alternative is a `WireFormatError` thrown out of a mutation
  * callback, where nothing is listening.
  *
- * `region` is optional in the generated type (the field carries a default), so
- * `?? null` is what turns "absent" and "explicitly null" into the one answer they
- * both are.
+ * A region whose geometry will not parse is **dropped rather than fatal**: the
+ * others are still perfectly good proposals, and an answer that lost one shape
+ * is a better outcome than an answer that lost all of them.
  */
-function readSuggestion(answer: {
-  readonly model_ref: string;
-  readonly region?: { readonly geometry: unknown; readonly confidence: number | null } | null;
-}): Suggestion | null {
-  const region = answer.region ?? null;
-  if (region === null) return null;
-  try {
-    return {
-      geometry: parseGeometry(region.geometry),
-      confidence: region.confidence,
-      modelRef: answer.model_ref,
-    };
-  } catch {
-    return null;
+function readAnswer(answer: SuggestionOut): Answer {
+  const suggestions: Suggestion[] = [];
+  for (const region of answer.regions) {
+    try {
+      suggestions.push({
+        geometry: parseGeometry(region.geometry),
+        confidence: answer.confidence,
+        modelRef: answer.model_ref,
+        contour: region.contour.map(
+          (point: readonly number[]) => [point[0] ?? 0, point[1] ?? 0] as Point,
+        ),
+      });
+    } catch {
+      continue;
+    }
   }
+  return {
+    modelRef: answer.model_ref,
+    confidence: answer.confidence,
+    suggestions,
+    parameters: answer.parameters,
+  };
 }
 
 /**
@@ -526,6 +544,23 @@ function JobScreen({
    * edge, where the asset frame and the pinned schema are somebody else's.
    */
   const [activeClass, setActiveClass] = useState<string | null>(null);
+
+  /**
+   * The suggest tool's vertex density, held here for `activeClass`'s reason.
+   *
+   * A choice about how to work rather than a fact about the workspace, so it is
+   * client memory and never a write: two people annotating the same batch may
+   * reasonably want different amounts of detail, and a shared setting would make
+   * one of them keep changing the other's. It is also not `prefs.ts` — that tier
+   * is a preference remembered across visits, and this is a session, in the same
+   * scope the clipboard and the drawing class have. Leaving the job forgets it,
+   * moving to the next frame does not.
+   *
+   * The other two settings deliberately do not live here. They change the mask
+   * rather than the reading of it, so carrying one to the next frame would mean
+   * quietly asking a different question about a different picture.
+   */
+  const [detail, setDetail] = useState<Detail>(DEFAULT_ADJUSTMENTS.detail);
   /**
    * Every route to a drawing class goes through here — the panel's list, the tool
    * strip, a digit hotkey and the canvas's own `activate-class`.
@@ -602,6 +637,8 @@ function JobScreen({
       counts={progress.data ?? null}
       clipboard={clipboard}
       activeClass={activeClass}
+      detail={detail}
+      onDetail={setDetail}
       onActivateClass={activateClass}
       onNavigate={setChosen}
       {...(onConfigureInference === undefined ? {} : { onConfigureInference })}
@@ -674,6 +711,9 @@ interface WorkspaceProps {
   } | null;
   /** Held by `JobScreen`, so `mod+c` here and `mod+v` on the next frame is one clipboard. */
   readonly clipboard: Clipboard;
+  /** The suggest tool's vertex density, held one level up so it outlives a frame. */
+  readonly detail: Detail;
+  readonly onDetail: (detail: Detail) => void;
   /** Also `JobScreen`'s, and for a sharper reason — see the note where it is declared. */
   readonly activeClass: string | null;
   readonly onActivateClass: (labelClass: string | null) => void;
@@ -720,6 +760,8 @@ function Workspace({
   loaded,
   counts,
   clipboard,
+  detail,
+  onDetail: setDetail,
   activeClass,
   onActivateClass: activateClass,
   onNavigate,
@@ -804,6 +846,15 @@ function Workspace({
   const [session, setSession] = useState<SuggestionState | null>(null);
 
   /**
+   * Whether the adjustments are open, which is what makes `Esc` three layers.
+   *
+   * Panel state rather than session state, and outside `@visionset/annotator`
+   * for the reason `AnnotatorPanel` is: whether a disclosure is open is chrome,
+   * and the engine ships none. What the engine owns is the settings themselves.
+   */
+  const [adjusting, setAdjusting] = useState(false);
+
+  /**
    * The connection list, fetched **only once the tool is armed**.
    *
    * A job nobody suggests on makes no inference request at all, which is the same
@@ -872,7 +923,9 @@ function Workspace({
     const labelClass = suggestClassFor(store.document.schema, activeClass);
     if (labelClass === null) return;
     activateClass(labelClass);
-    setSession(armed(labelClass));
+    // The vertex density the job is already working at, so arming the tool on
+    // the next frame does not quietly go back to the middle setting.
+    setSession(armed(labelClass, { ...DEFAULT_ADJUSTMENTS, detail }));
   }
 
   /**
@@ -903,12 +956,11 @@ function Workspace({
         positive: prompt.positive,
         negative: prompt.negative,
         allowedGeometries: allowedGeometriesFor(declared),
+        adjustments: next.adjustments,
       },
       {
         onSuccess: (answer) => {
-          setSession((live) =>
-            live === null ? live : answered(live, asked, readSuggestion(answer)),
-          );
+          setSession((live) => (live === null ? live : answered(live, asked, readAnswer(answer))));
         },
         onError: (error: unknown) => {
           setSession((live) =>
@@ -934,16 +986,90 @@ function Workspace({
    */
   function acceptSuggestion(): void {
     if (session === null || readOnly) return;
-    const drawn = acceptedAnnotation(store.document, session, randomUuid);
-    if (drawn === null) return;
-    store.execute(addAnnotationCommand(drawn));
-    store.select(selectOnly(drawn.id));
+    const drawn = acceptedAnnotations(store.document, session, randomUuid);
+    if (drawn.length === 0) return;
+    // One command for however many shapes were proposed, so one undo takes back
+    // exactly what one acceptance created. Accepting some of a plural proposal is
+    // real and is deliberately not here — it needs a selection the preview does
+    // not have, and it is tracked as its own piece of work.
+    store.execute(addAnnotationsCommand(drawn));
+    store.select(selectionOf(drawn.map((one) => one.id)));
+    setAdjusting(false);
     setSession(cleared(session));
   }
 
-  /** Escape: clear what is pending, or — with nothing pending — put the tool away. */
+  /** A step of vertex density, applied here: no request, so a held key is free. */
+  function applyDetail(next: Detail): void {
+    if (session === null) return;
+    setSession(withDetail(session, next));
+    // Lifted, so the choice outlives this frame. See `JobScreen`'s own note.
+    setDetail(next);
+  }
+
+  /**
+   * `[` and `]`, answering `false` where there is nothing for them to move.
+   *
+   * The declaration decides, not this file: a box class never has `detail` in
+   * `parameters`, so the bracket falls through to the browser rather than being
+   * swallowed by a control that is not on screen.
+   */
+  function stepDetail(direction: -1 | 1): boolean {
+    if (session === null || !session.parameters.includes("detail")) return false;
+    const next = steppedDetail(session.adjustments.detail, direction);
+    if (next === session.adjustments.detail) return false;
+    applyDetail(next);
+    return true;
+  }
+
+  /** A setting only the server can honour: record it and ask again. */
+  function adjustMask(adjustment: { fillHoles?: number; fragments?: Fragments }): void {
+    if (session === null || connection === null) return;
+    const declared = store.document.schema.classes.find(
+      (candidate) => candidate.name === session.labelClass,
+    );
+    if (declared === undefined) return;
+    const next = withMaskAdjustment(session, adjustment);
+    if (next === session) return;
+    setSession(next);
+    if (next.status !== "asking") return;
+    const asked = next.serial;
+    const prompt = promptOf(next);
+    suggestRegion.mutate(
+      {
+        projectId,
+        assetId: asset.id,
+        connectionId: connection.id,
+        positive: prompt.positive,
+        negative: prompt.negative,
+        allowedGeometries: allowedGeometriesFor(declared),
+        adjustments: next.adjustments,
+      },
+      {
+        onSuccess: (answer) => {
+          setSession((live) => (live === null ? live : answered(live, asked, readAnswer(answer))));
+        },
+        onError: (error: unknown) => {
+          setSession((live) => (live === null ? live : refused(live, asked, refusalProse(error))));
+        },
+      },
+    );
+  }
+
+  /**
+   * Escape, in three layers: close the adjustments, clear what is pending, then
+   * put the tool away.
+   *
+   * The order is most-recent-first, which is what the two existing layers already
+   * were: a section somebody opened a moment ago is nearer to hand than the
+   * points, and the points are nearer than the tool. Each press undoes one thing,
+   * and nothing is ever undone that the person cannot see.
+   */
   function discardSuggestion(): void {
     if (session === null) return;
+    if (adjusting) {
+      setAdjusting(false);
+      return;
+    }
     // Ahead of the state change and not merely as a consequence of it. Dropping
     // `asking` would hide the halo through the ordinary path, which honours the
     // visibility floor — so a take-back would leave its own indicator on screen
@@ -1044,6 +1170,12 @@ function Workspace({
       discardSuggestion();
       return true;
     }
+    // The brackets answer `false` when there is no session, or when the server
+    // has not declared `detail` as applying here — a box class — so the chord
+    // falls through to the browser rather than being swallowed by a control that
+    // is not on screen.
+    if (name === COARSER_SUGGESTION) return stepDetail(-1);
+    if (name === FINER_SUGGESTION) return stepDetail(1);
     return false;
   }
 
@@ -2495,6 +2627,10 @@ function Workspace({
                 onChooseConnection={chooseConnection}
                 onAccept={acceptSuggestion}
                 onDiscard={discardSuggestion}
+                adjusting={adjusting}
+                onAdjusting={setAdjusting}
+                onDetail={applyDetail}
+                onMaskAdjustment={adjustMask}
                 // Off the same clock the halo is drawn from, which is what lets
                 // the card and the canvas be read as one report of one wait
                 // rather than as two. The card's own appearance follows the

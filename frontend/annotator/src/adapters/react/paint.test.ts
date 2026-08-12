@@ -20,11 +20,12 @@ import {
   editedId,
   paintAnnotation,
   paintDocument,
-  paintSuggestion,
+  paintSuggestions,
   pendingPolygon,
   rubberBand,
   screenPx,
   type PaintedAnnotation,
+  type PaintedSuggestion,
 } from "./paint";
 import {
   answered,
@@ -33,7 +34,42 @@ import {
   refused,
   withPoint,
 } from "../../core/interaction/suggestion";
-import type { Suggestion, SuggestionState } from "../../core/interaction/suggestion";
+import type { Answer, Suggestion, SuggestionState } from "../../core/interaction/suggestion";
+import type { LabelClass } from "../../core/types";
+
+const MODEL_REF = "facebook/sam2-hiera-base-plus@main";
+const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;
+
+function proposal(confidence: number | null = 0.871): Suggestion {
+  return { geometry: A_BOX, confidence, modelRef: MODEL_REF, contour: [] };
+}
+
+/** An answer carrying those shapes, with every parameter declared as applying. */
+function answerOf(...suggestions: readonly Suggestion[]): Answer {
+  return {
+    modelRef: MODEL_REF,
+    confidence: suggestions[0]?.confidence ?? null,
+    suggestions,
+    parameters: ["detail", "fill_holes", "fragments"],
+  };
+}
+
+/** An answer with nothing in it — a click on a patch of sky. */
+const NOTHING: Answer = answerOf();
+
+function shown(...suggestions: readonly Suggestion[]): SuggestionState {
+  const asked = withPoint(armed("sign"), [100, 120], "positive");
+  return answered(
+    asked,
+    asked.serial,
+    answerOf(...(suggestions.length ? suggestions : [proposal()])),
+  );
+}
+
+/** The first painted proposal, or `null` where nothing is drawn at all. */
+function first(state: SuggestionState, declared: LabelClass | undefined): PaintedSuggestion | null {
+  return paintSuggestions(state, declared)[0] ?? null;
+}
 
 function tag(id: string): Annotation {
   return { ...annotation(id), geometry: { type: "classification_tag" } };
@@ -250,16 +286,7 @@ describe("the shape under construction", () => {
 
 describe("a pending suggestion, drawn as a proposal (#424)", () => {
   const SIGN = SCHEMA.classes.find((declared) => declared.name === "sign");
-  const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;
 
-  function proposal(confidence: number | null = 0.871): Suggestion {
-    return { geometry: A_BOX, confidence, modelRef: "facebook/sam2-hiera-base-plus@main" };
-  }
-
-  function shown(suggestion: Suggestion = proposal()): SuggestionState {
-    const asked = withPoint(armed("sign"), [100, 120], "positive");
-    return answered(asked, asked.serial, suggestion);
-  }
 
   it("is told apart by two signals, and never by colour alone", () => {
     // The shape draws in its class's own colour — that is the point of it — so
@@ -267,19 +294,19 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
     // are visible to somebody who cannot tell the two hues apart.
     expect(SUGGESTION_OPACITY).toBeLessThan(1);
     expect(SUGGESTION_DASH).not.toBe("");
-    expect(paintSuggestion(shown(), SIGN)?.color).toBe(classColor(SIGN, "sign"));
+    expect(first(shown(), SIGN)?.color).toBe(classColor(SIGN, "sign"));
   });
 
   it("carries the geometry, the class and the confidence", () => {
-    const painted = paintSuggestion(shown(), SIGN);
+    const painted = first(shown(), SIGN);
     expect(painted?.geometry).toEqual(A_BOX);
     expect(painted?.label).toBe("sign 87%");
   });
 
   it("carries the clicks that produced it, so a refine is legible", () => {
     const refined = withPoint(shown(), [200, 210], "negative");
-    const settled = answered(refined, refined.serial, proposal());
-    expect(paintSuggestion(settled, SIGN)?.points).toEqual([
+    const settled = answered(refined, refined.serial, answerOf(proposal()));
+    expect(first(settled, SIGN)?.points).toEqual([
       { point: [100, 120], polarity: "positive" },
       { point: [200, 210], polarity: "negative" },
     ]);
@@ -287,7 +314,7 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
 
   it("names the class alone when the model reported no confidence", () => {
     expect(confidenceLabel("sign", null)).toBe("sign");
-    expect(paintSuggestion(shown(proposal(null)), SIGN)?.label).toBe("sign");
+    expect(first(shown(proposal(null)), SIGN)?.label).toBe("sign");
   });
 
   it("rounds the confidence to whole percent at both ends", () => {
@@ -303,11 +330,11 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
     // half of the guard was never exercised at all. The refine case below is the
     // one that tells them apart.
     const asked = withPoint(armed("sign"), [100, 120], "positive");
-    expect(paintSuggestion(armed("sign"), SIGN)).toBeNull();
-    expect(paintSuggestion(asked, SIGN)).toBeNull();
-    expect(paintSuggestion(answered(asked, asked.serial, null), SIGN)).toBeNull();
-    expect(paintSuggestion(refused(asked, asked.serial, "not here yet"), SIGN)).toBeNull();
-    expect(paintSuggestion(cleared(shown()), SIGN)).toBeNull();
+    expect(first(armed("sign"), SIGN)).toBeNull();
+    expect(first(asked, SIGN)).toBeNull();
+    expect(first(answered(asked, asked.serial, NOTHING), SIGN)).toBeNull();
+    expect(first(refused(asked, asked.serial, "not here yet"), SIGN)).toBeNull();
+    expect(first(cleared(shown()), SIGN)).toBeNull();
   });
 
   it("keeps drawing the held shape while a refine click is still unanswered", () => {
@@ -318,7 +345,7 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
     const refining = withPoint(shown(), [200, 210], "negative");
     expect(refining.status).toBe("asking");
 
-    const painted = paintSuggestion(refining, SIGN);
+    const painted = first(refining, SIGN);
     expect(painted?.geometry).toEqual(A_BOX);
     // And the newest click is carried with it, so the dots and the shape agree
     // about what is being asked.
@@ -333,7 +360,7 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
     // belt-and-braces as the kind check below, for a function exported from the
     // package root that a caller could hand anything the type permits.
     const parked: SuggestionState = { ...shown(), labelClass: null };
-    expect(paintSuggestion(parked, SIGN)).toBeNull();
+    expect(first(parked, SIGN)).toBeNull();
   });
 
   it("draws nothing for a kind that is not one of the two suggestible ones", () => {
@@ -344,8 +371,9 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
       geometry: { type: "polyline", points: [[0, 0], [1, 1]] },
       confidence: 0.5,
       modelRef: "m@1",
+      contour: [],
     });
-    expect(paintSuggestion(path, SIGN)).toBeNull();
+    expect(first(path, SIGN)).toBeNull();
   });
 });
 
@@ -399,13 +427,18 @@ describe("a committed annotation's confidence is not the canvas's business", () 
     // The one surface in the editor that shows it, and `paintSuggestion` is
     // what puts it there — see the `#424` block above for the full range.
     const asked = withPoint(armed("sign"), [100, 120], "positive");
-    const preview = answered(asked, asked.serial, {
-      geometry: { type: "bbox", x: 10, y: 20, width: 30, height: 40 },
-      confidence: 0.62,
-      modelRef: "facebook/sam2-hiera-base-plus@main",
-    });
+    const preview = answered(
+      asked,
+      asked.serial,
+      answerOf({
+        geometry: { type: "bbox", x: 10, y: 20, width: 30, height: 40 },
+        confidence: 0.62,
+        modelRef: MODEL_REF,
+        contour: [],
+      }),
+    );
     const declared = SCHEMA.classes.find((one) => one.name === "sign");
-    expect(paintSuggestion(preview, declared)?.label).toBe("sign 62%");
+    expect(first(preview, declared)?.label).toBe("sign 62%");
   });
 
   it("spells it one way, so no second surface can disagree with the first", () => {

@@ -15,10 +15,15 @@ import { AnnotatorStore } from "../state/store";
 import { annotationsInDrawOrder, createDocument } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import { addAnnotationCommand } from "../state/commands";
-import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass } from "../types";
+import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass, Point } from "../types";
+import type { Answer } from "./suggestion";
 import {
+  DEFAULT_ADJUSTMENTS,
+  vertexCount,
+  withDetail,
+  withMaskAdjustment,
   SUGGESTIBLE_GEOMETRY_TYPES,
-  acceptedAnnotation,
+  acceptedAnnotations,
   allowedGeometriesFor,
   answered,
   armed,
@@ -73,14 +78,39 @@ const A_POLYGON: Geometry = {
   ],
 };
 
-function proposal(geometry: Geometry = A_BOX, confidence: number | null = 0.87): Suggestion {
-  return { geometry, confidence, modelRef: "facebook/sam2-hiera-base-plus@main" };
+function proposal(
+  geometry: Geometry = A_BOX,
+  confidence: number | null = 0.87,
+  contour: readonly Point[] = [],
+): Suggestion {
+  return { geometry, confidence, modelRef: MODEL_REF, contour };
 }
 
+const MODEL_REF = "facebook/sam2-hiera-base-plus@main";
+
+/** A mint that hands out a fresh id per call, so a plural acceptance can be counted. */
+function byCount(): () => string {
+  let at = 0;
+  return () => `id-${(at += 1)}`;
+}
+
+/** An answer carrying those shapes, with every parameter declared as applying. */
+function answerOf(...suggestions: readonly Suggestion[]): Answer {
+  return {
+    modelRef: MODEL_REF,
+    confidence: suggestions[0]?.confidence ?? null,
+    suggestions,
+    parameters: ["detail", "fill_holes", "fragments"],
+  };
+}
+
+/** An answer with nothing in it — a click on a patch of sky. */
+const NOTHING: Answer = answerOf();
+
 /** A session that has asked once and been answered. The commonest starting point. */
-function showing(suggestion: Suggestion = proposal()): SuggestionState {
+function showing(...suggestions: readonly Suggestion[]): SuggestionState {
   const asked = withPoint(armed("car"), [100, 120], "positive");
-  return answered(asked, asked.serial, suggestion);
+  return answered(asked, asked.serial, answerOf(...(suggestions.length ? suggestions : [proposal()])));
 }
 
 describe("which classes the tool is offered for", () => {
@@ -155,13 +185,13 @@ describe("the active class moves and the session goes with it", () => {
 
   it("discards a preview the new class may not be able to hold", () => {
     const shown = showing();
-    expect(shown.suggestion).not.toBe(null);
+    expect(shown.suggestions).not.toEqual([]);
 
     const moved = withClass(shown, "road");
 
     // The shape was answered under `car`'s `allowed_geometries`; accepting it
     // under `road` could write a kind that class does not admit.
-    expect(moved.suggestion).toBe(null);
+    expect(moved.suggestions).toEqual([]);
     expect(moved.points).toEqual([]);
     expect(moved.status).toBe("idle");
     expect(isAcceptable(moved)).toBe(false);
@@ -175,7 +205,7 @@ describe("the active class moves and the session goes with it", () => {
 
     expect(moved.serial).toBe(asked.serial);
     // The ask that was in flight lands under the old serial and is dropped whole.
-    expect(answered(moved, asked.serial - 1, proposal())).toBe(moved);
+    expect(answered(moved, asked.serial - 1, answerOf(proposal()))).toBe(moved);
 
     // And the next click on the new class cannot be answered by it either: the
     // serial moves on rather than being handed back out.
@@ -187,7 +217,7 @@ describe("the active class moves and the session goes with it", () => {
     const state = withClass(showing(), null);
     expect(isParked(state)).toBe(true);
     expect(state.labelClass).toBe(null);
-    expect(state.suggestion).toBe(null);
+    expect(state.suggestions).toEqual([]);
     expect(state.points).toEqual([]);
   });
 
@@ -212,7 +242,7 @@ describe("the active class moves and the session goes with it", () => {
     // Constructed, not reachable: a parked session cannot be `shown`. The guard is
     // the guarantee — no class, no annotation — and not a formality.
     const impossible: SuggestionState = { ...showing(), labelClass: null };
-    expect(acceptedAnnotation(document, impossible, () => "id-1")).toBe(null);
+    expect(acceptedAnnotations(document, impossible, () => "id-1")).toEqual([]);
   });
 });
 
@@ -221,7 +251,7 @@ describe("the preview lifecycle", () => {
     const state = armed("car");
     expect(state.points).toEqual([]);
     expect(state.status).toBe("idle");
-    expect(state.suggestion).toBe(null);
+    expect(state.suggestions).toEqual([]);
     expect(hasPending(state)).toBe(false);
   });
 
@@ -235,7 +265,7 @@ describe("the preview lifecycle", () => {
   it("shows the answer to that ask", () => {
     const state = showing();
     expect(state.status).toBe("shown");
-    expect(state.suggestion?.geometry).toEqual(A_BOX);
+    expect(state.suggestions[0]?.geometry).toEqual(A_BOX);
     expect(isAcceptable(state)).toBe(true);
   });
 
@@ -244,11 +274,11 @@ describe("the preview lifecycle", () => {
     // The old shape stays up while the next answer is in flight — a refine that
     // blanked the canvas would flicker on every press.
     expect(refined.status).toBe("asking");
-    expect(refined.suggestion?.geometry).toEqual(A_BOX);
+    expect(refined.suggestions[0]?.geometry).toEqual(A_BOX);
 
-    const next = answered(refined, refined.serial, proposal(A_POLYGON, 0.42));
+    const next = answered(refined, refined.serial, answerOf(proposal(A_POLYGON, 0.42)));
     expect(next.status).toBe("shown");
-    expect(next.suggestion?.geometry).toEqual(A_POLYGON);
+    expect(next.suggestions[0]?.geometry).toEqual(A_POLYGON);
     expect(next.points).toHaveLength(2);
   });
 
@@ -267,9 +297,9 @@ describe("the preview lifecycle", () => {
 
   it("treats an answer with nothing in it as an answer, not as an idle tool", () => {
     const asked = withPoint(armed("car"), [1, 1], "positive");
-    const none = answered(asked, asked.serial, null);
+    const none = answered(asked, asked.serial, NOTHING);
     expect(none.status).toBe("none");
-    expect(none.suggestion).toBe(null);
+    expect(none.suggestions).toEqual([]);
     expect(isAcceptable(none)).toBe(false);
     // Still pending, so Escape has something to take back — which is what tells
     // "asked and got nothing" apart from "not asked".
@@ -281,7 +311,7 @@ describe("the preview lifecycle", () => {
     const stopped = refused(asked, asked.serial, "The weights are not here yet.");
     expect(stopped.status).toBe("refused");
     expect(stopped.refusal).toBe("The weights are not here yet.");
-    expect(stopped.suggestion).toBe(null);
+    expect(stopped.suggestions).toEqual([]);
     expect(isAcceptable(stopped)).toBe(false);
   });
 
@@ -296,7 +326,7 @@ describe("a late answer never wins", () => {
   it("drops an answer that names a superseded ask, by identity", () => {
     const first = withPoint(armed("car"), [10, 10], "positive");
     const second = withPoint(first, [20, 20], "positive");
-    const late = answered(second, first.serial, proposal(A_POLYGON));
+    const late = answered(second, first.serial, answerOf(proposal(A_POLYGON)));
     expect(late).toBe(second);
   });
 
@@ -311,7 +341,7 @@ describe("a late answer never wins", () => {
     const wiped = cleared(asked);
     const next = withPoint(wiped, [20, 20], "positive");
     // The ask Escape interrupted still names serial 1; the fresh one names 2.
-    expect(answered(next, asked.serial, proposal())).toBe(next);
+    expect(answered(next, asked.serial, answerOf(proposal()))).toBe(next);
   });
 });
 
@@ -320,7 +350,7 @@ describe("Escape is the preview's undo", () => {
     const wiped = cleared(showing());
     expect(wiped.points).toEqual([]);
     expect(wiped.status).toBe("idle");
-    expect(wiped.suggestion).toBe(null);
+    expect(wiped.suggestions).toEqual([]);
     expect(hasPending(wiped)).toBe(false);
     // Armed, not off: the class survives so the next click starts a fresh
     // session with the same label rather than disarming the tool.
@@ -330,17 +360,31 @@ describe("Escape is the preview's undo", () => {
 
 describe("acceptance", () => {
   it("carries provenance, the model and the confidence", () => {
-    const accepted = acceptedAnnotation(documentOf(), showing(), () => "id-1");
-    expect(accepted).not.toBe(null);
+    const [accepted] = acceptedAnnotations(documentOf(), showing(), () => "id-1");
+    expect(accepted).toBeDefined();
     expect(accepted?.provenance).toBe("model");
-    expect(accepted?.model_ref).toBe("facebook/sam2-hiera-base-plus@main");
+    expect(accepted?.model_ref).toBe(MODEL_REF);
     expect(accepted?.confidence).toBe(0.87);
     expect(accepted?.label_class).toBe("car");
     expect(accepted?.geometry).toEqual(A_BOX);
   });
 
+  it("builds one annotation per proposal, so a plural answer is accepted whole", () => {
+    // What makes acceptance all-or-nothing rather than a shape at a time: the
+    // caller gets a list and puts it into one command, so one undo takes back
+    // exactly what one acceptance created.
+    const accepted = acceptedAnnotations(
+      documentOf(),
+      showing(proposal(A_BOX), proposal(A_POLYGON)),
+      byCount(),
+    );
+    expect(accepted).toHaveLength(2);
+    expect(accepted.map((one) => one.geometry)).toEqual([A_BOX, A_POLYGON]);
+    expect(new Set(accepted.map((one) => one.id)).size).toBe(2);
+  });
+
   it("carries a null confidence through rather than inventing one", () => {
-    const accepted = acceptedAnnotation(
+    const [accepted] = acceptedAnnotations(
       documentOf(),
       showing(proposal(A_BOX, null)),
       () => "id-1",
@@ -356,7 +400,7 @@ describe("acceptance", () => {
         { name: "occluded", kind: "boolean", required: false, options: null, default: false },
       ],
     };
-    const accepted = acceptedAnnotation(
+    const [accepted] = acceptedAnnotations(
       documentOf(schemaOf(withDefault)),
       showing(),
       () => "id-1",
@@ -366,14 +410,16 @@ describe("acceptance", () => {
 
   it("refuses to build anything from a session with no preview showing", () => {
     const mint = (): string => "id-1";
-    expect(acceptedAnnotation(documentOf(), armed("car"), mint)).toBe(null);
+    expect(acceptedAnnotations(documentOf(), armed("car"), mint)).toEqual([]);
     const asked = withPoint(armed("car"), [1, 1], "positive");
-    expect(acceptedAnnotation(documentOf(), asked, mint)).toBe(null);
-    expect(acceptedAnnotation(documentOf(), answered(asked, asked.serial, null), mint)).toBe(null);
+    expect(acceptedAnnotations(documentOf(), asked, mint)).toEqual([]);
+    expect(acceptedAnnotations(documentOf(), answered(asked, asked.serial, NOTHING), mint)).toEqual(
+      [],
+    );
   });
 
   it("refuses when the schema no longer declares the session's class", () => {
-    expect(acceptedAnnotation(documentOf(schemaOf(ROAD)), showing(), () => "id-1")).toBe(null);
+    expect(acceptedAnnotations(documentOf(schemaOf(ROAD)), showing(), () => "id-1")).toEqual([]);
   });
 });
 
@@ -384,9 +430,9 @@ describe("nothing about a pending suggestion is in the document or the history",
 
     let session = armed("car");
     session = withPoint(session, [10, 10], "positive");
-    session = answered(session, session.serial, proposal());
+    session = answered(session, session.serial, answerOf(proposal()));
     session = withPoint(session, [20, 20], "negative");
-    session = answered(session, session.serial, proposal(A_POLYGON));
+    session = answered(session, session.serial, answerOf(proposal(A_POLYGON)));
     expect(cleared(session).points).toEqual([]);
 
     expect(store.document).toBe(before);
@@ -406,8 +452,8 @@ describe("nothing about a pending suggestion is in the document or the history",
     const session = showing();
     expect(store.canUndo).toBe(false);
 
-    const accepted = acceptedAnnotation(store.document, session, () => "id-1");
-    expect(accepted).not.toBe(null);
+    const [accepted] = acceptedAnnotations(store.document, session, () => "id-1");
+    expect(accepted).toBeDefined();
     store.execute(addAnnotationCommand(accepted!));
 
     expect(store.canUndo).toBe(true);
@@ -416,5 +462,134 @@ describe("nothing about a pending suggestion is in the document or the history",
     store.undo();
     expect(annotationsInDrawOrder(store.document)).toHaveLength(0);
     expect(store.canUndo).toBe(false);
+  });
+});
+
+
+describe("adjusting the vertex density", () => {
+  /**
+   * A circle's traced ring, at integer pixels.
+   *
+   * A curve rather than a rectangle deliberately: a rectangle comes back as four
+   * corners at every step, which is correct and would report a working control
+   * and a dead one identically.
+   */
+  const RING: readonly Point[] = Array.from({ length: 64 }, (_, index) => {
+    const angle = (index / 64) * 2 * Math.PI;
+    return [Math.round(200 + 120 * Math.cos(angle)), Math.round(200 + 120 * Math.sin(angle))] as Point;
+  });
+
+  function withContour(): SuggestionState {
+    return showing(proposal({ type: "polygon", points: [...RING] }, 0.9, RING));
+  }
+
+  it("re-simplifies here, with no ask and no new serial", () => {
+    // The whole reason the contour travels: `[` and `]` are held down, and a
+    // request per keypress would put a network round trip and a model decode
+    // between the press and the picture.
+    const before = withContour();
+    const after = withDetail(before, "coarse");
+    expect(after.serial).toBe(before.serial);
+    expect(after.status).toBe("shown");
+    expect(after.adjustments.detail).toBe("coarse");
+  });
+
+  it("keeps fewer vertices the coarser it is asked to be", () => {
+    const fine = withDetail(withContour(), "fine");
+    const coarse = withDetail(withContour(), "coarse");
+    expect(vertexCount(coarse)).toBeLessThan(vertexCount(fine));
+  });
+
+  it("returns the state by identity for the step already set", () => {
+    // So a host can fold it through unconditionally without a render.
+    const state = withContour();
+    expect(withDetail(state, state.adjustments.detail)).toBe(state);
+  });
+
+  it("leaves a box exactly as it is, because it was reduced from nothing", () => {
+    // The same fact the server states by leaving `detail` out of `parameters`
+    // for a box class, seen from the client's side.
+    const boxed = showing(proposal(A_BOX, 0.9, []));
+    expect(withDetail(boxed, "coarse").suggestions[0]?.geometry).toEqual(A_BOX);
+  });
+
+  it("records the step even with nothing showing, so the next ask carries it", () => {
+    const armedOnly = armed("car");
+    expect(withDetail(armedOnly, "fine").adjustments.detail).toBe("fine");
+    expect(withDetail(armedOnly, "fine").status).toBe("idle");
+  });
+
+  it("counts only the vertices of the polygons it is drawing", () => {
+    expect(vertexCount(armed("car"))).toBe(0);
+    expect(vertexCount(showing(proposal(A_BOX)))).toBe(0);
+    expect(vertexCount(withContour())).toBe(vertexCount(withContour()));
+  });
+});
+
+describe("adjusting what the mask itself is", () => {
+  it("asks again, because the client never had the pixels", () => {
+    // Unlike `detail`, these two change what is traced rather than how much of
+    // the trace survives — and a mask is the one thing that does not travel.
+    const before = showing();
+    const after = withMaskAdjustment(before, { fragments: "all" });
+    expect(after.status).toBe("asking");
+    expect(after.serial).toBe(before.serial + 1);
+    expect(after.adjustments.fragments).toBe("all");
+  });
+
+  it("keeps the previews up while the answer is in flight", () => {
+    // `withPoint`'s rule: what is drawn is still the best answer anyone has.
+    const after = withMaskAdjustment(showing(), { fillHoles: 0 });
+    expect(after.suggestions).not.toEqual([]);
+  });
+
+  it("returns the state by identity when nothing actually moved", () => {
+    const state = showing();
+    expect(withMaskAdjustment(state, { fragments: state.adjustments.fragments })).toBe(state);
+  });
+
+  it("records the setting without asking when there is nothing to ask about", () => {
+    // No points placed yet, so there is no gesture to re-send.
+    const armedOnly = armed("car");
+    const after = withMaskAdjustment(armedOnly, { fragments: "all" });
+    expect(after.status).toBe("idle");
+    expect(after.serial).toBe(armedOnly.serial);
+    expect(after.adjustments.fragments).toBe("all");
+  });
+
+  it("starts a session on the kernel's own defaults", () => {
+    expect(armed("car").adjustments).toEqual(DEFAULT_ADJUSTMENTS);
+  });
+
+  it("carries adjustments into a fresh session, so a choice survives the frame", () => {
+    const chosen = { ...DEFAULT_ADJUSTMENTS, detail: "coarse" as const };
+    expect(armed("car", chosen).adjustments).toEqual(chosen);
+  });
+});
+
+describe("what the answer declares", () => {
+  it("takes the applicable parameters from the server and computes none of them", () => {
+    const asked = withPoint(armed("car"), [1, 1], "positive");
+    const boxy = answered(asked, asked.serial, {
+      modelRef: MODEL_REF,
+      confidence: 0.5,
+      suggestions: [proposal()],
+      parameters: ["fragments"],
+    });
+    expect(boxy.parameters).toEqual(["fragments"]);
+  });
+
+  it("keeps the controls on an answer with nothing in it", () => {
+    // The way back out of an empty result: losing the controls that produced it
+    // would leave somebody with a blank canvas and nothing to press.
+    const asked = withPoint(armed("car"), [1, 1], "positive");
+    const empty = answered(asked, asked.serial, {
+      modelRef: MODEL_REF,
+      confidence: null,
+      suggestions: [],
+      parameters: ["detail", "fill_holes", "fragments"],
+    });
+    expect(empty.status).toBe("none");
+    expect(empty.parameters).toEqual(["detail", "fill_holes", "fragments"]);
   });
 });

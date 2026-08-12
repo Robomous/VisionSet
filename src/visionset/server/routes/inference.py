@@ -37,6 +37,7 @@ from visionset.kernel.services import InferenceConnectionService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
+    AppliedParameters,
     BackgroundJobOut,
     ConnectionCreate,
     ConnectionOut,
@@ -317,9 +318,28 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
 
     **`allowed_geometries` is the caller's schema, not a preference.** The answer
     is produced in one of the kinds named or not at all: a class that admits
-    polygons gets the outline, a class that admits only boxes gets its extent,
-    and a class that admits neither gets `region: null`. Answering in a kind the
+    polygons gets outlines, a class that admits only boxes gets their extents,
+    and a class that admits neither gets no regions. Answering in a kind the
     schema would refuse would produce a suggestion that cannot be accepted.
+
+    **The three parameters shape the mask, and none of them reaches the model.**
+    `detail` decides how much of an outline survives simplification, `fill_holes`
+    how wide a gap in the mask is closed before it is traced, and `fragments`
+    whether the piece under the click is the answer or every piece worth
+    proposing. Each is optional and each has a default, so a caller that sends
+    none of them gets what this route always gave.
+
+    **`parameters` says which of them apply here**, for the kind of shape this
+    request will come back in — `detail` and `fill_holes` change an outline and a
+    box has none — and it is present even when there is nothing to propose, so
+    somebody who adjusted their way into an empty answer can adjust their way
+    back out. A client renders what this names and works none of it out itself.
+
+    **`contour` on each region is the unsimplified outline.** It is what lets a
+    client re-run `detail` locally rather than asking again, and it is the *same*
+    points this route reduced — simplification is not nested, so a client
+    starting from anything else could not be held to the same answer. A box
+    carries none, because there is nothing it was reduced from.
 
     **Every point must be on the asset**, positive and negative alike — `x` in
     `[0, width]` and `y` in `[0, height]`, both ends included, in the asset's own
@@ -330,8 +350,8 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     about the nearest edge instead would return a mask, and a confidence, for a
     question nobody asked.
 
-    A null `region` is a successful answer with nothing to propose. Refusals are
-    reserved for things the caller can act on: an unknown project, asset or
+    An empty `regions` is a successful answer with nothing to propose. Refusals
+    are reserved for things the caller can act on: an unknown project, asset or
     connection is 404; a connection whose weights are not here yet, or whose kind
     this build cannot run, is 409 and names what to do; a connection whose model
     answers words rather than places is 422, as is a prompt point off the asset.
@@ -340,20 +360,28 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
         positive=tuple((point.x, point.y) for point in body.positive),
         negative=tuple((point.x, point.y) for point in body.negative),
     )
-    prediction = suggest(
+    answer = suggest(
         workspace,
         project_id=body.project_id,
         asset_id=body.asset_id,
         connection_id=body.connection_id,
         prompt=prompt,
         allowed=tuple(body.allowed_geometries),
+        detail=body.detail,
+        fill_holes=body.fill_holes,
+        fragments=body.fragments,
     )
-    region = next(iter(prediction.regions), None)
     return SuggestionOut(
-        model_ref=prediction.model_ref,
-        region=None
-        if region is None
-        else SuggestedRegion(geometry=region.geometry, confidence=region.confidence),
+        model_ref=answer.model_ref,
+        confidence=answer.confidence,
+        regions=[
+            SuggestedRegion(geometry=shape.geometry, contour=list(shape.contour))
+            for shape in answer.shapes
+        ],
+        applied=AppliedParameters(
+            detail=body.detail, fill_holes=body.fill_holes, fragments=body.fragments
+        ),
+        parameters=list(answer.parameters),
     )
 
 

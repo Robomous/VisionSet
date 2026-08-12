@@ -47,6 +47,7 @@ export {
 export { CommandLog, type Command } from "./core/state/commandLog";
 export {
   addAnnotationCommand,
+  addAnnotationsCommand,
   composeCommands,
   documentCommand,
   removeAnnotationsCommand,
@@ -147,10 +148,11 @@ export {
 } from "./core/interaction/affordance";
 export { draftAnnotation } from "./core/interaction/draft";
 // The suggest session — ephemeral by construction: no effects, no store,
-// nothing in the command log until `acceptedAnnotation` is added like any shape
+// nothing in the command log until `acceptedAnnotations` are added like any shape
 export {
+  DEFAULT_ADJUSTMENTS,
   SUGGESTIBLE_GEOMETRY_TYPES,
-  acceptedAnnotation,
+  acceptedAnnotations,
   allowedGeometriesFor,
   answered,
   armed,
@@ -164,16 +166,38 @@ export {
   schemaCanSuggest,
   suggestClassFor,
   suggestibleClassIn,
+  vertexCount,
   withClass,
+  withDetail,
+  withMaskAdjustment,
   withPoint,
+  type Adjustments,
+  type Answer,
+  type Fragments,
   type Polarity,
   type Prompt,
   type PromptPoint,
   type Suggestion,
+  type SuggestParameter,
   type SuggestibleGeometryType,
   type SuggestionState,
   type SuggestionStatus,
 } from "./core/interaction/suggestion";
+
+// The simplifier the editor re-runs when `detail` moves, and the vocabulary it
+// moves through. Exported because `ui-core` renders the control and reads the
+// vertex count; the algorithm itself is held to the kernel's answers by
+// `tests/fixtures/simplification.json`.
+export {
+  DETAIL_STEPS,
+  EPSILON,
+  MINIMUM_TOLERANCE,
+  polygonAt,
+  simplified,
+  steppedDetail,
+  toleranceFor,
+  type Detail,
+} from "./core/geometry/simplify";
 export {
   TRANSITIONS,
   transition,
@@ -211,6 +235,8 @@ export {
   SAVE,
   SAVE_AND_NEXT,
   SKIP_FRAME,
+  COARSER_SUGGESTION,
+  FINER_SUGGESTION,
   TOGGLE_HELP,
   TOGGLE_SUGGEST,
   chordOf,
@@ -295,7 +321,7 @@ export {
   isTextEntry,
   paintAnnotation,
   paintDocument,
-  paintSuggestion,
+  paintSuggestions,
   pendingIndicator,
   pendingPolygon,
   rubberBand,

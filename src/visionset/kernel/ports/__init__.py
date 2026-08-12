@@ -22,6 +22,7 @@ from visionset.kernel.ports.metadata_store import (
     UnitOfWork,
 )
 from visionset.kernel.ports.model_provider import ModelProvider
+from visionset.kernel.ports.point_segmenter import PointSegmenter
 from visionset.kernel.ports.progress_reporter import ProgressReporter
 from visionset.kernel.ports.video_processor import (
     DEFAULT_EXTRACTION_FPS,
@@ -45,6 +46,7 @@ __all__ = [
     "JobQueue",
     "MetadataStore",
     "ModelProvider",
+    "PointSegmenter",
     "ProgressReporter",
     "Repository",
     "UnitOfWork",

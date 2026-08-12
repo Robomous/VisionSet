@@ -315,9 +315,9 @@ export interface PaintedSuggestion {
 }
 
 /**
- * The pending suggestion as a draw list, or `null` when there is nothing to draw.
+ * The pending suggestions as a draw list — empty when there is nothing to draw.
  *
- * `null` covers every state holding no shape — an armed tool nobody has clicked
+ * Empty covers every state holding no shape — an armed tool nobody has clicked
  * with, a first ask still in flight, an answer with nothing in it, a refusal. Each
  * of those is a *sentence*, and a sentence is the host's to render: this package
  * ships no chrome, and `AnnotatorPanel`'s argument applies to a spinner and an
@@ -336,26 +336,34 @@ export interface PaintedSuggestion {
  * for them separately: the dots are what makes a refine click legible, and they
  * must stay on screen while the answer to the click that placed them is still
  * coming back.
+ *
+ * **A list, because `fragments` can answer with every piece of a mask.** One
+ * click can propose several shapes, and they are drawn the same way and accepted
+ * together; the label rides on each, because a reader looking at one shape should
+ * not have to find another to learn what class it is.
  */
-export function paintSuggestion(
+export function paintSuggestions(
   state: SuggestionState,
   declared: LabelClass | undefined,
-): PaintedSuggestion | null {
-  const suggestion = state.suggestion;
-  if (suggestion === null) return null;
+): readonly PaintedSuggestion[] {
   // A parked session has no class, so there is no colour to draw it in and
   // no label to write on it. It also cannot be `shown`, so this is the same kind
-  // of guard as the one above: what the type allows, not what the machine does.
+  // of guard as the one below: what the type allows, not what the machine does.
   const labelClass = state.labelClass;
-  if (labelClass === null) return null;
-  const geometry = suggestion.geometry;
-  if (geometry.type !== "bbox" && geometry.type !== "polygon") return null;
-  return {
-    geometry,
-    color: classColor(declared, labelClass),
-    label: confidenceLabel(labelClass, suggestion.confidence),
-    points: state.points,
-  };
+  if (labelClass === null) return [];
+  const color = classColor(declared, labelClass);
+  const painted: PaintedSuggestion[] = [];
+  for (const suggestion of state.suggestions) {
+    const geometry = suggestion.geometry;
+    if (geometry.type !== "bbox" && geometry.type !== "polygon") continue;
+    painted.push({
+      geometry,
+      color,
+      label: confidenceLabel(labelClass, suggestion.confidence),
+      points: state.points,
+    });
+  }
+  return painted;
 }
 
 /**
