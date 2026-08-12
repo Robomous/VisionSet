@@ -61,14 +61,17 @@ export interface TransientLayerProps {
   readonly crosshair: Point | null;
   readonly asset: AssetDescriptor;
   /**
-   * The proposal waiting to be accepted, if one is showing.
+   * The proposals waiting to be accepted, if any are showing.
    *
    * Here rather than in `AnnotationLayer` because it is exactly what this layer
-   * is for: something on screen that is not in the document. It never enters
-   * `AnnotatorStore`, so the committed layer has nothing to draw it from — its
-   * ephemerality made visible rather than merely promised.
+   * is for: something on screen that is not in the document. They never enter
+   * `AnnotatorStore`, so the committed layer has nothing to draw them from —
+   * their ephemerality made visible rather than merely promised.
+   *
+   * A list because one click can propose several shapes: asking for every piece
+   * of a mask answers with every piece, and they are accepted together.
    */
-  readonly suggestion?: PaintedSuggestion | null;
+  readonly suggestions?: readonly PaintedSuggestion[];
   /**
    * Every click of the suggest session so far, drawn whatever the answer is
    * doing — including while one is in flight and after a refusal.
@@ -91,6 +94,14 @@ export interface TransientLayerProps {
 
 const DASH = "6 4";
 
+/**
+ * One frozen empty list, so a render with nothing to propose hands `memo` the
+ * same reference every time. A fresh `[]` per render is #49's `skipId` finding
+ * on a different prop: allocated before it is compared, so it defeats the bail-out
+ * before anything looks at it.
+ */
+const NO_SUGGESTIONS: readonly PaintedSuggestion[] = [];
+
 export function TransientLayer({
   edited,
   state,
@@ -100,7 +111,7 @@ export function TransientLayer({
   closeRing,
   crosshair,
   asset,
-  suggestion = null,
+  suggestions = NO_SUGGESTIONS,
   promptPoints,
   suggestPending = false,
 }: TransientLayerProps): JSX.Element {
@@ -149,7 +160,9 @@ export function TransientLayer({
         />
       )}
 
-      {suggestion !== null && <SuggestedShape suggestion={suggestion} zoom={zoom} />}
+      {suggestions.map((one, index) => (
+        <SuggestedShape key={index} suggestion={one} zoom={zoom} />
+      ))}
 
       {promptPoints !== undefined && promptPoints.length > 0 && (
         <PromptPoints points={promptPoints} zoom={zoom} />

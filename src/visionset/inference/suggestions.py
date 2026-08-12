@@ -3,10 +3,16 @@
 
 **Here rather than in a route, because every surface would need the same thing.**
 A route, a command and a tool would each have to resolve a connection, read an
-asset's bytes, run a provider and narrow the answer to what the active class
+asset's bytes, run a segmenter and turn its mask into shapes the active class
 admits; that is four steps of policy, and policy shared by surfaces moves down.
 It cannot move all the way down into ``visionset.kernel`` — running a model means
 torch — so it lives here, beside the adapters, exactly as ``fetch_weights`` does.
+
+**This is where the pipeline runs, and that is the design.** The segmenter's
+answer is a mask; which of its pieces become shapes, whether their holes are
+closed and how many vertices survive are decisions somebody adjusts, so they
+happen on this side of the port where a caller's parameters can reach them. No
+parameter of the pipeline travels to the model.
 
 **Nothing is written.** A suggestion is a proposal: this returns it and forgets
 it, and the annotation it may become is created later through the ordinary write
@@ -20,25 +26,60 @@ here says so: a single target in, a single answer out.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID
 
-from visionset.inference.masks import narrowed
+from visionset.inference.masks import Point, Shaped, shapes_from, target_kind
 from visionset.inference.providers import ProviderPool, resident
 from visionset.kernel.domain import (
-    AssetPrediction,
+    DEFAULT_DETAIL,
+    DEFAULT_FILL_HOLES,
+    DEFAULT_FRAGMENTS,
+    Detail,
+    Fragments,
     GeometryType,
     PointPrompt,
-    PredictedRegion,
     PredictionRequest,
     PredictionTarget,
+    SuggestParameter,
     media_type_of,
     require_points_on_asset,
+    suggest_parameters,
 )
+from visionset.kernel.errors import UnsupportedPrompt
+from visionset.kernel.ports import PointSegmenter
 from visionset.kernel.services import (
     InferenceConnectionService,
     IngestService,
     WorkspaceService,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class Suggestion:
+    """What one click produced: the proposals, and which model made them.
+
+    ``model_ref`` is present even when ``shapes`` is empty, because it is what an
+    accepted suggestion has to carry and a caller that had to remember which
+    connection it asked would be keeping a second copy of something the answer
+    can simply state.
+
+    ``confidence`` rides on the whole answer rather than on each shape: the model
+    scored one mask, and the pieces the pipeline cut out of it are all that same
+    claim seen in parts. Reporting a separate number per piece would invent
+    precision the model never expressed.
+
+    ``parameters`` is which settings have any effect on the kind of shape this
+    request asked for. It is answered even when ``shapes`` is empty — a caller
+    that adjusted its way into nothing needs the controls to adjust its way back
+    out — which is why it is read from the *requested* kinds rather than from
+    what came back.
+    """
+
+    model_ref: str
+    shapes: tuple[Shaped, ...] = ()
+    confidence: float = 0.0
+    parameters: tuple[SuggestParameter, ...] = ()
 
 
 def suggest(
@@ -49,10 +90,13 @@ def suggest(
     connection_id: UUID,
     prompt: PointPrompt,
     allowed: tuple[GeometryType, ...],
+    detail: Detail = DEFAULT_DETAIL,
+    fill_holes: float = DEFAULT_FILL_HOLES,
+    fragments: Fragments = DEFAULT_FRAGMENTS,
     minimum_confidence: float = 0.0,
     pool: ProviderPool | None = None,
-) -> AssetPrediction:
-    """What the model proposes for that click, in a shape that class can hold.
+) -> Suggestion:
+    """What the model proposes for that click, in shapes that class can hold.
 
     The order of the two lookups is the order of the refusals a caller most
     needs. The connection is resolved first because "no weights here yet" and
@@ -60,10 +104,11 @@ def suggest(
     part-way through, and getting them before an asset lookup means a caller
     fixing their configuration is not also told their asset is fine.
 
-    An empty ``regions`` is a real answer and not a failure: the model was asked
+    An empty ``shapes`` is a real answer and not a failure: the model was asked
     about a patch of sky, or was not sure enough, or the shape it found cannot be
-    expressed in the kinds this class admits. Every one of those is "no
-    suggestion", and none of them is an error somebody made.
+    expressed in the kinds this class admits, or the parameters as set leave
+    nothing. Every one of those is "no suggestion", and none of them is an error
+    somebody made.
 
     Raises:
         InferenceConnectionNotFound: no such connection in this workspace.
@@ -76,8 +121,23 @@ def suggest(
         AssetNotFound: no such asset in that project.
         PromptPointOutOfBounds: a point in the gesture is not on that asset.
     """
+    kind = target_kind(allowed)
+    # Read from what was *asked for*, not from what came back: an answer with
+    # nothing in it still has to arrive with the controls that would change it.
+    parameters = suggest_parameters(kind) if kind is not None else ()
+
     connection = InferenceConnectionService(workspace).get(connection_id)
-    provider = (pool or resident()).get(connection, workspace_root=workspace.root)
+    runner = (pool or resident()).get(connection, workspace_root=workspace.root)
+    if not isinstance(runner, PointSegmenter):
+        # A detector resolved for a pointing gesture. It is refused here rather
+        # than inside the adapter because the adapter it would reach has no
+        # `segment` to refuse from — the split between the two ports is what
+        # makes this checkable before anything is loaded.
+        raise UnsupportedPrompt(
+            f"connection {connection.name!r} runs a model that answers words rather than "
+            "places, so it has no way to interpret a click; use a connection whose model "
+            "declares point_suggest"
+        )
 
     ingest = IngestService(workspace)
     asset = ingest.asset(project_id, asset_id)
@@ -97,30 +157,39 @@ def suggest(
         prompt=prompt,
         minimum_confidence=minimum_confidence,
     )
-    # ``predict`` yields, and this slice asks about exactly one asset — so one
-    # ``next`` is the whole of the answer. A provider that yielded nothing at all
-    # would be breaking the port's contract rather than reporting no findings,
-    # which is what the default guards against.
-    prediction = next(
-        iter(provider.predict(request)),
-        AssetPrediction(asset_id=asset.id, model_ref="", regions=()),
+    # ``segment`` yields, and this slice asks about exactly one asset — so one
+    # ``next`` is the whole of the answer. A segmenter that yielded nothing at
+    # all would be breaking the port's contract rather than reporting no
+    # findings, which is what the default guards against.
+    answer = next(iter(runner.segment(request)), None)
+    if answer is None or not answer.segments:
+        return Suggestion(model_ref=_ref(runner), parameters=parameters)
+
+    segment = answer.segments[0]
+    at: tuple[Point, ...] = tuple(prompt.positive)
+    shapes = shapes_from(
+        segment.mask,
+        allowed=allowed,
+        detail=detail,
+        fill_holes=fill_holes,
+        fragments=fragments,
+        at=at,
     )
-    return prediction.model_copy(update={"regions": _in_kinds(prediction.regions, allowed)})
+    return Suggestion(
+        model_ref=answer.model_ref,
+        shapes=tuple(shapes),
+        confidence=segment.score,
+        parameters=parameters,
+    )
 
 
-def _in_kinds(
-    regions: tuple[PredictedRegion, ...], allowed: tuple[GeometryType, ...]
-) -> tuple[PredictedRegion, ...]:
-    """Every region the active class can actually hold, D3's rule applied.
+def _ref(runner: PointSegmenter) -> str:
+    """The model reference for an answer that carried none.
 
-    A region whose shape cannot be narrowed is dropped rather than offered in a
-    kind the schema would refuse: the write that followed would fail validation,
-    and a suggestion the product knows cannot be accepted is worse than no
-    suggestion at all.
+    A segmenter that found nothing still yields an ``AssetSegmentation`` and that
+    carries its own ``model_ref``, so this is only reached when the port yielded
+    nothing at all. Every adapter here exposes ``model_ref`` as a property; a
+    hosted one that did not would leave the field empty rather than fail, which
+    is what the answer already says about a suggestion with nothing in it.
     """
-    kept = []
-    for region in regions:
-        geometry = narrowed(region.geometry, allowed=allowed)
-        if geometry is not None:
-            kept.append(region.model_copy(update={"geometry": geometry}))
-    return tuple(kept)
+    return str(getattr(runner, "model_ref", ""))

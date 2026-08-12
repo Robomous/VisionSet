@@ -55,7 +55,7 @@ export {
   editedId,
   paintAnnotation,
   paintDocument,
-  paintSuggestion,
+  paintSuggestions,
   pendingPolygon,
   rubberBand,
   screenPx,

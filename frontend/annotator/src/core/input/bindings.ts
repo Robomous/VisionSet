@@ -129,6 +129,8 @@ import {
   SAVE,
   SKIP_FRAME,
   TOGGLE_HELP,
+  COARSER_SUGGESTION,
+  FINER_SUGGESTION,
   TOGGLE_SUGGEST,
 } from "./actions";
 import type { Action } from "./actions";
@@ -190,6 +192,11 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   // connection answers `false` and the chord falls through, which is what makes
   // claiming it safe on a build that cannot serve it.
   { chord: "s", action: { kind: "host", name: TOGGLE_SUGGEST } },
+  // The brackets, beside the tool they adjust. Bare, like `s`: no modifier is
+  // free to mean something else here, and a host that has no suggestion showing
+  // answers `false` so the chord falls through to the browser untouched.
+  { chord: "[", action: { kind: "host", name: COARSER_SUGGESTION } },
+  { chord: "]", action: { kind: "host", name: FINER_SUGGESTION } },
   { chord: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 

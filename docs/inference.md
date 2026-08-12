@@ -281,10 +281,15 @@ POST /inference/suggest
 ```json
 {
   "model_ref": "some/segmenter@abc123",
-  "region": {
-    "geometry": {"type": "polygon", "points": [[404.0, 221.0], …]},
-    "confidence": 0.87
-  }
+  "confidence": 0.87,
+  "regions": [
+    {
+      "geometry": {"type": "polygon", "points": [[404.0, 221.0], …]},
+      "contour": [[404.0, 221.0], …]
+    }
+  ],
+  "applied": {"detail": "balanced", "fill_holes": 0.002, "fragments": "one"},
+  "parameters": ["detail", "fill_holes", "fragments"]
 }
 ```
 
@@ -305,15 +310,67 @@ kinds you named or not at all: name `polygon` and you get the outline; name only
 get that outline's extent; name a kind that holds no shape and `region` is `null`. Answering in a
 kind your schema would refuse would hand you a suggestion that cannot be accepted.
 
-**`region: null` is a successful answer with nothing to propose** - a click on empty background,
-a model less sure than you asked for, or a shape too thin to be a polygon. `model_ref` is still
-there, because it is what an accepted suggestion has to carry.
+**An empty `regions` is a successful answer with nothing to propose** - a click on empty
+background, a model less sure than you asked for, a shape too thin to be a polygon, or settings
+that leave nothing. `model_ref` is still there, because it is what an accepted suggestion has to
+carry, and so is `parameters`, because a caller that adjusted its way into an empty answer needs
+the controls to adjust its way back out.
 
-**How much of the outline survives simplification is the server's setting, not a per-call knob.**
-The tolerance is a fraction of the region's own size rather than a pixel count, so one setting
-works on a thing eight pixels across and a thing eight hundred across alike, and it keeps a typical
-object in the 10-40 vertex range. There is nothing to send: every caller gets the same
-simplification, which is what makes two clients' suggestions comparable.
+`confidence` is one number for the whole answer rather than one per shape. The model scored one
+mask; the pieces cut out of it are that same claim seen in parts, and a separate number for each
+would be precision nobody expressed.
+
+## What happens to the mask, and the three things you can move
+
+A segmenter answers with a grid of booleans. Turning that into a polygon or a box is a fixed
+chain, and the whole of it happens here rather than inside whatever ran the model - so a second
+segmenter inherits it instead of reimplementing it, and none of these settings ever reaches the
+model.
+
+1. **Which pieces** of the mask become shapes.
+2. **Closing the gaps** in them that are narrower than a reach.
+3. **Tracing** the boundary of what is left.
+4. **Simplifying** that boundary to a vertex count somebody can edit.
+
+The geometry branch happens after the second step: a polygon class takes steps 3 and 4, a box
+class takes the extent of what survived. A box therefore does not move when `detail` does.
+
+| Setting | What it moves | Applies to |
+| --- | --- | --- |
+| `detail` | `coarse`, `balanced` or `fine` - how much of the outline survives | polygon |
+| `fill_holes` | the widest gap closed, as a share of the piece's area | polygon |
+| `fragments` | `one` piece or `all` of them | polygon and box |
+
+Every one is optional, and omitting all three gives what this route always gave: `balanced`,
+a reach of two parts in a thousand, and the piece you pointed at.
+
+**The tolerance is relative, which is what makes one setting work everywhere.** It is a fraction
+of the region's own size rather than a pixel count, so it does the same thing to a thing eight
+pixels across and a thing eight hundred across, and `balanced` keeps a typical object in the
+10-40 vertex range.
+
+**`parameters` says which of them apply here**, for the kind of shape your `allowed_geometries`
+will produce. A box has no outline, so `detail` and `fill_holes` have nothing to do to one and
+are not named. A client renders what this lists and works none of it out for itself.
+
+**`fill_holes` closes gaps rather than filling enclosed holes**, and the distinction is worth
+stating because the name suggests otherwise. Boundary tracing walks a shape's *outer* ring and a
+polygon is one ring with no interior, so an enclosed hole is invisible to the answer - filling an
+8x8 hole in a 20x20 square moves the mask and leaves the traced outline byte-identical. What the
+setting does reach is the notches and bays a segmenter bites out of an edge, which are exactly
+what makes an outline ragged.
+
+**`contour` is the unsimplified outline**, in the asset's own pixels, and it is there so a client
+can re-run `detail` without asking again. It is the same points the server reduced, which matters:
+simplification is not nested, so a client starting from anything else could not be held to the
+server's answer. A box carries none, because it is an extent rather than something reduced from
+anything.
+
+**Accepting a plural answer is all of it or none.** Asking for every piece can propose several
+shapes, and they are written together as one entry in the undo history. Accepting part of one is
+real and is deliberately not here: it needs a selection the preview does not have. That is planned
+growth rather than a gap nobody noticed, and it is tracked as *accepting part of a plural
+suggestion* (#548).
 
 ### Nothing is written, and the first click is the slow one
 

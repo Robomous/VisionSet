@@ -29,12 +29,15 @@ from tests.server._jobs import InlineDispatcher
 from visionset.inference import suggestions as suggestions_module
 from visionset.inference import weights as weights_module
 from visionset.kernel.domain import (
-    AssetPrediction,
+    AssetSegmentation,
     DownloadSize,
-    PolygonGeometry,
-    PredictedRegion,
+    SegmentedMask,
 )
 from visionset.server.routes import inference as inference_routes
+
+ASSET_WIDTH = 32
+ASSET_HEIGHT = 24
+"""What ``write_image`` makes, and therefore the frame every mask here lives in."""
 
 
 @pytest.fixture(autouse=True)
@@ -112,8 +115,15 @@ def a_connection(client: TestClient, *, kind: str = "local", ready: bool = True)
     return str(made["id"])
 
 
-def an_asset(client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path) -> str:
-    write_image(tmp_path / "one.png")
+def an_asset(
+    client: TestClient,
+    runner: InlineDispatcher,
+    project: str,
+    tmp_path: Path,
+    *,
+    size: tuple[int, int] = (ASSET_WIDTH, ASSET_HEIGHT),
+) -> str:
+    write_image(tmp_path / "one.png", size=size)
     with (tmp_path / "one.png").open("rb") as handle:
         source = client.post(
             f"/projects/{project}/sources/images",
@@ -133,6 +143,7 @@ def ask(
     allowed: list[str] | None = None,
     positive: list[dict[str, float]] | None = None,
     negative: list[dict[str, float]] | None = None,
+    **parameters: Any,
 ) -> Any:
     return client.post(
         "/inference/suggest",
@@ -146,33 +157,79 @@ def ask(
             "positive": [{"x": 16.0, "y": 12.0}] if positive is None else positive,
             "negative": negative or [],
             "allowed_geometries": ["polygon"] if allowed is None else allowed,
+            **parameters,
         },
     )
 
 
-@pytest.fixture()
-def answering(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
-    """A provider that answers from a script, installed where the route resolves one."""
+def block(x0: int, y0: int, x1: int, y1: int) -> list[list[bool]]:
+    """A solid rectangle of lit pixels in the fixture asset's own frame."""
+    return [
+        [x0 <= x <= x1 and y0 <= y <= y1 for x in range(ASSET_WIDTH)] for y in range(ASSET_HEIGHT)
+    ]
+
+
+#: Big enough that the half-pixel tolerance floor is not what decides the vertex
+#: count. On the ordinary fixture asset every `detail` step lands on the floor
+#: and answers 20 vertices, which reports a working control and a dead one
+#: identically.
+ROOMY = (200, 200)
+
+
+def disc(radius: int = 70, frame: tuple[int, int] = ROOMY) -> list[list[bool]]:
+    """A filled circle — a shape whose vertex count actually moves with `detail`."""
+    width, height = frame
+    cx, cy = width // 2, height // 2
+    return [
+        [(x - cx) ** 2 + (y - cy) ** 2 <= radius * radius for x in range(width)]
+        for y in range(height)
+    ]
+
+
+def two_blocks() -> list[list[bool]]:
+    """Two separated rectangles, so ``fragments`` has something to tell apart."""
+    grid = block(2, 3, 8, 9)
+    for y in range(14, 21):
+        for x in range(18, 25):
+            grid[y][x] = True
+    return grid
+
+
+def scripted(
+    monkeypatch: pytest.MonkeyPatch, mask: list[list[bool]], score: float = 0.82
+) -> list[Any]:
+    """Install a segmenter that answers with exactly that mask.
+
+    A mask rather than a shape, because that is where the port stops now: every
+    choice about which pieces become geometry, how their gaps are closed and how
+    many vertices survive is made by shipped code on this side of it, which is
+    what these tests are exercising.
+    """
     asked: list[Any] = []
 
-    class Provider:
+    class Segmenter:
         model_ref = "some/segmenter@abc123"
 
-        def predict(self, request: Any) -> Any:
+        def segment(self, request: Any) -> Any:
             asked.append(request)
-            polygon = PolygonGeometry(points=[(2.0, 3.0), (12.0, 3.0), (12.0, 9.0), (2.0, 9.0)])
-            yield AssetPrediction(
+            yield AssetSegmentation(
                 asset_id=request.targets[0].asset_id,
                 model_ref=self.model_ref,
-                regions=(PredictedRegion(label="", confidence=0.82, geometry=polygon),),
+                segments=(SegmentedMask(mask=mask, score=score),),
             )
 
     class Pool:
         def get(self, connection: Any, *, workspace_root: Path) -> Any:
-            return Provider()
+            return Segmenter()
 
     monkeypatch.setattr(suggestions_module, "resident", Pool)
     return asked
+
+
+@pytest.fixture()
+def answering(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """A segmenter that answers from a script, installed where the route resolves one."""
+    return scripted(monkeypatch, block(2, 3, 12, 9))
 
 
 # --- refusals, and their order ------------------------------------------------
@@ -363,7 +420,7 @@ def test_the_far_edge_of_the_asset_is_still_on_it(
     )
 
     assert answer.status_code == 200, answer.text
-    assert answer.json()["region"] is not None
+    assert answer.json()["regions"] != []
     assert answering[0].prompt.positive == ((32.0, 24.0),)
 
 
@@ -402,9 +459,10 @@ def test_a_click_comes_back_as_a_polygon_with_its_confidence_and_model(
     body = ask(client, project=project, asset=asset, connection=connection).json()
 
     assert body["model_ref"] == "some/segmenter@abc123"
-    assert body["region"]["confidence"] == pytest.approx(0.82)
-    assert body["region"]["geometry"]["type"] == "polygon"
-    assert len(body["region"]["geometry"]["points"]) == 4
+    assert body["confidence"] == pytest.approx(0.82)
+    (region,) = body["regions"]
+    assert region["geometry"]["type"] == "polygon"
+    assert region["geometry"]["points"] == [[2.0, 3.0], [12.0, 3.0], [12.0, 9.0], [2.0, 9.0]]
 
 
 def test_a_box_only_class_is_offered_the_outlines_extent(
@@ -421,13 +479,15 @@ def test_a_box_only_class_is_offered_the_outlines_extent(
 
     body = ask(client, project=project, asset=asset, connection=connection, allowed=["bbox"]).json()
 
-    assert body["region"]["geometry"] == {
+    (region,) = body["regions"]
+    assert region["geometry"] == {
         "type": "bbox",
         "x": 2.0,
         "y": 3.0,
-        "width": 10.0,
-        "height": 6.0,
+        "width": 11.0,
+        "height": 7.0,
     }
+    assert region["contour"] == [], "a box is an extent, not something reduced from a contour"
 
 
 def test_a_tag_only_class_is_offered_nothing_rather_than_a_shape_it_cannot_hold(
@@ -445,7 +505,7 @@ def test_a_tag_only_class_is_offered_nothing_rather_than_a_shape_it_cannot_hold(
         allowed=["classification_tag"],
     ).json()
 
-    assert body["region"] is None
+    assert body["regions"] == []
     assert body["model_ref"] == "some/segmenter@abc123", "still says who was asked"
 
 
@@ -494,3 +554,179 @@ def test_nothing_is_written_by_asking(
     ask(client, project=project, asset=asset, connection=connection)
 
     assert client.get(f"/projects/{project}/assets/{asset}").json() == before
+
+
+# --- the parameters, and what the answer declares about them -------------------
+
+
+def test_a_request_that_sends_no_parameters_gets_the_defaults_back(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    """Every parameter is optional, and the answer says what it was actually given.
+
+    A client that sent nothing still has to be able to render the controls at
+    their current positions, which is what makes ``applied`` worth carrying
+    rather than leaving the caller to remember what it omitted.
+    """
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    body = ask(client, project=project, asset=asset, connection=connection).json()
+
+    assert body["applied"] == {"detail": "balanced", "fill_holes": 0.002, "fragments": "one"}
+
+
+def test_the_answer_echoes_the_parameters_it_was_given(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    body = ask(
+        client,
+        project=project,
+        asset=asset,
+        connection=connection,
+        detail="fine",
+        fill_holes=0.0,
+        fragments="all",
+    ).json()
+
+    assert body["applied"] == {"detail": "fine", "fill_holes": 0.0, "fragments": "all"}
+
+
+def test_a_polygon_class_is_told_every_parameter_applies(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    body = ask(client, project=project, asset=asset, connection=connection).json()
+
+    assert body["parameters"] == ["detail", "fill_holes", "fragments"]
+
+
+def test_a_box_class_is_told_only_fragments_applies(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    """What the editor renders on a box class, and the whole of why it renders it.
+
+    A client works none of this out. Remove `fill_holes` from the polygon row of
+    `PARAMETER_APPLIES_TO` and the assertion above goes red; declare it for a box
+    and this one does.
+    """
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    body = ask(client, project=project, asset=asset, connection=connection, allowed=["bbox"]).json()
+
+    assert body["parameters"] == ["fragments"]
+
+
+def test_an_answer_with_nothing_in_it_still_carries_its_controls(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    """The way back out of an empty result.
+
+    A caller that adjusted its way into nothing must not lose the controls that
+    would undo the adjustment, so `parameters` is read from what was asked for
+    rather than from what came back.
+    """
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    body = ask(client, project=project, asset=asset, connection=connection, fragments="all").json()
+    empty = ask(
+        client,
+        project=project,
+        asset=asset,
+        connection=connection,
+        allowed=["classification_tag"],
+    ).json()
+
+    assert body["parameters"] != []
+    assert empty["regions"] == []
+    assert empty["parameters"] == [], "a tag class has no shape to adjust in the first place"
+
+
+def test_a_polygon_carries_the_contour_it_was_reduced_from(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    """What lets the editor re-run `detail` locally instead of asking again."""
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    (region,) = ask(client, project=project, asset=asset, connection=connection).json()["regions"]
+
+    assert len(region["contour"]) >= len(region["geometry"]["points"])
+    assert region["contour"][0] == [2.0, 3.0], "the traced boundary, in the asset's own pixels"
+
+
+def test_a_coarser_setting_comes_back_with_no_more_vertices(
+    client: TestClient,
+    runner: InlineDispatcher,
+    project: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`detail` reaching the shape at all, over HTTP.
+
+    A disc rather than the rectangle the other tests use: a rectangle is four
+    corners at every setting, so it would report a working control and a dead one
+    identically.
+    """
+    scripted(monkeypatch, disc())
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path, size=ROOMY)
+
+    counts = [
+        len(
+            ask(client, project=project, asset=asset, connection=connection, detail=step).json()[
+                "regions"
+            ][0]["geometry"]["points"]
+        )
+        for step in ("coarse", "balanced", "fine")
+    ]
+    assert counts[0] < counts[1] < counts[2], counts
+
+
+def test_every_piece_comes_back_when_every_piece_was_asked_for(
+    client: TestClient,
+    runner: InlineDispatcher,
+    project: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`fragments` over HTTP, and the plural answer acceptance is all-or-nothing over."""
+    scripted(monkeypatch, two_blocks())
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    one = ask(client, project=project, asset=asset, connection=connection).json()
+    every = ask(client, project=project, asset=asset, connection=connection, fragments="all").json()
+
+    assert len(one["regions"]) == 1
+    assert len(every["regions"]) == 2
+
+
+def test_a_share_outside_nought_to_one_is_refused_by_the_schema(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    answer = ask(client, project=project, asset=asset, connection=connection, fill_holes=1.5)
+
+    assert answer.status_code == 422
+
+
+def test_a_detail_step_the_vocabulary_does_not_have_is_refused(
+    client: TestClient, runner: InlineDispatcher, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    """A closed vocabulary, refused by the schema rather than silently defaulted."""
+    connection = a_connection(client)
+    asset = an_asset(client, runner, project, tmp_path)
+
+    answer = ask(client, project=project, asset=asset, connection=connection, detail="sharpest")
+
+    assert answer.status_code == 422

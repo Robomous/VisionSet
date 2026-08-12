@@ -89,6 +89,8 @@
  * that belongs to a class nobody is on any more.
  */
 
+import { polygonAt } from "../geometry/simplify";
+import type { Detail } from "../geometry/simplify";
 import { classNamed } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import type { IdFactory } from "../ids";
@@ -197,6 +199,36 @@ export interface Suggestion {
   readonly confidence: number | null;
   /** The model that proposed it, carried onto the annotation if it is accepted. */
   readonly modelRef: string;
+  /**
+   * The unsimplified outline this shape was reduced from, empty for a box.
+   *
+   * What makes {@link withDetail} arithmetic rather than a round trip. It is the
+   * *same* points the server reduced, which matters because Douglas-Peucker is
+   * not nested: a client starting from anything else could not be held to the
+   * server's answer, and the server is what finally writes.
+   */
+  readonly contour: readonly Point[];
+}
+
+/** How many of a mask's separate pieces become shapes. The wire's `fragments`. */
+export type Fragments = "one" | "all";
+
+/** A setting the server says has some effect here. The wire's `parameters`. */
+export type SuggestParameter = "detail" | "fill_holes" | "fragments";
+
+/** What an answer carries back, beside the shapes themselves. */
+export interface Answer {
+  readonly modelRef: string;
+  readonly confidence: number | null;
+  readonly suggestions: readonly Suggestion[];
+  /**
+   * Which settings the server says apply to the kind of shape this class holds.
+   *
+   * Read from the answer and never computed here. A client that worked out for
+   * itself that a box has no use for `detail` would be the second copy of a rule
+   * the kernel already owns, free to drift the first time the rule changes.
+   */
+  readonly parameters: readonly SuggestParameter[];
 }
 
 /**
@@ -214,6 +246,27 @@ export interface Suggestion {
  */
 export type SuggestionStatus = "idle" | "asking" | "shown" | "none" | "refused";
 
+/** The three settings, as they stand right now. Sent on every ask. */
+export interface Adjustments {
+  readonly detail: Detail;
+  readonly fillHoles: number;
+  readonly fragments: Fragments;
+}
+
+/**
+ * What a session starts with, and what the server means by "nothing was sent".
+ *
+ * The numbers are the kernel's own defaults. They are restated here because this
+ * package has no HTTP and cannot read them from an answer that has not arrived —
+ * and `simplify.test.ts` holds `EPSILON` to the kernel's table, which is the half
+ * that could silently differ.
+ */
+export const DEFAULT_ADJUSTMENTS: Adjustments = {
+  detail: "balanced",
+  fillHoles: 0.002,
+  fragments: "one",
+};
+
 /** The whole of a suggest session. `null`, in a host, is a tool that is not armed. */
 export interface SuggestionState {
   /**
@@ -227,8 +280,18 @@ export interface SuggestionState {
   /** Every click so far, in the order they were placed. */
   readonly points: readonly PromptPoint[];
   readonly status: SuggestionStatus;
-  /** The preview, when there is one. Kept across `asking` so it does not flicker. */
-  readonly suggestion: Suggestion | null;
+  /**
+   * The previews, when there are any. Kept across `asking` so they do not flicker.
+   *
+   * Plural because `fragments` can answer with every piece of a mask. Accepting
+   * is all of them or none, in one history entry — see
+   * {@link acceptedAnnotations}.
+   */
+  readonly suggestions: readonly Suggestion[];
+  /** Where the three settings stand. Sent on every ask, echoed by every answer. */
+  readonly adjustments: Adjustments;
+  /** Which of them the server says apply here. Empty until an answer arrives. */
+  readonly parameters: readonly SuggestParameter[];
   /** What the server refused with, in prose. Non-null only while `refused`. */
   readonly refusal: string | null;
   /** Which ask the state is waiting on — see the module note on staleness. */
@@ -242,12 +305,17 @@ export interface Prompt {
 }
 
 /** A freshly armed session: this class, no points, nothing asked. */
-export function armed(labelClass: string): SuggestionState {
+export function armed(
+  labelClass: string,
+  adjustments: Adjustments = DEFAULT_ADJUSTMENTS,
+): SuggestionState {
   return {
     labelClass,
     points: [],
     status: "idle",
-    suggestion: null,
+    suggestions: [],
+    adjustments,
+    parameters: [],
     refusal: null,
     serial: 0,
   };
@@ -296,16 +364,21 @@ export function promptOf(state: SuggestionState): Prompt {
  * returned by identity — so a caller can compare with `toBe` and a slow first
  * answer cannot overwrite a fast second one.
  */
-export function answered(
-  state: SuggestionState,
-  serial: number,
-  suggestion: Suggestion | null,
-): SuggestionState {
+export function answered(state: SuggestionState, serial: number, answer: Answer): SuggestionState {
   if (serial !== state.serial) return state;
-  if (suggestion === null) {
-    return { ...state, status: "none", suggestion: null, refusal: null };
+  const parameters = answer.parameters;
+  if (answer.suggestions.length === 0) {
+    // The controls survive an empty answer, which is the whole of how somebody
+    // adjusts their way back out of one.
+    return { ...state, status: "none", suggestions: [], parameters, refusal: null };
   }
-  return { ...state, status: "shown", suggestion, refusal: null };
+  return {
+    ...state,
+    status: "shown",
+    suggestions: answer.suggestions,
+    parameters,
+    refusal: null,
+  };
 }
 
 /**
@@ -321,7 +394,7 @@ export function refused(
   prose: string,
 ): SuggestionState {
   if (serial !== state.serial) return state;
-  return { ...state, status: "refused", suggestion: null, refusal: prose };
+  return { ...state, status: "refused", suggestions: [], refusal: prose };
 }
 
 /**
@@ -334,7 +407,7 @@ export function refused(
  * allow the next click to do.
  */
 export function cleared(state: SuggestionState): SuggestionState {
-  return { ...state, points: [], status: "idle", suggestion: null, refusal: null };
+  return { ...state, points: [], status: "idle", suggestions: [], refusal: null };
 }
 
 /**
@@ -375,7 +448,82 @@ export function hasPending(state: SuggestionState): boolean {
 
 /** Whether Enter would commit something. Only a shown suggestion can be accepted. */
 export function isAcceptable(state: SuggestionState): boolean {
-  return state.status === "shown" && state.suggestion !== null;
+  return state.status === "shown" && state.suggestions.length > 0;
+}
+
+/**
+ * A different vertex density, applied here and now.
+ *
+ * **No request.** Each shape carries the contour it was reduced from, so this is
+ * arithmetic — which is what lets `[` and `]` be held down. The server stays
+ * authoritative: accepting asks again with these settings and writes what comes
+ * back, and `tests/fixtures/simplification.json` is what holds the two to the
+ * same answer.
+ *
+ * A shape with no contour is left exactly as it is. That is a box, and `detail`
+ * has nothing to do to one — the same fact the server states by leaving `detail`
+ * out of `parameters` for a box class.
+ *
+ * A step that is already set returns the state **by identity**, so a host can
+ * fold this through unconditionally without a render.
+ *
+ * A shape that simplifies away to fewer than three points is dropped, and losing
+ * every shape lands on `none` rather than on an empty `shown` — a status that
+ * claims a preview nobody can see.
+ */
+export function withDetail(state: SuggestionState, detail: Detail): SuggestionState {
+  if (detail === state.adjustments.detail) return state;
+  const adjustments = { ...state.adjustments, detail };
+  if (state.status !== "shown") return { ...state, adjustments };
+  const suggestions = state.suggestions.flatMap((one) => resimplified(one, detail) ?? []);
+  return {
+    ...state,
+    adjustments,
+    suggestions,
+    status: suggestions.length === 0 ? "none" : "shown",
+  };
+}
+
+function resimplified(one: Suggestion, detail: Detail): Suggestion | null {
+  if (one.contour.length === 0) return one;
+  const points = polygonAt(one.contour, detail);
+  if (points === null) return null;
+  return { ...one, geometry: { ...one.geometry, type: "polygon", points } as Geometry };
+}
+
+/**
+ * A different mask, which only the server can produce.
+ *
+ * `fill_holes` and `fragments` change the pixels the shape is traced from, and
+ * the client never had those — so unlike {@link withDetail} this cannot be
+ * answered locally. It records the setting and bumps the serial, which is
+ * `withPoint`'s shape: the host sees `asking` and sends the same accumulated
+ * points again with the new value.
+ *
+ * The previews stay up while the answer is in flight, for `withPoint`'s reason:
+ * what is drawn is still the best answer anyone has.
+ */
+export function withMaskAdjustment(
+  state: SuggestionState,
+  adjustment: Partial<Pick<Adjustments, "fillHoles" | "fragments">>,
+): SuggestionState {
+  const adjustments = { ...state.adjustments, ...adjustment };
+  if (
+    adjustments.fillHoles === state.adjustments.fillHoles &&
+    adjustments.fragments === state.adjustments.fragments
+  ) {
+    return state;
+  }
+  if (state.points.length === 0) return { ...state, adjustments };
+  return { ...state, adjustments, status: "asking", refusal: null, serial: state.serial + 1 };
+}
+
+/** How many vertices the preview is currently spending. What the counter reads. */
+export function vertexCount(state: SuggestionState): number {
+  return state.suggestions.reduce(
+    (total, one) => total + (one.geometry.type === "polygon" ? one.geometry.points.length : 0),
+    0,
+  );
 }
 
 /**
@@ -397,22 +545,22 @@ export function isAcceptable(state: SuggestionState): boolean {
  * that is not showing. The class is looked up only to fail honestly: a schema
  * that lost the class mid-session has nothing to write.
  */
-export function acceptedAnnotation(
+export function acceptedAnnotations(
   document: AnnotationDocument,
   state: SuggestionState,
   mint: IdFactory,
-): Annotation | null {
-  if (!isAcceptable(state) || state.suggestion === null) return null;
+): readonly Annotation[] {
+  if (!isAcceptable(state)) return [];
   // A parked session cannot reach `shown`, so this is unreachable by the state
   // machine — and it is the guarantee, not a formality: nothing may be written
   // without a class, whatever a caller believes about how it got here.
-  if (state.labelClass === null) return null;
-  if (classNamed(document, state.labelClass) === undefined) return null;
-  const drawn = draftAnnotation(document, state.labelClass, state.suggestion.geometry, mint);
-  return {
-    ...drawn,
-    provenance: "model",
-    model_ref: state.suggestion.modelRef,
-    confidence: state.suggestion.confidence,
-  };
+  if (state.labelClass === null) return [];
+  const labelClass = state.labelClass;
+  if (classNamed(document, labelClass) === undefined) return [];
+  return state.suggestions.map((one) => ({
+    ...draftAnnotation(document, labelClass, one.geometry, mint),
+    provenance: "model" as const,
+    model_ref: one.modelRef,
+    confidence: one.confidence,
+  }));
 }

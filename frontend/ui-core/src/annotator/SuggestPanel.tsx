@@ -55,15 +55,20 @@
  */
 
 import {
+  DETAIL_STEPS,
+  vertexCount,
   isAcceptable,
   isParked,
   hasPending,
   type SuggestionState,
+  type Detail,
+  type Fragments,
 } from "@visionset/annotator";
 import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
+import { cn } from "../lib/cn";
 import { Button } from "../primitives/Button";
 import {
   Select,
@@ -117,6 +122,13 @@ export interface SuggestPanelProps {
   readonly onConfigure?: () => void;
   readonly onAccept: () => void;
   readonly onDiscard: () => void;
+  /** Whether the adjustments are open. Owned by the host, because `Esc` layers on it. */
+  readonly adjusting?: boolean;
+  readonly onAdjusting?: (open: boolean) => void;
+  /** A step of vertex density, applied without a request. */
+  readonly onDetail?: (detail: Detail) => void;
+  /** A setting only the server can honour, which is why it is a separate door. */
+  readonly onMaskAdjustment?: (adjustment: { fillHoles?: number; fragments?: Fragments }) => void;
   /**
    * Whether the wait has lasted long enough to be worth explaining.
    *
@@ -190,6 +202,10 @@ export function SuggestPanel({
   onConfigure,
   onAccept,
   onDiscard,
+  adjusting,
+  onAdjusting,
+  onDetail,
+  onMaskAdjustment,
   pendingEscalated = false,
 }: SuggestPanelProps): JSX.Element {
   /*
@@ -318,8 +334,22 @@ export function SuggestPanel({
         <p className="text-muted-foreground">
           Click nearer the middle of the object, or add another point. Alt-click marks
           something that is <em>not</em> part of it.
+          {session.parameters.length > 0 && " The settings below still apply — step one back."}
         </p>
         <Discard onDiscard={onDiscard} />
+        {/*
+          The controls survive an answer with nothing in it, which is the whole of
+          how somebody adjusts their way back out of one. Losing them here would
+          leave a blank canvas and nothing to press but Escape, which throws the
+          gesture away rather than undoing the setting that emptied it.
+        */}
+        <Adjustments
+          session={session}
+          open={adjusting === true}
+          {...(onAdjusting === undefined ? {} : { onOpen: onAdjusting })}
+          {...(onDetail === undefined ? {} : { onDetail })}
+          {...(onMaskAdjustment === undefined ? {} : { onMaskAdjustment })}
+        />
       </EditorNotice>
     );
   }
@@ -357,6 +387,13 @@ export function SuggestPanel({
             <Chip>Esc</Chip>
           </Button>
         </div>
+        <Adjustments
+          session={session}
+          open={adjusting === true}
+          {...(onAdjusting === undefined ? {} : { onOpen: onAdjusting })}
+          {...(onDetail === undefined ? {} : { onDetail })}
+          {...(onMaskAdjustment === undefined ? {} : { onMaskAdjustment })}
+        />
       </EditorNotice>
     );
   }
@@ -466,5 +503,141 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
     <kbd className="ml-1 rounded-sm border border-border bg-muted px-1 font-mono text-meta text-muted-foreground">
       {children}
     </kbd>
+  );
+}
+
+
+/**
+ * Keep the press from moving focus off the canvas.
+ *
+ * Every keyboard rule in the editor is a `keydown` on the annotator's own root,
+ * so a control that took focus would silently switch them all off — `[` and `]`
+ * would stop stepping, and `Esc` would stop being the preview's undo, both with
+ * nothing on screen to say why. Found in a browser: jsdom has no focus to move.
+ *
+ * On the two controls whose whole effect is on the canvas, and not on the slider
+ * or the checkbox, which are ordinary form controls somebody may want to reach
+ * with the keyboard and operate there.
+ */
+function keepFocusOnCanvas(event: { preventDefault: () => void }): void {
+  event.preventDefault();
+}
+
+/**
+ * The settings, inside the card that is already on screen.
+ *
+ * **A section rather than a popup**, which is the decision the whole thing turns
+ * on: a proposal is a thing somebody is looking at, and a panel that opened over
+ * the canvas would cover the shape being adjusted. It is collapsed by default
+ * because the defaults are right most of the time, and `Esc` closes it before it
+ * touches anything else — the nearest thing to hand is the thing a press undoes.
+ *
+ * **What renders is what the server declared, and nothing is worked out here.**
+ * `session.parameters` comes off the answer; a box class gets `fragments` alone
+ * because that is what the kernel's table says applies to a box, not because
+ * this file knows anything about boxes. Adding a fourth setting is a kernel
+ * change and a row below, and no condition in between.
+ */
+function Adjustments({
+  session,
+  open,
+  onOpen,
+  onDetail,
+  onMaskAdjustment,
+}: {
+  readonly session: SuggestionState;
+  readonly open: boolean;
+  readonly onOpen?: (open: boolean) => void;
+  readonly onDetail?: (detail: Detail) => void;
+  readonly onMaskAdjustment?: (adjustment: { fillHoles?: number; fragments?: Fragments }) => void;
+}): JSX.Element | null {
+  // A host that cannot honour the controls renders none, and a kind with nothing
+  // to adjust is told so by the wire rather than guessed at here.
+  if (session.parameters.length === 0 || onOpen === undefined) return null;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="mt-1 w-fit text-xs text-muted-foreground underline-offset-2 hover:underline"
+        data-testid="suggest-adjust-open"
+        onMouseDown={keepFocusOnCanvas}
+        onClick={() => onOpen(true)}
+      >
+        Adjust the shape
+      </button>
+    );
+  }
+
+  const { detail, fillHoles, fragments } = session.adjustments;
+  return (
+    <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2" data-testid="suggest-adjustments">
+      {session.parameters.includes("detail") && onDetail !== undefined && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">Detail</span>
+          <div className="flex items-center gap-1">
+            {DETAIL_STEPS.map((step) => (
+              <button
+                key={step}
+                type="button"
+                className={cn(
+                  "rounded px-2 py-0.5 text-xs capitalize",
+                  step === detail
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+                aria-pressed={step === detail}
+                data-testid={`suggest-detail-${step}`}
+                onMouseDown={keepFocusOnCanvas}
+                onClick={() => onDetail(step)}
+              >
+                {step}
+              </button>
+            ))}
+            {/*
+              Beside the control it is about, because it is the price of the
+              setting rather than a fact about the shape. Tabular figures so the
+              number does not shift the row as it changes under a held key.
+            */}
+            <span
+              className="ml-1 tabular-nums text-xs text-muted-foreground"
+              data-testid="suggest-vertex-count"
+            >
+              {vertexCount(session)} pts
+            </span>
+            <Chip>[ ]</Chip>
+          </div>
+        </div>
+      )}
+      {session.parameters.includes("fill_holes") && onMaskAdjustment !== undefined && (
+        <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          Close gaps
+          <input
+            type="range"
+            min={0}
+            max={0.01}
+            step={0.001}
+            value={fillHoles}
+            data-testid="suggest-fill-holes"
+            onChange={(event) =>
+              onMaskAdjustment({ fillHoles: Number.parseFloat(event.target.value) })
+            }
+          />
+        </label>
+      )}
+      {session.parameters.includes("fragments") && onMaskAdjustment !== undefined && (
+        <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          Every separate piece
+          <input
+            type="checkbox"
+            checked={fragments === "all"}
+            data-testid="suggest-fragments"
+            onChange={(event) =>
+              onMaskAdjustment({ fragments: event.target.checked ? "all" : "one" })
+            }
+          />
+        </label>
+      )}
+    </div>
   );
 }
