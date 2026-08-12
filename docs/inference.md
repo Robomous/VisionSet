@@ -339,7 +339,7 @@ class takes the extent of what survived. A box therefore does not move when `det
 | --- | --- | --- |
 | `detail` | `coarse`, `balanced` or `fine` - how much of the outline survives | polygon |
 | `fill_holes` | the widest gap closed, as a share of the piece's area | polygon |
-| `fragments` | `one` piece or `all` of them | polygon and box |
+| `fragments` | `one` piece - the one under your points - or `all` of them | polygon and box |
 
 Every one is optional, and omitting all three gives what this route always gave: `balanced`,
 a reach of two parts in a thousand, and the piece you pointed at.
@@ -348,6 +348,21 @@ a reach of two parts in a thousand, and the piece you pointed at.
 of the region's own size rather than a pixel count, so it does the same thing to a thing eight
 pixels across and a thing eight hundred across, and `balanced` keeps a typical object in the
 10-40 vertex range.
+
+**`one` means the piece you pointed at, not the biggest one on the frame.** A mask routinely
+carries more than one separate piece - a speck of antialiasing along an edge, a reflection, a
+scrap of the same colour elsewhere - and which of them you meant is a question only the points can
+answer. So the choice is made from the prompt: a point inside a piece picks that piece; several
+points inside several pieces pick the largest of *those*, because two positives describe one
+object rather than propose two; and a point inside none of them picks the piece nearest to it,
+since a mask need not cover the exact pixel you clicked. Negative points never select - they say
+what the shape is not, and a piece is chosen before its shape is known.
+
+Picking whichever piece happened to own the topmost-leftmost lit pixel would be a different rule
+and a worse one: that is a fact about where the speckle fell, not about what you asked for.
+
+`all` drops the question and proposes every piece at or above a twentieth of the largest one's
+area. The floor is there because one click should not become a cleanup job.
 
 **`parameters` says which of them apply here**, for the kind of shape your `allowed_geometries`
 will produce. A box has no outline, so `detail` and `fill_holes` have nothing to do to one and

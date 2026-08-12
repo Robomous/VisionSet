@@ -65,9 +65,14 @@ class Detail(StrEnum):
 # speckle fell. Naming this ``largest`` would describe a tie-break as though it
 # were the rule.
 class Fragments(StrEnum):
-    """How many of a mask's separate pieces become shapes."""
+    """How many of a mask's separate pieces become shapes.
 
-    #: The piece under the click, and nothing else.
+    `one` is the piece your points are on, not the biggest piece on the frame:
+    which of them you meant is a question only the prompt can answer. `all`
+    proposes every piece big enough to be worth proposing.
+    """
+
+    #: The piece the prompt points at, and nothing else.
     ONE = "one"
     #: Every piece big enough to be worth proposing.
     ALL = "all"

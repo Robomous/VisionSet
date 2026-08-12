@@ -2989,6 +2989,10 @@ export interface components {
         /**
          * Fragments
          * @description How many of a mask's separate pieces become shapes.
+         *
+         *     `one` is the piece your points are on, not the biggest piece on the frame:
+         *     which of them you meant is a question only the prompt can answer. `all`
+         *     proposes every piece big enough to be worth proposing.
          * @enum {string}
          */
         Fragments: "one" | "all";
