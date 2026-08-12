@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from visionset.inference import masks
 from visionset.inference.masks import (
     MAXIMUM_CLOSING_RADIUS,
     MINIMUM_FRAGMENT_SHARE,
@@ -465,6 +466,21 @@ def test_the_union_leaves_out_the_specks_the_noise_filter_dropped() -> None:
     """
     shaped = shapes_from(speckled(), allowed=BOX_ONLY, at=[(3.0, 5.0)])
     assert shaped[0].geometry == BboxGeometry(x=1.0, y=3.0, width=6.0, height=6.0)
+
+
+def test_a_box_never_pays_for_the_close_at_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A performance rule with no behavioural signature, so it is asserted structurally.
+
+    A close only ever adds pixels whose neighbourhood was already reachable, so
+    it cannot move an extent — which is exactly why skipping it for a box is safe
+    and exactly why no assertion about the *box* could ever notice the skip. So
+    the assertion is that the step is not reached: at 4K it was twelve bitset
+    passes per click, thrown away (#557).
+    """
+    monkeypatch.setattr(masks, "filled", lambda mask: pytest.fail("a box class ran the close"))
+    shaped = shapes_from(islands(), allowed=BOX_ONLY, at=[(3.0, 4.0)])
+
+    assert shaped[0].geometry == BboxGeometry(x=1.0, y=2.0, width=17.0, height=5.0)
 
 
 def test_closing_a_notch_reaches_the_polygon_and_leaves_the_box_alone() -> None:
