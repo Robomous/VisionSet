@@ -45,21 +45,34 @@ IMAGE_COUNT = 6
 
 
 NARROW = "40"
-"""The width every invocation renders at, so no test depends on the terminal's.
+"""The width every invocation renders at, so no test depends on the terminal's."""
 
-Only rich output responds to ``COLUMNS`` — ``cli/_output.py``'s listings and
-``cli/_errors.py``'s domain errors are plain ``typer.echo`` and do not wrap — so
-in practice this pins the one thing that does: the panel Typer renders a usage
-error in. Pinning it *narrow* rather than wide is deliberate. Wide would hide
-the wrap, and hiding it is what let ``bash scripts/check.sh python`` fail on
-messages CI reads correctly (#535); narrow makes every ``exit_code == 2``
-assertion prove it survives a wrap, on every machine and under any runner.
+RENDERING = {"COLUMNS": NARROW, "FORCE_COLOR": "1"}
+"""The environment every invocation renders in — narrow, and in colour.
+
+Three things outside a test's control decide what a rich ``Panel`` looks like,
+and each of them has already broken this suite: the **width**, which rich takes
+from the process's own file descriptors and so reads as the developer's terminal
+under ``pytest`` and 80 columns under an xdist worker's pipe; the **line breaks**
+that width produces; and whether rich emits **SGR escapes**, which it does on CI
+and did not locally, splicing ``\\x1b[31m`` between the halves of a phrase.
+
+Only rich responds to either variable — ``cli/_output.py``'s listings and
+``cli/_errors.py``'s domain errors are plain ``typer.echo``, which neither wraps
+nor colours under ``CliRunner``.
+
+**Both are pinned to the hostile setting on purpose.** Wide and uncoloured would
+hide the wrap and the escapes, and hiding them is precisely what let
+``bash scripts/check.sh python`` fail on messages CI reads correctly (#535).
+Narrow and coloured makes every ``exit_code == 2`` assertion prove it survives
+both, on every machine and under any runner — and makes a local run and a CI run
+render identically.
 """
 
 
 def run(root: Path, *argv: str) -> Result:
     """Invoke the real app against a workspace, without asserting anything."""
-    return runner.invoke(app, [*argv, "--workspace", str(root)], env={"COLUMNS": NARROW})
+    return runner.invoke(app, [*argv, "--workspace", str(root)], env=RENDERING)
 
 
 def ok(root: Path, *argv: str) -> str:
@@ -77,6 +90,14 @@ def payload(root: Path, *argv: str) -> dict:
 _BOX_DRAWING = re.compile(r"[─-╿]")
 """The Unicode block rich draws a panel's border from."""
 
+_SGR = re.compile(r"\x1b\[[0-9;]*m")
+"""The colour escapes rich writes when it believes it has a colour terminal."""
+
+
+def plain(text: str) -> str:
+    """``text`` with the colour stripped, so what is left is what a person reads."""
+    return _SGR.sub("", text)
+
 
 def usage_error(result: Result) -> str:
     """A usage error's text as one line, with the panel's wrapping undone.
@@ -88,6 +109,11 @@ def usage_error(result: Result) -> str:
     and cannot wrap. The panel word-wraps, so a phrase can be split across two
     lines and stop being a substring of the output while remaining perfectly
     correct on screen.
+
+    Colour is stripped first, because rich puts an escape at every style change
+    and one lands **between the halves of a wrapped phrase**: the border is
+    ``\\x1b[31m│\\x1b[0m``, so rejoining without stripping splices the escapes into
+    the message. See ``RENDERING`` for why colour is on rather than off.
 
     Which width it wraps at is not the test's to choose. Rich asks
     ``os.get_terminal_size`` about **the process's own file descriptors** — never
@@ -101,7 +127,7 @@ def usage_error(result: Result) -> str:
     A token rich broke in the middle — only possible for one longer than the panel
     is wide — is not put back together.
     """
-    return " ".join(_BOX_DRAWING.sub(" ", result.output).split())
+    return " ".join(_BOX_DRAWING.sub(" ", plain(result.output)).split())
 
 
 def workspace(tmp_path: Path) -> Path:
