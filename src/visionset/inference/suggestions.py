@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from visionset.inference.masks import Point, Shaped, shapes_from
+from visionset.inference.masks import Point, Shaped, shapes_from, target_kind
 from visionset.inference.providers import ProviderPool, resident
 from visionset.kernel.domain import (
     DEFAULT_DETAIL,
@@ -41,8 +41,10 @@ from visionset.kernel.domain import (
     PointPrompt,
     PredictionRequest,
     PredictionTarget,
+    SuggestParameter,
     media_type_of,
     require_points_on_asset,
+    suggest_parameters,
 )
 from visionset.kernel.errors import UnsupportedPrompt
 from visionset.kernel.ports import PointSegmenter
@@ -66,11 +68,18 @@ class Suggestion:
     scored one mask, and the pieces the pipeline cut out of it are all that same
     claim seen in parts. Reporting a separate number per piece would invent
     precision the model never expressed.
+
+    ``parameters`` is which settings have any effect on the kind of shape this
+    request asked for. It is answered even when ``shapes`` is empty — a caller
+    that adjusted its way into nothing needs the controls to adjust its way back
+    out — which is why it is read from the *requested* kinds rather than from
+    what came back.
     """
 
     model_ref: str
     shapes: tuple[Shaped, ...] = ()
     confidence: float = 0.0
+    parameters: tuple[SuggestParameter, ...] = ()
 
 
 def suggest(
@@ -112,6 +121,11 @@ def suggest(
         AssetNotFound: no such asset in that project.
         PromptPointOutOfBounds: a point in the gesture is not on that asset.
     """
+    kind = target_kind(allowed)
+    # Read from what was *asked for*, not from what came back: an answer with
+    # nothing in it still has to arrive with the controls that would change it.
+    parameters = suggest_parameters(kind) if kind is not None else ()
+
     connection = InferenceConnectionService(workspace).get(connection_id)
     runner = (pool or resident()).get(connection, workspace_root=workspace.root)
     if not isinstance(runner, PointSegmenter):
@@ -149,7 +163,7 @@ def suggest(
     # findings, which is what the default guards against.
     answer = next(iter(runner.segment(request)), None)
     if answer is None or not answer.segments:
-        return Suggestion(model_ref=_ref(runner))
+        return Suggestion(model_ref=_ref(runner), parameters=parameters)
 
     segment = answer.segments[0]
     at: tuple[Point, ...] = tuple(prompt.positive)
@@ -161,7 +175,12 @@ def suggest(
         fragments=fragments,
         at=at,
     )
-    return Suggestion(model_ref=answer.model_ref, shapes=tuple(shapes), confidence=segment.score)
+    return Suggestion(
+        model_ref=answer.model_ref,
+        shapes=tuple(shapes),
+        confidence=segment.score,
+        parameters=parameters,
+    )
 
 
 def _ref(runner: PointSegmenter) -> str:

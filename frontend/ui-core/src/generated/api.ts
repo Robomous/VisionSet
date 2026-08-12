@@ -933,9 +933,28 @@ export interface paths {
          *
          *     **`allowed_geometries` is the caller's schema, not a preference.** The answer
          *     is produced in one of the kinds named or not at all: a class that admits
-         *     polygons gets the outline, a class that admits only boxes gets its extent,
-         *     and a class that admits neither gets `region: null`. Answering in a kind the
+         *     polygons gets outlines, a class that admits only boxes gets their extents,
+         *     and a class that admits neither gets no regions. Answering in a kind the
          *     schema would refuse would produce a suggestion that cannot be accepted.
+         *
+         *     **The three parameters shape the mask, and none of them reaches the model.**
+         *     `detail` decides how much of an outline survives simplification, `fill_holes`
+         *     how wide a gap in the mask is closed before it is traced, and `fragments`
+         *     whether the piece under the click is the answer or every piece worth
+         *     proposing. Each is optional and each has a default, so a caller that sends
+         *     none of them gets what this route always gave.
+         *
+         *     **`parameters` says which of them apply here**, for the kind of shape this
+         *     request will come back in — `detail` and `fill_holes` change an outline and a
+         *     box has none — and it is present even when there is nothing to propose, so
+         *     somebody who adjusted their way into an empty answer can adjust their way
+         *     back out. A client renders what this names and works none of it out itself.
+         *
+         *     **`contour` on each region is the unsimplified outline.** It is what lets a
+         *     client re-run `detail` locally rather than asking again, and it is the *same*
+         *     points this route reduced — simplification is not nested, so a client
+         *     starting from anything else could not be held to the same answer. A box
+         *     carries none, because there is nothing it was reduced from.
          *
          *     **Every point must be on the asset**, positive and negative alike — `x` in
          *     `[0, width]` and `y` in `[0, height]`, both ends included, in the asset's own
@@ -946,8 +965,8 @@ export interface paths {
          *     about the nearest edge instead would return a mask, and a confidence, for a
          *     question nobody asked.
          *
-         *     A null `region` is a successful answer with nothing to propose. Refusals are
-         *     reserved for things the caller can act on: an unknown project, asset or
+         *     An empty `regions` is a successful answer with nothing to propose. Refusals
+         *     are reserved for things the caller can act on: an unknown project, asset or
          *     connection is 404; a connection whose weights are not here yet, or whose kind
          *     this build cannot run, is 409 and names what to do; a connection whose model
          *     answers words rather than places is 422, as is a prompt point off the asset.
@@ -2159,6 +2178,16 @@ export interface components {
             provenance: "human" | "model" | "import";
         };
         /**
+         * AppliedParameters
+         * @description The parameter values this answer was actually produced with.
+         */
+        AppliedParameters: {
+            detail: components["schemas"]["Detail"];
+            /** Fill Holes */
+            fill_holes: number;
+            fragments: components["schemas"]["Fragments"];
+        };
+        /**
          * AssetAction
          * @description What can be asked of one asset inside a batch.
          *
@@ -2848,6 +2877,12 @@ export interface components {
             dataset_id: string;
         };
         /**
+         * Detail
+         * @description How much of an outline survives simplification. Order is display order.
+         * @enum {string}
+         */
+        Detail: "coarse" | "balanced" | "fine";
+        /**
          * DownloadSizeOut
          * @description What fetching a model's weights would cost, before anybody fetches them.
          *
@@ -2951,6 +2986,12 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * Fragments
+         * @description How many of a mask's separate pieces become shapes.
+         * @enum {string}
+         */
+        Fragments: "one" | "all";
         /**
          * GeometryType
          * @description Every geometry the domain can address.
@@ -3626,6 +3667,12 @@ export interface components {
             val: number;
         };
         /**
+         * SuggestParameter
+         * @description A setting that shapes a suggestion. Order is display order.
+         * @enum {string}
+         */
+        SuggestParameter: "detail" | "fill_holes" | "fragments";
+        /**
          * SuggestPoint
          * @description One click, in the asset's own pixel coordinates.
          *
@@ -3668,6 +3715,15 @@ export interface components {
              * Format: uuid
              */
             connection_id: string;
+            /** @default balanced */
+            detail: components["schemas"]["Detail"];
+            /**
+             * Fill Holes
+             * @default 0.002
+             */
+            fill_holes: number;
+            /** @default one */
+            fragments: components["schemas"]["Fragments"];
             /** Negative */
             negative?: components["schemas"]["SuggestPoint"][];
             /** Positive */
@@ -3680,11 +3736,14 @@ export interface components {
         };
         /**
          * SuggestedRegion
-         * @description One proposed shape and how sure the model is of it.
+         * @description One proposed shape, and the contour it was reduced from.
          */
         SuggestedRegion: {
-            /** Confidence */
-            confidence: number;
+            /** Contour */
+            contour?: [
+                number,
+                number
+            ][];
             /** Geometry */
             geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["ClassificationGeometry"];
         };
@@ -3692,21 +3751,37 @@ export interface components {
          * SuggestionOut
          * @description What the model proposes, or an honest nothing.
          *
-         *     ``region`` is null when there is no suggestion, and that is an ordinary
+         *     `regions` is empty when there is no suggestion, and that is an ordinary
          *     answer rather than an error: a click can land on sky, the model can be less
-         *     sure than the caller asked for, and the shape found can be one this class
-         *     cannot hold. A 404 or a 409 for any of those would be telling the caller they
-         *     did something wrong when they did not.
+         *     sure than the caller asked for, the shape found can be one this class cannot
+         *     hold, and the parameters as set can leave nothing. A 404 or a 409 for any of
+         *     those would be telling the caller they did something wrong when they did not.
          *
-         *     ``model_ref`` is echoed on every answer, including the empty one, because it
+         *     `model_ref` is echoed on every answer, including the empty one, because it
          *     is what an accepted suggestion has to carry into its annotation — and a
          *     caller that had to remember which connection it asked would be keeping a
-         *     second copy of something the response can simply state.
+         *     second copy of something the response can simply state. `confidence` is the
+         *     same: one number for the answer, because the model scored one mask and the
+         *     pieces cut out of it are that same claim seen in parts.
+         *
+         *     `parameters` names which settings have any effect on the kind of shape this
+         *     request will come back in, so a client renders exactly those and works none
+         *     of it out for itself. It is present on an empty answer too, which is what
+         *     lets somebody who adjusted their way into nothing adjust their way back out.
          */
         SuggestionOut: {
+            applied: components["schemas"]["AppliedParameters"];
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
             /** Model Ref */
             model_ref: string;
-            region?: components["schemas"]["SuggestedRegion"] | null;
+            /** Parameters */
+            parameters?: components["schemas"]["SuggestParameter"][];
+            /** Regions */
+            regions?: components["schemas"]["SuggestedRegion"][];
         };
         /**
          * VideoProvenanceOut

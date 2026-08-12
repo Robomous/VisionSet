@@ -352,6 +352,28 @@
         "title": "AnnotationUpdate",
         "type": "object"
       },
+      "AppliedParameters": {
+        "description": "The parameter values this answer was actually produced with.",
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/Detail"
+          },
+          "fill_holes": {
+            "title": "Fill Holes",
+            "type": "number"
+          },
+          "fragments": {
+            "$ref": "#/components/schemas/Fragments"
+          }
+        },
+        "required": [
+          "detail",
+          "fill_holes",
+          "fragments"
+        ],
+        "title": "AppliedParameters",
+        "type": "object"
+      },
       "AssetAction": {
         "description": "What can be asked of one asset inside a batch.\n\n``ANNOTATE`` is the odd one and the important one: it is not a progress move\nbut the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the\nbatch gate together. The other five each name one edge of\n``ASSET_PROGRESS_TRANSITIONS`` \u2014 see :data:`ASSET_MOVES`.",
         "enum": [
@@ -1951,6 +1973,16 @@
         "title": "DatasetStatsOut",
         "type": "object"
       },
+      "Detail": {
+        "description": "How much of an outline survives simplification. Order is display order.",
+        "enum": [
+          "coarse",
+          "balanced",
+          "fine"
+        ],
+        "title": "Detail",
+        "type": "string"
+      },
       "DownloadSizeOut": {
         "description": "What fetching a model's weights would cost, before anybody fetches them.\n\nAnswered from the publishing hub's file listing, so asking costs a metadata\nrequest and never a download. The pair is echoed back for ``SuggestionOut``'s\nreason: a form that had to remember which model it asked about would be\nkeeping a second copy of something the response can simply state.",
         "properties": {
@@ -2136,6 +2168,15 @@
         ],
         "title": "FormatPage",
         "type": "object"
+      },
+      "Fragments": {
+        "description": "How many of a mask's separate pieces become shapes.",
+        "enum": [
+          "one",
+          "all"
+        ],
+        "title": "Fragments",
+        "type": "string"
       },
       "GeometryType": {
         "description": "Every geometry the domain can address.\n\n3D values exist today even though unimplemented: the domain never assumes\n\"image\" anywhere \u2014 that is the Physical AI roadmap encoded as a type.",
@@ -3423,6 +3464,16 @@
         "title": "SplitRecipeBody",
         "type": "object"
       },
+      "SuggestParameter": {
+        "description": "A setting that shapes a suggestion. Order is display order.",
+        "enum": [
+          "detail",
+          "fill_holes",
+          "fragments"
+        ],
+        "title": "SuggestParameter",
+        "type": "string"
+      },
       "SuggestPoint": {
         "additionalProperties": false,
         "description": "One click, in the asset's own pixel coordinates.\n\nAn object rather than a two-element array because a JSON ``[x, y]`` is a\nshape a generated client types as ``number[]`` and a reader has to guess the\norder of. The domain's own tuples are fine \u2014 Python has positional meaning \u2014\nbut the wire is read by people.\n\nMust be on the asset: `x` in `[0, width]` and `y` in `[0, height]`, both\nends included. The bounds cannot be stated as field constraints, because\nthey belong to the asset the request names rather than to the point, so a\ncoordinate off the picture is refused by the route with\n`PROMPT_POINT_OUT_OF_BOUNDS` rather than by this schema.",
@@ -3465,6 +3516,21 @@
             "title": "Connection Id",
             "type": "string"
           },
+          "detail": {
+            "$ref": "#/components/schemas/Detail",
+            "default": "balanced"
+          },
+          "fill_holes": {
+            "default": 0.002,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Fill Holes",
+            "type": "number"
+          },
+          "fragments": {
+            "$ref": "#/components/schemas/Fragments",
+            "default": "one"
+          },
           "negative": {
             "items": {
               "$ref": "#/components/schemas/SuggestPoint"
@@ -3497,13 +3563,24 @@
         "type": "object"
       },
       "SuggestedRegion": {
-        "description": "One proposed shape and how sure the model is of it.",
+        "description": "One proposed shape, and the contour it was reduced from.",
         "properties": {
-          "confidence": {
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Confidence",
-            "type": "number"
+          "contour": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Contour",
+            "type": "array"
           },
           "geometry": {
             "discriminator": {
@@ -3533,32 +3610,46 @@
           }
         },
         "required": [
-          "geometry",
-          "confidence"
+          "geometry"
         ],
         "title": "SuggestedRegion",
         "type": "object"
       },
       "SuggestionOut": {
-        "description": "What the model proposes, or an honest nothing.\n\n``region`` is null when there is no suggestion, and that is an ordinary\nanswer rather than an error: a click can land on sky, the model can be less\nsure than the caller asked for, and the shape found can be one this class\ncannot hold. A 404 or a 409 for any of those would be telling the caller they\ndid something wrong when they did not.\n\n``model_ref`` is echoed on every answer, including the empty one, because it\nis what an accepted suggestion has to carry into its annotation \u2014 and a\ncaller that had to remember which connection it asked would be keeping a\nsecond copy of something the response can simply state.",
+        "description": "What the model proposes, or an honest nothing.\n\n`regions` is empty when there is no suggestion, and that is an ordinary\nanswer rather than an error: a click can land on sky, the model can be less\nsure than the caller asked for, the shape found can be one this class cannot\nhold, and the parameters as set can leave nothing. A 404 or a 409 for any of\nthose would be telling the caller they did something wrong when they did not.\n\n`model_ref` is echoed on every answer, including the empty one, because it\nis what an accepted suggestion has to carry into its annotation \u2014 and a\ncaller that had to remember which connection it asked would be keeping a\nsecond copy of something the response can simply state. `confidence` is the\nsame: one number for the answer, because the model scored one mask and the\npieces cut out of it are that same claim seen in parts.\n\n`parameters` names which settings have any effect on the kind of shape this\nrequest will come back in, so a client renders exactly those and works none\nof it out for itself. It is present on an empty answer too, which is what\nlets somebody who adjusted their way into nothing adjust their way back out.",
         "properties": {
+          "applied": {
+            "$ref": "#/components/schemas/AppliedParameters"
+          },
+          "confidence": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
           "model_ref": {
             "title": "Model Ref",
             "type": "string"
           },
-          "region": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SuggestedRegion"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestParameter"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestedRegion"
+            },
+            "title": "Regions",
+            "type": "array"
           }
         },
         "required": [
-          "model_ref"
+          "model_ref",
+          "applied"
         ],
         "title": "SuggestionOut",
         "type": "object"
@@ -6797,7 +6888,7 @@
     },
     "/inference/suggest": {
       "post": {
-        "description": "Propose a shape for the thing under those points.\n\nThe server side of the editor's suggest gesture. One asset, one prompt set,\none answer \u2014 batch prediction is a separate path and is not this one.\n\n**Nothing is written and nothing is remembered.** A suggestion is a proposal:\naccepting it is a later, ordinary annotation write carrying `provenance:\nmodel`, this response's `model_ref`, and its `confidence`. Discarding it\ncosts a request that already finished. The only thing that outlives the call\nis a cached image embedding, which is an optimisation rather than a record \u2014\nso the same points sent twice answer the same way, and a restart changes\nnothing but the latency of the first click.\n\n**The first click on an asset is the slow one.** A segmenter reads the whole\nimage once and then answers any number of clicks from that reading almost for\nfree, which is what makes refining by adding points practical. Sending the\naccumulated points \u2014 rather than a diff \u2014 is what keeps this stateless.\n\n**`allowed_geometries` is the caller's schema, not a preference.** The answer\nis produced in one of the kinds named or not at all: a class that admits\npolygons gets the outline, a class that admits only boxes gets its extent,\nand a class that admits neither gets `region: null`. Answering in a kind the\nschema would refuse would produce a suggestion that cannot be accepted.\n\n**Every point must be on the asset**, positive and negative alike \u2014 `x` in\n`[0, width]` and `y` in `[0, height]`, both ends included, in the asset's own\npixel frame. One point off the picture refuses the whole request with 422\n`PROMPT_POINT_OUT_OF_BOUNDS` rather than being dropped, because a gesture\nwith a point removed is a different gesture. Nothing is clamped: a\ncoordinate outside the frame is not a place on the image, and answering\nabout the nearest edge instead would return a mask, and a confidence, for a\nquestion nobody asked.\n\nA null `region` is a successful answer with nothing to propose. Refusals are\nreserved for things the caller can act on: an unknown project, asset or\nconnection is 404; a connection whose weights are not here yet, or whose kind\nthis build cannot run, is 409 and names what to do; a connection whose model\nanswers words rather than places is 422, as is a prompt point off the asset.",
+        "description": "Propose a shape for the thing under those points.\n\nThe server side of the editor's suggest gesture. One asset, one prompt set,\none answer \u2014 batch prediction is a separate path and is not this one.\n\n**Nothing is written and nothing is remembered.** A suggestion is a proposal:\naccepting it is a later, ordinary annotation write carrying `provenance:\nmodel`, this response's `model_ref`, and its `confidence`. Discarding it\ncosts a request that already finished. The only thing that outlives the call\nis a cached image embedding, which is an optimisation rather than a record \u2014\nso the same points sent twice answer the same way, and a restart changes\nnothing but the latency of the first click.\n\n**The first click on an asset is the slow one.** A segmenter reads the whole\nimage once and then answers any number of clicks from that reading almost for\nfree, which is what makes refining by adding points practical. Sending the\naccumulated points \u2014 rather than a diff \u2014 is what keeps this stateless.\n\n**`allowed_geometries` is the caller's schema, not a preference.** The answer\nis produced in one of the kinds named or not at all: a class that admits\npolygons gets outlines, a class that admits only boxes gets their extents,\nand a class that admits neither gets no regions. Answering in a kind the\nschema would refuse would produce a suggestion that cannot be accepted.\n\n**The three parameters shape the mask, and none of them reaches the model.**\n`detail` decides how much of an outline survives simplification, `fill_holes`\nhow wide a gap in the mask is closed before it is traced, and `fragments`\nwhether the piece under the click is the answer or every piece worth\nproposing. Each is optional and each has a default, so a caller that sends\nnone of them gets what this route always gave.\n\n**`parameters` says which of them apply here**, for the kind of shape this\nrequest will come back in \u2014 `detail` and `fill_holes` change an outline and a\nbox has none \u2014 and it is present even when there is nothing to propose, so\nsomebody who adjusted their way into an empty answer can adjust their way\nback out. A client renders what this names and works none of it out itself.\n\n**`contour` on each region is the unsimplified outline.** It is what lets a\nclient re-run `detail` locally rather than asking again, and it is the *same*\npoints this route reduced \u2014 simplification is not nested, so a client\nstarting from anything else could not be held to the same answer. A box\ncarries none, because there is nothing it was reduced from.\n\n**Every point must be on the asset**, positive and negative alike \u2014 `x` in\n`[0, width]` and `y` in `[0, height]`, both ends included, in the asset's own\npixel frame. One point off the picture refuses the whole request with 422\n`PROMPT_POINT_OUT_OF_BOUNDS` rather than being dropped, because a gesture\nwith a point removed is a different gesture. Nothing is clamped: a\ncoordinate outside the frame is not a place on the image, and answering\nabout the nearest edge instead would return a mask, and a confidence, for a\nquestion nobody asked.\n\nAn empty `regions` is a successful answer with nothing to propose. Refusals\nare reserved for things the caller can act on: an unknown project, asset or\nconnection is 404; a connection whose weights are not here yet, or whose kind\nthis build cannot run, is 409 and names what to do; a connection whose model\nanswers words rather than places is 422, as is a prompt point off the asset.",
         "operationId": "suggest_region",
         "requestBody": {
           "content": {

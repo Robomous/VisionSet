@@ -260,6 +260,18 @@ export const checkSourcePage: Check<Schemas["SourcePage"]> =
 export const checkSplitAssignmentOut: Check<Schemas["SplitAssignmentOut"]> =
   /*#__PURE__*/ object({ "test": [true, arrayOf(isString)], "train": [true, arrayOf(isString)], "val": [true, arrayOf(isString)] } as const);
 
+export const checkDetail: Check<Schemas["Detail"]> =
+  /*#__PURE__*/ oneOf(["coarse", "balanced", "fine"] as const);
+
+export const checkFragments: Check<Schemas["Fragments"]> =
+  /*#__PURE__*/ oneOf(["one", "all"] as const);
+
+export const checkAppliedParameters: Check<Schemas["AppliedParameters"]> =
+  /*#__PURE__*/ object({ "detail": [true, checkDetail], "fill_holes": [true, isNumber], "fragments": [true, checkFragments] } as const);
+
+export const checkSuggestParameter: Check<Schemas["SuggestParameter"]> =
+  /*#__PURE__*/ oneOf(["detail", "fill_holes", "fragments"] as const);
+
 export const checkBboxGeometry: Check<Schemas["BboxGeometry"]> =
   /*#__PURE__*/ object({ "height": [true, isNumber], "type": [true, lit("bbox")], "width": [true, isNumber], "x": [true, isNumber], "y": [true, isNumber] } as const);
 
@@ -273,10 +285,10 @@ export const checkPolylineGeometry: Check<Schemas["PolylineGeometry"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")] } as const);
 
 export const checkSuggestedRegion: Check<Schemas["SuggestedRegion"]> =
-  /*#__PURE__*/ object({ "confidence": [true, isNumber], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry })] } as const);
+  /*#__PURE__*/ object({ "contour": [false, arrayOf(tuple([isNumber, isNumber] as const))], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry })] } as const);
 
 export const checkSuggestionOut: Check<Schemas["SuggestionOut"]> =
-  /*#__PURE__*/ object({ "model_ref": [true, isString], "region": [false, either([checkSuggestedRegion, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "applied": [true, checkAppliedParameters], "confidence": [true, isNumber], "model_ref": [true, isString], "parameters": [false, arrayOf(checkSuggestParameter)], "regions": [false, arrayOf(checkSuggestedRegion)] } as const);
 
 // One alias per operation. `unwrap` takes these, never a schema check directly, so that
 // `tests/scripts/checks_wiring.test.mjs` can pair every call with its own operationId.

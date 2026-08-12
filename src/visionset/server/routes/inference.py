@@ -37,6 +37,7 @@ from visionset.kernel.services import InferenceConnectionService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
+    AppliedParameters,
     BackgroundJobOut,
     ConnectionCreate,
     ConnectionOut,
@@ -349,8 +350,8 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     about the nearest edge instead would return a mask, and a confidence, for a
     question nobody asked.
 
-    A null `region` is a successful answer with nothing to propose. Refusals are
-    reserved for things the caller can act on: an unknown project, asset or
+    An empty `regions` is a successful answer with nothing to propose. Refusals
+    are reserved for things the caller can act on: an unknown project, asset or
     connection is 404; a connection whose weights are not here yet, or whose kind
     this build cannot run, is 409 and names what to do; a connection whose model
     answers words rather than places is 422, as is a prompt point off the asset.
@@ -359,20 +360,28 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
         positive=tuple((point.x, point.y) for point in body.positive),
         negative=tuple((point.x, point.y) for point in body.negative),
     )
-    prediction = suggest(
+    answer = suggest(
         workspace,
         project_id=body.project_id,
         asset_id=body.asset_id,
         connection_id=body.connection_id,
         prompt=prompt,
         allowed=tuple(body.allowed_geometries),
+        detail=body.detail,
+        fill_holes=body.fill_holes,
+        fragments=body.fragments,
     )
-    region = next(iter(prediction.regions), None)
     return SuggestionOut(
-        model_ref=prediction.model_ref,
-        region=None
-        if region is None
-        else SuggestedRegion(geometry=region.geometry, confidence=region.confidence),
+        model_ref=answer.model_ref,
+        confidence=answer.confidence,
+        regions=[
+            SuggestedRegion(geometry=shape.geometry, contour=list(shape.contour))
+            for shape in answer.shapes
+        ],
+        applied=AppliedParameters(
+            detail=body.detail, fill_holes=body.fill_holes, fragments=body.fragments
+        ),
+        parameters=list(answer.parameters),
     )
 
 
