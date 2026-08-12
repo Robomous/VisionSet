@@ -694,6 +694,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Home
+         * @description Everything the workspace's front page shows, in one response.
+         *
+         *     `totals` counts the whole workspace. `projects` is a short shortcut into the
+         *     project list, not a copy of it, and `activity` is capped — both have a screen
+         *     that owns them in full.
+         *
+         *     `resume` is the batch to carry on with: the one furthest through that still
+         *     has an unannotated frame. It is **derived on every call and never stored**,
+         *     and it is ranked by progress rather than by recency because nothing in the
+         *     workspace records when a batch was last worked on. When `next_asset_id` is
+         *     null the batch has no unlabeled frame left — open its gallery rather than the
+         *     editor. `resume` itself is null when no batch is open for annotation.
+         *
+         *     `attention` carries batches with frames awaiting review, and background jobs
+         *     that failed or are still running. A job row has no `project_id`: a job names
+         *     an ingest run or a release, never a project.
+         *
+         *     An empty workspace answers zeros, nulls and empty lists. That is the
+         *     first-run state, and `totals.projects` is how a client recognises it.
+         */
+        get: operations["get_home"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/inference/connections": {
         parameters: {
             query?: never;
@@ -2060,6 +2098,43 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * ActivityEntryOut
+         * @description One thing that happened, derived from a timestamp that already existed.
+         */
+        ActivityEntryOut: {
+            /** Count */
+            count: number | null;
+            kind: components["schemas"]["ActivityKind"];
+            /** Label */
+            label: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+        };
+        /**
+         * ActivityKind
+         * @description What sort of thing a row of the activity feed is.
+         *
+         *     Four kinds, and two of them are approximations the interface must not
+         *     overstate. See :class:`ActivityEntry` for which and why.
+         * @enum {string}
+         */
+        ActivityKind: "release_published" | "batch_promoted" | "ingest" | "schema_version";
+        /**
          * AnnotationCreate
          * @description One annotation to store, judged against the version its batch pinned.
          */
@@ -2271,6 +2346,43 @@ export interface components {
         AssetProgressSet: {
             progress: components["schemas"]["AssetProgress"];
         };
+        /**
+         * AttentionItemOut
+         * @description One thing in the workspace that is waiting on somebody.
+         */
+        AttentionItemOut: {
+            /** Count */
+            count: number | null;
+            /** Detail */
+            detail: string | null;
+            kind: components["schemas"]["AttentionKind"];
+            /** Label */
+            label: string;
+            /** Processed */
+            processed: number | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Project Name */
+            project_name: string | null;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Total */
+            total: number | null;
+        };
+        /**
+         * AttentionKind
+         * @description What sort of thing a row of the attention list is.
+         *
+         *     A ``StrEnum`` rather than a plain ``str`` on the ``SourceKind`` test: no
+         *     writer outside this build produces one, the value decides how a row renders,
+         *     and the set grows deliberately. Contrast ``DatasetChange.operation``, which
+         *     is a plain ``str`` precisely because a log outlives the build that wrote it.
+         * @enum {string}
+         */
+        AttentionKind: "review_pending" | "job_failed" | "job_running";
         /**
          * AttributeBody
          * @description A typed attribute on a label class.
@@ -3006,6 +3118,20 @@ export interface components {
          */
         GeometryType: "bbox" | "polygon" | "mask" | "polyline" | "keypoints" | "cuboid_3d" | "polyline_3d" | "classification_tag";
         /**
+         * HomeOut
+         * @description Everything the workspace's front page asks for, in one answer.
+         */
+        HomeOut: {
+            /** Activity */
+            activity: components["schemas"]["ActivityEntryOut"][];
+            /** Attention */
+            attention: components["schemas"]["AttentionItemOut"][];
+            /** Projects */
+            projects: components["schemas"]["ProjectSummaryOut"][];
+            resume: components["schemas"]["ResumeTargetOut"] | null;
+            totals: components["schemas"]["WorkspaceTotalsOut"];
+        };
+        /**
          * ImageFormat
          * @description Every still-image encoding VisionSet accepts. See the module docstring.
          *
@@ -3416,6 +3542,23 @@ export interface components {
             project_id: string;
         };
         /**
+         * ProjectSummaryOut
+         * @description One project, as a shortcut rather than as the project list.
+         */
+        ProjectSummaryOut: {
+            /** Annotated Fraction */
+            annotated_fraction: number;
+            /** Asset Count */
+            asset_count: number;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /**
          * ReleaseCreate
          * @description What publishing a release needs.
          */
@@ -3492,6 +3635,39 @@ export interface components {
              * Format: uuid
              */
             release_id: string;
+        };
+        /**
+         * ResumeTargetOut
+         * @description The batch to carry on with, and where inside it to land.
+         */
+        ResumeTargetOut: {
+            /** Annotated */
+            annotated: number;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Name */
+            batch_name: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Next Asset Id */
+            next_asset_id: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Thumbnail Asset Id */
+            thumbnail_asset_id: string | null;
+            /** Total */
+            total: number;
         };
         /**
          * SchemaChangeOut
@@ -3835,6 +4011,20 @@ export interface components {
              */
             job_id: string;
             state: components["schemas"]["BackgroundJobState"];
+        };
+        /**
+         * WorkspaceTotalsOut
+         * @description Four counts over the whole workspace.
+         */
+        WorkspaceTotalsOut: {
+            /** Annotations */
+            annotations: number;
+            /** Assets */
+            assets: number;
+            /** Projects */
+            projects: number;
+            /** Releases */
+            releases: number;
         };
     };
     responses: never;
@@ -5583,6 +5773,62 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_home: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description The request payload is not processable */

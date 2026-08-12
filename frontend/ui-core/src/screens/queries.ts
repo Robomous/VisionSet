@@ -44,6 +44,7 @@ import {
   checkDeleteProject,
   checkExportRelease,
   checkGetBackgroundJob,
+  checkGetHome,
   checkGetBackgroundJobArtifact,
   checkGetActiveSchema,
   checkGetBatch,
@@ -97,6 +98,11 @@ export type AssetPage = components["schemas"]["AssetPage"];
 
 /** One place the key space is written down. Prefixes are the invalidation API. */
 export const queryKeys = {
+  // Its own root rather than a child of `projects`, because it is not a view of
+  // the project collection: it reads batches, jobs, releases and background work
+  // too, and a key under `projects` would be invalidated by exactly the wrong
+  // set of mutations — and missed by the rest.
+  home: () => ["home"] as const,
   projects: () => ["projects"] as const,
   project: (projectId: string) => ["projects", projectId] as const,
   activeSchema: (projectId: string) => ["projects", projectId, "schema"] as const,
@@ -107,6 +113,25 @@ export const queryKeys = {
   schemaCompare: (projectId: string, from: number, to: number) =>
     ["projects", projectId, "schema", "compare", from, to] as const,
 };
+
+/**
+ * The workspace's front page, in one request.
+ *
+ * One query rather than six, because the server composes it: the page asks four
+ * questions that each span every project, and answering them separately would be
+ * a request per project per question with the browser doing the joining.
+ *
+ * Nothing here is a capability declaration. Every row is a *pointer* at a
+ * resource that declares its own, so this hook's result is never what decides
+ * whether an action is offered.
+ */
+export function useHome(): UseQueryResult<Home, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.home(),
+    queryFn: async () => unwrap(await client.GET("/home", {}), checkGetHome),
+  });
+}
 
 export function useProjects(): UseQueryResult<ProjectPage, Error> {
   const client = useApiClient();
@@ -386,6 +411,11 @@ export type Source = components["schemas"]["SourceOut"];
 export type SourcePage = components["schemas"]["SourcePage"];
 export type IngestJob = components["schemas"]["IngestJobOut"];
 export type BackgroundJob = components["schemas"]["BackgroundJobOut"];
+export type Home = components["schemas"]["HomeOut"];
+export type ResumeTarget = components["schemas"]["ResumeTargetOut"];
+export type AttentionItem = components["schemas"]["AttentionItemOut"];
+export type ActivityEntry = components["schemas"]["ActivityEntryOut"];
+export type ProjectSummary = components["schemas"]["ProjectSummaryOut"];
 export type IngestFailure = components["schemas"]["IngestFailureOut"];
 export type Batch = components["schemas"]["BatchOut"];
 export type BatchPage = components["schemas"]["BatchPage"];

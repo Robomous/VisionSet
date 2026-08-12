@@ -50,6 +50,8 @@ from visionset.kernel.domain import (
     DEFAULT_DETAIL,
     DEFAULT_FILL_HOLES,
     DEFAULT_FRAGMENTS,
+    ActivityEntry,
+    ActivityKind,
     Annotation,
     AnnotationJob,
     AnnotationJobState,
@@ -57,6 +59,8 @@ from visionset.kernel.domain import (
     Asset,
     AssetAction,
     AssetProgress,
+    AttentionItem,
+    AttentionKind,
     Attribute,
     BackgroundJob,
     BackgroundJobState,
@@ -101,8 +105,10 @@ from visionset.kernel.domain import (
     Precision,
     Project,
     ProjectStats,
+    ProjectSummary,
     Release,
     ReleaseVerification,
+    ResumeTarget,
     SchemaChange,
     SchemaDiff,
     SchemaProvenance,
@@ -114,6 +120,8 @@ from visionset.kernel.domain import (
     SuggestParameter,
     VideoProvenance,
     WeightDownload,
+    WorkspaceSummary,
+    WorkspaceTotals,
     asset_actions,
     batch_actions,
     connection_actions,
@@ -1985,3 +1993,161 @@ class SuggestionOut(BaseModel):
     regions: list[SuggestedRegion]
     applied: AppliedParameters
     parameters: list[SuggestParameter]
+
+
+# --- the workspace's front page --------------------------------------------
+#
+# One composed response rather than a resource, and the whole group is read-only.
+# Nothing here carries ``allowed_actions``: an action belongs to the resource it
+# acts on, and every row below is a *pointer* at one whose own shape already
+# declares what may be done to it. Publishing a second copy of those declarations
+# here would be the hand-mirrored table the capabilities contract exists to
+# forbid, one layer up.
+#
+# The two feed shapes are flat rows carrying a ``kind`` rather than discriminated
+# unions. They differ in which optional fields they fill, not in shape, and the
+# union machinery — a component per variant, a generated runtime check per
+# variant, a fixture per variant — would buy nothing a reader or a client can
+# observe. ``GeometryOut`` is a union because its variants carry genuinely
+# different data; these do not.
+class WorkspaceTotalsOut(BaseModel):
+    """Four counts over the whole workspace."""
+
+    projects: int
+    assets: int
+    annotations: int
+    releases: int
+
+    @classmethod
+    def of(cls, totals: WorkspaceTotals) -> Self:
+        return cls(
+            projects=totals.projects,
+            assets=totals.assets,
+            annotations=totals.annotations,
+            releases=totals.releases,
+        )
+
+
+class ResumeTargetOut(BaseModel):
+    """The batch to carry on with, and where inside it to land."""
+
+    project_id: UUID
+    project_name: str
+    batch_id: UUID
+    batch_name: str
+    job_id: UUID
+    # NULL when nothing in the batch is unannotated. The batch is still the one
+    # to open; a client sends somebody to its gallery instead of into the editor
+    # and says so on the control, rather than offering a link to no frame.
+    next_asset_id: UUID | None
+    annotated: int
+    total: int
+    thumbnail_asset_id: UUID | None
+
+    @classmethod
+    def of(cls, resume: ResumeTarget) -> Self:
+        return cls(
+            project_id=resume.project_id,
+            project_name=resume.project_name,
+            batch_id=resume.batch_id,
+            batch_name=resume.batch_name,
+            job_id=resume.job_id,
+            next_asset_id=resume.next_asset_id,
+            annotated=resume.annotated,
+            total=resume.total,
+            thumbnail_asset_id=resume.thumbnail_asset_id,
+        )
+
+
+class AttentionItemOut(BaseModel):
+    """One thing in the workspace that is waiting on somebody."""
+
+    kind: AttentionKind
+    subject_id: UUID
+    # NULL on a background-job row, which names an ingest job or a release in its
+    # payload and never a project. Such a row is rendered without a link.
+    project_id: UUID | None
+    project_name: str | None
+    label: str
+    count: int | None
+    processed: int | None
+    total: int | None
+    detail: str | None
+
+    @classmethod
+    def of(cls, item: AttentionItem) -> Self:
+        return cls(
+            kind=item.kind,
+            subject_id=item.subject_id,
+            project_id=item.project_id,
+            project_name=item.project_name,
+            label=item.label,
+            count=item.count,
+            processed=item.processed,
+            total=item.total,
+            detail=item.detail,
+        )
+
+
+class ProjectSummaryOut(BaseModel):
+    """One project, as a shortcut rather than as the project list."""
+
+    project_id: UUID
+    name: str
+    asset_count: int
+    # A share in 0..1, and zero over an empty project rather than absent — the
+    # rule ``DESIGN.md`` states for a percentage over a zero denominator.
+    annotated_fraction: float
+
+    @classmethod
+    def of(cls, summary: ProjectSummary) -> Self:
+        return cls(
+            project_id=summary.project_id,
+            name=summary.name,
+            asset_count=summary.asset_count,
+            annotated_fraction=summary.annotated_fraction,
+        )
+
+
+class ActivityEntryOut(BaseModel):
+    """One thing that happened, derived from a timestamp that already existed."""
+
+    kind: ActivityKind
+    occurred_at: datetime
+    project_id: UUID
+    project_name: str
+    subject_id: UUID
+    label: str | None
+    count: int | None
+
+    @classmethod
+    def of(cls, entry: ActivityEntry) -> Self:
+        return cls(
+            kind=entry.kind,
+            occurred_at=entry.occurred_at,
+            project_id=entry.project_id,
+            project_name=entry.project_name,
+            subject_id=entry.subject_id,
+            label=entry.label,
+            count=entry.count,
+        )
+
+
+class HomeOut(BaseModel):
+    """Everything the workspace's front page asks for, in one answer."""
+
+    totals: WorkspaceTotalsOut
+    resume: ResumeTargetOut | None
+    attention: list[AttentionItemOut]
+    projects: list[ProjectSummaryOut]
+    activity: list[ActivityEntryOut]
+
+    @classmethod
+    def of(cls, summary: WorkspaceSummary) -> Self:
+        return cls(
+            totals=WorkspaceTotalsOut.of(summary.totals),
+            resume=None if summary.resume is None else ResumeTargetOut.of(summary.resume),
+            attention=[AttentionItemOut.of(item) for item in summary.attention],
+            projects=[ProjectSummaryOut.of(row) for row in summary.projects],
+            activity=[ActivityEntryOut.of(entry) for entry in summary.activity],
+        )

@@ -99,6 +99,22 @@ function connection(
  * it the way it reads a server.
  */
 async function serveApi(page: Page, next: () => unknown): Promise<void> {
+  // These scenarios reach Inference by signing in at `/`, which is a real page
+  // now rather than a redirect to the project list — so it makes this request on
+  // the way past. Empty totals: nothing here is about the dashboard, and an
+  // unrouted request would leave the page waiting on a network that is not there.
+  await page.route("**/api/home", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        totals: { projects: 0, assets: 0, annotations: 0, releases: 0 },
+        resume: null,
+        attention: [],
+        projects: [],
+        activity: [],
+      },
+    }),
+  );
   await page.route("**/api/session", (route) => route.fulfill({ json: { issued: false } }));
   await page.route("**/api/inference/connections*", (route) =>
     route.fulfill({ status: 200, json: { items: [next()], total: 1 } }),

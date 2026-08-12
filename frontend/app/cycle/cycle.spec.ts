@@ -167,7 +167,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("create a project", async () => {
-    await page.getByTestId("new-project").click();
+    // From Home's first-run invitation rather than from the project list, and
+    // that is the honest route here: this workspace was created seconds ago, so
+    // `/` is exactly the state that invitation exists for. It opens the same
+    // dialog the list's own button does — one component, two callers — which is
+    // why every field below is unchanged.
+    await expect(page.getByTestId("home-first-run")).toBeVisible();
+    await page.getByTestId("home-create-project").click();
     await page.getByTestId("project-name").fill(PROJECT);
     await page.getByTestId("project-description").fill("Driven by #59");
     await page.getByTestId("create-submit").click();

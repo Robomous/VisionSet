@@ -46,7 +46,12 @@ from visionset.kernel.adapters import _mappers as m
 from visionset.kernel.adapters import _tables as t
 from visionset.kernel.adapters._tables import META_TABLE, Base, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
-from visionset.kernel.domain import AssetProgress, BackgroundJob, BackgroundJobState
+from visionset.kernel.domain import (
+    AnnotationTotals,
+    AssetProgress,
+    BackgroundJob,
+    BackgroundJobState,
+)
 from visionset.kernel.errors import (
     ConstraintViolated,
     EntityAlreadyExists,
@@ -482,6 +487,30 @@ class SqlUnitOfWork:
                 .order_by(t.BatchAssetRow.position)
             ).all()
         )
+
+    def annotation_totals(self, project_id: UUID) -> AnnotationTotals:
+        """The port's other non-repository read — see its docstring for why.
+
+        **One scan for both numbers**, which is the whole reason they are one
+        method: the join is the expensive part and the two aggregates ride it
+        together.
+
+        ``select_from`` is stated rather than inferred. With only aggregate
+        functions in the select list there is no table for SQLAlchemy to derive
+        a FROM clause from, and the ``join`` alone would leave it guessing.
+
+        ``one()`` rather than ``scalar_one_or_none``: an aggregate over an empty
+        match is a row of zeros, never the absence of a row. A project with no
+        assets and an unknown project are therefore indistinguishable here, which
+        is what the port promises.
+        """
+        annotations, annotated_assets = self._session.execute(
+            select(func.count(), func.count(func.distinct(t.AnnotationRow.asset_id)))
+            .select_from(t.AnnotationRow)
+            .join(t.AssetRow, t.AnnotationRow.asset_id == t.AssetRow.id)
+            .where(t.AssetRow.project_id == project_id)
+        ).one()
+        return AnnotationTotals(annotations=annotations, annotated_assets=annotated_assets)
 
 
 class SqliteMetadataStore:

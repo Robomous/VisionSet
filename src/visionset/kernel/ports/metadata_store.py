@@ -17,6 +17,7 @@ from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
     AnnotationSchema,
+    AnnotationTotals,
     Asset,
     AssetProgress,
     BackgroundJob,
@@ -305,6 +306,37 @@ class UnitOfWork(Protocol):
         An asset in no batch answers ``[]`` — the ordinary state of anything
         freshly ingested into a project whose ingest targeted nothing, not an
         error.
+        """
+        ...
+
+    def annotation_totals(self, project_id: UUID) -> AnnotationTotals:
+        """How much of this project is labeled, in two numbers.
+
+        **The method two service docstrings already asked for by name.** Both
+        ``ProjectService.stats`` and ``JobService.project_progress`` describe the
+        same remedy in the same words — *"when it does start to cost, the fix is
+        a method on the port implemented in the adapter, never a SQLAlchemy
+        import in a service"* — and this is that method, taken when a caller
+        finally appeared that walks every project at once.
+
+        The cost it removes is not incidental. ``Repository[Annotation]`` is
+        parented on the **asset**, so counting a project's labels through the
+        repositories is one query per asset; a workspace summary doing that for
+        every project reads the whole store to produce a single number. Here it
+        is one aggregate.
+
+        Counts rather than the rows, because the caller wants the numbers: the
+        rows are the expensive half and nothing that asks this needs them.
+
+        Not a widened ``Repository``: that protocol is generic over every entity,
+        so a project-scoped count on it would appear on tokens and releases as
+        well and mean nothing there. ``batches_holding`` is the precedent for a
+        read that lives here instead.
+
+        A project with no assets, or with assets nobody has labeled, answers two
+        zeros — the ordinary state of a fresh ingest, not an error. An unknown
+        project answers two zeros too: existence is the caller's question and
+        every caller has already resolved the project before asking this.
         """
         ...
 

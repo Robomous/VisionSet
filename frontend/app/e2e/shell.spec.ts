@@ -35,6 +35,22 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
   // because the gate and the sign-out button are what it is about and both are
   // only reachable when the server declines to sign the browser in by itself.
   await page.route("**/api/session", (route) => route.fulfill({ json: { issued: session } }));
+  // Home reads the workspace summary on every page load now, because the rail's
+  // Home entry lands on a real page rather than redirecting. Empty totals: this
+  // suite is about the rail and the router, and what the dashboard does with
+  // rows belongs to `ui-core`'s `home.test.tsx`.
+  await page.route("**/api/home", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        totals: { projects: 0, assets: 0, annotations: 0, releases: 0 },
+        resume: null,
+        attention: [],
+        projects: [],
+        activity: [],
+      },
+    }),
+  );
   // The Inference section's one read. Empty, because this suite is about the
   // rail and the router: what the screen does with rows is `ui-core`'s
   // `inference.test.tsx`, and an unrouted request here would leave the page
@@ -190,15 +206,21 @@ test("the Inference entry goes to the section, and is current once you are on it
 test("navigation is real links, and the active one is the one you are on", async ({ page }) => {
   await signIn(page);
 
-  // Signing in at `/` lands on `/projects`, because Home redirects there — so
-  // **Projects** is the current page and Home is not. Asserting Home first would
-  // be racing the redirect, which is exactly what it did until this comment
-  // existed: the scenario passed alone and failed under parallel load.
+  // Signing in at `/` stays at `/`, because Home is a page now rather than a
+  // redirect to the project list — so **Home** is the current page and Projects
+  // is not. This assertion used to read the other way round, and had a comment
+  // warning that asserting Home first raced the redirect. There is no redirect
+  // to race any more, which is the whole of what changed.
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("rail-home")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("rail-projects")).not.toHaveAttribute("aria-current", "page");
+
+  // `end` on the Home link is what keeps *the other direction* true: without it
+  // `NavLink` treats `/` as a prefix of every route and Home stays active
+  // everywhere. So the claim is checked from a page that is not Home.
+  await page.getByTestId("rail-projects").click();
   await expect(page).toHaveURL(/\/projects$/);
   await expect(page.getByTestId("rail-projects")).toHaveAttribute("aria-current", "page");
-
-  // `end` on the Home link is what keeps this true: without it `NavLink` treats
-  // `/` as a prefix of every route and Home is active on every page.
   await expect(page.getByTestId("rail-home")).not.toHaveAttribute("aria-current", "page");
 
   // A real `<a href>`, so middle-click and "open in new tab" work — which on a
@@ -284,9 +306,11 @@ test("a client route nobody defined answers inside the shell, not with a blank p
   // a broken application.
   await expect(page.getByTestId("app-rail")).toBeVisible();
   await page.getByRole("link", { name: "Back to Home" }).click();
-  // Home redirects to the project list: there is nothing else a workspace's front
-  // page could honestly be until a dashboard has numbers to show.
-  await expect(page).toHaveURL(/\/projects$/);
+  // The link keeps its own promise now. It used to land on the project list,
+  // because Home was a redirect there; Home is a page, so "Back to Home" goes to
+  // Home and the dashboard is what answers.
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("home-first-run")).toBeVisible();
 });
 
 /**

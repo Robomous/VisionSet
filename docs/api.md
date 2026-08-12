@@ -367,6 +367,21 @@ have to fake.
 written out field by field, so a field reaches a client because somebody published it and never
 because somebody added it to an entity.
 
+**One endpoint is a projection rather than a resource, and it is the exception that states the
+rule.** `GET /home` composes the workspace's front page - totals across every project, the batch
+to carry on with, what is waiting, and a feed derived from timestamps that already exist. It takes
+no path parameters, has no verb but `GET`, and carries **no `allowed_actions`**: there is nothing
+here to act on, only rows pointing at resources that declare their own capabilities. It exists
+because the page it answers asks four questions that each span every project, and answering them
+as separate resources would be a request per project per question.
+
+Two of its fields are honest about limits the storage format imposes, and a client should render
+them as they are described rather than as it might wish them. `resume` is ranked by **progress,
+not recency** - nothing records when a batch was last worked on - and a null `next_asset_id` means
+the batch has no unlabeled frame left, so the caller opens its gallery rather than the editor. An
+`ingest` activity entry is the newest asset arrival in a project rather than one run finishing,
+because an ingest job records no times.
+
 ## Where the UI lives
 
 The compiled application is mounted at **`/app`** and `/` redirects to it. `visionset server` starts

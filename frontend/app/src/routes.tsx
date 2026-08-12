@@ -42,6 +42,7 @@ import {
   AnnotationPage,
   assetParamFor,
   GalleryScreen,
+  HomeScreen,
   InferenceScreen,
   resolveProjectTab,
   IngestScreen,
@@ -67,10 +68,15 @@ export function AppRoutes(): JSX.Element {
         <Route element={<AppShell />}>
           {/* Lists and forms: the padded, `max-w-7xl` column. */}
           <Route element={<PaddedPane />}>
-            {/* Home is the project list. There is nothing else a workspace's front
-                page could honestly be until a dashboard has numbers to show, and a
-                redirect keeps one screen rather than two that drift. */}
-            <Route index element={<Navigate to="/projects" replace />} />
+            {/* Home was a redirect to the project list, on the reasoning that
+                there was nothing else a workspace's front page could honestly be
+                until a dashboard had numbers to show. `GET /home` is those
+                numbers: what is waiting across every project, and which batch to
+                carry on with. The two screens do not drift because they answer
+                different questions — this one is *what needs me*, the list is
+                *what exists* — and Home links to the list rather than repeating
+                it. */}
+            <Route index element={<Home />} />
             <Route path="projects" element={<Projects />} />
             {/*
               A top-level destination rather than a project route, per the
@@ -142,6 +148,31 @@ function Projects(): JSX.Element {
 }
 
 /**
+ * The workspace's front page, and the four edges it hands out.
+ *
+ * `onContinue` is the one that carries a decision rather than a path. The screen
+ * passes a null asset when the batch it is offering has no unlabeled frame left,
+ * and the annotator's `?asset=` is *where to start* rather than part of its
+ * identity — so a null simply means "open the job wherever it opens", which is
+ * what a deep link nobody parameterised already does.
+ */
+function Home(): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <HomeScreen
+      onContinue={(jobId, assetId) =>
+        void navigate(assetId === null ? `/jobs/${jobId}` : `/jobs/${jobId}?asset=${assetId}`)
+      }
+      onOpenBatch={(projectId, batchId) =>
+        void navigate(`/projects/${projectId}/batches/${batchId}`)
+      }
+      onOpenProject={(projectId) => void navigate(PARENT.project(projectId))}
+      onOpenProjects={() => void navigate(PARENT.projects)}
+    />
+  );
+}
+
+/**
  * Every sub-view's parent, in one place.
  *
  * A back affordance navigates to its **declared parent**, never `navigate(-1)`:
@@ -159,6 +190,9 @@ function Projects(): JSX.Element {
  * default Schema tab after leaving a batch is landing somewhere you were not.
  */
 const PARENT = {
+  //: A rail destination, like `inference` below, so nothing declares it as a
+  //: parent either. It is here because this table is the route map's own index.
+  home: "/",
   projects: "/projects",
   //: A rail destination, so nothing declares it as a parent — it is here because
   //: this table is the route map's own index, and an entry point missing from it
