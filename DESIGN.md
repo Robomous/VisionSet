@@ -463,6 +463,18 @@ Actions are right-aligned: one **primary CTA**, one **secondary**, and an overfl
 page the primary is **Annotate**, because principle 8 asks what the user came to do and the
 answer is never "rename this".
 
+**Annotate has three shapes, and the cost of the choice tracks the ambiguity.** With no batch
+open for annotation there is nowhere to send anybody, so the button is absent and Ingest takes
+the filled slot — principle 9, rather than a disabled control that never says what would
+enable it. With exactly one, it jumps straight there. With two or more it reads `Annotate ▾`
+and opens a menu of those batches, each row carrying the batch name, its remaining `N to do`,
+and the schema version it is pinned to. The chevron is not decoration: a button that opens a
+choice must not be shaped like one that jumps. The pinned version earns its place in the row
+because approval fixes it and nothing later moves it, so which batch you pick decides which
+schema you annotate under — a consequence that is invisible everywhere else on the page.
+Never a silent default, and never one remembered from last time: a control's destination may
+not be a function of session history.
+
 ### The first run
 
 **The Overview's first-run region is driven by the project's state, and renders exactly one
