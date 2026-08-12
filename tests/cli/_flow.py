@@ -17,6 +17,7 @@ evidence.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from click.testing import Result
@@ -58,6 +59,36 @@ def ok(root: Path, *argv: str) -> str:
 def payload(root: Path, *argv: str) -> dict:
     """The ``--json`` document a command printed, parsed."""
     return json.loads(ok(root, *argv, "--json"))
+
+
+_BOX_DRAWING = re.compile(r"[─-╿]")
+"""The Unicode block rich draws a panel's border from."""
+
+
+def usage_error(result: Result) -> str:
+    """A usage error's text as one line, with the panel's wrapping undone.
+
+    **Every ``exit_code == 2`` assertion reads its message through this, never
+    raw.** A usage error is a ``typer.BadParameter``, and Typer hands those to
+    ``rich_utils.rich_format_error``, which prints them inside a rich ``Panel`` —
+    unlike ``cli/_errors.py``'s domain errors, which are a plain ``typer.secho``
+    and cannot wrap. The panel word-wraps, so a phrase can be split across two
+    lines and stop being a substring of the output while remaining perfectly
+    correct on screen.
+
+    Which width it wraps at is not the test's to choose. Rich asks
+    ``os.get_terminal_size`` about **the process's own file descriptors** — never
+    the ``CliRunner``'s buffers — so under a plain ``pytest`` the panel is as wide
+    as the developer's terminal, while under ``pytest -n auto`` an xdist worker
+    writes to a pipe, the call raises ``OSError`` and rich falls back to 80
+    columns. That is one test with two wrap points, which is how ``scripts/check.sh``
+    came to fail on messages CI reads correctly (#535).
+
+    The one limit, so it is not discovered the hard way: this rejoins **words**.
+    A token rich broke in the middle — only possible for one longer than the panel
+    is wide — is not put back together.
+    """
+    return " ".join(_BOX_DRAWING.sub(" ", result.output).split())
 
 
 def workspace(tmp_path: Path) -> Path:
