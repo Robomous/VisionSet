@@ -6,7 +6,16 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from tests.cli._flow import ingested_batch, jobs_of, ok, payload, run, started_batch, workspace
+from tests.cli._flow import (
+    ingested_batch,
+    jobs_of,
+    ok,
+    payload,
+    run,
+    started_batch,
+    usage_error,
+    workspace,
+)
 
 from visionset.kernel.domain import AssetProgress
 from visionset.kernel.services import WORKSPACE_ENV_VAR
@@ -137,7 +146,7 @@ def test_an_unknown_progress_state_exits_two_listing_the_real_ones(
     _, batch = started_batch(root, tmp_path)
     result = run(root, "job", "mark", jobs_of(root, batch)[0], str(uuid4()), "--progress", "bogus")
     assert result.exit_code == 2, result.output
-    assert "annotated" in result.output
+    assert "annotated" in usage_error(result)
 
 
 def test_marking_an_asset_that_is_not_in_the_job_exits_one(root: Path, tmp_path: Path) -> None:

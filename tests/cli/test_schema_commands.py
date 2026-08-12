@@ -13,7 +13,15 @@ import json
 from pathlib import Path
 
 import pytest
-from tests.cli._flow import SCHEMA_DOCUMENT, ok, payload, run, schema_file, workspace
+from tests.cli._flow import (
+    SCHEMA_DOCUMENT,
+    ok,
+    payload,
+    run,
+    schema_file,
+    usage_error,
+    workspace,
+)
 
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 from visionset.server.models import SchemaVersionCreate
@@ -85,7 +93,7 @@ def test_a_file_that_is_not_json_exits_two(root: Path, tmp_path: Path) -> None:
     path.write_text("{not json", encoding="utf-8")
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 2, result.output
-    assert "not valid JSON" in result.output
+    assert "not valid JSON" in usage_error(result)
 
 
 def test_a_document_with_no_classes_key_exits_two(root: Path, tmp_path: Path) -> None:
@@ -93,7 +101,7 @@ def test_a_document_with_no_classes_key_exits_two(root: Path, tmp_path: Path) ->
     path.write_text(json.dumps({"labels": []}), encoding="utf-8")
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 2, result.output
-    assert "classes" in result.output
+    assert "classes" in usage_error(result)
 
 
 def test_a_file_that_is_not_there_exits_two(root: Path, tmp_path: Path) -> None:
@@ -118,14 +126,19 @@ def test_a_select_with_no_options_exits_two_in_the_domains_words(
     )
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 2, result.output
-    assert "options" in result.output
+    # The kernel's own wording, singular. ``"options"`` used to stand here and
+    # passed for the wrong reason: pytest names ``tmp_path`` after the test, so
+    # ``test_a_select_with_no_options_…`` was interpolated into the message and
+    # matched — the assertion would have held with the CLI printing anything at
+    # all, as long as it echoed the path back.
+    assert "needs at least one option" in usage_error(result)
 
 
 def test_a_blank_class_name_exits_two_and_says_where(root: Path, tmp_path: Path) -> None:
     path = _document(tmp_path, [{"name": "   ", "geometry": "bbox"}])
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 2, result.output
-    assert "classes.0.name" in result.output
+    assert "classes.0.name" in usage_error(result)
 
 
 def test_an_unimplemented_geometry_exits_one(root: Path, tmp_path: Path) -> None:

@@ -17,6 +17,7 @@ evidence.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from click.testing import Result
@@ -43,9 +44,35 @@ IMAGE_COUNT = 6
 """Six stills, so ``--jobs-of 3`` cuts exactly two jobs with no remainder."""
 
 
+NARROW = "40"
+"""The width every invocation renders at, so no test depends on the terminal's."""
+
+RENDERING = {"COLUMNS": NARROW, "FORCE_COLOR": "1"}
+"""The environment every invocation renders in — narrow, and in colour.
+
+Three things outside a test's control decide what a rich ``Panel`` looks like,
+and each of them has already broken this suite: the **width**, which rich takes
+from the process's own file descriptors and so reads as the developer's terminal
+under ``pytest`` and 80 columns under an xdist worker's pipe; the **line breaks**
+that width produces; and whether rich emits **SGR escapes**, which it does on CI
+and did not locally, splicing ``\\x1b[31m`` between the halves of a phrase.
+
+Only rich responds to either variable — ``cli/_output.py``'s listings and
+``cli/_errors.py``'s domain errors are plain ``typer.echo``, which neither wraps
+nor colours under ``CliRunner``.
+
+**Both are pinned to the hostile setting on purpose.** Wide and uncoloured would
+hide the wrap and the escapes, and hiding them is precisely what let
+``bash scripts/check.sh python`` fail on messages CI reads correctly (#535).
+Narrow and coloured makes every ``exit_code == 2`` assertion prove it survives
+both, on every machine and under any runner — and makes a local run and a CI run
+render identically.
+"""
+
+
 def run(root: Path, *argv: str) -> Result:
     """Invoke the real app against a workspace, without asserting anything."""
-    return runner.invoke(app, [*argv, "--workspace", str(root)])
+    return runner.invoke(app, [*argv, "--workspace", str(root)], env=RENDERING)
 
 
 def ok(root: Path, *argv: str) -> str:
@@ -58,6 +85,49 @@ def ok(root: Path, *argv: str) -> str:
 def payload(root: Path, *argv: str) -> dict:
     """The ``--json`` document a command printed, parsed."""
     return json.loads(ok(root, *argv, "--json"))
+
+
+_BOX_DRAWING = re.compile(r"[─-╿]")
+"""The Unicode block rich draws a panel's border from."""
+
+_SGR = re.compile(r"\x1b\[[0-9;]*m")
+"""The colour escapes rich writes when it believes it has a colour terminal."""
+
+
+def plain(text: str) -> str:
+    """``text`` with the colour stripped, so what is left is what a person reads."""
+    return _SGR.sub("", text)
+
+
+def usage_error(result: Result) -> str:
+    """A usage error's text as one line, with the panel's wrapping undone.
+
+    **Every ``exit_code == 2`` assertion reads its message through this, never
+    raw.** A usage error is a ``typer.BadParameter``, and Typer hands those to
+    ``rich_utils.rich_format_error``, which prints them inside a rich ``Panel`` —
+    unlike ``cli/_errors.py``'s domain errors, which are a plain ``typer.secho``
+    and cannot wrap. The panel word-wraps, so a phrase can be split across two
+    lines and stop being a substring of the output while remaining perfectly
+    correct on screen.
+
+    Colour is stripped first, because rich puts an escape at every style change
+    and one lands **between the halves of a wrapped phrase**: the border is
+    ``\\x1b[31m│\\x1b[0m``, so rejoining without stripping splices the escapes into
+    the message. See ``RENDERING`` for why colour is on rather than off.
+
+    Which width it wraps at is not the test's to choose. Rich asks
+    ``os.get_terminal_size`` about **the process's own file descriptors** — never
+    the ``CliRunner``'s buffers — so under a plain ``pytest`` the panel is as wide
+    as the developer's terminal, while under ``pytest -n auto`` an xdist worker
+    writes to a pipe, the call raises ``OSError`` and rich falls back to 80
+    columns. That is one test with two wrap points, which is how ``scripts/check.sh``
+    came to fail on messages CI reads correctly (#535).
+
+    The one limit, so it is not discovered the hard way: this rejoins **words**.
+    A token rich broke in the middle — only possible for one longer than the panel
+    is wide — is not put back together.
+    """
+    return " ".join(_BOX_DRAWING.sub(" ", plain(result.output)).split())
 
 
 def workspace(tmp_path: Path) -> Path:
