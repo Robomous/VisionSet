@@ -108,6 +108,7 @@ from visionset.kernel.domain import (
     ProjectSummary,
     Release,
     ReleaseVerification,
+    ResumeKind,
     ResumeTarget,
     SchemaChange,
     SchemaDiff,
@@ -2029,24 +2030,33 @@ class WorkspaceTotalsOut(BaseModel):
 
 
 class ResumeTargetOut(BaseModel):
-    """The batch to carry on with, and where inside it to land."""
+    """The batch to carry on with, what for, and where inside it to land."""
 
+    # What the batch is being offered for. Resolved by the kernel because the
+    # order between the three is a decision rather than a fact the rest of this
+    # response restates, and a decision spelled twice is one that drifts.
+    kind: ResumeKind
     project_id: UUID
     project_name: str
     batch_id: UUID
     batch_name: str
     job_id: UUID
-    # NULL when nothing in the batch is unannotated. The batch is still the one
-    # to open; a client sends somebody to its gallery instead of into the editor
-    # and says so on the control, rather than offering a link to no frame.
+    # The frame to land on, whose meaning comes off `kind`: unlabeled under
+    # `annotate`, awaiting review under `review`, and NULL under `open` — where
+    # the batch is still the one to open, so a client sends somebody to its
+    # gallery and says so on the control rather than offering a link to no frame.
     next_asset_id: UUID | None
     annotated: int
     total: int
+    # Always populated, not only under `review`: a batch can hold frames for
+    # review and unlabeled frames at once.
+    review_pending: int
     thumbnail_asset_id: UUID | None
 
     @classmethod
     def of(cls, resume: ResumeTarget) -> Self:
         return cls(
+            kind=resume.kind,
             project_id=resume.project_id,
             project_name=resume.project_name,
             batch_id=resume.batch_id,
@@ -2055,6 +2065,7 @@ class ResumeTargetOut(BaseModel):
             next_asset_id=resume.next_asset_id,
             annotated=resume.annotated,
             total=resume.total,
+            review_pending=resume.review_pending,
             thumbnail_asset_id=resume.thumbnail_asset_id,
         )
 
