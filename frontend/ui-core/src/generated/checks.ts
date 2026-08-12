@@ -290,14 +290,11 @@ export const checkSplitAssignmentOut: Check<Schemas["SplitAssignmentOut"]> =
 export const checkDetail: Check<Schemas["Detail"]> =
   /*#__PURE__*/ oneOf(["coarse", "balanced", "fine"] as const);
 
-export const checkFragments: Check<Schemas["Fragments"]> =
-  /*#__PURE__*/ oneOf(["one", "all"] as const);
-
 export const checkAppliedParameters: Check<Schemas["AppliedParameters"]> =
-  /*#__PURE__*/ object({ "detail": [true, checkDetail], "fill_holes": [true, isNumber], "fragments": [true, checkFragments] } as const);
+  /*#__PURE__*/ object({ "detail": [true, checkDetail] } as const);
 
 export const checkSuggestParameter: Check<Schemas["SuggestParameter"]> =
-  /*#__PURE__*/ oneOf(["detail", "fill_holes", "fragments"] as const);
+  /*#__PURE__*/ oneOf(["detail"] as const);
 
 export const checkBboxGeometry: Check<Schemas["BboxGeometry"]> =
   /*#__PURE__*/ object({ "height": [true, isNumber], "type": [true, lit("bbox")], "width": [true, isNumber], "x": [true, isNumber], "y": [true, isNumber] } as const);

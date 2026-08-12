@@ -15,13 +15,13 @@ import { AnnotatorStore } from "../state/store";
 import { annotationsInDrawOrder, createDocument } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import { addAnnotationCommand } from "../state/commands";
+import { DETAIL_STEPS, polygonAt } from "../geometry/simplify";
 import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass, Point } from "../types";
 import type { Answer } from "./suggestion";
 import {
   DEFAULT_ADJUSTMENTS,
   vertexCount,
   withDetail,
-  withMaskAdjustment,
   SUGGESTIBLE_GEOMETRY_TYPES,
   acceptedAnnotations,
   allowedGeometriesFor,
@@ -100,7 +100,7 @@ function answerOf(...suggestions: readonly Suggestion[]): Answer {
     modelRef: MODEL_REF,
     confidence: suggestions[0]?.confidence ?? null,
     suggestions,
-    parameters: ["detail", "fill_holes", "fragments"],
+    parameters: ["detail"],
   };
 }
 
@@ -524,46 +524,20 @@ describe("adjusting the vertex density", () => {
     expect(vertexCount(showing(proposal(A_BOX)))).toBe(0);
     expect(vertexCount(withContour())).toBe(vertexCount(withContour()));
   });
-});
 
-describe("adjusting what the mask itself is", () => {
-  it("asks again, because the client never had the pixels", () => {
-    // Unlike `detail`, these two change what is traced rather than how much of
-    // the trace survives — and a mask is the one thing that does not travel.
-    const before = showing();
-    const after = withMaskAdjustment(before, { fragments: "all" });
-    expect(after.status).toBe("asking");
-    expect(after.serial).toBe(before.serial + 1);
-    expect(after.adjustments.fragments).toBe("all");
-  });
-
-  it("keeps the previews up while the answer is in flight", () => {
-    // `withPoint`'s rule: what is drawn is still the best answer anyone has.
-    const after = withMaskAdjustment(showing(), { fillHoles: 0 });
-    expect(after.suggestions).not.toEqual([]);
-  });
-
-  it("returns the state by identity when nothing actually moved", () => {
-    const state = showing();
-    expect(withMaskAdjustment(state, { fragments: state.adjustments.fragments })).toBe(state);
-  });
-
-  it("records the setting without asking when there is nothing to ask about", () => {
-    // No points placed yet, so there is no gesture to re-send.
-    const armedOnly = armed("car");
-    const after = withMaskAdjustment(armedOnly, { fragments: "all" });
-    expect(after.status).toBe("idle");
-    expect(after.serial).toBe(armedOnly.serial);
-    expect(after.adjustments.fragments).toBe("all");
-  });
-
-  it("starts a session on the kernel's own defaults", () => {
-    expect(armed("car").adjustments).toEqual(DEFAULT_ADJUSTMENTS);
-  });
-
-  it("carries adjustments into a fresh session, so a choice survives the frame", () => {
-    const chosen = { ...DEFAULT_ADJUSTMENTS, detail: "coarse" as const };
-    expect(armed("car", chosen).adjustments).toEqual(chosen);
+  it("a step can never lose a shape, because only a zero-area outline is refused", () => {
+    // Reported in planning as a defect — a coarser step dropping a shape and
+    // taking its contour with it, so a finer step could not bring it back. It is
+    // not reachable, and this is the measurement rather than the argument:
+    // `polygonAt` refuses only a contour with no area, and whether points are
+    // collinear does not depend on the tolerance. So the three steps agree about
+    // which shapes exist and differ only in how many vertices each spends (#557).
+    const collinear: readonly Point[] = [[0, 0], [5, 0], [10, 0]];
+    const curved = RING;
+    for (const step of DETAIL_STEPS) {
+      expect(polygonAt(collinear, step)).toBeNull();
+      expect(polygonAt(curved, step)).not.toBeNull();
+    }
   });
 });
 
@@ -574,9 +548,11 @@ describe("what the answer declares", () => {
       modelRef: MODEL_REF,
       confidence: 0.5,
       suggestions: [proposal()],
-      parameters: ["fragments"],
+      parameters: [],
     });
-    expect(boxy.parameters).toEqual(["fragments"]);
+    // A box class declares nothing, and the panel renders no section for it —
+    // which this file is not allowed to work out for itself (#557).
+    expect(boxy.parameters).toEqual([]);
   });
 
   it("keeps the controls on an answer with nothing in it", () => {
@@ -587,9 +563,9 @@ describe("what the answer declares", () => {
       modelRef: MODEL_REF,
       confidence: null,
       suggestions: [],
-      parameters: ["detail", "fill_holes", "fragments"],
+      parameters: ["detail"],
     });
     expect(empty.status).toBe("none");
-    expect(empty.parameters).toEqual(["detail", "fill_holes", "fragments"]);
+    expect(empty.parameters).toEqual(["detail"]);
   });
 });

@@ -678,21 +678,18 @@ inside the window, so the delay suppressed nothing and bought a second state to 
 threshold that hides a state needs evidence that the state occurs**, and the place to get
 that is a real machine rather than an argument about perception.
 
-The worked example is the annotation editor's suggest tool (`docs/ui.md`): a ring at the
-click point from the moment the request is dispatched, and past 1.5s a sentence saying that
-the first click on a frame is the slow one. Both surfaces reporting that wait read one
-clock, in the component that owns the request — two clocks are free to drift, and a card and
-a canvas disagreeing about whether something is happening is worse than either alone. Where
-that clock is read through React state, the surfaces derive *is a request out* directly
-rather than waiting for the clock's own announcement to arrive: an effect's round trip is a
-delay like any other, and it is the one that reintroduces the suppression nobody wanted.
+The worked example is the annotation editor's suggest tool (`docs/ui.md`): the panel says
+`Looking at that…` from the moment the request is dispatched, and past 1.5s adds a sentence
+saying that the first click on a frame is the slow one.
 
-**A moving indicator has a still form, and a person who asked for one gets it.** This is the
-product's first `prefers-reduced-motion` handling and the rule it sets is that the
-*information survives the preference*: the still form is the same shape at the same weight,
-it simply does not move. Removing the indicator instead would answer a request about motion
-by withholding a fact, which is not what was asked. Nothing in the interface may be legible
-only while it is animating.
+**A wait is reported in one place, and never at the cursor** (#557, superseding #541's
+second surface). The suggest tool also drew a ring at the click point and put a busy cursor
+on the canvas; both were removed. An indicator sitting on the picture, next to the pointer,
+reads as the machine having *seized* rather than as work in progress — it is in the way of
+the thing being looked at, and it moves with the hand. The card is out of the way, says the
+same thing in words, and is where every other answer about this tool already appears. Two
+surfaces reporting one wait also had to share one clock to avoid disagreeing; one surface
+has nothing to disagree with.
 
 **An indicator is never coral.** The brand's two sites are above, and a spinner is not a
 third — a thing that appears on every slow click would spend more of the brand than the
@@ -1154,9 +1151,17 @@ gallery badges (#55) — and it **already exists, shipped and unit-tested**:
   and the caller shows a neutral for that case alone. #162: binding such an input to the *stored*
   colour rendered every derived class grey beside a dot showing the real one.
 - v1's shape metrics, kept as the reference: stroke width 2, selected 3; vertices render
-  only while selected, radius 5 (7 when the vertex itself is selected), with a 2px white
-  outline; the class label renders only while selected, 11px / 700, anchored at the
-  first vertex, never a pointer target.
+  **while selected, or while the shape is a suggestion preview**, radius 5 (7 when the
+  vertex itself is selected), with a 2px white outline; the class label renders only while
+  selected, 11px / 700, anchored at the first vertex, never a pointer target.
+
+  **The preview is a third visual state, not a shape marked selected** (#557). Selection
+  carries the panel row, the delete key and the keyboard rules a proposal must not have, so
+  it gets its own rule rather than borrowing one. Its vertices are up the whole time it is
+  on screen, undecimated at every detail step, because where precision was gained or lost
+  *is* what the detail control is about — a live vertex count beside the slider and nothing
+  on the picture made it a control somebody moved blind. Its outline is dashed and an
+  accepted annotation's is solid, which is what tells proposed from committed at a glance.
 
 **The canvas label is part of what selection looks like.** A frame carrying forty boxes drew
 forty class names over the picture at all times, which hides the asset behind the annotations

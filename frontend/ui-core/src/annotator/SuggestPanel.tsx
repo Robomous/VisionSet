@@ -62,13 +62,11 @@ import {
   hasPending,
   type SuggestionState,
   type Detail,
-  type Fragments,
 } from "@visionset/annotator";
 import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
-import { cn } from "../lib/cn";
 import { Button } from "../primitives/Button";
 import {
   Select,
@@ -127,16 +125,14 @@ export interface SuggestPanelProps {
   readonly onAdjusting?: (open: boolean) => void;
   /** A step of vertex density, applied without a request. */
   readonly onDetail?: (detail: Detail) => void;
-  /** A setting only the server can honour, which is why it is a separate door. */
-  readonly onMaskAdjustment?: (adjustment: { fillHoles?: number; fragments?: Fragments }) => void;
   /**
    * Whether the wait has lasted long enough to be worth explaining.
    *
    * The cold-start sentence used to ride along with the spinner on every click,
    * including the fast ones it is not about. It is true of the first click on a
    * frame, so it waits for a wait that is plausibly that one. Decided by the
-   * host's `usePendingIndicator`, which the canvas reads too, so the sentence and
-   * the halo cannot disagree about how long this has been going.
+   * host's `usePendingIndicator` — which is now the *only* thing that clock is
+   * for, since the canvas stopped reporting the wait at all (#557).
    */
   readonly pendingEscalated?: boolean;
 }
@@ -205,7 +201,6 @@ export function SuggestPanel({
   adjusting,
   onAdjusting,
   onDetail,
-  onMaskAdjustment,
   pendingEscalated = false,
 }: SuggestPanelProps): JSX.Element {
   /*
@@ -348,7 +343,6 @@ export function SuggestPanel({
           open={adjusting === true}
           {...(onAdjusting === undefined ? {} : { onOpen: onAdjusting })}
           {...(onDetail === undefined ? {} : { onDetail })}
-          {...(onMaskAdjustment === undefined ? {} : { onMaskAdjustment })}
         />
       </EditorNotice>
     );
@@ -392,7 +386,6 @@ export function SuggestPanel({
           open={adjusting === true}
           {...(onAdjusting === undefined ? {} : { onOpen: onAdjusting })}
           {...(onDetail === undefined ? {} : { onDetail })}
-          {...(onMaskAdjustment === undefined ? {} : { onMaskAdjustment })}
         />
       </EditorNotice>
     );
@@ -515,9 +508,11 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
  * would stop stepping, and `Esc` would stop being the preview's undo, both with
  * nothing on screen to say why. Found in a browser: jsdom has no focus to move.
  *
- * On the two controls whose whole effect is on the canvas, and not on the slider
- * or the checkbox, which are ordinary form controls somebody may want to reach
- * with the keyboard and operate there.
+ * On every control here, the slider included: all of them act on the canvas, so
+ * none of them has any business holding focus. `mousedown` rather than the whole
+ * control, so Tab still reaches the slider for somebody who wants to drive it
+ * from the keyboard — that is a deliberate arrival, not a side effect of pointing
+ * at it.
  */
 function keepFocusOnCanvas(event: { preventDefault: () => void }): void {
   event.preventDefault();
@@ -533,23 +528,21 @@ function keepFocusOnCanvas(event: { preventDefault: () => void }): void {
  * touches anything else — the nearest thing to hand is the thing a press undoes.
  *
  * **What renders is what the server declared, and nothing is worked out here.**
- * `session.parameters` comes off the answer; a box class gets `fragments` alone
- * because that is what the kernel's table says applies to a box, not because
- * this file knows anything about boxes. Adding a fourth setting is a kernel
- * change and a row below, and no condition in between.
+ * `session.parameters` comes off the answer; a box class declares nothing at all
+ * and so gets no section, because that is what the kernel's table says applies to
+ * a box, not because this file knows anything about boxes. Adding a second
+ * setting is a kernel change and a row below, and no condition in between.
  */
 function Adjustments({
   session,
   open,
   onOpen,
   onDetail,
-  onMaskAdjustment,
 }: {
   readonly session: SuggestionState;
   readonly open: boolean;
   readonly onOpen?: (open: boolean) => void;
   readonly onDetail?: (detail: Detail) => void;
-  readonly onMaskAdjustment?: (adjustment: { fillHoles?: number; fragments?: Fragments }) => void;
 }): JSX.Element | null {
   // A host that cannot honour the controls renders none, and a kind with nothing
   // to adjust is told so by the wire rather than guessed at here.
@@ -569,75 +562,64 @@ function Adjustments({
     );
   }
 
-  const { detail, fillHoles, fragments } = session.adjustments;
+  const { detail } = session.adjustments;
+  const step = DETAIL_STEPS.indexOf(detail);
   return (
-    <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2" data-testid="suggest-adjustments">
+    <div
+      className="mt-2 flex flex-col gap-2 border-t border-border pt-2"
+      data-testid="suggest-adjustments"
+    >
       {session.parameters.includes("detail") && onDetail !== undefined && (
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">Detail</span>
-          <div className="flex items-center gap-1">
-            {DETAIL_STEPS.map((step) => (
-              <button
-                key={step}
-                type="button"
-                className={cn(
-                  "rounded px-2 py-0.5 text-xs capitalize",
-                  step === detail
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-muted",
-                )}
-                aria-pressed={step === detail}
-                data-testid={`suggest-detail-${step}`}
-                onMouseDown={keepFocusOnCanvas}
-                onClick={() => onDetail(step)}
-              >
-                {step}
-              </button>
-            ))}
+          <div className="flex flex-1 items-center gap-2">
             {/*
-              Beside the control it is about, because it is the price of the
-              setting rather than a fact about the shape. Tabular figures so the
-              number does not shift the row as it changes under a held key.
+              A slider, because three words in a row did not read as pressable and
+              gave no feedback about what had moved (#557). Three stops rather than
+              a continuous range: `Detail` is three steps, and a range that landed
+              between them would be a position the server has no answer for.
+
+              A native `input[type=range]` and not a primitive, because there is no
+              slider primitive in this package and one control does not earn one.
+              It comes keyboard-operable and `focus-visible` for nothing.
+            */}
+            <input
+              type="range"
+              className="flex-1 accent-primary"
+              min={0}
+              max={DETAIL_STEPS.length - 1}
+              step={1}
+              value={step}
+              aria-label="Detail"
+              aria-valuetext={`${labelFor(detail)}, ${vertexCount(session)} points`}
+              data-testid="suggest-detail"
+              // Dragging this must not take focus off the canvas: every chord in
+              // the editor is a keydown on the annotator's own root, so a control
+              // that took focus would switch `[`, `]`, Esc and Enter off with
+              // nothing on screen to say why. Tab still reaches it deliberately.
+              onMouseDown={keepFocusOnCanvas}
+              onChange={(event) => onDetail(DETAIL_STEPS[Number(event.target.value)] ?? detail)}
+            />
+            {/*
+              Step and count in one label, because they are one fact: what this
+              position costs. Tabular figures so the number does not shift the row
+              as it changes under a held key.
             */}
             <span
-              className="ml-1 tabular-nums text-xs text-muted-foreground"
-              data-testid="suggest-vertex-count"
+              className="shrink-0 tabular-nums text-xs text-muted-foreground"
+              data-testid="suggest-detail-label"
             >
-              {vertexCount(session)} pts
+              {labelFor(detail)} · {vertexCount(session)} pts
             </span>
             <Chip>[ ]</Chip>
           </div>
         </div>
       )}
-      {session.parameters.includes("fill_holes") && onMaskAdjustment !== undefined && (
-        <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          Close gaps
-          <input
-            type="range"
-            min={0}
-            max={0.01}
-            step={0.001}
-            value={fillHoles}
-            data-testid="suggest-fill-holes"
-            onChange={(event) =>
-              onMaskAdjustment({ fillHoles: Number.parseFloat(event.target.value) })
-            }
-          />
-        </label>
-      )}
-      {session.parameters.includes("fragments") && onMaskAdjustment !== undefined && (
-        <label className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          Every separate piece
-          <input
-            type="checkbox"
-            checked={fragments === "all"}
-            data-testid="suggest-fragments"
-            onChange={(event) =>
-              onMaskAdjustment({ fragments: event.target.checked ? "all" : "one" })
-            }
-          />
-        </label>
-      )}
     </div>
   );
+}
+
+/** Sentence case, from the wire's own lowercase vocabulary. */
+function labelFor(detail: Detail): string {
+  return detail.charAt(0).toUpperCase() + detail.slice(1);
 }

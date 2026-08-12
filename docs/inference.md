@@ -288,8 +288,8 @@ POST /inference/suggest
       "contour": [[404.0, 221.0], …]
     }
   ],
-  "applied": {"detail": "balanced", "fill_holes": 0.002, "fragments": "one"},
-  "parameters": ["detail", "fill_holes", "fragments"]
+  "applied": {"detail": "balanced"},
+  "parameters": ["detail"]
 }
 ```
 
@@ -311,8 +311,7 @@ get that outline's extent; name a kind that holds no shape and `region` is `null
 kind your schema would refuse would hand you a suggestion that cannot be accepted.
 
 **An empty `regions` is a successful answer with nothing to propose** - a click on empty
-background, a model less sure than you asked for, a shape too thin to be a polygon, or settings
-that leave nothing. `model_ref` is still there, because it is what an accepted suggestion has to
+background, a model less sure than you asked for, or a shape too thin to be a polygon. `model_ref` is still there, because it is what an accepted suggestion has to
 carry, and so is `parameters`, because a caller that adjusted its way into an empty answer needs
 the controls to adjust its way back out.
 
@@ -320,7 +319,7 @@ the controls to adjust its way back out.
 mask; the pieces cut out of it are that same claim seen in parts, and a separate number for each
 would be precision nobody expressed.
 
-## What happens to the mask, and the three things you can move
+## What happens to the mask, and the one thing you can move
 
 A segmenter answers with a grid of booleans. Turning that into a polygon or a box is a fixed
 chain, and the whole of it happens here rather than inside whatever ran the model - so a second
@@ -332,60 +331,75 @@ model.
 3. **Tracing** the boundary of what is left.
 4. **Simplifying** that boundary to a vertex count somebody can edit.
 
-The geometry branch happens after the second step: a polygon class takes steps 3 and 4, a box
-class takes the extent of what survived. A box therefore does not move when `detail` does.
+The geometry branch happens after the second step: a polygon class takes steps 3 and 4 on the
+piece you pointed at, a box class takes one extent over every piece that survived. A box
+therefore does not move when `detail` does.
 
 | Setting | What it moves | Applies to |
 | --- | --- | --- |
 | `detail` | `coarse`, `balanced` or `fine` - how much of the outline survives | polygon |
-| `fill_holes` | the widest gap closed, as a share of the piece's area | polygon |
-| `fragments` | `one` piece - the one under your points - or `all` of them | polygon and box |
 
-Every one is optional, and omitting all three gives what this route always gave: `balanced`,
-a reach of two parts in a thousand, and the piece you pointed at.
+It is optional, and omitting it gives what this route always gave: `balanced`.
+
+**Two settings used to be here and are not** (#557). How wide a gap gets closed and how many
+pieces become shapes are still decided, at fixed defaults nobody asks for. As controls they
+did nothing at all to the ordinary single clean mask - every position gave an identical
+shape - so they read as knobs wired to nothing, and could only be got wrong on the unusual
+one. Their value is in the default rather than in the choice. They come back as settings if
+a real need for the choice appears.
 
 **The tolerance is relative, which is what makes one setting work everywhere.** It is a fraction
 of the region's own size rather than a pixel count, so it does the same thing to a thing eight
 pixels across and a thing eight hundred across, and `balanced` keeps a typical object in the
 10-40 vertex range.
 
-**`one` means the piece you pointed at, not the biggest one on the frame.** A mask routinely
-carries more than one separate piece - a speck of antialiasing along an edge, a reflection, a
-scrap of the same colour elsewhere - and which of them you meant is a question only the points can
-answer. So the choice is made from the prompt: a point inside a piece picks that piece; several
-points inside several pieces pick the largest of *those*, because two positives describe one
-object rather than propose two; and a point inside none of them picks the piece nearest to it,
-since a mask need not cover the exact pixel you clicked. Negative points never select - they say
-what the shape is not, and a piece is chosen before its shape is known.
+**Specks are dropped first, and a click never becomes a cleanup job.** A mask routinely carries
+more than one separate piece - a scrap of antialiasing along an edge, a reflection, a patch of
+the same colour elsewhere - and anything under a twentieth of the largest piece is discarded
+before anything else looks at the mask.
+
+**A polygon is the piece you pointed at, not the biggest one on the frame.** Which of the
+survivors you meant is a question only the points can answer, so the choice is made from the
+prompt: a point inside a piece picks that piece; several points inside several pieces pick the
+largest of *those*, because two positives describe one object rather than propose two; and a
+point inside none of them picks the piece nearest to it, since a mask need not cover the exact
+pixel you clicked. Negative points never select - they say what the shape is not, and a piece is
+chosen before its shape is known.
 
 Picking whichever piece happened to own the topmost-leftmost lit pixel would be a different rule
 and a worse one: that is a fact about where the speckle fell, not about what you asked for.
 
-`all` drops the question and proposes every piece at or above a twentieth of the largest one's
-area. The floor is there because one click should not become a cleanup job.
+**A box is one box over every surviving piece.** A point prompt means *this object*, and a mask
+that arrives in several pieces is nearly always one object seen around an occlusion - a railing
+across an animal, a post in front of a car. Both alternatives are wrong in exactly that case:
+the largest piece alone cuts the object off at the occlusion, and a box per piece annotates one
+thing twice.
 
-**`parameters` says which of them apply here**, for the kind of shape your `allowed_geometries`
-will produce. A box has no outline, so `detail` and `fill_holes` have nothing to do to one and
-are not named. A client renders what this lists and works none of it out for itself.
+**`parameters` says which settings apply here**, for the kind of shape your `allowed_geometries`
+will produce. A box has no outline, so `detail` has nothing to do to one and the list comes back
+**empty** - which is how a client is told to offer no adjustments at all. A client renders what
+this lists and works none of it out for itself.
 
-**`fill_holes` closes gaps rather than filling enclosed holes**, and the distinction is worth
-stating because the name suggests otherwise. Boundary tracing walks a shape's *outer* ring and a
-polygon is one ring with no interior, so an enclosed hole is invisible to the answer - filling an
-8x8 hole in a 20x20 square moves the mask and leaves the traced outline byte-identical. What the
-setting does reach is the notches and bays a segmenter bites out of an edge, which are exactly
-what makes an outline ragged.
+**Closing gaps is not filling enclosed holes**, and the distinction is worth stating because the
+obvious reading is the other one. Boundary tracing walks a shape's *outer* ring and a polygon is
+one ring with no interior, so an enclosed hole is invisible to the answer - filling an 8x8 hole
+in a 20x20 square moves the mask and leaves the traced outline byte-identical. What the close
+does reach is the notches and bays a segmenter bites out of an edge, which are exactly what
+makes an outline ragged. Its reach grows with the piece and stops at a few pixels: past that, a
+gap is a feature of the shape rather than an artefact of tracing it.
 
-**`contour` is the unsimplified outline**, in the asset's own pixels, and it is there so a client
-can re-run `detail` without asking again. It is the same points the server reduced, which matters:
+**`contour` is the outline the shape was reduced from**, in the asset's own pixels, and it is
+there so a client can re-run `detail` without asking again. It is the same points the server
+reduced, which matters:
 simplification is not nested, so a client starting from anything else could not be held to the
 server's answer. A box carries none, because it is an extent rather than something reduced from
 anything.
 
-**Accepting a plural answer is all of it or none.** Asking for every piece can propose several
-shapes, and they are written together as one entry in the undo history. Accepting part of one is
-real and is deliberately not here: it needs a selection the preview does not have. That is planned
-growth rather than a gap nobody noticed, and it is tracked as *accepting part of a plural
-suggestion* (#548).
+**`regions` is a list that holds at most one shape today.** One click asks about one object, and
+both geometries now answer with one. The plural shape is kept rather than collapsed because
+accepting *part* of a plural proposal is real planned work - it needs a selection the preview
+does not have - tracked as *accepting part of a plural suggestion* (#548). Where several are
+proposed they are written together as one entry in the undo history.
 
 ### Nothing is written, and the first click is the slow one
 

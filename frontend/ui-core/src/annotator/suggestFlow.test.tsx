@@ -215,10 +215,10 @@ beforeEach(() => {
         contour: [],
       },
     ],
-    applied: { detail: "balanced", fill_holes: 0.002, fragments: "one" },
-    // Declared as the server declares it for a box class: `fragments` alone.
-    // The panel renders what this names and works none of it out itself.
-    parameters: ["fragments"],
+    applied: { detail: "balanced" },
+    // Declared as the server declares it for a box class: nothing at all, so the
+    // panel renders no adjustments. It works none of that out for itself (#557).
+    parameters: [],
   };
   suggestRefusal = null;
   suggestHold = null;
@@ -625,176 +625,76 @@ describe("a press outside the asset is not a prompt", () => {
   });
 });
 
-describe("what the wait looks like while it is happening", () => {
+describe("what the wait looks like, and where it is not reported", () => {
   /*
-    These are about the *wiring* — that the host's one clock reaches both the card
-    and the canvas — and not about the thresholds themselves, which are unit-tested
-    on fake time in `adapters/react/pending.test.ts`. Real timers here, because the
-    request is real: the route is held open, so the wait is genuine rather than
-    simulated, and `findBy*` does the waiting that a fixed sleep would guess at.
+    The panel is the only surface that says a request is out (#557). A ring at the
+    click point and a busy cursor were both removed: sitting on the picture next
+    to the pointer, they read as the machine having hung rather than as work in
+    progress, and the card already says so in words.
 
-    jsdom's `matchMedia` stub answers `matches: true` to every query, so the halo
-    renders in its reduced-motion form throughout. That is asserted rather than
-    worked around: a stub that lies in one direction should be visible in what the
-    test claims.
+    Real timers, because the request is real: the route is held open, so the wait
+    is genuine rather than simulated, and `findBy*` does the waiting that a fixed
+    sleep would guess at.
   */
 
-  it("puts a halo at the click and a busy cursor on the canvas once the wait is real", async () => {
+  it("says so on the card and puts nothing at all on the canvas", async () => {
     const gate = held();
     await open();
     await arm();
     clickCanvas();
 
-    const halo = await screen.findByTestId("suggest-halo");
-    expect(halo.getAttribute("data-motion")).toBe("still");
-    expect(screen.getByTestId("annotator-pane").style.cursor).toBe("progress");
-
-    gate.release();
-
-    await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
-    expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
-  });
-
-  it("is up on the first render after the click, with no clock advanced", async () => {
-    // The load-bearing case for the delay's removal, and it is deliberately
-    // synchronous — no `findBy`, no `waitFor`, nothing that would let a timer or
-    // a second render slip in underneath. A show delay of any length, including
-    // one frame's worth, turns this red.
-    const gate = held();
-    await open();
-    await arm();
-
-    clickCanvas();
-
-    expect(screen.getByTestId("suggest-halo")).toBeTruthy();
-    expect(screen.getByTestId("suggest-asking")).toBeTruthy();
-    expect(screen.getByTestId("annotator-pane").style.cursor).toBe("progress");
-
-    gate.release();
-    await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
-  });
-
-  it("comes up on a fast answer too, and goes away on its own", async () => {
-    // Nothing held, so the stub answers about as fast as anything can, and the
-    // halo is still up on the click — which is the delay's removal seen from the
-    // case the delay existed for.
-    //
-    // What is deliberately **not** asserted here is the floor holding the halo
-    // past the answer. That is real behaviour and it is pinned in the machine's
-    // own unit tests, but its rendered consequence is not observable from this
-    // harness: a jsdom round trip through react-query routinely runs past 250ms
-    // — an attempt at exactly this assertion measured 273ms and failed on a
-    // floor that had honestly expired — and the alternative, driving the hook
-    // under fake timers, does not deliver the effect-driven state update at all.
-    // A racy assertion here would be worse than the gap it papers over.
-    await open();
-    await arm();
-    clickCanvas();
-
-    expect(screen.getByTestId("suggest-halo")).toBeTruthy();
-
-    await screen.findByTestId("suggestion-shape");
-    await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
-    expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
-  });
-
-  it("reports the wait in the card and on the canvas off the same clock", async () => {
-    const gate = held();
-    await open();
-    await arm();
-    clickCanvas();
-
-    await screen.findByTestId("suggest-halo");
-    expect(screen.getByTestId("suggest-asking")).toBeTruthy();
-    // The cold-start sentence is a second threshold away and has not been earned.
-    expect(screen.queryByTestId("suggest-cold-start")).toBeNull();
-
-    gate.release();
-    await waitFor(() => expect(screen.queryByTestId("suggest-asking")).toBeNull());
-  });
-
-  it("takes the halo back on Escape without waiting out the visibility floor", async () => {
-    const gate = held();
-    await open();
-    await arm();
-    clickCanvas();
-    await screen.findByTestId("suggest-halo");
-
-    await userEvent.keyboard("{Escape}");
-
-    // Synchronous: `discardSuggestion` cancels the indicator itself rather than
-    // letting the status drop do it, because the ordinary path honours the floor
-    // and a take-back that lingers a quarter second is not one.
+    await screen.findByTestId("suggest-asking");
+    // The mutation test for the removal: restore either affordance and one of
+    // these turns red.
     expect(screen.queryByTestId("suggest-halo")).toBeNull();
     expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
 
     gate.release();
+    await screen.findByTestId("suggest-shown");
+    expect(screen.queryByTestId("suggest-halo")).toBeNull();
+  });
+
+  it("is up on the first render after the click, with no clock advanced", async () => {
+    // The load-bearing case for the delay's removal: the card is the report, so
+    // it has to be there on the frame the request leaves.
+    const gate = held();
+    await open();
+    await arm();
+    clickCanvas();
+
+    await screen.findByTestId("suggest-asking");
+    gate.release();
+    await screen.findByTestId("suggest-shown");
   });
 
   it("keeps the shape drawn through a refine, while the card reports the new ask", async () => {
-    // The canvas and the panel deliberately say different things here, and both
-    // are true: the shape is the best answer anyone has until a better one
-    // arrives, and the card is about the request that is out. What must not
-    // happen is the shape blanking — that is `paintSuggestion` testing what the
-    // session holds rather than what its status is.
     await open();
     await arm();
     clickCanvas();
     await screen.findByTestId("suggestion-shape");
 
     const gate = held();
-    clickCanvas();
-
-    await waitFor(() => expect(screen.getByTestId("suggest-asking")).toBeTruthy());
+    clickCanvas(140, 160);
+    await screen.findByTestId("suggest-asking");
+    // The best answer anyone has stays on screen while the next one is fetched.
     expect(screen.getByTestId("suggestion-shape")).toBeTruthy();
-    expect(screen.queryByTestId("suggest-accept")).toBeNull();
 
     gate.release();
-    await waitFor(() =>
-      expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(false),
-    );
+    await screen.findByTestId("suggest-shown");
   });
 
-  it("anchors the halo on the newest click, which is the one being waited for", async () => {
-    await open();
-    await arm();
-    clickCanvasAt(100, 100);
-    await screen.findByTestId("suggestion-shape");
-
+  it("clears the report when the answer is a refusal", async () => {
     const gate = held();
-    clickCanvasAt(140, 160);
-
-    const halo = await screen.findByTestId("suggest-halo");
-    const dots = screen.getByTestId("prompt-points").children;
-    const newest = dots[dots.length - 1]!;
-    expect(halo.getAttribute("cx")).toBe(newest.getAttribute("cx"));
-    expect(halo.getAttribute("cy")).toBe(newest.getAttribute("cy"));
-
-    gate.release();
-  });
-
-  it("clears the indicator when the answer is a refusal", async () => {
-    // A refusal is an answer. The one thing this must not do is leave a halo
-    // pulsing over a request that is over — the panel carries the sentence.
-    const gate = held();
-    suggestRefusal = {
-      status: 409,
-      code: "INFERENCE_CONNECTION_NOT_RUNNABLE",
-      message: "Install the local-inference extra to run this model.",
-    };
     await open();
     await arm();
     clickCanvas();
-    await screen.findByTestId("suggest-halo");
+    await screen.findByTestId("suggest-asking");
 
+    suggestRefusal = { status: 422, code: "UNSUPPORTED_PROMPT", message: "not a segmenter" };
     gate.release();
 
     await screen.findByTestId("suggest-refusal");
-    // `waitFor`, not an immediate read: a refusal *is* an answer, so it goes out
-    // through the ordinary path and pays the visibility floor like any other. The
-    // claim is that it goes, not that it goes on the same tick.
-    await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
-    expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
+    expect(screen.queryByTestId("suggest-asking")).toBeNull();
   });
 });
 
