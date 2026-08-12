@@ -17,6 +17,7 @@ from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME, ReleaseService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.source_service import SourceService
+from visionset.kernel.services.summary_service import SummaryService
 from visionset.kernel.services.token_service import TokenService
 from visionset.kernel.services.workspace_service import (
     BLOBS_DIRNAME,
@@ -41,6 +42,7 @@ __all__ = [
     "ReleaseService",
     "SchemaService",
     "SourceService",
+    "SummaryService",
     "TokenService",
     "WorkspaceService",
     "resolve_workspace_root",

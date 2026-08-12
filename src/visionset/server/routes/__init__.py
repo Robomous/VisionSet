@@ -29,6 +29,7 @@ from visionset.server.routes import (
     batches,
     datasets,
     formats,
+    home,
     inference,
     ingest,
     jobs,
@@ -71,6 +72,11 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     # not a stage of the data's life, it is how some of those stages run. Reading
     # it into the sequence would suggest a place it does not have.
     background_jobs.router,
+    # Last of all, and the only router that is not a resource: a composed,
+    # read-only projection of everything above, for the page a person lands on.
+    # It is placed here because it *reads* the whole pipeline rather than owning
+    # any stage of it, so it cannot sit anywhere inside the order.
+    home.router,
 )
 
 __all__ = [
@@ -81,6 +87,7 @@ __all__ = [
     "batches",
     "datasets",
     "formats",
+    "home",
     "inference",
     "ingest",
     "jobs",

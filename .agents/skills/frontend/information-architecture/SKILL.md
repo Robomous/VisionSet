@@ -10,6 +10,9 @@ description: The canonical sitemap and navigation rules for the VisionSet app. C
 Navigation maps 1:1 to domain objects. This is the target structure; if implementation differs, implementation is what's wrong.
 
 ```
+/                                  Home — the workspace dashboard (rail destination)
+    └─ deep-links out to: /jobs/:jobId?asset= (resume), /projects/:id/batches/:id
+       (review rows and the resume fallback), /projects/:id, /projects
 /projects                          Projects list
 /inference                         Inference — model connections (workspace-scoped)
 /projects/:id                      Project — tabs, in this order:
@@ -42,6 +45,17 @@ Rules derived from the 2026-08 audit (§6):
 - **The 4-step checklist is onboarding, not navigation.** It retires itself twice over: when the journey is finished (`hasReleases` makes `done` derivable) and when somebody dismisses it. Dismissal is **per project** and persisted — finishing one project does not teach you the pipeline for the next. It gates nothing and is never the sole path to a screen.
   `hasReleases` is derived in `useProjectReadiness` from the two-hop read (project → dataset → releases) rather than added to the project-stats wire model: the Overview dashboard already makes both requests for its own cards, so a third spelling of the fact on the server would be the drift this audit was about.
 - **Inference is a rail destination, not a project tab.** Model connections carry no `project_id`: one workspace is one SQLite file, every project uses the same connections, and navigation maps 1:1 to domain objects — so a project tab would state a scope the object does not have. The decision is recorded on #421 (2026-08-08) and **supersedes #58's rail rule** ("logo, collapse toggle, Home, Projects, account avatar — nothing else"); the rail now carries Home, Projects, Inference and the account control, and `DESIGN.md` carries the same membership in both places it states it. What earns a rail entry is a workspace-level object with nowhere else to live, never mere frequency of use.
+- **Home is the workspace's dashboard, and Overview is the project's.** They do not
+  overlap, because they answer different questions: Home asks *what is waiting on me,
+  anywhere*, which no single project can answer, and Overview asks *what does this
+  project hold*. So Home carries nothing project-scoped — no class distribution, no
+  samples, no schema state — and every row on it is a deep link into the screen that
+  owns the thing. It earns its rail entry on the same test Inference passes: a
+  workspace-level object with nowhere else to live.
+  **Its resume target is derived, never persisted**, and ranked by progress rather
+  than recency because no timestamp exists on a batch, an annotation or an asset's
+  progress. The one visible consequence is the CTA label: with no unlabeled frame
+  left it reads *Open batch* and goes to the gallery instead of the editor.
 - **Overview is a dashboard**: pipeline state of batches, trunk size, latest release, active schema version — each card links to its tab (`StatCard`'s `onGo`, which renders the card as a **button** so it is keyboard-reachable and announced as an action). Overview never duplicates a tab's full function: every number on it is a *pointer* at the section that owns it, and a section with nothing yet says so in words rather than showing a zero.
 
 ## Structural invariants

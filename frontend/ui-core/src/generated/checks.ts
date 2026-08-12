@@ -173,6 +173,30 @@ export const checkFormatOut: Check<Schemas["FormatOut"]> =
 export const checkFormatPage: Check<Schemas["FormatPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkFormatOut)], "total": [true, isInteger] } as const);
 
+export const checkActivityKind: Check<Schemas["ActivityKind"]> =
+  /*#__PURE__*/ oneOf(["release_published", "batch_promoted", "ingest", "schema_version"] as const);
+
+export const checkActivityEntryOut: Check<Schemas["ActivityEntryOut"]> =
+  /*#__PURE__*/ object({ "count": [true, either([isInteger, isNull] as const)], "kind": [true, checkActivityKind], "label": [true, either([isString, isNull] as const)], "occurred_at": [true, isString], "project_id": [true, isString], "project_name": [true, isString], "subject_id": [true, isString] } as const);
+
+export const checkAttentionKind: Check<Schemas["AttentionKind"]> =
+  /*#__PURE__*/ oneOf(["review_pending", "job_failed", "job_running"] as const);
+
+export const checkAttentionItemOut: Check<Schemas["AttentionItemOut"]> =
+  /*#__PURE__*/ object({ "count": [true, either([isInteger, isNull] as const)], "detail": [true, either([isString, isNull] as const)], "kind": [true, checkAttentionKind], "label": [true, isString], "processed": [true, either([isInteger, isNull] as const)], "project_id": [true, either([isString, isNull] as const)], "project_name": [true, either([isString, isNull] as const)], "subject_id": [true, isString], "total": [true, either([isInteger, isNull] as const)] } as const);
+
+export const checkProjectSummaryOut: Check<Schemas["ProjectSummaryOut"]> =
+  /*#__PURE__*/ object({ "annotated_fraction": [true, isNumber], "asset_count": [true, isInteger], "name": [true, isString], "project_id": [true, isString] } as const);
+
+export const checkResumeTargetOut: Check<Schemas["ResumeTargetOut"]> =
+  /*#__PURE__*/ object({ "annotated": [true, isInteger], "batch_id": [true, isString], "batch_name": [true, isString], "job_id": [true, isString], "next_asset_id": [true, either([isString, isNull] as const)], "project_id": [true, isString], "project_name": [true, isString], "thumbnail_asset_id": [true, either([isString, isNull] as const)], "total": [true, isInteger] } as const);
+
+export const checkWorkspaceTotalsOut: Check<Schemas["WorkspaceTotalsOut"]> =
+  /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "projects": [true, isInteger], "releases": [true, isInteger] } as const);
+
+export const checkHomeOut: Check<Schemas["HomeOut"]> =
+  /*#__PURE__*/ object({ "activity": [true, arrayOf(checkActivityEntryOut)], "attention": [true, arrayOf(checkAttentionItemOut)], "projects": [true, arrayOf(checkProjectSummaryOut)], "resume": [true, either([checkResumeTargetOut, isNull] as const)], "totals": [true, checkWorkspaceTotalsOut] } as const);
+
 export const checkIngestFailureKind: Check<Schemas["IngestFailureKind"]> =
   /*#__PURE__*/ oneOf(["unsupported", "corrupt", "partial"] as const);
 
@@ -322,6 +346,7 @@ export const checkGetBackgroundJob = checkBackgroundJobOut;
 export const checkGetBackgroundJobArtifact = checkBlob;
 export const checkGetBatch = checkBatchOut;
 export const checkGetDataset = checkDatasetOut;
+export const checkGetHome = checkHomeOut;
 export const checkGetInferenceConnection = checkConnectionOut;
 export const checkGetIngestJob = checkIngestJobOut;
 export const checkGetJob = checkJobOut;

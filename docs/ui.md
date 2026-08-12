@@ -36,7 +36,7 @@ handler is not an operation.
 
 | route | what | behind the token gate |
 | --- | --- | --- |
-| `/` | Home | yes |
+| `/` | Home - the workspace dashboard | yes |
 | `/projects`, `/projects/:id` (`?tab=overview\|schema\|batches\|dataset`), `/projects/:id/ingest`, `/projects/:id/batches/:id`, `/projects/:id/dataset` | the product | yes |
 | `/inference` | model connections, workspace-scoped | yes |
 | `/jobs/:jobId` (`?asset=<id>`) | the annotation page | yes |
@@ -118,6 +118,38 @@ Query keys are hierarchical - `["projects"]` → `["projects", id]` →
 `["projects", id, "schema"]` - because TanStack Query matches a **prefix**. So
 invalidating `["projects", id]` after a rename refreshes the project, its schema and
 its version list, and the mutation never has to enumerate what it affected.
+
+### Home, and the one screen the server composes
+
+`/` is the workspace dashboard. It was a redirect to the project list until there
+were numbers worth showing, and what makes it a page rather than a second list is
+that it answers a different question: a list says what exists, this says what is
+waiting and where to carry on - which spans every project, so no project-scoped
+screen can answer it.
+
+**One query, `useHome`, over one endpoint.** `GET /home` returns the whole page in
+one response: totals, the batch to resume, what needs attention, a short list of
+recent projects and a derived activity feed. Composed on the server because the
+alternative is a request per project per question with the browser doing the
+joining, which is slower and renders in pieces as they land.
+
+The summary is a **read-only projection**. It declares no `allowed_actions` and no
+mutation takes it as input; every row deep-links to a resource whose own wire shape
+says what may be done to it. A second copy of those declarations here would be the
+hand-mirrored table the capabilities contract forbids, one layer up.
+
+Two things about it are consequences of the storage format rather than choices, and
+both are stated on the endpoint as well as here. The resume target is ranked by
+**progress, not recency** - no timestamp exists on a batch, an annotation or an
+asset's progress row, so "most recently worked on" has no source - and when its
+`next_asset_id` is null the batch has no unlabeled frame left, which is the client's
+signal to open the gallery and to say *Open batch* rather than *Continue annotating*.
+The activity feed's `ingest` entry is the newest `Asset.ingested_at` in a project
+rather than a run finishing, because an ingest job records no times at all.
+
+A workspace with no projects reads zeros, nulls and empty lists. That is the
+first-run state, and `totals.projects` is how the screen recognises it - not a flag,
+which would be a second spelling of a fact the response already carries.
 
 ### The project view, and the one screen whose section is in the URL
 
