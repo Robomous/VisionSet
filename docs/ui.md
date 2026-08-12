@@ -493,7 +493,9 @@ of the vertices beside it, and `[` and `]` move it without opening anything -
 that one costs no request at all, because the answer carried the full outline and
 the editor re-simplifies it here. **Close gaps** smooths the notches a segmenter
 bites out of an edge. **Every separate piece** proposes each part of the mask
-rather than only the one you clicked. Those last two change what the model's mask
+rather than only the one you pointed at - which is what it offers otherwise, and
+it is chosen from your clicks rather than by size, so a stray speck elsewhere on
+the frame never wins. Those last two change what the model's mask
 *is*, so they ask again - the frame is already read, so it is quick.
 
 On a class that stores a box only the last of the three appears, because the

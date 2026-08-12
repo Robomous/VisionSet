@@ -2170,7 +2170,7 @@
         "type": "object"
       },
       "Fragments": {
-        "description": "How many of a mask's separate pieces become shapes.",
+        "description": "How many of a mask's separate pieces become shapes.\n\n`one` is the piece your points are on, not the biggest piece on the frame:\nwhich of them you meant is a question only the prompt can answer. `all`\nproposes every piece big enough to be worth proposing.",
         "enum": [
           "one",
           "all"
