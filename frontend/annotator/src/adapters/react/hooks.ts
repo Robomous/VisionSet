@@ -59,9 +59,9 @@ export function useAnnotatorSnapshot(store: AnnotatorStore): StoreSnapshot {
   return useSyncExternalStore(bound.subscribe, bound.getSnapshot, bound.getSnapshot);
 }
 
-/** What the two thresholds have decided, plus the take-back. */
+/** What the indicator has decided, plus the take-back. */
 export interface PendingIndicatorState {
-  /** Past the delay and not yet hidden — draw the halo, wear the busy cursor. */
+  /** A request is out, or the floor is still holding one up — draw the halo. */
   readonly shown: boolean;
   /** Long enough to be worth a sentence about the first click being the slow one. */
   readonly escalated: boolean;
@@ -78,6 +78,15 @@ export interface PendingIndicatorState {
  * **once**, by the host holding the session — two calls would be two clocks, free
  * to drift, and the panel and the canvas would disagree about a threshold they are
  * both supposed to be obeying.
+ *
+ * **`shown` is `active` OR the machine's own state, and the disjunction is what
+ * makes "immediately" true.** The machine is driven from an effect, so an
+ * announcement it makes cannot reach this render — reading `shown` off the
+ * announcement alone would leave one frame where a request has gone out and
+ * nothing on screen says so, which is the delay this change removed, reintroduced
+ * by React's scheduling instead of by a timer. `active` covers the request; the
+ * machine's own flag covers the tail, where the floor is still holding the halo up
+ * over a request that has already been answered.
  */
 export function usePendingIndicator(active: boolean): PendingIndicatorState {
   const [phase, setPhase] = useState({ shown: false, escalated: false });
@@ -107,7 +116,7 @@ export function usePendingIndicator(active: boolean): PendingIndicatorState {
   useEffect(() => () => indicator.cancel(), [indicator]);
 
   const cancel = useCallback(() => indicator.cancel(), [indicator]);
-  return { shown: phase.shown, escalated: phase.escalated, cancel };
+  return { shown: active || phase.shown, escalated: phase.escalated, cancel };
 }
 
 /** The query, named once so the hook and its documentation cannot disagree. */

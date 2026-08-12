@@ -549,22 +549,31 @@ total is unknown gets the sentence and no bar at all; the bar appears when there
 fraction to draw. Giving the primitive an indeterminate animation would change this rule,
 which makes it a design decision and not a screen's to take in passing.
 
-### A wait earns its indicator
+### An indicator appears at once and leaves slowly
 
-**Nothing is reported for the first 200ms of any wait, and once reported it stays for at
-least 250ms** (#541, 2026-08-11). Most requests are answered faster than a person can read
-a word, and an indicator that appears and vanishes inside that window reads as a glitch
-rather than as work — so reporting on *a request being out* is the wrong trigger, and
-reporting on *a request having been out a while* is the right one. The floor is the other
-half: without it an answer landing at 210ms produces exactly the blink the delay was there
-to prevent. Where a wait has a second threshold worth crossing, what appears is **prose**,
-never a second indicator — the rule above, applied to the same problem from the other end.
+**A wait is reported as soon as it starts, and once reported it stays for at least 250ms**
+(#541, 2026-08-11, amended 2026-08-12). Work that has begun and shows nothing is the state
+in which *working* and *broken* look alike, so the trigger is the request leaving, not the
+request having been out a while. The floor is the asymmetry: appearing is free, and
+disappearing after two frames is the glitch. Where a wait has a second threshold worth
+crossing, what appears is **prose**, never a second indicator — the no-bar-over-empty-track
+rule above, applied to the same problem from the other end.
+
+This supersedes a first attempt that suppressed the indicator for 200ms, on the theory that
+a fast answer would beat it and nothing would flash. It is recorded because the reasoning
+was sound and the premise was not: on a real machine the work in question never finished
+inside the window, so the delay suppressed nothing and bought a second state to hold. **A
+threshold that hides a state needs evidence that the state occurs**, and the place to get
+that is a real machine rather than an argument about perception.
 
 The worked example is the annotation editor's suggest tool (`docs/ui.md`): a ring at the
-click point past 200ms, and past 1.5s a sentence saying that the first click on a frame is
-the slow one. Both surfaces reporting that wait read one clock, in the component that owns
-the request — two clocks are free to drift, and a card and a canvas disagreeing about
-whether something is happening is worse than either alone.
+click point from the moment the request is dispatched, and past 1.5s a sentence saying that
+the first click on a frame is the slow one. Both surfaces reporting that wait read one
+clock, in the component that owns the request — two clocks are free to drift, and a card and
+a canvas disagreeing about whether something is happening is worse than either alone. Where
+that clock is read through React state, the surfaces derive *is a request out* directly
+rather than waiting for the clock's own announcement to arrive: an effect's round trip is a
+delay like any other, and it is the one that reintroduces the suppression nobody wanted.
 
 **A moving indicator has a still form, and a person who asked for one gets it.** This is the
 product's first `prefers-reduced-motion` handling and the rule it sets is that the

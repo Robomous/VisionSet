@@ -648,20 +648,37 @@ describe("what the wait looks like while it is happening", () => {
     expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
   });
 
-  it("says nothing anywhere about a wait that is over before the threshold", async () => {
-    // The ordinary case: nothing held, so the answer lands almost at once. The
-    // preview arriving is the proof the request really happened, which is what
-    // makes the two absences below mean something.
+  it("is up on the first render after the click, with no clock advanced", async () => {
+    // The load-bearing case for the delay's removal, and it is deliberately
+    // synchronous — no `findBy`, no `waitFor`, nothing that would let a timer or
+    // a second render slip in underneath. A show delay of any length, including
+    // one frame's worth, turns this red.
+    const gate = held();
+    await open();
+    await arm();
+
+    clickCanvas();
+
+    expect(screen.getByTestId("suggest-halo")).toBeTruthy();
+    expect(screen.getByTestId("suggest-asking")).toBeTruthy();
+    expect(screen.getByTestId("annotator-pane").style.cursor).toBe("progress");
+
+    gate.release();
+    await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
+  });
+
+  it("holds it a moment even when the answer is immediate", async () => {
+    // Nothing held, so the stub answers about as fast as anything can. With the
+    // delay gone the floor is the only thing keeping this from being two frames.
     await open();
     await arm();
     clickCanvas();
 
-    expect(screen.queryByTestId("suggest-halo")).toBeNull();
-    expect(screen.queryByTestId("suggest-asking")).toBeNull();
+    expect(screen.getByTestId("suggest-halo")).toBeTruthy();
 
     await screen.findByTestId("suggestion-shape");
-    expect(screen.queryByTestId("suggest-halo")).toBeNull();
-    expect(screen.queryByTestId("suggest-asking")).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("suggest-halo")).toBeNull());
+    expect(screen.getByTestId("annotator-pane").style.cursor).not.toBe("progress");
   });
 
   it("reports the wait in the card and on the canvas off the same clock", async () => {
@@ -697,23 +714,23 @@ describe("what the wait looks like while it is happening", () => {
     gate.release();
   });
 
-  it("keeps the shape's card up, with accept dimmed, while a refine is out", async () => {
+  it("keeps the shape drawn through a refine, while the card reports the new ask", async () => {
+    // The canvas and the panel deliberately say different things here, and both
+    // are true: the shape is the best answer anyone has until a better one
+    // arrives, and the card is about the request that is out. What must not
+    // happen is the shape blanking — that is `paintSuggestion` testing what the
+    // session holds rather than what its status is.
     await open();
     await arm();
     clickCanvas();
     await screen.findByTestId("suggestion-shape");
-    expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(false);
 
     const gate = held();
     clickCanvas();
 
-    await waitFor(() =>
-      expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(true),
-    );
-    // The card itself does not change — this is the flicker the threshold exists
-    // to prevent, and falling through to the invitation would be a different one.
-    expect(screen.getByTestId("suggest-shown")).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId("suggest-asking")).toBeTruthy());
     expect(screen.getByTestId("suggestion-shape")).toBeTruthy();
+    expect(screen.queryByTestId("suggest-accept")).toBeNull();
 
     gate.release();
     await waitFor(() =>

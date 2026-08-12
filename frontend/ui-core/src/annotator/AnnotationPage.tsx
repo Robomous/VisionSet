@@ -2495,10 +2495,10 @@ function Workspace({
                 onChooseConnection={chooseConnection}
                 onAccept={acceptSuggestion}
                 onDiscard={discardSuggestion}
-                // The same two thresholds the halo is drawn from, off the same
-                // clock — which is what lets the card and the canvas be read as
-                // one report of one wait rather than as two.
-                pendingShown={pending.shown}
+                // Off the same clock the halo is drawn from, which is what lets
+                // the card and the canvas be read as one report of one wait
+                // rather than as two. The card's own appearance follows the
+                // session's status directly; only the sentence needs a threshold.
                 pendingEscalated={pending.escalated}
                 {...(onConfigureInference === undefined
                   ? {}
