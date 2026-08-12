@@ -260,49 +260,6 @@ export const SUGGESTION_OPACITY = 0.6;
 /** The preview's stroke pattern — see `SUGGESTION_OPACITY`. */
 export const SUGGESTION_DASH = "10 6";
 
-/**
- * The waiting halo, in the package's own vocabulary rather than the product's.
- *
- * `@visionset/annotator` ships headless — no Tailwind, no design tokens, no
- * stylesheet — which is the whole of its claim to be embeddable, so a ring drawn
- * here cannot name a semantic colour the way a `ui-core` component would. It is a
- * neutral white at low opacity for the same reason the crosshair is white: it has
- * to read over a photograph nobody chose, and a hue would compete with the class
- * colour beside it, which is the one colour on this canvas that carries meaning.
- *
- * It is deliberately **not** the brand: the product spends coral in two places,
- * and a spinner is not a third.
- *
- * The two radii are the pulse. `screenPx` divides both by zoom at the call site,
- * so the halo is the same size on screen at every magnification — the rule every
- * transient in this package follows.
- */
-export const HALO_STROKE = "#ffffff";
-
-/**
- * Where the ring starts each cycle, in screen pixels.
- *
- * A prompt marker is drawn at `VERTEX_PX + 1`, so this clears it: the halo is a
- * ring *around* the click, never a disc over it, and the point a person placed
- * has to stay legible while they wait for the answer to it.
- */
-export const HALO_MIN_PX = 9;
-
-/** Where it ends, in screen pixels. See `HALO_MIN_PX`. */
-export const HALO_MAX_PX = 18;
-
-/** One breath. Slow enough to read as waiting rather than as an alarm. */
-export const HALO_PERIOD = "1.4s";
-
-/**
- * The ring's opacity: the pulse's peak, and the still ring's fixed value.
- *
- * One number for both, because they are one answer to one question — *how loud
- * may this be* — and the pulse fading from it to nothing is what makes the moving
- * version no louder than the still one.
- */
-export const HALO_OPACITY = 0.6;
-
 /** A pending suggestion, ready to draw. */
 export interface PaintedSuggestion {
   /** Never a tag or a path: the two kinds `SUGGESTIBLE_GEOMETRY_TYPES` names. */
@@ -337,10 +294,11 @@ export interface PaintedSuggestion {
  * must stay on screen while the answer to the click that placed them is still
  * coming back.
  *
- * **A list, because `fragments` can answer with every piece of a mask.** One
- * click can propose several shapes, and they are drawn the same way and accepted
- * together; the label rides on each, because a reader looking at one shape should
- * not have to find another to learn what class it is.
+ * **A list, though an answer carries at most one shape today.** The plural shape
+ * is kept because accepting part of a plural proposal is tracked work (#548);
+ * they are drawn the same way and accepted together, and the label rides on each,
+ * because a reader looking at one shape should not have to find another to learn
+ * what class it is.
  */
 export function paintSuggestions(
   state: SuggestionState,

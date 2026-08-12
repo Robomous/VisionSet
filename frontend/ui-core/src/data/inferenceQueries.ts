@@ -46,7 +46,6 @@
 import type {
   Adjustments,
   Detail,
-  Fragments,
   GeometryType,
   SuggestParameter,
 } from "@visionset/annotator";
@@ -106,8 +105,6 @@ export interface SuggestionOut {
   readonly regions: readonly SuggestedRegion[];
   readonly applied: {
     readonly detail: Detail;
-    readonly fill_holes: number;
-    readonly fragments: Fragments;
   };
   /**
    * Which settings have any effect on the kind of shape this class holds.
@@ -447,8 +444,6 @@ export function useSuggestRegion() {
             negative: input.negative.map(([x, y]) => ({ x, y })),
             allowed_geometries: [...input.allowedGeometries],
             detail: input.adjustments.detail,
-            fill_holes: input.adjustments.fillHoles,
-            fragments: input.adjustments.fragments,
           } as never,
         }),
         checkSuggestRegion,

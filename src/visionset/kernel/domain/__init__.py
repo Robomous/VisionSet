@@ -182,11 +182,8 @@ from visionset.kernel.domain.source import (
 )
 from visionset.kernel.domain.suggestion import (
     DEFAULT_DETAIL,
-    DEFAULT_FILL_HOLES,
-    DEFAULT_FRAGMENTS,
     PARAMETER_APPLIES_TO,
     Detail,
-    Fragments,
     SuggestParameter,
     suggest_parameters,
 )
@@ -367,12 +364,9 @@ __all__ = [
     "Mask",
     "SegmentedMask",
     "Detail",
-    "Fragments",
     "SuggestParameter",
     "PARAMETER_APPLIES_TO",
     "DEFAULT_DETAIL",
-    "DEFAULT_FILL_HOLES",
-    "DEFAULT_FRAGMENTS",
     "suggest_parameters",
     "ActivityEntry",
     "ActivityKind",

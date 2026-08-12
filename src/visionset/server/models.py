@@ -48,8 +48,6 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from visionset.inference import capabilities_of
 from visionset.kernel.domain import (
     DEFAULT_DETAIL,
-    DEFAULT_FILL_HOLES,
-    DEFAULT_FRAGMENTS,
     ActivityEntry,
     ActivityKind,
     Annotation,
@@ -84,7 +82,6 @@ from visionset.kernel.domain import (
     Detail,
     DownloadSize,
     ExportCompatibility,
-    Fragments,
     Geometry,
     GeometryType,
     ImageFormat,
@@ -1938,21 +1935,19 @@ class SuggestRequest(BaseModel):
     #: How much of an outline survives simplification. Omitted means `balanced`,
     #: which is what every suggestion used before there was a choice.
     detail: Detail = DEFAULT_DETAIL
-    #: The largest gap closed in the model's mask, as a share of the piece's own
-    #: area. Zero closes nothing.
-    fill_holes: float = Field(DEFAULT_FILL_HOLES, ge=0.0, le=1.0)
-    #: Whether the piece under the click is the answer, or every piece big enough
-    #: to be worth proposing.
-    fragments: Fragments = DEFAULT_FRAGMENTS
 
 
 class SuggestedRegion(BaseModel):
     """One proposed shape, and the contour it was reduced from."""
 
     geometry: Geometry
-    #: The unsimplified outline, in the asset's own pixels — what lets a client
-    #: re-run `detail` locally instead of asking again. Empty for a box, which is
-    #: an extent rather than something reduced from anything.
+    #: The outline the shape was reduced from, in the asset's own pixels — what
+    #: lets a client re-run `detail` locally instead of asking again. Already
+    #: reduced once at the half-pixel floor, which is what makes the client's
+    #: answer and the server's provably the same: simplification is not nested,
+    #: so both have to start from identical points.
+    #: Empty for a box, which is an extent rather than something reduced from
+    #: anything.
     #:
     #: Required rather than defaulted: it is on every answer, and a field a
     #: client has to check for is one it will eventually forget to check for.
@@ -1963,8 +1958,6 @@ class AppliedParameters(BaseModel):
     """The parameter values this answer was actually produced with."""
 
     detail: Detail
-    fill_holes: float
-    fragments: Fragments
 
 
 class SuggestionOut(BaseModel):
@@ -1973,7 +1966,7 @@ class SuggestionOut(BaseModel):
     `regions` is empty when there is no suggestion, and that is an ordinary
     answer rather than an error: a click can land on sky, the model can be less
     sure than the caller asked for, the shape found can be one this class cannot
-    hold, and the parameters as set can leave nothing. A 404 or a 409 for any of
+    hold, and the detail as set can leave nothing. A 404 or a 409 for any of
     those would be telling the caller they did something wrong when they did not.
 
     `model_ref` is echoed on every answer, including the empty one, because it
@@ -1985,8 +1978,10 @@ class SuggestionOut(BaseModel):
 
     `parameters` names which settings have any effect on the kind of shape this
     request will come back in, so a client renders exactly those and works none
-    of it out for itself. It is present on an empty answer too, which is what
-    lets somebody who adjusted their way into nothing adjust their way back out.
+    of it out for itself. It is empty for a box class, which is how a client is
+    told to render no adjustments at all. It is present on an empty answer too,
+    which is what lets somebody who adjusted their way into nothing adjust their
+    way back out.
     """
 
     model_ref: str

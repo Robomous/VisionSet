@@ -33,10 +33,7 @@ from visionset.inference.masks import Point, Shaped, shapes_from, target_kind
 from visionset.inference.providers import ProviderPool, resident
 from visionset.kernel.domain import (
     DEFAULT_DETAIL,
-    DEFAULT_FILL_HOLES,
-    DEFAULT_FRAGMENTS,
     Detail,
-    Fragments,
     GeometryType,
     PointPrompt,
     PredictionRequest,
@@ -91,8 +88,6 @@ def suggest(
     prompt: PointPrompt,
     allowed: tuple[GeometryType, ...],
     detail: Detail = DEFAULT_DETAIL,
-    fill_holes: float = DEFAULT_FILL_HOLES,
-    fragments: Fragments = DEFAULT_FRAGMENTS,
     minimum_confidence: float = 0.0,
     pool: ProviderPool | None = None,
 ) -> Suggestion:
@@ -106,7 +101,7 @@ def suggest(
 
     An empty ``shapes`` is a real answer and not a failure: the model was asked
     about a patch of sky, or was not sure enough, or the shape it found cannot be
-    expressed in the kinds this class admits, or the parameters as set leave
+    expressed in the kinds this class admits, or the detail as set leaves
     nothing. Every one of those is "no suggestion", and none of them is an error
     somebody made.
 
@@ -167,14 +162,7 @@ def suggest(
 
     segment = answer.segments[0]
     at: tuple[Point, ...] = tuple(prompt.positive)
-    shapes = shapes_from(
-        segment.mask,
-        allowed=allowed,
-        detail=detail,
-        fill_holes=fill_holes,
-        fragments=fragments,
-        at=at,
-    )
+    shapes = shapes_from(segment.mask, allowed=allowed, detail=detail, at=at)
     return Suggestion(
         model_ref=answer.model_ref,
         shapes=tuple(shapes),
