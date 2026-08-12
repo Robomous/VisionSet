@@ -188,8 +188,11 @@ export const checkAttentionItemOut: Check<Schemas["AttentionItemOut"]> =
 export const checkProjectSummaryOut: Check<Schemas["ProjectSummaryOut"]> =
   /*#__PURE__*/ object({ "annotated_fraction": [true, isNumber], "asset_count": [true, isInteger], "name": [true, isString], "project_id": [true, isString] } as const);
 
+export const checkResumeKind: Check<Schemas["ResumeKind"]> =
+  /*#__PURE__*/ oneOf(["annotate", "review", "open"] as const);
+
 export const checkResumeTargetOut: Check<Schemas["ResumeTargetOut"]> =
-  /*#__PURE__*/ object({ "annotated": [true, isInteger], "batch_id": [true, isString], "batch_name": [true, isString], "job_id": [true, isString], "next_asset_id": [true, either([isString, isNull] as const)], "project_id": [true, isString], "project_name": [true, isString], "thumbnail_asset_id": [true, either([isString, isNull] as const)], "total": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "annotated": [true, isInteger], "batch_id": [true, isString], "batch_name": [true, isString], "job_id": [true, isString], "kind": [true, checkResumeKind], "next_asset_id": [true, either([isString, isNull] as const)], "project_id": [true, isString], "project_name": [true, isString], "review_pending": [true, isInteger], "thumbnail_asset_id": [true, either([isString, isNull] as const)], "total": [true, isInteger] } as const);
 
 export const checkWorkspaceTotalsOut: Check<Schemas["WorkspaceTotalsOut"]> =
   /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "projects": [true, isInteger], "releases": [true, isInteger] } as const);

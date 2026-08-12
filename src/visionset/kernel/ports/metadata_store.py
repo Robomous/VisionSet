@@ -200,6 +200,7 @@ class UnitOfWork(Protocol):
         *,
         expected: AssetProgress,
         progress: AssetProgress,
+        touched_at: datetime,
     ) -> AssetProgress | None:
         """Move one asset's progress, and only if it is still where it was read.
 
@@ -224,8 +225,39 @@ class UnitOfWork(Protocol):
         the write was refused and where the asset actually is. A caller finding
         its own target there has nothing left to do.
 
+        ``touched_at`` is stamped on the row **in the same statement**, so the
+        record of when somebody worked this frame is as atomic as the move it
+        records and there is no window in which one landed without the other. It
+        is passed in rather than read here, on ``claim_job``'s terms: an adapter
+        that reaches for a clock is one a test cannot place in time.
+
+        A refused write stamps nothing, which is the behaviour worth having:
+        losing a race is not work, and a caller whose move was rejected did not
+        touch the frame.
+
         Raises ``EntityNotFound`` if the job does not carry that asset at all,
         matching ``Repository.update`` on an id that is not stored.
+        """
+        ...
+
+    def last_touched(self, job_id: UUID) -> datetime | None:
+        """When somebody last moved any of this job's assets, or NULL if nobody has.
+
+        The read side of :meth:`set_asset_progress`'s stamp, and a named
+        aggregate rather than a repository scan for ``annotation_totals``'
+        reason: ``Repository[AnnotationJob]`` answers whole jobs, and a caller
+        ranking every open batch in a workspace by recency wants one number per
+        job rather than every asset's progress map.
+
+        NULL means the whole job predates the column or nobody has worked it
+        since — deliberately one answer rather than two, because a caller ranking
+        by recency treats both the same way and telling them apart would need a
+        second timestamp nobody records.
+
+        A caller ranking many jobs pays one query each. That is the same N+1 the
+        workspace summary already accepts elsewhere, and if it starts to cost the
+        fix is a form of this method taking several job ids — never a SQLAlchemy
+        import in a service.
         """
         ...
 

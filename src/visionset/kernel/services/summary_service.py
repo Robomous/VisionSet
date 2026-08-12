@@ -20,10 +20,13 @@ Three things shape it.
   module-level helper the owning service exposes: ``jobs_of`` is
   ``BatchService``'s, borrowed rather than rewritten, the way ``JobService``
   borrows it.
-- **Nothing here is ordered by a clock this build controls.** Every ordering
-  decision below follows from one fact about the storage format — there is no
-  timestamp on ``batch``, on ``annotation``, or on ``annotation_job_asset``. The
-  models in ``domain/summary.py`` state it where a reader of them will find it.
+- **One ordering here is a clock and the rest are not.** The resume card is
+  ranked on ``annotation_job_asset.touched_at``, the schema's only record of when
+  somebody worked; a ``batch`` still dates neither its creation nor its state
+  changes, and an ``annotation`` dates nothing at all, so every other ordering
+  below follows from a timestamp that was stored for a different purpose or from
+  insertion order. The models in ``domain/summary.py`` state which is which where
+  a reader of them will find it.
 
 Composition follows ``docs/workspaces.md``: this service takes an open
 :class:`WorkspaceService` and nothing else, and never names an adapter.
@@ -33,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Final
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -50,6 +54,7 @@ from visionset.kernel.domain import (
     DatasetOperation,
     Project,
     ProjectSummary,
+    ResumeKind,
     ResumeTarget,
     WorkspaceSummary,
     WorkspaceTotals,
@@ -128,7 +133,7 @@ class SummaryService:
                                 count=waiting,
                             )
                         )
-                    candidate = _candidate(project, batch, jobs)
+                    candidate = _candidate(project, batch, jobs, _touched(uow, jobs))
                     if candidate is not None:
                         best = _preferred(best, candidate)
 
@@ -164,14 +169,15 @@ class _Accumulator:
 class _Candidate:
     """One batch considered for the resume card, with what it is ranked on.
 
-    ``settled`` is the rank and ``has_work`` is the tier: a batch with labeling
-    left always beats one without, however far along the other is. Carrying both
+    Three things, consulted in that order by :func:`_preferred`: the ``kind`` on
+    the target is the tier, ``touched_at`` is the rank, and ``settled`` is the
+    tie-break among batches that have never been touched. Carrying all of them
     beside the finished :class:`ResumeTarget` is what lets :func:`_preferred` be
     a comparison rather than a re-derivation.
     """
 
+    touched_at: datetime | None
     settled: int
-    has_work: bool
     target: ResumeTarget
 
 
@@ -329,14 +335,34 @@ def _in_state(jobs: list[AnnotationJob], progress: AssetProgress) -> int:
     return sum(1 for job in jobs for value in job.progress.values() if value is progress)
 
 
-def _candidate(project: Project, batch: Batch, jobs: list[AnnotationJob]) -> _Candidate | None:
-    """Rank one open batch, and work out where inside it to land.
+def _touched(uow: UnitOfWork, jobs: list[AnnotationJob]) -> datetime | None:
+    """When this batch was last worked, across every job cut out of it.
 
-    The landing place is the first ``unannotated`` asset **in batch order**, and
-    batch order is ``Batch.asset_ids`` rather than any one job's own sequence: a
-    partition cuts a batch into several jobs, so no single job's ordering is the
-    batch's. The per-asset states are merged across the jobs first, which is the
-    same projection the batch asset listing builds for the same reason.
+    A partition splits a batch into several jobs and somebody works whichever
+    one holds the frame in front of them, so the batch's recency is the newest of
+    its jobs' — never any single job's.
+    """
+    stamps = [stamp for job in jobs if (stamp := uow.last_touched(job.id)) is not None]
+    return max(stamps) if stamps else None
+
+
+def _candidate(
+    project: Project, batch: Batch, jobs: list[AnnotationJob], touched_at: datetime | None
+) -> _Candidate | None:
+    """Rank one open batch, work out what it is for, and where inside it to land.
+
+    The landing place is a frame **in batch order**, and batch order is
+    ``Batch.asset_ids`` rather than any one job's own sequence: a partition cuts
+    a batch into several jobs, so no single job's ordering is the batch's. The
+    per-asset states are merged across the jobs first, which is the same
+    projection the batch asset listing builds for the same reason.
+
+    Which frame depends on what the batch still needs, and the order of the two
+    searches *is* the priority: an unannotated frame if there is one, otherwise
+    the first waiting on a reviewer, otherwise nothing. Labeling comes first
+    because it is the work that cannot be done by anybody else later — a frame
+    nobody has drawn on blocks the batch outright, where one awaiting review is
+    already done and waiting on a second opinion.
 
     A batch with no jobs is not a candidate. Nothing can open it — the editor is
     keyed on a job — and the kernel already makes it unreachable by refusing to
@@ -349,28 +375,28 @@ def _candidate(project: Project, batch: Batch, jobs: list[AnnotationJob]) -> _Ca
         asset_id: (job.id, value) for job in jobs for asset_id, value in job.progress.items()
     }
     settled = sum(1 for _, value in holders.values() if value in SETTLED_PROGRESS)
-    landing = next(
-        (
-            (asset_id, holders[asset_id][0])
-            for asset_id in batch.asset_ids
-            if holders.get(asset_id, (None, None))[1] is AssetProgress.UNANNOTATED
-        ),
-        None,
-    )
+    waiting = sum(1 for _, value in holders.values() if value is AssetProgress.REVIEW_PENDING)
+    landing = _landing(batch, holders, AssetProgress.UNANNOTATED)
+    kind = ResumeKind.ANNOTATE
+    if landing is None:
+        landing = _landing(batch, holders, AssetProgress.REVIEW_PENDING)
+        kind = ResumeKind.OPEN if landing is None else ResumeKind.REVIEW
     return _Candidate(
+        touched_at=touched_at,
         settled=settled,
-        has_work=landing is not None,
         target=ResumeTarget(
+            kind=kind,
             project_id=project.id,
             project_name=project.name,
             batch_id=batch.id,
             batch_name=batch.name,
-            # The job holding the landing frame, or — with nothing left to
-            # label — the batch's first, so the gallery still has a way in.
+            # The job holding the landing frame, or — with nowhere to land —
+            # the batch's first, so the gallery still has a way in.
             job_id=landing[1] if landing else jobs[0].id,
             next_asset_id=landing[0] if landing else None,
             annotated=settled,
             total=len(holders),
+            review_pending=waiting,
             # The frame somebody is about to open, or failing that the batch's
             # first — a picture for the card, not a claim about progress. A
             # missing preview renders as a placeholder, which every thumbnail in
@@ -382,23 +408,56 @@ def _candidate(project: Project, batch: Batch, jobs: list[AnnotationJob]) -> _Ca
     )
 
 
+def _landing(
+    batch: Batch, holders: dict[UUID, tuple[UUID, AssetProgress]], progress: AssetProgress
+) -> tuple[UUID, UUID] | None:
+    """The first asset of this batch in one state, with the job that holds it."""
+    return next(
+        (
+            (asset_id, holders[asset_id][0])
+            for asset_id in batch.asset_ids
+            if holders.get(asset_id, (None, None))[1] is progress
+        ),
+        None,
+    )
+
+
+#: The order the resume card offers its three kinds in, lowest first. A table
+#: rather than a chain of comparisons, so the priority is one thing to read and
+#: adding a fourth kind is one line rather than a rewrite of :func:`_preferred`.
+_KIND_RANK: Final = {ResumeKind.ANNOTATE: 0, ResumeKind.REVIEW: 1, ResumeKind.OPEN: 2}
+
+
 def _preferred(best: _Candidate | None, other: _Candidate) -> _Candidate:
     """Which of two open batches the card should offer.
 
-    Two tiers, and the tiers are the point. A batch with labeling left always
-    beats one without, because "continue" means there is something to continue;
-    only when *nothing* in the workspace has an unannotated frame does the card
-    fall to the furthest-along batch, which it offers as somewhere to open rather
-    than as somewhere to type.
+    Three questions in order, and the order is the whole of it.
 
-    Within a tier the rank is settled assets — the batch you are furthest through
-    — and a tie goes to the **later** one, since ``Repository.list`` answers in
-    insertion order and the most recently created batch is the closest thing to
-    recency the rows can offer. That is also why the comparison is ``>=``: a
-    strict ``>`` would keep the first of equals and quietly mean the opposite.
+    **What the batch is for** comes first, by ``_KIND_RANK``: a batch with
+    labeling left beats one that only needs review, which beats one that needs
+    neither — however far ahead, and however recently touched, the other is.
+    "Continue" has to mean there is something to continue, and only when nothing
+    in the workspace has an unannotated frame does the card start offering review
+    instead.
+
+    **Recency** decides within a kind. A batch somebody has worked beats one
+    nobody has, and the later touch wins between two that have been. This is what
+    ``annotation_job_asset.touched_at`` was added for.
+
+    **Progress** decides between two batches that have *never* been touched —
+    every row NULL, which is every row in a workspace that predates the column.
+    Furthest through first, and a tie goes to the **later** batch, since
+    ``Repository.list`` answers in insertion order and the most recently created
+    batch is the closest thing to recency those rows can offer. That is why the
+    last comparison is ``>=``: a strict ``>`` would keep the first of equals and
+    quietly mean the opposite.
     """
     if best is None:
         return other
-    if best.has_work != other.has_work:
-        return other if other.has_work else best
+    if _KIND_RANK[best.target.kind] != _KIND_RANK[other.target.kind]:
+        return other if _KIND_RANK[other.target.kind] < _KIND_RANK[best.target.kind] else best
+    if (best.touched_at is None) != (other.touched_at is None):
+        return other if best.touched_at is None else best
+    if best.touched_at is not None and other.touched_at is not None:
+        return other if other.touched_at > best.touched_at else best
     return other if other.settled >= best.settled else best

@@ -468,21 +468,37 @@ make the aside jump on every visit.
 
 ### Continue where you left off
 
-The card names a project, a batch, `n / m annotated` in tabular figures, and a picture of
-the frame it would open. It holds the view's one filled button.
+The card names a project, a batch, a count in tabular figures, and a picture of the frame
+it would open. It holds the view's one filled button.
 
-**It is ranked by progress, not by recency, and that is forced rather than chosen.** There
-is no timestamp anywhere on a batch, an annotation, or an asset's progress, so *the batch
-I touched last* has no source in the storage format and deriving one would mean a
-migration. What the rows can answer is which batch is furthest through and not yet
-finished, which is what the card offers. It degrades correctly — one open batch is offered
-whatever its progress — and the accepted limit is that two batches part-way through
-resolve to the further-along one rather than the more recent.
+**It is ranked by when somebody last worked the batch.** That is the only work-dating
+timestamp in the storage format, and it exists for this. Batches nobody has worked since it
+became recordable rank behind every batch that has one, ordered among themselves by how far
+through they are — which is the whole population of a workspace created before the stamp
+existed, since it was added without a backfill and a moment that was never recorded cannot
+be invented. Such a workspace therefore behaves as it did before and converges to real
+recency the moment anybody uses it. A batch still has no age of its own: nothing dates its
+creation or its state changes, so *the oldest untouched batch* remains underivable.
 
-**The label is load-bearing.** With a frame left to label the control reads **Continue
-annotating** and opens the editor at that frame. With none left it reads **Open batch** and
-goes to the gallery, because there is no frame to open and a button claiming otherwise
-would land somewhere empty. Same card, same slot, different promise.
+**The label is load-bearing, and it is the wire that picks it.** The card renders three
+promises out of one slot: **Continue annotating** when the batch has a frame nobody has
+labeled, **Review annotations** when the labeling is done and frames are waiting on a
+reviewer, and **Open batch** when it needs neither and there is no frame to open. The first
+two go to the editor and the third to the gallery, because a button claiming a frame that
+does not exist would land somewhere empty.
+
+The two editor promises are the same destination, and that is the point rather than a
+shortcut: a frame awaiting review opens read-only with **Accept** and **Return to
+annotator** on it, so the reviewer and the annotator are one screen wearing what it is
+looking at. Under *Review annotations* the count line changes with the label — `k waiting on
+review` rather than `n / m annotated`, since how much of the batch is labeled is not the
+number anybody came for.
+
+**Which of the three applies is decided by the kernel and carried on the response.** The
+order between them is a judgment about what somebody should do next, not a fact the rest of
+the response restates, and a judgment spelled once in the kernel and again in the browser is
+one that drifts. Contrast the first-run state, which is deliberately *not* a field: that one
+is a count the response already carries.
 
 ### Needs your attention, and activity
 
@@ -500,13 +516,19 @@ project*, not one run finishing, because an ingest records no time at all; and a
 reports a version being **created**, because which version is active is derived — it is the
 highest — so there is no activation to date.
 
-### The one filled button, in all three states
+### The one filled button, in every state
 
-Principle 8 is a count, so Home answers it in every state and there is never a fourth:
-first run offers **Create project**, a workspace with somewhere to carry on offers
-**Continue annotating**, and one with nothing open offers **New project** — because when
-every batch is finished, starting the next piece of work genuinely is what comes next.
-When the resume card renders, the header's own New project steps back to `secondary`.
+Principle 8 is a count, so Home answers it in every state and there is never a second.
+First run offers **Create project**. A workspace with somewhere to carry on offers whichever
+of **Continue annotating**, **Review annotations** or **Open batch** the resume card
+resolved to, and the header's own New project steps back to `secondary` behind it. Only a
+workspace with nothing open at all offers **New project** as the filled one — when every
+batch is finished and nothing is waiting on a reviewer, starting the next piece of work
+genuinely is what comes next.
+
+That last state is the one to keep honest. It used to absorb a workspace whose only
+outstanding work was a review, which meant the page answered "what do I do next?" by
+suggesting more work rather than by naming the work already waiting.
 
 The first-run CTA opens the **same dialog** the project list's button opens, rather than
 navigating to the screen that carries it. A filled button labelled *Create project* that

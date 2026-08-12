@@ -162,7 +162,7 @@ A missing `blobs/` is repaired rather than rejected: zip archives and git both d
 directories, so its absence says nothing about the workspace's health.
 
 **Older workspaces are migrated, not refused** — that is what the migration list is for. It
-holds seven entries today: the baseline, and six that have appended a column or a table since.
+holds eight entries today: the baseline, and seven that have appended a column or a table since.
 A workspace stamped below `FORMAT_VERSION` runs whatever is pending and is restamped, in place
 and on the way in. See [persistence.md](persistence.md#migrations-and-format_version) for the
 list itself and for the rules a new entry has to satisfy. The honest cost of an in-place

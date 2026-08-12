@@ -138,14 +138,29 @@ mutation takes it as input; every row deep-links to a resource whose own wire sh
 says what may be done to it. A second copy of those declarations here would be the
 hand-mirrored table the capabilities contract forbids, one layer up.
 
-Two things about it are consequences of the storage format rather than choices, and
-both are stated on the endpoint as well as here. The resume target is ranked by
-**progress, not recency** - no timestamp exists on a batch, an annotation or an
-asset's progress row, so "most recently worked on" has no source - and when its
-`next_asset_id` is null the batch has no unlabeled frame left, which is the client's
-signal to open the gallery and to say *Open batch* rather than *Continue annotating*.
-The activity feed's `ingest` entry is the newest `Asset.ingested_at` in a project
-rather than a run finishing, because an ingest job records no times at all.
+**The resume target declares its own kind, and the screen renders it rather than
+working it out.** `annotate` means `next_asset_id` is a frame nobody has labeled,
+`review` means it is one awaiting a reviewer, and `open` means the batch is settled
+throughout and there is no frame at all. The card's label follows - *Continue
+annotating*, *Review annotations*, *Open batch* - and so does its destination: the
+first two open the editor, the third the gallery. The two editor cases are the same
+route because a `review_pending` frame opens read-only with the review actions on it,
+which is the position [the annotator section below](#review-is-a-flow-not-an-api-only-edge)
+already takes.
+
+The order between the three is resolved on the server. It is a judgment about what
+somebody should do next rather than a fact the rest of the response restates, so a
+client deriving it again would be keeping a second copy of a rule that can drift -
+the shape of defect the capabilities contract exists to prevent. Batches are ranked
+by when somebody last worked them, with ones nobody has worked since that became
+recordable ranked last and ordered among themselves by progress. That second group
+is every batch in a workspace created before the stamp existed, since it was added
+without a backfill.
+
+One thing about the page is still a consequence of the storage format rather than a
+choice, and it is stated on the endpoint as well as here: the activity feed's
+`ingest` entry is the newest `Asset.ingested_at` in a project rather than a run
+finishing, because an ingest job records no times at all.
 
 A workspace with no projects reads zeros, nulls and empty lists. That is the
 first-run state, and `totals.projects` is how the screen recognises it - not a flag,

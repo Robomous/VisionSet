@@ -1,9 +1,10 @@
 """SummaryService: the workspace read across every project at once.
 
-The subject is the resume derivation. It is the one rule here that had to be
-*chosen* rather than read off the rows — no timestamp exists on a batch, an
-annotation or an asset's progress — so most of this file is the two-tier
-comparison and the ways it can be got backwards.
+The subject is the resume derivation, which is three rules stacked: what a batch
+is being offered *for*, then when it was last worked, then — for batches nobody
+has worked since ``annotation_job_asset.touched_at`` existed — how far through it
+is. Most of this file is those three and the ways each can be got backwards,
+because each is invisible to tests of the other two.
 
 Everything walks the real services. A planted batch state or a hand-written
 progress map would let the tests agree with a fixture rather than with the
@@ -17,6 +18,8 @@ from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from sqlalchemy import text
+
 from visionset.kernel.domain import (
     ActivityKind,
     Annotation,
@@ -26,10 +29,13 @@ from visionset.kernel.domain import (
     BackgroundJob,
     BackgroundJobState,
     BboxGeometry,
+    BySize,
     GeometryType,
     LabelClass,
+    ResumeKind,
 )
 from visionset.kernel.services import (
+    AnnotationService,
     BatchService,
     DatasetService,
     JobService,
@@ -49,6 +55,7 @@ class Fixture:
     def __init__(self, tmp_path: Path) -> None:
         self.workspace = WorkspaceService.init(tmp_path / "ws")
         self.projects = ProjectService(self.workspace)
+        self.annotations = AnnotationService(self.workspace)
         self.batches = BatchService(self.workspace)
         self.jobs = JobService(self.workspace)
         self.schemas = SchemaService(self.workspace)
@@ -87,9 +94,50 @@ class Fixture:
         self.jobs.start(job.id)
         return batch.id, job.id
 
+    def split_batch(self, project_id: UUID, name: str, assets: list[UUID]) -> list[UUID]:
+        """A batch cut into one job per asset. Returns the job ids, in batch order."""
+        batch = self.batches.create(project_id, name, assets)
+        self.batches.approve(batch.id, BySize(size=1))
+        self.batches.start(batch.id)
+        jobs = self.batches.jobs(batch.id)
+        # The caller indexes these against `assets`, so the pairing is asserted
+        # here rather than assumed from the partition's own ordering.
+        assert [next(iter(job.progress)) for job in jobs] == assets
+        for job in jobs:
+            self.jobs.start(job.id)
+        return [job.id for job in jobs]
+
     def annotate(self, job_id: UUID, asset_ids: list[UUID]) -> None:
         for asset_id in asset_ids:
             self.jobs.mark(job_id, asset_id, AssetProgress.ANNOTATED)
+
+    def forget_touches(self) -> None:
+        """Make every frame look like one nobody has worked since the column existed.
+
+        The only way to reach the ranking's second population, and it is not a
+        contrivance: it is exactly the state of a workspace created before
+        migration 8, where ``touched_at`` was added and deliberately not
+        backfilled. Raw SQL rather than a service call, because no service can
+        put a workspace back into that state and none should be able to.
+        """
+        store = self.workspace.metadata_store
+        with store.engine.begin() as connection:  # type: ignore[attr-defined]
+            connection.execute(text("update annotation_job_asset set touched_at = null"))
+
+    def touched(self, job_id: UUID, asset_id: UUID) -> None:
+        """Work a frame without changing where it is — the ordinary annotation edit."""
+        self.annotations.add(
+            job_id,
+            [
+                Annotation(
+                    asset_id=asset_id,
+                    label_class="sign",
+                    geometry=BboxGeometry(x=1.0, y=1.0, width=2.0, height=2.0),
+                    schema_version=1,
+                    provenance="human",
+                )
+            ],
+        )
 
     def summary(self):  # noqa: ANN201 - the domain model, named at each call site
         return SummaryService(self.workspace).summary()
@@ -289,8 +337,154 @@ def test_a_skipped_frame_counts_as_dealt_with(tmp_path: Path) -> None:
         fixture.close()
 
 
-def test_the_batch_you_are_furthest_through_wins(tmp_path: Path) -> None:
-    """The rank, in the tier where both batches still have labeling left."""
+def test_the_batch_you_worked_last_wins(tmp_path: Path) -> None:
+    """The rank, and the whole reason ``touched_at`` exists.
+
+    The further-along batch is worked first and then left; the one behind it is
+    worked afterwards. Under the ordering this replaced, the further-along one
+    would win — which is the substitution the column removes.
+    """
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        ahead = fixture.assets(project, 5)
+        behind = fixture.assets(project, 5)
+        _, ahead_job = fixture.open_batch(project, "ahead", ahead)
+        fixture.annotate(ahead_job, ahead[:3])
+        recent, behind_job = fixture.open_batch(project, "behind", behind)
+        fixture.annotate(behind_job, behind[:1])
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.batch_id == recent
+        assert resume.batch_name == "behind"
+    finally:
+        fixture.close()
+
+
+def test_a_split_batch_is_as_recent_as_its_newest_job(tmp_path: Path) -> None:
+    """A partition cuts a batch into several jobs, and somebody works one at a time.
+
+    The batch's recency is the newest of its jobs', never any single job's — and
+    a batch with only one job, which is every other fixture in this file, cannot
+    tell the two apart.
+    """
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        # Three assets, so one is left unlabeled and both batches below stay in
+        # the same kind — otherwise the priority decides this before recency is
+        # ever consulted, and the test would pass without exercising anything.
+        split = fixture.assets(project, 3)
+        other = fixture.assets(project, 2)
+        jobs = fixture.split_batch(project, "split", split)
+        fixture.annotate(jobs[0], split[:1])
+
+        _, plain_job = fixture.open_batch(project, "plain", other)
+        fixture.annotate(plain_job, other[:1])
+
+        # Back to the split batch, in a *different* job. Taking the oldest of its
+        # jobs would leave the plain batch looking like the more recent one.
+        fixture.annotate(jobs[1], split[1:2])
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.batch_name == "split"
+    finally:
+        fixture.close()
+
+
+def test_a_batch_somebody_has_worked_beats_one_nobody_has(tmp_path: Path) -> None:
+    """The two populations, and which way round they go.
+
+    The untouched batch is *further through*, so under the fallback ranking alone
+    it would win. A stamp outranks no stamp whatever the progress says.
+    """
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        stale = fixture.assets(project, 5)
+        fresh = fixture.assets(project, 5)
+        _, stale_job = fixture.open_batch(project, "further-through", stale)
+        fixture.annotate(stale_job, stale[:4])
+        fixture.forget_touches()
+
+        recent, fresh_job = fixture.open_batch(project, "barely-begun", fresh)
+        fixture.annotate(fresh_job, fresh[:1])
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.batch_id == recent
+    finally:
+        fixture.close()
+
+
+def test_the_batch_you_worked_last_wins_across_projects_too(tmp_path: Path) -> None:
+    """The walk is workspace-wide, so the comparison must survive the project loop."""
+    fixture = Fixture(tmp_path)
+    try:
+        first = fixture.project("first")
+        second = fixture.project("second")
+        one = fixture.assets(first, 5)
+        two = fixture.assets(second, 5)
+        _, second_job = fixture.open_batch(second, "in-second", two)
+        fixture.annotate(second_job, two[:4])
+        _, first_job = fixture.open_batch(first, "in-first", one)
+        fixture.annotate(first_job, one[:1])
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.project_name == "first"
+        assert resume.batch_name == "in-first"
+    finally:
+        fixture.close()
+
+
+def test_an_edit_that_moves_no_progress_still_counts_as_working_the_batch(
+    tmp_path: Path,
+) -> None:
+    """Drawing a second box on a labeled frame leaves progress alone and is still work.
+
+    The case a stamp written only on a *transition* would miss, and the one an
+    annotator spends most of their time in: the frame was already ``annotated``,
+    so nothing about it changes except that somebody was there.
+    """
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        one = fixture.assets(project, 4)
+        two = fixture.assets(project, 4)
+        first, first_job = fixture.open_batch(project, "first", one)
+        fixture.annotate(first_job, one[:2])
+        _, second_job = fixture.open_batch(project, "second", two)
+        fixture.annotate(second_job, two[:2])
+        before = fixture.summary().resume
+        assert before is not None
+        assert before.batch_name == "second"
+
+        fixture.touched(first_job, one[0])
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.batch_id == first
+    finally:
+        fixture.close()
+
+
+def test_the_batch_you_are_furthest_through_wins_where_nobody_has_been(
+    tmp_path: Path,
+) -> None:
+    """The fallback rank, reachable only in a workspace that predates the column.
+
+    Every stamp is cleared, which is what such a workspace looks like: the
+    ordering falls back to progress, and the further-along batch wins as it did
+    before ``touched_at`` existed.
+    """
     fixture = Fixture(tmp_path)
     try:
         project = fixture.project("p")
@@ -299,33 +493,13 @@ def test_the_batch_you_are_furthest_through_wins(tmp_path: Path) -> None:
         fixture.open_batch(project, "behind", behind)
         further, ahead_job = fixture.open_batch(project, "ahead", ahead)
         fixture.annotate(ahead_job, ahead[:3])
+        fixture.forget_touches()
 
         resume = fixture.summary().resume
 
         assert resume is not None
         assert resume.batch_id == further
         assert resume.batch_name == "ahead"
-    finally:
-        fixture.close()
-
-
-def test_the_further_along_batch_wins_across_projects_too(tmp_path: Path) -> None:
-    """The walk is workspace-wide, so the comparison must survive the project loop."""
-    fixture = Fixture(tmp_path)
-    try:
-        first = fixture.project("first")
-        second = fixture.project("second")
-        one = fixture.assets(first, 5)
-        two = fixture.assets(second, 5)
-        _, first_job = fixture.open_batch(first, "in-first", one)
-        fixture.annotate(first_job, one[:4])
-        fixture.open_batch(second, "in-second", two)
-
-        resume = fixture.summary().resume
-
-        assert resume is not None
-        assert resume.project_name == "first"
-        assert resume.batch_name == "in-first"
     finally:
         fixture.close()
 
@@ -355,7 +529,7 @@ def test_a_batch_with_labeling_left_beats_a_finished_one_however_far_ahead(
 def test_a_batch_with_nothing_left_is_still_offered_as_somewhere_to_open(
     tmp_path: Path,
 ) -> None:
-    """The fallback tier: no unannotated frame anywhere, so the card opens a gallery."""
+    """The last kind: nothing to label, nothing to review, so the card opens a gallery."""
     fixture = Fixture(tmp_path)
     try:
         project = fixture.project("p")
@@ -366,6 +540,7 @@ def test_a_batch_with_nothing_left_is_still_offered_as_somewhere_to_open(
         resume = fixture.summary().resume
 
         assert resume is not None
+        assert resume.kind is ResumeKind.OPEN
         assert resume.batch_id == batch
         assert resume.next_asset_id is None
         assert (resume.annotated, resume.total) == (3, 3)
@@ -373,23 +548,99 @@ def test_a_batch_with_nothing_left_is_still_offered_as_somewhere_to_open(
         fixture.close()
 
 
-def test_a_frame_waiting_on_review_is_not_something_to_carry_on_with(
-    tmp_path: Path,
-) -> None:
-    """``review_pending`` is neither settled nor unannotated, and blocks the tier."""
+def test_a_frame_waiting_on_review_is_something_to_carry_on_with(tmp_path: Path) -> None:
+    """``review_pending`` is neither settled nor unannotated, and it is the second kind."""
     fixture = Fixture(tmp_path)
     try:
         project = fixture.project("p")
         assets = fixture.assets(project, 2)
         _, job = fixture.open_batch(project, "b", assets)
         fixture.annotate(job, assets)
+        fixture.jobs.mark(job, assets[1], AssetProgress.REVIEW_PENDING)
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.kind is ResumeKind.REVIEW
+        # The frame awaiting review, not the batch's first — the search that
+        # found it runs in batch order over one state, like the labeling one.
+        assert resume.next_asset_id == assets[1]
+        assert resume.review_pending == 1
+        assert resume.annotated == 1
+    finally:
+        fixture.close()
+
+
+def test_labeling_outranks_review_in_the_same_batch(tmp_path: Path) -> None:
+    """Priority 1 beats priority 2 where a batch offers both, which is the ordinary case.
+
+    A reviewer sends one frame back while others have never been drawn on. The
+    card must not send somebody to review while labeling is outstanding: an
+    unlabeled frame blocks the batch outright, where one awaiting review is
+    already done and waiting on a second opinion.
+    """
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        assets = fixture.assets(project, 3)
+        _, job = fixture.open_batch(project, "b", assets)
+        fixture.annotate(job, assets[:1])
         fixture.jobs.mark(job, assets[0], AssetProgress.REVIEW_PENDING)
 
         resume = fixture.summary().resume
 
         assert resume is not None
-        assert resume.next_asset_id is None
-        assert resume.annotated == 1
+        assert resume.kind is ResumeKind.ANNOTATE
+        assert resume.next_asset_id == assets[1]
+        # Reported all the same, so a surface can say what else is waiting.
+        assert resume.review_pending == 1
+    finally:
+        fixture.close()
+
+
+def test_labeling_in_one_batch_outranks_review_in_a_more_recent_one(tmp_path: Path) -> None:
+    """The kind is consulted before recency, which is what makes it a tier at all."""
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        stale = fixture.assets(project, 2)
+        fresh = fixture.assets(project, 2)
+        older, older_job = fixture.open_batch(project, "older", stale)
+        fixture.annotate(older_job, stale[:1])
+
+        _, newer_job = fixture.open_batch(project, "newer", fresh)
+        fixture.annotate(newer_job, fresh)
+        fixture.jobs.mark(newer_job, fresh[0], AssetProgress.REVIEW_PENDING)
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.kind is ResumeKind.ANNOTATE
+        assert resume.batch_id == older
+    finally:
+        fixture.close()
+
+
+def test_review_outranks_a_batch_with_neither(tmp_path: Path) -> None:
+    """The second rung, which without a test would be indistinguishable from the third."""
+    fixture = Fixture(tmp_path)
+    try:
+        project = fixture.project("p")
+        waiting = fixture.assets(project, 2)
+        settled = fixture.assets(project, 2)
+        review, review_job = fixture.open_batch(project, "in-review", waiting)
+        fixture.annotate(review_job, waiting)
+        fixture.jobs.mark(review_job, waiting[0], AssetProgress.REVIEW_PENDING)
+
+        # Later, and further through, and still not what the card offers.
+        _, done_job = fixture.open_batch(project, "done", settled)
+        fixture.annotate(done_job, settled)
+
+        resume = fixture.summary().resume
+
+        assert resume is not None
+        assert resume.kind is ResumeKind.REVIEW
+        assert resume.batch_id == review
     finally:
         fixture.close()
 

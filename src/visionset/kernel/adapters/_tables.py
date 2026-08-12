@@ -403,6 +403,21 @@ class AnnotationJobAssetRow(Base):
     #: NULL`` without a default. That is the price of every future ``NOT NULL``
     #: column too, so it stays rather than being tidied away.
     position: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    #: When somebody last moved this asset's progress, or NULL if nobody has
+    #: since the column existed. The only timestamp in the schema that dates a
+    #: person's work rather than a record's creation, which is what lets the
+    #: workspace summary rank open batches by recency instead of by progress.
+    #:
+    #: Written exclusively inside ``UnitOfWork.set_asset_progress``'s guarded
+    #: ``UPDATE``, so it is stamped in the same statement as the transition it
+    #: records and cannot drift from it.
+    #:
+    #: Declared last, after ``position``, because it arrives by ``ALTER TABLE``
+    #: — see the column-order rule at the top of this module. Nullable, so
+    #: unlike ``position`` it needs no ``server_default``: NULL is the honest
+    #: value for a row nobody has touched, and it is what the ranking's fallback
+    #: population is keyed on.
+    touched_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class AnnotationRow(Base):

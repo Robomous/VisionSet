@@ -56,6 +56,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -555,14 +556,29 @@ def _refresh_progress(uow: UnitOfWork, job: AnnotationJob, asset_ids: Iterable[U
     the whole call, and that is the right outcome rather than a harsh one: this
     service is all-or-nothing, so the labels roll back with it, and a caller that
     reads again derives its progress from a state that is actually there.
+
+    **The write happens even when the progress does not move**, which is the one
+    place this function does something for a reason other than progress. Most
+    labeling leaves an asset exactly where it was — the second box on a frame
+    that was already ``annotated`` — and that is still somebody working in this
+    batch. Writing the value it already holds is what stamps ``touched_at``, and
+    it costs nothing else: the guard is ``progress = current``, which is
+    satisfied by construction unless somebody moved the asset underneath this
+    call — in which case the refusal below is exactly as welcome as it is for a
+    move that changes something.
+
+    One timestamp for the whole call rather than one per asset, because a caller
+    that labeled six frames in one request did that at one moment.
     """
+    touched_at = datetime.now(UTC)
     for asset_id in dict.fromkeys(asset_ids):
         remaining = uow.annotations.list(asset_id)
         current = job.progress[asset_id]
-        target = progress_after_annotating(current, has_annotations=bool(remaining))
-        if target is None:
-            continue
-        stored = uow.set_asset_progress(job.id, asset_id, expected=current, progress=target)
+        moved = progress_after_annotating(current, has_annotations=bool(remaining))
+        target = current if moved is None else moved
+        stored = uow.set_asset_progress(
+            job.id, asset_id, expected=current, progress=target, touched_at=touched_at
+        )
         if stored is not None and stored is not target:
             raise StaleWrite(
                 f"asset {asset_id} in job {job.id} was {current.value!r} when these labels were "
