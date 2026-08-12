@@ -138,7 +138,15 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
   );
 }
 
-function CreateProjectDialog({
+/**
+ * Exported so the workspace's Home can offer the same dialog.
+ *
+ * A first-run Home invites somebody to create their first project, and a filled
+ * button that only *navigates* to the screen carrying the real one would be a
+ * label promising an action it does not perform. One dialog, two callers, and
+ * this screen's behaviour is unchanged.
+ */
+export function CreateProjectDialog({
   open,
   onClose,
   onCreated,
