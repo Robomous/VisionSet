@@ -212,72 +212,50 @@ describe("what the panel says while the tool is working", () => {
   });
 
   it("says a request is in flight, in the async vocabulary and not a new spinner", () => {
-    render(mount({ session: asked(), pendingShown: true }));
+    render(mount({ session: asked() }));
     expect(screen.getByTestId("suggest-asking")).toBeTruthy();
     expect(screen.queryByTestId("suggest-accept")).toBeNull();
   });
 
-  it("says nothing at all about a request that has not been out long enough", () => {
-    // The status is `asking` from the instant the click leaves, and most clicks
-    // are answered before a person could read a word of this card. Reporting on
-    // the status rather than on the threshold is what made it flash.
-    render(mount({ session: asked() }));
-    expect(screen.queryByTestId("suggest-asking")).toBeNull();
-    expect(screen.getByTestId("suggest-idle")).toBeTruthy();
+  it("says so on the status alone, with no threshold to cross", () => {
+    // The card used to be gated behind a 200ms show delay, and a set of cases
+    // here described the window below it. The delay is gone, so the window has no
+    // duration and those cases are deleted rather than reworded — the state they
+    // named cannot be constructed any more.
+    const asking = asked();
+    expect(asking.status).toBe("asking");
+    render(mount({ session: asking }));
+    expect(screen.getByTestId("suggest-asking")).toBeTruthy();
   });
 
   it("explains a cold start only once the wait is long enough to be one", () => {
-    const cold = { session: asked(), pendingShown: true };
-    render(mount(cold));
+    render(mount({ session: asked() }));
     expect(screen.queryByTestId("suggest-cold-start")).toBeNull();
 
     cleanup();
-    render(mount({ ...cold, pendingEscalated: true }));
+    render(mount({ session: asked(), pendingEscalated: true }));
     expect(screen.getByTestId("suggest-cold-start").textContent).toContain(
       "The first click on a frame is the slow one",
     );
   });
 
-  it("keeps the shape's own card while a refine click is still out", () => {
-    // `withPoint` keeps the preview on screen on purpose. Falling through to the
-    // idle card here would trade the spinner's flicker for a different one, and
-    // the shape would be sitting on the canvas with the panel inviting a click
-    // that had already happened.
+  it("reports a refine the same way it reports a first click", () => {
+    // The shape being refined stays drawn on the canvas throughout —
+    // `paintSuggestion` tests what the session holds rather than what its status
+    // is — so this card describing the ask rather than the shape costs nothing.
     const refining = withPoint(shown(), [140, 160], "positive");
     render(mount({ session: refining }));
 
-    expect(screen.getByTestId("suggest-shown")).toBeTruthy();
-    expect(screen.queryByTestId("suggest-asking")).toBeNull();
+    expect(screen.getByTestId("suggest-asking")).toBeTruthy();
+    expect(screen.queryByTestId("suggest-shown")).toBeNull();
   });
 
-  it("dims accept while that refine is out, because accepting would do nothing", () => {
-    // `acceptedAnnotation` answers `null` for any status but `shown`, so an
-    // enabled button here is a live no-op. Discard stays live: `Esc` is the way
-    // out and must never be the thing that is disabled.
-    const onAccept = vi.fn();
-    const refining = withPoint(shown(), [140, 160], "positive");
-    render(mount({ session: refining, onAccept }));
-
-    const accept = screen.getByTestId("suggest-accept") as HTMLButtonElement;
-    expect(accept.disabled).toBe(true);
-    expect(accept.title).toBe("Waiting for the newer suggestion");
-    expect((screen.getByTestId("suggest-discard") as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("gives accept back the moment the newer answer lands", () => {
+  it("offers accept again the moment the newer answer lands", () => {
     const refining = withPoint(shown(), [140, 160], "positive");
     const back = answered(refining, refining.serial, proposal());
     render(mount({ session: back }));
 
     expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("hands a first click nothing to keep, so the invitation stays up", () => {
-    // The refine case above has a preview to hold on to; a first click has none,
-    // and inventing a card for the gap would be worse than the one already there.
-    render(mount({ session: asked() }));
-    expect(screen.getByTestId("suggest-idle")).toBeTruthy();
-    expect(screen.queryByTestId("suggest-shown")).toBeNull();
   });
 
   it("offers accept and discard once something is showing", async () => {

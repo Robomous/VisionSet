@@ -1,18 +1,29 @@
 /**
- * When a wait has earned the right to be shown, and when it has earned the right
- * to be explained.
+ * How long an indicator stays once it is up, and when a wait earns a sentence.
  *
- * A suggest click is answered in tens of milliseconds when the segmenter has
- * already read the frame, and in well over a second when it has not. Those two
- * want opposite things from an indicator: the fast one wants none at all, because
- * a spinner that appears and vanishes inside 150 ms reads as a glitch rather than
- * as work; the slow one wants something at the click point, because otherwise the
- * canvas is silent and *working* is indistinguishable from *broken*.
+ * A suggest click that has left is reported immediately: the halo appears at the
+ * click point on the same frame the request is dispatched, and the panel says so.
+ * There is no delay before it, and there used to be — 200ms, on the theory that a
+ * warm answer would beat it and no indicator would flash at all. Dogfooding on a
+ * real machine settled that: point-suggest inference does not resolve that fast
+ * even warm, so the delay never suppressed anything and only bought a second state.
  *
- * One timer answers both. Nothing is shown for `SHOW_DELAY_MS`; past it a halo
- * appears; past `ESCALATE_MS` the panel adds the sentence about the first click
- * being the slow one. And once shown it stays for `MIN_VISIBLE_MS`, so an answer
- * landing at 210 ms does not produce the blink the delay was there to prevent.
+ * Two rules survive, and each answers a different question.
+ *
+ * `MIN_VISIBLE_MS` is the **anti-flicker** guard, and with the delay gone it is the
+ * only one: once the halo is up it stays a quarter second, so an answer that does
+ * arrive quickly — a cache that gets faster, a stub in a test — cannot leave it on
+ * screen for two frames. `ESCALATE_MS` is the **explanation**: past a second and a
+ * half the wait is plausibly a cold start, which is worth a sentence rather than
+ * more shape.
+ *
+ * ## The state that no longer exists
+ *
+ * There is no *started but not yet visible*. A request being out and the halo
+ * being on screen are the same fact, and the machine cannot represent them
+ * disagreeing — which is why the delay was removed outright rather than defaulted
+ * to zero. A knob for a behaviour nobody wants is the same logic kept in costume,
+ * and it would leave every reader wondering which value production runs at.
  *
  * ## Why this is not in `core/`
  *
@@ -26,19 +37,22 @@
  *
  * The caller drives this from one boolean: the session's `asking`. A refine click
  * while an answer is still out never lowers that boolean, so the machine sees one
- * continuous in-flight period rather than two — which is what keeps a halo that
- * has already earned the screen from being taken away and given back 200 ms later.
- * The escalation likewise counts from the first unanswered click, because that is
- * the one paying for the encode; the refinements after it are the cheap ones.
+ * continuous in-flight period rather than two, and the escalation counts from the
+ * first unanswered click — the one paying for the encode, where the refinements
+ * after it are the cheap ones.
  */
 
 /** What the indicator has just done. */
 export type PendingPhase = "show" | "escalate" | "hide";
 
-/** Nothing before this; a halo after it. */
-export const SHOW_DELAY_MS = 200;
-
-/** Once shown, at least this long — the floor that kills the 200–250 ms blink. */
+/**
+ * Once up, at least this long.
+ *
+ * The floor is measured in *continuous screen time*, not from the request that
+ * happens to be out: a second request starting over a halo that is still up
+ * inherits its clock rather than restarting it, because the thing being prevented
+ * is a ring that blinks, and a ring that has been up 200ms has not blinked.
+ */
 export const MIN_VISIBLE_MS = 250;
 
 /** Long enough that the wait is worth a sentence rather than just a shape. */
@@ -46,7 +60,7 @@ export const ESCALATE_MS = 1500;
 
 /** The handle a host drives. */
 export interface PendingIndicator {
-  /** A request is out. Idempotent while one already is. */
+  /** A request is out — the halo shows now. Idempotent while one already is. */
   start(): void;
   /** An answer arrived. Honours the visibility floor. */
   resolve(): void;
@@ -66,8 +80,8 @@ type Timer = ReturnType<typeof setTimeout>;
  */
 export function pendingIndicator(announce: (phase: PendingPhase) => void): PendingIndicator {
   let inFlight = false;
-  let shownAt: number | null = null;
-  let delay: Timer | null = null;
+  /** When the halo went up. Non-null is exactly "on screen". */
+  let visibleSince: number | null = null;
   let escalate: Timer | null = null;
   let floor: Timer | null = null;
 
@@ -76,57 +90,50 @@ export function pendingIndicator(announce: (phase: PendingPhase) => void): Pendi
     return null;
   }
 
-  /** Every timer down and the period over. The one path out, so none is forgotten. */
-  function stop(): void {
-    delay = clear(delay);
+  function hide(): void {
     escalate = clear(escalate);
     floor = clear(floor);
     inFlight = false;
-  }
-
-  function hide(): void {
-    stop();
-    if (shownAt === null) return;
-    shownAt = null;
+    if (visibleSince === null) return;
+    visibleSince = null;
     announce("hide");
   }
 
   /**
-   * An answer or a refusal. Below the delay nothing was ever shown, so nothing is
-   * announced and the whole period leaves no trace; above it, the floor decides
-   * whether the hide is now or in a moment.
+   * An answer or a refusal: the request is over, and the floor decides whether the
+   * halo goes now or in a moment.
    */
   function settle(): void {
     if (!inFlight) return;
-    if (shownAt === null) {
-      stop();
-      return;
-    }
+    inFlight = false;
+    escalate = clear(escalate);
     // `Date.now()` rather than a monotonic clock: the quantity is a quarter of a
     // second of screen time, and the failure mode of a clock adjustment landing
     // inside it is one halo held a beat too long.
-    const visible = Date.now() - shownAt;
+    const visible = visibleSince === null ? MIN_VISIBLE_MS : Date.now() - visibleSince;
     if (visible >= MIN_VISIBLE_MS) {
       hide();
       return;
     }
-    delay = clear(delay);
-    escalate = clear(escalate);
     floor = setTimeout(hide, MIN_VISIBLE_MS - visible);
   }
 
   return {
     start(): void {
       if (inFlight) return;
-      // A `start` arriving inside a floor wait is a new click over an indicator
-      // still on screen: keep it there and carry on rather than blinking.
-      floor = clear(floor);
       inFlight = true;
-      delay = setTimeout(() => {
-        delay = null;
-        shownAt = Date.now();
+      // A start landing inside a floor wait is a new click over a halo that is
+      // still up: cancel the pending hide and keep it there. The floor's clock is
+      // deliberately **not** restarted — it measures unbroken screen time, and
+      // this ring has not gone anywhere.
+      floor = clear(floor);
+      if (visibleSince === null) {
+        visibleSince = Date.now();
         announce("show");
-      }, SHOW_DELAY_MS);
+      }
+      // Re-armed from this start rather than carried over: a fresh request is a
+      // fresh wait, and the sentence is about how long *this* one has taken.
+      escalate = clear(escalate);
       escalate = setTimeout(() => {
         escalate = null;
         announce("escalate");
@@ -135,7 +142,7 @@ export function pendingIndicator(announce: (phase: PendingPhase) => void): Pendi
     resolve: settle,
     reject: settle,
     cancel(): void {
-      if (!inFlight && shownAt === null) return;
+      if (!inFlight && visibleSince === null) return;
       hide();
     },
   };

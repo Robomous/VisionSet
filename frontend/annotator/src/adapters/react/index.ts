@@ -22,7 +22,6 @@ export {
 export {
   ESCALATE_MS,
   MIN_VISIBLE_MS,
-  SHOW_DELAY_MS,
   pendingIndicator,
   type PendingIndicator,
   type PendingPhase,
