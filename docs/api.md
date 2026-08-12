@@ -375,12 +375,24 @@ here to act on, only rows pointing at resources that declare their own capabilit
 because the page it answers asks four questions that each span every project, and answering them
 as separate resources would be a request per project per question.
 
-Two of its fields are honest about limits the storage format imposes, and a client should render
-them as they are described rather than as it might wish them. `resume` is ranked by **progress,
-not recency** - nothing records when a batch was last worked on - and a null `next_asset_id` means
-the batch has no unlabeled frame left, so the caller opens its gallery rather than the editor. An
-`ingest` activity entry is the newest asset arrival in a project rather than one run finishing,
-because an ingest job records no times.
+**`resume` declares its own kind, and that is the field to read first.** `annotate` means
+`next_asset_id` is a frame nobody has labeled, `review` means it is one awaiting a reviewer, and
+`open` means the batch is settled throughout and `next_asset_id` is null - so the caller opens its
+gallery rather than the editor. The three are in priority order and the order is resolved here: it
+is a judgment about what somebody should do next rather than a fact the rest of the response
+restates, and a client that worked it out again from the other fields would be keeping a second
+copy of a rule that can drift. Contrast the first-run state, which is deliberately *not* a field
+because `totals.projects` already answers it.
+
+Batches are ranked by when somebody last worked them - the one work-dating timestamp in the
+storage format. Ones nobody has worked since that became recordable rank last, ordered among
+themselves by how far through they are, which is every batch in a workspace created before the
+stamp existed: it was added without a backfill, because a moment that was never recorded cannot be
+reconstructed. Such a workspace behaves as it did before and converges as soon as anybody uses it.
+
+One further field is honest about a limit the storage format still imposes, and a client should
+render it as described rather than as it might wish. An `ingest` activity entry is the newest
+asset arrival in a project rather than one run finishing, because an ingest job records no times.
 
 ## Where the UI lives
 
