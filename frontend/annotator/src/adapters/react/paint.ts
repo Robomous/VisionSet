@@ -260,6 +260,49 @@ export const SUGGESTION_OPACITY = 0.6;
 /** The preview's stroke pattern — see `SUGGESTION_OPACITY`. */
 export const SUGGESTION_DASH = "10 6";
 
+/**
+ * The waiting halo, in the package's own vocabulary rather than the product's.
+ *
+ * `@visionset/annotator` ships headless — no Tailwind, no design tokens, no
+ * stylesheet — which is the whole of its claim to be embeddable, so a ring drawn
+ * here cannot name a semantic colour the way a `ui-core` component would. It is a
+ * neutral white at low opacity for the same reason the crosshair is white: it has
+ * to read over a photograph nobody chose, and a hue would compete with the class
+ * colour beside it, which is the one colour on this canvas that carries meaning.
+ *
+ * It is deliberately **not** the brand: the product spends coral in two places,
+ * and a spinner is not a third.
+ *
+ * The two radii are the pulse. `screenPx` divides both by zoom at the call site,
+ * so the halo is the same size on screen at every magnification — the rule every
+ * transient in this package follows.
+ */
+export const HALO_STROKE = "#ffffff";
+
+/**
+ * Where the ring starts each cycle, in screen pixels.
+ *
+ * A prompt marker is drawn at `VERTEX_PX + 1`, so this clears it: the halo is a
+ * ring *around* the click, never a disc over it, and the point a person placed
+ * has to stay legible while they wait for the answer to it.
+ */
+export const HALO_MIN_PX = 9;
+
+/** Where it ends, in screen pixels. See `HALO_MIN_PX`. */
+export const HALO_MAX_PX = 18;
+
+/** One breath. Slow enough to read as waiting rather than as an alarm. */
+export const HALO_PERIOD = "1.4s";
+
+/**
+ * The ring's opacity: the pulse's peak, and the still ring's fixed value.
+ *
+ * One number for both, because they are one answer to one question — *how loud
+ * may this be* — and the pulse fading from it to nothing is what makes the moving
+ * version no louder than the still one.
+ */
+export const HALO_OPACITY = 0.6;
+
 /** A pending suggestion, ready to draw. */
 export interface PaintedSuggestion {
   /** Never a tag or a path: the two kinds `SUGGESTIBLE_GEOMETRY_TYPES` names. */
@@ -274,11 +317,20 @@ export interface PaintedSuggestion {
 /**
  * The pending suggestion as a draw list, or `null` when there is nothing to draw.
  *
- * `null` covers every status but `shown` — an armed tool nobody has clicked with,
- * a first ask still in flight, an answer with nothing in it, a refusal. Each of
- * those is a *sentence*, and a sentence is the host's to render: this package
+ * `null` covers every state holding no shape — an armed tool nobody has clicked
+ * with, a first ask still in flight, an answer with nothing in it, a refusal. Each
+ * of those is a *sentence*, and a sentence is the host's to render: this package
  * ships no chrome, and `AnnotatorPanel`'s argument applies to a spinner and an
  * error message exactly as it does to a toolbar.
+ *
+ * **The test is the shape, not the status**, and that is a correction. This read
+ * `status !== "shown"` and so blanked the canvas on every refine click — while
+ * `withPoint` was deliberately *keeping* the suggestion across the ask for the
+ * stated reason that "a refine click that blanked the canvas and then repainted it
+ * would flicker on every press". The engine kept its half of that and the renderer
+ * threw it away, so the flicker it argues against was happening on every press.
+ * A held suggestion is the best answer anyone has until a better one arrives,
+ * whichever status is carrying it.
  *
  * The **points are carried whatever the status**, which is why the caller checks
  * for them separately: the dots are what makes a refine click legible, and they
@@ -290,7 +342,7 @@ export function paintSuggestion(
   declared: LabelClass | undefined,
 ): PaintedSuggestion | null {
   const suggestion = state.suggestion;
-  if (state.status !== "shown" || suggestion === null) return null;
+  if (suggestion === null) return null;
   // A parked session has no class, so there is no colour to draw it in and
   // no label to write on it. It also cannot be `shown`, so this is the same kind
   // of guard as the one above: what the type allows, not what the machine does.

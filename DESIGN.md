@@ -549,6 +549,34 @@ total is unknown gets the sentence and no bar at all; the bar appears when there
 fraction to draw. Giving the primitive an indeterminate animation would change this rule,
 which makes it a design decision and not a screen's to take in passing.
 
+### A wait earns its indicator
+
+**Nothing is reported for the first 200ms of any wait, and once reported it stays for at
+least 250ms** (#541, 2026-08-11). Most requests are answered faster than a person can read
+a word, and an indicator that appears and vanishes inside that window reads as a glitch
+rather than as work — so reporting on *a request being out* is the wrong trigger, and
+reporting on *a request having been out a while* is the right one. The floor is the other
+half: without it an answer landing at 210ms produces exactly the blink the delay was there
+to prevent. Where a wait has a second threshold worth crossing, what appears is **prose**,
+never a second indicator — the rule above, applied to the same problem from the other end.
+
+The worked example is the annotation editor's suggest tool (`docs/ui.md`): a ring at the
+click point past 200ms, and past 1.5s a sentence saying that the first click on a frame is
+the slow one. Both surfaces reporting that wait read one clock, in the component that owns
+the request — two clocks are free to drift, and a card and a canvas disagreeing about
+whether something is happening is worse than either alone.
+
+**A moving indicator has a still form, and a person who asked for one gets it.** This is the
+product's first `prefers-reduced-motion` handling and the rule it sets is that the
+*information survives the preference*: the still form is the same shape at the same weight,
+it simply does not move. Removing the indicator instead would answer a request about motion
+by withholding a fact, which is not what was asked. Nothing in the interface may be legible
+only while it is animating.
+
+**An indicator is never coral.** The brand's two sites are above, and a spinner is not a
+third — a thing that appears on every slow click would spend more of the brand than the
+wordmark does. Quiet neutrals, at low opacity, at the place the person is already looking.
+
 ### Lists and filtering
 
 Any list that can exceed ~20 rows carries a filter input. Filtering is client-side and

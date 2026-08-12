@@ -117,6 +117,25 @@ export interface SuggestPanelProps {
   readonly onConfigure?: () => void;
   readonly onAccept: () => void;
   readonly onDiscard: () => void;
+  /**
+   * Whether the wait has lasted long enough to report at all.
+   *
+   * `session.status === "asking"` is true the instant a click leaves, and most
+   * clicks are answered in well under the blink of an eye, because a segmenter
+   * reads the frame once and every later click is nearly free. Reporting on that
+   * status directly is what made this card flash on every refine. The threshold
+   * is the host's `usePendingIndicator`, shared with the canvas so the halo and
+   * this card cannot disagree about when a wait has become a wait.
+   */
+  readonly pendingShown?: boolean;
+  /**
+   * Whether it has lasted long enough to be worth explaining.
+   *
+   * The cold-start sentence used to ride along with the spinner on every click,
+   * including the fast ones it is not about. It is true of the first click on a
+   * frame, so it waits for a wait that is plausibly that one.
+   */
+  readonly pendingEscalated?: boolean;
 }
 
 /**
@@ -180,6 +199,8 @@ export function SuggestPanel({
   onConfigure,
   onAccept,
   onDiscard,
+  pendingShown = false,
+  pendingEscalated = false,
 }: SuggestPanelProps): JSX.Element {
   /*
     Parked outranks even the blocker. A connection this tool will not use
@@ -274,17 +295,24 @@ export function SuggestPanel({
     );
   }
 
-  if (session.status === "asking") {
+  // Gated on the threshold rather than on the status. A click answered in 90 ms —
+  // which is most of them — used to swap this card in and back out again, and a
+  // panel that flickers on every press teaches somebody to stop reading it.
+  if (session.status === "asking" && pendingShown) {
     return (
       <EditorNotice testId="suggest-panel" tone="calm" icon={<Loader2 className="size-4 animate-spin" />}>
         <p className="font-medium text-foreground" data-testid="suggest-asking">
           Looking at that…
         </p>
         {/* The route's own note, said where it matters: the first click on a frame
-            pays for reading the whole image and every later one is nearly free. */}
-        <p className="text-muted-foreground">
-          The first click on a frame is the slow one — refining after it is quick.
-        </p>
+            pays for reading the whole image and every later one is nearly free.
+            Held back until the wait is long enough to plausibly *be* that first
+            click — printed on a fast one it explains a delay nobody experienced. */}
+        {pendingEscalated && (
+          <p className="text-muted-foreground" data-testid="suggest-cold-start">
+            The first click on a frame is the slow one — refining after it is quick.
+          </p>
+        )}
       </EditorNotice>
     );
   }
@@ -304,7 +332,23 @@ export function SuggestPanel({
     );
   }
 
-  if (isAcceptable(session)) {
+  /*
+    A refine click whose answer is not back and whose wait has not yet earned the
+    screen. `withPoint` keeps the previous preview on purpose — the shape a person
+    is refining stays drawn, because blanking it would flicker the canvas as well
+    as the panel — so below the threshold the card that shape put here is still
+    the true one, and falling through to the idle card would swap one flicker for
+    another.
+
+    The one thing that changes is Accept. `acceptedAnnotation` answers `null` for
+    any status but `shown`, so an enabled button here would be a live no-op, which
+    is the shape of feedback this file exists to avoid. Disabled with a reason is
+    the house rule; `Discard` stays live, so `Esc` is never a trap.
+  */
+  const quietRefine =
+    session.status === "asking" && !pendingShown && session.suggestion !== null;
+
+  if (isAcceptable(session) || quietRefine) {
     return (
       <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-shown">
@@ -314,7 +358,14 @@ export function SuggestPanel({
           Click again to refine it — alt-click to take a part away.
         </p>
         <div className="mt-1 flex gap-2">
-          <Button variant="primary" size="sm" data-testid="suggest-accept" onClick={onAccept}>
+          <Button
+            variant="primary"
+            size="sm"
+            data-testid="suggest-accept"
+            disabled={quietRefine}
+            {...(quietRefine ? { title: "Waiting for the newer suggestion" } : {})}
+            onClick={onAccept}
+          >
             <Check className="size-4" aria-hidden="true" />
             Accept
             <Chip>↵</Chip>
@@ -342,12 +393,19 @@ export function SuggestPanel({
         flight and nothing is waiting to be accepted, so it is the only one where
         changing which model answers cannot pull the ground out from under
         something already on screen.
+
+        Gated on `hasPending` rather than on reaching this branch, which used to
+        be the same thing and is not any more: a first click below the indicator's
+        threshold now leaves this card up while its answer is genuinely out, and
+        the picker's whole rule is that it is absent exactly then.
       */}
-      <Through
-        candidates={candidates}
-        connectionId={connectionId}
-        {...(onChooseConnection === undefined ? {} : { onChoose: onChooseConnection })}
-      />
+      {!hasPending(session) && (
+        <Through
+          candidates={candidates}
+          connectionId={connectionId}
+          {...(onChooseConnection === undefined ? {} : { onChoose: onChooseConnection })}
+        />
+      )}
       {hasPending(session) && <Discard onDiscard={onDiscard} />}
     </EditorNotice>
   );

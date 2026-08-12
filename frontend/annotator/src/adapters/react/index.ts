@@ -12,7 +12,21 @@ export {
   type AnnotatorCanvasProps,
   type AnnotatorView,
 } from "./AnnotatorCanvas";
-export { useAnnotatorSnapshot, useAnnotatorStore } from "./hooks";
+export {
+  useAnnotatorSnapshot,
+  useAnnotatorStore,
+  usePendingIndicator,
+  useReducedMotion,
+  type PendingIndicatorState,
+} from "./hooks";
+export {
+  ESCALATE_MS,
+  MIN_VISIBLE_MS,
+  SHOW_DELAY_MS,
+  pendingIndicator,
+  type PendingIndicator,
+  type PendingPhase,
+} from "./pending";
 export { AnnotationLayer, type AnnotationLayerProps } from "./AnnotationLayer";
 export { TransientLayer, type TransientLayerProps } from "./TransientLayer";
 export {
@@ -29,6 +43,11 @@ export {
   Vertices,
 } from "./Shapes";
 export {
+  HALO_MAX_PX,
+  HALO_MIN_PX,
+  HALO_OPACITY,
+  HALO_PERIOD,
+  HALO_STROKE,
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
   classColor,
