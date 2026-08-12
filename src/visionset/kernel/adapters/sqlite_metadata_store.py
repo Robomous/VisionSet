@@ -351,6 +351,7 @@ class SqlUnitOfWork:
         *,
         expected: AssetProgress,
         progress: AssetProgress,
+        touched_at: datetime,
     ) -> AssetProgress | None:
         """One guarded ``UPDATE`` — see the port's docstring for why it exists.
 
@@ -367,6 +368,10 @@ class SqlUnitOfWork:
         rather than to decide whether the write happened. That second read runs
         inside this transaction, so a third writer cannot change what it reports
         before this one commits.
+
+        ``touched_at`` rides in the same ``values``, so it is stamped under the
+        same guard: a write that loses the race writes neither column, and there
+        is no ordering in which the timestamp records work that did not happen.
         """
         # `Session.execute` is typed as returning `Result`, which has no
         # `rowcount`; a DML statement always yields the `CursorResult` that does.
@@ -377,7 +382,7 @@ class SqlUnitOfWork:
                 .where(t.AnnotationJobAssetRow.job_id == job_id)
                 .where(t.AnnotationJobAssetRow.asset_id == asset_id)
                 .where(t.AnnotationJobAssetRow.progress == expected)
-                .values(progress=progress)
+                .values(progress=progress, touched_at=touched_at.isoformat())
             ),
         )
         if result.rowcount == 1:
@@ -391,6 +396,26 @@ class SqlUnitOfWork:
         if stored is None:
             raise EntityNotFound(f"job {job_id} does not carry asset {asset_id}")
         return AssetProgress(stored)
+
+    def last_touched(self, job_id: UUID) -> datetime | None:
+        """One ``max()`` over the job's rows — see the port's docstring.
+
+        The aggregate runs on the stored **strings**, and that is sound rather
+        than lucky: every timestamp in this schema is written by
+        ``datetime.isoformat()`` at a fixed UTC offset, and ISO-8601 in that form
+        orders lexicographically exactly as it orders chronologically. A column
+        holding two different offsets would not, which is one more reason the
+        write side stamps in one place.
+
+        ``max()`` over no rows, or over rows that are all NULL, is NULL — so a
+        job whose assets nobody has touched needs no separate branch here.
+        """
+        stamped = self._session.scalar(
+            select(func.max(t.AnnotationJobAssetRow.touched_at)).where(
+                t.AnnotationJobAssetRow.job_id == job_id
+            )
+        )
+        return None if stamped is None else datetime.fromisoformat(stamped)
 
     def add_batch_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> list[UUID]:
         """One ``INSERT ... SELECT`` per asset — see the port's docstring for why.

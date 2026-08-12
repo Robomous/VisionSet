@@ -248,6 +248,25 @@ def _add_model_family(connection: Connection) -> None:
     _add_column(connection, "inference_connection", "model_family")
 
 
+def _add_progress_touched(connection: Connection) -> None:
+    """``annotation_job_asset.touched_at``: when somebody last worked this frame.
+
+    **Nothing to backfill, and nothing that could be.** The value this column
+    holds is a moment that was never recorded, so there is no other row, no
+    derived field and no file timestamp to reconstruct it from — a workspace's
+    entire history of who-worked-when begins at this migration. Every existing
+    row therefore stays NULL, which reads as *nobody has touched this frame since
+    the column existed* rather than as *nobody ever has*, and the summary's
+    ranking is written to say exactly that: an untouched batch is ordered by the
+    progress rule that came before, behind every batch that has a stamp.
+
+    Migration 5's posture on ``annotation_schema.provenance``, for the same
+    reason and with the same consequence — a NULL that converges to a real value
+    as soon as somebody uses the workspace, and never lies in the meantime.
+    """
+    _add_column(connection, "annotation_job_asset", "touched_at")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -256,6 +275,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=5, name="schema_provenance", upgrade=_add_schema_provenance),
     Migration(version=6, name="inference_connections", upgrade=_add_inference_connections),
     Migration(version=7, name="model_family", upgrade=_add_model_family),
+    Migration(version=8, name="progress_touched", upgrade=_add_progress_touched),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

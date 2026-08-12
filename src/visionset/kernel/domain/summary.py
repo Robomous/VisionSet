@@ -11,12 +11,14 @@ answers "what does this project hold" and ``DatasetStats`` answers "what would I
 train on"; neither can answer "which of my projects is waiting on me", because
 neither is allowed to look at more than one.
 
-**No timestamp here dates a person's work, and that is a fact about the storage
-format rather than an omission.** There is no timestamp column on ``batch``, on
-``annotation``, or on ``annotation_job_asset`` — nothing records when a batch was
-created, when it changed state, when a label was drawn, or when an asset's
-progress last moved. Every consequence that follows in this module, chiefly
-:class:`ResumeTarget`'s ranking, comes from that one absence.
+**One timestamp here dates a person's work, and it is the only one.**
+``annotation_job_asset.touched_at`` records when somebody last moved a frame's
+progress, and :class:`ResumeTarget` is ranked on it. Nothing else in the storage
+format does: a ``batch`` records neither when it was created nor when it changed
+state, and an ``annotation`` records nothing at all. So a batch nobody has worked
+still has no age, which is what the ranking's second population is about, and the
+activity feed is still derived from timestamps that were put there for other
+reasons.
 """
 
 from __future__ import annotations
@@ -43,6 +45,29 @@ class AttentionKind(StrEnum):
     JOB_FAILED = "job_failed"
     #: A queued unit of machine work still going.
     JOB_RUNNING = "job_running"
+
+
+# This docstring ships verbatim into `openapi.json`, so it says what a client
+# needs and no more. The reasoning it used to carry belongs here instead.
+#
+# **The order is a decision this module owns, not a fact the response restates.**
+# Labeling first, then review, then a batch that needs neither, is a judgment
+# about what somebody should do next — and a judgment spelled once in Python and
+# again in whatever renders it is one that drifts. That is what distinguishes it
+# from the summary's first-run state, which is deliberately *not* a field:
+# "this workspace has no projects" is a count the response already carries, so a
+# flag beside it would be a second spelling of the same number.
+class ResumeKind(StrEnum):
+    """What an open batch is being offered for, and so what `next_asset_id` is.
+
+    `annotate` - a frame nobody has labeled, which is that frame.
+    `review` - every frame is labeled or set aside and some await a reviewer,
+    which is the first of those. `open` - neither, and `next_asset_id` is null.
+    """
+
+    ANNOTATE = "annotate"
+    REVIEW = "review"
+    OPEN = "open"
 
 
 class ActivityKind(StrEnum):
@@ -76,33 +101,35 @@ class WorkspaceTotals(BaseModel):
 
 
 class ResumeTarget(BaseModel):
-    """The batch to carry on with, and where inside it to land.
+    """The batch to carry on with, where inside it to land, and what for.
 
-    **Ranked by progress, not by recency, and the reason is structural.** No
-    timestamp exists anywhere on a batch, an annotation, or an asset's progress
-    row, so "the batch I touched last" has no source in the schema and deriving
-    one would mean a migration. What the data *can* answer is which batch is
-    furthest along and not yet finished — the batch you are part-way through —
-    and that is what this is.
+    **Ranked by recency, and by progress only where recency has nothing to say.**
+    ``annotation_job_asset.touched_at`` is stamped whenever somebody moves a
+    frame, so a batch that has been worked outranks every batch that has not, and
+    the latest touch wins among those that have. Batches nobody has touched are
+    ranked among themselves the way the whole card used to be ranked: furthest
+    through first, ties to the later-created batch, which is the closest thing to
+    recency insertion order can offer.
 
-    The substitution is acceptable because of two properties. It degrades
-    correctly: a workspace with one open batch is offered that batch whatever its
-    progress. And it claims only what is true by construction, where a recency
-    ordering would have claimed something the rows cannot support.
+    That second population is not a leftover. ``touched_at`` was added rather
+    than backfilled, because the moments it holds were never recorded anywhere —
+    so every row in a workspace that predates it is NULL, and the fallback is
+    what makes such a workspace behave exactly as it did before while converging
+    to real recency as soon as anybody uses it.
 
-    The accepted limit, stated so nobody reports it as a defect: two batches
-    part-way through resolve to the further-along one rather than to the one
-    somebody touched most recently.
-
-    ``next_asset_id`` is NULL when nothing in the batch is ``unannotated`` any
-    more — every frame is settled or waiting on review. That is not an error and
-    not an empty resume: the batch is still the one to open, so the caller sends
-    somebody to its gallery instead of into the editor. A surface rendering this
-    changes its own label accordingly.
+    ``kind`` decides the rest, and it is the field to read first. It says whether
+    ``next_asset_id`` is a frame to label, a frame to review, or absent — see
+    :class:`ResumeKind`. A batch is offered as ``open`` when it is settled
+    throughout: not an error and not an empty resume, just a batch worth opening
+    with no frame to open it at.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: What this batch is being offered for, and therefore what a surface should
+    #: promise on its control. Resolved here rather than by whoever renders it,
+    #: because the order between the three is a decision rather than a fact.
+    kind: ResumeKind
     project_id: UUID
     project_name: str
     batch_id: UUID
@@ -115,13 +142,20 @@ class ResumeTarget(BaseModel):
     #: ``in_annotation`` has at least one job. A batch with none is not offered
     #: at all rather than offered with nothing to open.
     job_id: UUID
-    #: The first ``unannotated`` asset in batch order, or NULL — see above.
+    #: Where to land, in batch order: the first ``unannotated`` frame under
+    #: ``annotate``, the first ``review_pending`` one under ``review``, NULL
+    #: under ``open``. Which of those it is comes off ``kind``.
     next_asset_id: UUID | None = None
     #: Settled assets, i.e. those not blocking the job from completing. Counted
     #: against ``SETTLED_PROGRESS`` rather than against ``annotated`` alone, so a
     #: skipped frame reads as dealt with rather than as outstanding.
     annotated: int = Field(ge=0)
     total: int = Field(ge=0)
+    #: Frames in this batch waiting on a reviewer. Always populated, not only
+    #: under ``review``: a batch can hold frames for review and unlabeled frames
+    #: at once, and a surface showing the count only in the state where it is the
+    #: headline would hide the more interesting case.
+    review_pending: int = Field(ge=0)
     #: A frame to show beside the card, or NULL when the batch holds none that
     #: records a cached preview. The caller reaches the bytes by asset id, the
     #: way every other thumbnail in the product is addressed.

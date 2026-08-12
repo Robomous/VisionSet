@@ -34,6 +34,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -223,7 +224,10 @@ class JobService:
         Marking a state the asset is already in is a **no-op**, not a refusal:
         progress is a marker driven by what annotators do, and re-stating it is
         not a move. That is deliberately unlike ``BatchService.approve``, where a
-        second call would re-partition the batch.
+        second call would re-partition the batch. It is also why such a call
+        leaves ``touched_at`` alone: it returns above the write, and a client
+        re-sending a value the asset already holds is a retry rather than
+        somebody working the frame.
 
         One method rather than five intent-named ones, because
         ``ASSET_PROGRESS_TRANSITIONS`` is the whole of what is legal and a second
@@ -262,7 +266,13 @@ class JobService:
             # job and would put back every *other* asset as it was read. A
             # returning value means the guard failed, i.e. somebody moved this
             # asset while the lines above were deciding.
-            stored = uow.set_asset_progress(job.id, asset_id, expected=current, progress=progress)
+            stored = uow.set_asset_progress(
+                job.id,
+                asset_id,
+                expected=current,
+                progress=progress,
+                touched_at=datetime.now(UTC),
+            )
             if stored is not None:
                 if stored is progress:
                     # Somebody else made the same move first. The caller's intent
