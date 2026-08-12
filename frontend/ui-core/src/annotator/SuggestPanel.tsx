@@ -508,6 +508,22 @@ function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
 
 
 /**
+ * Keep the press from moving focus off the canvas.
+ *
+ * Every keyboard rule in the editor is a `keydown` on the annotator's own root,
+ * so a control that took focus would silently switch them all off — `[` and `]`
+ * would stop stepping, and `Esc` would stop being the preview's undo, both with
+ * nothing on screen to say why. Found in a browser: jsdom has no focus to move.
+ *
+ * On the two controls whose whole effect is on the canvas, and not on the slider
+ * or the checkbox, which are ordinary form controls somebody may want to reach
+ * with the keyboard and operate there.
+ */
+function keepFocusOnCanvas(event: { preventDefault: () => void }): void {
+  event.preventDefault();
+}
+
+/**
  * The settings, inside the card that is already on screen.
  *
  * **A section rather than a popup**, which is the decision the whole thing turns
@@ -545,6 +561,7 @@ function Adjustments({
         type="button"
         className="mt-1 w-fit text-xs text-muted-foreground underline-offset-2 hover:underline"
         data-testid="suggest-adjust-open"
+        onMouseDown={keepFocusOnCanvas}
         onClick={() => onOpen(true)}
       >
         Adjust the shape
@@ -571,6 +588,7 @@ function Adjustments({
                 )}
                 aria-pressed={step === detail}
                 data-testid={`suggest-detail-${step}`}
+                onMouseDown={keepFocusOnCanvas}
                 onClick={() => onDetail(step)}
               >
                 {step}
