@@ -88,7 +88,7 @@ import { useState, type ComponentType, type FormEvent, type JSX } from "react";
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { BackLink } from "../patterns/BackLink";
+import { Breadcrumb } from "../patterns/Breadcrumb";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Button";
 import {
@@ -302,7 +302,11 @@ export function ProjectScreen({
 
   return (
     <div className="flex flex-col gap-6" data-testid="project-screen">
-      {onBack !== undefined && <BackLink onClick={onBack} label="Projects" />}
+      {/* One ancestor, and it is the shortest chain in the product: a project's
+          parent is the list and nothing sits above it. */}
+      <Breadcrumb
+        items={onBack === undefined ? [] : [{ label: "Projects", onNavigate: onBack }]}
+      />
 
       <Async query={project} loadingRows={2}>
         {(loaded) => (

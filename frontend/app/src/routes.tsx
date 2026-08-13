@@ -173,21 +173,29 @@ function Home(): JSX.Element {
 }
 
 /**
- * Every sub-view's parent, in one place.
+ * Every ancestor of every sub-view, in one place.
  *
- * A back affordance navigates to its **declared parent**, never `navigate(-1)`:
+ * A breadcrumb crumb navigates to its **declared ancestor**, never `navigate(-1)`:
  * the destination has to be the same whether the page was reached by clicking
  * through, by pasting a URL, by reloading, or by walking forward from a sibling.
  * History cannot promise that, and on a fresh tab it leaves the application
  * entirely.
  *
- * The parents live here rather than in the screens because a parent is a fact
- * about the *route table*, and `ui-core` deliberately does not have one — the note
- * on `Projects` above is the same rule from the other side. `DESIGN.md`'s
+ * The ancestors live here rather than in the screens because a destination is a
+ * fact about the *route table*, and `ui-core` deliberately does not have one — the
+ * note on `Projects` above is the same rule from the other side. `DESIGN.md`'s
  * **Navigation rules** is the prose half of this table.
  *
- * The gallery's parent carries `?tab=batches`, because landing on the project's
- * default Schema tab after leaving a batch is landing somewhere you were not.
+ * **This table is walked by hand rather than transitively, and the reason is
+ * labels.** A crumb needs a name as well as a URL, and a project's name is behind
+ * a query `ui-core` makes — this file holds ids and does not fetch, by the rule at
+ * the top of it. So the split is: the host spells every URL, the screen supplies
+ * every label and composes the chain from the callbacks it was handed. What could
+ * silently drift is a URL, and a URL still has exactly one spelling.
+ *
+ * The gallery's chain ends at `?tab=batches`, because landing on the project's
+ * default Schema tab after leaving a batch is landing somewhere you were not — a
+ * tab in the query string (#171) is a place, so it is a level.
  */
 const PARENT = {
   //: A rail destination, like `inference` below, so nothing declares it as a
@@ -276,6 +284,10 @@ function Gallery(): JSX.Element {
       projectId={projectId}
       batchId={batchId}
       onBack={() => void navigate(PARENT.batches(projectId))}
+      // The two levels above the Batches tab. The gallery is the product's
+      // deepest padded page, so it is the one whose chain is three long.
+      onOpenProject={() => void navigate(PARENT.project(projectId))}
+      onOpenProjects={() => void navigate(PARENT.projects)}
       onOpenAsset={(asset) => {
         if (asset.job_id === null || asset.job_id === undefined) return;
         void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
@@ -384,6 +396,7 @@ function Ingest(): JSX.Element {
     <IngestScreen
       projectId={projectId}
       onBack={() => void navigate(PARENT.project(projectId))}
+      onOpenProjects={() => void navigate(PARENT.projects)}
       onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
       // The foreshadowing banner's link: the schema section is a `?tab=`
       // on the project page, and spelling that URL is this file's job.

@@ -62,7 +62,15 @@ Rules derived from the 2026-08 audit (§6):
 
 - **Single route definition site**: `frontend/app/src/routes.tsx`. No routes defined elsewhere.
 - **`ui-core` stays router-free.** Screens receive navigation as callback props (`routes.tsx:113-121` pattern). Never import a router in `ui-core`.
-- **Back-links are declared** in the routes parent map (`PARENT` in `routes.tsx`) and must point to the contextual parent: the gallery's back is the Batches tab. **A tab has no back-link** — its way out is the tab bar, and one inside a panel would be a second, contradictory answer to "where am I". That is why `DatasetScreen` takes `onBack` as optional and the tab mount passes none. **A rail destination has no back-link either**, for the same reason and with the rail in the tab bar's place: `InferenceScreen` takes no `onBack`, and `PARENT.inference` exists as the address other screens send people *to* (#424's D6 panel is the first) rather than as a parent anything returns from.
+- **Navigation renders the whole ancestor chain, not one level.** Every destination in it is declared in the routes parent map (`PARENT` in `routes.tsx`); the labels come from the screen, because a project's name is behind a query `ui-core` makes and `routes.tsx` does not fetch. The chains, and the current page is never in its own — it is the `<h1>`:
+
+  | route | chain |
+  | --- | --- |
+  | `/projects/:id` | `Projects` |
+  | `/projects/:id/ingest` | `Projects / <project>` |
+  | `/projects/:id/batches/:batchId` | `Projects / <project> / Batches` |
+
+  **A tab in the query string is a level**, which is what the batch route's third crumb is: its ancestor is `PARENT.batches` (`/projects/:id?tab=batches`), not the project's default section — landing on Schema after leaving a batch is landing somewhere you were not. Below `lg` the same chain collapses to `← <immediate parent>`; one component, two presentations. **A tab has no chain of its own** — its way out is the tab bar, and one inside a panel would be a second, contradictory answer to "where am I". That is why `DatasetScreen` takes no navigation prop at all: it had a vestigial optional `onBack` that no mount passed after the move to a tab, and it is gone. **A rail destination has none either**, for the same reason with the rail in the tab bar's place: `InferenceScreen` takes no `onBack`, and `PARENT.inference` exists as the address other screens send people *to* (#424's D6 panel is the first) rather than as an ancestor anything returns from. **The annotator is the one sub-view with no chain**: its 44px bar keeps the ghost `ArrowLeft` meaning *up* to the batch, because the bar's left zone already truncates to hold its navigation cluster centred.
 - Tab state lives in `?tab=` with `replace: true`; unknown values fall back to `overview` silently.
 
 ## Process rule
