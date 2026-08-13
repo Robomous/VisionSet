@@ -11,6 +11,12 @@
  * The import is dynamic and guarded on there being a diagram, so mermaid (which is
  * megabytes) is fetched on the fifteen architecture pages and on none of the other
  * twenty-seven.
+ *
+ * The second half of the script is the magnifier: a diagram set at the width of a
+ * prose column is unreadable, and these are the pages where the diagram *is* the
+ * point. Every drawn diagram gets a button, and the button opens the SVG in a
+ * `<dialog>` that fills the viewport, with wheel-zoom and drag-pan for the large
+ * architecture graphs that do not fit even there.
  */
 import Default from "@astrojs/starlight/components/Head.astro";
 ---
@@ -44,6 +50,181 @@ import Default from "@astrojs/starlight/components/Head.astro";
       theme: document.documentElement.dataset.theme === "dark" ? "dark" : "default",
     });
     await mermaid.run({ nodes });
+    addMagnifiers(nodes);
+  }
+
+  // Two icons, inline, because one `<svg>` literal each is smaller than any way of
+  // getting at an icon set from here.
+  const MAGNIFIER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5"
+    cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M10.5 7.5v6M7.5 10.5h6"/></svg>`;
+
+  const CROSS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round" aria-hidden="true"><path
+    d="M6 6l12 12M18 6L6 18"/></svg>`;
+
+  // The wrapper comes from the remark transform, so it survives the redraw above —
+  // which reassigns the `<pre>`'s text content and would take any button inside it
+  // with it. The button is therefore added once and never again, and the guard is
+  // what makes calling this on every draw free.
+  function addMagnifiers(nodes: HTMLElement[]) {
+    for (const node of nodes) {
+      const figure = node.closest<HTMLElement>(".mermaid-figure");
+      if (figure === null || figure.querySelector(".mermaid-zoom") !== null) continue;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "mermaid-zoom";
+      button.setAttribute("aria-label", "Expand diagram");
+      button.innerHTML = MAGNIFIER;
+      button.addEventListener("click", () => expand(figure));
+      figure.append(button);
+    }
+  }
+
+  // One dialog for the whole page, reused. Per-diagram instances would each need
+  // their own copy of the pan and zoom state below, for no gain: only one can be
+  // open at a time.
+  let lightbox: { dialog: HTMLDialogElement; stage: HTMLElement; canvas: HTMLElement } | undefined;
+
+  let scale = 1;
+  let panX = 0;
+  let panY = 0;
+
+  const MAX_SCALE = 8;
+
+  function applyTransform(stage: HTMLElement, canvas: HTMLElement) {
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    stage.style.cursor = scale > 1 ? "grab" : "";
+  }
+
+  function lightboxElements() {
+    // `isConnected` rather than a bare `undefined` check: were Starlight's view
+    // transitions ever switched on, a navigation would swap the body out from under
+    // this and leave a reference to a detached dialog, which `showModal` accepts and
+    // nobody ever sees.
+    if (lightbox !== undefined && lightbox.dialog.isConnected) return lightbox;
+
+    const dialog = document.createElement("dialog");
+    dialog.className = "mermaid-lightbox";
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "mermaid-lightbox-close";
+    close.setAttribute("aria-label", "Close");
+    close.innerHTML = CROSS;
+
+    const stage = document.createElement("div");
+    stage.className = "mermaid-lightbox-stage";
+    const canvas = document.createElement("div");
+    canvas.className = "mermaid-lightbox-canvas";
+    stage.append(canvas);
+    dialog.append(close, stage);
+    document.body.append(dialog);
+
+    close.addEventListener("click", () => dialog.close());
+    // A click whose target is the dialog *itself* is a click on the backdrop —
+    // anything on the content hits one of the children above. Esc is native, and so
+    // is returning focus to the button the dialog was opened from.
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+
+    // Non-passive, deliberately: a wheel listener registered the default way cannot
+    // `preventDefault`, and the page scrolls behind the dialog instead of zooming.
+    stage.addEventListener(
+      "wheel",
+      (event) => {
+        event.preventDefault();
+        const rect = stage.getBoundingClientRect();
+        // The canvas is centred in the stage and scales about its own centre, so
+        // offsets from the stage centre are the frame the transform is written in.
+        const x = event.clientX - rect.left - rect.width / 2;
+        const y = event.clientY - rect.top - rect.height / 2;
+
+        const next = Math.min(MAX_SCALE, Math.max(1, scale * Math.exp(-event.deltaY / 400)));
+        const ratio = next / scale;
+        // Hold whatever is under the cursor still while the scale changes.
+        panX = x - ratio * (x - panX);
+        panY = y - ratio * (y - panY);
+        scale = next;
+        // At fit there is nowhere to pan to, and a diagram left off-centre by an
+        // earlier drag would otherwise stay there.
+        if (scale === 1) {
+          panX = 0;
+          panY = 0;
+        }
+        applyTransform(stage, canvas);
+      },
+      { passive: false },
+    );
+
+    let panning = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    stage.addEventListener("pointerdown", (event) => {
+      if (scale === 1) return;
+      panning = true;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      stage.setPointerCapture(event.pointerId);
+      stage.style.cursor = "grabbing";
+    });
+
+    stage.addEventListener("pointermove", (event) => {
+      if (!panning) return;
+      panX += event.clientX - lastX;
+      panY += event.clientY - lastY;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      applyTransform(stage, canvas);
+    });
+
+    for (const type of ["pointerup", "pointercancel"]) {
+      stage.addEventListener(type, () => {
+        panning = false;
+        applyTransform(stage, canvas);
+      });
+    }
+
+    lightbox = { dialog, stage, canvas };
+    return lightbox;
+  }
+
+  function expand(figure: HTMLElement) {
+    // Scoped to the `<pre>` rather than the figure, because the figure also contains
+    // the magnifier — whose icon is itself an `<svg>`. A bare `figure svg` picks the
+    // diagram only because the button happens to be appended after it, which is not
+    // a property worth depending on.
+    const source = figure.querySelector<SVGSVGElement | HTMLImageElement>(
+      "pre.mermaid svg, pre.mermaid img",
+    );
+    if (source === null) return;
+
+    const { dialog, stage, canvas } = lightboxElements();
+    const clone = source.cloneNode(true) as SVGSVGElement | HTMLImageElement;
+
+    // The `id` is deliberately kept. mermaid writes a `<style>` *inside* the SVG
+    // whose every selector is scoped to that id, so stripping it to avoid a
+    // duplicate in the document would strip the diagram's entire appearance.
+    //
+    // Sizing: mermaid sets width/height attributes and an inline `max-width: Npx`,
+    // all three of which pin the drawing to the width of the prose column. Cleared,
+    // the `viewBox` is what remains, and it fits to the box while keeping the ratio.
+    clone.removeAttribute("width");
+    clone.removeAttribute("height");
+    clone.style.maxWidth = "100%";
+    clone.style.maxHeight = "100%";
+    clone.style.width = "auto";
+    clone.style.height = "auto";
+
+    canvas.replaceChildren(clone);
+    scale = 1;
+    panX = 0;
+    panY = 0;
+    applyTransform(stage, canvas);
+    dialog.showModal();
   }
 
   void draw();

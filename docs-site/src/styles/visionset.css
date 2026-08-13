@@ -1,15 +1,18 @@
 /*
- * Branding, and only branding.
+ * Branding, one layout token, and the mermaid magnifier. Nothing else.
  *
- * Starlight's own layout, spacing and typography are left alone — this file sets
- * the accent, keeps the banner usable on a narrow screen, and gives the mermaid
- * diagrams somewhere to sit. Anything beyond that is a second design system to keep
- * current, for a site whose job is to render `docs/` faithfully.
+ * Starlight's own spacing and typography are left alone; the single layout override
+ * is `--sl-content-width` below, and it is called out here rather than buried
+ * because the rest of this file used to be branding *only*. Anything beyond these is
+ * a second design system to keep current, for a site whose job is to render `docs/`
+ * faithfully.
  *
  * The accent and the two responsive rules are Robomous's documentation styling,
  * shared with the other documentation sites so the family reads as one. Change them
  * there and here together, or they stop matching — which is the whole point of them
- * being these exact values.
+ * being these exact values. **The content width is not one of the shared values**:
+ * this site widened and the others did not, so it is a deliberate difference rather
+ * than drift somebody should reconcile.
  */
 
 /*
@@ -31,6 +34,20 @@
   --sl-color-accent-low: #43140f;
   --sl-color-accent: #f2594b;
   --sl-color-accent-high: #f8b5ad;
+
+  /*
+   * Starlight's default is 45rem, which is a comfortable measure for prose and too
+   * narrow for what `docs/` actually contains: wide tables, and diagrams whose whole
+   * job is to be read. 50rem is the smallest widening that helps them without
+   * turning the body text into a line nobody can track back from.
+   *
+   * It is theme-independent, so it is declared once here and not repeated in the
+   * light block below. It is also a **max-width** rather than a width — Starlight
+   * resolves it into the content pane's `max-inline-size` — so a viewport that
+   * cannot afford it simply gets a narrower column, and the sidebar and the table of
+   * contents keep their own widths at every breakpoint.
+   */
+  --sl-content-width: 50rem;
 }
 
 :root[data-theme="light"] {
@@ -95,4 +112,159 @@ pre.mermaid:not([data-processed]) {
   font-size: 0.8rem;
   white-space: pre;
   color: var(--sl-color-gray-3);
+}
+
+/*
+ * The magnifier, and the dialog it opens.
+ *
+ * `.mermaid-figure` is written by `integrations/remark-mermaid.mjs` and wraps the
+ * `<pre>` above; it exists only to be the button's positioning context. It carries
+ * no box of its own, so the `<pre>`'s margins collapse straight through it and the
+ * two elements occupy exactly the same rectangle.
+ */
+.mermaid-figure {
+  position: relative;
+}
+
+/*
+ * Both buttons, one appearance. They sit in the same corner of their respective
+ * boxes and do the same kind of job, and a second set of values here would be one
+ * more thing to keep in step for no reader's benefit.
+ */
+.mermaid-zoom,
+.mermaid-lightbox-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  color: var(--sl-color-gray-2);
+  background: var(--sl-color-bg);
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.mermaid-zoom svg,
+.mermaid-lightbox-close svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.mermaid-zoom:hover,
+.mermaid-lightbox-close:hover {
+  color: var(--sl-color-white);
+  border-color: var(--sl-color-gray-4);
+}
+
+/*
+ * Hidden until wanted, so a page of diagrams is not a page of buttons. Revealed by
+ * hovering the diagram *or* by focusing the button, which is the whole of its
+ * keyboard reachability — `opacity` rather than `display` precisely so that it stays
+ * in the tab order while invisible.
+ */
+.mermaid-zoom {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.mermaid-figure:hover .mermaid-zoom,
+.mermaid-zoom:focus-visible {
+  opacity: 1;
+}
+
+/* A touch device has no hover to reveal it with, so it is simply always there. */
+@media (hover: none) {
+  .mermaid-zoom {
+    opacity: 1;
+  }
+}
+
+.mermaid-lightbox {
+  width: 92vw;
+  height: 88vh;
+  max-width: 92vw;
+  max-height: 88vh;
+
+  /*
+   * Explicit, and not redundant: the browser's own stylesheet centres a modal
+   * dialog with `margin: auto`, and Starlight's reset zeroes the margin on
+   * everything. Without this the dialog opens hard against the top-left corner —
+   * measured, not guessed.
+   */
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  color: var(--sl-color-text);
+  background: var(--sl-color-bg);
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+}
+
+.mermaid-lightbox::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+
+/*
+ * The stage clips; the canvas is what moves. Keeping the transform on an inner
+ * element is what lets the diagram be panned beyond the edges without the dialog
+ * growing a scrollbar, and `touch-action: none` is what stops a drag on a phone
+ * being read as a page scroll.
+ */
+.mermaid-lightbox-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.mermaid-lightbox-canvas {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 1.5rem;
+  /*
+   * Load-bearing, and it is the assumption the zoom arithmetic in `Head.astro` is
+   * written against: the canvas fills the stage, so its centre is the stage's
+   * centre, and scaling about that point is what lets "keep what is under the
+   * cursor still" be two lines rather than a matrix.
+   */
+  transform-origin: center;
+}
+
+@keyframes mermaid-lightbox-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.mermaid-lightbox[open],
+.mermaid-lightbox[open]::backdrop {
+  animation: mermaid-lightbox-in 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mermaid-lightbox[open],
+  .mermaid-lightbox[open]::backdrop {
+    animation: none;
+  }
+
+  .mermaid-zoom {
+    transition: none;
+  }
 }
