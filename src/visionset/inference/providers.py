@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from visionset.inference._extra import require
-from visionset.inference.cache import DEFAULT_PROVIDER_CAPACITY, BoundedCache
+from visionset.inference.cache import DEFAULT_PROVIDER_CAPACITY, BoundedCache, KeyedLocks
 from visionset.inference.families import (
     DETECTOR_FAMILIES,
     SEGMENTER_FAMILIES,
@@ -82,6 +82,7 @@ class ProviderPool:
 
     def __init__(self, capacity: int = DEFAULT_PROVIDER_CAPACITY) -> None:
         self._held: BoundedCache[_Key, Runner] = BoundedCache(capacity)
+        self._building: KeyedLocks[_Key] = KeyedLocks()
         self._builds = 0
 
     @property
@@ -99,14 +100,25 @@ class ProviderPool:
         Every refusal ``provider_for`` can raise is raised here too, and raised
         *before* anything is cached: a connection that is not ready must not
         leave a half-answer behind for the request that follows its download.
+
+        **Built once even when the first several clicks arrive together.** The
+        window between finding nothing here and storing what was built is wide —
+        a build reads a config off disk and the adapter then loads gigabytes of
+        weights — and four concurrent first clicks went through it four times in
+        one process. The lock is per connection, so two connections still build
+        in parallel, and a refusal still caches nothing.
         """
         key = (str(connection.id), connection.updated_at.isoformat())
         held = self._held.get(key)
         if held is not None:
             return held
-        built = provider_for(connection, workspace_root=workspace_root)
-        self._builds += 1
-        return self._held.put(key, built)
+        with self._building.for_key(key):
+            held = self._held.get(key)
+            if held is not None:
+                return held
+            built = provider_for(connection, workspace_root=workspace_root)
+            self._builds += 1
+            return self._held.put(key, built)
 
     def clear(self) -> None:
         """Drop everything held. What a test does between cases."""

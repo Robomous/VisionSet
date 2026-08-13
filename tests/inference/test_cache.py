@@ -12,6 +12,7 @@ from visionset.inference.cache import (
     DEFAULT_EMBEDDING_CAPACITY,
     DEFAULT_PROVIDER_CAPACITY,
     BoundedCache,
+    KeyedLocks,
 )
 
 
@@ -88,3 +89,19 @@ def test_the_shipped_capacities_leave_room_for_the_co_residency_the_design_assum
     """Two providers is a detector and a segmenter, which is what D1 describes."""
     assert DEFAULT_PROVIDER_CAPACITY >= 2
     assert DEFAULT_EMBEDDING_CAPACITY >= 2
+
+
+# --- the single-flight primitive ----------------------------------------------
+
+
+def test_one_key_answers_with_one_lock() -> None:
+    """The whole of single-flight: two callers asking about the same thing wait on
+    the same object. A fresh lock per call would let both compute."""
+    locks: KeyedLocks[str] = KeyedLocks()
+    assert locks.for_key("a") is locks.for_key("a")
+
+
+def test_two_keys_answer_with_different_locks() -> None:
+    """Per key, so an encode of one asset never queues behind another's."""
+    locks: KeyedLocks[str] = KeyedLocks()
+    assert locks.for_key("a") is not locks.for_key("b")
