@@ -403,6 +403,13 @@ describe("two fingers are one gesture: a scale about a point, and that point's t
   it("keeps whatever is under the midpoint under the midpoint, drift and scale together", () => {
     // The invariant the whole gesture is judged by, and the reason the caller
     // applies the translation first and then zooms about the centroid.
+    //
+    // **Both midpoints are computed here rather than read off the result**, and
+    // that is the difference between this assertion and a tautology. Asserting
+    // the held pixel lands on `pinch.centroidX` passes under a mutation that
+    // takes the centroid from *before* the move — because `dx` is derived from
+    // the same field, so the expectation slides exactly as far as the answer
+    // does. Mutation-verified: taking the centroid from `before` reddens this.
     const viewport: Viewport = { zoom: 0.8, panX: 37, panY: -12 };
     const before = [
       [100, 100],
@@ -412,18 +419,25 @@ describe("two fingers are one gesture: a scale about a point, and that point's t
       [60, 140],
       [420, 260],
     ] as const;
-    const pinch = pinchBetween(before, after);
-    const beforeCentroid: readonly [number, number] = [
-      (before[0][0] + before[1][0]) / 2,
-      (before[0][1] + before[1][1]) / 2,
+    const midpoint = (pair: typeof before): readonly [number, number] => [
+      (pair[0][0] + pair[1][0]) / 2,
+      (pair[0][1] + pair[1][1]) / 2,
     ];
-    const held = screenToImage(viewport, beforeCentroid[0], beforeCentroid[1]);
+    const from = midpoint(before);
+    const to = midpoint(after);
 
+    const pinch = pinchBetween(before, after);
+    expect(pinch.centroidX).toBeCloseTo(to[0], 10);
+    expect(pinch.centroidY).toBeCloseTo(to[1], 10);
+    expect(pinch.dx).toBeCloseTo(to[0] - from[0], 10);
+    expect(pinch.dy).toBeCloseTo(to[1] - from[1], 10);
+
+    const held = screenToImage(viewport, from[0], from[1]);
     const panned = panBy(viewport, pinch.dx, pinch.dy);
     const zoomed = zoomAbout(panned, pinch.factor, pinch.centroidX, pinch.centroidY);
 
-    expect(imageToScreen(zoomed, held)[0]).toBeCloseTo(pinch.centroidX, 8);
-    expect(imageToScreen(zoomed, held)[1]).toBeCloseTo(pinch.centroidY, 8);
+    expect(imageToScreen(zoomed, held)[0]).toBeCloseTo(to[0], 8);
+    expect(imageToScreen(zoomed, held)[1]).toBeCloseTo(to[1], 8);
   });
 
   it("answers the identity for two pointers in the same place, rather than dividing by zero", () => {
