@@ -76,11 +76,13 @@ def inference_create(
     ],
     device: Annotated[
         str | None,
-        typer.Option("--device", help="Local only. cpu, cuda, or cuda:N for a second GPU."),
+        typer.Option("--device", help="Local only. cpu, mps, cuda, or cuda:N for a second GPU."),
     ] = None,
     precision: Annotated[
         Precision | None,
-        typer.Option("--precision", help="Local only. fp16 needs a cuda device."),
+        typer.Option(
+            "--precision", help="Local only. fp16 needs a cuda device; cpu and mps run in fp32."
+        ),
     ] = None,
     endpoint_url: Annotated[
         str | None, typer.Option("--endpoint", help="HTTP only. Where to send predictions.")
@@ -134,11 +136,13 @@ def inference_update(
     model_revision: Annotated[str | None, typer.Option("--revision", help="Move the pin.")] = None,
     device: Annotated[
         str | None,
-        typer.Option("--device", help="Local only. cpu, cuda, or cuda:N for a second GPU."),
+        typer.Option("--device", help="Local only. cpu, mps, cuda, or cuda:N for a second GPU."),
     ] = None,
     precision: Annotated[
         Precision | None,
-        typer.Option("--precision", help="Local only. fp16 needs a cuda device."),
+        typer.Option(
+            "--precision", help="Local only. fp16 needs a cuda device; cpu and mps run in fp32."
+        ),
     ] = None,
     endpoint_url: Annotated[str | None, typer.Option("--endpoint", help="HTTP only.")] = None,
     json_out: JsonOption = False,

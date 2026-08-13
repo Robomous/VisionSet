@@ -150,23 +150,27 @@ class _Scope:
 
 
 class StubTorch:
-    """Enough of torch for ``forward_guard`` to do its work and restore itself."""
+    """Enough of torch for ``forward_guard`` and ``_device.resolved`` to work.
+
+    The two availability answers are constructor arguments rather than fixed
+    values, because device resolution is a *branch* on them and a stub that can
+    only say "no GPU here" can only ever exercise the fallback. Both default to
+    absent, which is what every machine running this suite actually is and what
+    every caller predating the arguments expects.
+    """
 
     float16 = "float16"
 
-    def __init__(self) -> None:
+    def __init__(self, *, cuda: bool = False, mps: bool = False) -> None:
         self.nn = SimpleNamespace(functional=Functional())
+        self.cuda = SimpleNamespace(is_available=lambda: cuda)
+        self.backends = SimpleNamespace(mps=SimpleNamespace(is_available=lambda: mps))
 
     def no_grad(self) -> _Scope:
         return _Scope()
 
     def autocast(self, device_type: str, dtype: str) -> _Scope:
         return _Scope()
-
-    class cuda:  # noqa: N801 — mirrors torch's own spelling
-        @staticmethod
-        def is_available() -> bool:
-            return False
 
 
 def disc(radius: int, *, size: int = 64) -> Mask:

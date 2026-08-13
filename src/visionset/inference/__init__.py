@@ -31,6 +31,17 @@ exists to prevent. ``providers`` does the resolving: the connection's kind says
 connection may hold a detector that answers words or a segmenter that answers
 places and those are not interchangeable.
 
+**One environment variable is set as this module is read**, and it is the only
+side effect importing this package has. ``PYTORCH_ENABLE_MPS_FALLBACK`` is what
+lets an operator Metal has not implemented run on the CPU instead of raising, and
+the array library reads it while it initialises rather than when such an operator
+is reached — so by the time a connection has been resolved to a device it is
+already too late to set. This module is the earliest place that is certain to be
+read before torch is imported anywhere in the package, which is what makes it the
+right place despite the setting having nothing to do with composition. It costs
+one dictionary write on every machine, does nothing at all on a machine with no
+Metal, and ``setdefault`` leaves an operator who set it to ``0`` alone.
+
 **What each surface reaches for.** ``fetch_weights`` is the download,
 ``check_integrity`` is the full re-read that tells damage from completeness,
 ``suggest`` is one click's worth of interactive segmentation, and ``provider_for``
@@ -41,6 +52,7 @@ per request, which is the latency failure the caching exists to prevent.
 
 from __future__ import annotations
 
+from visionset.inference._device import MPS_FALLBACK_VARIABLE, enable_mps_fallback
 from visionset.inference._extra import EXTRA, INSTALL_COMMAND, MODULES, require
 from visionset.inference.cache import (
     DEFAULT_EMBEDDING_CAPACITY,
@@ -97,8 +109,12 @@ from visionset.inference.weights import (
     with_families,
 )
 
+enable_mps_fallback()
+
 __all__ = [
     "EPSILON",
+    "MPS_FALLBACK_VARIABLE",
+    "enable_mps_fallback",
     "DEFAULT_EMBEDDING_CAPACITY",
     "DEFAULT_IOU_THRESHOLD",
     "DEFAULT_PROVIDER_CAPACITY",

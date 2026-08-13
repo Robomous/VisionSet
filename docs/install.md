@@ -79,7 +79,9 @@ pip install "visionset[local-inference]"
 ```
 
 That brings torch, torchvision, transformers, accelerate and huggingface_hub - roughly two
-gigabytes, most of it CUDA - which is exactly why it is not in the base install. Without it you can still create a
+gigabytes, most of it CUDA - which is exactly why it is not in the base install. It is the same
+command on every platform: the macOS wheels it installs carry Apple Silicon GPU support already,
+so a Mac needs no second index and no build flag to run a connection on `mps`. Without it you can still create a
 local connection, list it, and see what it is configured for; what you cannot do is fetch its
 weights or ask it to predict. Both refusals name the command above rather than saying
 "unavailable", the way a missing `ffmpeg` does.

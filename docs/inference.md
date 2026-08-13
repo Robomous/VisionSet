@@ -35,7 +35,7 @@ with WorkspaceService.open("./road-signs") as workspace:
         model_id="some/model",
         model_revision="abc123",
         device="cuda",
-        precision="fp16",  # fp16 needs a cuda device; a cpu connection is fp32
+        precision="fp16",  # fp16 needs a cuda device; cpu and mps connections are fp32
     )
     for one in connections.list():
         print(one.name, one.connection_type.value, one.setup_state.value)
@@ -209,24 +209,46 @@ nor the family, and neither does sending the same model reference back unchanged
 An `http` connection keeps no weights here, so a model edit resets nothing for it. It stays
 `ready`, which for that kind has always meant *there is nothing to set up on this machine*.
 
-## Running on the CPU
+## Which device runs the model
 
-A connection asking for `cuda` on a machine with no GPU falls back to the CPU, in full precision,
-with a warning in the log. It is a fallback rather than a preference - a workspace configured on a
-workstation should still open on a laptop - but it is slower by a large factor, which is why it is
-said out loud rather than silently done.
+A local connection names the device it runs on, and there are three to name.
 
-Half precision applies on CUDA only, and the kernel now says so rather than absorbing it: a `cpu`
-connection asking for `fp16` is refused at creation. On a CPU it was never the conservative choice
-it looks like - `float16` arithmetic outside CUDA's autocast is slower than the `float32` it was
-avoiding - and a setting the adapters drop is one the row would otherwise go on displaying as
-though it had an effect.
+| Device | What it is | Precision |
+| --- | --- | --- |
+| `cpu` | The processor. Every machine has one, and it is the default a new connection opens on | `fp32` |
+| `cuda` | An NVIDIA GPU. A machine with more than one addresses the rest as `cuda:1`, `cuda:2` and so on | `fp16` or `fp32` |
+| `mps` | Apple Silicon's GPU, on an M-series Mac. There is only ever one of it | `fp32` |
 
-**Both fields are closed vocabularies.** `device` is `cpu`, `cuda`, or `cuda:N` for the second GPU
-on a machine that has one; `precision` is `fp16` or `fp32`, and `float16`, `half`, `float32` and
-`full` are accepted as spellings of those two. Anything else is refused with a sentence naming the
-members. What this closes is a gap rather than a freedom: `gpu` used to be accepted and then
-resolved onto the CPU, so the connection described a run that never happened.
+**On Apple Silicon nothing needs configuring beyond choosing the device.** The `local-inference`
+extra is the same one everybody installs, the macOS wheels it brings carry Metal support already,
+and there is no second package index, no environment variable and no build flag. Create the
+connection with `mps` and it runs on the GPU.
+
+**A device this machine does not offer falls back to the CPU**, in full precision, with a warning
+in the log naming the connection and the device it asked for. The same rule covers all three, so
+`mps` on a machine with no Metal behaves exactly as `cuda` on a machine with no NVIDIA GPU. It is a
+fallback rather than a preference - a workspace configured on a workstation should still open on a
+laptop - but it is slower by a large factor, which is why it is said out loud rather than silently
+done.
+
+**Half precision applies on CUDA only**, and the kernel says so rather than absorbing it: a `cpu`
+or `mps` connection asking for `fp16` is refused at creation. On a CPU it was never the
+conservative choice it looks like - `float16` arithmetic outside CUDA's autocast is slower than the
+`float32` it was avoiding - and Metal has no float64 at all with a bfloat16 that varies between
+releases, so full precision is the only format that behaves the same on every Mac. A setting the
+adapters would drop is one the row would otherwise go on displaying as though it had an effect.
+
+Where Metal has no implementation for an operator a model reaches for, that one operator runs on
+the CPU and the rest of the forward pass stays on the GPU. Nothing has to be turned on for this;
+the adapters ask for it themselves.
+
+**Both fields are closed vocabularies.** `device` is `cpu`, `mps`, `cuda`, or `cuda:N` for the
+second GPU on a machine that has one; `precision` is `fp16` or `fp32`, and `float16`, `half`,
+`float32` and `full` are accepted as spellings of those two. Anything else is refused with a
+sentence naming the members. What this closes is a gap rather than a freedom: `gpu` used to be
+accepted and then resolved onto the CPU, so the connection described a run that never happened.
+A device is in the vocabulary when the adapters can honour it, which is why `mps` is in it and
+`gpu` and `auto` are not.
 
 ## What a connection can be asked for
 
@@ -467,7 +489,8 @@ form.
   each one is pinned to a revision this build was checked against. **Custom model...** is the last
   entry and reveals the free model id and revision fields: the list guides, it does not restrict,
   and any model this build has an adapter for remains typeable. Device and precision are lists too,
-  and the precision list follows the device, because half precision applies on CUDA only. Underneath
+  and the precision list follows the device, because half precision applies on CUDA only - so
+  picking `mps` leaves `fp32` as the only precision offered. Underneath
   is what fetching that revision would cost - the size described above, read while you are still
   deciding. If this machine has no `local-inference` extra the size cannot be read, and the form
   says so, in the server's own words, with the install command. **It stays usable**: creating a
@@ -516,7 +539,7 @@ downloaded, or nothing of the right kind - and each names a different thing to d
 visionset inference size some/model --revision abc123
 visionset inference create local-detector \
     --type local --model some/model --revision abc123 --device cuda --precision fp16
-# --device takes cpu, cuda or cuda:N; --precision takes fp16 or fp32, and fp16 needs a cuda device
+# --device takes cpu, mps, cuda or cuda:N; --precision takes fp16 or fp32, and fp16 needs a cuda device
 visionset inference list
 visionset inference show local-detector --json
 visionset inference update local-detector --revision def456
