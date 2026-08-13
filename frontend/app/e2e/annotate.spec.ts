@@ -1620,7 +1620,8 @@ test("finishing the job turns the workspace into a viewer in place, on every fra
   await page.getByTestId("prev-asset").click();
   await expect(page.getByTestId("asset-position")).toHaveText("1/2");
   await expect(page.getByTestId("readonly-banner")).toBeVisible();
-  await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+  await expect(page.getByTestId("tool-select")).toHaveCount(0);
+  await expect(page.getByTestId("tool-hand")).toHaveCount(1);
   await expect(page.getByTestId("class-region")).toHaveCount(0);
 
   // The other half: the gallery still opens, and no save-first guard engages —
