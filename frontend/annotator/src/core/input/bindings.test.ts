@@ -33,6 +33,7 @@ import {
   TOGGLE_HELP,
   COARSER_SUGGESTION,
   FINER_SUGGESTION,
+  TOGGLE_HAND,
   TOGGLE_SUGGEST,
 } from "./actions";
 import type { Action } from "./actions";
@@ -101,6 +102,9 @@ const DISPATCH: readonly DispatchRow[] = [
   { chord: "s", key: "s", action: { kind: "host", name: TOGGLE_SUGGEST } },
   { chord: "[", key: "[", action: { kind: "host", name: COARSER_SUGGESTION } },
   { chord: "]", key: "]", action: { kind: "host", name: FINER_SUGGESTION } },
+  // `space` is absent from this pair for the reason `enter` is absent above it:
+  // the hand's transient twin is a *held* key, and a keystroke is a press.
+  { chord: "h", key: "h", action: { kind: "host", name: TOGGLE_HAND } },
   { chord: "v", key: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 
@@ -173,6 +177,16 @@ describe("the default shortcut table", () => {
       name: TOGGLE_SUGGEST,
     });
     expect(resolve(DEFAULTS, keystroke("s", MOD))).toEqual({ kind: "host", name: SAVE });
+  });
+
+  it("claims `h` for the hand and leaves the space bar to the adapter (#576)", () => {
+    // The hand's two spellings are split across two layers on purpose. The
+    // persistent one is a chord and lives here, so the shortcut sheet lists it
+    // and an override can move it. The transient one is `Space` *held*, which is
+    // a press and a release — and `keys.ts` has a shape for the press only, so a
+    // row here could turn the hand on and never off again.
+    expect(resolve(DEFAULTS, keystroke("h"))).toEqual({ kind: "host", name: TOGGLE_HAND });
+    expect(resolve(DEFAULTS, keystroke(" "))).toBeNull();
   });
 
   it("answers null for a chord nobody bound", () => {

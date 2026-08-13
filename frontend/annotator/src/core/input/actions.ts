@@ -276,3 +276,25 @@ export const COARSER_SUGGESTION = "coarser-suggestion";
 
 /** The other bracket. See {@link COARSER_SUGGESTION}. */
 export const FINER_SUGGESTION = "finer-suggestion";
+
+/**
+ * Turn the hand on or off — `h`, the persistent pan tool.
+ *
+ * A host row, and for `TOGGLE_SUGGEST`'s reason: it is a *mode over the top* of
+ * whatever tool the active class derives, not a fifth `Tool`. `tool.ts` derives
+ * and stores nothing, so a hand there would be a stored mode wearing a derived
+ * one's name with nowhere to be derived from.
+ *
+ * The mode exists because a pan had exactly one spelling — a middle- or
+ * secondary-button drag — and a trackpad, a tablet and a pen have no second
+ * button to offer. It reaches every pointer a device has.
+ *
+ * Its *transient* twin, holding `Space`, is deliberately **not** a row here.
+ * A registry entry is resolved from a keystroke and a keystroke is a press;
+ * a held key is a press and a release, and `keys.ts` has no shape for the
+ * second. So `Space` is an adapter substitution, the class `ACCEPT_SUGGESTION`
+ * and `DISCARD_SUGGESTION` already belong to — and the same rule applies for
+ * the same reason: the layer that can see the extra state is the one that
+ * decides.
+ */
+export const TOGGLE_HAND = "toggle-hand";

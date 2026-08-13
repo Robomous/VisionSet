@@ -170,8 +170,11 @@ import {
   IDENTITY_VIEWPORT,
   fitToViewport,
   imageRenderingAt,
+  normalizedWheel,
   panBy,
+  pinchBetween,
   screenToImage,
+  wheelZoomFactor,
   zoomAbout,
 } from "../viewport";
 import type { Viewport } from "../viewport";
@@ -196,14 +199,14 @@ const DRAG_STATES: ReadonlySet<InteractionStateType> = new Set([
 /** Breathing room around a fitted asset, in screen pixels. */
 const FIT_PADDING_PX = 16;
 
-/** How much wheel travel doubles the zoom. Larger is gentler. */
-const WHEEL_SOFTNESS = 400;
-
-/** The same for a trackpad pinch, whose deltas are an order of magnitude smaller. */
-const PINCH_SOFTNESS = 100;
-
-/** `WheelEvent.deltaMode`: 0 pixels, 1 lines (Firefox), 2 pages. */
-const DELTA_SCALE: Readonly<Record<number, number>> = { 0: 1, 1: 16, 2: 400 };
+/**
+ * The pointer types that can put a second contact on the glass.
+ *
+ * A pen reports pressure and tilt and is still one pointer; a mouse is one
+ * pointer with buttons. Only touch can be two at once, which is what makes a
+ * pinch a touch-only shape here.
+ */
+const MULTI_TOUCH = "touch";
 
 export interface AnnotatorCanvasProps {
   /**
@@ -402,6 +405,26 @@ export interface AnnotatorCanvasProps {
    * which would draw a shape somebody was trying to point at.
    */
   readonly onSuggestPoint?: (point: Point, polarity: Polarity) => void;
+  /**
+   * The hand: while it is on, a **primary** drag pans instead of drawing.
+   *
+   * The host holds it for the reason it holds `suggestion` — the palette lights
+   * a button for it, and a mode the canvas kept to itself could not be drawn.
+   * `h` reaches it as `TOGGLE_HAND` through `onHostAction`, and the two doors
+   * are one state.
+   *
+   * The pan contract's **third** occupant, honoured in the same place as the
+   * other two: `handlePointerDown` diverts, having first cancelled anything the
+   * pointer had in flight. It does not need the arming effect the suggest tool
+   * has, because the divert is unconditional and there is a second, transient
+   * spelling — holding `Space` — which arms mid-gesture routinely.
+   *
+   * It exists because a pan had exactly one spelling, a middle- or
+   * secondary-button drag, and a trackpad, a tablet and a pen have no second
+   * button to offer. The wheel and the pinch cover a trackpad; this covers the
+   * devices that have neither.
+   */
+  readonly panTool?: boolean;
 }
 
 /** What a host can do to the stage. Read the position through `onViewChange`. */
@@ -434,6 +457,7 @@ export function AnnotatorCanvas({
   readOnly = false,
   suggestion = null,
   onSuggestPoint,
+  panTool = false,
 }: AnnotatorCanvasProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const { asset, schema } = snapshot.document;
@@ -456,6 +480,58 @@ export function AnnotatorCanvas({
   const hiddenNow = useRef(hiddenIds);
   hiddenNow.current = hiddenIds;
   const panNow = useRef<{ readonly x: number; readonly y: number } | null>(null);
+
+  /**
+   * The hand's transient spelling: `Space`, while it is held.
+   *
+   * A ref and a piece of state, because both readers need it and they need it
+   * at different times — `handlePointerDown` reads the ref inside an event, the
+   * cursor reads the state at render. It is set from a keydown and cleared from
+   * a keyup *and* from the blur handler, which is what stops a window switch
+   * mid-hold from leaving the hand on with no way to notice.
+   */
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const spaceHeldNow = useRef(spaceHeld);
+  const setSpaceHold = useCallback((held: boolean) => {
+    if (spaceHeldNow.current === held) return;
+    spaceHeldNow.current = held;
+    setSpaceHeld(held);
+  }, []);
+
+  const panToolNow = useRef(panTool);
+  panToolNow.current = panTool;
+  /** Either spelling of the hand. `handNow` is the event-time read of the same pair. */
+  const hand = panTool || spaceHeld;
+  const handNow = (): boolean => panToolNow.current || spaceHeldNow.current;
+
+  /**
+   * Whether a drag pan is under way, for the cursor and for nothing else.
+   *
+   * State rather than the `panNow` ref because only a render can change a
+   * cursor, and it is set **only while the hand is on** — that is the one mode
+   * where `grab` and `grabbing` differ, so a middle-button drag pays no
+   * re-render for a cursor nobody is looking at. Clearing is unconditional and
+   * free: `useState` bails on an unchanged value.
+   */
+  const [panning, setPanning] = useState(false);
+
+  /**
+   * Every touch pointer currently down, by id, at its last known position.
+   *
+   * Touch is the one input where the adapter has to count. A mouse press is one
+   * pointer and its `button` says which; two fingers are two `pointerdown`s that
+   * both report `button: 0`, and nothing in the event distinguishes the second
+   * from a fresh press of the first. So the map is what makes a pinch nameable
+   * at all — and it is scoped to `pointerType === "touch"`, because a pen and a
+   * mouse cannot produce a second contact and counting them would only add a way
+   * to be wrong.
+   */
+  const touchesNow = useRef(new Map<number, { readonly x: number; readonly y: number }>());
+  /** The two ids a gesture is between, and where they were on the last move. */
+  const gestureNow = useRef<{
+    readonly ids: readonly [number, number];
+    readonly at: readonly [readonly [number, number], readonly [number, number]];
+  } | null>(null);
 
   const applyViewport = useCallback((next: Viewport) => {
     viewNow.current = next;
@@ -564,19 +640,41 @@ export function AnnotatorCanvas({
     if (pane === null) return;
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
-      const rect = pane.getBoundingClientRect();
-      // `ctrlKey` on a wheel event IS how a browser reports a trackpad pinch;
-      // no separate gesture API is involved, and its deltas are much smaller.
-      const delta = event.deltaY * (DELTA_SCALE[event.deltaMode] ?? 1);
-      const softness = event.ctrlKey ? PINCH_SOFTNESS : WHEEL_SOFTNESS;
-      applyViewport(
-        zoomAbout(
-          viewNow.current,
-          Math.exp(-delta / softness),
-          event.clientX - rect.left,
-          event.clientY - rect.top,
-        ),
-      );
+      const [dx, dy] = normalizedWheel(event.deltaX, event.deltaY, event.deltaMode);
+      /**
+       * **One branch, and it serves four devices.**
+       *
+       * `ctrlKey` on a wheel event is how a browser reports a trackpad pinch —
+       * on macOS and on a Windows precision touchpad alike, with no gesture API
+       * involved — and `ctrl`/`cmd` + wheel is the convention for zooming with
+       * a mouse. Those are the same flag, so they are the same branch, and
+       * everything else is a pan.
+       *
+       * The half that changed is what "everything else" now covers. A plain
+       * wheel used to zoom, which made a two-finger trackpad scroll — the
+       * ordinary way anyone moves around a canvas — zoom instead of scroll, and
+       * left a trackpad with no pan at all. Now it pans, `deltaX` included, and
+       * a mouse wheel pans vertically for the same reason it scrolls a page
+       * vertically. Zoom did not become unreachable: it is the modifier, the
+       * pinch, `mod+0` and the two buttons in the corner.
+       *
+       * The sign is inverted because a scroll reports how far the *content*
+       * should travel against the gesture, and `panBy` moves the content with
+       * it: scrolling down looks at what is below, so the picture goes up.
+       */
+      if (event.ctrlKey || event.metaKey) {
+        const rect = pane.getBoundingClientRect();
+        applyViewport(
+          zoomAbout(
+            viewNow.current,
+            wheelZoomFactor(dy),
+            event.clientX - rect.left,
+            event.clientY - rect.top,
+          ),
+        );
+        return;
+      }
+      applyViewport(panBy(viewNow.current, -dx, -dy));
     };
     pane.addEventListener("wheel", onWheel, { passive: false });
     return () => pane.removeEventListener("wheel", onWheel);
@@ -668,6 +766,29 @@ export function AnnotatorCanvas({
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
     // (5) The browser is still deciding what was typed.
     if (isComposing({ isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) return;
+
+    /**
+     * `Space` held is the hand, for as long as it is held.
+     *
+     * Read before `resolve`, and it is the only chord that is. It cannot be a
+     * registry row for the reason `TOGGLE_HAND` states — a keystroke is a press
+     * and this needs a release — so it is a substitution, the class `enter` and
+     * `escape` already belong to, and it is placed *first* because it is a hold
+     * rather than a decision: nothing about the document depends on it.
+     *
+     * `repeat` is dropped rather than ignored. A held key autorepeats, and every
+     * repeat would re-enter the mode that is already on; the press that turns it
+     * on is the first one.
+     *
+     * `preventDefault` unconditionally, so the page underneath does not scroll
+     * — which is the one thing `Space` means to a browser by default.
+     */
+    if (event.key === " " && !isTextEntry(event.target instanceof HTMLElement ? event.target : null)) {
+      event.preventDefault();
+      if (!event.repeat) setSpaceHold(true);
+      return;
+    }
+
     const keystroke = keystrokeOf({
       // (6) The digit row is a row of positions, not of characters.
       key: digitFromCode(event.code) ?? event.key,
@@ -778,6 +899,31 @@ export function AnnotatorCanvas({
     }
   }
 
+  /**
+   * The other half of the hold. Only `Space`, and only ever a release.
+   *
+   * A drag in progress when the key comes up finishes as a pan: `panNow` is
+   * already set and `handlePointerMove` reads it rather than the mode, so
+   * letting go of the key mid-gesture does not strand the picture halfway.
+   */
+  function handleKeyUp(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key !== " ") return;
+    setSpaceHold(false);
+  }
+
+  /**
+   * Start a drag pan. `state.ts`'s written contract, in one place for the three
+   * gestures that reach it: a non-primary press, the hand, and either of them
+   * over a shape mid-draw. While panning the adapter forwards nothing, and if a
+   * gesture was in flight when the pan began it cancels it first.
+   */
+  function beginPan(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (interactionNow.current.type !== "idle") dispatch({ type: "pointer-cancel" });
+    panNow.current = { x: event.clientX, y: event.clientY };
+    if (handNow()) setPanning(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     // (7) Named or nothing: a side button forwards no event at all.
     const button = pointerButton(event.button);
@@ -785,6 +931,49 @@ export function AnnotatorCanvas({
     // (2) Nothing is focused on load, so `mod+z` would do nothing until the canvas
     // was clicked. Pressing on it is the click.
     rootRef.current?.focus({ preventScroll: true });
+
+    /**
+     * Two fingers are a gesture, whatever tool is armed.
+     *
+     * The count is the whole rule: one finger is the pointer for whatever the
+     * class derives, two are a pinch and a pan together, and a third joins
+     * nothing — it lands while a gesture is running and is swallowed with it.
+     * Both fingers report `button: 0`, so nothing but the map distinguishes the
+     * second press from a fresh first one.
+     *
+     * `gestureNow` outlives the fingers that started it: it is cleared when the
+     * *last* one lifts, not when one does. That is what makes the exit
+     * jump-free — with one finger left over, the gesture is inert and the
+     * survivor's moves and its lift are swallowed rather than being promoted
+     * into a drag the person did not ask for.
+     */
+    if (event.pointerType === MULTI_TOUCH) {
+      touchesNow.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (gestureNow.current !== null) return;
+      if (touchesNow.current.size >= 2) {
+        beginGesture();
+        return;
+      }
+    }
+
+    /**
+     * Pan, in both its spellings, and they differ only in the first line.
+     *
+     * A non-primary press has always panned and still does — unconditionally,
+     * because a conditional pan is unpredictable (`docs/annotations.md` argues
+     * it at length: right-drag would pan on empty canvas and not over a vertex).
+     * What joins it is the hand, which is what gives a trackpad, a pen and a
+     * finger the gesture a second mouse button used to be required for.
+     *
+     * **Before the read-only branch**, and that is the point of its position: a
+     * viewer navigating a batch they may not edit is exactly who most needs to
+     * pan, and a hand that only worked in edit mode would be a control that
+     * disappears when the page goes quiet.
+     */
+    if (button !== "primary" || handNow()) {
+      beginPan(event);
+      return;
+    }
 
     // Read-only: a primary press *selects* and does nothing else. It
     // never reaches the machine, so no drag state — a draw, a move, a resize, a
@@ -795,9 +984,8 @@ export function AnnotatorCanvas({
     // `topmostAnnotationAt` with the body tolerance over the hidden-filtered
     // document — the same rule `viewerAffordanceAt` highlights with and the
     // same one the right-click menu resolves, so the highlight, the press and
-    // the menu cannot disagree about what is "under" a point. Non-primary is a
-    // pan, which changes nothing, and falls through to the branch below.
-    if (readOnly && button === "primary") {
+    // the menu cannot disagree about what is "under" a point.
+    if (readOnly) {
       const point = imagePoint(event);
       if (point === null) return;
       const hit = topmostAnnotationAt(
@@ -806,15 +994,6 @@ export function AnnotatorCanvas({
         assetTolerances(viewNow.current.zoom).shape,
       );
       store.select(hit === null ? clearSelection() : selectOnly(hit.id));
-      return;
-    }
-
-    if (button !== "primary") {
-      // `state.ts`'s written contract: while panning the adapter forwards nothing,
-      // and if a gesture was in flight when the pan began it cancels it first.
-      if (interactionNow.current.type !== "idle") dispatch({ type: "pointer-cancel" });
-      panNow.current = { x: event.clientX, y: event.clientY };
-      event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
 
@@ -855,7 +1034,67 @@ export function AnnotatorCanvas({
     }
   }
 
+  /** The first two fingers down become the gesture, and a drag pan yields to it. */
+  function beginGesture(): void {
+    const down = [...touchesNow.current.entries()];
+    const first = down[0];
+    const second = down[1];
+    if (first === undefined || second === undefined) return;
+    if (interactionNow.current.type !== "idle") dispatch({ type: "pointer-cancel" });
+    panNow.current = null;
+    gestureNow.current = {
+      ids: [first[0], second[0]],
+      at: [
+        [first[1].x, first[1].y],
+        [second[1].x, second[1].y],
+      ],
+    };
+  }
+
+  /**
+   * One frame of a two-finger gesture: the scale and the drift, applied together.
+   *
+   * The order is the one `pinchBetween` documents — translate by the centroid's
+   * travel, then scale about where the centroid ended — and it is what keeps
+   * whatever was between the fingers between the fingers. The other way round
+   * scales about a point that has not moved yet, and the picture slides out from
+   * under the gesture.
+   *
+   * A gesture whose two fingers are not both still down does nothing, and still
+   * swallows the event — `handlePointerDown` says why it outlives them.
+   */
+  function moveGesture(): void {
+    const gesture = gestureNow.current;
+    const pane = paneRef.current;
+    if (gesture === null || pane === null) return;
+    const a = touchesNow.current.get(gesture.ids[0]);
+    const b = touchesNow.current.get(gesture.ids[1]);
+    if (a === undefined || b === undefined) return;
+    const at = [
+      [a.x, a.y],
+      [b.x, b.y],
+    ] as const;
+    const pinch = pinchBetween(gesture.at, at);
+    gestureNow.current = { ids: gesture.ids, at };
+    const rect = pane.getBoundingClientRect();
+    applyViewport(
+      zoomAbout(
+        panBy(viewNow.current, pinch.dx, pinch.dy),
+        pinch.factor,
+        pinch.centroidX - rect.left,
+        pinch.centroidY - rect.top,
+      ),
+    );
+  }
+
   function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.pointerType === MULTI_TOUCH && touchesNow.current.has(event.pointerId)) {
+      touchesNow.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+    if (gestureNow.current !== null) {
+      moveGesture();
+      return;
+    }
     const panning = panNow.current;
     if (panning !== null) {
       applyViewport(panBy(viewNow.current, event.clientX - panning.x, event.clientY - panning.y));
@@ -868,9 +1107,26 @@ export function AnnotatorCanvas({
     dispatch({ type: "pointer-move", point });
   }
 
+  /**
+   * A finger left the glass, and the gesture ends when the *last* one does.
+   *
+   * Answers whether this lift belongs to a gesture and should therefore reach
+   * nothing else — true for every touch lift while one is running, the one that
+   * ends it included.
+   */
+  function releaseTouch(event: ReactPointerEvent<HTMLDivElement>): boolean {
+    if (event.pointerType !== MULTI_TOUCH) return false;
+    touchesNow.current.delete(event.pointerId);
+    if (gestureNow.current === null) return false;
+    if (touchesNow.current.size === 0) gestureNow.current = null;
+    return true;
+  }
+
   function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (releaseTouch(event)) return;
     if (panNow.current !== null) {
       panNow.current = null;
+      setPanning(false);
       return;
     }
     const button = pointerButton(event.button);
@@ -880,9 +1136,26 @@ export function AnnotatorCanvas({
     dispatch({ type: "pointer-up", point, button, modifiers: modifiersOf(event) });
   }
 
-  function handlePointerCancel(): void {
+  function handlePointerCancel(event?: ReactPointerEvent<HTMLDivElement>): void {
+    if (event !== undefined) releaseTouch(event);
     panNow.current = null;
+    setPanning(false);
     dispatch({ type: "pointer-cancel" });
+  }
+
+  /**
+   * The root lost the focus: everything the pointer and the keyboard were
+   * holding is let go of.
+   *
+   * A held `Space` most of all. Its keyup lands in whatever took the focus and
+   * never here, so without this the hand survives a window switch with nothing
+   * on screen to say why the canvas has stopped drawing.
+   */
+  function handleBlur(): void {
+    touchesNow.current.clear();
+    gestureNow.current = null;
+    setSpaceHold(false);
+    handlePointerCancel();
   }
 
   function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
@@ -978,10 +1251,11 @@ export function AnnotatorCanvas({
       tabIndex={0}
       aria-keyshortcuts={ariaKeyshortcuts(registry.keys())}
       onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
       // A window blur or a click on host chrome interrupts a *drag*; a
       // click-by-click polygon session survives it, which is `machine.ts`'s
       // deliberate `pointer-cancel` asymmetry doing real work here.
-      onBlur={handlePointerCancel}
+      onBlur={handleBlur}
       style={{ position: "relative", width: "100%", height: "100%", outline: "none" }}
     >
       <div
@@ -995,7 +1269,16 @@ export function AnnotatorCanvas({
           // Never a busy cursor while a suggest is out: the panel is the one
           // place a wait is reported, and a spinner riding the pointer over the
           // picture read as the machine having hung (#557).
-          cursor: affordance.cursor,
+          //
+          // The hand overrides it outright rather than being folded into
+          // `affordance.ts`. `Cursor` is a closed union of eight, all of them
+          // answers to "what is under the pointer" — and the hand is not about
+          // what is under the pointer at all, so a ninth member would be a
+          // different question wearing the same type. Grab and grabbing are also
+          // the one pair a browser has a convention for, and honouring it costs
+          // one ternary here against a widened union and a widened hit test
+          // there.
+          cursor: hand ? (panning ? "grabbing" : "grab") : affordance.cursor,
         }}
         // (7) The input surface, and the only one. It spans the whole viewport,
         // so a press in the margin around the picture reaches the machine with the

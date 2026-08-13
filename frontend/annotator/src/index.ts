@@ -235,6 +235,7 @@ export {
   SKIP_FRAME,
   COARSER_SUGGESTION,
   FINER_SUGGESTION,
+  TOGGLE_HAND,
   TOGGLE_HELP,
   TOGGLE_SUGGEST,
   chordOf,
@@ -279,9 +280,13 @@ export {
   fitToViewport,
   imageRenderingAt,
   imageToScreen,
+  normalizedWheel,
   panBy,
+  pinchBetween,
   screenToImage,
+  wheelZoomFactor,
   zoomAbout,
+  type Pinch,
   type Viewport,
 } from "./adapters/viewport";
 
