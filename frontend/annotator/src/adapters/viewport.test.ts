@@ -419,7 +419,9 @@ describe("two fingers are one gesture: a scale about a point, and that point's t
       [60, 140],
       [420, 260],
     ] as const;
-    const midpoint = (pair: typeof before): readonly [number, number] => [
+    const midpoint = (
+      pair: readonly [readonly [number, number], readonly [number, number]],
+    ): readonly [number, number] => [
       (pair[0][0] + pair[1][0]) / 2,
       (pair[0][1] + pair[1][1]) / 2,
     ];
