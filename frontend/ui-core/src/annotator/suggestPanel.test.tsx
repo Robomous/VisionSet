@@ -524,14 +524,35 @@ describe("the adjustments, which are a section and never a popup", () => {
     expect(onDetail).toHaveBeenCalledWith("fine");
   });
 
-  it("does not let a press on the slider take focus off the canvas", () => {
-    // Every chord in the editor is a keydown on the annotator's own root, so a
-    // control that took focus would switch `[`, `]`, Esc and Enter off with
-    // nothing on screen to say why (#557).
+  it("lets a press on the slider through, because that press is the drag", () => {
+    // The defect this replaces: `preventDefault` on the press cancelled a range
+    // input's own drag, leaving a control that looked alive and could only be
+    // moved with the brackets. The old test asserted the guard *fired*, which is
+    // exactly the assertion a dead control passes (#563).
     render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
       onDetail: vi.fn() }));
     const press = fireEvent.mouseDown(screen.getByTestId("suggest-detail"));
-    expect(press).toBe(false);
+    expect(press).toBe(true);
+  });
+
+  it("hands the keyboard back to the canvas when the drag ends", () => {
+    // The other half: the slider may hold focus while it is being dragged, but
+    // not after, or `[`, `]`, Esc and Enter stay dead with nothing to say why.
+    const root = document.createElement("div");
+    root.setAttribute("data-testid", "annotator-root");
+    root.tabIndex = 0;
+    document.body.appendChild(root);
+
+    render(mount({ session: showingPolygon(), adjusting: true, onAdjusting: vi.fn(),
+      onDetail: vi.fn() }));
+    const slider = screen.getByTestId("suggest-detail");
+    slider.focus();
+    expect(document.activeElement).toBe(slider);
+
+    fireEvent.mouseUp(slider);
+    expect(document.activeElement).toBe(root);
+
+    root.remove();
   });
 
   it("keeps the controls operable on an answer with nothing in it", () => {
