@@ -14,6 +14,14 @@
  * The source is escaped rather than interpolated. A label containing `<` or `&` is
  * ordinary in these diagrams (`callers --> services`, `A & B`), and unescaped it
  * would be parsed as markup and silently deleted before mermaid ever saw it.
+ *
+ * The wrapper is emitted **here, at build time**, and it is what the magnifier button
+ * hangs off. Two reasons it cannot be the `<pre>` itself, and neither is cosmetic:
+ * `Head.astro`'s redraw assigns `node.textContent`, which destroys every child of the
+ * `<pre>` on each theme toggle; and `pre.mermaid` scrolls horizontally, so a button
+ * positioned inside it would slide out of view on exactly the wide diagrams that need
+ * it most. A wrapper written by the transform is outside both problems and needs no
+ * DOM surgery in the browser.
  */
 
 import { visit } from "unist-util-visit";
@@ -30,7 +38,10 @@ export default function remarkMermaid() {
       if (node.lang !== "mermaid" || parent === undefined || index === undefined) return;
       parent.children[index] = {
         type: "html",
-        value: `<pre class="mermaid" data-mermaid>${escape(node.value)}</pre>`,
+        value:
+          `<div class="mermaid-figure">` +
+          `<pre class="mermaid" data-mermaid>${escape(node.value)}</pre>` +
+          `</div>`,
       };
     });
   };
