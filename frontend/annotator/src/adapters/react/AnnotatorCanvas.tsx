@@ -83,6 +83,29 @@
  *    the transform, `setPointerCapture`, and the browser's own `dblclick`
  *    forwarded — the four pointer handlers.
  *
+ * ## One input model, and where each half of it lives
+ *
+ * A pan had exactly one spelling — a middle- or secondary-button drag — and a
+ * trackpad, a pen and a finger have no second button, so on a laptop there was no
+ * gesture that moved the picture. Four things fixed that, and only the first is a
+ * change to something that already worked:
+ *
+ * 1. **The wheel branches on `ctrlKey || metaKey`**: held, it zooms about the
+ *    cursor; bare, it pans both axes. One branch for four devices, because that
+ *    flag is how a browser reports a trackpad pinch *and* how a mouse asks to
+ *    zoom. A bare wheel used to zoom; it pans now, deliberately.
+ * 2. **`Space` held** is the hand while it is down — a substitution rather than a
+ *    registry row, because a keystroke is a press and this needs a release.
+ * 3. **`panTool`** is the persistent hand, the host's to own for `suggestion`'s
+ *    reason.
+ * 4. **Two touch pointers** are a gesture whatever tool is armed, tracked in
+ *    `touchesNow` because both fingers report `button: 0` and nothing else tells
+ *    the second press from a fresh first one.
+ *
+ * All four are wiring. The arithmetic — `normalizedWheel`, `wheelZoomFactor`,
+ * `pinchBetween`, and the `zoomAbout`/`panBy` that were already there — is in
+ * `adapters/viewport.ts`, where it is unit-tested without a browser.
+ *
  * ## Capture is taken after the dispatch, never before
  *
  * `state.ts` records that v1 carried a `captured` boolean because acquiring
@@ -941,11 +964,16 @@ export function AnnotatorCanvas({
      * Both fingers report `button: 0`, so nothing but the map distinguishes the
      * second press from a fresh first one.
      *
-     * `gestureNow` outlives the fingers that started it: it is cleared when the
-     * *last* one lifts, not when one does. That is what makes the exit
-     * jump-free — with one finger left over, the gesture is inert and the
-     * survivor's moves and its lift are swallowed rather than being promoted
-     * into a drag the person did not ask for.
+     * A gesture lasts exactly as long as two fingers are down, and re-forms
+     * when two are down again — so lifting one and putting another back
+     * continues the pinch instead of leaving it dead until the hand comes off
+     * the glass. It re-forms from the contacts' *current* positions, which is
+     * what makes that free of a jump.
+     *
+     * The survivor of a lift needs no swallowing, and that was measured rather
+     * than assumed: `IDLE_ROW` has a `pointer-down` handler and nothing else,
+     * so the stray moves and the stray lift reach an idle machine and are
+     * silence. Its press happened before the gesture and cannot happen again.
      */
     if (event.pointerType === MULTI_TOUCH) {
       touchesNow.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -1108,17 +1136,17 @@ export function AnnotatorCanvas({
   }
 
   /**
-   * A finger left the glass, and the gesture ends when the *last* one does.
+   * A finger left the glass. Below two contacts there is no gesture.
    *
-   * Answers whether this lift belongs to a gesture and should therefore reach
-   * nothing else — true for every touch lift while one is running, the one that
-   * ends it included.
+   * Answers whether this lift belonged to one and should therefore reach
+   * nothing else — the lift that ends it included, because the alternative is
+   * dispatching a `pointer-up` for a press the machine was told to cancel.
    */
   function releaseTouch(event: ReactPointerEvent<HTMLDivElement>): boolean {
     if (event.pointerType !== MULTI_TOUCH) return false;
     touchesNow.current.delete(event.pointerId);
     if (gestureNow.current === null) return false;
-    if (touchesNow.current.size === 0) gestureNow.current = null;
+    if (touchesNow.current.size < 2) gestureNow.current = null;
     return true;
   }
 

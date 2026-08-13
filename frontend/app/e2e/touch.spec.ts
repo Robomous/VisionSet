@@ -17,14 +17,20 @@
  * would emulate touch for every scenario in whatever file it sat in, and the
  * other specs are about a mouse.
  *
- * ## `touchPoints` is the set that is still down, never the set that changed
+ * ## On `touchEnd`, `touchPoints` is the set that LEFT
  *
- * The protocol's own wording is "active touch points on the touch device", and
- * Chromium derives press, move and release by comparing one event's list with
- * the last one's. So a two-finger lift is `touchEnd` with an **empty** list, and
- * lifting one of two is `touchEnd` naming the finger that stayed. Getting this
- * backwards does not error — it produces a gesture that never ends, which is a
- * scenario that passes for the wrong reason.
+ * The protocol's wording — "active touch points on the touch device" — reads the
+ * other way, and following it produces a suite that passes and measures nothing.
+ * **Measured rather than read**: with two fingers down, `touchEnd` naming the
+ * one that stayed leaves the *other* one active, so a scenario that then moves
+ * the survivor is moving a contact the browser thinks is gone. It does not
+ * error. It just quietly does nothing, and every "nothing moved" assertion
+ * passes for the wrong reason.
+ *
+ * The proof is `lifting one finger and putting another down continues the
+ * pinch`: it is the one scenario here whose expected outcome is a *change*, so
+ * it is the one the convention can be wrong about visibly. It failed under the
+ * other reading and passes under this one.
  *
  * ## The honest limit
  *
@@ -46,8 +52,10 @@ interface Contact extends Point {
   readonly id: number;
 }
 
-/** No fingers left. `touchEnd`'s spelling for "all of them came up". */
-const NONE: readonly Contact[] = [];
+/** Every contact a `pair` put down — `touchEnd`'s spelling for "hand off the glass". */
+function both(centre: Point, spread: number, dx = 0, dy = 0): readonly Contact[] {
+  return pair(centre, spread, dx, dy);
+}
 
 /**
  * A touch session over the page, held for the scenario.
@@ -104,7 +112,7 @@ test("two fingers moving apart zoom the stage", async ({ page }) => {
 
   await touch(client, "touchStart", pair(centre, 60));
   await touch(client, "touchMove", pair(centre, 120));
-  await touch(client, "touchEnd", NONE);
+  await touch(client, "touchEnd", both(centre, 120));
 
   await expect.poll(async () => (await frameOf(page)).zoom).toBeGreaterThan(frame.zoom * 1.8);
 });
@@ -116,7 +124,7 @@ test("two fingers moving together zoom out", async ({ page }) => {
 
   await touch(client, "touchStart", pair(centre, 160));
   await touch(client, "touchMove", pair(centre, 80));
-  await touch(client, "touchEnd", NONE);
+  await touch(client, "touchEnd", both(centre, 80));
 
   await expect.poll(async () => (await frameOf(page)).zoom).toBeLessThan(frame.zoom * 0.7);
 });
@@ -137,7 +145,7 @@ test("two fingers travelling together pan without zooming", async ({ page }) => 
 
   await touch(client, "touchStart", pair(centre, 100));
   await touch(client, "touchMove", pair(centre, 100, -130, 70));
-  await touch(client, "touchEnd", NONE);
+  await touch(client, "touchEnd", both(centre, 100, -130, 70));
 
   await expect
     .poll(async () => Math.round((await canvasOrigin(page)).x))
@@ -163,7 +171,7 @@ test("a pinch scales about the point between the fingers", async ({ page }) => {
 
   await touch(client, "touchStart", pair(centre, 70));
   await touch(client, "touchMove", pair(centre, 150));
-  await touch(client, "touchEnd", NONE);
+  await touch(client, "touchEnd", both(centre, 150));
 
   await expect.poll(async () => (await frameOf(page)).zoom).toBeGreaterThan(before.zoom * 1.5);
 
@@ -173,12 +181,18 @@ test("a pinch scales about the point between the fingers", async ({ page }) => {
 });
 
 /**
- * Lifting one finger ends the pinch without a jump, and the survivor is inert.
+ * Lifting one finger ends the pinch, and the survivor moves nothing.
  *
- * This is what `gestureNow` outliving its two contacts buys. Fingers never leave
- * a screen together, so every pinch ends with one still down — and if that one
- * were promoted into a drag pan, or forwarded to the machine, every pinch would
- * finish by sliding the picture sideways or drawing a box nobody asked for.
+ * Fingers never leave a screen together, so every pinch ends with one still
+ * down, and if that one kept driving the gesture the picture would lurch on the
+ * way out of every pinch anybody makes.
+ *
+ * The survivor needing no special handling was **measured, not assumed**:
+ * `IDLE_ROW` carries a `pointer-down` handler and nothing else, so its stray
+ * moves and its stray lift reach an idle machine and are silence. That is why
+ * this scenario asserts the viewport rather than the swallowing — the swallowing
+ * has no observable consequence, and a test for it would be a test of a
+ * mechanism instead of a behaviour.
  */
 test("lifting one finger ends the pinch, and the other one does nothing", async ({ page }) => {
   const frame = await frameOf(page);
@@ -189,16 +203,17 @@ test("lifting one finger ends the pinch, and the other one does nothing", async 
   await touch(client, "touchMove", pair(centre, 140));
   await expect.poll(async () => (await frameOf(page)).zoom).toBeGreaterThan(frame.zoom * 1.5);
 
-  // One up, one still down: the list is what stayed.
-  const survivor = pair(centre, 140)[0]!;
-  await touch(client, "touchEnd", [survivor]);
+  // One finger leaves. The list is what *left*, so the other one is still down.
+  const leaving = pair(centre, 140)[0]!;
+  const survivor = pair(centre, 140)[1]!;
+  await touch(client, "touchEnd", [leaving]);
   const settled = await canvasOrigin(page);
   const zoomed = (await frameOf(page)).zoom;
 
-  // It travels a long way. Nothing may move.
+  // The survivor travels a long way. Nothing may move.
   const travelled = { ...survivor, x: centre.x - 300, y: centre.y - 200 };
   await touch(client, "touchMove", [travelled]);
-  await touch(client, "touchEnd", NONE);
+  await touch(client, "touchEnd", [travelled]);
 
   const after = await canvasOrigin(page);
   expect(Math.round(after.x)).toBe(Math.round(settled.x));
@@ -206,4 +221,43 @@ test("lifting one finger ends the pinch, and the other one does nothing", async 
   expect((await frameOf(page)).zoom).toBeCloseTo(zoomed, 3);
   // And it drew nothing on the way out.
   await expect(page.getByTestId("counts")).toHaveText("0 annotation(s), 0 selected");
+});
+
+/**
+ * A finger swap continues the pinch, and this is the rule that decides how long
+ * a gesture lives.
+ *
+ * Two fingers is the whole condition — below that there is no gesture, and when
+ * a second contact arrives again there is one. **Mutation-verified**: clearing
+ * only when the *last* finger lifts, which is the obvious reading of "the
+ * gesture outlives its contacts", reddens this and nothing else. It also feels
+ * exactly like the bug it is: lift one finger and put it back, and the pinch is
+ * dead until you take your whole hand off the glass.
+ *
+ * Re-forming is jump-free because `beginGesture` reads the contacts' *current*
+ * positions, so the first frame after the swap compares a pair with itself.
+ */
+test("lifting one finger and putting another down continues the pinch", async ({ page }) => {
+  const frame = await frameOf(page);
+  const client = await touching(page);
+  const centre = frame.at(640, 360);
+
+  await touch(client, "touchStart", pair(centre, 70));
+  await touch(client, "touchMove", pair(centre, 130));
+  await expect.poll(async () => (await frameOf(page)).zoom).toBeGreaterThan(frame.zoom * 1.4);
+  const afterFirst = (await frameOf(page)).zoom;
+
+  // Finger 1 comes off; finger 2 stays exactly where it was.
+  const leaving = pair(centre, 130)[0]!;
+  const staying = pair(centre, 130)[1]!;
+  await touch(client, "touchEnd", [leaving]);
+
+  // A different finger arrives, and the two of them pinch further apart.
+  const rejoined = { id: 3, x: centre.x - 130, y: centre.y };
+  await touch(client, "touchStart", [staying, rejoined]);
+  const spreadFurther = { ...rejoined, x: centre.x - 260 };
+  await touch(client, "touchMove", [staying, spreadFurther]);
+
+  await expect.poll(async () => (await frameOf(page)).zoom).toBeGreaterThan(afterFirst * 1.2);
+  await touch(client, "touchEnd", [staying, spreadFurther]);
 });
