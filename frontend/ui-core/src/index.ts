@@ -286,8 +286,12 @@ export {
   writeRailCollapsed,
 } from "./data/railState.js";
 
-// The way out of a sub-view. Structural, never `navigate(-1)`.
-export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";
+// Where you are, as the whole ancestor chain. Structural, never `navigate(-1)`.
+export {
+  Breadcrumb,
+  type BreadcrumbItem,
+  type BreadcrumbProps,
+} from "./patterns/Breadcrumb.js";
 export { parentLabel } from "./patterns/parentLabel.js";
 
 // The floating tool palette. Reports the derived tool; never stores one.

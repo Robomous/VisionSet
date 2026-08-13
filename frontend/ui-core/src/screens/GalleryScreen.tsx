@@ -56,7 +56,7 @@ import {
   DialogTitle,
 } from "../primitives/Dialog";
 import { AssetThumbnail } from "./AssetThumbnail";
-import { BackLink } from "../patterns/BackLink";
+import { Breadcrumb } from "../patterns/Breadcrumb";
 import { parentLabel } from "../patterns/parentLabel";
 import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
@@ -153,8 +153,25 @@ export interface GalleryScreenProps {
    * this prop is passed — see `Tile`.
    */
   readonly onOpenAsset?: (asset: BatchAsset) => void;
-  /** Up to the project this batch belongs to. */
+  /**
+   * Up to the **Batches tab** of the project this batch belongs to, which is this
+   * page's immediate parent.
+   *
+   * The label used to say `road-signs` and the destination used to be the tab, so
+   * the control named one place and went to another. Both halves were right — the
+   * tab is where somebody leaving a batch belongs, and the project is the most a
+   * one-level control could name — and only the chain says both.
+   */
   readonly onBack?: () => void;
+  /**
+   * The project's own page, this batch's grandparent, and the project list above
+   * it. Two more navigation callbacks rather than a walk of the route table: the
+   * breadcrumb's *destinations* belong to the host — `ui-core` imports no router —
+   * while its *labels* belong here, because a project's name is behind a query
+   * this package makes and the host does not fetch.
+   */
+  readonly onOpenProject?: () => void;
+  readonly onOpenProjects?: () => void;
   /** The project's schema tab, for the approve dialog's `SCHEMA_NOT_FOUND` remedy. */
   readonly onOpenSchema?: () => void;
   /**
@@ -187,6 +204,8 @@ export function GalleryScreen({
   batchId,
   onOpenAsset,
   onBack,
+  onOpenProject,
+  onOpenProjects,
   onOpenSchema,
   onOpenDataset,
   onOpenBatch,
@@ -365,7 +384,21 @@ export function GalleryScreen({
 
   return (
     <div className="flex flex-col gap-4" data-testid="gallery">
-      {onBack !== undefined && <BackLink onClick={onBack} label={parentLabel(project.data?.name)} />}
+      {/* The product's deepest padded page, and the whole reason the chain exists:
+          `Projects / road-signs / Batches`. A level is included only when the host
+          gave it somewhere to go, so a host that wired nothing renders no control
+          at all rather than dead text. */}
+      <Breadcrumb
+        items={[
+          ...(onOpenProjects === undefined
+            ? []
+            : [{ label: "Projects", onNavigate: onOpenProjects }]),
+          ...(onOpenProject === undefined
+            ? []
+            : [{ label: parentLabel(project.data?.name), onNavigate: onOpenProject }]),
+          ...(onBack === undefined ? [] : [{ label: "Batches", onNavigate: onBack }]),
+        ]}
+      />
 
       <BatchHeader
         batch={batch.data}

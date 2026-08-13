@@ -1,29 +1,30 @@
 /**
- * The way out of every sub-view.
+ * Where you are, and the way out, on every sub-view.
  *
  * A screen with no return edge is complete against its own contract — a prop that
  * does not exist cannot be missing, which is why no other test notices. So the
- * claim here is deliberately uniform and asserted
- * once per screen: **passed a parent, the screen renders one control that names it
- * and calls back; passed none, it renders nothing rather than a dead one.**
+ * claim here is deliberately uniform and asserted once per screen: **passed its
+ * ancestors, the screen renders the chain and each crumb calls back; passed none,
+ * it renders nothing rather than a row of dead text.**
  *
- * That the control reaches the *right* URL is not knowable here — a parent is a
+ * That a crumb reaches the *right* URL is not knowable here — a destination is a
  * fact about the route table, which lives in `@visionset/app`. `e2e/navigation.spec.ts`
  * asserts it, and it navigates **by URL** so history is empty, because history is
- * exactly what a back affordance must not rely on.
+ * exactly what a breadcrumb must not rely on. The same file owns the other claim
+ * jsdom cannot make: which crumbs are *visible* below `lg`, since a media query is
+ * a real-browser fact and both presentations are in the DOM here.
  */
 
 import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
 import { writeToken } from "../data/session";
-import { BackLink } from "../patterns/BackLink";
+import { Breadcrumb } from "../patterns/Breadcrumb";
 import { parentLabel } from "../patterns/parentLabel";
-import { DatasetScreen } from "./DatasetScreen";
 import { GalleryScreen } from "./GalleryScreen";
 import { IngestScreen } from "./IngestScreen";
 import { ProjectScreen } from "./ProjectScreen";
@@ -44,11 +45,11 @@ const NO_PROGRESS = {
 };
 
 /**
- * One stub for four screens.
+ * One stub for three screens.
  *
  * Every path any of them reads, answered with the smallest honest shape. The
  * screens are only ever asked one question here — "did you draw the way out?" — so
- * a per-screen fixture would be four copies of the same setup for one assertion.
+ * a per-screen fixture would be three copies of the same setup for one assertion.
  */
 function answer(path: string): unknown {
   if (path === `/projects/${PROJECT}`) {
@@ -125,19 +126,71 @@ function mount(node: ReactNode): JSX.Element {
 }
 
 describe("the control itself", () => {
-  it("names where it goes, and calls back when pressed", async () => {
-    const onClick = vi.fn();
-    render(<BackLink onClick={onClick} label="road-signs" />);
+  it("renders every ancestor in order, and each one calls its own destination", async () => {
+    const projects = vi.fn();
+    const project = vi.fn();
+    const batches = vi.fn();
+    render(
+      <Breadcrumb
+        items={[
+          { label: "Projects", onNavigate: projects },
+          { label: "road-signs", onNavigate: project },
+          { label: "Batches", onNavigate: batches },
+        ]}
+      />,
+    );
 
-    const link = screen.getByTestId("back-link");
-    expect(link.textContent).toContain("road-signs");
+    const crumbs = within(screen.getByTestId("breadcrumb")).getAllByRole("button");
+    expect(crumbs.map((crumb) => crumb.textContent)).toEqual([
+      "Projects",
+      "road-signs",
+      "Batches",
+    ]);
 
-    await userEvent.click(link);
-    expect(onClick).toHaveBeenCalledTimes(1);
+    // Each one separately, because a chain wired to a single handler would render
+    // identically and pass any assertion made about the row as a whole.
+    await userEvent.click(crumbs[0]!);
+    await userEvent.click(crumbs[1]!);
+    expect(projects).toHaveBeenCalledTimes(1);
+    expect(project).toHaveBeenCalledTimes(1);
+    expect(batches).not.toHaveBeenCalled();
+  });
+
+  it("collapses to the IMMEDIATE parent, not to the root", () => {
+    // The narrow presentation keeps exactly one crumb, and which one it keeps is
+    // the whole claim: a chain that collapsed to its root would send somebody to
+    // the project list from a batch, silently and structurally.
+    //
+    // *Visibility* is a media-query fact and belongs to the browser suite; what is
+    // knowable here is which crumb wears the collapsed slot.
+    render(
+      <Breadcrumb
+        items={[
+          { label: "Projects", onNavigate: vi.fn() },
+          { label: "road-signs", onNavigate: vi.fn() },
+          { label: "Batches", onNavigate: vi.fn() },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("breadcrumb-parent").textContent).toBe("Batches");
+  });
+
+  it("renders nothing at all rather than a row of dead text", () => {
+    // The rule the single-level control already kept, carried over intact: a host
+    // with nowhere to send anybody draws no affordance. A screen omits an ancestor
+    // it has no callback for, so an empty list is how "nowhere at all" arrives.
+    render(<Breadcrumb items={[]} />);
+    expect(screen.queryByTestId("breadcrumb")).toBeNull();
+  });
+
+  it("carries the full label for a crumb the width cut short", () => {
+    render(<Breadcrumb items={[{ label: "a-very-long-project-name", onNavigate: vi.fn() }]} />);
+    expect(screen.getByTestId("breadcrumb-parent").title).toBe("a-very-long-project-name");
   });
 
   it("falls back to the noun rather than to nothing while a name is in flight", () => {
-    // A control that appeared as a bare arrow and then grew a name would move the
+    // A crumb that appeared as a bare arrow and then grew a name would move the
     // page under a cursor already aiming at it.
     expect(parentLabel("road-signs")).toBe("road-signs");
     expect(parentLabel(undefined)).toBe("Project");
@@ -145,59 +198,74 @@ describe("the control itself", () => {
   });
 });
 
-/** Every sub-view, and the parent each names. */
+/**
+ * Every sub-view and the chain it declares.
+ *
+ * The dataset is deliberately absent: it is a project **tab** now, so its way out
+ * is the tab bar and the crumbs above it belong to the project page it renders
+ * inside. Its `onBack` outlived that move with nobody passing it and is gone.
+ */
 const SUBVIEWS = [
   {
     name: "the project",
-    parent: "Projects",
+    chain: ["Projects"],
     sentinel: "project-screen",
-    render: (onBack?: () => void) =>
-      <ProjectScreen projectId={PROJECT} {...(onBack === undefined ? {} : { onBack })} />,
+    render: (nav?: () => void) =>
+      <ProjectScreen projectId={PROJECT} {...(nav === undefined ? {} : { onBack: nav })} />,
   },
   {
     name: "ingest",
-    parent: "road-signs",
+    chain: ["Projects", "road-signs"],
     sentinel: "ingest-screen",
-    render: (onBack?: () => void) =>
-      <IngestScreen projectId={PROJECT} {...(onBack === undefined ? {} : { onBack })} />,
-  },
-  {
-    name: "the gallery",
-    parent: "road-signs",
-    sentinel: "gallery",
-    render: (onBack?: () => void) =>
-      <GalleryScreen
+    render: (nav?: () => void) =>
+      <IngestScreen
         projectId={PROJECT}
-        batchId={BATCH}
-        {...(onBack === undefined ? {} : { onBack })}
+        {...(nav === undefined ? {} : { onBack: nav, onOpenProjects: nav })}
       />,
   },
   {
-    name: "the dataset",
-    parent: "road-signs",
-    sentinel: "dataset-screen",
-    render: (onBack?: () => void) =>
-      <DatasetScreen projectId={PROJECT} {...(onBack === undefined ? {} : { onBack })} />,
+    name: "the gallery",
+    // The chain this whole change exists for. The old control read `road-signs`
+    // and landed on the Batches tab; the third crumb is what settles that.
+    chain: ["Projects", "road-signs", "Batches"],
+    sentinel: "gallery",
+    render: (nav?: () => void) =>
+      <GalleryScreen
+        projectId={PROJECT}
+        batchId={BATCH}
+        {...(nav === undefined
+          ? {}
+          : { onBack: nav, onOpenProject: nav, onOpenProjects: nav })}
+      />,
   },
 ] as const;
 
-describe.each(SUBVIEWS)("$name", ({ parent, sentinel, render: renderScreen }) => {
-  it("draws one way out, naming its parent", async () => {
+describe.each(SUBVIEWS)("$name", ({ chain, sentinel, render: renderScreen }) => {
+  it("draws its whole ancestor chain, in order", async () => {
+    render(mount(renderScreen(vi.fn())));
+
+    // Waited for rather than read once: two of the three name a project whose
+    // query is still in flight on the first paint, and `parentLabel` deliberately
+    // renders the noun until it lands.
+    await waitFor(() => {
+      const crumbs = within(screen.getByTestId("breadcrumb")).getAllByRole("button");
+      expect(crumbs.map((crumb) => crumb.textContent)).toEqual([...chain]);
+    });
+  });
+
+  it("puts its immediate parent in the collapsed slot, and calls back from it", async () => {
     const onBack = vi.fn();
     render(mount(renderScreen(onBack)));
 
-    // Waited for rather than read once: three of the four name a project whose
-    // query is still in flight on the first paint, and `parentLabel` deliberately
-    // renders the noun until it lands.
     await waitFor(() =>
-      expect(screen.getByTestId("back-link").textContent).toContain(parent),
+      expect(screen.getByTestId("breadcrumb-parent").textContent).toBe(chain[chain.length - 1]),
     );
 
     // Re-queried rather than held: a screen whose queries settle after the first
     // paint re-renders around this control, and clicking the node captured before
     // that does nothing at all — silently, which is the worst way for a test to
     // pass.
-    await userEvent.click(screen.getByTestId("back-link"));
+    await userEvent.click(screen.getByTestId("breadcrumb-parent"));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
@@ -208,7 +276,7 @@ describe.each(SUBVIEWS)("$name", ({ parent, sentinel, render: renderScreen }) =>
     // loading state first, and asserting absence against a skeleton would pass
     // however the screen behaved afterwards.
     await screen.findByTestId(sentinel);
-    expect(screen.queryByTestId("back-link")).toBeNull();
+    expect(screen.queryByTestId("breadcrumb")).toBeNull();
   });
 });
 
