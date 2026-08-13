@@ -68,8 +68,6 @@ import {
 } from "../primitives/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../primitives/Table";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
-import { BackLink } from "../patterns/BackLink";
-import { parentLabel } from "../patterns/parentLabel";
 import { formatWhen } from "../lib/format";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { saveBlob } from "./download";
@@ -82,7 +80,6 @@ import {
   useExportRelease,
   useFormats,
   useJobArtifact,
-  useProject,
   useProjectDataset,
   usePublishRelease,
   useReleases,
@@ -96,14 +93,21 @@ import {
 /** The 409 that means "say you meant it". Not `confirm`, and not destructive. */
 const LOSSY = "LOSSY_EXPORT_NOT_CONSENTED";
 
+/*
+ * There is no `onBack` any more, and no breadcrumb.
+ *
+ * The trunk is a project **tab**, so its way out is the tab bar and the crumbs
+ * above it belong to the project page this renders inside — a second answer to
+ * "where am I", one panel further in, would contradict the first. The prop
+ * survived the move to a tab with no caller passing it, which is the dead
+ * flexibility the `information-architecture` rule exists to prevent. Its old
+ * route is a redirect, so nothing can reach this screen standalone.
+ */
 export interface DatasetScreenProps {
   readonly projectId: string;
-  /** Up to the project this trunk belongs to. */
-  readonly onBack?: () => void;
 }
 
-export function DatasetScreen({ projectId, onBack }: DatasetScreenProps): JSX.Element {
-  const project = useProject(projectId);
+export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
   const dataset = useProjectDataset(projectId);
   const stats = useDatasetStats(dataset.data?.id);
   const releases = useReleases(dataset.data?.id);
@@ -111,8 +115,6 @@ export function DatasetScreen({ projectId, onBack }: DatasetScreenProps): JSX.El
 
   return (
     <div className="flex flex-col gap-6" data-testid="dataset-screen">
-      {onBack !== undefined && <BackLink onClick={onBack} label={parentLabel(project.data?.name)} />}
-
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div>
           <h1 className="text-page font-semibold tracking-tight">Dataset</h1>

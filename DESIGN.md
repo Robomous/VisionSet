@@ -348,29 +348,55 @@ and without knowing the URL scheme. Before **#199** five of the six sub-views of
 nothing at all and the sixth offered history, so this section exists to keep the rule
 from being rediscovered one screen at a time.
 
-- **Every sub-view declares a parent, and the back affordance goes there
-  structurally.** `navigate(-1)` is not a parent: it means the gallery when you
-  clicked a tile, nothing at all on a fresh tab, and one asset at a time after
-  walking forward through a job. The destination has to be the same however the page
-  was reached — clicked through, pasted, reloaded, or walked forward from a sibling.
-  The parents live in one `PARENT` table in `app/src/routes.tsx`, because a parent is
-  a fact about the route table and `ui-core` deliberately has no router.
-- **The affordance names its destination.** "Back" alone is a promise about history;
+- **Every sub-view declares its ancestor chain, and it is rendered in full.**
+  `navigate(-1)` is not an ancestor: it means the gallery when you clicked a tile,
+  nothing at all on a fresh tab, and one asset at a time after walking forward
+  through a job. Every destination has to be the same however the page was reached —
+  clicked through, pasted, reloaded, or walked forward from a sibling. The
+  destinations live in one `PARENT` table in `app/src/routes.tsx`, because a
+  destination is a fact about the route table and `ui-core` deliberately has no
+  router.
+
+  A single-level control is not enough, and the gallery is why. Its control read
+  `← road-signs` — the *project's* name — while landing on the project's **Batches
+  tab**. Both halves were right: the tab is where somebody leaving a batch belongs,
+  and naming the project is the most one level can say. Only the chain says both,
+  and it reads `Projects / road-signs / Batches`.
+- **Ancestors only. The current page is the `<h1>`, never a crumb**, which is also
+  why no crumb carries `aria-current`. A breadcrumb repeating the heading beneath it
+  spends a line telling somebody what they are already reading.
+- **A tab in the query string is a level.** #171 put tabs in the URL because
+  somebody links to one and returns to it — that makes it somewhere you were, so it
+  is somewhere you can be sent back to. It is what the gallery's third crumb *is*.
+- **The affordance names its destinations.** "Back" alone is a promise about history;
   "Projects", or a project's own name, is a promise about structure — the one the
   control can keep. A name that has not loaded yet falls back to the noun
   (`parentLabel`) rather than to nothing, so the control does not change width under
-  a cursor that is already aiming at it.
-- **Placement follows the pane.** On a padded page it is `patterns/BackLink.tsx`
-  directly above the page header: meta-size, muted, a 14px `ArrowLeft`, pulled left
-  by the gutter (`-ml-1`) so its text aligns with the `<h1>` beneath it. On the
-  full-bleed editor it is the first control in the 44px top bar, as a 36px ghost icon
-  button — the shape that bar is already built from.
-- **A screen takes it as an optional callback, never a route.** The same rule every
+  a cursor that is already aiming at it. Each crumb truncates with its full label in
+  `title`, and the row never wraps to a second line at any width.
+- **Placement follows the pane.** On a padded page it is `patterns/Breadcrumb.tsx`
+  directly above the page header: meta-size, muted, `/` separators and no arrow,
+  pulled left by the gutter (`-ml-1`) so the first crumb aligns with the `<h1>`
+  beneath it. On the full-bleed editor there is **no chain** — the way out is the
+  first control in the 44px top bar, a 36px ghost `ArrowLeft` meaning *up*, because
+  that bar's left zone is a `minmax(0, 1fr)` track already truncating to hold the
+  navigation cluster on the bar's geometric centre, and crumbs there would be paid
+  for out of the frame's identity readout.
+- **Below `lg` the same chain collapses to `← <immediate parent>`**, which is the
+  shape the single-level control had. One component, one items array, one set of
+  destinations, two presentations — and the collapse is CSS on one DOM node per
+  crumb, never a second list, so nothing is read twice by a screen reader and the
+  two presentations have nowhere to drift apart.
+- **A screen takes it as optional callbacks, never a route.** The same rule every
   forward edge follows: `ui-core` may not import a router, so a host that has nowhere
-  to send anybody renders no control rather than a dead one.
+  to send anybody renders no control rather than a dead one. A screen omits a level
+  it has no callback for rather than rendering dead text, which is what makes an
+  empty chain mean *nothing to offer*. The host spells every URL; the screen supplies
+  every label, because a project's name is behind a query `ui-core` makes and
+  `routes.tsx` does not fetch.
 - **The rail is for top-level destinations only.** Per-screen return navigation never
   lives on it — that is what lets it name where it goes, and what keeps the rail the
-  five things `## Layout` gives it. A rail destination therefore has no back-link of
+  five things `## Layout` gives it. A rail destination therefore has no breadcrumb of
   its own, for the reason a tab has none: the rail *is* its way out, and a second
   answer to "where am I" inside the pane would contradict it.
 - **The browser's Back button stays correct, and is never the only way out.** Nothing
@@ -545,7 +571,7 @@ what #207–#213 build against.
 
 Four lines and two buttons, in this order:
 
-1. The back affordance (`← Projects`), per **Navigation rules**.
+1. The breadcrumb (`Projects`, this page's whole chain), per **Navigation rules**.
 2. The project name, at the page-title role.
 3. The description **if there is one**. If there is not, render *nothing* — the string "No
    description." spends a line telling somebody about a field rather than about their
