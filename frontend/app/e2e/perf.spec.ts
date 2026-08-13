@@ -62,7 +62,7 @@ import {
   layerCounts,
   watchLayers,
 } from "./_bench";
-import { expectCounts, focusCanvas, frameOf } from "./_frame";
+import { expectCounts, focusCanvas, frameOf, zoomWheel } from "./_frame";
 
 /**
  * The box every drag scenario grabs — column 3, row 1.
@@ -204,9 +204,11 @@ test("one wheel notch writes the stage and touches no annotation at all", async 
   const frame = await frameOf(page, BENCH_ASSET);
 
   const at = frame.at(1920, 1080);
+  // Onto the target first, so the counter starts with the pointer already there
+  // — an *approach* to a shape flips a `fill-opacity` and would be counted.
   await page.mouse.move(at.x, at.y);
   await watchLayers(page);
-  await page.mouse.wheel(0, -120);
+  await zoomWheel(page, at, -120);
 
   // Poll the **stage**, which is where a zoom now writes. A wheel event is not a
   // discrete React event, so the commit lands on a later task than the dispatch.
@@ -261,8 +263,7 @@ test("a zoom still leaves a stroke two screen pixels wide, which is what it was 
   expect(await strokeAtThisZoom()).toBeCloseTo(2, 1);
 
   const at = frame.at(1920, 1080);
-  await page.mouse.move(at.x, at.y);
-  await page.mouse.wheel(0, -600);
+  await zoomWheel(page, at, -600);
   await expect
     .poll(async () => (await page.getByTestId("annotator-canvas").boundingBox())?.width ?? 0)
     .toBeGreaterThan(frame.zoom * BENCH_ASSET.width * 1.5);
