@@ -377,9 +377,8 @@ function PendingPolygonShape({ points, cursor, color, zoom, closeRing }: {
  *
  * `body` and `empty` draw nothing: a hot body is the committed layer's to fill,
  * and empty canvas has nothing to promise. An `edge` shows where a double-click
- * would insert a vertex, which is the one affordance with no shape of its own —
- * `affordance.ts` notes that it answers a `move` cursor and leaves the hint to
- * whoever renders `hot`.
+ * would insert a vertex — the one affordance with no shape of its own, and since
+ * #567 no cursor of its own either, so this is the whole of the hint.
  */
 function HotTarget({ hot, zoom }: { readonly hot: Target; readonly zoom: number }): JSX.Element | null {
   if (hot.kind === "handle") {

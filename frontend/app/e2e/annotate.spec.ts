@@ -1421,12 +1421,12 @@ function storedBox(assetId: string): Record<string, unknown> {
 }
 
 /**
- * Read-only selection highlights — stroke and
- * label — and advertises nothing. No move cursor anywhere, no grips or vertex
- * dots on the selected shape. The editor is asserted beside it, so the claim is
- * about the mode and not about the fixture.
+ * Read-only selection highlights and advertises nothing: no grips, no vertex
+ * dots. The editor is asserted beside it, so the claim is about the mode and not
+ * about the fixture. The cursor no longer separates them (#567) and is not
+ * compared here.
  */
-test("read-only selection shows no move cursor and no handles; the editor shows both", async ({
+test("read-only selection grows no handles, where the editor's does", async ({
   page,
 }) => {
   const sent: Request[] = [];
@@ -1447,16 +1447,9 @@ test("read-only selection shows no move cursor and no handles; the editor shows 
   await expect(page.locator("[data-handle]")).toHaveCount(0);
   await expect(page.locator("[data-vertex]")).toHaveCount(0);
 
-  // (b) …and hovering the body promises nothing: the pane's cursor is the
-  // default arrow, not `move`.
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  const viewing = await page
-    .getByTestId("annotator-pane")
-    .evaluate((node) => getComputedStyle(node).cursor);
-  expect(viewing).toBe("default");
 });
 
-test("the editor still offers what the viewer withholds — move cursor and grips", async ({
+test("the editor grows grips on selection, and hovering a shape stays a plain arrow", async ({
   page,
 }) => {
   const sent: Request[] = [];
@@ -1469,11 +1462,14 @@ test("the editor still offers what the viewer withholds — move cursor and grip
   await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "true");
 
   await expect(page.locator("[data-handle]").first()).toBeVisible();
+
+  // Hovering the body is a plain arrow, not the four-arrow `move` (#567). Only a
+  // browser has a computed cursor at all.
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   const editing = await page
     .getByTestId("annotator-pane")
     .evaluate((node) => getComputedStyle(node).cursor);
-  expect(editing).toBe("move");
+  expect(editing).toBe("default");
 });
 
 /**
@@ -3233,6 +3229,59 @@ test("the preview draws its vertices, and a committed shape does not", async ({ 
   const committed = page.getByTestId("annotator-canvas").locator("g[data-annotation-id]");
   await expect(committed).toHaveCount(1);
   await expect(committed.locator("polygon")).not.toHaveAttribute("stroke-dasharray", "10 6");
+});
+
+test("the detail slider moves under the pointer, and hands the keyboard back", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+  await servePolygonSuggestion(page);
+
+  await page.getByTestId("tool-suggest").click();
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+  await page.getByTestId("suggest-adjust-open").click();
+
+  const slider = page.getByTestId("suggest-detail");
+  await expect(slider).toHaveValue("1");
+  const before = asks(sent);
+
+  // A real drag: press the thumb, travel, release. `fill()` and `click()` both
+  // set the value without ever exercising the default action, which is exactly
+  // the gap that let a slider ship unmovable — `preventDefault` on the press
+  // cancelled the drag and every jsdom assertion still passed (#563).
+  const track = (await slider.boundingBox())!;
+  await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(track.x + track.width - 1, track.y + track.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(slider).toHaveValue("2");
+  await expect(page.getByTestId("suggest-detail-label")).toContainText("Fine");
+  const fine = await drawnVertices(page);
+  // Still no round trip: the drag is arithmetic, like the brackets.
+  expect(asks(sent)).toBe(before);
+
+  // Dragging the other way, to the coarsest stop. Two *client* simplifications
+  // compared against each other — the answer's own geometry arrives already
+  // reduced by the server and is not one of the three steps.
+  await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(track.x + 1, track.y + track.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect(slider).toHaveValue("0");
+  await expect(page.getByTestId("suggest-detail-label")).toContainText("Coarse");
+  expect(fine).toBeGreaterThan(await drawnVertices(page));
+
+  // And the canvas has its keyboard back the moment the drag ended — without
+  // this the brackets, Esc and Enter are all dead and nothing says why.
+  await page.keyboard.press("]");
+  await expect(slider).toHaveValue("1");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
 });
 
 test("a press on the suggest panel never reaches the picture underneath", async ({ page }) => {
