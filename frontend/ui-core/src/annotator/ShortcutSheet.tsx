@@ -1,5 +1,20 @@
 /**
- * The keyboard shortcuts, read off the live registry.
+ * The shortcuts, read off the live registry, and the gestures, which cannot be.
+ *
+ * ## Half of this sheet is derived and half is written, and the split is not a
+ * compromise
+ *
+ * The keyboard half is the registry and nothing else — see below. The
+ * **Navigate** half is hand-written, and it has to be: a two-finger scroll, a
+ * pinch and a middle-drag have no chord, so there is no row anywhere to read
+ * them off. `bindings.ts` holds keystrokes; `AnnotatorCanvas`'s wheel listener
+ * and pointer handlers hold these, as branches rather than as data.
+ *
+ * That makes the written half the thing that can drift, so it is kept small and
+ * kept about *gestures only*. Anything with a chord — `h`, `mod+0` — appears in
+ * the derived rows above and is not repeated here, however tempting: a gesture
+ * list that also listed keys would be the hand-written table this file's whole
+ * argument is against, reintroduced one row at a time.
  *
  * ## The list is derived, never retyped
  *
@@ -44,6 +59,7 @@ import {
   SAVE,
   SAVE_AND_NEXT,
   SKIP_FRAME,
+  TOGGLE_HAND,
   TOGGLE_HELP,
   type Action,
   type ActionKind,
@@ -98,6 +114,7 @@ function hostPhrase(name: string): string {
   if (name === SAVE) return "Save now, and stay on this frame";
   if (name === SAVE_AND_NEXT) return "Save and go to the next frame";
   if (name === SKIP_FRAME) return "Skip this frame and go to the next";
+  if (name === TOGGLE_HAND) return "Turn the hand on or off — with it on, any drag pans";
   return name;
 }
 
@@ -130,6 +147,53 @@ function readable(chord: string, apple: boolean): string {
 
 function capitalize(part: string): string {
   return part.charAt(0).toUpperCase() + part.slice(1);
+}
+
+/** One gesture, and what it does. The left half is prose, not a chord. */
+interface GestureRow {
+  readonly gesture: string;
+  readonly means: string;
+}
+
+/**
+ * How to move the picture, organised by what a person wants rather than by what
+ * they are holding.
+ *
+ * The length of the list is the point of it: a trackpad has no second mouse
+ * button and a pen has none either, so until this each of them had no pan at
+ * all. The middle-and-right drag is the row that always worked, and it is last
+ * rather than first because it is the one fewest readers can use.
+ */
+function panning(mod: string): readonly GestureRow[] {
+  return [
+    { gesture: "Two-finger scroll", means: "Trackpad. Moves in both directions" },
+    { gesture: "Scroll wheel", means: "Moves up and down" },
+    // `Space` has no row above and cannot have one — a keystroke is a press, and
+    // this is a hold. The hand's *other* spelling, `h`, is in the derived rows
+    // and is deliberately not repeated here.
+    { gesture: "Hold Space and drag", means: "The hand, for as long as the key is down" },
+    { gesture: "Middle-drag or right-drag", means: "Works whatever tool is active" },
+    // The one thing about this model somebody has to be told outright, rather
+    // than being left to discover that a modifier changes what a scroll means.
+    { gesture: `${mod} is what changes it`, means: "Held, the same scroll zooms instead" },
+  ];
+}
+
+function zooming(mod: string): readonly GestureRow[] {
+  return [
+    { gesture: "Pinch", means: "Trackpad. Zooms about the pointer" },
+    { gesture: `${mod} and scroll`, means: "The same, with a mouse" },
+    // The buttons and the readout, which no chord reaches. Fitting does have one
+    // — `mod+0` — so the fit button is left to the derived row that names it.
+    { gesture: "The − and + buttons", means: "Bottom right of the picture. 5% to 800%" },
+  ];
+}
+
+function touching(): readonly GestureRow[] {
+  return [
+    { gesture: "One finger", means: "Draws, or pans while the hand is on" },
+    { gesture: "Two fingers", means: "Pinch and drag together, about the point between them" },
+  ];
 }
 
 export interface ShortcutSheetProps {
@@ -166,9 +230,10 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
           }
         }}
       >
-        <DialogTitle>Keyboard shortcuts</DialogTitle>
+        <DialogTitle>Shortcuts and gestures</DialogTitle>
         <DialogDescription>
-          Every chord the annotator claims, read from the live binding table.
+          Every chord the annotator claims, read from the live binding table, and the
+          gestures that move the picture.
         </DialogDescription>
 
         <Rows testId="shortcut-rows" rows={engine} apple={apple} />
@@ -184,6 +249,16 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
           </>
         )}
 
+        <h3 className="mt-2 text-section font-semibold">Navigate</h3>
+        <p className="text-meta text-muted-foreground">
+          Nothing here is a chord, so none of it can come from the table above — a pointer
+          gesture has no row to be read off. Both modifiers work on every platform; the label
+          shows the one this machine presses.
+        </p>
+        <Gestures testId="shortcut-pan-rows" caption="Move the picture" rows={panning(mod)} />
+        <Gestures testId="shortcut-zoom-rows" caption="Change the zoom" rows={zooming(mod)} />
+        <Gestures testId="shortcut-touch-rows" caption="On a touchscreen" rows={touching()} />
+
         <h3 className="mt-2 text-section font-semibold">Inside a text field</h3>
         <p className="text-meta text-muted-foreground" data-testid="shortcut-text-fields">
           <kbd className="rounded-sm border border-border bg-muted px-1">{mod} + C</kbd> and{" "}
@@ -194,6 +269,41 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
         </p>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * A gesture list, shaped like `Rows` so the two read as one sheet.
+ *
+ * Deliberately a second component rather than a widened `Rows`: those rows come
+ * from the registry and carry an `Action`, these are written by hand and carry a
+ * sentence, and folding them together would make the derived half look
+ * hand-written — which is the exact confusion this file's docstring exists to
+ * prevent.
+ */
+function Gestures({
+  testId,
+  caption,
+  rows,
+}: {
+  readonly testId: string;
+  readonly caption: string;
+  readonly rows: readonly GestureRow[];
+}): JSX.Element {
+  return (
+    <table className="w-full border-separate border-spacing-y-1" data-testid={testId}>
+      <caption className="text-left text-meta font-medium text-muted-foreground">
+        {caption}
+      </caption>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.gesture}>
+            <td className="w-48 align-top text-body">{row.gesture}</td>
+            <td className="text-body text-muted-foreground">{row.means}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

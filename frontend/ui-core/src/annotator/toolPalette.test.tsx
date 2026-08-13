@@ -42,6 +42,7 @@ function mount(
         tool="select"
         onActivateClass={vi.fn()}
         onToggleHelp={vi.fn()}
+        hand={{ active: false, onToggle: vi.fn() }}
         {...overrides}
       />
     </TooltipProvider>
@@ -345,5 +346,77 @@ describe("the suggest tool (#424)", () => {
     render(mount({ suggest: { active: true, onToggle: vi.fn(), unavailable: null } }));
     expect(screen.getByTestId("tool-suggest").getAttribute("aria-disabled")).toBeNull();
     expect(screen.getByTestId("tool-suggest").getAttribute("aria-label")).toBe("Suggest (S)");
+  });
+});
+
+describe("the hand is the one button here that is not about the schema (#576)", () => {
+  it("is offered on a schema that declares nothing drawable at all", () => {
+    // Every other control on the strip answers a question about the schema. This
+    // one answers a question about the device — a trackpad, a pen and a finger
+    // have no second mouse button, which is the only spelling a pan used to have
+    // — so a tag-only project gets it exactly as a bbox project does.
+    const tagsOnly = {
+      ...SCHEMA,
+      classes: [SCHEMA.classes[3]],
+    } as unknown as Parameters<typeof toolChoices>[0];
+    render(mount({ schema: tagsOnly }));
+
+    expect(screen.getByTestId("tool-hand")).toBeTruthy();
+    expect(screen.queryByTestId("tool-bbox")).toBeNull();
+    expect(screen.queryByTestId("tool-polygon")).toBeNull();
+  });
+
+  it("names its chord, and lights up when the host says it is on", () => {
+    const { rerender } = render(mount());
+    expect(screen.getByTestId("tool-hand").getAttribute("aria-label")).toBe("Hand (H)");
+    expect(screen.getByTestId("tool-hand").getAttribute("data-active")).toBe("false");
+
+    rerender(mount({ hand: { active: true, onToggle: vi.fn() } }));
+    expect(screen.getByTestId("tool-hand").getAttribute("data-active")).toBe("true");
+  });
+
+  it("asks the host to toggle rather than holding the mode itself", () => {
+    const onToggle = vi.fn();
+    render(mount({ hand: { active: false, onToggle } }));
+
+    fireEvent.click(screen.getByTestId("tool-hand"));
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a viewer gets the strip, carrying only what does not draw (#576)", () => {
+  it("keeps the hand and the shortcut sheet", () => {
+    render(mount({ readOnly: true }));
+
+    expect(screen.getByTestId("tool-hand")).toBeTruthy();
+    expect(screen.getByTestId("tool-help")).toBeTruthy();
+  });
+
+  it("drops every control that draws, adds a class or steps the command log", () => {
+    render(
+      mount({
+        readOnly: true,
+        onAddClass: vi.fn(),
+        suggest: { active: false, onToggle: vi.fn(), unavailable: null },
+        history: { canUndo: true, canRedo: true, onUndo: vi.fn(), onRedo: vi.fn() },
+      }),
+    );
+
+    // Every one of these is offered by the same mount without `readOnly`, which
+    // is what the tests above assert — so their absence here is the flag doing
+    // the work and not a prop nobody passed.
+    for (const testId of [
+      "tool-select",
+      "tool-bbox",
+      "tool-polygon",
+      "tool-polyline",
+      "tool-suggest",
+      "tool-add-class",
+      "tool-undo",
+      "tool-redo",
+    ]) {
+      expect(screen.queryByTestId(testId)).toBeNull();
+    }
   });
 });

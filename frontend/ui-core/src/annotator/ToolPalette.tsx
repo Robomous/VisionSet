@@ -93,6 +93,7 @@ import {
 } from "@visionset/annotator";
 import {
   CircleHelp,
+  Hand,
   MousePointer2,
   Plus,
   Redo2,
@@ -259,6 +260,37 @@ export interface ToolPaletteProps {
     readonly onUndo: () => void;
     readonly onRedo: () => void;
   };
+  /**
+   * The hand, and it is the one button here that is **not schema-gated**.
+   *
+   * Every other control on this strip is a question about the schema: which
+   * geometries the declared classes can hold, whether any of them can hold a
+   * suggestion. The hand is a question about the *device* — it exists because a
+   * pan had exactly one spelling, a middle- or secondary-button drag, and a
+   * trackpad, a tablet and a pen have no second button to offer. No schema makes
+   * that more or less true, so `toolChoices` never sees it and it is never
+   * absent.
+   *
+   * Required rather than optional, unlike `suggest` and `history`: those are
+   * capabilities a host may not have behind it, and this is one every host
+   * already has — the canvas implements it, not the page.
+   */
+  readonly hand: {
+    readonly active: boolean;
+    readonly onToggle: () => void;
+  };
+  /**
+   * A viewer, who may navigate and may not draw.
+   *
+   * The strip used to be absent entirely in this mode, and the reason it gave
+   * was sound while it held: *"every control on the palette picks a drawing
+   * tool, and a tool palette over a canvas that cannot be drawn on is not an
+   * explanation of anything."* The hand is what retires it. Navigating a batch
+   * somebody may not edit is most of what a viewer does, so the one control that
+   * is not about drawing stays, with the shortcut sheet beside it, and every
+   * control that *is* about drawing goes.
+   */
+  readonly readOnly?: boolean;
 }
 
 export function ToolPalette({
@@ -269,6 +301,8 @@ export function ToolPalette({
   onAddClass,
   history,
   suggest,
+  hand,
+  readOnly = false,
 }: ToolPaletteProps): JSX.Element {
   /**
    * The canvas keeps the focus.
@@ -288,30 +322,42 @@ export function ToolPalette({
       data-testid="tool-palette"
       className="absolute left-3 top-3 flex w-12 flex-col items-center gap-1 rounded-xl border border-border bg-muted p-2 shadow-lg"
     >
-      {toolChoices(schema).map((choice) => (
-        <PaletteButton
-          key={choice.tool}
-          testId={`tool-${choice.tool}`}
-          label={
-            choice.unavailable ?? `${choice.label} (${choice.hotkey})`
-          }
-          active={tool === choice.tool}
-          disabled={choice.unavailable !== null}
-          onMouseDown={keepFocus}
-          // (1) above: the tool did not move, so nothing moves.
-          onClick={() => {
-            if (choice.unavailable !== null) return;
-            if (tool !== choice.tool) onActivateClass(choice.labelClass);
-          }}
-        >
-          <ToolIcon tool={choice.tool} />
-        </PaletteButton>
-      ))}
+      {/* First, and above the tools rather than among them: it is the one
+          control here that does not draw, and the one a person reaches for when
+          the picture is in the wrong place rather than when it is wrong. */}
+      <PaletteButton
+        testId="tool-hand"
+        label="Hand (H)"
+        active={hand.active}
+        onMouseDown={keepFocus}
+        onClick={hand.onToggle}
+      >
+        <Hand className="size-4" />
+      </PaletteButton>
+
+      {!readOnly &&
+        toolChoices(schema).map((choice) => (
+          <PaletteButton
+            key={choice.tool}
+            testId={`tool-${choice.tool}`}
+            label={choice.unavailable ?? `${choice.label} (${choice.hotkey})`}
+            active={tool === choice.tool}
+            disabled={choice.unavailable !== null}
+            onMouseDown={keepFocus}
+            // (1) above: the tool did not move, so nothing moves.
+            onClick={() => {
+              if (choice.unavailable !== null) return;
+              if (tool !== choice.tool) onActivateClass(choice.labelClass);
+            }}
+          >
+            <ToolIcon tool={choice.tool} />
+          </PaletteButton>
+        ))}
 
       {/* After the drawing tools and before the `+`, because it is a way of
           drawing rather than a way of managing the schema — and a mode, so it is
           the one control here whose `active` is not `tool === choice.tool`. */}
-      {suggest !== undefined && schemaCanSuggest(schema) && (
+      {!readOnly && suggest !== undefined && schemaCanSuggest(schema) && (
         <PaletteButton
           testId="tool-suggest"
           // The reason replaces the name, as it does for every other disabled
@@ -331,7 +377,7 @@ export function ToolPalette({
       {/* Beside the tools, because "the class I need is not here" is a thought
           somebody has while looking at this strip — and a digit hotkey for the
           new class arrives free, since the palette *is* the hotkey order. */}
-      {onAddClass !== undefined && (
+      {!readOnly && onAddClass !== undefined && (
         <PaletteButton
           testId="tool-add-class"
           label="Add a label class"
@@ -343,7 +389,7 @@ export function ToolPalette({
         </PaletteButton>
       )}
 
-      {history !== undefined && (
+      {!readOnly && history !== undefined && (
         <>
           <div className="my-1 h-px w-6 bg-border" />
           {/*
