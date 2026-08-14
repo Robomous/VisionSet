@@ -82,6 +82,39 @@ def test_the_next_version_is_numbered_one_higher(client: TestClient, project: st
     assert response.json()["version"] == 2
 
 
+def test_sending_the_classes_already_in_force_writes_nothing(
+    client: TestClient, project: str
+) -> None:
+    """Not an error, and not a second version.
+
+    The status is 201 either way, deliberately: the contract declares one 2xx
+    response per operation — `scripts/generate_client.mjs` enforces it — and the
+    version a client holds afterwards is the one in force whichever branch it
+    took, which is the only thing it asked for.
+    """
+    first = post_version(client, project, a_class())
+    assert first.status_code == 201
+
+    again = post_version(client, project, a_class())
+
+    assert again.status_code == 201
+    assert again.json() == first.json()
+    assert client.get(f"/projects/{project}/schema/versions").json()["total"] == 1
+
+
+def test_a_colour_only_change_is_a_change_and_publishes_a_version(
+    client: TestClient, project: str
+) -> None:
+    """Identity is the stored classes, not the diff — `color` is inside one and
+    deliberately outside the other."""
+    post_version(client, project, a_class())
+
+    response = post_version(client, project, a_class(color="#eb5a47"))
+
+    assert response.status_code == 201
+    assert response.json()["version"] == 2
+
+
 def test_the_active_version_is_the_highest_one(client: TestClient, project: str) -> None:
     post_version(client, project, a_class())
     post_version(client, project, a_class(), a_class("lane"))
@@ -534,7 +567,9 @@ def test_the_listing_carries_each_versions_own_provenance(client: TestClient, pr
         f"/projects/{project}/schema/versions",
         json={"classes": [a_class("sign"), a_class("lane")], "provenance": "annotation"},
     )
-    post_version(client, project, a_class("sign"), a_class("lane"))
+    # A third contract rather than a repeat of the second: republishing the
+    # classes already in force answers 200 and writes no version.
+    post_version(client, project, a_class("sign"), a_class("lane"), a_class("kiosk"))
 
     listed = client.get(f"/projects/{project}/schema/versions").json()["items"]
 

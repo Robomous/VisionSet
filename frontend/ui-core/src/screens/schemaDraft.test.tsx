@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { ApiProvider } from "../data/ApiProvider";
+import { Toaster } from "../primitives/Feedback";
 import { writeToken } from "../data/session";
 import { ProjectScreen } from "./ProjectScreen";
 
@@ -45,7 +46,7 @@ let activeSchema: { project_id: string; version: number; classes: unknown[] };
 /** How many times it was asked, so "the refetch fired" is observed rather than assumed. */
 let schemaReads = 0;
 
-type Answer = { status: number; body?: unknown };
+type Answer = { status: number; body?: unknown; delay?: number };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
 
 beforeEach(() => {
@@ -115,11 +116,18 @@ const DATASET = {
 };
 
 function respond(answer: Answer): Promise<Response> {
-  return Promise.resolve(
+  if (answer.delay !== undefined) {
+    return new Promise((resolve) => setTimeout(() => resolve(built(answer)), answer.delay));
+  }
+  return Promise.resolve(built(answer));
+}
+
+function built(answer: Answer): Response {
+  return (
     new Response(answer.status === 204 ? null : JSON.stringify(answer.body ?? null), {
       status: answer.status,
       headers: { "content-type": "application/json" },
-    }),
+    })
   );
 }
 
@@ -288,6 +296,84 @@ describe("the schema draft survives a version published underneath", () => {
 
     expect(screen.queryByTestId("schema-moved")).toBeNull();
     expect(screen.getByTestId("schema-editor").textContent).toContain("pedestrian");
+  });
+});
+
+/**
+ * The third way a draft goes wrong, and the only one that reaches the wire.
+ *
+ * The two above are about a draft being *lost*. This one is about a draft whose
+ * baseline is stale: the editor believes there is still something to save, so a
+ * second press of Save publishes a version identical to the one it just made.
+ *
+ * It reproduces only on a project that had **no** schema, and the mechanism is
+ * why: `useActiveSchema` answers 404 there and therefore holds no data, so the
+ * invalidation the save triggers puts that query back into `pending` rather than
+ * leaving it in `error` (TanStack's `fetchState` resets the status whenever
+ * `data === undefined`), `SchemaSection` swaps the editor for a `LoadingState`,
+ * and the `mutate()`-level `onSuccess` that re-bases the draft is dropped with
+ * the unmounted observer. On a project that already had a version the query has
+ * data, nothing unmounts, and the re-base fires — which is the whole of why this
+ * needs its own fixture rather than a line in the block above.
+ *
+ * **The `delay` on that stub is load-bearing, and it is the honest model rather
+ * than a contrivance.** A stubbed `fetch` that resolves in the same microtask
+ * never lets React commit the pending render, so the editor never unmounts and
+ * the defect vanishes — measured: with an instant stub this test passed against
+ * the unfixed code. Every real request takes longer than zero.
+ */
+describe("saving twice with nothing edited in between", () => {
+  it("issues one request on a project that had no schema", async () => {
+    let published: { project_id: string; version: number; classes: unknown[] } | null = null;
+    let posts = 0;
+    // Stateful on purpose: the 404 is the *state* this defect needs, and a frozen
+    // stub would answer 404 forever and never let the save land.
+    handlers.push((request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "GET" && /\/schema$/.test(path)) {
+        schemaReads += 1;
+        return published === null
+          ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "no schema yet" } }
+          : { status: 200, body: published, delay: 5 };
+      }
+      if (request.method === "POST" && /\/schema\/versions$/.test(path)) {
+        posts += 1;
+        published = {
+          project_id: PROJECT,
+          version: (published?.version ?? 0) + 1,
+          classes: [PEDESTRIAN],
+        };
+        return { status: 201, body: published };
+      }
+      return undefined;
+    });
+
+    render(
+      mount(
+        <>
+          <ProjectScreen projectId={PROJECT} tab="schema" />
+          <Toaster />
+        </>,
+      ),
+    );
+    await screen.findByTestId("schema-editor");
+    // Class zero, not two: a project with no schema seeds an empty draft, so
+    // `draftAClass` above — which counts from the fixture's two — cannot be used.
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-0"), "pedestrian");
+
+    await userEvent.click(screen.getByTestId("save-schema"));
+    await waitFor(() =>
+      expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+    );
+
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    // `DESIGN.md`: pressing Save with nothing to save answers, and issues no
+    // request. The count is the claim; the toast is what the person sees.
+    expect(posts).toBe(1);
+    expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
+    expect(await screen.findByText("No changes to save")).toBeDefined();
   });
 });
 

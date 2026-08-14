@@ -69,12 +69,40 @@ was created under, so a version read three milestones from now still says exactl
 said when the label was made. A version that could be edited would make that record a
 guess.
 
-Creating a version identical to the active one is allowed. Versions are cheap, and refusing
-a no-op would need an equality rule that then has to defend itself against reordered
-attributes and changed colors.
-
 Schema rows are deleted only as part of deleting their project, through the database's
 `ON DELETE CASCADE` - see [projects.md](projects.md).
+
+## Publishing the contract already in force writes nothing
+
+`create_version` compares the classes it is given against the active version, and when they
+are identical it returns that version and inserts no row:
+
+```python
+first = schemas.create_version(project.id, [SIGN])
+again = schemas.create_version(project.id, [SIGN])
+assert again == first  # one version, not two
+```
+
+It is not a refusal - the call succeeds, and the version the caller holds afterwards is the
+one in force, which is the only thing it asked for. Over HTTP the answer is `201` either
+way: the API declares one 2xx response per operation, and a client that branched on "did
+this succeed" would see no difference in any case.
+
+**Identical means the classes compare equal** - names, geometries, colours, attributes and
+order. That is deliberately *not* the same question as an empty diff:
+[additive versus destructive](#additive-versus-destructive) classifies whether existing
+annotations survive and ignores `color` on purpose, so gating this on the diff would answer
+"saved" to somebody who changed a swatch and then throw the swatch away. Equality implies an
+empty diff and never the reverse, so the diff stays the one definition of *changed in a way
+that matters*.
+
+Only the **active** version is compared. Re-publishing an older version's classes is a real
+change - it is what a revert is - and answering it with that old version would leave the
+newer one in force.
+
+`description` and `provenance` are not part of the comparison, because they are not part of
+the contract. A save that changes only the commit message is a no-op, and the message is not
+recorded: there is no version for it to describe.
 
 ## A version says why it exists, and when
 
