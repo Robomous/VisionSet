@@ -438,19 +438,39 @@ moved the picture at all, while the gesture people actually make, a two-finger s
 
 The whole of that fix is which side of one branch a wheel event falls on:
 
-| Held | What a wheel event means |
+| The event | What it means |
 | --- | --- |
-| `ctrlKey` or `metaKey` | zoom, anchored at the cursor |
-| nothing | pan, both axes |
+| `ctrlKey` or `metaKey` held | zoom, anchored at the cursor |
+| bare, and shaped like a wheel notch | zoom, anchored at the cursor |
+| bare, anything else | pan, both axes |
 
-That single branch serves four devices, because **`ctrlKey` on a wheel event is how a browser
-reports a trackpad pinch** - on macOS and on a Windows precision touchpad alike, with no gesture
-API involved - and `Ctrl`/`Cmd`+wheel is the convention for zooming with a mouse. The two arrive
+The first row serves four devices, because **`ctrlKey` on a wheel event is how a browser reports a
+trackpad pinch** - on macOS and on a Windows precision touchpad alike, with no gesture API
+involved - and `Ctrl`/`Cmd`+wheel is the convention for zooming with a mouse. The two arrive
 identically, so they are answered identically.
 
-**A bare wheel now pans where it used to zoom.** That is the deliberate half, and it is what makes
-a trackpad workable rather than a nicety on top. Mouse zoom did not become unreachable: it is the
-modifier, the widget's `-`/`+`, and `mod+0`.
+**A bare event is answered by device, and that is the second question.** The two devices want
+opposite things from the same event: a two-finger scroll is how anybody moves around a canvas, and
+a wheel notch is how anybody zooms. #576 gave the whole event to the trackpad - which is what made
+a trackpad workable rather than a nicety on top, and which took the mouse's zoom away with it. The
+device test gives the notch back and leaves the scroll alone.
+
+`isMouseWheel` is that test, and it is the only heuristic in the navigation model, because **no
+browser says which device sent a wheel event**. It reads three signals and none of them is
+`deltaY`, which the operating system accelerates and which overlaps completely between the two:
+
+- a `deltaMode` other than pixels is a discrete wheel, and nothing else reports lines or pages -
+  this is Firefox's mouse;
+- anything sideways is a scroll, because a wheel has one axis;
+- otherwise a whole number of `wheelDelta` notches. Chrome quantises a discrete wheel to units of
+  120 however much it accelerated `deltaY`, and computes a precise device's as `-3 * deltaY`,
+  which lands on a multiple of 120 only when the scroll happened to travel an exact multiple of
+  40 pixels.
+
+**Every uncertain case answers "trackpad".** A trackpad that zooms when it was asked to scroll is
+the failure #576 fixed, while a mouse this declines - a Magic Mouse reports as a precise device -
+still zooms with the modifier, with the widget's `-`/`+`, and with `mod+0` to refit. The cost of
+being wrong is one stray notch inside a hard flick, never a device with no gesture at all.
 
 What `ctrlKey` can no longer do is tell a pinch from a mouse wheel, since it is now set by both.
 `wheelZoomFactor` tells them apart by **magnitude** instead: a notch is a large quantised value -
@@ -481,10 +501,16 @@ somebody navigating a batch they may not edit is who most needs to pan.
 
 All of the arithmetic is in `adapters/viewport.ts` beside the transform, so it is unit-tested
 without a browser: `normalizedWheel` folds `deltaMode`, `wheelZoomFactor` carries the softness
-split, `pinchBetween` answers the two-finger case, and `zoomAbout` and `panBy` were already there.
-`AnnotatorCanvas` holds only the branches. What no unit test can reach - that a browser really
-delivers these events - is `e2e/touch.spec.ts` and the wheel scenarios, which drive Chromium's own
-input rather than constructing events.
+split, `isMouseWheel` answers the device, `pinchBetween` answers the two-finger case, and
+`zoomAbout` and `panBy` were already there. `AnnotatorCanvas` holds only the branches. What no unit
+test can reach - that a browser really delivers these events - is `e2e/touch.spec.ts` and the wheel
+scenarios, which drive Chromium's own input rather than constructing events.
+
+That division is load-bearing for the device test in particular, because a browser suite can only
+reach half of it: **CDP's synthetic wheel reports `wheelDeltaY` as ±120 whatever `deltaY` says** -
+measured, 7 and 12 and 40 all arrive as -120 - so Playwright can spell a mouse notch and a sideways
+scroll, and has no spelling at all for a trackpad's vertical one. The unit tests are what cover the
+rest, and `demo.spec.ts` says so where a reader would otherwise go looking.
 
 ### Dragging repaints one layer
 

@@ -266,6 +266,58 @@ export function normalizedWheel(
 }
 
 /**
+ * A notch in the legacy `wheelDelta` unit, which is 120 wherever it is reported.
+ *
+ * `wheelDeltaY` is the one field a browser fills differently for the two
+ * devices. Chrome quantises a discrete wheel to whole notches of 120 however
+ * much the operating system has accelerated `deltaY`, and computes a precise
+ * device's as `-3 * deltaY`, which lands on a multiple of 120 only when the
+ * scroll happened to travel an exact multiple of 40 pixels.
+ */
+const WHEEL_NOTCH_UNITS = 120;
+
+/** The fields of a wheel event the device test reads. */
+export interface WheelShape {
+  /** 0 pixels, 1 lines, 2 pages — see `DELTA_SCALE`. */
+  readonly deltaMode: number;
+  readonly deltaX: number;
+  /** The legacy `WheelEvent.wheelDeltaY`, or 0 where the browser has none. */
+  readonly wheelDeltaY: number;
+}
+
+/**
+ * Whether a wheel event came from a mouse wheel rather than a trackpad.
+ *
+ * No browser says which device sent a wheel event, so this is a heuristic and
+ * the only one in the navigation model. It is needed because the two devices
+ * want opposite things from the same event: a two-finger scroll is how anybody
+ * moves around a canvas, and a wheel notch is how anybody zooms — and a rule
+ * that serves one leaves the other with no gesture at all. #576 gave the whole
+ * event to the trackpad; this gives the notch back.
+ *
+ * It reads three signals and none of them is `deltaY`, which is accelerated by
+ * the operating system and overlaps completely between the devices:
+ *
+ * - a `deltaMode` other than pixels is a discrete wheel, and nothing else
+ *   reports lines or pages (this is Firefox's mouse);
+ * - anything sideways is a scroll, because a wheel has one axis;
+ * - otherwise a whole number of `wheelDelta` notches, which is what Chrome and
+ *   Safari quantise a wheel to and a precise device rarely lands on.
+ *
+ * **Every uncertain case answers `false`.** A trackpad that zooms when it was
+ * asked to scroll is exactly the failure #576 fixed, and a mouse it declines —
+ * a Magic Mouse reports as a precise device, deliberately — still zooms with
+ * `ctrl`/`cmd` held. That modifier is answered before this is consulted, so a
+ * pinch and a held wheel never reach here.
+ */
+export function isMouseWheel(wheel: WheelShape): boolean {
+  if (wheel.deltaMode !== 0) return true;
+  if (wheel.deltaX !== 0) return false;
+  if (wheel.wheelDeltaY === 0) return false;
+  return Math.abs(wheel.wheelDeltaY) % WHEEL_NOTCH_UNITS === 0;
+}
+
+/**
  * How much wheel travel doubles the zoom. Larger is gentler.
  *
  * Derived rather than picked. One notch of a mouse wheel is 120 pixels of

@@ -163,11 +163,13 @@ interface GestureRow {
  * button and a pen has none either, so until this each of them had no pan at
  * all. The middle-and-right drag is the row that always worked, and it is last
  * rather than first because it is the one fewest readers can use.
+ *
+ * The scroll wheel is **not** here: a wheel notch and a two-finger scroll are
+ * told apart, so the wheel is a zoom and lives under that heading.
  */
 function panning(mod: string): readonly GestureRow[] {
   return [
     { gesture: "Two-finger scroll", means: "Trackpad. Moves in both directions" },
-    { gesture: "Scroll wheel", means: "Moves up and down" },
     // `Space` has no row above and cannot have one — a keystroke is a press, and
     // this is a hold. The hand's *other* spelling, `h`, is in the derived rows
     // and is deliberately not repeated here.
@@ -175,14 +177,17 @@ function panning(mod: string): readonly GestureRow[] {
     { gesture: "Middle-drag or right-drag", means: "Works whatever tool is active" },
     // The one thing about this model somebody has to be told outright, rather
     // than being left to discover that a modifier changes what a scroll means.
-    { gesture: `${mod} is what changes it`, means: "Held, the same scroll zooms instead" },
+    { gesture: `${mod} is what changes it`, means: "Held, a trackpad scroll zooms instead" },
   ];
 }
 
 function zooming(mod: string): readonly GestureRow[] {
   return [
     { gesture: "Pinch", means: "Trackpad. Zooms about the pointer" },
-    { gesture: `${mod} and scroll`, means: "The same, with a mouse" },
+    // The wheel is here rather than under panning because the two devices are
+    // told apart: a notch zooms, a two-finger scroll pans.
+    { gesture: "Scroll wheel", means: "Mouse. Zooms about the pointer" },
+    { gesture: `${mod} and scroll`, means: "The same, on any device" },
     // The buttons and the readout, which no chord reaches. Fitting does have one
     // — `mod+0` — so the fit button is left to the derived row that names it.
     { gesture: "The − and + buttons", means: "Bottom right of the picture. 5% to 800%" },

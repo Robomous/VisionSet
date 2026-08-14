@@ -156,33 +156,40 @@ test("mod+0 recentres a panned view, not just its scale", async ({ page }) => {
 });
 
 /**
- * A bare wheel pans, and it is the change that gives a trackpad a pan at all.
+ * A bare **mouse** wheel zooms, where a bare trackpad scroll pans.
  *
- * Before this, every wheel event zoomed — so a two-finger scroll, which is how
- * anybody moves around a canvas, zoomed instead of scrolling and there was no
- * gesture on a trackpad that moved the picture. The modifier is what still
- * zooms, and the scenario above asserts that half.
+ * The two devices want opposite things from the same event, and #576 gave the
+ * whole of it to the trackpad — which is what a laptop needed and what took the
+ * mouse's zoom away. `isMouseWheel` splits them, and what a browser driven by
+ * Chromium's own input can prove is only this half: **CDP's synthetic wheel
+ * reports `wheelDeltaY` as ±120 whatever `deltaY` says** — measured, 7 and 12
+ * and 40 all arrive as -120 — so a trackpad's *vertical* scroll has no spelling
+ * here at all. The scenario below is the sideways one, which does, and the rest
+ * of the predicate is unit-tested in `viewport.test.ts`.
  *
- * Both assertions matter and neither alone would do: a zoom also moves the
- * `<svg>`'s origin, so "it moved" is satisfied by the old behaviour. The zoom
- * being *unchanged* is the half that says this was a pan.
+ * Both assertions matter and neither alone would do: a pan also moves the
+ * `<svg>`'s origin, so "it moved" is satisfied either way. The zoom having
+ * *changed* is the half that says this was a zoom.
  */
-test("a bare wheel pans the stage and leaves the zoom alone", async ({ page }) => {
+test("a bare mouse wheel zooms the stage", async ({ page }) => {
   const frame = await frameOf(page);
   const origin = await canvasOrigin(page);
 
   const at = frame.at(640, 360);
   await page.mouse.move(at.x, at.y);
-  await page.mouse.wheel(0, 120);
+  await page.mouse.wheel(0, -120);
 
-  await expect.poll(async () => Math.round((await canvasOrigin(page)).y)).toBe(
-    Math.round(origin.y - 120),
-  );
-  expect((await frameOf(page)).zoom).toBeCloseTo(frame.zoom, 3);
+  await expect.poll(async () => (await frameOf(page)).zoom).toBeGreaterThan(frame.zoom);
+  expect(Math.round((await canvasOrigin(page)).y)).not.toBe(Math.round(origin.y));
 });
 
-/** `deltaX` too: a trackpad scrolls sideways, and a pan that ignored it would be half a pan. */
-test("a bare wheel pans sideways as well", async ({ page }) => {
+/**
+ * `deltaX` too: a trackpad scrolls sideways, a wheel does not, and this is the
+ * one gesture that is a pan on both sides of the device test — sideways travel
+ * is what `isMouseWheel` reads as two fingers however notch-shaped the rest of
+ * the event looks. A pan that ignored the axis would also be half a pan.
+ */
+test("a bare sideways scroll pans and leaves the zoom alone", async ({ page }) => {
   const frame = await frameOf(page);
   const origin = await canvasOrigin(page);
 
@@ -194,6 +201,7 @@ test("a bare wheel pans sideways as well", async ({ page }) => {
     Math.round(origin.x + 90),
   );
   expect(Math.round((await canvasOrigin(page)).y)).toBe(Math.round(origin.y));
+  expect((await frameOf(page)).zoom).toBeCloseTo(frame.zoom, 3);
 });
 
 /**
