@@ -1238,8 +1238,30 @@ export function AnnotatorCanvas({
     [snapshot.rendered, hiddenIds],
   );
 
+  /**
+   * Where the pointer is **for the tools**, which is nowhere while the hand is on.
+   *
+   * `hover` is one piece of state with two readers — the affordance below and the
+   * crosshair further down — and the hand used to reach neither. It was applied to
+   * the *cursor* alone, which made it a cursor rather than a mode: a raised hand
+   * still lit the grip under the pointer and still drew the drawing guides across
+   * the picture, both of them offers the very next press cannot keep, because
+   * `handlePointerDown` answers that press with a pan before the machine or the
+   * suggest branch hears it.
+   *
+   * So the mode is spent once, here, on the state both readers derive from. A hand
+   * that had to be remembered at each render site is a hand that would be
+   * forgotten at the next one — this is the third such site to be found and there
+   * is no reason to think it is the last.
+   *
+   * `hover` itself keeps tracking, deliberately: putting the hand down restores
+   * the crosshair and the highlight where the pointer already is, with no move
+   * needed to wake them.
+   */
+  const pointing = hand ? null : hover;
+
   const affordance =
-    hover === null
+    pointing === null
       ? { cursor: "default" as const, hot: NO_TARGET }
       : readOnly
         ? // The viewer's answer: `default` everywhere — no cursor may
@@ -1247,7 +1269,7 @@ export function AnnotatorCanvas({
           // a highlight aids the one gesture a viewer has, which is selecting.
           viewerAffordanceAt(
             { document: visibleRendered, selection: snapshot.selection, tolerances },
-            hover,
+            pointing,
           )
         : affordanceAt(
             interaction,
@@ -1255,7 +1277,7 @@ export function AnnotatorCanvas({
             // committed document — `affordance.ts` states that asymmetry.
             { document: visibleRendered, selection: snapshot.selection, tolerances },
             tool,
-            hover,
+            pointing,
           );
   const hotBodyId = affordance.hot.kind === "body" ? affordance.hot.id : null;
 
@@ -1408,7 +1430,7 @@ export function AnnotatorCanvas({
               drawColor={drawColor}
               zoom={view.zoom}
               closeRing={tolerances.closePolygon}
-              crosshair={tool === "select" ? null : hover}
+              crosshair={tool === "select" ? null : pointing}
               asset={asset}
               suggestions={painted}
               {...(suggestion === null ? {} : { promptPoints: suggestion.points })}

@@ -274,6 +274,17 @@ export interface ToolPaletteProps {
    * Required rather than optional, unlike `suggest` and `history`: those are
    * capabilities a host may not have behind it, and this is one every host
    * already has — the canvas implements it, not the page.
+   *
+   * **It and the derived tool are one lit button, not two.** While the hand is
+   * on no tool row reads as active, and pressing any of them puts the hand down:
+   * the canvas answers a primary press with a pan before the machine hears it,
+   * so a tool lit beside a raised hand is one that cannot draw. The class half of
+   * that is the host's — every route to a drawing class puts the hand away, one
+   * funnel there rather than a rule repeated at each button here.
+   *
+   * The suggest button is deliberately **not** in this: it is a mode over the
+   * class it borrows, it is legitimately on together with a tool, and dimming it
+   * would make a press that turns it *off* look like one that turns it on.
    */
   readonly hand: {
     readonly active: boolean;
@@ -322,32 +333,24 @@ export function ToolPalette({
       data-testid="tool-palette"
       className="absolute left-3 top-3 flex w-12 flex-col items-center gap-1 rounded-xl border border-border bg-muted p-2 shadow-lg"
     >
-      {/* First, and above the tools rather than among them: it is the one
-          control here that does not draw, and the one a person reaches for when
-          the picture is in the wrong place rather than when it is wrong. */}
-      <PaletteButton
-        testId="tool-hand"
-        label="Hand (H)"
-        active={hand.active}
-        onMouseDown={keepFocus}
-        onClick={hand.onToggle}
-      >
-        <Hand className="size-4" />
-      </PaletteButton>
-
       {!readOnly &&
         toolChoices(schema).map((choice) => (
           <PaletteButton
             key={choice.tool}
             testId={`tool-${choice.tool}`}
             label={choice.unavailable ?? `${choice.label} (${choice.hotkey})`}
-            active={tool === choice.tool}
+            active={!hand.active && tool === choice.tool}
             disabled={choice.unavailable !== null}
             onMouseDown={keepFocus}
-            // (1) above: the tool did not move, so nothing moves.
+            // (1) above: the tool did not move, so nothing moves — except that
+            // putting the hand down *is* a move. Without the second line, Select
+            // is unreachable from the hand on a page whose derived tool is
+            // already `select`: the press is a no-op, so nothing clears the mode
+            // and the only way back is to arm some other tool first.
             onClick={() => {
               if (choice.unavailable !== null) return;
               if (tool !== choice.tool) onActivateClass(choice.labelClass);
+              else if (hand.active) hand.onToggle();
             }}
           >
             <ToolIcon tool={choice.tool} />
@@ -388,6 +391,23 @@ export function ToolPalette({
           <Plus className="size-4" />
         </PaletteButton>
       )}
+
+      {/* Last in the block, below the `+`, and in the block rather than above it.
+          It sat on top for a release, as the one control that does not draw —
+          which read as a heading over the tools instead of as one of them, and
+          the strip lit it *and* whichever tool was derived, so two buttons
+          claimed to be on at once. It is a mode like the rest, so it takes its
+          place among them and takes the lit state with it: while it is on,
+          nothing else here is. */}
+      <PaletteButton
+        testId="tool-hand"
+        label="Hand (H)"
+        active={hand.active}
+        onMouseDown={keepFocus}
+        onClick={hand.onToggle}
+      >
+        <Hand className="size-4" />
+      </PaletteButton>
 
       {!readOnly && history !== undefined && (
         <>

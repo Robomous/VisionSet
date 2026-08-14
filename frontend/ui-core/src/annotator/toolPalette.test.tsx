@@ -383,6 +383,67 @@ describe("the hand is the one button here that is not about the schema (#576)", 
 
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
+
+  it("takes the lit state off the derived tool while it is on", () => {
+    // The bug this is here for: the hand is a mode beside the derived tool
+    // rather than one of its values, so the strip lit both and two buttons
+    // claimed to be on at once. The canvas answers a primary press with a pan
+    // before the machine ever hears it, so the derived tool cannot act while the
+    // hand is up — and a lit button for a tool that does nothing is the lie.
+    const { rerender } = render(mount({ tool: "bbox" }));
+    expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("true");
+
+    rerender(mount({ tool: "bbox", hand: { active: true, onToggle: vi.fn() } }));
+    expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("false");
+    expect(screen.getByTestId("tool-hand").getAttribute("data-active")).toBe("true");
+  });
+
+  it("is put down by a press on the tool that is already derived", () => {
+    // The bug the first cut of this shipped: a press whose tool has not moved is
+    // a no-op, so on a page sitting in `select` — which is where every frame
+    // opens — the Select button could not put the hand down, and the only way
+    // back was to arm some other tool first.
+    const onToggle = vi.fn();
+    const onActivateClass = vi.fn();
+    render(mount({ tool: "select", hand: { active: true, onToggle }, onActivateClass }));
+
+    fireEvent.click(screen.getByTestId("tool-select"));
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    // And the class does not move, which is what the no-op rule was protecting:
+    // a schema with two bbox classes must not silently re-point at the other one.
+    expect(onActivateClass).not.toHaveBeenCalled();
+  });
+
+  it("leaves the suggest tool lit, because that one is legitimately on beside a tool", () => {
+    // Not in the exclusive group: suggest is a mode over the class it borrows, and
+    // dimming it under the hand would make a press that turns it *off* look like
+    // one that turns it on.
+    const armed = { active: true, onToggle: vi.fn(), unavailable: null };
+    render(mount({ suggest: armed, hand: { active: true, onToggle: vi.fn() } }));
+
+    expect(screen.getByTestId("tool-suggest").getAttribute("data-active")).toBe("true");
+  });
+
+  it("is the last of the tools, below the button that adds a class", () => {
+    // Order, asserted because it is the half a `getByTestId` cannot see. It was
+    // above the strip for a release, which read as a heading over the tools
+    // rather than as one of them.
+    render(mount({ onAddClass: vi.fn(), suggest: { active: false, onToggle: vi.fn() } }));
+
+    const strip = screen.getByTestId("tool-palette");
+    const order = [...strip.querySelectorAll("[data-testid^='tool-']")].map((node) =>
+      node.getAttribute("data-testid"),
+    );
+
+    expect(order.slice(0, 3)).toEqual(["tool-select", "tool-bbox", "tool-polygon"]);
+    expect(order.slice(-4)).toEqual([
+      "tool-suggest",
+      "tool-add-class",
+      "tool-hand",
+      "tool-help",
+    ]);
+  });
 });
 
 describe("a viewer gets the strip, carrying only what does not draw (#576)", () => {
