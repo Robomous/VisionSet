@@ -114,9 +114,10 @@ def test_the_probe_is_not_paid_for_on_a_machine_with_no_metal_at_all() -> None:
     torch = StubTorch(mps=False)
     torch.zeros = _never  # type: ignore[method-assign]
 
-    assert _device.resolved(
-        torch, device="mps", precision="fp32", connection_name="detector"
-    ) == ("cpu", False)
+    assert _device.resolved(torch, device="mps", precision="fp32", connection_name="detector") == (
+        "cpu",
+        False,
+    )
 
 
 def _never(*_: object, **__: object) -> object:

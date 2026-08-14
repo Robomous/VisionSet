@@ -167,9 +167,7 @@ class StubTorch:
 
     float16 = "float16"
 
-    def __init__(
-        self, *, cuda: bool = False, mps: bool = False, mps_usable: bool = True
-    ) -> None:
+    def __init__(self, *, cuda: bool = False, mps: bool = False, mps_usable: bool = True) -> None:
         self.nn = SimpleNamespace(functional=Functional())
         self.cuda = SimpleNamespace(is_available=lambda: cuda)
         self.backends = SimpleNamespace(mps=SimpleNamespace(is_available=lambda: mps))

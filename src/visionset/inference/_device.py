@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 import os
-from functools import lru_cache
+from functools import cache
 from typing import Any, Final
 
 from visionset.inference import _fp16
@@ -113,7 +113,7 @@ def _present(torch: Any, device: str) -> bool:
     return True
 
 
-@lru_cache(maxsize=None)
+@cache
 def _mps_serves(torch: Any) -> bool:
     """Whether Metal will really take a tensor, asked by handing it one.
 
