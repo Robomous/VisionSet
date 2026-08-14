@@ -383,6 +383,52 @@ describe("the hand is the one button here that is not about the schema (#576)", 
 
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
+
+  it("takes the lit state off the derived tool while it is on", () => {
+    // The bug this is here for: the hand is a mode beside the derived tool
+    // rather than one of its values, so the strip lit both and two buttons
+    // claimed to be on at once. The canvas answers a primary press with a pan
+    // before the machine ever hears it, so the derived tool cannot act while the
+    // hand is up — and a lit button for a tool that does nothing is the lie.
+    const { rerender } = render(mount({ tool: "bbox" }));
+    expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("true");
+
+    rerender(mount({ tool: "bbox", hand: { active: true, onToggle: vi.fn() } }));
+    expect(screen.getByTestId("tool-bbox").getAttribute("data-active")).toBe("false");
+    expect(screen.getByTestId("tool-hand").getAttribute("data-active")).toBe("true");
+  });
+
+  it("takes it off the suggest tool too, which the same press cannot reach", () => {
+    // Suggest is armed rather than derived, so it is a second thing that would
+    // otherwise stay lit — and it is reached by the same primary press the pan
+    // branch answers first, so it is inert for the same reason.
+    const armed = { active: true, onToggle: vi.fn(), unavailable: null };
+    const { rerender } = render(mount({ suggest: armed }));
+    expect(screen.getByTestId("tool-suggest").getAttribute("data-active")).toBe("true");
+
+    rerender(mount({ suggest: armed, hand: { active: true, onToggle: vi.fn() } }));
+    expect(screen.getByTestId("tool-suggest").getAttribute("data-active")).toBe("false");
+  });
+
+  it("is the last of the tools, below the button that adds a class", () => {
+    // Order, asserted because it is the half a `getByTestId` cannot see. It was
+    // above the strip for a release, which read as a heading over the tools
+    // rather than as one of them.
+    render(mount({ onAddClass: vi.fn(), suggest: { active: false, onToggle: vi.fn() } }));
+
+    const strip = screen.getByTestId("tool-palette");
+    const order = [...strip.querySelectorAll("[data-testid^='tool-']")].map((node) =>
+      node.getAttribute("data-testid"),
+    );
+
+    expect(order.slice(0, 3)).toEqual(["tool-select", "tool-bbox", "tool-polygon"]);
+    expect(order.slice(-4)).toEqual([
+      "tool-suggest",
+      "tool-add-class",
+      "tool-hand",
+      "tool-help",
+    ]);
+  });
 });
 
 describe("a viewer gets the strip, carrying only what does not draw (#576)", () => {

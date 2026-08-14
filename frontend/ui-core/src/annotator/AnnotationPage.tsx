@@ -762,7 +762,7 @@ function Workspace({
   detail,
   onDetail: setDetail,
   activeClass,
-  onActivateClass: activateClass,
+  onActivateClass: armClass,
   onNavigate,
   onOpenGallery,
   onConfigureInference,
@@ -793,6 +793,34 @@ function Workspace({
    * with the hand on is navigating the batch, not this asset.
    */
   const [handTool, setHandTool] = useState(false);
+  /**
+   * Reaching for a drawing class puts the hand away.
+   *
+   * The two are modes over the same canvas and only one of them can be true of a
+   * primary press: `AnnotatorCanvas` answers one with a pan *before* the suggest
+   * branch and before the machine, so a class armed under a raised hand is a tool
+   * that cannot draw — and the strip would light both, which is what somebody
+   * looking at it reported. The hand is the mode, so picking anything else is
+   * what ends it.
+   *
+   * Wrapped **here**, around the one funnel `onActivateClass`'s own docstring
+   * already names — the panel's list, the tool strip, a digit hotkey and the
+   * canvas's `activate-class` all arrive through it — rather than at the four
+   * call sites, which is the same reason it is a funnel at all. `toggleSuggest`
+   * arms through it too, so the sparkle puts the hand away without knowing it
+   * has to.
+   *
+   * Only this direction is automatic. Raising the hand leaves the class where it
+   * was: it is a way of *looking* at the picture, and a person who pans and puts
+   * the hand down wants the class they were drawing with, not `select`.
+   */
+  const activateClass = useCallback(
+    (labelClass: string | null): void => {
+      setHandTool(false);
+      armClass(labelClass);
+    },
+    [armClass],
+  );
   const [galleryOpen, setGalleryOpen] = useState(false);
   /**
    * Which shape's class picker is open, if any.

@@ -274,6 +274,14 @@ export interface ToolPaletteProps {
    * Required rather than optional, unlike `suggest` and `history`: those are
    * capabilities a host may not have behind it, and this is one every host
    * already has — the canvas implements it, not the page.
+   *
+   * **It takes the strip's lit state while it is on**, so no tool row and no
+   * suggest button reads as active beside it. That is not decoration: the canvas
+   * answers a primary press with a pan *before* it reaches the suggest branch or
+   * the machine, so while the hand is on nothing else on this strip can act, and
+   * a second lit button would be describing a tool that does nothing. The other
+   * direction is the host's — every route to a drawing class puts the hand away,
+   * which is one funnel there rather than a rule repeated at each button here.
    */
   readonly hand: {
     readonly active: boolean;
@@ -322,26 +330,13 @@ export function ToolPalette({
       data-testid="tool-palette"
       className="absolute left-3 top-3 flex w-12 flex-col items-center gap-1 rounded-xl border border-border bg-muted p-2 shadow-lg"
     >
-      {/* First, and above the tools rather than among them: it is the one
-          control here that does not draw, and the one a person reaches for when
-          the picture is in the wrong place rather than when it is wrong. */}
-      <PaletteButton
-        testId="tool-hand"
-        label="Hand (H)"
-        active={hand.active}
-        onMouseDown={keepFocus}
-        onClick={hand.onToggle}
-      >
-        <Hand className="size-4" />
-      </PaletteButton>
-
       {!readOnly &&
         toolChoices(schema).map((choice) => (
           <PaletteButton
             key={choice.tool}
             testId={`tool-${choice.tool}`}
             label={choice.unavailable ?? `${choice.label} (${choice.hotkey})`}
-            active={tool === choice.tool}
+            active={!hand.active && tool === choice.tool}
             disabled={choice.unavailable !== null}
             onMouseDown={keepFocus}
             // (1) above: the tool did not move, so nothing moves.
@@ -365,7 +360,7 @@ export function ToolPalette({
           // a dimmed button still labelled "Suggest (S)" would be the bare
           // disabled state principle 9 names.
           label={suggest.unavailable ?? "Suggest (S)"}
-          active={suggest.active}
+          active={!hand.active && suggest.active}
           disabled={suggest.unavailable !== undefined && suggest.unavailable !== null}
           onMouseDown={keepFocus}
           onClick={suggest.onToggle}
@@ -388,6 +383,23 @@ export function ToolPalette({
           <Plus className="size-4" />
         </PaletteButton>
       )}
+
+      {/* Last in the block, below the `+`, and in the block rather than above it.
+          It sat on top for a release, as the one control that does not draw —
+          which read as a heading over the tools instead of as one of them, and
+          the strip lit it *and* whichever tool was derived, so two buttons
+          claimed to be on at once. It is a mode like the rest, so it takes its
+          place among them and takes the lit state with it: while it is on,
+          nothing else here is. */}
+      <PaletteButton
+        testId="tool-hand"
+        label="Hand (H)"
+        active={hand.active}
+        onMouseDown={keepFocus}
+        onClick={hand.onToggle}
+      >
+        <Hand className="size-4" />
+      </PaletteButton>
 
       {!readOnly && history !== undefined && (
         <>

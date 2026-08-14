@@ -2115,10 +2115,23 @@ test("the hand turns a plain drag into a pan, from the key and from the button",
   // A pan is not an edit: the drag drew nothing and there is nothing to save.
   await expectNothingToSave(page);
 
-  // The button turns it back off, and the same drag draws again.
+  // The button turns it back off.
   await button.click();
   await expect(button).toHaveAttribute("data-active", "false");
+
+  // And so does reaching for a class, which is the half that makes the strip
+  // readable: the hand is a mode, the canvas answers a primary press with a pan
+  // before the machine hears it, and a class armed under a raised hand would be
+  // a tool that draws nothing while the strip lit it and the hand at once. Every
+  // route to a class goes through one funnel on the page, so the digit proves
+  // the panel's list and the strip's own buttons too.
+  await page.keyboard.press("h");
+  await expect(button).toHaveAttribute("data-active", "true");
   await page.keyboard.press("1");
+  await expect(button).toHaveAttribute("data-active", "false");
+  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
+
+  // And the same drag draws again.
   const draw = { x: pane.x + pane.width * 0.4, y: pane.y + pane.height * 0.4 };
   await page.mouse.move(draw.x, draw.y);
   await page.mouse.down();

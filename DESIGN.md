@@ -975,11 +975,18 @@ The page the reference design shows (#56), with measurements verified in v1's so
   variant** (the near-black), inactive = ghost; a `h-px w-6` divider; help at the bottom.
   Tooltips open right with the shortcut ("Select (V)", "Box (B)", "Polygon (P)").
   Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow.
-  **Above them all, the hand** (#576, `Hand`, `H`) — and it is the one button here that
+  **Last of them, below the `+`, the hand** (#576, `Hand`, `H`) — the one button here that
   the schema does not gate, because it answers a question about the *device* rather than
   about the project: a pan had exactly one spelling, a middle- or secondary-button drag,
   and a trackpad, a tablet and a pen have no second button to offer. Cursor `grab`, and
-  `grabbing` while a drag is under way.
+  `grabbing` while a drag is under way. It sat *above* the strip for a release, as the one
+  control that does not draw, which read as a heading over the tools rather than as one of
+  them. **Exactly one button on this strip is lit at a time, and the hand is in that
+  rotation**: while it is on, no tool row and no suggest button reads as active, because
+  the canvas answers a primary press with a pan before the machine or the suggest branch
+  ever hears it — and reaching for any drawing class puts the hand away, through the one
+  funnel every route to a class already goes through. Suggest and a class are the pair that
+  *are* legitimately on together: it is a mode over the class it borrows.
   Below a second divider, **undo and redo** (#368): the chords have worked since #46 and
   had no representation on screen at all, so the annotator's headline capability over v1
   was invisible to anybody who did not already know it. Disabled *with the reason*
