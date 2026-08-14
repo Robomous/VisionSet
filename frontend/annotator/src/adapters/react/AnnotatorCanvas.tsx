@@ -90,10 +90,11 @@
  * gesture that moved the picture. Four things fixed that, and only the first is a
  * change to something that already worked:
  *
- * 1. **The wheel branches on `ctrlKey || metaKey`**: held, it zooms about the
- *    cursor; bare, it pans both axes. One branch for four devices, because that
- *    flag is how a browser reports a trackpad pinch *and* how a mouse asks to
- *    zoom. A bare wheel used to zoom; it pans now, deliberately.
+ * 1. **The wheel branches on `ctrlKey || metaKey`, then on the device**: held, it
+ *    zooms about the cursor, because that flag is how a browser reports a
+ *    trackpad pinch *and* how a mouse asks to zoom. Bare, a trackpad scroll pans
+ *    both axes and a mouse notch zooms — `isMouseWheel` is the test, and it
+ *    answers "trackpad" whenever it is unsure.
  * 2. **`Space` held** is the hand while it is down — a substitution rather than a
  *    registry row, because a keystroke is a press and this needs a release.
  * 3. **`panTool`** is the persistent hand, the host's to own for `suggestion`'s
@@ -103,8 +104,9 @@
  *    the second press from a fresh first one.
  *
  * All four are wiring. The arithmetic — `normalizedWheel`, `wheelZoomFactor`,
- * `pinchBetween`, and the `zoomAbout`/`panBy` that were already there — is in
- * `adapters/viewport.ts`, where it is unit-tested without a browser.
+ * `isMouseWheel`, `pinchBetween`, and the `zoomAbout`/`panBy` that were already
+ * there — is in `adapters/viewport.ts`, where it is unit-tested without a
+ * browser.
  *
  * ## Capture is taken after the dispatch, never before
  *
@@ -193,6 +195,7 @@ import {
   IDENTITY_VIEWPORT,
   fitToViewport,
   imageRenderingAt,
+  isMouseWheel,
   normalizedWheel,
   panBy,
   pinchBetween,
@@ -665,27 +668,38 @@ export function AnnotatorCanvas({
       event.preventDefault();
       const [dx, dy] = normalizedWheel(event.deltaX, event.deltaY, event.deltaMode);
       /**
-       * **One branch, and it serves four devices.**
+       * **Two questions, and between them they serve four devices.**
        *
-       * `ctrlKey` on a wheel event is how a browser reports a trackpad pinch —
-       * on macOS and on a Windows precision touchpad alike, with no gesture API
-       * involved — and `ctrl`/`cmd` + wheel is the convention for zooming with
-       * a mouse. Those are the same flag, so they are the same branch, and
-       * everything else is a pan.
+       * First, is a modifier held? `ctrlKey` on a wheel event is how a browser
+       * reports a trackpad pinch — on macOS and on a Windows precision touchpad
+       * alike, with no gesture API involved — and `ctrl`/`cmd` + wheel is the
+       * convention for zooming with a mouse. Those are the same flag, so they
+       * are the same branch.
        *
-       * The half that changed is what "everything else" now covers. A plain
-       * wheel used to zoom, which made a two-finger trackpad scroll — the
-       * ordinary way anyone moves around a canvas — zoom instead of scroll, and
-       * left a trackpad with no pan at all. Now it pans, `deltaX` included, and
-       * a mouse wheel pans vertically for the same reason it scrolls a page
-       * vertically. Zoom did not become unreachable: it is the modifier, the
-       * pinch, `mod+0` and the two buttons in the corner.
+       * Second, for a bare event: which device sent it? A two-finger scroll is
+       * the ordinary way anybody moves around a canvas, and a wheel notch is the
+       * ordinary way anybody zooms — #576 gave the whole event to the first and
+       * so took the second away, which is what this restores. `isMouseWheel`
+       * decides, and it is a heuristic: it answers "trackpad" whenever it is
+       * unsure, so a mouse it declines still zooms with the modifier while a
+       * trackpad never zooms when it was asked to scroll.
        *
-       * The sign is inverted because a scroll reports how far the *content*
-       * should travel against the gesture, and `panBy` moves the content with
-       * it: scrolling down looks at what is below, so the picture goes up.
+       * A pan reads both axes; a zoom reads `dy` alone, since a notch has no
+       * sideways component to spend. The pan's sign is inverted because a scroll
+       * reports how far the *content* should travel against the gesture, and
+       * `panBy` moves the content with it: scrolling down looks at what is
+       * below, so the picture goes up.
+       *
+       * `wheelDeltaY` is legacy and TypeScript's DOM library no longer declares
+       * it, hence the widening — it is read, never required, and a browser
+       * without it lands on the pan.
        */
-      if (event.ctrlKey || event.metaKey) {
+      const { wheelDeltaY = 0 } = event as WheelEvent & { readonly wheelDeltaY?: number };
+      const zooming =
+        event.ctrlKey ||
+        event.metaKey ||
+        isMouseWheel({ deltaMode: event.deltaMode, deltaX: event.deltaX, wheelDeltaY });
+      if (zooming) {
         const rect = pane.getBoundingClientRect();
         applyViewport(
           zoomAbout(

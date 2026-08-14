@@ -301,10 +301,12 @@ export async function openOverflow(page: Page): Promise<void> {
 /**
  * A zoom notch over `at`, which is a wheel **with the modifier held**.
  *
- * A bare wheel pans now (#576), and every scenario that used to zoom with one is
- * routed through here rather than holding the key inline — a spec that forgot it
- * would still pass its "the picture moved" assertions and be measuring the wrong
- * gesture entirely.
+ * A bare wheel is read as a device now (#576): Chromium's synthetic wheel looks
+ * like a mouse notch, so it would zoom anyway, but the modifier is what makes a
+ * scenario say which gesture it means. Every scenario that zooms is routed
+ * through here rather than holding the key inline — a spec that forgot it would
+ * still pass its "the picture moved" assertions while measuring whatever the
+ * device test happened to answer.
  *
  * `Control` and not `Meta`: both work in the product, and Playwright's
  * `mouse.wheel` reads the keyboard's live modifier state, so the down/up pair is

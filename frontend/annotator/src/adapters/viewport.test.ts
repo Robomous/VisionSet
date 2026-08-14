@@ -18,6 +18,7 @@ import {
   fitToViewport,
   imageRenderingAt,
   imageToScreen,
+  isMouseWheel,
   normalizedWheel,
   panBy,
   pinchBetween,
@@ -297,6 +298,37 @@ describe("a wheel event's travel is read in screen pixels whatever it was report
 
   it("reads an unrecognised delta mode as pixels rather than refusing it", () => {
     expect(normalizedWheel(5, 7, 99)).toEqual([5, 7]);
+  });
+});
+
+describe("a bare wheel event is read as a mouse or as a trackpad", () => {
+  it("reads a Chrome wheel notch as a mouse", () => {
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, wheelDeltaY: -120 })).toBe(true);
+  });
+
+  it("reads a fast spin, which arrives as several notches at once, as a mouse", () => {
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, wheelDeltaY: 360 })).toBe(true);
+  });
+
+  it("reads Firefox's line deltas as a mouse, since nothing else reports lines", () => {
+    expect(isMouseWheel({ deltaMode: 1, deltaX: 0, wheelDeltaY: 0 })).toBe(true);
+  });
+
+  it("reads a trackpad's own quantum as a trackpad", () => {
+    // A precise device's `wheelDeltaY` is `-3 * deltaY`, so 12 pixels of
+    // two-finger travel arrive as 36 and no notch is a multiple of 36.
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, wheelDeltaY: -36 })).toBe(false);
+  });
+
+  it("reads anything sideways as a trackpad, whatever the vertical looks like", () => {
+    // The one case a magnitude test alone gets wrong: a scroll that travelled an
+    // exact multiple of 40 pixels vertically is notch-shaped by accident, and the
+    // sideways component is what still says it came from two fingers.
+    expect(isMouseWheel({ deltaMode: 0, deltaX: -4, wheelDeltaY: -120 })).toBe(false);
+  });
+
+  it("reads a browser that fills in no wheel delta as a trackpad, not as a mouse", () => {
+    expect(isMouseWheel({ deltaMode: 0, deltaX: 0, wheelDeltaY: 0 })).toBe(false);
   });
 });
 

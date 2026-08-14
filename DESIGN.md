@@ -1070,15 +1070,19 @@ The page the reference design shows (#56), with measurements verified in v1's so
   `−`/`+` carry `aria-disabled` and a tooltip naming the limit, never a press that silently
   does nothing. `docs/annotations.md` carries the argument.
 - **Navigating the picture is one model across every device** (#576). Pan: a two-finger
-  trackpad scroll, a mouse wheel, a middle- or right-button drag, `Space` held with any
-  drag, or the hand tool. Zoom: a trackpad pinch, `Ctrl`/`Cmd` with a scroll, the widget's
+  trackpad scroll, a middle- or right-button drag, `Space` held with any drag, or the hand
+  tool. Zoom: a mouse wheel, a trackpad pinch, `Ctrl`/`Cmd` with a scroll, the widget's
   `−`/`+`, and `mod+0` to fit. On a touchscreen one finger draws — or pans while the hand
-  is on — and two fingers pinch and drag together. **A bare wheel pans; it used to zoom**,
-  which is deliberate and is the whole of what made a trackpad workable: a two-finger
-  scroll is how anybody moves around a canvas, and while it zoomed there was no gesture on
-  a trackpad that moved the picture at all. Mouse zoom is the modifier and the buttons.
-  The shortcut sheet's **Navigate** section is the one place this is written for a user,
-  and it is hand-written rather than derived — a gesture has no chord to be read off.
+  is on — and two fingers pinch and drag together. **A bare wheel event is answered by
+  device**: a two-finger scroll pans, a wheel notch zooms. That split is what makes a
+  trackpad workable without costing the mouse the gesture it has always had — a two-finger
+  scroll is how anybody moves around a canvas and a notch is how anybody zooms, and a rule
+  serving one leaves the other with nothing. No browser reports the device, so the test is
+  a heuristic and **everything uncertain is read as a trackpad**: a mouse it declines still
+  zooms with the modifier and the buttons, where a trackpad that zoomed by accident would
+  be the defect over again. The shortcut sheet's **Navigate** section is the one place this
+  is written for a user, and it is hand-written rather than derived — a gesture has no
+  chord to be read off.
 
 ### The read-only mode
 

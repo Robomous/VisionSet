@@ -280,6 +280,7 @@ export {
   fitToViewport,
   imageRenderingAt,
   imageToScreen,
+  isMouseWheel,
   normalizedWheel,
   panBy,
   pinchBetween,
@@ -287,6 +288,7 @@ export {
   wheelZoomFactor,
   zoomAbout,
   type Pinch,
+  type WheelShape,
   type Viewport,
 } from "./adapters/viewport";
 
