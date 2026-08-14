@@ -37,7 +37,6 @@ reused rather than respelled — same ``_fp16.forward_guard``, same
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator
 from io import BytesIO
 from pathlib import Path
@@ -46,7 +45,7 @@ from uuid import UUID
 
 from PIL import Image
 
-from visionset.inference import _fp16
+from visionset.inference import _device, _fp16
 from visionset.inference._extra import imported
 from visionset.inference.cache import DEFAULT_EMBEDDING_CAPACITY, BoundedCache, KeyedLocks
 from visionset.kernel.domain import (
@@ -58,8 +57,6 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.errors import UnsupportedPrompt
 
-_logger: Final = logging.getLogger(__name__)
-
 POSITIVE: Final = 1
 NEGATIVE: Final = 0
 """What this family calls a point that says *this* and one that says *not that*.
@@ -69,11 +66,6 @@ The domain spells the same distinction as two tuples on
 it. These two integers are how the model does, and the translation between them
 is exactly the kind of thing that lives in an adapter.
 """
-
-CPU_FALLBACK_WARNING: Final = (
-    "inference connection %r asks for device %r, which this machine does not offer; "
-    "running on the CPU in full precision instead"
-)
 
 
 def points_and_labels(prompt: PointPrompt) -> tuple[list[list[float]], list[int]]:
@@ -326,7 +318,12 @@ class LocalSamProvider:
         """
         torch = imported("torch")
         transformers = imported("transformers")
-        device, half = self._resolved_device(torch)
+        device, half = _device.resolved(
+            torch,
+            device=self._device,
+            precision=self._precision,
+            connection_name=self._connection_name,
+        )
         common = {
             "revision": self._model_revision,
             "cache_dir": str(self._cache_dir),
@@ -339,11 +336,3 @@ class LocalSamProvider:
             **common,
         )
         return processor, model.to(device).eval(), device, half
-
-    def _resolved_device(self, torch: Any) -> tuple[str, bool]:
-        """Where this runs, and whether half precision survives — the sibling's rule."""
-        wanted = self._device.strip()
-        if wanted.startswith("cuda") and not torch.cuda.is_available():
-            _logger.warning(CPU_FALLBACK_WARNING, self._connection_name, wanted)
-            return "cpu", False
-        return wanted, wanted.startswith("cuda") and _fp16.wants_half(self._precision)

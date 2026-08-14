@@ -67,17 +67,24 @@ it("offers half precision on CUDA and on every address of it", () => {
   // A second GPU is still a GPU. This is the kernel's `precisions_for`, and the
   // two answer the same way or the form offers what the kernel refuses.
   expect(precisionsFor("cuda:1")).toEqual(["fp16", "fp32"]);
+  // Metal has no float64 and an inconsistent bfloat16, so full precision is the
+  // only format that behaves the same on every Mac — and the kernel refuses the
+  // pairing at creation, which a form still offering it would walk straight into.
+  expect(precisionsFor("mps")).toEqual(["fp32"]);
 });
 
 it("keeps a precision that survives a device change and replaces one that does not", () => {
   expect(precisionOn("cuda", "fp32")).toBe("fp32");
   expect(precisionOn("cpu", "fp32")).toBe("fp32");
   expect(precisionOn("cpu", "fp16")).toBe("fp32");
+  // Moving a half-precision CUDA connection onto Metal cannot keep the setting.
+  expect(precisionOn("mps", "fp16")).toBe("fp32");
 });
 
-it("offers the two devices every machine can be asked about", () => {
+it("offers the devices every machine can be asked about", () => {
   // `cuda:N` is deliberately absent: how many GPUs this machine has is not
   // something a static list can know, so it is typed by the kernel's pattern and
-  // shown by the form only when a row already carries one.
-  expect([...DEVICES]).toEqual(["cpu", "cuda"]);
+  // shown by the form only when a row already carries one. `mps` needs no such
+  // escape, because a Mac has exactly one.
+  expect([...DEVICES]).toEqual(["cpu", "cuda", "mps"]);
 });

@@ -28,6 +28,7 @@ from visionset.kernel.adapters import _tables as t
 from visionset.kernel.domain import (
     CPU,
     CUDA,
+    MPS,
     ConnectionSetupState,
     ConnectionType,
     InferenceConnection,
@@ -133,7 +134,14 @@ def test_the_service_refuses_in_the_kernels_own_vocabulary(connections) -> None:
 
 @pytest.mark.parametrize(
     ("written", "stored"),
-    [("cpu", "cpu"), ("cuda", "cuda"), ("cuda:1", "cuda:1"), (" CUDA ", "cuda")],
+    [
+        ("cpu", "cpu"),
+        ("cuda", "cuda"),
+        ("cuda:1", "cuda:1"),
+        (" CUDA ", "cuda"),
+        ("mps", "mps"),
+        (" MPS ", "mps"),
+    ],
 )
 def test_a_device_this_build_can_address_is_kept_and_normalized(written: str, stored: str) -> None:
     """Case and surrounding space are forgiven; `cuda:N` is a device, not a typo."""
@@ -141,13 +149,19 @@ def test_a_device_this_build_can_address_is_kept_and_normalized(written: str, st
     assert made.device == stored
 
 
-@pytest.mark.parametrize("written", ["gpu", "mps", "cuda:", "cuda:x", "cuda 1", "", "cpu0"])
+@pytest.mark.parametrize(
+    "written", ["gpu", "auto", "cuda:", "cuda:x", "cuda 1", "", "cpu0", "mps:0"]
+)
 def test_a_device_nothing_here_could_address_is_refused(written: str) -> None:
     """The gap this closes: every one of these was accepted and then ignored.
 
-    The adapters resolve anything that is not CUDA onto the CPU in full
+    The adapters resolve anything they cannot honour onto the CPU in full
     precision, so a connection saying `gpu` used to describe a run that never
-    happened and went on displaying `gpu` while it did not happen.
+    happened and went on displaying `gpu` while it did not happen. `mps` used to
+    be refused for that same reason and is a device now, because the adapters
+    resolve it; `gpu` and `auto` still name nothing they could resolve. There is
+    only ever one Metal GPU, so `mps:0` is a typo rather than the second-device
+    escape `cuda:N` is.
     """
     with pytest.raises(ValidationError, match="not a device this build can run on"):
         InferenceConnection(name="x", **(dict(LOCAL) | {"device": written}))
@@ -196,6 +210,9 @@ def test_half_precision_is_refused_on_a_cpu_and_offered_on_a_gpu() -> None:
     with pytest.raises(ValidationError, match="fp16 is not available on cpu"):
         InferenceConnection(name="x", **(dict(LOCAL) | {"device": "cpu", "precision": "fp16"}))
 
+    with pytest.raises(ValidationError, match="fp16 is not available on mps"):
+        InferenceConnection(name="x", **(dict(LOCAL) | {"device": "mps", "precision": "fp16"}))
+
     for device in ("cuda", "cuda:1"):
         made = InferenceConnection(
             name="x", **(dict(LOCAL) | {"device": device, "precision": "fp16"})
@@ -210,6 +227,7 @@ def test_the_conditioning_rule_has_one_owner() -> None:
     refuses, which is the shape `ui-capabilities` bans one layer up.
     """
     assert precisions_for(CPU) == (Precision.FP32,)
+    assert precisions_for(MPS) == (Precision.FP32,)
     assert precisions_for(CUDA) == (Precision.FP16, Precision.FP32)
     assert precisions_for("cuda:3") == (Precision.FP16, Precision.FP32)
 

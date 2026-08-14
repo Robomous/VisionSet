@@ -161,8 +161,14 @@ export function curatedEntry(modelId: string, revision: string): CuratedModel | 
   return found !== undefined && found.revision === revision ? found : undefined;
 }
 
-/** The devices a form offers, in the order it offers them. */
-export const DEVICES = ["cpu", "cuda"] as const;
+/**
+ * The devices a form offers, in the order it offers them.
+ *
+ * `mps` is Apple Silicon's GPU, and it is one entry rather than a platform
+ * branch: which devices a machine actually has is answered where the model is
+ * loaded, not by a form guessing from a user agent.
+ */
+export const DEVICES = ["cpu", "cuda", "mps"] as const;
 
 /**
  * The precisions that are honoured on that device — the kernel's
@@ -170,9 +176,13 @@ export const DEVICES = ["cpu", "cuda"] as const;
  *
  * Half precision is CUDA-only in both local adapters, so `cpu` + `fp16` is not a
  * slower run but a setting with no effect that the row would go on displaying as
- * though it had one. A machine addressing a second GPU writes `cuda:1`, which is
- * not a member of {@link DEVICES} and is still a CUDA device — hence the prefix
- * test rather than an equality against `"cuda"`.
+ * though it had one. `mps` answers the same way and for its own reason: Metal has
+ * no float64 and an inconsistent bfloat16, so full precision is the only format
+ * that behaves the same on every machine offering the device. A machine
+ * addressing a second GPU writes `cuda:1`, which is not a member of
+ * {@link DEVICES} and is still a CUDA device — hence the prefix test rather than
+ * an equality against `"cuda"`, which is also what leaves every non-CUDA device
+ * on `fp32` without naming each one.
  */
 export function precisionsFor(device: string): readonly Precision[] {
   return device.startsWith("cuda") ? ["fp16", "fp32"] : ["fp32"];

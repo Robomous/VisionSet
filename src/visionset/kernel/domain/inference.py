@@ -148,7 +148,15 @@ CPU: Final = "cpu"
 CUDA: Final = "cuda"
 """The default GPU. A machine with several addresses the rest as ``cuda:1``, ``cuda:2``…"""
 
-OFFERED_DEVICES: Final[tuple[str, ...]] = (CPU, CUDA)
+MPS: Final = "mps"
+"""Apple Silicon's GPU, and there is only ever one of it.
+
+Named for the framework that drives it rather than for the hardware, which is
+how the array library spells it and therefore the only spelling an adapter can
+hand on unchanged.
+"""
+
+OFFERED_DEVICES: Final[tuple[str, ...]] = (CPU, CUDA, MPS)
 """The devices a form offers, in the order it offers them.
 
 Not the whole of what :data:`DEVICE_PATTERN` accepts, and the difference is
@@ -158,16 +166,20 @@ holding a connection whose device is outside this tuple shows it as it is rather
 than silently rewriting it to the nearest member.
 """
 
-DEVICE_PATTERN: Final = re.compile(r"^(?:cpu|cuda(?::\d+)?)$")
+DEVICE_PATTERN: Final = re.compile(r"^(?:cpu|mps|cuda(?::\d+)?)$")
 """Every device string this build can honestly run on.
 
 A pattern rather than an enum because of the one member that is not a fixed
-word. What is *not* here is the point: ``gpu``, ``mps``, ``auto`` and every
+word. The rule is that a device is here when this build can *honour* it, and
+what is not here is as much the point as what is: ``gpu``, ``auto`` and every
 typo were accepted before and then quietly fell back to the CPU in full
-precision — a connection that names a runtime it never gets. The adapters still
-fall back when a *valid* device turns out to be absent at run time, which is a
-fact about the machine at the moment of the call and belongs there; a device
-nothing could ever address is a fact about the configuration and belongs here.
+precision — a connection that names a runtime it never gets. ``mps`` was out for
+that same reason and is in now, because the adapters resolve it, run on it, and
+condition its precision like any other device rather than degrading it in
+silence. The adapters still fall back when a *valid* device turns out to be
+absent at run time, which is a fact about the machine at the moment of the call
+and belongs there; a device nothing could ever address is a fact about the
+configuration and belongs here.
 """
 
 
@@ -181,11 +193,16 @@ def precisions_for(device: str) -> tuple[Precision, ...]:
     setting that has no effect at all — and one the row would go on displaying as
     though it did.
 
+    ``mps`` answers the same way ``cpu`` does, and for a reason of its own rather
+    than by inheriting the adapters' rule: Metal has no float64 at all and its
+    bfloat16 is inconsistent across releases, so full precision is the only
+    numeric format that behaves the same on every machine that offers the device.
+
     Takes the string rather than a member because ``cuda:1`` is a device and not
     an enum, and returns a tuple rather than a set because a caller offering a
     choice needs an order and a caller checking membership does not care.
     """
-    return (Precision.FP32,) if device == CPU else (Precision.FP16, Precision.FP32)
+    return (Precision.FP32,) if device in (CPU, MPS) else (Precision.FP16, Precision.FP32)
 
 
 EVERY_CONNECTION_TYPE: Final[frozenset[ConnectionType]] = frozenset(ConnectionType)
