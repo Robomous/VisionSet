@@ -123,6 +123,25 @@ def _never(*_: object, **__: object) -> object:
     raise AssertionError("the probe ran on a machine that reports no Metal")
 
 
+def test_a_surprise_from_the_probe_is_not_read_as_absent_hardware() -> None:
+    """The narrowing to ``RuntimeError``, which is the whole of what it buys.
+
+    An unusable backend raises ``RuntimeError``; a half-installed array library
+    raises other things. Turning the second into a silent CPU fallback would
+    hide a broken installation behind a fifty-times-slower run, which is the
+    most expensive way for this function to be wrong — so it propagates.
+    """
+    torch = StubTorch(mps=True)
+    torch.zeros = _broken  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="half an installation"):
+        _device.resolved(torch, device="mps", precision="fp32", connection_name="detector")
+
+
+def _broken(*_: object, **__: object) -> object:
+    raise ValueError("half an installation")
+
+
 def test_mps_on_a_machine_without_metal_falls_back_to_the_cpu(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
