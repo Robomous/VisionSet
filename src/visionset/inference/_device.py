@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import lru_cache
 from typing import Any, Final
 
 from visionset.inference import _fp16
@@ -92,13 +93,44 @@ def resolved(
 def _present(torch: Any, device: str) -> bool:
     """Whether this machine offers that device, right now.
 
-    ``mps`` is asked with ``is_available`` alone. ``is_built`` answers a
-    different question — whether this build of the array library carries the
-    backend — and ``is_available`` is already false when it does not, so asking
-    both is asking one question twice.
+    ``mps`` is asked twice, and the second question is the one that matters.
+    ``is_available`` answers *is there a Metal device*, which is not the same as
+    *can I put a tensor on it*: on an Intel Mac with a discrete GPU it answers
+    true and every allocation then raises ``MPS backend is only supported on
+    devices with unified memory``. Measured on an i9 MacBook Pro, macOS 26.6,
+    torch 2.13 — ``is_built`` and ``is_available`` both true, ``torch.zeros(1,
+    device="mps")`` fatal. Asking ``is_built`` as well would not have helped; it
+    is true there too.
+
+    So the second question is asked by *doing it*, which is the only form that
+    cannot be wrong, and it is the shape this module already argues for: a
+    run-time question answered at the moment of the call.
     """
     if device.startswith(CUDA):
         return bool(torch.cuda.is_available())
     if device == MPS:
-        return bool(torch.backends.mps.is_available())
+        return bool(torch.backends.mps.is_available()) and _mps_serves(torch)
+    return True
+
+
+@lru_cache(maxsize=None)
+def _mps_serves(torch: Any) -> bool:
+    """Whether Metal will really take a tensor, asked by handing it one.
+
+    **Cached on the array library itself**, so the cost is one allocation of one
+    element per process rather than per suggestion — and so that a test handing
+    in a different stub gets a different answer without having to clear
+    anything, which is what keeps this probe as injectable as the two
+    availability flags beside it.
+
+    Only ``RuntimeError`` is caught, because that is what an unusable backend
+    raises. Anything else — a stub missing ``zeros``, an import that half
+    happened — is a surprise this function has no business converting into a
+    quiet "no GPU here", which is the most expensive kind of wrong answer a
+    fallback can give.
+    """
+    try:
+        torch.zeros(1, device=MPS)
+    except RuntimeError:
+        return False
     return True

@@ -23,11 +23,21 @@ from visionset.inference import _device
 
 
 def resolve(
-    *, device: str, precision: str | None = "fp32", cuda: bool = False, mps: bool = False
+    *,
+    device: str,
+    precision: str | None = "fp32",
+    cuda: bool = False,
+    mps: bool = False,
+    mps_usable: bool = True,
 ) -> tuple[str, bool]:
-    """``resolved`` with a stub torch and a name, so a case reads as its question."""
+    """``resolved`` with a stub torch and a name, so a case reads as its question.
+
+    A fresh ``StubTorch`` per call is what keeps ``_mps_serves``'s cache out of
+    the way: it is keyed on the array library it was handed, so two cases asking
+    opposite questions never see each other's answer.
+    """
     return _device.resolved(
-        StubTorch(cuda=cuda, mps=mps),
+        StubTorch(cuda=cuda, mps=mps, mps_usable=mps_usable),
         device=device,
         precision=precision,
         connection_name="detector",
@@ -75,6 +85,42 @@ def test_mps_never_runs_in_half_precision_even_when_the_connection_asks_for_it()
 
 def test_a_cpu_connection_asking_for_half_precision_does_not_get_it() -> None:
     assert resolve(device="cpu", precision="fp16") == ("cpu", False)
+
+
+def test_metal_that_cannot_take_a_tensor_falls_back_to_the_cpu(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The case ``is_available`` alone gets wrong, and it is a real machine.
+
+    An Intel Mac with a discrete GPU answers ``is_built`` **and**
+    ``is_available`` true, then raises on every allocation — so the check that
+    shipped waved ``mps`` through, no warning was logged, and the failure landed
+    as a 500 out of the first suggestion instead of a slow run on the CPU.
+    Reproduced on an i9 MacBook Pro, macOS 26.6, torch 2.13.
+    """
+    with caplog.at_level(logging.WARNING):
+        assert resolve(device="mps", mps=True, mps_usable=False) == ("cpu", False)
+    assert "detector" in caplog.text
+    assert "mps" in caplog.text
+
+
+def test_the_probe_is_not_paid_for_on_a_machine_with_no_metal_at_all() -> None:
+    """``is_available`` is asked first, so the common case allocates nothing.
+
+    A stub whose ``zeros`` raises ``AssertionError`` — which the production code
+    deliberately does *not* catch — is how "never reached" is asserted rather
+    than described.
+    """
+    torch = StubTorch(mps=False)
+    torch.zeros = _never  # type: ignore[method-assign]
+
+    assert _device.resolved(
+        torch, device="mps", precision="fp32", connection_name="detector"
+    ) == ("cpu", False)
+
+
+def _never(*_: object, **__: object) -> object:
+    raise AssertionError("the probe ran on a machine that reports no Metal")
 
 
 def test_mps_on_a_machine_without_metal_falls_back_to_the_cpu(

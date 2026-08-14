@@ -152,19 +152,39 @@ class _Scope:
 class StubTorch:
     """Enough of torch for ``forward_guard`` and ``_device.resolved`` to work.
 
-    The two availability answers are constructor arguments rather than fixed
-    values, because device resolution is a *branch* on them and a stub that can
-    only say "no GPU here" can only ever exercise the fallback. Both default to
-    absent, which is what every machine running this suite actually is and what
-    every caller predating the arguments expects.
+    The availability answers are constructor arguments rather than fixed values,
+    because device resolution is a *branch* on them and a stub that can only say
+    "no GPU here" can only ever exercise the fallback. Both default to absent,
+    which is what every machine running this suite actually is and what every
+    caller predating the arguments expects.
+
+    ``mps_usable`` is the third, and it is a separate axis from ``mps`` because
+    on a real machine the two genuinely disagree: an Intel Mac with a discrete
+    GPU reports Metal available and then refuses every allocation on it. It
+    defaults to true so that ``mps=True`` alone still means a working Apple
+    Silicon GPU, which is what every case written before this existed meant.
     """
 
     float16 = "float16"
 
-    def __init__(self, *, cuda: bool = False, mps: bool = False) -> None:
+    def __init__(
+        self, *, cuda: bool = False, mps: bool = False, mps_usable: bool = True
+    ) -> None:
         self.nn = SimpleNamespace(functional=Functional())
         self.cuda = SimpleNamespace(is_available=lambda: cuda)
         self.backends = SimpleNamespace(mps=SimpleNamespace(is_available=lambda: mps))
+        self._mps_usable = mps_usable
+
+    def zeros(self, *_: Any, device: str | None = None) -> Any:
+        """The probe's allocation, and the only tensor this stub ever makes.
+
+        Raises what torch raises, with the message torch uses, because the
+        production code catches ``RuntimeError`` specifically and a stub raising
+        anything else would let that narrowing pass a test it should fail.
+        """
+        if device == "mps" and not self._mps_usable:
+            raise RuntimeError("MPS backend is only supported on devices with unified memory")
+        return SimpleNamespace()
 
     def no_grad(self) -> _Scope:
         return _Scope()
