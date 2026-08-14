@@ -297,3 +297,31 @@ export async function expectProgress(page: Page, progress: string): Promise<void
 export async function openOverflow(page: Page): Promise<void> {
   await page.getByTestId("more-actions").click();
 }
+
+/**
+ * A zoom notch over `at`, which is a wheel **with the modifier held**.
+ *
+ * A bare wheel pans now (#576), and every scenario that used to zoom with one is
+ * routed through here rather than holding the key inline — a spec that forgot it
+ * would still pass its "the picture moved" assertions and be measuring the wrong
+ * gesture entirely.
+ *
+ * `Control` and not `Meta`: both work in the product, and Playwright's
+ * `mouse.wheel` reads the keyboard's live modifier state, so the down/up pair is
+ * what puts `ctrlKey` on the event. The cursor is moved first because a
+ * `mouse.wheel` lands wherever the last press left the pointer, which after a
+ * button click is over the chrome and not the canvas.
+ */
+export async function zoomWheel(page: Page, at: Point, delta: number): Promise<void> {
+  await page.mouse.move(at.x, at.y);
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, delta);
+  await page.keyboard.up("Control");
+}
+
+/** The pane's centre, which is where a scenario zooms when it does not care where. */
+export async function paneCentre(page: Page): Promise<Point> {
+  const box = await page.getByTestId("annotator-pane").boundingBox();
+  if (box === null) throw new Error("annotator-pane has no bounding box");
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}

@@ -89,6 +89,7 @@ export {
   TOGGLE_HELP,
   COARSER_SUGGESTION,
   FINER_SUGGESTION,
+  TOGGLE_HAND,
   TOGGLE_SUGGEST,
   type Action,
   type ActionKind,

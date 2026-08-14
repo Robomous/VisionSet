@@ -131,6 +131,7 @@ import {
   TOGGLE_HELP,
   COARSER_SUGGESTION,
   FINER_SUGGESTION,
+  TOGGLE_HAND,
   TOGGLE_SUGGEST,
 } from "./actions";
 import type { Action } from "./actions";
@@ -197,6 +198,10 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   // answers `false` so the chord falls through to the browser untouched.
   { chord: "[", action: { kind: "host", name: COARSER_SUGGESTION } },
   { chord: "]", action: { kind: "host", name: FINER_SUGGESTION } },
+  // `h`, the hand. Bare on `s`'s terms, and the last letter this table claims.
+  // Not `activate-class`, because navigation derives from no class — see
+  // `TOGGLE_HAND`, which also says why holding `Space` cannot be a row beside it.
+  { chord: "h", action: { kind: "host", name: TOGGLE_HAND } },
   { chord: "v", action: { kind: "activate-class", labelClass: null } },
 ];
 

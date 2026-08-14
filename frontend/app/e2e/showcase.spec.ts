@@ -18,7 +18,14 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { expectCounts, expectFitted, focusCanvas, frameOf, SHOWCASE } from "./_frame";
+import {
+  expectCounts,
+  expectFitted,
+  focusCanvas,
+  frameOf,
+  SHOWCASE,
+  zoomWheel,
+} from "./_frame";
 
 test.beforeEach(async ({ page }) => {
   await page.goto(SHOWCASE);
@@ -120,8 +127,7 @@ test("the zoom readout reports the fit, follows the wheel and comes back on mod+
   expectFitted(frame);
   await expectReadout(page, frame.zoom);
 
-  await page.mouse.move(frame.at(640, 360).x, frame.at(640, 360).y);
-  await page.mouse.wheel(0, -240);
+  await zoomWheel(page, frame.at(640, 360), -240);
 
   const zoomed = await frameOf(page);
   expect(zoomed.zoom).toBeGreaterThan(frame.zoom);

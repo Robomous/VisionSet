@@ -975,6 +975,11 @@ The page the reference design shows (#56), with measurements verified in v1's so
   variant** (the near-black), inactive = ghost; a `h-px w-6` divider; help at the bottom.
   Tooltips open right with the shortcut ("Select (V)", "Box (B)", "Polygon (P)").
   Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow.
+  **Above them all, the hand** (#576, `Hand`, `H`) — and it is the one button here that
+  the schema does not gate, because it answers a question about the *device* rather than
+  about the project: a pan had exactly one spelling, a middle- or secondary-button drag,
+  and a trackpad, a tablet and a pen have no second button to offer. Cursor `grab`, and
+  `grabbing` while a drag is under way.
   Below a second divider, **undo and redo** (#368): the chords have worked since #46 and
   had no representation on screen at all, so the annotator's headline capability over v1
   was invisible to anybody who did not already know it. Disabled *with the reason*
@@ -1064,6 +1069,16 @@ The page the reference design shows (#56), with measurements verified in v1's so
   interpolated blur. Both bounds are **disabled with the reason** per principle 9 — the
   `−`/`+` carry `aria-disabled` and a tooltip naming the limit, never a press that silently
   does nothing. `docs/annotations.md` carries the argument.
+- **Navigating the picture is one model across every device** (#576). Pan: a two-finger
+  trackpad scroll, a mouse wheel, a middle- or right-button drag, `Space` held with any
+  drag, or the hand tool. Zoom: a trackpad pinch, `Ctrl`/`Cmd` with a scroll, the widget's
+  `−`/`+`, and `mod+0` to fit. On a touchscreen one finger draws — or pans while the hand
+  is on — and two fingers pinch and drag together. **A bare wheel pans; it used to zoom**,
+  which is deliberate and is the whole of what made a trackpad workable: a two-finger
+  scroll is how anybody moves around a canvas, and while it zoomed there was no gesture on
+  a trackpad that moved the picture at all. Mouse zoom is the modifier and the buttons.
+  The shortcut sheet's **Navigate** section is the one place this is written for a user,
+  and it is hand-written rather than derived — a gesture has no chord to be read off.
 
 ### The read-only mode
 
@@ -1106,9 +1121,15 @@ What a viewer is (decisions of 2026-08-07, #426, and 2026-08-08, #439):
 - **Selection highlights; it does not advertise.** A selected shape renders the
   selected treatment — stroke 3, the label — with **no grips and no vertex
   dots**, and the cursor is the **default arrow everywhere**: no resize keywords,
-  because no such gesture exists. The tool strip is not rendered at all, for the
-  same reason it never was. Since #567 the editor also shows the plain arrow over
-  a shape, so what separates the modes is the grips rather than the cursor.
+  because no such gesture exists. Since #567 the editor also shows the plain arrow
+  over a shape, so what separates the modes is the grips rather than the cursor.
+- **The tool strip renders, carrying navigation and nothing else** (#576). It used
+  to be absent entirely, and the reason held while it was true: every control on it
+  picked a *drawing* tool, and a tool palette over a canvas that cannot be drawn on
+  explains nothing. The hand is not a drawing tool — it is what a person reaches for
+  when the picture is in the wrong place — and navigating a batch nobody may edit is
+  most of what a viewer does, so the strip keeps the hand and the shortcut sheet and
+  loses every other button. The banner still carries the reason, once.
 - **Selection is one state, reflected everywhere.** A press on a shape selects
   it — the one pointer gesture a viewer keeps, resolved by the same hit rule the
   right-click menu uses — and the objects panel's row highlights and scrolls

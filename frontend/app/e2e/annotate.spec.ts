@@ -13,7 +13,7 @@
 
 import { expect, test, type Page, type Request } from "@playwright/test";
 import { assetActions, batchActions, jobActions } from "./_wire";
-import { expectNothingToSave, expectProgress, openOverflow, saveNow } from "./_frame";
+import { expectNothingToSave, expectProgress, openOverflow, saveNow, zoomWheel } from "./_frame";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -1077,8 +1077,9 @@ test("the zoom stops at 8x, and the control says so rather than going quiet", as
   const wheelOverCanvas = async (delta: number): Promise<void> => {
     const box = await page.getByTestId("annotator-root").boundingBox();
     if (box === null) throw new Error("annotator-root has no bounding box");
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.wheel(0, delta);
+    // Held, because a bare wheel pans (#576). Without it this scenario would
+    // still move the picture and would assert nothing at all about the zoom.
+    await zoomWheel(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, delta);
   };
 
   await wheelOverCanvas(-4000);
@@ -1336,15 +1337,23 @@ test("a completed batch opens as a viewer, and says so", async ({ page }) => {
   await expect(banner).toContainText(/viewing only/i);
   await expect(banner).toContainText(/correction batch/i);
 
-  // Every control that writes is out, and the palette is gone entirely — a tool
-  // palette over a canvas that cannot be drawn on explains nothing. `skip` is
-  // absent rather than disabled: the pair keeps its slot inside a
-  // working job and loses it once the job is closed, which a completed batch's
-  // is.
+  // Every control that writes is out. `skip` is absent rather than disabled: the
+  // pair keeps its slot inside a working job and loses it once the job is
+  // closed, which a completed batch's is.
   await expectNothingToSave(page);
   await expect(page.getByTestId("skip")).toHaveCount(0);
   await expect(page.getByTestId("accept")).toHaveCount(0);
-  await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+
+  // The strip is present and carries navigation only (#576). It used to be
+  // absent entirely, and the reason was sound while every control on it picked a
+  // drawing tool — but navigating a batch nobody may edit is most of what a
+  // viewer does, and on a trackpad the hand is the only way to do it.
+  await expect(page.getByTestId("tool-palette")).toHaveCount(1);
+  await expect(page.getByTestId("tool-hand")).toHaveCount(1);
+  await expect(page.getByTestId("tool-help")).toHaveCount(1);
+  for (const drawing of ["tool-select", "tool-bbox", "tool-polygon", "tool-add-class", "tool-undo"]) {
+    await expect(page.getByTestId(drawing)).toHaveCount(0);
+  }
 });
 
 test("a completed batch's canvas cannot be drawn on, however hard it is asked", async ({ page }) => {
@@ -1576,8 +1585,11 @@ test("finishing the job turns the workspace into a viewer in place, on every fra
   // Visible success, in the vocabulary the add-a-class chain already uses.
   await expect(page.getByText(/job finished/i).first()).toBeVisible();
 
-  // Everything that only ever performed an edit is **absent**, not disabled.
-  await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+  // Everything that only ever performed an edit is **absent**, not disabled —
+  // the strip included, down to the one button on it that is navigation (#576).
+  await expect(page.getByTestId("tool-select")).toHaveCount(0);
+  await expect(page.getByTestId("tool-undo")).toHaveCount(0);
+  await expect(page.getByTestId("tool-hand")).toHaveCount(1);
   await expect(page.getByTestId("class-region")).toHaveCount(0);
   await expect(page.getByTestId("panel-split")).toHaveCount(0);
   await expect(page.getByTestId("skip")).toHaveCount(0);
@@ -1608,7 +1620,8 @@ test("finishing the job turns the workspace into a viewer in place, on every fra
   await page.getByTestId("prev-asset").click();
   await expect(page.getByTestId("asset-position")).toHaveText("1/2");
   await expect(page.getByTestId("readonly-banner")).toBeVisible();
-  await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+  await expect(page.getByTestId("tool-select")).toHaveCount(0);
+  await expect(page.getByTestId("tool-hand")).toHaveCount(1);
   await expect(page.getByTestId("class-region")).toHaveCount(0);
 
   // The other half: the gallery still opens, and no save-first guard engages —
@@ -2052,6 +2065,66 @@ test("the sheet lists the engine's own bindings, and the schema's class hotkeys"
   await expect(sheet.getByTestId("shortcut-text-fields")).toContainText(
     /typing in a field they are the browser/i,
   );
+
+  // `h` arrives as an ordinary derived row, which is the whole claim the sheet
+  // makes about itself: a binding was added and nobody edited this component.
+  await expect(sheet.locator('[data-chord="h"]')).toContainText(/hand/i);
+
+  // The gestures are the half that cannot be derived — a two-finger scroll has
+  // no chord to be read off — so they are written, and this is what says they
+  // are on the sheet at all (#576).
+  await expect(sheet.getByTestId("shortcut-pan-rows")).toContainText(/two-finger scroll/i);
+  await expect(sheet.getByTestId("shortcut-pan-rows")).toContainText(/hold space/i);
+  await expect(sheet.getByTestId("shortcut-zoom-rows")).toContainText(/pinch/i);
+  await expect(sheet.getByTestId("shortcut-touch-rows")).toContainText(/two fingers/i);
+});
+
+/**
+ * The hand, both doors, and the proof that they are one state.
+ *
+ * `h` and the strip's button reach the same `handTool` on the page — the suggest
+ * tool's arrangement — so pressing one must light the other. A scenario driving
+ * only the button would pass with the chord unbound, which is exactly the half a
+ * trackpad user reaches for first.
+ */
+test("the hand turns a plain drag into a pan, from the key and from the button", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const canvas = page.getByTestId("annotator-canvas");
+  const pane = (await page.getByTestId("annotator-pane").boundingBox())!;
+  const button = page.getByTestId("tool-hand");
+  await expect(button).toHaveAttribute("data-active", "false");
+
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("h");
+  await expect(button).toHaveAttribute("data-active", "true");
+
+  const before = (await canvas.boundingBox())!;
+  const from = { x: pane.x + pane.width * 0.5, y: pane.y + pane.height * 0.5 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x - 140, from.y - 60, { steps: 8 });
+  await page.mouse.up();
+
+  await expect.poll(async () => Math.round((await canvas.boundingBox())!.x)).toBe(
+    Math.round(before.x - 140),
+  );
+  // A pan is not an edit: the drag drew nothing and there is nothing to save.
+  await expectNothingToSave(page);
+
+  // The button turns it back off, and the same drag draws again.
+  await button.click();
+  await expect(button).toHaveAttribute("data-active", "false");
+  await page.keyboard.press("1");
+  const draw = { x: pane.x + pane.width * 0.4, y: pane.y + pane.height * 0.4 };
+  await page.mouse.move(draw.x, draw.y);
+  await page.mouse.down();
+  await page.mouse.move(draw.x + 90, draw.y + 70, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.getByTestId("object-total")).toContainText("1 object");
 });
 
 /**
@@ -2960,8 +3033,7 @@ test("saving leaves the viewport exactly where it was", async ({ page }) => {
   // Off the fitted view in both dimensions: a wheel notch over a point that is
   // not the pane's centre changes the zoom *and* the pan, and the secondary drag
   // after it moves the pan again on its own.
-  await page.mouse.move(pane.x + pane.width * 0.35, pane.y + pane.height * 0.35);
-  await page.mouse.wheel(0, -600);
+  await zoomWheel(page, { x: pane.x + pane.width * 0.35, y: pane.y + pane.height * 0.35 }, -600);
   await page.mouse.down({ button: "right" });
   await page.mouse.move(pane.x + pane.width * 0.55, pane.y + pane.height * 0.5, { steps: 8 });
   await page.mouse.up({ button: "right" });
