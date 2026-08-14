@@ -2115,16 +2115,66 @@ test("the hand turns a plain drag into a pan, from the key and from the button",
   // A pan is not an edit: the drag drew nothing and there is nothing to save.
   await expectNothingToSave(page);
 
-  // The button turns it back off, and the same drag draws again.
+  // The button turns it back off.
   await button.click();
   await expect(button).toHaveAttribute("data-active", "false");
+
+  // And so does reaching for a class, which is the half that makes the strip
+  // readable: the hand is a mode, the canvas answers a primary press with a pan
+  // before the machine hears it, and a class armed under a raised hand would be
+  // a tool that draws nothing while the strip lit it and the hand at once. Every
+  // route to a class goes through one funnel on the page, so the digit proves
+  // the panel's list and the strip's own buttons too.
+  await page.keyboard.press("h");
+  await expect(button).toHaveAttribute("data-active", "true");
   await page.keyboard.press("1");
+  await expect(button).toHaveAttribute("data-active", "false");
+  await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
+
+  // And the same drag draws again.
   const draw = { x: pane.x + pane.width * 0.4, y: pane.y + pane.height * 0.4 };
   await page.mouse.move(draw.x, draw.y);
   await page.mouse.down();
   await page.mouse.move(draw.x + 90, draw.y + 70, { steps: 6 });
   await page.mouse.up();
   await expect(page.getByTestId("object-total")).toContainText("1 object");
+});
+
+/**
+ * The hand puts the *tools* away, not only the cursor.
+ *
+ * `hover` has two readers — the affordance and the drawing guides — and the hand
+ * used to reach neither, only the cursor. So a raised hand over an armed tool
+ * still drew the crosshair across the picture and still lit the grip under the
+ * pointer: offers the very next press cannot keep, because it is answered by a
+ * pan before the machine hears it. This is that half, in the one place it is
+ * visible from outside.
+ *
+ * The tool is armed with a digit rather than by pressing the strip, and the hand
+ * with `h` rather than the button, so neither half of the scenario depends on
+ * the palette wiring the scenario above already covers. Arming the suggest tool
+ * takes the same path — it activates a class, so `tool` is that class's geometry
+ * — and needs a model behind it, which this suite does not have.
+ */
+test("the hand takes the crosshair off the picture, and gives it back", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+
+  const pane = (await page.getByTestId("annotator-pane").boundingBox())!;
+  const crosshair = page.getByTestId("crosshair");
+
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("1");
+  await page.mouse.move(pane.x + pane.width * 0.5, pane.y + pane.height * 0.5);
+  await expect(crosshair).toHaveCount(1);
+
+  await page.keyboard.press("h");
+  await expect(crosshair).toHaveCount(0);
+
+  // And back, with no pointer move to wake it: `hover` never stopped tracking,
+  // so the guides return where the pointer already is.
+  await page.keyboard.press("h");
+  await expect(crosshair).toHaveCount(1);
 });
 
 /**

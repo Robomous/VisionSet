@@ -110,7 +110,10 @@ export function TransientLayer({
     // with it.
     <g data-testid="transient-layer" pointerEvents="none">
       {crosshair !== null && (
-        <g opacity={0.55}>
+        // Named so a browser can assert its absence: the guides are the most
+        // visible thing an armed tool puts on the picture, and "the hand put the
+        // tools away" is a claim about exactly that.
+        <g data-testid="crosshair" opacity={0.55}>
           <line x1={0} y1={crosshair[1]} x2={asset.width} y2={crosshair[1]} stroke="#ffffff" strokeWidth={screenPx(1, zoom)} strokeDasharray={DASH} />
           <line x1={crosshair[0]} y1={0} x2={crosshair[0]} y2={asset.height} stroke="#ffffff" strokeWidth={screenPx(1, zoom)} strokeDasharray={DASH} />
         </g>
