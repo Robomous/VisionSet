@@ -987,6 +987,9 @@ The page the reference design shows (#56), with measurements verified in v1's so
   puts the hand down. Reaching for a class puts it down too, through the one funnel every
   route to a class already goes through. **Suggest is not in that group**: it is a mode over
   the class it borrows, so it is legitimately lit beside a tool and keeps its own state.
+  The canvas says the same thing the strip does: while the hand is on there is **no crosshair
+  and no highlighted grip**, because the next press is answered by a pan and both would be
+  offers it cannot keep.
   Below a second divider, **undo and redo** (#368): the chords have worked since #46 and
   had no representation on screen at all, so the annotator's headline capability over v1
   was invisible to anybody who did not already know it. Disabled *with the reason*

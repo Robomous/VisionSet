@@ -487,7 +487,14 @@ The rest of the model is more spellings of the same two verbs.
   blur as well as on keyup, because its release lands in whatever took the focus and never here.
 - **The hand tool**, `h`, is the persistent one. Not a fifth `Tool`: `tool.ts` derives the tool
   from the active class and stores nothing, so the mode is the host's and arrives as `panTool`,
-  which is the arrangement the suggest tool already established.
+  which is the arrangement the suggest tool already established. **While it is on, the canvas
+  offers nothing else**: `pointing` is `hover` with the hand spent on it, and both readers of a
+  hover - the affordance and the drawing guides - go through it, so no grip lights up and no
+  crosshair is drawn. That is not tidiness. `handlePointerDown` answers the next press with a pan
+  before the machine or the suggest branch hears it, so a lit grip and a crosshair are offers
+  that press cannot keep. Applying the mode to the *cursor* alone, which is where it started,
+  made it a cursor rather than a mode - and left two render sites to remember it at, which is two
+  more than a mode should have.
 - **Two touch pointers** are a gesture whatever tool is armed. `pinchBetween` answers a scale
   about a travelling centroid - one gesture and not two, because a pinch that also drifts is one
   thing and answering it as a zoom followed by a pan makes the picture jump between them. The
