@@ -63,6 +63,33 @@ def test_a_base_install_imports_none_of_the_optional_runtime() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_importing_the_inference_package_asks_for_the_metal_cpu_fallback() -> None:
+    """And does so *before* the array library could have been imported.
+
+    ``PYTORCH_ENABLE_MPS_FALLBACK`` is read while torch initialises rather than
+    when an unimplemented operator is reached, so setting it after a device has
+    been resolved would be too late. The claim worth making is therefore about
+    ordering, and the only interpreter that can answer it is one that has
+    imported nothing else — in this one, the suite has already imported both.
+
+    The probe deletes the variable first: a developer who exports it would
+    otherwise be told the code sets it when nothing did.
+    """
+    probe = f"""
+import os
+import sys
+
+os.environ.pop("PYTORCH_ENABLE_MPS_FALLBACK", None)
+import visionset.inference
+
+assert os.environ.get("PYTORCH_ENABLE_MPS_FALLBACK") == "1", "the fallback was not asked for"
+loaded = {set(MODULES)} & set(sys.modules)
+assert not loaded, f"the fallback was set after the runtime loaded: {{loaded}}"
+"""
+    result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
 def test_creating_the_application_loads_none_of_it_either() -> None:
     """Importing is not the whole of startup — `create_app()` runs too.
 

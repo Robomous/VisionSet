@@ -37,7 +37,7 @@ visionset token create --name NAME
 visionset token list
 visionset token revoke NAME [--yes]
 visionset inference create NAME --type local|http --model ID --revision REV
-                               [--device cpu|cuda|cuda:N] [--precision fp16|fp32]
+                               [--device cpu|mps|cuda|cuda:N] [--precision fp16|fp32]
                                [--endpoint URL]
 visionset inference list
 visionset inference show|update|delete NAME_OR_ID

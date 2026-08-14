@@ -25,7 +25,6 @@ Both have tests that fail if they are removed.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator, Sequence
 from io import BytesIO
 from pathlib import Path
@@ -33,7 +32,7 @@ from typing import Any, Final
 
 from PIL import Image
 
-from visionset.inference import _fp16
+from visionset.inference import _device, _fp16
 from visionset.inference._extra import imported
 from visionset.inference.nms import DEFAULT_IOU_THRESHOLD, suppressed
 from visionset.kernel.domain import (
@@ -46,8 +45,6 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.errors import UnsupportedPrompt
 
-_logger: Final = logging.getLogger(__name__)
-
 DEFAULT_TEXT_THRESHOLD: Final = 0.25
 """How sure the model must be that a box matches a *phrase*, as opposed to that
 it is an object at all.
@@ -58,14 +55,6 @@ score, the value the answer publishes and a caller compares against. This is the
 text side, it never leaves this file, and 0.25 is the value the spike's runs
 used.
 """
-
-CPU_FALLBACK_WARNING: Final = (
-    "inference connection %r asks for device %r, which this machine does not offer; "
-    "running on the CPU in full precision instead"
-)
-"""Said out loud, once, at WARNING. A fallback that happens silently is a
-fifty-times-slower run somebody spends an afternoon not understanding — the
-~115 ms an image this adapter is measured at is a GPU figure."""
 
 
 def regions_from(
@@ -271,7 +260,12 @@ class LocalTransformersProvider:
     def _load(self) -> tuple[Any, Any, str, bool]:
         torch = imported("torch")
         transformers = imported("transformers")
-        device, half = self._resolved_device(torch)
+        device, half = _device.resolved(
+            torch,
+            device=self._device,
+            precision=self._precision,
+            connection_name=self._connection_name,
+        )
         common = {
             "revision": self._model_revision,
             "cache_dir": str(self._cache_dir),
@@ -285,26 +279,6 @@ class LocalTransformersProvider:
             **common,
         )
         return processor, model.to(device).eval(), device, half
-
-    def _resolved_device(self, torch: Any) -> tuple[str, bool]:
-        """Where this actually runs, and whether half precision survives the trip.
-
-        The CPU fallback is a fallback, not a preference: a connection asking for
-        ``cuda`` on a machine with none gets the CPU **and a warning**, because
-        the alternative — refusing — would make a workspace configured on a
-        laptop unusable on it, and the alternative to the warning is a run that
-        is fifty times slower for no visible reason.
-
-        Falling back also drops half precision. fp16 on a CPU is not the
-        conservative choice it looks like: the shims above exist for CUDA's
-        autocast, and ``float16`` arithmetic outside it is slower than the
-        float32 it was avoiding.
-        """
-        wanted = self._device.strip()
-        if wanted.startswith("cuda") and not torch.cuda.is_available():
-            _logger.warning(CPU_FALLBACK_WARNING, self._connection_name, wanted)
-            return "cpu", False
-        return wanted, wanted.startswith("cuda") and _fp16.wants_half(self._precision)
 
 
 def _labels_in(raw: dict[str, Any]) -> list[str]:
