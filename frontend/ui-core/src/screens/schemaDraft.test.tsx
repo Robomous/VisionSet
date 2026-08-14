@@ -375,6 +375,66 @@ describe("saving twice with nothing edited in between", () => {
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
     expect(await screen.findByText("No changes to save")).toBeDefined();
   });
+
+  /**
+   * The same defect through the comparison rather than through the baseline.
+   *
+   * A class added here is a literal in `SchemaEditor`'s own key order and a
+   * *new attribute* has no `options` key at all, where the wire sends every
+   * optional field `AttributeBody` declares. `JSON.stringify` over those two
+   * objects is unequal for one identical contract — so the draft reads as dirty
+   * against the version it just published, and presses Save again. That is why
+   * the comparison is a projection and not a stringify, and this is the test
+   * that notices if it goes back.
+   */
+  it("compares a hand-built attribute with the wire's own spelling of it", async () => {
+    let published: { project_id: string; version: number; classes: unknown[] } | null = null;
+    let posts = 0;
+    handlers.push((request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "GET" && /\/schema$/.test(path)) {
+        schemaReads += 1;
+        return published === null
+          ? { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "no schema yet" } }
+          : { status: 200, body: published, delay: 5 };
+      }
+      if (request.method === "POST" && /\/schema\/versions$/.test(path)) {
+        posts += 1;
+        published = {
+          project_id: PROJECT,
+          version: (published?.version ?? 0) + 1,
+          // What the server actually sends back: `AttributeBody` in full, with
+          // the `options` the editor's own literal never carries.
+          classes: [
+            {
+              ...PEDESTRIAN,
+              attributes: [
+                { name: "occluded", kind: "string", required: false, options: null, default: null },
+              ],
+            },
+          ],
+        };
+        return { status: 201, body: published };
+      }
+      return undefined;
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.type(screen.getByTestId("class-name-0"), "pedestrian");
+    await userEvent.click(screen.getByTestId("add-attribute-0"));
+    await userEvent.type(screen.getByTestId("attr-name-0-0"), "occluded");
+
+    await userEvent.click(screen.getByTestId("save-schema"));
+    await waitFor(() =>
+      expect(screen.getByTestId("schema-status").textContent).toContain("Version 1 active"),
+    );
+
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    expect(posts).toBe(1);
+  });
 });
 
 const PEDESTRIAN = { name: "pedestrian", geometry: "bbox", color: null, attributes: [] };
