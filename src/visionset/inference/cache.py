@@ -24,6 +24,7 @@ not add.
 
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 from typing import Final
 
@@ -50,13 +51,20 @@ latency failure the embedding cache exists to prevent, one level up.
 
 
 class BoundedCache[K, V]:
-    """Bounded, least-recently-used, and deliberately not thread safe.
+    """Bounded, least-recently-used, and safe to share between threads.
 
-    Not thread safe for the same reason ``LocalTransformersProvider`` is not: a
-    worker process runs one task at a time, and a server handler holding a
-    model is already serialised by the device it is talking to. A lock here
-    would buy nothing and would suggest a concurrency this design does not
-    have.
+    **It did not used to be, and the assumption behind that was wrong.** This
+    was written as "deliberately not thread safe" on the reasoning that a worker
+    process runs one task at a time and a server handler is serialised by the
+    device it talks to. Neither holds: the suggest route is a plain ``def``, so
+    FastAPI runs concurrent requests in parallel threadpool threads, and two of
+    them reaching one cache is the ordinary case rather than an exotic one.
+
+    The lock here protects the container's own integrity — two threads calling
+    ``move_to_end`` for *different* keys are still mutating one linked list — and
+    nothing more. It is never held across a computation, so it cannot serialise
+    two encodes; stopping the same value from being computed twice is a separate
+    problem with a separate answer, :class:`KeyedLocks` at the caller.
 
     ``get`` counts as a use, which is what makes this LRU rather than
     first-in-first-out: the asset somebody is clicking on repeatedly is the one
@@ -69,6 +77,7 @@ class BoundedCache[K, V]:
             raise ValueError(f"a cache holding {capacity} things is not a cache")
         self._capacity = capacity
         self._held: OrderedDict[K, V] = OrderedDict()
+        self._lock = threading.Lock()
 
     @property
     def capacity(self) -> int:
@@ -77,10 +86,11 @@ class BoundedCache[K, V]:
 
     def get(self, key: K) -> V | None:
         """What is held under that key, or ``None`` — and a hit is a use."""
-        if key not in self._held:
-            return None
-        self._held.move_to_end(key)
-        return self._held[key]
+        with self._lock:
+            if key not in self._held:
+                return None
+            self._held.move_to_end(key)
+            return self._held[key]
 
     def put(self, key: K, value: V) -> V:
         """Hold that, evicting the least recently used if the bound is reached.
@@ -88,24 +98,66 @@ class BoundedCache[K, V]:
         Returns the value, so a caller can write ``return cache.put(k, compute())``
         rather than putting and then reading back.
         """
-        if key in self._held:
-            self._held.move_to_end(key)
-        self._held[key] = value
-        while len(self._held) > self._capacity:
-            self._held.popitem(last=False)
+        with self._lock:
+            if key in self._held:
+                self._held.move_to_end(key)
+            self._held[key] = value
+            while len(self._held) > self._capacity:
+                self._held.popitem(last=False)
         return value
 
     def discard(self, key: K) -> None:
         """Forget that key if it is held. A no-op if it is not."""
-        self._held.pop(key, None)
+        with self._lock:
+            self._held.pop(key, None)
 
     def clear(self) -> None:
         """Forget everything."""
-        self._held.clear()
+        with self._lock:
+            self._held.clear()
 
     def __len__(self) -> int:
-        return len(self._held)
+        with self._lock:
+            return len(self._held)
 
     def __contains__(self, key: object) -> bool:
         """Membership **without** counting as a use, for tests that assert eviction."""
-        return key in self._held
+        with self._lock:
+            return key in self._held
+
+
+class KeyedLocks[K]:
+    """One lock per key, so that a value is computed once and only once.
+
+    **What a bounded cache alone cannot do.** A cache tells a caller whether a
+    value is *there*; it has nothing to say about a value that is on its way. Two
+    threads asking for the same un-cached thing both see nothing and both compute
+    it, which is how one image came to be encoded twice and one model came to be
+    loaded four times in a single process. The remedy is to make the second
+    thread wait for the first rather than duplicate it, and a lock held across
+    the computation is what waiting means.
+
+    **Per key, because a global lock would be a different bug.** Holding one lock
+    across every encode would make a click on one asset wait for an unrelated
+    click on another — turning a duplicated-work problem into a queueing problem
+    and costing exactly the latency the cache exists to save. Two keys never
+    contend here; only two callers wanting the same key do.
+
+    The map grows with distinct keys seen in a process and is never pruned. That
+    is one ``threading.Lock`` — tens of bytes — per asset anybody has ever
+    suggested on, against the 16 MB the same asset's embedding occupies while it
+    is cached, so the bound that matters is already elsewhere.
+    """
+
+    def __init__(self) -> None:
+        self._guard = threading.Lock()
+        self._locks: dict[K, threading.Lock] = {}
+
+    def for_key(self, key: K) -> threading.Lock:
+        """The lock for that key, made on first ask.
+
+        The guard is held only for the lookup, never for the work the returned
+        lock goes on to protect.
+        """
+        with self._guard:
+            return self._locks.setdefault(key, threading.Lock())
