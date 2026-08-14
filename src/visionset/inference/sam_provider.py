@@ -48,7 +48,7 @@ from PIL import Image
 
 from visionset.inference import _fp16
 from visionset.inference._extra import imported
-from visionset.inference.cache import DEFAULT_EMBEDDING_CAPACITY, BoundedCache
+from visionset.inference.cache import DEFAULT_EMBEDDING_CAPACITY, BoundedCache, KeyedLocks
 from visionset.kernel.domain import (
     AssetSegmentation,
     PointPrompt,
@@ -146,6 +146,7 @@ class LocalSamProvider:
         self._embeddings: BoundedCache[UUID, tuple[Any, tuple[int, int]]] = BoundedCache(
             embedding_capacity
         )
+        self._encoding: KeyedLocks[UUID] = KeyedLocks()
         self._encodes = 0
 
     @property
@@ -266,17 +267,33 @@ class LocalSamProvider:
         content-addressed: the bytes behind an id cannot change, so a hit can
         never be stale. Editing the *connection* is what would invalidate these,
         and that replaces the whole provider rather than reaching in here.
+
+        **Once means once even when two clicks arrive together.** The route is a
+        plain ``def``, so FastAPI answers concurrent suggests in parallel
+        threadpool threads; a bare check-then-compute let two clicks on the same
+        un-encoded asset both encode it, which is the most expensive thing this
+        adapter does. The lock is taken per asset, so a click on another asset
+        neither waits for this one nor is waited for.
+
+        The cache is read twice on purpose. The first read is the common case and
+        takes no lock at all; the second is what the loser of a race sees, and
+        without it the winner's work would be redone by everybody who queued
+        behind it.
         """
         held = self._embeddings.get(target.asset_id)
         if held is not None:
             return held
-        image = Image.open(BytesIO(target.content)).convert("RGB")
-        size = (image.height, image.width)
-        inputs = processor(images=image, return_tensors="pt").to(device)
-        self._encodes += 1
-        return self._embeddings.put(
-            target.asset_id, (model.get_image_embeddings(inputs["pixel_values"]), size)
-        )
+        with self._encoding.for_key(target.asset_id):
+            held = self._embeddings.get(target.asset_id)
+            if held is not None:
+                return held
+            image = Image.open(BytesIO(target.content)).convert("RGB")
+            size = (image.height, image.width)
+            inputs = processor(images=image, return_tensors="pt").to(device)
+            self._encodes += 1
+            return self._embeddings.put(
+                target.asset_id, (model.get_image_embeddings(inputs["pixel_values"]), size)
+            )
 
     def _ready(self) -> tuple[Any, Any, str, bool]:
         if self._loaded is None:
@@ -284,6 +301,29 @@ class LocalSamProvider:
         return self._loaded
 
     def _load(self) -> tuple[Any, Any, str, bool]:
+        """Processor and model, once per provider.
+
+        **``transformers`` warns here on every load, and the warning is expected.**
+        The published SAM 2 checkpoints declare ``model_type: sam2_video``, so
+        loading one into ``Sam2Model`` prints *"You are using a model of type
+        ``sam2_video`` to instantiate a model of type ``sam2``"*. Why that is the
+        right class rather than a mistake is argued where the families are
+        declared, in ``families.py``; what is worth recording at the load site is
+        that it was **measured** and not assumed. Asking
+        ``from_pretrained(..., output_loading_info=True)`` for
+        ``facebook/sam2.1-hiera-base-plus`` reports ``missing_keys: 0``,
+        ``unexpected_keys: 0``, ``mismatched_keys: 0`` and no errors — every
+        parameter this class needs came out of the checkpoint and nothing in the
+        checkpoint went unused, so no weight is left randomly initialised.
+
+        The alternative class does not fit: ``Sam2VideoModel.forward`` takes an
+        ``inference_session`` and a frame index, which is the video-tracking path
+        and has no way to answer a point on a single image.
+
+        The warning is therefore left where a reader can see it. Silencing it
+        would hide the same sentence on the day a checkpoint genuinely does not
+        match, and that day it is the only warning there is.
+        """
         torch = imported("torch")
         transformers = imported("transformers")
         device, half = self._resolved_device(torch)
