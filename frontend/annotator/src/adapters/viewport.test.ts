@@ -18,8 +18,11 @@ import {
   fitToViewport,
   imageRenderingAt,
   imageToScreen,
+  normalizedWheel,
   panBy,
+  pinchBetween,
   screenToImage,
+  wheelZoomFactor,
   zoomAbout,
 } from "./viewport";
 import type { Viewport } from "./viewport";
@@ -272,5 +275,214 @@ describe("fitting the whole asset into the window", () => {
     expect(fitToViewport(ASSET, 0, 0)).toBe(IDENTITY_VIEWPORT);
     expect(fitToViewport(ASSET, 800, 0)).toBe(IDENTITY_VIEWPORT);
     expect(fitToViewport({ id: "d", width: 0, height: 0 }, 800, 600)).toBe(IDENTITY_VIEWPORT);
+  });
+});
+
+describe("a wheel event's travel is read in screen pixels whatever it was reported in", () => {
+  it("passes pixels through", () => {
+    expect(normalizedWheel(3, -120, 0)).toEqual([3, -120]);
+  });
+
+  it("reads Firefox's lines as pixels", () => {
+    expect(normalizedWheel(0, 3, 1)).toEqual([0, 48]);
+  });
+
+  it("reads a page as pixels", () => {
+    expect(normalizedWheel(0, 1, 2)).toEqual([0, 400]);
+  });
+
+  it("carries the horizontal axis, which is the one a two-finger scroll needs", () => {
+    expect(normalizedWheel(-2, 0, 1)).toEqual([-32, 0]);
+  });
+
+  it("reads an unrecognised delta mode as pixels rather than refusing it", () => {
+    expect(normalizedWheel(5, 7, 99)).toEqual([5, 7]);
+  });
+});
+
+describe("the wheel's zoom factor", () => {
+  it("makes one mouse notch worth one press of a 1.25 step button", () => {
+    expect(wheelZoomFactor(-120)).toBeCloseTo(1.25, 3);
+  });
+
+  it("is the exact inverse in the other direction, so a notch back undoes a notch out", () => {
+    expect(wheelZoomFactor(-120) * wheelZoomFactor(120)).toBeCloseTo(1, 10);
+  });
+
+  it("reads a small continuous delta as a pinch and scales it far more steeply", () => {
+    // The same 20 pixels of travel: as a pinch it is a fifth of the way to
+    // doubling, as a wheel notch it would barely move.
+    expect(wheelZoomFactor(-20)).toBeCloseTo(Math.exp(20 / 100), 10);
+  });
+
+  it("reads travel at the notch threshold as a wheel", () => {
+    expect(wheelZoomFactor(-40)).toBeCloseTo(Math.exp(40 / 538), 10);
+  });
+
+  it("answers no change for a delta that is not a number", () => {
+    expect(wheelZoomFactor(Number.NaN)).toBe(1);
+    expect(wheelZoomFactor(Number.POSITIVE_INFINITY)).toBe(1);
+  });
+});
+
+describe("two fingers are one gesture: a scale about a point, and that point's travel", () => {
+  it("reads fingers moving apart as a zoom in", () => {
+    const pinch = pinchBetween(
+      [
+        [100, 100],
+        [200, 100],
+      ],
+      [
+        [50, 100],
+        [250, 100],
+      ],
+    );
+    expect(pinch.factor).toBeCloseTo(2, 10);
+  });
+
+  it("reads fingers moving together as a zoom out", () => {
+    const pinch = pinchBetween(
+      [
+        [0, 0],
+        [0, 100],
+      ],
+      [
+        [0, 25],
+        [0, 75],
+      ],
+    );
+    expect(pinch.factor).toBeCloseTo(0.5, 10);
+  });
+
+  it("reports the midpoint the gesture ended on", () => {
+    const pinch = pinchBetween(
+      [
+        [0, 0],
+        [100, 40],
+      ],
+      [
+        [20, 10],
+        [140, 70],
+      ],
+    );
+    expect(pinch.centroidX).toBeCloseTo(80, 10);
+    expect(pinch.centroidY).toBeCloseTo(40, 10);
+  });
+
+  it("reports how far that midpoint travelled", () => {
+    const pinch = pinchBetween(
+      [
+        [0, 0],
+        [100, 40],
+      ],
+      [
+        [20, 10],
+        [140, 70],
+      ],
+    );
+    expect(pinch.dx).toBeCloseTo(30, 10);
+    expect(pinch.dy).toBeCloseTo(20, 10);
+  });
+
+  it("separates a drift from a scale: two fingers moving together only translate", () => {
+    const pinch = pinchBetween(
+      [
+        [100, 100],
+        [200, 100],
+      ],
+      [
+        [130, 160],
+        [230, 160],
+      ],
+    );
+    expect(pinch.factor).toBeCloseTo(1, 10);
+    expect(pinch.dx).toBeCloseTo(30, 10);
+    expect(pinch.dy).toBeCloseTo(60, 10);
+  });
+
+  it("keeps whatever is under the midpoint under the midpoint, drift and scale together", () => {
+    // The invariant the whole gesture is judged by, and the reason the caller
+    // applies the translation first and then zooms about the centroid.
+    //
+    // **Both midpoints are computed here rather than read off the result**, and
+    // that is the difference between this assertion and a tautology. Asserting
+    // the held pixel lands on `pinch.centroidX` passes under a mutation that
+    // takes the centroid from *before* the move — because `dx` is derived from
+    // the same field, so the expectation slides exactly as far as the answer
+    // does. Mutation-verified: taking the centroid from `before` reddens this.
+    const viewport: Viewport = { zoom: 0.8, panX: 37, panY: -12 };
+    const before = [
+      [100, 100],
+      [300, 200],
+    ] as const;
+    const after = [
+      [60, 140],
+      [420, 260],
+    ] as const;
+    const midpoint = (
+      pair: readonly [readonly [number, number], readonly [number, number]],
+    ): readonly [number, number] => [
+      (pair[0][0] + pair[1][0]) / 2,
+      (pair[0][1] + pair[1][1]) / 2,
+    ];
+    const from = midpoint(before);
+    const to = midpoint(after);
+
+    const pinch = pinchBetween(before, after);
+    expect(pinch.centroidX).toBeCloseTo(to[0], 10);
+    expect(pinch.centroidY).toBeCloseTo(to[1], 10);
+    expect(pinch.dx).toBeCloseTo(to[0] - from[0], 10);
+    expect(pinch.dy).toBeCloseTo(to[1] - from[1], 10);
+
+    const held = screenToImage(viewport, from[0], from[1]);
+    const panned = panBy(viewport, pinch.dx, pinch.dy);
+    const zoomed = zoomAbout(panned, pinch.factor, pinch.centroidX, pinch.centroidY);
+
+    expect(imageToScreen(zoomed, held)[0]).toBeCloseTo(to[0], 8);
+    expect(imageToScreen(zoomed, held)[1]).toBeCloseTo(to[1], 8);
+  });
+
+  it("answers the identity for two pointers in the same place, rather than dividing by zero", () => {
+    const pinch = pinchBetween(
+      [
+        [50, 50],
+        [50, 50],
+      ],
+      [
+        [50, 50],
+        [90, 90],
+      ],
+    );
+    expect(pinch).toEqual({ factor: 1, centroidX: 0, centroidY: 0, dx: 0, dy: 0 });
+  });
+
+  it("answers the identity for a coordinate that is not a number", () => {
+    const pinch = pinchBetween(
+      [
+        [Number.NaN, 0],
+        [100, 0],
+      ],
+      [
+        [0, 0],
+        [200, 0],
+      ],
+    );
+    expect(pinch.factor).toBe(1);
+  });
+
+  it("leaves the viewport untouched when the gesture was degenerate", () => {
+    const viewport: Viewport = { zoom: 3, panX: 10, panY: 20 };
+    const pinch = pinchBetween(
+      [
+        [50, 50],
+        [50, 50],
+      ],
+      [
+        [10, 10],
+        [10, 10],
+      ],
+    );
+    const panned = panBy(viewport, pinch.dx, pinch.dy);
+    expect(zoomAbout(panned, pinch.factor, pinch.centroidX, pinch.centroidY)).toBe(viewport);
   });
 });

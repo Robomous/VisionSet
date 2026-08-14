@@ -53,9 +53,14 @@ export async function pacedWheel(
   runLength = 10,
 ): Promise<void> {
   await page.mouse.move(at.x, at.y);
+  // Held for the whole run rather than per notch: a bare wheel pans now (#576),
+  // and the modifier is what makes this a zoom. One down/up pair is also one
+  // fewer pair of input events between the notches being measured.
+  await page.keyboard.down("Control");
   for (let step = 0; step < frames; step += 1) {
     const inward = Math.floor(step / runLength) % 2 === 0;
     await page.mouse.wheel(0, inward ? -120 : 120);
     await nextFrame(page);
   }
+  await page.keyboard.up("Control");
 }

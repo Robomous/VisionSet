@@ -85,6 +85,7 @@ import {
   SAVE_AND_NEXT,
   SKIP_FRAME,
   TOGGLE_HELP,
+  TOGGLE_HAND,
   TOGGLE_SUGGEST,
   acceptedAnnotations,
   addAnnotationsCommand,
@@ -782,6 +783,16 @@ function Workspace({
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [view, setView] = useState<Viewport | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  /**
+   * The hand, held here rather than in the canvas so the palette can light it.
+   *
+   * The suggest tool's arrangement exactly: a mode the engine honours and the
+   * host owns, with `h` reaching it through `hostAction` and the strip's button
+   * reaching the same state. It survives `readOnly` — see `hostAction` — and it
+   * is deliberately **not** reset between frames: somebody navigating a batch
+   * with the hand on is navigating the batch, not this asset.
+   */
+  const [handTool, setHandTool] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   /**
    * Which shape's class picker is open, if any.
@@ -1122,6 +1133,14 @@ function Workspace({
     // around the canvas, which is why the registry claims it at all.
     if (name === TOGGLE_SUGGEST) {
       toggleSuggest();
+      return true;
+    }
+    // `h`. Claimed in every mode, unlike every other chord in this function:
+    // navigating a frame is the one thing a viewer does most of, and a hand that
+    // worked only while a batch was open would be a control that disappears
+    // exactly when it is most of what is left.
+    if (name === TOGGLE_HAND) {
+      setHandTool((on) => !on);
       return true;
     }
     // `↵` and `Esc`, substituted by the adapter only while a session is live, so
@@ -2408,6 +2427,7 @@ function Workspace({
                 // click meant for the model from drawing a box instead — so it is
                 // `diverting`, which drops a parked session, and not the
                 // whole of `suggesting`.
+                panTool={handTool}
                 suggestion={diverting}
                 onSuggestPoint={suggestAt}
                 // The halo and the busy cursor. Keyed to `diverting` for the same
@@ -2442,53 +2462,57 @@ function Workspace({
             step.
           */}
           {/*
-            Fully hidden rather than disabled, which is the one place this page
-            departs from disabled-with-reason — every control on the palette picks
-            a *drawing* tool, and a tool palette over a canvas that cannot be drawn
-            on is not an explanation of anything. The banner above carries the
-            reason, once.
+            A viewer gets the strip, carrying the hand and the shortcut sheet and
+            nothing else. It used to get no strip at all, and the reason was sound
+            while it held: every control on it picked a *drawing* tool, and a tool
+            palette over a canvas that cannot be drawn on is not an explanation of
+            anything. The hand is not about drawing — it is what a person reaches
+            for when the picture is in the wrong place — so the sentence stopped
+            being true and the exception with it. The drawing half is still fully
+            hidden rather than disabled, and the banner above still carries that
+            reason once.
           */}
-          {!readOnly && (
-            <ToolPalette
-              schema={store.document.schema}
-              tool={toolFor(store.document, activeClass)}
-              onActivateClass={activateClass}
-              onToggleHelp={() => setHelpOpen((open) => !open)}
-              // Empty, unlike the class field's create row: `+` means "I want a
-              // class", not a particular one, and carrying the previous
-              // opening's name into it would be a prefill nobody asked for.
-              onAddClass={() => {
-                setNewClassName("");
-                setAddingClass(true);
-              }}
-              // The chords work whether or not the page draws them; this is where
-              // it says so. `canUndo`/`canRedo` come off the snapshot, so the
-              // buttons and the keyboard read one command log.
-              history={{
-                canUndo: snapshot.canUndo,
-                canRedo: snapshot.canRedo,
-                onUndo: () => store.undo(),
-                onRedo: () => store.redo(),
-              }}
-              // The strip hides it on a schema no class of which could
-              // hold the answer; this page offers it because it has an API
-              // behind it, which the showcase does not.
-              //
-              // `unavailable` is the parked reading: the schema can
-              // suggest, so the button is present, but the class the workspace is
-              // sitting on cannot hold one — which is a fact to state rather than
-              // a control that quietly stops working. Lit *and* dimmed, because
-              // both halves are true: the tool is still armed, and it cannot act.
-              suggest={{
-                active: suggesting !== null,
-                onToggle: toggleSuggest,
-                unavailable:
-                  suggesting !== null && isParked(suggesting)
-                    ? `Suggest is on, but “${activeClass ?? ""}” cannot hold a suggested shape`
-                    : null,
-              }}
+          <ToolPalette
+            readOnly={readOnly}
+            hand={{ active: handTool, onToggle: () => setHandTool((on) => !on) }}
+            schema={store.document.schema}
+            tool={toolFor(store.document, activeClass)}
+            onActivateClass={activateClass}
+            onToggleHelp={() => setHelpOpen((open) => !open)}
+            // Empty, unlike the class field's create row: `+` means "I want a
+            // class", not a particular one, and carrying the previous
+            // opening's name into it would be a prefill nobody asked for.
+            onAddClass={() => {
+              setNewClassName("");
+              setAddingClass(true);
+            }}
+            // The chords work whether or not the page draws them; this is where
+            // it says so. `canUndo`/`canRedo` come off the snapshot, so the
+            // buttons and the keyboard read one command log.
+            history={{
+              canUndo: snapshot.canUndo,
+              canRedo: snapshot.canRedo,
+              onUndo: () => store.undo(),
+              onRedo: () => store.redo(),
+            }}
+            // The strip hides it on a schema no class of which could
+            // hold the answer; this page offers it because it has an API
+            // behind it, which the showcase does not.
+            //
+            // `unavailable` is the parked reading: the schema can
+            // suggest, so the button is present, but the class the workspace is
+            // sitting on cannot hold one — which is a fact to state rather than
+            // a control that quietly stops working. Lit *and* dimmed, because
+            // both halves are true: the tool is still armed, and it cannot act.
+            suggest={{
+              active: suggesting !== null,
+              onToggle: toggleSuggest,
+              unavailable:
+                suggesting !== null && isParked(suggesting)
+                  ? `Suggest is on, but “${activeClass ?? ""}” cannot hold a suggested shape`
+                  : null,
+            }}
             />
-          )}
 
           {/*
             Everything the editor floats over the picture, in one column.

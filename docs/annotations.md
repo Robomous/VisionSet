@@ -296,6 +296,7 @@ thing that turns one into a store call.
 | `mod+v` | paste it onto this frame, offset and selected | v1 |
 | `mod+0` | ask the host to zoom to 100% | v1 |
 | `?` | ask the host for the shortcut sheet | v1 |
+| `h` | turn the hand on or off - with it on, any drag pans | **#576** |
 | `v` | select mode - no active class | v1 |
 | `1`-`9` | the schema's first nine classes, in authored order | **new** |
 
@@ -313,6 +314,10 @@ and losing a keystroke is better than losing the session.
 
 Not bound, each for a reason: `b`/`p`/`k`/`l`, because the tool is derived from the class here, so
 a tool key *is* a class key; and the lane-attribute hotkeys, because attributes belong to a panel.
+**`Space` is not here either**, and that one is structural rather than a choice: it is the hand's
+transient spelling, held rather than pressed, and a `Keystroke` has no shape for a release. A row
+here could turn the hand on and never off again. It is an adapter substitution instead, the class
+`enter` and `escape` already belong to.
 
 ### Copy and paste, and where a clipboard lives
 
@@ -422,10 +427,64 @@ path converts anything. The corollary is the trap: a 2-pixel stroke written as `
 pixels - a hair at 8× and a slab at 10% - so every thickness, radius and font size goes through
 `screenPx(px, zoom)`. It is #41's tolerance finding pointed at drawing instead of at hit-testing.
 
-Zoom is the wheel, and `ctrlKey` on a wheel event **is** how a browser reports a trackpad pinch.
-Pan is a middle- or secondary-button drag. `mod+0` refits, and it is intercepted by the adapter
-rather than forwarded, because the zoom is the adapter's - it is the one row of the `InputHost`
-port that is not a pass-through.
+`mod+0` refits, and it is intercepted by the adapter rather than forwarded, because the zoom is
+the adapter's - it is the one row of the `InputHost` port that is not a pass-through.
+
+### One input model, and most of it is a wheel branch two lines long
+
+A pan used to have exactly one spelling, a middle- or secondary-button drag. A trackpad has no
+second button, a pen has none, and a finger has none - so on a laptop there was no gesture that
+moved the picture at all, while the gesture people actually make, a two-finger scroll, zoomed.
+
+The whole of that fix is which side of one branch a wheel event falls on:
+
+| Held | What a wheel event means |
+| --- | --- |
+| `ctrlKey` or `metaKey` | zoom, anchored at the cursor |
+| nothing | pan, both axes |
+
+That single branch serves four devices, because **`ctrlKey` on a wheel event is how a browser
+reports a trackpad pinch** - on macOS and on a Windows precision touchpad alike, with no gesture
+API involved - and `Ctrl`/`Cmd`+wheel is the convention for zooming with a mouse. The two arrive
+identically, so they are answered identically.
+
+**A bare wheel now pans where it used to zoom.** That is the deliberate half, and it is what makes
+a trackpad workable rather than a nicety on top. Mouse zoom did not become unreachable: it is the
+modifier, the widget's `-`/`+`, and `mod+0`.
+
+What `ctrlKey` can no longer do is tell a pinch from a mouse wheel, since it is now set by both.
+`wheelZoomFactor` tells them apart by **magnitude** instead: a notch is a large quantised value -
+120 pixels, three lines, one page - and a pinch is a stream of small continuous ones, so a
+threshold at 40 sits in a gap rather than in a distribution. Being wrong about it costs a gesture
+that zooms too briskly, never a wrong answer. The softness on the wheel side is derived rather
+than picked: `120 / ln(1.25)` is about 538, which makes one notch worth exactly one press of the
+`+` button.
+
+The rest of the model is more spellings of the same two verbs.
+
+- **`Space` held** is the hand for as long as it is down. It cannot be a registry row - a
+  keystroke is a press and this is a hold - so it is an adapter substitution, and it is cleared on
+  blur as well as on keyup, because its release lands in whatever took the focus and never here.
+- **The hand tool**, `h`, is the persistent one. Not a fifth `Tool`: `tool.ts` derives the tool
+  from the active class and stores nothing, so the mode is the host's and arrives as `panTool`,
+  which is the arrangement the suggest tool already established.
+- **Two touch pointers** are a gesture whatever tool is armed. `pinchBetween` answers a scale
+  about a travelling centroid - one gesture and not two, because a pinch that also drifts is one
+  thing and answering it as a zoom followed by a pan makes the picture jump between them. The
+  gesture outlives its two contacts and is cleared when the **last** finger lifts, which is what
+  stops the survivor of every pinch from being promoted into a drag nobody asked for.
+
+**The non-primary pan is untouched and still unconditional**, for the reason argued below: a
+conditional pan is unpredictable, and on macOS ctrl-click *is* a secondary press. The hand is a
+second branch beside it, taken on a primary press, and it sits **before** the read-only select -
+somebody navigating a batch they may not edit is who most needs to pan.
+
+All of the arithmetic is in `adapters/viewport.ts` beside the transform, so it is unit-tested
+without a browser: `normalizedWheel` folds `deltaMode`, `wheelZoomFactor` carries the softness
+split, `pinchBetween` answers the two-finger case, and `zoomAbout` and `panBy` were already there.
+`AnnotatorCanvas` holds only the branches. What no unit test can reach - that a browser really
+delivers these events - is `e2e/touch.spec.ts` and the wheel scenarios, which drive Chromium's own
+input rather than constructing events.
 
 ### Dragging repaints one layer
 
@@ -556,6 +615,13 @@ depends on where the vertices happen to be. And on macOS **ctrl-click *is* a
 secondary press**, so routing it would make one ctrl-click raise both spellings of
 the vertex delete - v1's own bug, which #44 closed deliberately and
 `machine.test.ts` still guards.
+
+#576 did not weaken this. The hand is a *second* branch beside the unconditional one,
+taken on a primary press while the mode is on, so both of them forward nothing and
+neither is conditional on what the machine would have done. What it changes is only
+that a press can now be swallowed for a reason the person chose - which is the
+difference between a gesture that works everywhere and one that works where the
+vertices are not.
 
 What each capability costs then differs:
 

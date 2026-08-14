@@ -596,7 +596,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * `complete` is the job's declaration, not the frame's.
      */
     await expect(page.getByTestId("readonly-banner")).toContainText(/this job is finished/i);
-    await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+    // The strip stays and carries navigation only (#576): the hand is not a
+    // drawing tool, and a viewer moving around a finished job still needs it.
+    await expect(page.getByTestId("tool-select")).toHaveCount(0);
+    await expect(page.getByTestId("tool-hand")).toHaveCount(1);
     await expect(page.getByTestId("class-region")).toHaveCount(0);
     await expect(page.getByTestId("save-and-next")).toHaveCount(0);
 
@@ -605,7 +608,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("prev-asset").click();
     await expect(page.getByTestId("asset-position")).toHaveText("2/3");
     await expect(page.getByTestId("readonly-banner")).toContainText(/this job is finished/i);
-    await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+    await expect(page.getByTestId("tool-select")).toHaveCount(0);
+    await expect(page.getByTestId("tool-hand")).toHaveCount(1);
   });
 
   await test.step("complete the batch", async () => {
@@ -635,7 +639,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
     await expect(page.getByTestId("banner-create-correction")).toBeVisible();
-    await expect(page.getByTestId("tool-palette")).toHaveCount(0);
+    await expect(page.getByTestId("tool-select")).toHaveCount(0);
+    await expect(page.getByTestId("tool-hand")).toHaveCount(1);
     // The classes region leaves the viewer entirely — and the add-a-class doors
     // go with it rather than being disabled.
     await expect(page.getByTestId("class-region")).toHaveCount(0);

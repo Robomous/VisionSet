@@ -237,3 +237,124 @@ export function fitToViewport(
     panY: (viewportHeight - asset.height * zoom) / 2,
   };
 }
+
+/**
+ * `WheelEvent.deltaMode`: 0 pixels, 1 lines (Firefox), 2 pages.
+ *
+ * The same physical notch is reported as `120`, as `3` or as `1` depending on
+ * the browser, so a handler reading `deltaY` raw is three orders of magnitude
+ * out on two of the three.
+ */
+const DELTA_SCALE: Readonly<Record<number, number>> = { 0: 1, 1: 16, 2: 400 };
+
+/**
+ * A wheel event's travel in screen pixels, whatever unit it was reported in.
+ *
+ * **Both axes**, where the zoom path only ever read the second: a two-finger
+ * trackpad scroll is a pan, and a pan goes sideways. An unrecognised
+ * `deltaMode` is read as pixels rather than refused, `clampZoom`'s rule for
+ * `clampZoom`'s reason — a view that moves the wrong distance is corrected by
+ * the next notch, and nothing about it reaches the document.
+ */
+export function normalizedWheel(
+  deltaX: number,
+  deltaY: number,
+  deltaMode: number,
+): readonly [number, number] {
+  const scale = DELTA_SCALE[deltaMode] ?? 1;
+  return [deltaX * scale, deltaY * scale];
+}
+
+/**
+ * How much wheel travel doubles the zoom. Larger is gentler.
+ *
+ * Derived rather than picked. One notch of a mouse wheel is 120 pixels of
+ * travel in every browser that reports pixels, and `120 / ln(1.25) ≈ 538` is
+ * what makes that notch worth exactly one press of a host's `+` button, whose
+ * step is 1.25. Two doors onto one behaviour, the way `mod+0` and a fit button
+ * are — a person who reaches for the wheel and a person who reaches for the
+ * button move the picture by the same amount. It was 400, which is 1.35 a
+ * notch and agreed with nothing.
+ */
+const WHEEL_SOFTNESS = 538;
+
+/** The same for a trackpad pinch, whose deltas are an order of magnitude smaller. */
+const PINCH_SOFTNESS = 100;
+
+/**
+ * Above this much travel in one event, the gesture is a wheel and not a pinch.
+ *
+ * `ctrlKey` used to tell the two apart, and it was exact: a browser sets it for
+ * a trackpad pinch and for nothing else a wheel does. It cannot any more —
+ * `ctrl`/`cmd` + wheel is the mouse's own zoom now, so both gestures arrive
+ * with the flag set and the number is all that is left. It is enough of a
+ * boundary to be worth drawing: a notch is a large quantised value — 120
+ * pixels, three lines, one page — and a pinch is a stream of small continuous
+ * ones, so 40 sits in a gap rather than in a distribution. Being wrong costs a
+ * gesture that zooms too briskly or too slowly, never a wrong answer.
+ */
+const MOUSE_NOTCH_PX = 40;
+
+/**
+ * The multiplicative zoom a wheel event asks for, sign and softness included.
+ *
+ * Multiplicative because zoom is: two notches out and two notches back land
+ * exactly where they started, which additive steps do not.
+ */
+export function wheelZoomFactor(delta: number): number {
+  if (!Number.isFinite(delta)) return 1;
+  const softness = Math.abs(delta) >= MOUSE_NOTCH_PX ? WHEEL_SOFTNESS : PINCH_SOFTNESS;
+  return Math.exp(-delta / softness);
+}
+
+/** What two pointers did to the picture between one move and the next. */
+export interface Pinch {
+  /** The scale they asked for. 1 when the distance between them did not change. */
+  readonly factor: number;
+  /** Their midpoint after the move, in the viewport element's own pixels. */
+  readonly centroidX: number;
+  readonly centroidY: number;
+  /** How far that midpoint travelled, in the same pixels. */
+  readonly dx: number;
+  readonly dy: number;
+}
+
+/** Neither scaled nor moved: what a degenerate gesture answers. */
+const NO_PINCH: Pinch = { factor: 1, centroidX: 0, centroidY: 0, dx: 0, dy: 0 };
+
+/**
+ * A two-finger gesture, as a scale about a point together with that point's
+ * travel. Screen positions in, both relative to the viewport element's rect.
+ *
+ * Both halves at once, because that is what two fingers do. A pinch that also
+ * drifts is one gesture, and answering it as a zoom event and then a pan event
+ * would make the picture jump between them; the caller applies what comes back
+ * in one step — `panBy` the travel, then `zoomAbout` the centroid — and the
+ * thing under the midpoint stays under the midpoint.
+ *
+ * A degenerate gesture answers the identity: two pointers in one place, or a
+ * non-finite coordinate. That is not defensive tidying. A zero distance divides
+ * by zero, the NaN reaches `zoomAbout`, `clampZoom` answers 1, and the picture
+ * snaps to native scale in the middle of somebody's pinch — a jump caused
+ * precisely by the arithmetic that was meant to prevent one.
+ */
+export function pinchBetween(
+  before: readonly [readonly [number, number], readonly [number, number]],
+  after: readonly [readonly [number, number], readonly [number, number]],
+): Pinch {
+  const [[ax0, ay0], [bx0, by0]] = before;
+  const [[ax1, ay1], [bx1, by1]] = after;
+  if (![ax0, ay0, bx0, by0, ax1, ay1, bx1, by1].every(Number.isFinite)) return NO_PINCH;
+  const spread = Math.hypot(bx0 - ax0, by0 - ay0);
+  const spreadAfter = Math.hypot(bx1 - ax1, by1 - ay1);
+  if (spread === 0 || spreadAfter === 0) return NO_PINCH;
+  const centroidX = (ax1 + bx1) / 2;
+  const centroidY = (ay1 + by1) / 2;
+  return {
+    factor: spreadAfter / spread,
+    centroidX,
+    centroidY,
+    dx: centroidX - (ax0 + bx0) / 2,
+    dy: centroidY - (ay0 + by0) / 2,
+  };
+}
