@@ -398,16 +398,31 @@ describe("the hand is the one button here that is not about the schema (#576)", 
     expect(screen.getByTestId("tool-hand").getAttribute("data-active")).toBe("true");
   });
 
-  it("takes it off the suggest tool too, which the same press cannot reach", () => {
-    // Suggest is armed rather than derived, so it is a second thing that would
-    // otherwise stay lit — and it is reached by the same primary press the pan
-    // branch answers first, so it is inert for the same reason.
-    const armed = { active: true, onToggle: vi.fn(), unavailable: null };
-    const { rerender } = render(mount({ suggest: armed }));
-    expect(screen.getByTestId("tool-suggest").getAttribute("data-active")).toBe("true");
+  it("is put down by a press on the tool that is already derived", () => {
+    // The bug the first cut of this shipped: a press whose tool has not moved is
+    // a no-op, so on a page sitting in `select` — which is where every frame
+    // opens — the Select button could not put the hand down, and the only way
+    // back was to arm some other tool first.
+    const onToggle = vi.fn();
+    const onActivateClass = vi.fn();
+    render(mount({ tool: "select", hand: { active: true, onToggle }, onActivateClass }));
 
-    rerender(mount({ suggest: armed, hand: { active: true, onToggle: vi.fn() } }));
-    expect(screen.getByTestId("tool-suggest").getAttribute("data-active")).toBe("false");
+    fireEvent.click(screen.getByTestId("tool-select"));
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    // And the class does not move, which is what the no-op rule was protecting:
+    // a schema with two bbox classes must not silently re-point at the other one.
+    expect(onActivateClass).not.toHaveBeenCalled();
+  });
+
+  it("leaves the suggest tool lit, because that one is legitimately on beside a tool", () => {
+    // Not in the exclusive group: suggest is a mode over the class it borrows, and
+    // dimming it under the hand would make a press that turns it *off* look like
+    // one that turns it on.
+    const armed = { active: true, onToggle: vi.fn(), unavailable: null };
+    render(mount({ suggest: armed, hand: { active: true, onToggle: vi.fn() } }));
+
+    expect(screen.getByTestId("tool-suggest").getAttribute("data-active")).toBe("true");
   });
 
   it("is the last of the tools, below the button that adds a class", () => {

@@ -981,12 +981,12 @@ The page the reference design shows (#56), with measurements verified in v1's so
   and a trackpad, a tablet and a pen have no second button to offer. Cursor `grab`, and
   `grabbing` while a drag is under way. It sat *above* the strip for a release, as the one
   control that does not draw, which read as a heading over the tools rather than as one of
-  them. **Exactly one button on this strip is lit at a time, and the hand is in that
-  rotation**: while it is on, no tool row and no suggest button reads as active, because
-  the canvas answers a primary press with a pan before the machine or the suggest branch
-  ever hears it — and reaching for any drawing class puts the hand away, through the one
-  funnel every route to a class already goes through. Suggest and a class are the pair that
-  *are* legitimately on together: it is a mode over the class it borrows.
+  them. **The hand and the derived tool are one lit button, not two**: while the hand is on
+  no tool row reads as active, because the canvas answers a primary press with a pan before
+  the machine ever hears it, and pressing any tool — including the one already derived —
+  puts the hand down. Reaching for a class puts it down too, through the one funnel every
+  route to a class already goes through. **Suggest is not in that group**: it is a mode over
+  the class it borrows, so it is legitimately lit beside a tool and keeps its own state.
   Below a second divider, **undo and redo** (#368): the chords have worked since #46 and
   had no representation on screen at all, so the annotator's headline capability over v1
   was invisible to anybody who did not already know it. Disabled *with the reason*

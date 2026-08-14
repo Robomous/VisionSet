@@ -275,13 +275,16 @@ export interface ToolPaletteProps {
    * capabilities a host may not have behind it, and this is one every host
    * already has — the canvas implements it, not the page.
    *
-   * **It takes the strip's lit state while it is on**, so no tool row and no
-   * suggest button reads as active beside it. That is not decoration: the canvas
-   * answers a primary press with a pan *before* it reaches the suggest branch or
-   * the machine, so while the hand is on nothing else on this strip can act, and
-   * a second lit button would be describing a tool that does nothing. The other
-   * direction is the host's — every route to a drawing class puts the hand away,
-   * which is one funnel there rather than a rule repeated at each button here.
+   * **It and the derived tool are one lit button, not two.** While the hand is
+   * on no tool row reads as active, and pressing any of them puts the hand down:
+   * the canvas answers a primary press with a pan before the machine hears it,
+   * so a tool lit beside a raised hand is one that cannot draw. The class half of
+   * that is the host's — every route to a drawing class puts the hand away, one
+   * funnel there rather than a rule repeated at each button here.
+   *
+   * The suggest button is deliberately **not** in this: it is a mode over the
+   * class it borrows, it is legitimately on together with a tool, and dimming it
+   * would make a press that turns it *off* look like one that turns it on.
    */
   readonly hand: {
     readonly active: boolean;
@@ -339,10 +342,15 @@ export function ToolPalette({
             active={!hand.active && tool === choice.tool}
             disabled={choice.unavailable !== null}
             onMouseDown={keepFocus}
-            // (1) above: the tool did not move, so nothing moves.
+            // (1) above: the tool did not move, so nothing moves — except that
+            // putting the hand down *is* a move. Without the second line, Select
+            // is unreachable from the hand on a page whose derived tool is
+            // already `select`: the press is a no-op, so nothing clears the mode
+            // and the only way back is to arm some other tool first.
             onClick={() => {
               if (choice.unavailable !== null) return;
               if (tool !== choice.tool) onActivateClass(choice.labelClass);
+              else if (hand.active) hand.onToggle();
             }}
           >
             <ToolIcon tool={choice.tool} />
@@ -360,7 +368,7 @@ export function ToolPalette({
           // a dimmed button still labelled "Suggest (S)" would be the bare
           // disabled state principle 9 names.
           label={suggest.unavailable ?? "Suggest (S)"}
-          active={!hand.active && suggest.active}
+          active={suggest.active}
           disabled={suggest.unavailable !== undefined && suggest.unavailable !== null}
           onMouseDown={keepFocus}
           onClick={suggest.onToggle}
