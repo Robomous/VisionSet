@@ -604,7 +604,18 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const grown = await page.request.post(`${origin}/projects/${projectId}/schema/versions`, {
       headers: { Authorization: `Bearer ${token()}` },
       data: {
-        classes: [...current, { name: "pedestrian", geometries: ["bbox"] }],
+        classes: [
+          ...current,
+          { name: "pedestrian", geometries: ["bbox"] },
+          // A long name and every shape at once, for the row measurement below.
+          // In *this* publish rather than one of its own: the step after asserts
+          // `v${beforePin + 2}`, so an extra version here would move a number
+          // that is checking something else. #596
+          {
+            name: "pedestrian crossing",
+            geometries: ["bbox", "polygon", "polyline", "classification_tag"],
+          },
+        ],
         provenance: "curated",
       },
     });
@@ -620,6 +631,35 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("pinned-schema")).toHaveText(`v${beforePin + 1}`);
     // And the class it brought is drawable here, which is the whole point.
     await expect(page.getByTestId("class-row-pedestrian")).toBeVisible();
+
+    /*
+     * #596 — which side of a class row gives way, measured rather than asserted.
+     *
+     * A four-shape class used to render its whole set beside the name — 176px of
+     * a ~240px row — and the name is `flex-1`, so it took what was left: **34px,
+     * two characters of it**. The row's identity was the first thing to go.
+     *
+     * Here rather than in `e2e/`, and that is not a preference: the demo schema
+     * those 37 scenarios run against has no multi-shape class at all, and
+     * inflating a fixture the whole suite asserts on to make room for this would
+     * be the more expensive change. This walk publishes real classes anyway.
+     *
+     * jsdom cannot answer it — there is no layout — so the vitest half asserts the
+     * *structure* (`dataDisplay.test.tsx`) and this asserts the pixels.
+     */
+    const crossing = page.getByTestId("class-row-pedestrian crossing-name");
+    await expect(crossing).toBeVisible();
+    const fit = await crossing.evaluate((el) => ({
+      shown: el.clientWidth,
+      needed: el.scrollWidth,
+    }));
+    expect(fit.needed).toBeGreaterThan(0);
+    // Not truncated at all: the name now takes what it needs and the shape list
+    // is what shortened. Against the old layout this reads ~34 of ~130.
+    expect(fit.shown).toBeGreaterThanOrEqual(fit.needed - 1);
+    // And the metadata says how many shapes without spelling them, so the width
+    // stops growing with the set.
+    await expect(page.getByTestId("class-row-pedestrian crossing")).toContainText("box +3");
 
     /*
      * 3a-ter — **the annotator's own add-a-class door, which is now two calls.**

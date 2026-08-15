@@ -155,6 +155,72 @@ describe("ClassListRow", () => {
     await userEvent.keyboard("{Enter}");
     expect(chosen).toHaveBeenCalledOnce();
   });
+
+  /**
+   * #596: which side of a compact row gives way when both cannot fit.
+   *
+   * jsdom has no layout, so none of this can measure the pixels — the browser
+   * half is a `scrollWidth` assertion in `cycle.spec.ts`. What is assertable here
+   * is the *structure* the layout rests on, and it is the part a refactor breaks
+   * silently: the name shrinks and truncates, the metadata shrinks and truncates,
+   * and neither is pinned at its content width.
+   */
+  it("lets the geometry give way rather than the name", () => {
+    render(
+      <ClassListRow
+        testId="row"
+        name="pedestrian crossing marker"
+        geometry="box +3"
+        color="#ff0000"
+        hotkey="5"
+      />,
+    );
+    const geometry = screen.getByText("box +3");
+    // `shrink-0` here was the defect: the name is `flex-1`, so its flex basis is
+    // zero and it takes only what this leaves.
+    expect(geometry.className).not.toContain("shrink-0");
+    expect(geometry.className).toContain("truncate");
+    expect(screen.getByTestId("row-name").className).toContain("truncate");
+  });
+
+  it("puts the full name in a title, so truncation is recoverable", () => {
+    render(
+      <ClassListRow testId="row" name="pedestrian crossing marker" geometry="box" color="#f00" />,
+    );
+    expect(screen.getByTestId("row-name").getAttribute("title")).toBe(
+      "pedestrian crossing marker",
+    );
+  });
+
+  it("drops the hotkey badge while the row is picking a shape", () => {
+    // The chips are press targets and keep their width, so the ~28px the badge
+    // and its gap take is bought for the name. The digit arms the class, and this
+    // row is the armed one.
+    const shapes = [
+      { value: "bbox", label: "box", active: true, onPick: vi.fn() },
+      { value: "polygon", label: "polygon", active: false, onPick: vi.fn() },
+    ];
+    const { rerender } = render(
+      <ClassListRow testId="row" name="car" geometry="box · polygon" color="#f00" hotkey="1" />,
+    );
+    expect(screen.getByText("1")).toBeDefined();
+
+    rerender(
+      <ClassListRow
+        testId="row"
+        name="car"
+        geometry="box · polygon"
+        color="#f00"
+        hotkey="1"
+        selected
+        shapes={shapes}
+      />,
+    );
+    expect(screen.queryByText("1")).toBeNull();
+    // Every shape still offered — the badge went, the controls did not.
+    expect(screen.getByTestId("row-shape-bbox")).toBeDefined();
+    expect(screen.getByTestId("row-shape-polygon")).toBeDefined();
+  });
 });
 
 describe("ThumbnailGrid", () => {
