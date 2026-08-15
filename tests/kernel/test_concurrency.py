@@ -14,7 +14,7 @@ purpose.
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
@@ -23,21 +23,31 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import text
 
-from visionset.kernel import ConstraintViolated, StaleWrite, WorkspaceBusy, WorkspaceCorrupt
+from visionset.kernel import (
+    ConstraintViolated,
+    SchemaChangeWouldOrphan,
+    StaleWrite,
+    WorkspaceBusy,
+    WorkspaceCorrupt,
+)
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters.sqlite_metadata_store import DEFAULT_BUSY_TIMEOUT_MS
 from visionset.kernel.domain import (
+    Annotation,
     AnnotationJob,
     Asset,
     AssetProgress,
     Batch,
+    BboxGeometry,
     GeometryType,
     LabelClass,
     Project,
+    SchemaDiff,
     Workspace,
 )
 from visionset.kernel.ports import UNINITIALIZED, UnitOfWork
 from visionset.kernel.services import (
+    AnnotationService,
     BatchService,
     JobService,
     ProjectService,
@@ -418,3 +428,213 @@ def test_two_writers_making_the_same_move_are_both_answered_yes(tmp_path: Path) 
 
     assert not [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
     assert _stored(root, job_id)[assets[0]] is AssetProgress.SKIPPED
+
+
+# --- a narrowing decision, and a label written while it was being made --------
+#
+# Both schema gates read how many annotations use the classes they are about to
+# drop, and then write. The two happen inside one `unit_of_work`, but the engine
+# carries no `isolation_level`, so pysqlite defers `BEGIN` to the first *write*:
+# the count runs in autocommit and the transaction opens at the write. The gap
+# between them is one N+1 walk over every asset in scope — wide, and proportional
+# to the project.
+#
+# So these do not race either. `_refuse_narrowing` is the last read each gate
+# performs before it decides, and each calls it exactly once, which makes
+# overriding it the seam that holds the writer open at precisely the wrong
+# moment — every run, rather than on a bad day.
+
+#: The two classes every fixture below declares. `lane` is the one that gets
+#: removed, so `sign` is what keeps the schema non-empty on the far side.
+SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
+LANE = LabelClass(name="lane", geometry=GeometryType.BBOX)
+
+
+class _GatedSchemaService(SchemaService):
+    """A `SchemaService` that stops between counting annotations and inserting."""
+
+    def __init__(
+        self, workspace: WorkspaceService, *, arrived: threading.Event, go: threading.Event
+    ) -> None:
+        super().__init__(workspace)
+        self._arrived = arrived
+        self._go = go
+
+    def _refuse_narrowing(
+        self, uow: UnitOfWork, project_id: UUID, diff: SchemaDiff, allow_destructive: bool
+    ) -> None:
+        # `finally`, so a refusal raised here still releases the main thread
+        # rather than leaving it to wait out the whole timeout.
+        try:
+            super()._refuse_narrowing(uow, project_id, diff, allow_destructive)
+        finally:
+            self._arrived.set()
+        assert self._go.wait(TIMEOUT_SECONDS), "the gate was never opened"
+
+
+class _GatedBatchService(BatchService):
+    """A `BatchService` that stops between counting a batch's labels and re-pinning."""
+
+    def __init__(
+        self, workspace: WorkspaceService, *, arrived: threading.Event, go: threading.Event
+    ) -> None:
+        super().__init__(workspace)
+        self._arrived = arrived
+        self._go = go
+
+    def _refuse_narrowing(
+        self, uow: UnitOfWork, batch: Batch, diff: SchemaDiff, allow_destructive: bool
+    ) -> None:
+        try:
+            super()._refuse_narrowing(uow, batch, diff, allow_destructive)
+        finally:
+            self._arrived.set()
+        assert self._go.wait(TIMEOUT_SECONDS), "the gate was never opened"
+
+
+class _TwoClassProject:
+    """A project on schema v1 declaring `sign` and `lane`, with one open job.
+
+    Nothing is labeled yet, which is the state both gates approve of: a narrowing
+    change that removes `lane` counts zero annotations under it and is allowed
+    through. What the tests then do is write one during the counting.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        workspace = WorkspaceService.init(root)
+        try:
+            project = ProjectService(workspace).create("p")
+            self.project_id = project.id
+            SchemaService(workspace).create_version(project.id, [SIGN, LANE])
+            content_hash = workspace.blob_store.put(BytesIO(b"a"))
+            with workspace.unit_of_work() as uow:
+                self.asset_id = uow.assets.add(
+                    Asset(project_id=project.id, content_hash=content_hash, uri="/tmp/a.png")
+                ).id
+            batches = BatchService(workspace)
+            batch = batches.create(project.id, "first", [self.asset_id])
+            self.batch_id = batch.id
+            batches.approve(batch.id)
+            batches.start(batch.id)
+            self.job_id = batches.jobs(batch.id)[0].id
+            JobService(workspace).start(self.job_id)
+        finally:
+            workspace.close()
+
+    def lane_box(self) -> Annotation:
+        """One `lane` annotation — valid under v1, orphaned by a v2 without it."""
+        return Annotation(
+            asset_id=self.asset_id,
+            label_class="lane",
+            schema_version=1,
+            geometry=BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+            provenance="human",
+        )
+
+    def versions(self) -> list[int]:
+        workspace = WorkspaceService.open(self.root)
+        try:
+            return [s.version for s in SchemaService(workspace).list_versions(self.project_id)]
+        finally:
+            workspace.close()
+
+    def pinned(self) -> int:
+        workspace = WorkspaceService.open(self.root)
+        try:
+            return BatchService(workspace).get(self.batch_id).schema_version
+        finally:
+            workspace.close()
+
+
+#: A narrowing call, held at its gate. Takes the workspace it runs in and the two
+#: events the gate sequences on, and returns whatever the call returned.
+_Narrowing = Callable[[WorkspaceService, threading.Event, threading.Event], object]
+
+
+def _while_held_at_the_gate(fixture: _TwoClassProject, narrow: _Narrowing) -> object:
+    """Run `narrow` up to its count, write a `lane` label, then let it finish.
+
+    Returns what the narrowing call did: its result, or the exception it was
+    refused with. The label is written from a second `WorkspaceService` over the
+    same file — two engines and no shared lock, which is what a second process
+    looks like to SQLite.
+    """
+    arrived = threading.Event()
+    go = threading.Event()
+    outcome: list[object] = [None]
+
+    def run() -> None:
+        workspace = WorkspaceService.open(fixture.root)
+        try:
+            outcome[0] = narrow(workspace, arrived, go)
+        except BaseException as exc:  # noqa: BLE001 - reported on the main thread
+            outcome[0] = exc
+        finally:
+            # Unconditional: a call refused *before* the gate would otherwise
+            # leave the main thread waiting out the whole timeout.
+            arrived.set()
+            workspace.close()
+
+    thread = threading.Thread(target=run, name="narrowing")
+    thread.start()
+    try:
+        assert arrived.wait(TIMEOUT_SECONDS), "the narrowing call never reached the gate"
+        writer = WorkspaceService.open(fixture.root)
+        try:
+            AnnotationService(writer).add(fixture.job_id, [fixture.lane_box()])
+        finally:
+            writer.close()
+    finally:
+        go.set()
+        thread.join(TIMEOUT_SECONDS)
+        assert not thread.is_alive(), "the narrowing call never finished"
+    return outcome[0]
+
+
+def test_a_publish_cannot_drop_a_class_labeled_while_it_was_counting(tmp_path: Path) -> None:
+    """The count said zero, and by the time the version was written it was one.
+
+    `create_version` is the project-wide gate. Removing `lane` is legal while
+    nothing uses it, so the publish gets past both refusals — and then an
+    annotator uses it. Without a guard evaluated in the same statement as the
+    insert, v2 lands and the label it orphans is already committed.
+    """
+    fixture = _TwoClassProject(tmp_path / "ws")
+
+    outcome = _while_held_at_the_gate(
+        fixture,
+        lambda workspace, arrived, go: _GatedSchemaService(
+            workspace, arrived=arrived, go=go
+        ).create_version(fixture.project_id, [SIGN], allow_destructive=True),
+    )
+
+    assert isinstance(outcome, SchemaChangeWouldOrphan), outcome
+    assert fixture.versions() == [1], "v2 was published over a label written while it counted"
+
+
+def test_a_repin_cannot_drop_a_class_labeled_while_it_was_counting(tmp_path: Path) -> None:
+    """The same window, one scope down.
+
+    `repin` counts only the labels in *this* batch, so the setup publishes v2
+    project-wide first — accepted, because nothing was labeled at the time — and
+    the batch stays pinned to v1, which still declares `lane`. Moving that pin
+    forward is the narrowing change, and the label arrives while it is being
+    judged.
+    """
+    fixture = _TwoClassProject(tmp_path / "ws")
+    workspace = WorkspaceService.open(fixture.root)
+    try:
+        SchemaService(workspace).create_version(fixture.project_id, [SIGN], allow_destructive=True)
+    finally:
+        workspace.close()
+
+    outcome = _while_held_at_the_gate(
+        fixture,
+        lambda workspace, arrived, go: _GatedBatchService(workspace, arrived=arrived, go=go).repin(
+            fixture.batch_id, allow_destructive=True
+        ),
+    )
+
+    assert isinstance(outcome, SchemaChangeWouldOrphan), outcome
+    assert fixture.pinned() == 1, "the pin moved over a label written while it counted"

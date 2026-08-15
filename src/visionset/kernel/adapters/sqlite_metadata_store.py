@@ -47,6 +47,7 @@ from visionset.kernel.adapters import _tables as t
 from visionset.kernel.adapters._tables import META_TABLE, Base, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 from visionset.kernel.domain import (
+    AnnotationSchema,
     AnnotationTotals,
     AssetProgress,
     BackgroundJob,
@@ -148,6 +149,45 @@ def _connection_posture(busy_timeout_ms: int) -> Callable[[Any, Any], None]:
         cursor.close()
 
     return listener
+
+
+def _project_uses(project_id: UUID, classes: frozenset[str]) -> Any:
+    """Does any annotation anywhere in this project name one of these classes?
+
+    An ``EXISTS`` rather than a count, because both guards ask a yes/no question
+    and stop at the first row; the counts a refusal reports are read afterwards,
+    on the path where somebody is going to read them.
+
+    Annotations hang off assets and assets off projects, so this is the join
+    ``Repository`` cannot express — its whole surface is one ``parent_id``, and an
+    Annotation's parent is its Asset. This is the query language staying in the
+    adapter, which is where ``SchemaService._annotated_classes`` says to put it.
+    """
+    return (
+        select(literal(1))
+        .select_from(t.AnnotationRow)
+        .join(t.AssetRow, t.AnnotationRow.asset_id == t.AssetRow.id)
+        .where(t.AssetRow.project_id == project_id)
+        .where(t.AnnotationRow.label_class.in_(classes))
+        .exists()
+    )
+
+
+def _batch_uses(batch_id: UUID, classes: frozenset[str]) -> Any:
+    """:func:`_project_uses` over one batch's membership instead of a project.
+
+    Through ``batch_asset`` rather than ``asset.project_id``: a re-pin can only
+    orphan labels judged by *this* pin, and those are the ones on assets this
+    batch holds.
+    """
+    return (
+        select(literal(1))
+        .select_from(t.AnnotationRow)
+        .join(t.BatchAssetRow, t.BatchAssetRow.asset_id == t.AnnotationRow.asset_id)
+        .where(t.BatchAssetRow.batch_id == batch_id)
+        .where(t.AnnotationRow.label_class.in_(classes))
+        .exists()
+    )
 
 
 def _stored_format_version(connection: Connection) -> int | None:
@@ -512,6 +552,73 @@ class SqlUnitOfWork:
                 .order_by(t.BatchAssetRow.position)
             ).all()
         )
+
+    def add_schema_version_unless_annotated(
+        self, schema: AnnotationSchema, guarded_classes: frozenset[str]
+    ) -> AnnotationSchema | None:
+        """One guarded ``INSERT`` — see the port's docstring for why it exists.
+
+        ``INSERT ... SELECT ... WHERE NOT EXISTS``, so the orphan predicate is
+        part of the statement that writes rather than a read taken before it.
+        ``rowcount`` is the answer, exactly as it is for ``set_asset_progress``:
+        one means the version is stored, zero means a label named one of the
+        classes this version drops and nothing was written.
+
+        The columns come off the mapper's own row object rather than a list
+        spelled out here, which is what keeps this from silently dropping a
+        column somebody adds to ``AnnotationSchemaRow`` later — ``from_select``
+        would take the shorter list without complaint. Each value is wrapped in
+        ``literal`` carrying its column's type, because a bare Python ``list``
+        bound into a ``SELECT`` list has no type for the JSON column to use.
+
+        The entity is handed straight back on success rather than re-read, which
+        is what ``Repository.add`` does and for the same reason: the caller built
+        it, the insert stored it, and a read would only turn a fact into a lookup
+        that can answer ``None``.
+        """
+        row = m.SCHEMAS.to_row(schema)
+        columns = [attr.key for attr in inspect(t.AnnotationSchemaRow).mapper.column_attrs]
+        values = [
+            literal(getattr(row, name), type_=t.AnnotationSchemaRow.__table__.c[name].type)
+            for name in columns
+        ]
+        selected = select(*values)
+        if guarded_classes:
+            selected = selected.where(~_project_uses(schema.project_id, guarded_classes))
+
+        result = cast(
+            "CursorResult[Any]",
+            self._session.execute(insert(t.AnnotationSchemaRow).from_select(columns, selected)),
+        )
+        if result.rowcount != 1:
+            return None
+        return schema
+
+    def repin_batch_unless_annotated(
+        self, batch_id: UUID, schema_version: int, guarded_classes: frozenset[str]
+    ) -> bool:
+        """One guarded ``UPDATE`` — see the port's docstring for why it exists.
+
+        ``set_asset_progress``' shape with a predicate in place of an expected
+        value: the guard is a ``WHERE`` term, so SQLite tests it while holding
+        the write lock and there is no window between the test and the write.
+
+        The existence read is separate and comes first, because a batch that is
+        not there and a guard that fired both write zero rows, and a caller has
+        to be able to tell them apart.
+        """
+        if self._session.get(t.BatchRow, batch_id) is None:
+            raise EntityNotFound(f"no batch {batch_id}")
+
+        statement = update(t.BatchRow).where(t.BatchRow.id == batch_id)
+        if guarded_classes:
+            statement = statement.where(~_batch_uses(batch_id, guarded_classes))
+
+        result = cast(
+            "CursorResult[Any]",
+            self._session.execute(statement.values(schema_version=schema_version)),
+        )
+        return result.rowcount == 1
 
     def annotation_totals(self, project_id: UUID) -> AnnotationTotals:
         """The port's other non-repository read — see its docstring for why.
