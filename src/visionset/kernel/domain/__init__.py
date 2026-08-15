@@ -163,6 +163,7 @@ from visionset.kernel.domain.schema import (
     GeometryType,
     LabelClass,
     SchemaProvenance,
+    SchemaPublication,
 )
 from visionset.kernel.domain.schema_diff import (
     ChangeKind,
@@ -338,6 +339,7 @@ __all__ = [
     "ItemFailure",
     "IssuedToken",
     "LabelClass",
+    "SchemaPublication",
     "Manifest",
     "ManifestAnnotation",
     "ManifestAsset",

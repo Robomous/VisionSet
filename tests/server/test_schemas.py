@@ -36,6 +36,17 @@ def post_version(client: TestClient, project: str, *classes: dict[str, Any], **q
     )
 
 
+def version_of(response: Any) -> Any:
+    """The version out of a publication response.
+
+    `POST /schema/versions` answers `{version, advanced_batches}` since #381 — the
+    version plus the open batches that moved onto it. The reads still answer a
+    bare version, so this is deliberately *not* applied to them: a helper used on
+    both would hide which shape a route actually returns.
+    """
+    return response.json()["published"]
+
+
 def a_class(name: str = "sign", **overrides: Any) -> dict[str, Any]:
     return {"name": name, "geometry": "bbox", **overrides}
 
@@ -69,8 +80,8 @@ def test_creating_the_first_version_answers_201_and_numbers_it_1(
     response = post_version(client, project, a_class())
 
     assert response.status_code == 201
-    assert response.json()["version"] == 1
-    assert response.json()["project_id"] == project
+    assert version_of(response)["version"] == 1
+    assert version_of(response)["project_id"] == project
 
 
 def test_the_next_version_is_numbered_one_higher(client: TestClient, project: str) -> None:
@@ -79,7 +90,7 @@ def test_the_next_version_is_numbered_one_higher(client: TestClient, project: st
     response = post_version(client, project, a_class(), a_class("lane", geometry="polygon"))
 
     assert response.status_code == 201
-    assert response.json()["version"] == 2
+    assert version_of(response)["version"] == 2
 
 
 def test_sending_the_classes_already_in_force_writes_nothing(
@@ -112,7 +123,7 @@ def test_a_colour_only_change_is_a_change_and_publishes_a_version(
     response = post_version(client, project, a_class(color="#eb5a47"))
 
     assert response.status_code == 201
-    assert response.json()["version"] == 2
+    assert version_of(response)["version"] == 2
 
 
 def test_the_active_version_is_the_highest_one(client: TestClient, project: str) -> None:
@@ -289,7 +300,7 @@ def test_the_same_change_with_allow_destructive_succeeds(client: TestClient, pro
     response = post_version(client, project, a_class("sign"), allow_destructive=True)
 
     assert response.status_code == 201
-    assert [c["name"] for c in response.json()["classes"]] == ["sign"]
+    assert [c["name"] for c in version_of(response)["classes"]] == ["sign"]
 
 
 # --- an unknown project ------------------------------------------------------
@@ -342,7 +353,7 @@ def test_a_version_carries_its_description_and_a_server_stamped_moment(
     )
 
     assert response.status_code == 201
-    body = response.json()
+    body = version_of(response)
     assert body["description"] == "the first contract"
     assert body["created_at"] is not None
     # Parsed rather than pattern-matched: the claim is that it is a real UTC
@@ -353,7 +364,7 @@ def test_a_version_carries_its_description_and_a_server_stamped_moment(
 def test_a_version_published_without_a_description_answers_null(
     client: TestClient, project: str
 ) -> None:
-    body = post_version(client, project, a_class("sign")).json()
+    body = version_of(post_version(client, project, a_class("sign")))
 
     assert body["description"] is None
 
@@ -366,7 +377,7 @@ def test_a_blank_description_is_null_rather_than_422(client: TestClient, project
     )
 
     assert response.status_code == 201
-    assert response.json()["description"] is None
+    assert version_of(response)["description"] is None
 
 
 def test_the_listing_carries_each_versions_own_description(
@@ -525,7 +536,7 @@ def test_a_version_carries_the_provenance_it_was_published_with(
     )
 
     assert response.status_code == 201
-    assert response.json()["provenance"] == stated
+    assert version_of(response)["provenance"] == stated
 
 
 def test_a_version_published_without_a_provenance_answers_null(
@@ -536,7 +547,7 @@ def test_a_version_published_without_a_provenance_answers_null(
     Null is what a client reading an old workspace meets too, which is why the
     field is declared with a default rather than as required.
     """
-    assert post_version(client, project, a_class("sign")).json()["provenance"] is None
+    assert version_of(post_version(client, project, a_class("sign")))["provenance"] is None
 
 
 def test_a_provenance_the_contract_does_not_declare_is_422(

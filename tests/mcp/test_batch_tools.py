@@ -193,10 +193,39 @@ def test_a_malformed_batch_id_is_refused_before_the_kernel_sees_it(
 # --- re-pinning: the second half of "add a class while annotating" ------------
 
 
-def test_a_class_created_mid_batch_reaches_it_through_repin(
+def test_a_class_created_mid_batch_reaches_it_with_no_second_call(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The agent-shaped sequence re-pinning exists for: create the class, then re-pin."""
+    """#381: an agent that adds a class can draw with it, without knowing repin exists.
+
+    This was *create the class, then re-pin* — two calls, and an agent that made
+    only the first was left holding a class its own batch would refuse. Adding a
+    class is additive, so the version now takes every open batch with it and the
+    tool says which ones it took.
+    """
+    project, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+
+    published = payload(
+        call(
+            "create_schema_version",
+            project=project,
+            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometry": "bbox"}],
+        )
+    )
+
+    assert published["published"]["version"] == 2
+    assert published["advanced_batches"] == [batch_id]
+    assert payload(call("get_batch", batch_id=batch_id))["schema_version"] == 2
+
+
+def test_repinning_after_that_is_a_no_op_rather_than_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The old two-call sequence still works, and its second call now does nothing.
+
+    An agent written against the previous behaviour is not broken by this: a
+    re-pin onto the version already pinned returns the batch unwritten.
+    """
     project, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
     payload(
         call(
@@ -205,12 +234,8 @@ def test_a_class_created_mid_batch_reaches_it_through_repin(
             classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometry": "bbox"}],
         )
     )
-    assert payload(call("get_batch", batch_id=batch_id))["schema_version"] == 1
 
-    repinned = payload(call("repin_batch", batch_id=batch_id))
-
-    assert repinned["schema_version"] == 2
-    assert payload(call("get_batch", batch_id=batch_id))["schema_version"] == 2
+    assert payload(call("repin_batch", batch_id=batch_id))["schema_version"] == 2
 
 
 def test_a_narrowing_repin_names_the_flag_that_retries_it(

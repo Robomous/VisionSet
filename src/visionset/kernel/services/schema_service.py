@@ -40,6 +40,7 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
+    REPINNABLE_STATES,
     AnnotationSchema,
     ChangeKind,
     ClassCount,
@@ -49,6 +50,7 @@ from visionset.kernel.domain import (
     SchemaChangePreview,
     SchemaDiff,
     SchemaProvenance,
+    SchemaPublication,
     diff_classes,
 )
 from visionset.kernel.errors import (
@@ -193,8 +195,8 @@ class SchemaService:
         description: str | None = None,
         provenance: SchemaProvenance | None = None,
         allow_destructive: bool = False,
-    ) -> AnnotationSchema:
-        """Add the next version of the project's schema.
+    ) -> SchemaPublication:
+        """Add the next version of the project's schema, and catch the open batches up.
 
         The version number is one past the highest stored, so versions are
         1..N with no gaps and no reuse. Nothing is edited: this always inserts,
@@ -261,7 +263,9 @@ class SchemaService:
 
                 active = self.active(uow, project_id)
                 if active is not None and proposed == active.classes:
-                    return active
+                    # Nothing was written, so nothing follows it. A no-op that
+                    # caught a lagging batch up would be a no-op with an effect.
+                    return SchemaPublication(published=active)
 
                 diff = diff_classes(() if active is None else active.classes, proposed)
                 guarded: frozenset[str] = frozenset()
@@ -282,7 +286,18 @@ class SchemaService:
                 )
                 if stored is None:
                     self._refuse_orphaning(uow, project_id, guarded)
-                return stored
+
+                # After the guarded insert, and that ordering is #589's rule rather
+                # than a convenience: the insert is the first *write*, so it is what
+                # opens the transaction. Reading the versions before it would put
+                # this read in autocommit and reintroduce the window that fix
+                # closed, one scope over.
+                advanced = (
+                    ()
+                    if diff.is_destructive
+                    else _advance_pins(uow, project_id, stored.version)
+                )
+                return SchemaPublication(published=stored, advanced_batches=advanced)
         except ConstraintViolated as exc:
             raise self._as_version_conflict(exc, project_id) from exc
 
@@ -468,6 +483,44 @@ def _blockers(uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]) -> tup
         return ()
     annotated = _annotated_classes(uow, project_id)
     return tuple(annotated[name] for name in sorted(guarded & annotated.keys()))
+
+
+def _advance_pins(uow: UnitOfWork, project_id: UUID, version: int) -> tuple[UUID, ...]:
+    """Move every open batch of this project onto ``version``. Additive only.
+
+    **The caller owes the additive check**, and the whole safety argument lives
+    there rather than here: ``diff_classes`` answers *does an annotation valid
+    under the old version stay valid under the new one?*, and when it answers yes
+    a wider contract cannot invalidate anything already drawn. So this needs no
+    gate of its own, and — importantly — does not restate one. ``BatchService.repin``
+    has three (``InvalidTransition``, ``DestructiveSchemaChange``,
+    ``SchemaChangeWouldOrphan``); on an additive change every one of them is
+    provably vacuous, which is why moving the pin here is not a second spelling of
+    that method.
+
+    It is also why this is not *calling* that method. ``BatchService`` imports
+    ``SchemaService``, so the reverse import would close a cycle — but the additive
+    path needs only ``REPINNABLE_STATES``, which is a **domain** constant, and the
+    repository. No service layering is inverted and no rule is copied.
+
+    ``REPINNABLE_STATES`` is the filter and the reason each excluded state is
+    excluded is its own: a ``draft`` has no pin yet — approval takes the active
+    version, which is now this one — and a ``completed`` batch's pin is the record
+    of what its work was judged against, which is not ours to rewrite.
+
+    Walked in Python rather than filtered in the port, which is the shape
+    ``SummaryService`` and ``JobService`` already use: ``Repository.list`` takes a
+    single ``parent_id`` and no query language leaks into it. When the walk costs,
+    the remedy is a method on the port implemented in the adapter — never a
+    SQLAlchemy import in a service.
+    """
+    moved: list[UUID] = []
+    for batch in uow.batches.list(project_id):
+        if batch.state not in REPINNABLE_STATES:
+            continue
+        uow.batches.update(batch.model_copy(update={"schema_version": version}))
+        moved.append(batch.id)
+    return tuple(moved)
 
 
 def _annotated_classes(uow: UnitOfWork, project_id: UUID) -> dict[str, ClassCount]:

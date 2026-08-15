@@ -55,6 +55,7 @@ from visionset.kernel.domain import (
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
+    SchemaPublication,
     Source,
     SourceKind,
     SplitRecipe,
@@ -170,6 +171,14 @@ BATCH = Batch(
     # where a value belongs lets the projection of that field go unchecked, which
     # is the whole reason this module holds *fully* populated instances.
     parent_batch_id=uuid4(),
+)
+
+SCHEMA_PUBLICATION = SchemaPublication(
+    published=SCHEMA_VERSION,
+    # Non-empty on purpose, and it has to name a real batch: an empty tuple would
+    # let a projection that dropped every element after the first — or dropped the
+    # field altogether — pass the round-trip gate that reads this.
+    advanced_batches=(BATCH.id,),
 )
 
 INGEST_JOB = IngestJob(

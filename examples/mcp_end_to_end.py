@@ -227,7 +227,9 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
         # (2) Declare the contract before any work is judged against it. The
         # domain models go straight into the tool signature, so these two dicts
         # are validated by the kernel's own rules and refused in its own words.
-        schema = ok(
+        # A publication: the version, and the open batches it took with it. None
+        # here — the project has no batch yet — and empty is the ordinary answer.
+        published = ok(
             await tool(
                 "create_schema_version",
                 project=PROJECT,
@@ -237,6 +239,7 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
                 ],
             )
         )
+        schema = published["published"]
         assert ok(await tool("get_schema", project=PROJECT))["active_version"] == schema["version"]
 
         # (3) Read the folder in. **One call, and it returns when the work is

@@ -209,11 +209,11 @@ def create_schema_version(
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
-        created = SchemaService(workspace).create_version(
+        published = SchemaService(workspace).create_version(
             resolved.id,
             classes,
             description=description,
             provenance=provenance,
             allow_destructive=allow_destructive,
         )
-    return wire.schema_version(created)
+    return wire.schema_publication(published)

@@ -111,6 +111,7 @@ from visionset.kernel.domain import (
     SchemaChangePreview,
     SchemaDiff,
     SchemaProvenance,
+    SchemaPublication,
     SingleJob,
     Source,
     SourceKind,
@@ -364,6 +365,26 @@ class SchemaVersionOut(BaseModel):
             description=schema.description,
             created_at=schema.created_at,
             provenance=schema.provenance,
+        )
+
+
+class SchemaPublicationOut(BaseModel):
+    """A published version, and the open batches that moved onto it."""
+
+    # The response of `POST /schema/versions` alone. The reads keep
+    # `SchemaVersionOut`: which batches once followed a version is not something a
+    # `GET` knows or is asked, and a field that were always empty there would be
+    # one a client eventually reads meaning into.
+    published: SchemaVersionOut
+    # Empty whenever nothing followed — no open batch, or a narrowing change,
+    # which never advances a pin. Empty is the ordinary answer, not a failure.
+    advanced_batches: list[UUID] = []
+
+    @classmethod
+    def of(cls, publication: SchemaPublication) -> Self:
+        return cls(
+            published=SchemaVersionOut.of(publication.published),
+            advanced_batches=list(publication.advanced_batches),
         )
 
 

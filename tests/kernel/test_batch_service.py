@@ -304,14 +304,91 @@ def test_approval_pins_the_active_schema_version(tmp_path: Path) -> None:
     fixture.close()
 
 
-def test_a_later_schema_version_does_not_move_an_existing_pin(tmp_path: Path) -> None:
-    """A schema that evolved mid-batch would change the rules under work in flight."""
+def test_an_additive_version_moves_every_open_pin_onto_it(tmp_path: Path) -> None:
+    """#381, and the inversion of the rule that stood before it.
+
+    The pin used to move only when somebody asked. It now follows a version that
+    *widens* the contract, across every batch open enough to take one — because a
+    wider contract cannot invalidate a label already drawn, so there is nothing for
+    the old rule to have been protecting on this path.
+
+    What the old rule was really about is the test below: a schema that **narrows**
+    mid-batch would change the rules under work in flight, and that still never
+    happens on its own.
+    """
+    fixture = Fixture(tmp_path)
+    approved = fixture.batches.create(fixture.project.id, "first", fixture.assets)
+    fixture.batches.approve(approved.id)
+    working = fixture.in_state(BatchState.IN_ANNOTATION)
+
+    published = fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+
+    assert fixture.batches.get(approved.id).schema_version == 2
+    assert fixture.batches.get(working).schema_version == 2
+    # Named, not merely moved: a publish that silently caught two batches up is
+    # exactly the invisible success this return value exists to prevent.
+    assert set(published.advanced_batches) == {approved.id, working}
+    fixture.close()
+
+
+def test_a_narrowing_version_moves_no_pin_at_all(tmp_path: Path) -> None:
+    """The half of the old rule that survives, and the whole of the safety argument.
+
+    A narrowing version is the one that would change the rules under work in
+    flight, so it never follows on its own — with the flag or without it. The flag
+    says *publish this*, never *and drag every open batch across it*; moving a pin
+    over a narrowing is still `repin`, one batch at a time, against that batch's
+    own labels.
+    """
     fixture = Fixture(tmp_path)
     batch = fixture.batches.create(fixture.project.id, "first", fixture.assets)
     fixture.batches.approve(batch.id)
 
-    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    published = fixture.schemas.create_version(fixture.project.id, [LANE], allow_destructive=True)
 
+    assert fixture.batches.get(batch.id).schema_version == 1
+    assert published.advanced_batches == ()
+    fixture.close()
+
+
+def test_a_draft_and_a_completed_batch_are_left_where_they_are(tmp_path: Path) -> None:
+    """The two states outside `REPINNABLE_STATES`, and they are outside it for opposite reasons.
+
+    A draft has no pin to move — approval takes the active version, which is this
+    one anyway. A completed batch's pin is the record of what its work was judged
+    against, and rewriting it would rewrite the record rather than the rules.
+    """
+    fixture = Fixture(tmp_path)
+    draft = fixture.in_state(BatchState.DRAFT)
+    completed = fixture.in_state(BatchState.COMPLETED)
+    pinned = fixture.batches.get(completed).schema_version
+
+    published = fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+
+    assert fixture.batches.get(draft).schema_version is None
+    assert fixture.batches.get(completed).schema_version == pinned
+    assert published.advanced_batches == ()
+    # And the draft takes the new version when it is approved, rather than the one
+    # that was active when it was created.
+    assert fixture.batches.approve(draft).schema_version == 2
+    fixture.close()
+
+
+def test_publishing_the_contract_already_in_force_moves_nothing(tmp_path: Path) -> None:
+    """#583's no-op stays a no-op: nothing was written, so nothing follows it.
+
+    Catching a lagging batch up here would give an operation that writes nothing
+    an effect, which is the one thing "publishing what is already in force writes
+    nothing" cannot mean.
+    """
+    fixture = Fixture(tmp_path)
+    batch = fixture.batches.create(fixture.project.id, "first", fixture.assets)
+    fixture.batches.approve(batch.id)
+
+    published = fixture.schemas.create_version(fixture.project.id, [SIGN])
+
+    assert published.published.version == 1
+    assert published.advanced_batches == ()
     assert fixture.batches.get(batch.id).schema_version == 1
     fixture.close()
 
