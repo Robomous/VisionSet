@@ -206,21 +206,22 @@ export interface Attribute {
 }
 
 /**
- * One labelable class, bound to **one** geometry. Mirrors `LabelClassBody`.
+ * One labelable class and the geometries it accepts. Mirrors `LabelClassBody`.
  *
- * `geometry` is singular, and that is the rule an annotator is built around:
- * picking a class picks a tool. `color` is the kernel's own field — a renderer
- * choosing its own palette when it is null is a rendering decision, not a
- * document one.
+ * `geometries` is a **set**, non-empty, and the wire sends it sorted. Picking a
+ * class therefore no longer picks a tool: it constrains which tools are on
+ * offer, and `toolFor` resolves the rest against what the host has active.
+ * `color` is the kernel's own field — a renderer choosing its own palette when
+ * it is null is a rendering decision, not a document one.
  *
- * `geometry` is a `GeometryType`, all eight, not just the carryable four. A
+ * The members are `GeometryType`, all eight, not just the carryable four. A
  * schema may legally declare `mask`; an annotation may not carry one. Keeping the
  * wide type here is what lets a class list load intact and the refusal happen
  * where a user can be told about it.
  */
 export interface LabelClass {
   readonly name: string;
-  readonly geometry: GeometryType;
+  readonly geometries: readonly GeometryType[];
   readonly color: string | null;
   readonly attributes: readonly Attribute[];
 }

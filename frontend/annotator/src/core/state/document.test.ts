@@ -30,8 +30,8 @@ const SCHEMA: AnnotationSchema = {
   project_id: "project-1",
   version: 3,
   classes: [
-    { name: "sign", geometry: "bbox", color: "#ff0000", attributes: [] },
-    { name: "lane", geometry: "polygon", color: null, attributes: [] },
+    { name: "sign", geometries: ["bbox"], color: "#ff0000", attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
   ],
   description: null,
   created_at: null,
@@ -170,7 +170,7 @@ describe("immutability, which is what makes undo a pointer swap", () => {
 describe("the schema, which is looked up and not enforced", () => {
   it("finds a class by its exact name", () => {
     const document = documentOf("a");
-    expect(classNamed(document, "sign")?.geometry).toBe("bbox");
+    expect(classNamed(document, "sign")?.geometries).toEqual(["bbox"]);
     expect(classNamed(document, "lane")?.color).toBeNull();
   });
 
@@ -235,7 +235,7 @@ describe("built from the wire, and back again", () => {
     // could not load its own round-trip fixture. This is that argument, executed.
     const document = documentFromWire(wire);
     const disagreeing = annotationsInDrawOrder(document).filter(
-      (a) => classNamed(document, a.label_class)?.geometry !== a.geometry.type,
+      (a) => !classNamed(document, a.label_class)?.geometries.includes(a.geometry.type),
     );
     expect(disagreeing.length).toBeGreaterThan(0);
   });

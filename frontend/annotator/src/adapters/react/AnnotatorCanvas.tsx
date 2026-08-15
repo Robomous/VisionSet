@@ -257,6 +257,16 @@ export interface AnnotatorCanvasProps {
   readonly imageSrc: string;
   /** The class a drawing gesture will carry. `null` is select mode. */
   readonly activeClass: string | null;
+  /**
+   * Which of the active class's geometries to draw, when it accepts several.
+   *
+   * Optional, unlike `InputHost.activeTool` which it feeds, and the asymmetry is
+   * deliberate: omitting it is a host saying *no preference*, which resolves to
+   * the class's first geometry and is exactly the behaviour before a class could
+   * accept more than one. A host with no tool strip has nothing to say here, and
+   * making it write `activeTool={null}` would be ceremony rather than a decision.
+   */
+  readonly activeTool?: Tool | null;
   /** Core reads the active class back and never stores it — `InputHost`'s rule. */
   readonly onActivateClass: (labelClass: string | null) => void;
   /** The committed document, after every change. Not called on mount. */
@@ -468,6 +478,7 @@ export function AnnotatorCanvas({
   store,
   imageSrc,
   activeClass,
+  activeTool = null,
   onActivateClass,
   onAnnotationsChange,
   onSelectionChange,
@@ -564,7 +575,7 @@ export function AnnotatorCanvas({
     setView(next);
   }, []);
 
-  const tool: Tool = toolFor(snapshot.document, activeClass);
+  const tool: Tool = toolFor(snapshot.document, activeClass, activeTool);
   const tolerances = assetTolerances(view.zoom);
 
   // `defaultRegistry` rather than the fold spelled out here: the help sheet lists
@@ -584,7 +595,7 @@ export function AnnotatorCanvas({
         // catching every click over it.
         document: withoutHidden(store.document, hiddenNow.current),
         selection: store.selection,
-        tool: toolFor(store.document, activeClass),
+        tool: toolFor(store.document, activeClass, activeTool),
         tolerances: assetTolerances(viewNow.current.zoom),
         labelClass: activeClass,
         mint,
@@ -593,7 +604,7 @@ export function AnnotatorCanvas({
       setInteraction(turn.state);
       runEffects(store, turn.effects);
     },
-    [store, activeClass, mint],
+    [store, activeClass, activeTool, mint],
   );
 
   /**
@@ -777,6 +788,7 @@ export function AnnotatorCanvas({
 
   const host: InputHost = {
     activeClass,
+    activeTool,
     activateClass: onActivateClass,
     run: (name) => {
       if (name === RESET_ZOOM) {
@@ -932,7 +944,7 @@ export function AnnotatorCanvas({
     // Keep the palette effect above from firing a second, redundant `tool-changed`
     // once the host's state catches up: this path already told the machine.
     if (action.kind === "activate-class") {
-      toolNow.current = toolFor(store.document, action.labelClass);
+      toolNow.current = toolFor(store.document, action.labelClass, activeTool);
     }
   }
 

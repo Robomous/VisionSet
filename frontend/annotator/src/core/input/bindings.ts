@@ -122,6 +122,7 @@
  */
 
 import { isTaggableClass } from "../interaction/tags";
+import { drawableGeometries } from "../interaction/tool";
 import type { AnnotationSchema } from "../types";
 import {
   FOCUS_CLASS_FIELD,
@@ -208,18 +209,26 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
 /**
  * What pressing this class's key should do, or `null` if the schema forgot it.
  *
- * A tag class toggles; every other declared class becomes active, including one
- * declaring a geometry no annotation can carry — `runAction.ts` and the palette
- * handle that between them, and silently skipping it here would renumber the
- * digits. Exported so a hand-written override names a class the same way
- * `classHotkeys` does, rather than guessing which kind to write.
+ * A class that can only be tagged toggles; every other declared class becomes
+ * active, including one declaring a geometry no annotation can carry —
+ * `runAction.ts` and the palette handle that between them, and silently skipping
+ * it here would renumber the digits. Exported so a hand-written override names a
+ * class the same way `classHotkeys` does, rather than guessing which kind to
+ * write.
+ *
+ * **A class accepting a tag *and* a shape arms rather than toggles**, and the
+ * order of the two tests is the whole rule. Since #584 the two are no longer
+ * exclusive, and folding a drawable class into `toggle-tag` would be the exact
+ * bug the split kinds exist to prevent: a toggle changes no tool, so a digit
+ * pressed mid-draw would silently tag the asset instead of arming the class —
+ * and arming is what somebody pressing a class digit on a canvas means.
  */
 export function classAction(schema: AnnotationSchema, labelClass: string): Action | null {
   // `classNamed` is this lookup at the document level; a schema is all that is
   // needed here, and taking one is what keeps a registry memoizable.
   const declared = schema.classes.find((candidate) => candidate.name === labelClass);
   if (declared === undefined) return null;
-  return isTaggableClass(declared)
+  return isTaggableClass(declared) && drawableGeometries(declared).length === 0
     ? { kind: "toggle-tag", labelClass }
     : { kind: "activate-class", labelClass };
 }

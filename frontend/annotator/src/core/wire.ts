@@ -148,7 +148,7 @@ export const ANNOTATION_UPDATE_KEYS = Object.keys(
 // same way, and a second list would only be somewhere for the two to drift.
 // What each parser actually reads is `types.ts`, which is the mirror.
 const ATTRIBUTE_REQUIRED_KEYS = ["name", "kind"] as const;
-const LABEL_CLASS_REQUIRED_KEYS = ["name", "geometry"] as const;
+const LABEL_CLASS_REQUIRED_KEYS = ["name", "geometries"] as const;
 const SCHEMA_REQUIRED_KEYS = ["project_id", "version", "classes"] as const;
 // A projection: it names the three fields it wants of the eleven an asset
 // carries. Rule 4 is what makes that unremarkable rather than a special case.
@@ -427,10 +427,14 @@ export function parseAttribute(value: unknown): Attribute {
 /**
  * One labelable class.
  *
- * `geometry` is validated against the **eight**, not the four: declaring `mask`
- * is legal in a schema and refused at the annotation. Narrowing here would make a
- * whole class list unloadable because of one class nobody was going to draw
- * with.
+ * Each member of `geometries` is validated against the **eight**, not the four:
+ * declaring `mask` is legal in a schema and refused at the annotation. Narrowing
+ * here would make a whole class list unloadable because of one class nobody was
+ * going to draw with.
+ *
+ * An empty list is refused. The kernel cannot produce one, so a class carrying
+ * one is a document this does not understand — and every reader downstream
+ * assumes a class has at least one shape, `toolFor` included.
  */
 export function parseLabelClass(value: unknown): LabelClass {
   if (!isRecord(value)) {
@@ -439,12 +443,17 @@ export function parseLabelClass(value: unknown): LabelClass {
   allowUndeclaredKeys(value, LABEL_CLASS_REQUIRED_KEYS, "label class");
 
   const name = requireString(value["name"], "label class name");
-  const geometry = requireString(value["geometry"], `class ${name} geometry`);
-  if (!(GEOMETRY_TYPES as readonly string[]).includes(geometry)) {
-    throw new WireFormatError(
-      `class ${name} declares geometry ${JSON.stringify(geometry)}, which is not a GeometryType — ` +
-        `expected one of ${GEOMETRY_TYPES.join(", ")}`,
-    );
+  const geometries = requireStringArray(value["geometries"], `class ${name} geometries`);
+  if (geometries.length === 0) {
+    throw new WireFormatError(`class ${name} declares no geometries; a class accepts at least one`);
+  }
+  for (const geometry of geometries) {
+    if (!(GEOMETRY_TYPES as readonly string[]).includes(geometry)) {
+      throw new WireFormatError(
+        `class ${name} declares geometry ${JSON.stringify(geometry)}, which is not a GeometryType — ` +
+          `expected one of ${GEOMETRY_TYPES.join(", ")}`,
+      );
+    }
   }
 
   const attributes = value["attributes"];
@@ -453,7 +462,7 @@ export function parseLabelClass(value: unknown): LabelClass {
   }
   return {
     name,
-    geometry: geometry as LabelClass["geometry"],
+    geometries: geometries as LabelClass["geometries"],
     color:
       value["color"] === undefined
         ? null

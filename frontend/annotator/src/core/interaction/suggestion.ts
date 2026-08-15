@@ -116,17 +116,16 @@ export type SuggestibleGeometryType = (typeof SUGGESTIBLE_GEOMETRY_TYPES)[number
 
 /** Whether a class can hold anything a segmenter is able to propose. */
 export function isSuggestibleClass(labelClass: LabelClass): boolean {
-  return (SUGGESTIBLE_GEOMETRY_TYPES as readonly string[]).includes(labelClass.geometry);
+  return allowedGeometriesFor(labelClass).length > 0;
 }
 
 /**
  * The kinds the answer may come back in, for the class a suggestion will carry.
  *
- * A **list of one** for every class this build has, because `LabelClass.geometry`
- * is singular — `types.ts`: *"`geometry` is singular, and that is the rule an
- * annotator is built around"*. It is still a list, because that is the shape the
- * route takes and because the day a class declares a set, this function is the
- * only thing that changes.
+ * The intersection of what the class accepts and what a segmenter can propose,
+ * so a class taking boxes and polygons asks for both and lets the provider pick.
+ * Ordered by `SUGGESTIBLE_GEOMETRY_TYPES` rather than by the class, so two
+ * classes offering the same pair ask the route the same question.
  *
  * Empty for a class that can hold neither, which is the same fact
  * `isSuggestibleClass` reports and the reason the tool is not offered there.
@@ -134,7 +133,7 @@ export function isSuggestibleClass(labelClass: LabelClass): boolean {
 export function allowedGeometriesFor(
   labelClass: LabelClass,
 ): readonly SuggestibleGeometryType[] {
-  return isSuggestibleClass(labelClass) ? [labelClass.geometry as SuggestibleGeometryType] : [];
+  return SUGGESTIBLE_GEOMETRY_TYPES.filter((kind) => labelClass.geometries.includes(kind));
 }
 
 /**
