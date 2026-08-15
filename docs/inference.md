@@ -92,6 +92,11 @@ to the plain file - keeps projects, connections and downloaded weights; only the
 and `--build` is not optional on any of those switches. That stack is for development and changes
 nothing about the wheel above.
 
+`HF_TOKEN` is forwarded from whoever runs `docker compose`, so fetching weights that have to be
+asked for (below) works the same way inside the stack as outside it - export it in the shell you
+bring the stack up in. It is empty when you have none, which is what every ungated model already
+expects.
+
 ## Knowing what a download costs, before agreeing to it
 
 A decision you cannot see the price of is not a decision, so the size is readable on its own,
