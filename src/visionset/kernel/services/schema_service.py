@@ -42,9 +42,11 @@ from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
     AnnotationSchema,
     ChangeKind,
+    ClassCount,
     GeometryType,
     LabelClass,
     Project,
+    SchemaChangePreview,
     SchemaDiff,
     SchemaProvenance,
     diff_classes,
@@ -145,12 +147,30 @@ class SchemaService:
                 self._require_version(versions, project_id, to_version).classes,
             )
 
-    def preview(self, project_id: UUID, classes: Sequence[LabelClass]) -> SchemaDiff:
+    def preview(self, project_id: UUID, classes: Sequence[LabelClass]) -> SchemaChangePreview:
         """How ``create_version`` would judge these classes, without writing.
 
-        The same diff the gates in :meth:`create_version` are built on, so a
-        surface can warn before it asks — "this removes 2 classes, continue?" —
-        instead of asking and then reporting a refusal.
+        Both gates, asked and not enforced. ``diff`` is what
+        :meth:`_refuse_narrowing` decides on — whether this needs
+        ``allow_destructive`` — and ``blockers`` is what the guarded insert would
+        refuse over: the classes being dropped that already carry labels. A
+        surface can therefore say *this removes 2 classes* **or** *this cannot be
+        published, 12 labels use 'lane'* before it asks, instead of asking and
+        then translating a refusal.
+
+        ``blockers`` is the same report :class:`SchemaChangeWouldOrphan` carries,
+        so a client renders the warning and the refusal with one piece of code.
+
+        **Advisory, and it says so.** Nothing is locked and nothing is reserved:
+        somebody can label a class between this call and the publish, in which
+        case the publish refuses and *that* refusal is the authoritative one. The
+        guard inside the insert is what makes the answer safe to act on — not
+        this. What this removes is the round trip that was doomed before it was
+        sent, which is a question about the interface rather than about
+        correctness.
+
+        Empty ``blockers`` under a destructive diff is the ordinary safe
+        narrowing, and is what ``allow_destructive`` confirms.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
@@ -158,7 +178,10 @@ class SchemaService:
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             active = self.active(uow, project_id)
-            return diff_classes(() if active is None else active.classes, classes)
+            diff = diff_classes(() if active is None else active.classes, classes)
+            return SchemaChangePreview(
+                diff=diff, blockers=_blockers(uow, project_id, diff.destructive_classes)
+            )
 
     # --- writing: the only door --------------------------------------------
 
@@ -279,9 +302,10 @@ class SchemaService:
         """
         if not allow_destructive:
             raise DestructiveSchemaChange(
-                f"this version narrows the schema of project {project_id} "
+                f"this version narrows the schema "
                 f"({diff.describe(ChangeKind.DESTRUCTIVE)}); pass allow_destructive=True "
-                f"to proceed"
+                f"to proceed",
+                classes=tuple(sorted(diff.destructive_classes)),
             )
 
     def _refuse_orphaning(
@@ -305,13 +329,14 @@ class SchemaService:
         annotated = _annotated_classes(uow, project_id)
         affected = sorted(guarded & annotated.keys()) or sorted(guarded)
         counted = ", ".join(
-            f"{name!r} ({annotated[name]})" if name in annotated else repr(name)
+            f"{name!r} ({annotated[name].annotations})" if name in annotated else repr(name)
             for name in affected
         )
         raise SchemaChangeWouldOrphan(
-            f"cannot narrow project {project_id}: annotations already exist under "
+            f"cannot narrow this schema: annotations already exist under "
             f"{counted}. Migrating them onto a new version is not supported yet, and "
-            f"the kernel will not orphan them"
+            f"the kernel will not orphan them",
+            blockers=tuple(annotated[name] for name in affected if name in annotated),
         )
 
     # --- lookups shared by the operations above ----------------------------
@@ -426,8 +451,27 @@ def _require_coherent(classes: Sequence[LabelClass]) -> None:
         seen[folded] = label_class.name
 
 
-def _annotated_classes(uow: UnitOfWork, project_id: UUID) -> dict[str, int]:
-    """How many annotations each label class currently has in this project.
+def _blockers(uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]) -> tuple[ClassCount, ...]:
+    """Which of ``guarded`` already carry labels, counted — the report, not a gate.
+
+    The read half of what the guarded insert decides, shared by
+    :meth:`SchemaService.preview` (which asks in advance) and by
+    :meth:`SchemaService._refuse_orphaning` (which asks afterwards, to say what it
+    refused over), so the warning and the refusal cannot report different things
+    about the same project.
+
+    Empty ``guarded`` short-circuits: a change that removes nothing has nothing
+    to block it, and walking every asset to establish that is a cost with no
+    question behind it.
+    """
+    if not guarded:
+        return ()
+    annotated = _annotated_classes(uow, project_id)
+    return tuple(annotated[name] for name in sorted(guarded & annotated.keys()))
+
+
+def _annotated_classes(uow: UnitOfWork, project_id: UUID) -> dict[str, ClassCount]:
+    """How much of each label class this project currently holds.
 
     Walks the project's assets and reads each one's annotations, because the
     persistence port has no cross-table query: ``Repository.list`` takes a single
@@ -436,9 +480,21 @@ def _annotated_classes(uow: UnitOfWork, project_id: UUID) -> dict[str, int]:
     is worth more at M1 scale than the round trips cost. When it does start to
     cost, the fix is a method on the port (``annotations.list_for_project``)
     implemented in the adapter, never a SQLAlchemy import in a service.
+
+    ``ClassCount`` rather than a bare count, and reused rather than re-spelled:
+    both numbers mean here exactly what they mean for the trunk, and a class
+    carrying the same two fields is how two counts of one thing start to
+    disagree. The second number is what turns "12 annotations" into "12
+    annotations across 3 images", which is the difference between a blast radius
+    somebody can judge and a number they cannot.
     """
-    counts: dict[str, int] = {}
+    annotations: dict[str, int] = {}
+    assets: dict[str, set[UUID]] = {}
     for asset in uow.assets.list(project_id):
         for annotation in uow.annotations.list(asset.id):
-            counts[annotation.label_class] = counts.get(annotation.label_class, 0) + 1
-    return counts
+            annotations[annotation.label_class] = annotations.get(annotation.label_class, 0) + 1
+            assets.setdefault(annotation.label_class, set()).add(asset.id)
+    return {
+        name: ClassCount(label_class=name, annotations=count, assets=len(assets[name]))
+        for name, count in annotations.items()
+    }

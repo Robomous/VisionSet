@@ -31,7 +31,13 @@ from typing import Final
 
 import typer
 
-from visionset.kernel import LossyExportNotConsented, NotAWorkspace, VisionSetError
+from visionset.kernel import (
+    DestructiveSchemaChange,
+    LossyExportNotConsented,
+    NotAWorkspace,
+    SchemaChangeWouldOrphan,
+    VisionSetError,
+)
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
 EXIT_DOMAIN_ERROR: Final = 1
@@ -68,6 +74,24 @@ _HINTS: Final[dict[type[BaseException], str]] = {
     LossyExportNotConsented: (
         "Re-run with --allow-lossy to accept the loss, or with --check to see "
         "exactly what it costs, class by class."
+    ),
+    # The kernel's sentence says "pass allow_destructive=True", which is the
+    # *service* keyword — a person at a terminal types `--allow-destructive`, and
+    # no amount of reading the message tells them so. `LossyExportNotConsented`
+    # exactly, one refusal over.
+    DestructiveSchemaChange: (
+        "Re-run with --allow-destructive if narrowing the schema is what you meant."
+    ),
+    # The opposite hint, and the reason it is worth its own entry: this refusal
+    # has **no** flag. Without a line saying so, the neighbouring
+    # `--allow-destructive` reads as the obvious next thing to try — and it is
+    # precisely the loop `SchemaChangeWouldOrphan` is declared outside
+    # `DestructiveSchemaChange`'s hierarchy to prevent. The message already names
+    # the classes and their counts; what it cannot say is that there is nothing
+    # to pass.
+    SchemaChangeWouldOrphan: (
+        "There is no flag for this one. Delete or relabel those annotations "
+        "first, or keep the class and change something else."
     ),
 }
 """A remedy a *terminal* can act on, printed under the error's own sentence.

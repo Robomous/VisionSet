@@ -90,6 +90,7 @@ from visionset.kernel.domain import (
     Release,
     ReleaseVerification,
     SchemaChange,
+    SchemaChangePreview,
     SchemaDiff,
     Source,
     SplitRecipe,
@@ -202,6 +203,29 @@ def schema_diff(value: SchemaDiff) -> dict[str, Any]:
         "is_destructive": value.is_destructive,
         "destructive_classes": sorted(value.destructive_classes),
         "changes": [schema_change(c) for c in value.changes],
+    }
+
+
+def schema_change_preview(value: SchemaChangePreview) -> dict[str, Any]:
+    """What publishing these classes would do, and what would stop it.
+
+    ``diff`` answers whether the change needs ``allow_destructive``; ``blockers``
+    answers whether any flag would help, which is the question a caller could not
+    ask before this existed and had to discover by being refused.
+
+    ``is_refused`` is the domain ``@property`` materialized here, on
+    ``schema_diff``'s terms and for the same reason: a caller deciding whether to
+    offer a way forward must not re-derive the rule from ``blockers`` and get it
+    subtly wrong.
+
+    ``blockers`` reuses :func:`class_count` rather than a shape of its own — it is
+    the same two numbers about the same classes, and a second spelling is how two
+    reports of one thing start to disagree.
+    """
+    return {
+        "diff": schema_diff(value.diff),
+        "blockers": [class_count(c) for c in value.blockers],
+        "is_refused": value.is_refused,
     }
 
 

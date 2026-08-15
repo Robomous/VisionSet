@@ -167,6 +167,7 @@ from visionset.kernel.domain.schema import (
 from visionset.kernel.domain.schema_diff import (
     ChangeKind,
     SchemaChange,
+    SchemaChangePreview,
     SchemaDiff,
     diff_classes,
 )
@@ -357,6 +358,7 @@ __all__ = [
     "ReleasePublished",
     "ReleaseVerification",
     "SchemaChange",
+    "SchemaChangePreview",
     "SchemaDiff",
     "SchemaProvenance",
     "SingleJob",

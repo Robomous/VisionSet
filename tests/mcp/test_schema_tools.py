@@ -63,8 +63,9 @@ def test_adding_a_class_is_additive_and_needs_no_flag(
 ) -> None:
     named = schema(monkeypatch, tmp_path)
     preview = payload(call("preview_schema_change", project=named, classes=BOTH))
-    assert preview["is_destructive"] is False
-    assert preview["destructive_classes"] == []
+    assert preview["diff"]["is_destructive"] is False
+    assert preview["diff"]["destructive_classes"] == []
+    assert preview["is_refused"] is False
     assert payload(call("create_schema_version", project=named, classes=BOTH))["version"] == 2
 
 
@@ -73,8 +74,13 @@ def test_preview_names_what_a_change_would_remove_without_writing_anything(
 ) -> None:
     named = schema(monkeypatch, tmp_path)
     preview = payload(call("preview_schema_change", project=named, classes=CAR_ONLY))
-    assert preview["is_destructive"] is True
-    assert preview["destructive_classes"] == ["sign"]
+    assert preview["diff"]["is_destructive"] is True
+    assert preview["diff"]["destructive_classes"] == ["sign"]
+    # Destructive and still publishable — nothing is labeled — which is the
+    # distinction `is_destructive` alone cannot draw and an agent otherwise
+    # discovers by being refused.
+    assert preview["is_refused"] is False
+    assert preview["blockers"] == []
     # Writes nothing: still one version afterwards. That is the whole reason
     # `SchemaService.preview` finally has a caller.
     assert payload(call("get_schema", project=named))["available_versions"] == [1]

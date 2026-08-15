@@ -121,8 +121,8 @@ from visionset.kernel import (
     WorkspaceNotEmpty,
     WorkspaceSchemaMismatch,
 )
-from visionset.kernel.domain import ExportCompatibility
-from visionset.server.models import ExportCompatibilityOut
+from visionset.kernel.domain import ClassCount, ExportCompatibility
+from visionset.server.models import ClassCountOut, ExportCompatibilityOut
 
 _logger = logging.getLogger(__name__)
 """Never call ``logging.basicConfig`` here — records propagate to root, which
@@ -484,6 +484,30 @@ def _detail_for(exc: BaseException) -> dict[str, Any] | None:
         return {
             "compatibility": ExportCompatibilityOut.of(exc.compatibility).model_dump(mode="json")
         }
+    if isinstance(exc, SchemaChangeWouldOrphan) and isinstance(exc.blockers, tuple):
+        # The per-class report, on the refusal itself — `LossyExportNotConsented`'s
+        # bargain, and the same one: a client that gets this 409 has everything it
+        # needs to say *what* is in the way and *how much of it* without a second
+        # round trip. It is the same structure `POST .../schema/preview` returns,
+        # so one renderer serves the warning and the refusal.
+        #
+        # The `isinstance` is not defensive padding: `blockers` is typed
+        # `object | None` because `kernel/errors.py` may not import a domain
+        # model, so this is where the type comes back.
+        return {
+            "blockers": [
+                ClassCountOut.of(count).model_dump(mode="json")
+                for count in exc.blockers
+                if isinstance(count, ClassCount)
+            ]
+        }
+    if isinstance(exc, DestructiveSchemaChange) and isinstance(exc.classes, tuple):
+        # Names only. This refusal is raised before anything on disk is consulted
+        # — see the field's own note — so there are no counts to publish, and a
+        # client wanting them asks `POST .../schema/preview`, which is what it is
+        # for. What a confirmation needs from *here* is the blast radius: which
+        # classes go, in an order that does not depend on a set's iteration.
+        return {"classes": [name for name in exc.classes if isinstance(name, str)]}
     if isinstance(exc, VisionSetError) and exc.index is not None:
         # Which item of a bulk request was refused. The kernel sets this on the
         # way out of a per-item loop; everything else leaves it ``None``, so the

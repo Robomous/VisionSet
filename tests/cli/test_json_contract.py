@@ -46,6 +46,7 @@ from tests.fixtures.samples import (
     POLYGON,
     PROJECT,
     RELEASE,
+    SCHEMA_CHANGE_PREVIEW,
     SCHEMA_DIFF,
     SCHEMA_VERSION,
     SOURCE,
@@ -68,6 +69,11 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
     ("dataset", wire.dataset(DATASET), models.DatasetOut),
     ("schema_version", wire.schema_version(SCHEMA_VERSION), models.SchemaVersionOut),
     ("schema_diff", wire.schema_diff(SCHEMA_DIFF), models.SchemaDiffOut),
+    (
+        "schema_change_preview",
+        wire.schema_change_preview(SCHEMA_CHANGE_PREVIEW),
+        models.SchemaChangePreviewOut,
+    ),
     # ``changes[1]`` rather than ``[0]``: it is the one carrying a non-null
     # ``attribute``, and a sample holding ``None`` there would leave that half of
     # the projection unchecked. The diff pair above covers both, since it

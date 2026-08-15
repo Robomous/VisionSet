@@ -46,6 +46,7 @@ POST   /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions/{version}
 GET    /projects/{project_id}/schema/compare             ?from=&to=
+POST   /projects/{project_id}/schema/preview             would this publish?
 POST   /projects/{project_id}/sources/images              multipart
 POST   /projects/{project_id}/sources/video               multipart
 GET    /projects/{project_id}/sources
@@ -586,6 +587,59 @@ in `server/errors.py`, which `tests/server/test_errors.py` holds in exact corres
 `CORRUPT_MEDIA` and `UNSUPPORTED_MEDIA` carry `detail.reason`. The file's *name* is deliberately
 absent from both the detail and the message: on the ingest path it is an absolute path inside a
 directory the operator, not the client, pointed at.
+
+### The two narrowing refusals
+
+They share a status, and only one of them has a way forward, so each carries the actionable half of
+itself as structure rather than as prose:
+
+```json
+{ "code": "DESTRUCTIVE_SCHEMA_CHANGE",
+  "detail": { "classes": ["lane"] } }
+
+{ "code": "SCHEMA_CHANGE_WOULD_ORPHAN",
+  "detail": { "blockers": [ { "label_class": "lane", "annotations": 12, "assets": 3 } ] } }
+```
+
+`classes` is the blast radius a confirmation has to name. It carries **no counts**, and that is the
+difference between the two: this refusal is about intent and is raised before anything on disk is
+consulted, so attaching counts would put a walk over every asset in the project in front of the one
+refusal that does not need it. A client that wants them asks the preview below.
+
+`blockers` is why no flag helps, counted two ways — a thousand labels over a thousand images and the
+same thousand over ten are the same `annotations` and a very different problem.
+
+Neither is available by parsing `message`, and neither should be: `message`'s own field description
+says the wording is not part of the contract.
+
+### Asking before you are refused
+
+```
+POST /projects/{project_id}/schema/preview
+```
+
+The body is the **same document** `POST .../schema/versions` takes, so a client previews and
+publishes without reshaping anything (`description` and `provenance` are accepted and ignored —
+neither enters a diff). It writes nothing.
+
+```json
+{ "diff": { "is_destructive": true, "destructive_classes": ["lane"], "changes": [] },
+  "blockers": [ { "label_class": "lane", "annotations": 12, "assets": 3 } ],
+  "is_refused": true }
+```
+
+`diff.is_destructive` decides whether the publish needs `allow_destructive=true`. **`is_refused`
+decides whether any flag would help** — and `blockers` is byte-for-byte the structure
+`SCHEMA_CHANGE_WOULD_ORPHAN` puts in its `detail`, so one renderer serves the warning and the
+refusal.
+
+It is **advisory**. Nothing is locked and nothing is reserved: somebody can label a class between
+the preview and the publish, in which case the publish refuses and that refusal is the
+authoritative one. What the preview removes is the round trip that was doomed before it was sent,
+not the need to handle being refused.
+
+A POST because the proposal is a whole class list, which does not belong in a query string. It is
+still a read.
 
 ---
 
