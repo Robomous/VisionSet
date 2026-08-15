@@ -55,7 +55,7 @@
  * `Create and add another` accumulates. Somebody who opens this because the road
  * survey needs `cone`, `barrier` and `crossing` writes three classes and presses
  * once, and the project's history gains **one** version rather than three — with
- * three re-pins, three refetches, and three chances for the middle one to refuse.
+ * three publishes, three refetches, and three chances for the middle one to refuse.
  *
  * The alternative — publish each class as it is written — turns a ledger into a
  * transcript. Accumulating does not remove the need to group versions in the
@@ -169,7 +169,7 @@ export async function runAddClass(steps: {
    * A list rather than a single class. The chain does not change shape
    * for it: `create_version` takes the whole contract either way, so publishing
    * three new classes is the same one request as publishing one, and the *saving*
-   * is the two re-pins and two refetches that do not happen.
+   * is the two extra publishes and two refetches that do not happen.
    */
   readonly added: readonly LabelClassBody[];
   readonly note: string;
@@ -189,7 +189,7 @@ export interface AddClassDialogProps {
    * other — the exact destructive change this flow exists never to make.
    */
   readonly active: SchemaVersion | null;
-  /** The batch's pin. Shown when it is behind, since that is why a re-pin happens. */
+  /** The batch's pin. Shown when it is behind, which is what the refusal below names. */
   readonly pinnedVersion: number | null;
   /**
    * Whether this batch will take the new version's pin, from `allowed_actions`.
@@ -339,8 +339,14 @@ export function AddClassDialog({
               than after it: the whole reason to accumulate is that a session is
               cheaper than a version each, and somebody who does not know that
               will publish three times out of caution. */}
-          Everything you add here publishes as one schema version and moves this batch onto
-          it, so the classes are usable here straight away. Unsaved work is saved first.
+          {/* Conditional, because the unconditional sentence was contradicted by
+              the notice below it on a completed batch: this promised the batch
+              would move while that one said it would stay. Adding a class is
+              additive, so a batch that can take a pin always gets it — and the
+              one that cannot is the one the notice is about. */}
+          Everything you add here publishes as one schema version
+          {canRepin ? " and moves this batch onto it, so the classes are usable here straight away" : ""}.
+          Unsaved work is saved first.
         </DialogDescription>
 
         <div className="flex flex-col gap-4">
