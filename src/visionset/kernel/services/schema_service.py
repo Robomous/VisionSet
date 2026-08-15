@@ -62,6 +62,7 @@ from visionset.kernel.errors import (
     SchemaNotFound,
     SchemaVersionConflict,
     UnsupportedGeometry,
+    WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -287,15 +288,19 @@ class SchemaService:
                 if stored is None:
                     self._refuse_orphaning(uow, project_id, guarded)
 
+                # Read once for the whole call: every open batch's pin is judged
+                # against this version, and a lagging batch's pin is a version the
+                # caller's own `diff` says nothing about.
+                #
                 # After the guarded insert, and that ordering is #589's rule rather
                 # than a convenience: the insert is the first *write*, so it is what
-                # opens the transaction. Reading the versions before it would put
-                # this read in autocommit and reintroduce the window that fix
-                # closed, one scope over.
+                # opens the transaction. Reading the versions before it would leave
+                # this read in autocommit and reopen the window that fix closed, one
+                # scope over.
                 advanced = (
                     ()
                     if diff.is_destructive
-                    else _advance_pins(uow, project_id, stored.version)
+                    else _advance_pins(uow, project_id, stored, self._by_version(uow, project_id))
                 )
                 return SchemaPublication(published=stored, advanced_batches=advanced)
         except ConstraintViolated as exc:
@@ -485,40 +490,64 @@ def _blockers(uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]) -> tup
     return tuple(annotated[name] for name in sorted(guarded & annotated.keys()))
 
 
-def _advance_pins(uow: UnitOfWork, project_id: UUID, version: int) -> tuple[UUID, ...]:
-    """Move every open batch of this project onto ``version``. Additive only.
+def _advance_pins(
+    uow: UnitOfWork,
+    project_id: UUID,
+    created: AnnotationSchema,
+    by_version: dict[int, AnnotationSchema],
+) -> tuple[UUID, ...]:
+    """Move the open batches this version is additive *for* onto it.
 
-    **The caller owes the additive check**, and the whole safety argument lives
-    there rather than here: ``diff_classes`` answers *does an annotation valid
-    under the old version stay valid under the new one?*, and when it answers yes
-    a wider contract cannot invalidate anything already drawn. So this needs no
-    gate of its own, and — importantly — does not restate one. ``BatchService.repin``
-    has three (``InvalidTransition``, ``DestructiveSchemaChange``,
-    ``SchemaChangeWouldOrphan``); on an additive change every one of them is
-    provably vacuous, which is why moving the pin here is not a second spelling of
-    that method.
+    **The diff is per batch, against that batch's own pin — never against the
+    version this one replaced.** That distinction is the whole correctness of this
+    function, and getting it wrong is not theoretical: a batch may be lagging,
+    having already declined to follow a narrowing, and a version that only widens
+    the *active* contract can still be a narrowing of **its** one. Diffing once
+    against active would then drag it across the very change it was protected
+    from, and the labels it holds under a class its pin still declares would be
+    left describing a contract it no longer does.
 
-    It is also why this is not *calling* that method. ``BatchService`` imports
-    ``SchemaService``, so the reverse import would close a cycle — but the additive
-    path needs only ``REPINNABLE_STATES``, which is a **domain** constant, and the
-    repository. No service layering is inverted and no rule is copied.
+    So the rule is stated per batch: advance it when `diff_classes(its pin, this
+    version)` is additive. For a batch already on the active version that is the
+    same diff the caller ran, which is why the common case costs nothing extra.
 
-    ``REPINNABLE_STATES`` is the filter and the reason each excluded state is
-    excluded is its own: a ``draft`` has no pin yet — approval takes the active
-    version, which is now this one — and a ``completed`` batch's pin is the record
-    of what its work was judged against, which is not ours to rewrite.
+    This is deliberately **not** ``BatchService.repin``, and cannot be:
+    ``BatchService`` imports ``SchemaService``, so the reverse import would close
+    a cycle. What it shares is the question, not the code — and the two gates it
+    does not need are the ones an additive answer makes vacuous. ``repin``'s
+    ``SchemaChangeWouldOrphan`` counts labels under classes a change breaks, and
+    an additive change breaks none; its ``DestructiveSchemaChange`` is the flag
+    this path never offers, because a flag says *publish this*, not *and drag
+    every open batch across it*.
 
-    Walked in Python rather than filtered in the port, which is the shape
-    ``SummaryService`` and ``JobService`` already use: ``Repository.list`` takes a
-    single ``parent_id`` and no query language leaks into it. When the walk costs,
-    the remedy is a method on the port implemented in the adapter — never a
-    SQLAlchemy import in a service.
+    ``REPINNABLE_STATES`` is the state filter, and each state it excludes is
+    excluded for its own reason: a ``draft`` has no pin yet — approval takes the
+    active version, which is now this one — and a ``completed`` batch's pin is the
+    record of what its finished work was judged against, which is not ours to
+    rewrite.
+
+    ``by_version`` is passed in rather than read here so the versions are fetched
+    **once** for the whole call. Walked in Python rather than filtered in the
+    port, which is the shape ``SummaryService`` and ``JobService`` already use:
+    ``Repository.list`` takes a single ``parent_id`` and no query language leaks
+    into it.
     """
     moved: list[UUID] = []
     for batch in uow.batches.list(project_id):
-        if batch.state not in REPINNABLE_STATES:
+        if batch.state not in REPINNABLE_STATES or batch.schema_version is None:
             continue
-        uow.batches.update(batch.model_copy(update={"schema_version": version}))
+        pinned = by_version.get(batch.schema_version)
+        if pinned is None:
+            # Versions are never deleted, so this is damage rather than a state
+            # any operation leaves behind — the same answer `BatchService`'s own
+            # `_pinned_schema` gives, and for the same reason.
+            raise WorkspaceCorrupt(
+                f"batch {batch.id} is pinned to schema version {batch.schema_version}, "
+                f"which is not stored for project {project_id}"
+            )
+        if diff_classes(pinned.classes, created.classes).is_destructive:
+            continue
+        uow.batches.update(batch.model_copy(update={"schema_version": created.version}))
         moved.append(batch.id)
     return tuple(moved)
 
