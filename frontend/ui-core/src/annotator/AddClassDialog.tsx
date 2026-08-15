@@ -383,6 +383,20 @@ export function AddClassDialog({
     >
       <DialogContent
         data-testid="add-class-dialog"
+        // **Wider than the default `max-w-lg`, and the reason is not taste.**
+        // `ClassFields` splits Name | Geometry on `md:`, which is a *viewport*
+        // breakpoint rather than a container one — so on any desktop the grid
+        // splits however narrow the box is, and at 512px each column was ~224px
+        // against a geometry row needing ~269px. The box has to be wide enough
+        // for a split it cannot prevent. `2xl` is the smallest that clears it;
+        // `3xl` is what DESIGN.md gives a whole forms *page*.
+        //
+        // The height pair is a second defect, fixed here because it is the same
+        // string: this dialog had no `max-h` and no scroll, and `DialogContent`
+        // is centred with `-translate-y-1/2`, so content taller than the viewport
+        // overflowed off both edges and took the footer with it. A class with a
+        // few attributes reaches that. Spelled as `ShortcutSheet` spells it.
+        className="max-h-[85vh] max-w-2xl overflow-y-auto"
         // ⌘Enter banks the class and clears the form — the chord for "and
         // another", so a session is typed without the hand leaving the keyboard.
         // On the content rather than on the name field, because the geometry
