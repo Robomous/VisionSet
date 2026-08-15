@@ -34,6 +34,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import NoReturn
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -446,10 +447,14 @@ class BatchService:
                 return batch
 
             diff = diff_classes(pinned.classes, active.classes)
+            guarded: frozenset[str] = frozenset()
             if diff.is_destructive:
                 self._refuse_narrowing(uow, batch, diff, allow_destructive)
+                guarded = diff.destructive_classes
 
-            return uow.batches.update(batch.model_copy(update={"schema_version": active.version}))
+            if not uow.repin_batch_unless_annotated(batch.id, active.version, guarded):
+                self._refuse_orphaning(uow, batch, guarded)
+            return batch.model_copy(update={"schema_version": active.version})
 
     def complete(self, batch_id: UUID) -> Batch:
         """Close the batch, if every one of its jobs is done.
@@ -541,13 +546,14 @@ class BatchService:
     def _refuse_narrowing(
         self, uow: UnitOfWork, batch: Batch, diff: SchemaDiff, allow_destructive: bool
     ) -> None:
-        """Let a narrowing re-pin through only if it was asked for and is safe.
+        """Let a narrowing re-pin through only if it was asked for.
 
-        ``SchemaService._refuse_narrowing`` in the same two steps and the same
-        order — intent first, then facts on disk — because it is the same pair of
-        questions. What differs is the scope of the second: there the facts are
-        every annotation in the project, here only the ones written into this
-        batch, since a re-pin cannot orphan a label that is not judged by this pin.
+        ``SchemaService._refuse_narrowing``'s sibling, and split the same way:
+        intent is asked here, facts on disk are asked by the write itself. What
+        differs between the two is only the scope of the second question — there
+        it is every annotation in the project, here only the ones written into
+        this batch, since a re-pin cannot orphan a label that is not judged by
+        this pin.
         """
         if not allow_destructive:
             raise DestructiveSchemaChange(
@@ -555,15 +561,25 @@ class BatchService:
                 f"it allows ({diff.describe(ChangeKind.DESTRUCTIVE)}); pass "
                 f"allow_destructive=True to proceed"
             )
+
+    def _refuse_orphaning(self, uow: UnitOfWork, batch: Batch, guarded: frozenset[str]) -> NoReturn:
+        """Name the classes the guarded re-pin refused over, and their counts.
+
+        ``SchemaService._refuse_orphaning`` over one batch's labels — see it for
+        why the counting happens after the guard rather than before it, and why
+        an empty count still refuses.
+        """
         annotated = _annotated_classes(uow, batch)
-        affected = sorted(diff.destructive_classes & annotated.keys())
-        if affected:
-            counted = ", ".join(f"{name!r} ({annotated[name]})" for name in affected)
-            raise SchemaChangeWouldOrphan(
-                f"cannot re-pin batch {batch.name!r}: it already holds annotations under "
-                f"{counted}. Migrating them onto a new version is not supported yet, and "
-                f"the kernel will not orphan them"
-            )
+        affected = sorted(guarded & annotated.keys()) or sorted(guarded)
+        counted = ", ".join(
+            f"{name!r} ({annotated[name]})" if name in annotated else repr(name)
+            for name in affected
+        )
+        raise SchemaChangeWouldOrphan(
+            f"cannot re-pin batch {batch.name!r}: it already holds annotations under "
+            f"{counted}. Migrating them onto a new version is not supported yet, and "
+            f"the kernel will not orphan them"
+        )
 
     # --- the transition table, consulted rather than restated ---------------
     # ``require_move`` lives in ``domain/transitions.py``; every machine in this

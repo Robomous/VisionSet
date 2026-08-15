@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import NoReturn
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -240,10 +241,12 @@ class SchemaService:
                     return active
 
                 diff = diff_classes(() if active is None else active.classes, proposed)
+                guarded: frozenset[str] = frozenset()
                 if diff.is_destructive:
                     self._refuse_narrowing(uow, project_id, diff, allow_destructive)
+                    guarded = diff.destructive_classes
 
-                return uow.schemas.add(
+                stored = uow.add_schema_version_unless_annotated(
                     AnnotationSchema(
                         project_id=project_id,
                         version=1 if active is None else active.version + 1,
@@ -251,8 +254,12 @@ class SchemaService:
                         description=description,
                         created_at=datetime.now(UTC),
                         provenance=provenance,
-                    )
+                    ),
+                    guarded,
                 )
+                if stored is None:
+                    self._refuse_orphaning(uow, project_id, guarded)
+                return stored
         except ConstraintViolated as exc:
             raise self._as_version_conflict(exc, project_id) from exc
 
@@ -261,11 +268,14 @@ class SchemaService:
     def _refuse_narrowing(
         self, uow: UnitOfWork, project_id: UUID, diff: SchemaDiff, allow_destructive: bool
     ) -> None:
-        """Let a narrowing change through only if it was asked for and is safe.
+        """Let a narrowing change through only if it was asked for.
 
-        Two refusals, in that order. Being told "you must pass a flag" before
-        being told "the flag would not have helped" is the more useful sequence:
-        the first is about intent, the second about facts on disk.
+        The first of the two refusals, and it is about *intent*: being told "you
+        must pass a flag" before being told "the flag would not have helped" is
+        the more useful sequence. The second — whether labels already depend on
+        what this drops — is :meth:`_refuse_orphaning`, and it is asked by the
+        insert itself rather than here, because a question answered before the
+        write can be answered again by somebody else before the write lands.
         """
         if not allow_destructive:
             raise DestructiveSchemaChange(
@@ -273,15 +283,36 @@ class SchemaService:
                 f"({diff.describe(ChangeKind.DESTRUCTIVE)}); pass allow_destructive=True "
                 f"to proceed"
             )
+
+    def _refuse_orphaning(
+        self, uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]
+    ) -> NoReturn:
+        """Name the classes the guarded insert refused over, and their counts.
+
+        Reached only when ``add_schema_version_unless_annotated`` wrote nothing,
+        so the verdict is already in and this is not a second opinion — it is the
+        report. Counting here rather than before the insert is what keeps the
+        walk off the path where the publish succeeds, and it is the only place
+        the count is still true of a decision already made: this read runs after
+        the guard, inside the same transaction.
+
+        A count that comes back empty is not a contradiction. The labels can have
+        been deleted between the guard and this read, and the refusal still
+        stands, because the guard is what decided — so the classes are named
+        without counts rather than a refusal being downgraded to a success
+        nobody asked for.
+        """
         annotated = _annotated_classes(uow, project_id)
-        affected = sorted(diff.destructive_classes & annotated.keys())
-        if affected:
-            counted = ", ".join(f"{name!r} ({annotated[name]})" for name in affected)
-            raise SchemaChangeWouldOrphan(
-                f"cannot narrow project {project_id}: annotations already exist under "
-                f"{counted}. Migrating them onto a new version is not supported yet, and "
-                f"the kernel will not orphan them"
-            )
+        affected = sorted(guarded & annotated.keys()) or sorted(guarded)
+        counted = ", ".join(
+            f"{name!r} ({annotated[name]})" if name in annotated else repr(name)
+            for name in affected
+        )
+        raise SchemaChangeWouldOrphan(
+            f"cannot narrow project {project_id}: annotations already exist under "
+            f"{counted}. Migrating them onto a new version is not supported yet, and "
+            f"the kernel will not orphan them"
+        )
 
     # --- lookups shared by the operations above ----------------------------
 
