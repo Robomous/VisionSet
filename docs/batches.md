@@ -74,9 +74,38 @@ validated against the pinned version, not against whatever is newest.
 Approving a project that has no schema raises `SchemaNotFound`. Creating version 1 here would
 be a second door to a schema, and [schemas.md](schemas.md) has only one.
 
-## Moving the pin: `repin`
+## The pin follows a widening version on its own
 
-The pin moves only when somebody asks:
+**A version that only widens the contract moves every open batch onto it**, in the
+same transaction that publishes it (#381). `create_version` answers with the
+version *and* the batches it moved:
+
+```python
+published = schemas.create_version(project.id, [*current, LANE])
+published.published.version  # 2
+published.advanced_batches  # every batch that was `approved` or `in_annotation`
+```
+
+The safety argument is the whole rule, and it is a construction rather than a
+policy: `diff_classes` answers *does an annotation valid under the old version
+stay valid under the new one?*, and when it answers yes a wider contract cannot
+invalidate anything already drawn. So there is nothing on this path for a manual
+step to protect — and what the manual step cost was that a class published while
+somebody was annotating stayed invisible to them until they found `repin`.
+
+A **narrowing** version moves nothing, with `allow_destructive` or without it:
+that flag says *publish this*, never *and drag every open batch across it*.
+Crossing a narrowing is `repin`, one batch at a time, judged against that batch's
+own labels.
+
+`REPINNABLE_STATES` is what both routes read. A draft has no pin — approval takes
+the active version, which is the new one anyway — and a completed batch's pin is
+the record of what its finished work was judged against.
+
+## Moving the pin by hand: `repin`
+
+The pin also moves when somebody asks, which is how a narrowing version is
+crossed:
 
 ```python
 batches.repin(batch.id)  # → pinned to 3, the current active version
@@ -115,11 +144,12 @@ Re-pinning onto the version already pinned is a no-op: the same batch comes back
 written and nothing is announced. Annotations already written keep the `schema_version` they
 were stamped with - only new writes are judged against the new pin.
 
-**The caller this exists for is the annotation page.** #233's *add a class without leaving the
-job* is save → `create_version` → `repin`, in that order, and on that path the change is
-additive by construction, so the gate never fires. It fires only when somebody else narrowed
-the schema past this batch's pin in the meantime - which is the gate doing its job rather than
-getting in the way. See [ui.md](ui.md).
+**This used to be the annotation page's third call, and is not any more.** #233's *add a class
+without leaving the job* was save → `create_version` → `repin`, and on that path the change is
+additive by construction — so the version now carries the batch along and there is no third
+call to make. What is left for this method is the case the gate was always really for: somebody
+else narrowed the schema past this batch's pin, and crossing that is a decision about *this*
+batch's labels. See [ui.md](ui.md).
 
 ## The partition is exact
 

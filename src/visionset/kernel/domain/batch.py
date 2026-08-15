@@ -45,7 +45,12 @@ done. Making another batch is cheap; un-freezing one is not.
 REPINNABLE_STATES: Final[frozenset[BatchState]] = frozenset(
     {BatchState.APPROVED, BatchState.IN_ANNOTATION}
 )
-"""The states in which ``BatchService.repin`` may move the schema pin.
+"""The states whose schema pin can move — by ``repin``, or on its own.
+
+Both routes read this set: ``BatchService.repin`` when somebody asks, and
+``SchemaService.create_version`` when an additive version takes every open batch
+with it. One set, so the two cannot come to disagree about which batches are
+still open enough to follow.
 
 Named for *annotation work is live or still to come*, which is the only window
 where moving the pin changes anything a person can act on. A ``draft`` has no pin
@@ -134,11 +139,21 @@ class Batch(BaseModel):
 
     ``schema_version`` is the pin: the version of the project's annotation schema
     that every annotation in this batch is validated against. It is ``None``
-    while the batch is a draft and set at approval; from there it moves **only**
-    through ``BatchService.repin``, which somebody has to ask for. It never
-    follows the active version on its own — a schema that evolved mid-batch would
-    change the rules under work in flight, which is what versioning exists to
-    prevent. See :data:`REPINNABLE_STATES` for when asking is legal.
+    while the batch is a draft and set at approval.
+
+    From there it moves two ways. **A version that only widens the contract takes
+    it along**, in the same transaction that publishes the version — see
+    ``SchemaService.create_version``. A version that *narrows* one never does, and
+    moving across one is ``BatchService.repin``, which somebody has to ask for and
+    which judges the change against this batch's own labels.
+
+    The old rule was that the pin never followed the active version at all, on the
+    grounds that a schema evolving mid-batch would change the rules under work in
+    flight. That is an argument about narrowing: a wider contract cannot
+    invalidate a label already drawn, so there was nothing on the additive path
+    for it to protect — and what it cost was that a class published while somebody
+    was annotating stayed invisible to them. See :data:`REPINNABLE_STATES` for
+    which batches either route can reach.
     """
 
     id: UUID = Field(default_factory=uuid4)
