@@ -264,15 +264,27 @@ Within one version, class names must be unique ignoring case, for the same reaso
 beside `car` is two classes that read as one to everybody except the code.
 
 The classifier lives in `kernel/domain/schema_diff.py` and is pure - two sequences in, a
-verdict out. `preview` runs it against the active version without writing, so a surface can
+verdict out. `preview` runs it against the active version without writing, and adds the half the
+classifier cannot know - which of the classes being dropped already carry labels - so a surface can
 warn before it asks:
 
 ```python
-diff = schemas.preview(project.id, proposed)
-diff.is_destructive  # True
-diff.destructive_classes  # frozenset({'lane'})
-diff.describe(ChangeKind.DESTRUCTIVE)  # "class 'lane' removed"
+preview = schemas.preview(project.id, proposed)
+preview.diff.is_destructive  # True   - needs allow_destructive
+preview.diff.destructive_classes  # frozenset({'lane'})
+preview.is_refused  # False  - and no flag would change that if True
+preview.blockers  # () - or (ClassCount(label_class='lane', ...),)
 ```
+
+**`is_destructive` and `is_refused` are different questions**, and conflating them is the loop
+`SchemaChangeWouldOrphan` sits outside `DestructiveSchemaChange`'s hierarchy to prevent: the first
+is answered by passing a flag, the second by nothing at all. `blockers` is the same structure
+`SCHEMA_CHANGE_WOULD_ORPHAN` puts in its `detail`, so one renderer serves the warning and the
+refusal.
+
+The preview is advisory: nothing is locked, so a label written between the preview and the publish
+makes the publish refuse, and that refusal is the authoritative one. What it removes is the round
+trip that was doomed before it was sent.
 
 `compare(project_id, from_version, to_version)` does the same between two stored versions,
 in either direction.
@@ -405,6 +417,8 @@ refusals are **both 409** with only one override between them, so it branches on
 `code` and shows "Save anyway" for `DESTRUCTIVE_SCHEMA_CHANGE` and nothing but
 "Close" for `SCHEMA_CHANGE_WOULD_ORPHAN`.
 
-It has no preview of the change being drafted, because `SchemaService.preview` is unrouted;
-`compare` is routed, and the version navigator uses it to show what two *published* versions did
-to each other. See [ui.md](ui.md#the-schema-editor-and-the-two-409s).
+`POST /projects/{id}/schema/preview` now routes `SchemaService.preview`, so a client can ask
+both questions about a *draft* before it publishes; `compare` remains the question about two
+*published* versions, which is what the version navigator asks. See
+[ui.md](ui.md#the-schema-editor-and-the-two-409s) and
+[api.md](api.md#asking-before-you-are-refused).
