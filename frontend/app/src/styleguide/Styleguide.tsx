@@ -236,7 +236,7 @@ export function Styleguide(): JSX.Element {
                   <SelectItem value="classification_tag">classification_tag</SelectItem>
                 </SelectContent>
               </Select>
-              <FieldHint>Singular per class — picking a class picks a tool.</FieldHint>
+              <FieldHint>A hint, under a field that needs one.</FieldHint>
             </div>
             {/*
               The two-line option. Here because it is a primitive variant
