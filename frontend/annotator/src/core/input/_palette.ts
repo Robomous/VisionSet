@@ -108,7 +108,21 @@ export const POSE: LabelClass = {
   attributes: [],
 };
 
-export const PALETTE: readonly LabelClass[] = [SIGN, LANE, WEATHER, RAIL, STOP, POSE];
+/**
+ * Digit 7 — a tag *and* a box, which #584 made expressible.
+ *
+ * The two questions stopped being each other's negation, so this is the class
+ * that tells `isTaggableClass` apart from "not drawable": a digit pressed on it
+ * must arm it, not tag the asset. Appended, for `POSE`'s reason.
+ */
+export const KIOSK: LabelClass = {
+  name: "kiosk",
+  geometries: ["bbox", "classification_tag"],
+  color: null,
+  attributes: [],
+};
+
+export const PALETTE: readonly LabelClass[] = [SIGN, LANE, WEATHER, RAIL, STOP, POSE, KIOSK];
 
 export const PALETTE_SCHEMA: AnnotationSchema = {
   project_id: "project-46",
