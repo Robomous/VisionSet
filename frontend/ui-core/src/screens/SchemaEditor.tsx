@@ -191,7 +191,13 @@ function canonical(classes: readonly LabelClassBody[]): string {
   return JSON.stringify(
     classes.map((declared) => [
       declared.name,
-      declared.geometry,
+      // Sorted, because a set has no order and the two sides spell it
+      // differently: the wire's copy comes back canonicalised by the domain,
+      // while a draft's is whatever order the checkboxes were ticked in.
+      // Comparing them as given would call an unchanged contract dirty the
+      // moment somebody ticked polygon before bbox — this projection's whole
+      // reason, one field over.
+      [...declared.geometries].sort(),
       declared.color ?? null,
       (declared.attributes ?? []).map((attribute) => [
         attribute.name,

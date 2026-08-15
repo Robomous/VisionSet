@@ -440,6 +440,42 @@ describe("saving twice with nothing edited in between", () => {
 
     expect(posts).toBe(1);
   });
+
+  /**
+   * The same defect one field over, reachable only since a class holds a *set*.
+   *
+   * A set has no order, and the two sides spell it differently: the domain sorts
+   * and dedupes, so the active version always reads canonical, while the draft's
+   * copy is whatever order the boxes were ticked in. Untick the shape a class
+   * already had and tick it back and the draft holds `["polygon", "bbox"]` for
+   * the contract the server holds as `["bbox", "polygon"]`.
+   *
+   * Asserted on `dirty` rather than through a save, deliberately: the two clicks
+   * change nothing, so the editor must not offer to publish. Going through a save
+   * cannot see this — the draft is re-based onto the wire's own copy afterwards,
+   * so both sides come out canonical whatever the comparison does.
+   */
+  it("does not call a reordered geometry set an unsaved change", async () => {
+    const BOTH = { ...PEDESTRIAN, geometries: ["bbox", "polygon"] };
+    handlers.push((request) => {
+      const path = new URL(request.url).pathname;
+      if (request.method === "GET" && /\/schema$/.test(path)) {
+        schemaReads += 1;
+        return { status: 200, body: { project_id: PROJECT, version: 1, classes: [BOTH] } };
+      }
+      return undefined;
+    });
+
+    render(mount(<ProjectScreen projectId={PROJECT} tab="schema" />));
+    await screen.findByTestId("schema-editor");
+    expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
+
+    // Reach an order the active version does not have, changing nothing.
+    await userEvent.click(screen.getByTestId("class-geometry-0-bbox"));
+    await userEvent.click(screen.getByTestId("class-geometry-0-bbox"));
+
+    expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
+  });
 });
 
 const PEDESTRIAN = { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] };

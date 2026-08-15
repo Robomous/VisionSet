@@ -209,7 +209,7 @@ def test_a_class_created_mid_batch_reaches_it_with_no_second_call(
         call(
             "create_schema_version",
             project=project,
-            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometry": "bbox"}],
+            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometries": ["bbox"]}],
         )
     )
 

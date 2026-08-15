@@ -1023,7 +1023,7 @@ def test_a_geometry_set_is_stored_deduplicated_and_in_one_order(tmp_path: Path) 
                 ),
             )
         ],
-    )
+    ).published
 
     assert written.classes[0].geometries == (GeometryType.BBOX, GeometryType.POLYGON)
     workspace.close()
