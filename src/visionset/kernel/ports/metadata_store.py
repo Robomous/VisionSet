@@ -341,6 +341,68 @@ class UnitOfWork(Protocol):
         """
         ...
 
+    def add_schema_version_unless_annotated(
+        self, schema: AnnotationSchema, guarded_classes: frozenset[str]
+    ) -> AnnotationSchema | None:
+        """Publish the version, and only if none of ``guarded_classes`` is in use.
+
+        ``Repository.add`` with the orphan check moved **inside the statement that
+        writes**, which is :meth:`set_asset_progress`' bargain and is here for the
+        same reason. ``SchemaService`` reads how many annotations use each class
+        it is about to drop and then inserts; those two sit in one
+        ``unit_of_work``, but a unit of work is not a snapshot — the reads run
+        before this transaction has written anything, so a label committed
+        between them is invisible to the count and orphaned by the insert. The
+        window is one walk over every asset in the project, so it is wide, and it
+        grows with the project.
+
+        ``guarded_classes`` is what the caller decided it may remove, so the
+        contended datum is *whether any annotation names one of them* — a
+        predicate, not a row, which is why there is no version column to compare:
+        a stamp on the schema would say nothing about the annotations, and a
+        stamp on every annotation would be a second name for the rows themselves.
+
+        Empty ``guarded_classes`` means an unguarded insert. A change that removes
+        nothing has nothing to orphan, and a predicate over an empty set would
+        refuse to say so.
+
+        Answers the stored version when the write landed and ``None`` when the
+        guard refused it, on ``claim_job``'s terms: the caller knows what it
+        proposed, so the refusal carries no payload and the caller re-reads the
+        counts to say which class it lost to. Nothing is written either way — a
+        refused publish leaves no version behind.
+
+        **What this relies on**, stated because it is not "SQLite serializes
+        writers": a single ``INSERT`` whose ``WHERE NOT EXISTS`` is evaluated as
+        part of the same statement. Every SQL engine evaluates a statement
+        atomically against committed state, so the predicate cannot be true when
+        it is tested and false when the row lands. On a backend with snapshot
+        isolation a concurrent *uncommitted* annotation is still invisible to the
+        predicate and would commit afterwards; closing that needs a shared row
+        both transactions touch, which would put a write on every annotation, and
+        is deliberately not done here.
+        """
+        ...
+
+    def repin_batch_unless_annotated(
+        self, batch_id: UUID, schema_version: int, guarded_classes: frozenset[str]
+    ) -> bool:
+        """Move the batch's pin, and only if none of ``guarded_classes`` is in use *here*.
+
+        :meth:`add_schema_version_unless_annotated` one scope down, and the scope
+        is the whole difference: a re-pin can only orphan labels written into
+        this batch, so the predicate walks its membership rather than the
+        project. ``BatchService.repin`` has the same read-then-write window for
+        the same reason.
+
+        ``True`` when the pin moved, ``False`` when the guard refused it. Empty
+        ``guarded_classes`` is an unguarded update, as above.
+
+        Raises ``EntityNotFound`` if there is no such batch — which tells that
+        apart from a guard that fired, since both would otherwise write nothing.
+        """
+        ...
+
     def annotation_totals(self, project_id: UUID) -> AnnotationTotals:
         """How much of this project is labeled, in two numbers.
 
