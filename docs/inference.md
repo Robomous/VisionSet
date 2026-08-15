@@ -115,6 +115,10 @@ publishing two serialisations of the same tensors really does cost both, and a f
 of them would understate what lands on your disk. A revision the listing cannot fully size is
 refused rather than estimated.
 
+`facebook/sam3` is the live example of that and the largest entry in the curated list: it publishes
+its weights as both a checkpoint and safetensors, so about 6.9 GB arrives to install a model of
+about 3.4 GB. The number shown is the one that describes your disk.
+
 It needs the `local-inference` extra, because the size is read with the same client that would do
 the fetching. Without it you get `LOCAL_INFERENCE_UNAVAILABLE` and the install command.
 
@@ -150,6 +154,26 @@ present - so a download that dies partway leaves it exactly as it was, at `not_s
 error on the job. There is no half-ready state to recover from because there is no moment at which
 one could be written. Ask again: an interrupted transfer resumes from what it had, and each file
 that arrives is checked against the size the hub published for it before it is put in place.
+
+**Some models have to be asked for first.** A publisher can put its weights behind an access gate,
+where the files are served only to accounts that have been granted them. `facebook/sam3` is one:
+its weights are under Meta's SAM License and access is granted by request. Two steps, once per
+machine rather than once per connection - ask for access on the model's own page, then put a token
+from that account in the environment the server or the CLI runs in:
+
+```bash
+export HF_TOKEN=hf_…
+```
+
+The token is read by the hub client itself, so there is nothing to configure in a workspace and
+nothing stored in one. A download attempted without it fails with a sentence naming both halves of
+the remedy rather than an HTTP status. Reading a model's **size** needs no token and no access:
+that is what lets the connection form tell you what a download costs before you decide whether to
+go and ask for it.
+
+The gate is on fetching, never on running. Once the files are in a workspace's `models/`, the model
+loads and answers clicks with no token present at all - which is what makes a workspace you copy to
+another machine still work there.
 
 **Asking again checks rather than repeats.** `download_weights` stays available once a connection
 is `ready`, where the same call re-checks that the snapshot is still complete and fetches only what
@@ -262,7 +286,7 @@ about to send? So a connection also declares what it can be asked for.
 
 | Capability | Means | Families |
 | --- | --- | --- |
-| `point_suggest` | Give me the thing under these points | the SAM 2 family |
+| `point_suggest` | Give me the thing under these points | the SAM 2 and SAM 3 families |
 | `text_detect` | Find everything these words name | the grounding-dino family |
 
 **Read from the model, never from its name.** The value comes from the `model_type` the
@@ -492,15 +516,18 @@ steps, because the two kinds share almost no fields: first where the model runs,
 form.
 
 - **Local** opens on a curated model, a `cpu` device and `fp32` precision. The model field is a
-  grouped list - the SAM 2.1 ladder under *Interactive segmentation*, Grounding DINO under
-  *Text-prompt detection* - showing each entry's download size and a line on what it is for, and
+  grouped list - the SAM 2.1 ladder and SAM 3 under *Interactive segmentation*, Grounding DINO
+  under *Text-prompt detection* - showing each entry's download size and a line on what it is for, and
   each one is pinned to a revision this build was checked against. **Custom model...** is the last
   entry and reveals the free model id and revision fields: the list guides, it does not restrict,
   and any model this build has an adapter for remains typeable. Device and precision are lists too,
   and the precision list follows the device, because half precision applies on CUDA only - so
   picking `mps` leaves `fp32` as the only precision offered. Underneath
   is what fetching that revision would cost - the size described above, read while you are still
-  deciding. If this machine has no `local-inference` extra the size cannot be read, and the form
+  deciding. An entry whose weights have to be asked for says so on the line above that one, with a
+  link to the page where access is requested, so the requirement is read while the model is being
+  chosen rather than met as a refused download later.
+  If this machine has no `local-inference` extra the size cannot be read, and the form
   says so, in the server's own words, with the install command. **It stays usable**: creating a
   connection downloads nothing, so not knowing the size is information rather than a barrier.
 - **HTTP** asks for the endpoint URL. There is no credential field; where a secret would live is
