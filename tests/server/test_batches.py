@@ -464,7 +464,9 @@ def test_a_class_added_after_approval_reaches_the_batch_with_no_second_call(
     """
     approved(client, ingested)
 
-    response = new_version(client, project, SIGN, LANE, {"name": "crossing", "geometries": ["bbox"]})
+    response = new_version(
+        client, project, SIGN, LANE, {"name": "crossing", "geometries": ["bbox"]}
+    )
 
     assert response.status_code == 201
     body = response.json()

@@ -480,6 +480,39 @@ def test_a_narrowing_change_is_refused_once_labels_exist_under_the_class(
     workspace.close()
 
 
+def test_dropping_one_geometry_of_several_is_refused_by_the_class_not_the_shape(
+    tmp_path: Path,
+) -> None:
+    """Today's behaviour, pinned deliberately: the gate over-refuses. See #592.
+
+    ``car`` accepts both shapes and the project holds one **bbox** ``car``. Taking
+    ``polygon`` away orphans nothing — that annotation is still valid under the
+    narrower class — and it is refused anyway, by the refusal no flag overrides.
+
+    The reason is that ``destructive_classes`` is a set of *names*, and it is that
+    set which reaches ``add_schema_version_unless_annotated``; the predicate asks
+    whether the project holds any ``car``, never whether it holds a ``car`` drawn
+    as the shape being removed. Before a class could hold a set the two questions
+    had one answer, so the name was exact. It no longer is.
+
+    Pinned rather than fixed because making it exact changes the port method and
+    the guarded-insert contract #589 landed for the TOCTOU race — argued in #592.
+    This test is the tripwire for that work: it should be *inverted* when the gate
+    learns about geometry, never quietly deleted.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    both = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+    schemas.create_version(project.id, [both])
+    _annotate(workspace, project.id, "car")  # a bbox, which the narrower class still allows
+
+    box_only = LabelClass(name="car", geometries=(GeometryType.BBOX,))
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
+        schemas.create_version(project.id, [box_only], allow_destructive=True)
+    assert [s.version for s in schemas.list_versions(project.id)] == [1]
+    workspace.close()
+
+
 def test_labels_under_an_untouched_class_do_not_block_the_change(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")

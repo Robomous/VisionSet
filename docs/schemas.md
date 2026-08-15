@@ -486,6 +486,20 @@ two was meant.
 Class names are still unique within a version, ignoring case. What changed is what the
 interface does about it.
 
+## Taking a geometry away refuses more than it has to
+
+Widening is the direction this feature is for, and narrowing has a stated limit. Removing one
+of a class's geometries is destructive, so it needs `allow_destructive` — and if *any*
+annotation exists under that class, it is refused outright by `SchemaChangeWouldOrphan`, which
+no flag overrides.
+
+That refusal is coarser than the question. A `car` accepting `bbox · polygon` whose labels are
+all boxes loses nothing when `polygon` goes, and the publish is refused anyway: the orphan gate
+matches on the class **name**, never on the pair of class and shape. While a class held one
+geometry the two were the same question. They are not any more. Filed as
+[#592](https://github.com/Robomous/VisionSet/issues/592), pinned by a named kernel test, and
+conservative in the safe direction — it refuses rather than orphaning.
+
 ## Export is unchanged
 
 A format declares which geometries it can carry and which it carries reduced, and every
