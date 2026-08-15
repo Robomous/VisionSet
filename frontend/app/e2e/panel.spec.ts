@@ -142,7 +142,7 @@ test("reassigning a class refuses the wrong geometry and says why, in one histor
   // refuses for a bbox. They are listed anyway, disabled and carrying the reason —
   // a short list with no explanation reads as a schema missing its classes.
   await expect(page.getByTestId("reclass-0-lane")).toHaveAttribute("aria-disabled", "true");
-  await expect(page.getByTestId("reclass-0-lane")).toContainText("needs a polygon");
+  await expect(page.getByTestId("reclass-0-lane")).toContainText("needs polygon");
   await expect(page.getByTestId("reclass-0-centerline")).toHaveAttribute("aria-disabled", "true");
 
   await page.getByTestId("reclass-0-pedestrian").click();

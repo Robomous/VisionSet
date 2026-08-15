@@ -36,8 +36,9 @@ visionset project create road-signs
 ```
 
 A project owns one dataset - its *trunk*, the curated set that releases are cut from. Before
-anything can be labelled it needs a **schema**: the list of classes, and what geometry each one
-takes.
+anything can be labelled it needs a **schema**: the list of classes, and which geometries each
+one accepts. A class may accept more than one — the same sign is worth boxing at a distance and
+worth outlining close up, and it is one class either way.
 
 ```json
 {
@@ -56,7 +57,7 @@ visionset schema apply schema.json --project road-signs
 Schema versions are numbered and **immutable**: applying a new list creates version 2, and version
 1 stays readable forever. That matters more than it sounds - every annotation records which
 version it was judged against, and a release freezes the version it was cut with. Narrowing a
-schema (removing a class, tightening a geometry) needs `--allow-destructive`, and if annotations
+schema (removing a class, taking a geometry away from one) needs `--allow-destructive`, and if annotations
 already depend on what you are removing it is refused outright with no override. See
 [schemas.md](schemas.md).
 
@@ -121,7 +122,7 @@ it and no "show token" anywhere. Paste it into the form; it is verified against 
 anything is stored, so a typo is refused immediately rather than becoming a broken session.
 
 From there: **Projects → road-signs → the batch → a job**. The annotation page is the left rail,
-the image, a floating tool strip with one tool per geometry your schema allows, and the
+the image, a floating tool strip carrying the shapes the selected class accepts, and the
 Objects/Labels panel on the right.
 
 | | |

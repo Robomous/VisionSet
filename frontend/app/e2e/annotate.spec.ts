@@ -2391,8 +2391,8 @@ test("the palette reports the tool whatever moved the class", async ({ page }) =
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  // The tool is derived and never stored, so the digit row and the top bar's class
-  // field must light the same button the palette's own press does. A palette
+  // The tool is resolved and never stored, so the digit row and the panel's class
+  // list must light the same button the palette's own press does. A palette
   // holding its own idea of the tool is the pair v1 spent two mechanisms keeping
   // in step.
   await page.getByTestId("annotator-root").focus();
@@ -2402,7 +2402,11 @@ test("the palette reports the tool whatever moved the class", async ({ page }) =
 
   await page.getByTestId("class-row-vehicle").click();
   await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
-  await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "false");
+  // **Gone, not inactive** (#584). With a boxes-only class held, a polygon is not
+  // something that could be drawn here, and a button offering one would answer
+  // "what can I draw?" with a lie. The route to a polygon is the class list,
+  // which is where choosing a different class belongs.
+  await expect(page.getByTestId("tool-polygon")).toHaveCount(0);
 });
 
 test("pressing a tool leaves the keyboard alive", async ({ page }) => {
@@ -2813,7 +2817,7 @@ test("right-clicking a shape opens its class picker, and the class lands through
   // is offered, and the polygon class is present and refused rather than filtered
   // out — the panel's rule, because it is the panel's component.
   await expect(page.getByTestId("canvas-reclass-lane")).toHaveAttribute("aria-disabled", "true");
-  await expect(page.getByTestId("canvas-reclass-lane")).toContainText("needs a polygon");
+  await expect(page.getByTestId("canvas-reclass-lane")).toContainText("needs polygon");
 
   await page.getByTestId("canvas-reclass-pedestrian").click();
 

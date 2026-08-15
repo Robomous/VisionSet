@@ -39,7 +39,7 @@ before anything is stored, and the whole call rolls back on the first refusal.
 | Refusal | When |
 | --- | --- |
 | `LabelClassNotInSchema` | The class is not in the pinned version. Matched by **exact** name. |
-| `DisallowedGeometry` | The geometry is not the one that class declares. |
+| `DisallowedGeometry` | The geometry is not one that class accepts. |
 | `MissingRequiredAttribute` | A `required` attribute has no value. A `default` is *not* filled in. |
 | `UnknownAttribute` | The annotation carries an attribute the class does not declare. |
 | `InvalidAttributeValue` | Wrong type for the kind, or outside a `select`'s options. |
@@ -50,10 +50,14 @@ them. Catching the base is safe here in a way catching `DestructiveSchemaChange`
 flag overrides any of these, so there is nothing to retry into a loop. The remedy is to fix
 the annotation, or to write a schema version that describes it.
 
-The geometry rule is **per class**, not per version: a `LabelClass` declares one `geometry`, so
-this is an equality test. `SchemaService.allowed_geometries` is the union across a version's
-classes - the right answer to "what may this project draw?" and the wrong tool here, where it
-would let a polygon through under a bbox class.
+The geometry rule is **per class**, not per version: a `LabelClass` declares a set of
+`geometries` and this is membership in *that* set. `SchemaService.allowed_geometries` is the
+union across a version's classes - the right answer to "what may this project draw?" and the
+wrong tool here, where it would let a polygon through under a boxes-only class.
+
+A class accepting more than one shape is ordinary, not a corner case: the same sign is worth
+boxing at a distance and worth outlining close up, and it is one class either way. Which shape
+a given label carries is the annotation's own business. See [schemas.md](schemas.md).
 
 ## The version is the batch's, not the project's
 

@@ -61,8 +61,10 @@ create_schema_version project="road-signs" classes=[
 ->  {"version": 1, ...}
 ```
 
-A `LabelClass` is bound to exactly one geometry, so "a box round a sign" and "a tag on a picture
-with nothing in it" are two classes, not one class with two shapes. The whole list is sent every
+A `LabelClass` declares a **set** of geometries, so a class labelled as a box on some frames and
+as an outline on others is one class — pass every shape it accepts. "A box round a sign" and "a
+tag on a picture with nothing in it" are still two classes here, because they mean two different
+things rather than two shapes of one thing. The whole list is sent every
 time: a version is the complete contract, never a patch against the last one, which is what lets
 [schemas.md](schemas.md) call removal *narrowing* and gate it.
 

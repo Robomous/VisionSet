@@ -916,7 +916,7 @@ The page the reference design shows (#56), with measurements verified in v1's so
   class selection lives. It was the side panel's Labels tab, then a `Combobox` in the
   centre of the top bar, and it is a **list** now — because what is being chosen between
   is the ontology, and a picker keeps all of it one click away, so the answer to *what can
-  I draw here* was never on screen. Rows carry swatch · name · geometry · hotkey badge, in
+  I draw here* was never on screen. Rows carry swatch · name · geometries · hotkey badge, in
   the **schema's authored order and only that**: a persistent list that reordered itself
   by recency would move rows under the cursor, and the digits are schema positions, so a
   recency-ordered list would print `3` against the row sitting first. `c` focuses its
@@ -952,7 +952,13 @@ The page the reference design shows (#56), with measurements verified in v1's so
   how many it will publish (`Add 3 classes`). Opened from the class list's create row it
   starts on the name that was typed; opened from the tool strip's `+` or the region's own
   `+` it starts empty,
-  because that press means "I want a class", not a particular one. When it lands, the
+  because that press means "I want a class", not a particular one. **A name the published
+  version already declares is an offer, not an error** (#584): the dialog says what that
+  class accepts today and what publishing would add, and the primary reads `Add polygon to
+  "sign"`. It carries the existing class's colour and attributes, so a form opened to make a
+  new class cannot quietly overwrite what the old one declared. A name typed twice in one
+  sitting stays a refusal, because both are being written now and merging them would be
+  guessing which was meant. When it lands, the
   **last** class written becomes the drawing class and a toast says so — a session
   publishes one version and arms one class, neither of which anybody watched happen.
   Cancelling with classes banked **asks**, and it asks on Escape and the overlay too:
@@ -974,7 +980,14 @@ The page the reference design shows (#56), with measurements verified in v1's so
   surface, `border`, 12px radius, 8px padding; 36px icon buttons; **active tool = primary
   variant** (the near-black), inactive = ghost; a `h-px w-6` divider; help at the bottom.
   Tooltips open right with the shortcut ("Select (V)", "Box (B)", "Polygon (P)").
-  Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow.
+  Icons: MousePointer2 / Square / Spline; only tools the schema's geometries allow — and,
+  **with a class selected, only that class's own** (#584). A class accepts a set of
+  geometries, so what can be drawn depends on which class is held: offering a polygon
+  button under a boxes-only class would answer *what can I draw here* with a lie. With no
+  class selected it is the schema's union, which is still the right answer to *what does
+  this project label*. Switching to a class that forbids the active tool never strands it —
+  `toolFor` resolves to the class's first allowed shape — and the route to a different
+  class's geometry is the class list, which is where choosing a class belongs.
   **Last of them, below the `+`, the hand** (#576, `Hand`, `H`) — the one button here that
   the schema does not gate, because it answers a question about the *device* rather than
   about the project: a pan had exactly one spelling, a middle- or secondary-button drag,
