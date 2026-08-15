@@ -160,6 +160,7 @@ export {
   hasPending,
   isAcceptable,
   isParked,
+  suggestGeometriesFor,
   isSuggestibleClass,
   promptOf,
   refused,

@@ -316,12 +316,18 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     free, which is what makes refining by adding points practical. Sending the
     accumulated points — rather than a diff — is what keeps this stateless.
 
-    **`allowed_geometries` is the caller's schema, not a preference.** The answer
-    is produced in one of the kinds named or not at all: a class that admits
-    polygons gets the outline of the piece under the click, a class that admits
-    only boxes gets one box over every piece the mask kept, and a class that
-    admits neither gets no regions. Answering in a kind the schema would refuse
-    would produce a suggestion that cannot be accepted.
+    **`allowed_geometries` is bounded by the caller's schema, and chosen within
+    it.** The answer is produced in one of the kinds named or not at all: naming
+    polygon gets the outline of the piece under the click, naming only box gets
+    one box over every piece the mask kept, and naming neither gets no regions.
+    Answering in a kind the schema would refuse would produce a suggestion that
+    cannot be accepted, so every kind sent must be one the active class admits.
+
+    Which of them to send is the caller's decision, and it matters because **this
+    route prefers the polygon whenever both are named**. A client whose user is
+    holding a box tool over a class that also accepts polygons sends `["bbox"]`
+    alone; sending both would answer past the tool they are holding, and nothing
+    on their screen would have said so.
 
     **`detail` is the one setting, and it does not reach the model.** It decides
     how much of an outline survives simplification. It is optional and defaults

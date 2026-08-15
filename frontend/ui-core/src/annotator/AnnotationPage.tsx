@@ -89,7 +89,6 @@ import {
   TOGGLE_SUGGEST,
   acceptedAnnotations,
   addAnnotationsCommand,
-  allowedGeometriesFor,
   answered,
   armed,
   atZoomCeiling,
@@ -109,6 +108,7 @@ import {
   selectionOf,
   steppedDetail,
   suggestClassFor,
+  suggestGeometriesFor,
   suggestibleClassIn,
   toolFor,
   useAnnotatorSnapshot,
@@ -1015,7 +1015,13 @@ function Workspace({
         connectionId: connection.id,
         positive: prompt.positive,
         negative: prompt.negative,
-        allowedGeometries: allowedGeometriesFor(declared),
+        // The shape the strip is showing, not every shape the class admits. A
+        // class accepting both is answered as a polygon whenever both are asked
+        // for, so sending the set would ignore the held tool — see
+        // `suggestGeometriesFor`. `activeTool` is the same preference the strip
+        // and the class row's lit chip resolve through, which is what makes the
+        // three agree by construction rather than by three rules matching.
+        allowedGeometries: suggestGeometriesFor(declared, activeTool),
         adjustments: next.adjustments,
       },
       {

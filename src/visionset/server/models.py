@@ -1979,10 +1979,15 @@ class SuggestRequest(BaseModel):
     #: Points that say *not that* — how somebody carves a hole out of an
     #: over-eager first answer without starting the gesture over.
     negative: list[SuggestPoint] = Field(default_factory=list)
-    #: The geometry kinds the active class admits. The server produces one of
+    #: The geometry kinds this request will accept. The server produces one of
     #: these or nothing at all; it never answers in a kind the schema would go on
     #: to refuse. Sent by the caller because the class is the caller's state —
     #: the server would otherwise be guessing which class a click was meant for.
+    #:
+    #: Every kind here must be one the active class admits, but the caller need
+    #: not name all of them: where a class accepts both a box and a polygon, the
+    #: server prefers the polygon, so a caller holding a box tool narrows this to
+    #: `["bbox"]` rather than letting the preference decide against it.
     allowed_geometries: list[GeometryType] = Field(min_length=1)
     #: How much of an outline survives simplification. Omitted means `balanced`,
     #: which is what every suggestion used before there was a choice.

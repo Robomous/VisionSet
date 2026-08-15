@@ -96,6 +96,8 @@ import type { AnnotationDocument } from "../state/document";
 import type { IdFactory } from "../ids";
 import type { Annotation, AnnotationSchema, Geometry, GeometryType, LabelClass, Point } from "../types";
 import { draftAnnotation } from "./draft";
+import { toolForClass } from "./tool";
+import type { Tool } from "./tool";
 
 /**
  * The kinds a segmenter's answer can be narrowed into, and therefore the classes
@@ -134,6 +136,38 @@ export function allowedGeometriesFor(
   labelClass: LabelClass,
 ): readonly SuggestibleGeometryType[] {
   return SUGGESTIBLE_GEOMETRY_TYPES.filter((kind) => labelClass.geometries.includes(kind));
+}
+
+/**
+ * The kinds to ask for, narrowed to the shape the host is actually holding.
+ *
+ * {@link allowedGeometriesFor} answers what the class *can* hold, and while every
+ * class declared exactly one geometry the two questions had one answer. Once a
+ * class accepts a set they diverge, and the difference is a defect: the server
+ * narrows a mask by preferring polygon over box whenever both are named, so a
+ * `{bbox, polygon}` class asked for both is answered as a polygon **however the
+ * tool strip is set**. Somebody drawing boxes gets outlines, and nothing on screen
+ * said the tool would be ignored.
+ *
+ * So the resolution is {@link toolForClass}' — the very function the strip and the
+ * class row's lit chip already read — and the answer is one kind rather than a
+ * set. The request stays within `allowed_geometries`' contract, because the kind
+ * asked for is still one the class admits; what changes is that the caller now
+ * states which of them it wants for *this* request.
+ *
+ * Falls back to the full intersection when the resolved tool is not a kind a
+ * segmenter can propose — a class taking a box and a lane, held on the lane tool.
+ * Narrowing to nothing there would turn a working capability into an empty answer,
+ * so it asks for what the class can hold, which is the old behaviour exactly.
+ */
+export function suggestGeometriesFor(
+  labelClass: LabelClass,
+  preferred: Tool | null = null,
+): readonly SuggestibleGeometryType[] {
+  const allowed = allowedGeometriesFor(labelClass);
+  const resolved = toolForClass(labelClass, preferred);
+  const asked = allowed.find((kind) => kind === resolved);
+  return asked === undefined ? allowed : [asked];
 }
 
 /**
