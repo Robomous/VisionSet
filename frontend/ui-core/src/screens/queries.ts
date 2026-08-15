@@ -401,7 +401,16 @@ export function useCreateSchemaVersion(projectId: string) {
         }),
         checkCreateSchemaVersion,
       ),
-    onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+    // **`["batches"]` as well as the project**, and it is not defensive. Since
+    // #381 an additive version moves the pin of every open batch in the same
+    // transaction, so a publish changes `schema_version` on resources this key
+    // does not cover — and the whole change would be invisible in the browser
+    // without this line. The response says which batches moved; the cache has to
+    // agree with it.
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+      void queries.invalidateQueries({ queryKey: ["batches"] });
+    },
   });
 }
 

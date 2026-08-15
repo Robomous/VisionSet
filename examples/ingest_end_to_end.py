@@ -213,7 +213,7 @@ def main(dest: Path) -> Summary:
         # (1) A project, its 1:1 dataset, and a labeling contract. Nothing here
         # writes a label, but a batch cannot be approved without a schema to pin.
         project = projects.create("dashcam", description="Ingest end-to-end demo")
-        schema = schemas.create_version(project.id, CLASSES)
+        schema = schemas.create_version(project.id, CLASSES).published
         _say(f"project {project.name!r} ({project.id}) with schema v{schema.version}")
 
         # (2) Ten seconds of video, registered as an origin. The extraction rate

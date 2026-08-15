@@ -234,6 +234,25 @@ describe("the refusal it has to make legible", () => {
  * pressed.
  */
 describe("what it promises when the batch will not take the pin", () => {
+  it("does not also promise the batch will move, which the notice denies", () => {
+    // The description was unconditional and contradicted the notice below it:
+    // one promised the batch would move onto the version, the other said it
+    // would stay. Only one of them can be true on a completed batch.
+    render(mount({ canRepin: false }));
+
+    const dialog = screen.getByTestId("add-class-dialog");
+    expect(dialog.textContent).toContain("publishes as one schema version");
+    expect(dialog.textContent).not.toContain("moves this batch onto it");
+  });
+
+  it("still promises it where the batch will take the pin", () => {
+    render(mount({ canRepin: true }));
+
+    expect(screen.getByTestId("add-class-dialog").textContent).toContain(
+      "moves this batch onto it",
+    );
+  });
+
   it("says the batch keeps its version, and names what does happen", async () => {
     render(mount({ canRepin: false }));
     await userEvent.type(screen.getByTestId("class-name-new"), "cone");

@@ -40,6 +40,7 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
+    REPINNABLE_STATES,
     AnnotationSchema,
     ChangeKind,
     ClassCount,
@@ -49,6 +50,7 @@ from visionset.kernel.domain import (
     SchemaChangePreview,
     SchemaDiff,
     SchemaProvenance,
+    SchemaPublication,
     diff_classes,
 )
 from visionset.kernel.errors import (
@@ -60,6 +62,7 @@ from visionset.kernel.errors import (
     SchemaNotFound,
     SchemaVersionConflict,
     UnsupportedGeometry,
+    WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -193,8 +196,8 @@ class SchemaService:
         description: str | None = None,
         provenance: SchemaProvenance | None = None,
         allow_destructive: bool = False,
-    ) -> AnnotationSchema:
-        """Add the next version of the project's schema.
+    ) -> SchemaPublication:
+        """Add the next version of the project's schema, and catch the open batches up.
 
         The version number is one past the highest stored, so versions are
         1..N with no gaps and no reuse. Nothing is edited: this always inserts,
@@ -261,7 +264,9 @@ class SchemaService:
 
                 active = self.active(uow, project_id)
                 if active is not None and proposed == active.classes:
-                    return active
+                    # Nothing was written, so nothing follows it. A no-op that
+                    # caught a lagging batch up would be a no-op with an effect.
+                    return SchemaPublication(published=active)
 
                 diff = diff_classes(() if active is None else active.classes, proposed)
                 guarded: frozenset[str] = frozenset()
@@ -282,7 +287,22 @@ class SchemaService:
                 )
                 if stored is None:
                     self._refuse_orphaning(uow, project_id, guarded)
-                return stored
+
+                # Read once for the whole call: every open batch's pin is judged
+                # against this version, and a lagging batch's pin is a version the
+                # caller's own `diff` says nothing about.
+                #
+                # After the guarded insert, and that ordering is #589's rule rather
+                # than a convenience: the insert is the first *write*, so it is what
+                # opens the transaction. Reading the versions before it would leave
+                # this read in autocommit and reopen the window that fix closed, one
+                # scope over.
+                advanced = (
+                    ()
+                    if diff.is_destructive
+                    else _advance_pins(uow, project_id, stored, self._by_version(uow, project_id))
+                )
+                return SchemaPublication(published=stored, advanced_batches=advanced)
         except ConstraintViolated as exc:
             raise self._as_version_conflict(exc, project_id) from exc
 
@@ -468,6 +488,68 @@ def _blockers(uow: UnitOfWork, project_id: UUID, guarded: frozenset[str]) -> tup
         return ()
     annotated = _annotated_classes(uow, project_id)
     return tuple(annotated[name] for name in sorted(guarded & annotated.keys()))
+
+
+def _advance_pins(
+    uow: UnitOfWork,
+    project_id: UUID,
+    created: AnnotationSchema,
+    by_version: dict[int, AnnotationSchema],
+) -> tuple[UUID, ...]:
+    """Move the open batches this version is additive *for* onto it.
+
+    **The diff is per batch, against that batch's own pin — never against the
+    version this one replaced.** That distinction is the whole correctness of this
+    function, and getting it wrong is not theoretical: a batch may be lagging,
+    having already declined to follow a narrowing, and a version that only widens
+    the *active* contract can still be a narrowing of **its** one. Diffing once
+    against active would then drag it across the very change it was protected
+    from, and the labels it holds under a class its pin still declares would be
+    left describing a contract it no longer does.
+
+    So the rule is stated per batch: advance it when `diff_classes(its pin, this
+    version)` is additive. For a batch already on the active version that is the
+    same diff the caller ran, which is why the common case costs nothing extra.
+
+    This is deliberately **not** ``BatchService.repin``, and cannot be:
+    ``BatchService`` imports ``SchemaService``, so the reverse import would close
+    a cycle. What it shares is the question, not the code — and the two gates it
+    does not need are the ones an additive answer makes vacuous. ``repin``'s
+    ``SchemaChangeWouldOrphan`` counts labels under classes a change breaks, and
+    an additive change breaks none; its ``DestructiveSchemaChange`` is the flag
+    this path never offers, because a flag says *publish this*, not *and drag
+    every open batch across it*.
+
+    ``REPINNABLE_STATES`` is the state filter, and each state it excludes is
+    excluded for its own reason: a ``draft`` has no pin yet — approval takes the
+    active version, which is now this one — and a ``completed`` batch's pin is the
+    record of what its finished work was judged against, which is not ours to
+    rewrite.
+
+    ``by_version`` is passed in rather than read here so the versions are fetched
+    **once** for the whole call. Walked in Python rather than filtered in the
+    port, which is the shape ``SummaryService`` and ``JobService`` already use:
+    ``Repository.list`` takes a single ``parent_id`` and no query language leaks
+    into it.
+    """
+    moved: list[UUID] = []
+    for batch in uow.batches.list(project_id):
+        if batch.state not in REPINNABLE_STATES or batch.schema_version is None:
+            continue
+        pinned = by_version.get(batch.schema_version)
+        if pinned is None:
+            # Versions are never deleted, so this is damage rather than a state
+            # any operation leaves behind — the same answer `BatchService`'s own
+            # `_pinned_schema` gives, and for the same reason.
+            raise WorkspaceCorrupt(
+                f"batch {batch.id} is pinned to schema version {batch.schema_version}, "
+                f"which is not stored for project {project_id}"
+            )
+        if diff_classes(pinned.classes, created.classes).is_destructive:
+            continue
+        uow.batches.update(batch.model_copy(update={"schema_version": created.version}))
+        moved.append(batch.id)
+    return tuple(moved)
 
 
 def _annotated_classes(uow: UnitOfWork, project_id: UUID) -> dict[str, ClassCount]:

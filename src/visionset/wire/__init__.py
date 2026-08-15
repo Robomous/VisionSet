@@ -92,6 +92,7 @@ from visionset.kernel.domain import (
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
+    SchemaPublication,
     Source,
     SplitRecipe,
     ThumbnailBackfill,
@@ -174,6 +175,24 @@ def schema_version(value: AnnotationSchema) -> dict[str, Any]:
         "description": value.description,
         "created_at": None if value.created_at is None else _moment(value.created_at),
         "provenance": None if value.provenance is None else value.provenance.value,
+    }
+
+
+def schema_publication(value: SchemaPublication) -> dict[str, Any]:
+    """What one publish did: the version, and the open batches that moved onto it.
+
+    A shape of its own rather than two more keys on ``schema_version``, because
+    the reads answer a different question. ``GET`` a version and the batches that
+    once followed it are neither known nor wanted; only the act of publishing has
+    an answer here, and a permanently-empty list on every read would be a field
+    that lies about what it is for.
+
+    ``advanced_batches`` is empty whenever nothing followed — no open batch, or a
+    narrowing change, which never advances. Empty is ordinary, not an error.
+    """
+    return {
+        "published": schema_version(value.published),
+        "advanced_batches": [str(batch_id) for batch_id in value.advanced_batches],
     }
 
 

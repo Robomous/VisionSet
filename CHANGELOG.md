@@ -83,6 +83,34 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **A schema version that only widens the contract now moves every open batch onto it** (#381).
+  A batch is judged against the version it pinned at approval, and that pin used to move only
+  when somebody asked for it. Publishing an additive version now takes every batch in
+  `REPINNABLE_STATES` — `approved` or `in_annotation` — along with it, in the same transaction.
+
+  **The safety argument is a construction rather than a policy.** `diff_classes` already answers
+  *does an annotation valid under the old version stay valid under the new one?*, and when it
+  answers yes a wider contract cannot invalidate anything already drawn. A **narrowing** version
+  moves nothing, with `allow_destructive` or without it: that flag says *publish this*, never
+  *and drag every open batch across it*. `BatchService.repin` is untouched and is now the manual
+  route for exactly that case, judged against a single batch's own labels. A `completed` batch
+  never moves either way — its pin is the record of what its finished work was judged against.
+
+  This inverts a written invariant. `Batch.schema_version` said the pin "never follows the active
+  version on its own — a schema that evolved mid-batch would change the rules under work in
+  flight", and that turned out to be an argument about narrowing, which still never follows. What
+  the old rule cost was the reason it was reopened: a project could sit two versions ahead of the
+  batch somebody was annotating in, with the class they had just published invisible to them.
+
+  `SchemaService.create_version` returns `SchemaPublication` — the version, and the batches that
+  moved — instead of the version alone, and `POST /projects/{id}/schema/versions` answers
+  `{published, advanced_batches}` in place of a bare version. The reads are unchanged. The
+  annotator's add-a-class chain drops its third call, and with it the half-applied state audit
+  finding F23 was about: publishing and moving the pin are one transaction, so *the version
+  exists and the pin has not moved* is now unrepresentable rather than guarded against.
+
+  No migration, no new port method, and no event.
+
 - **The annotator's top bar has a verb for finishing a frame** (#383). Dogfooding #368's bar
   found that the commonest move in the product had no button: after annotating a frame, the
   thing to do is store it and go to the next one, and the only control that advanced was the

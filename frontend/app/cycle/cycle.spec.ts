@@ -549,6 +549,96 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Back to select, so the rest of the walk starts where it used to.
     await page.getByTestId("tool-select").click();
 
+    /*
+     * 3a-bis — #381: **a version published anywhere moves this batch's pin, and
+     * nobody presses re-pin.**
+     *
+     * This is the only run that can show it. The unit suites stub the publish, so
+     * they can assert what the client sent and rendered; whether the *server*
+     * moved the pin in the same transaction is a fact about `SchemaService`, and
+     * this is the one place that service is real. Before #381 the pin stayed at
+     * v1 here and the new class was invisible in this batch until somebody found
+     * the re-pin — which is the dead end the issue was reopened for.
+     *
+     * Published through the API rather than the Schema tab because the claim is
+     * about the kernel, not about a screen: leaving the editor and coming back
+     * would test navigation as well, and the Schema tab publishing *at all* is
+     * already covered above. The extra class is never drawn, and
+     * `DatasetStats.per_class` lists only classes with annotations, so nothing
+     * downstream counts it.
+     */
+    const job = await page.request.get(`${origin}/jobs/${jobId}`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    });
+    const batchId = (await job.json()).batch_id;
+    const batch = await page.request.get(`${origin}/batches/${batchId}`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    });
+    const beforePin = (await batch.json()).schema_version;
+    const projectId = (await batch.json()).project_id;
+
+    // The whole contract plus one — `create_version` takes the entire class list,
+    // so a class left out is a class removed, and reading the active version is
+    // how this stays an *additive* change rather than an accidental narrowing.
+    const active = await page.request.get(`${origin}/projects/${projectId}/schema`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    });
+    const current = (await active.json()).classes;
+
+    const grown = await page.request.post(`${origin}/projects/${projectId}/schema/versions`, {
+      headers: { Authorization: `Bearer ${token()}` },
+      data: {
+        classes: [...current, { name: "pedestrian", geometry: "bbox" }],
+        provenance: "curated",
+      },
+    });
+    expect(grown.status()).toBe(201);
+    const publication = await grown.json();
+    expect(publication.published.version).toBe(beforePin + 1);
+    // The response names what it moved, which is what stops a publish being a
+    // silent side effect.
+    expect(publication.advanced_batches).toContain(batchId);
+
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await expect(page.getByTestId("pinned-schema")).toHaveText(`v${beforePin + 1}`);
+    // And the class it brought is drawable here, which is the whole point.
+    await expect(page.getByTestId("class-row-pedestrian")).toBeVisible();
+
+    /*
+     * 3a-ter — **the annotator's own add-a-class door, which is now two calls.**
+     *
+     * `runAddClass` was save → publish → re-pin, and #381 took the third away: the
+     * publish moves the pin itself. Nothing anywhere exercised this door in a
+     * browser — `annotate.spec.ts` only asserts it is *absent* in read-only mode,
+     * and the demo it runs against has no project behind it — so its whole
+     * coverage was unit tests against stubs. That is the shape of gap that hid the
+     * per-batch diff defect, which is why it is closed here rather than argued
+     * about.
+     *
+     * The request log is the assertion that matters: a `/repin` call would mean
+     * the step is still being made by the client.
+     */
+    const posted: string[] = [];
+    const record = (request: import("@playwright/test").Request): void => {
+      if (request.method() === "POST") posted.push(new URL(request.url()).pathname);
+    };
+    page.on("request", record);
+
+    await page.getByTestId("tool-add-class").click();
+    await expect(page.getByTestId("add-class-dialog")).toBeVisible();
+    await page.getByTestId("class-name-new").fill("cyclist");
+    await page.getByTestId("add-class-submit").click();
+    await expect(page.getByTestId("add-class-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("class-row-cyclist")).toBeVisible();
+    page.off("request", record);
+
+    expect(posted.filter((path) => path.endsWith("/schema/versions"))).toHaveLength(1);
+    expect(posted.filter((path) => path.endsWith("/repin"))).toHaveLength(0);
+    // The pin followed anyway, which is the whole of what the third call used to
+    // do — and the class the dialog armed is drawable on this frame.
+    await expect(page.getByTestId("pinned-schema")).toHaveText(`v${beforePin + 2}`);
+
     // 3b — the review round-trip, on the frame we are already standing on.
     //
     // **This is the half of the progress machine that had no door** (audit F24):
@@ -847,10 +937,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("approve-submit").click();
     await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("approved");
     // The child pins the project's *active* version at its own approval rather
-    // than inheriting the parent's. They are the same number here because
-    // nothing has published since — the claim is that it pinned, not that it
-    // copied.
-    await expect(page.getByTestId(`batch-${CORRECTION}`)).toContainText("v1");
+    // than inheriting the parent's. They are the same number here — **v3**, after
+    // the two additive publishes above, both of which moved the parent onto them
+    // as well — so the claim this makes is that it pinned, not that it copied.
+    // Distinguishing the two needs a parent that is *behind*, which only a
+    // narrowing version can produce, and that belongs to the kernel suite rather
+    // than to a walk through the app.
+    await expect(page.getByTestId(`batch-${CORRECTION}`)).toContainText("v3");
     await page.getByTestId(`start-${CORRECTION}`).click();
     await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("in progress");
 

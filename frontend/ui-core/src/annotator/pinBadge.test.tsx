@@ -238,6 +238,12 @@ describe("what it says", () => {
 
     const behind = await screen.findByTestId("pin-behind");
     expect(behind.textContent).toContain("v3");
+    // **Not "adding one from here re-pins it"** (#381). An additive version now
+    // brings every open batch with it, so a batch that is behind has declined
+    // something — and the sentence says which, instead of offering a remedy that
+    // is no longer how the pin moves.
+    expect(behind.textContent).toContain("narrowed the schema past this pin");
+    expect(behind.textContent).not.toContain("re-pins it");
     // The kernel's own words for the change, not a second classification in
     // TypeScript — the same payload `SchemaEditor`'s ledger renders.
     const diff = await screen.findByTestId("pin-diff");

@@ -315,7 +315,10 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
     """Ingest to an exported release, one request at a time."""
     # (1) A project, and the labeling contract its work will be judged against.
     project = client.json("POST", "/projects", 201, json_body={"name": "chest-xray"})["id"]
-    schema = client.json(
+    # The answer is a *publication*: the version, plus every open batch that moved
+    # onto it. There are none yet — the project has no batch at all — and empty is
+    # the ordinary answer rather than a failure.
+    published = client.json(
         "POST",
         f"/projects/{project}/schema/versions",
         201,
@@ -329,6 +332,7 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
             ]
         },
     )
+    schema = published["published"]
     _say(f"project {project} with schema v{schema['version']}")
 
     # (2) Offer it some data. Registration is upload-only: an HTTP client has

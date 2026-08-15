@@ -27,7 +27,9 @@ with WorkspaceService.open("./road-signs") as workspace:
     )
     lane = LabelClass(name="lane", geometry=GeometryType.POLYGON)
 
-    schemas.create_version(project.id, [sign, lane])  # → version 1
+    published = schemas.create_version(project.id, [sign, lane])
+    published.published.version  # 1
+    published.advanced_batches  # the open batches this version took with it
 
     schemas.get_active(project.id)  # the highest version
     schemas.get(project.id, 1)  # any version, forever
@@ -231,10 +233,27 @@ version's classes are bound to. It is what an annotation's `geometry.type` is
 membership-tested against - the union's discriminator values *are* `GeometryType` members,
 so nothing translates in between.
 
+## Publishing catches the open batches up
+
+A batch is judged against the version it pinned at approval, and that pin used to move only
+when somebody asked. **A version that only widens the contract now takes every open batch with
+it**, in the same transaction that publishes it (#381), and `create_version` answers with the
+batches it moved so a surface can say so rather than leave it to be discovered.
+
+The whole safety argument is the section below: additive means every annotation valid under the
+old version is valid under the new one, so a wider contract cannot invalidate anything already
+drawn. A **narrowing** version moves nothing, `allow_destructive` or not — that flag says
+*publish this*, never *and drag every open batch across it* — and crossing one is
+`BatchService.repin`, judged against a single batch's own labels. See
+[batches.md](batches.md).
+
+Publishing the contract already in force writes nothing and therefore moves nothing: an
+operation that writes nothing cannot have an effect.
+
 ## Additive versus destructive
 
-One question draws the line: **does an annotation that was valid under the previous version
-stay valid under this one?**
+One question draws the line, and it is the same question the paragraph above rests on: **does an
+annotation that was valid under the previous version stay valid under this one?**
 
 | Change | Kind |
 | --- | --- |

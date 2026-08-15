@@ -3540,6 +3540,28 @@
         "title": "SchemaProvenance",
         "type": "string"
       },
+      "SchemaPublicationOut": {
+        "description": "A published version, and the open batches that moved onto it.",
+        "properties": {
+          "advanced_batches": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Advanced Batches",
+            "type": "array"
+          },
+          "published": {
+            "$ref": "#/components/schemas/SchemaVersionOut"
+          }
+        },
+        "required": [
+          "published"
+        ],
+        "title": "SchemaPublicationOut",
+        "type": "object"
+      },
       "SchemaVersionCreate": {
         "additionalProperties": false,
         "description": "The whole proposed version. There is no partial edit of a schema.",
@@ -10272,7 +10294,7 @@
         ]
       },
       "post": {
-        "description": "Append the next version of the project's schema.\n\nThe body is the whole proposed version; versions are never edited in place.\n\n**Sending the classes that are already in force writes nothing.** The answer\nis the version that was already active, and it is not an error: the version\na client holds afterwards is the one in force either way, which is the only\nthing it asked for. Identical means the classes match exactly \u2014 names,\ngeometries, colours, attributes and order \u2014 so a colour change is a change\nand does publish a version.\n\n`description` is this version's commit message \u2014 written once, here, and\nnever afterwards, because a version is immutable and there is no route that\nedits one. Blank is legal and comes back as null. `created_at` is stamped by\nthe server, so it is a response field and not a request one.\n\n`provenance` says which kind of work is publishing: `curated` for a version\nauthored in a schema editor, `annotation` for one that fell out of adding a\nclass while labeling. It is stored exactly as sent and never inferred, so a\nclient with no opinion omits it and the version records null \u2014 which readers\ngroup with `curated`. It gates nothing and changes no behaviour; it exists so\na version history can separate the milestones from the runs.\n\nRemoving a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`\nuntil `allow_destructive=true` says so deliberately. If annotations already\nexist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`\ninstead, and **no flag overrides that one** \u2014 which is why a client branches\non `code` and not on the status.",
+        "description": "Append the next version of the project's schema, and catch the open batches up.\n\nThe body is the whole proposed version; versions are never edited in place.\n\n**A version that only widens the contract moves every open batch onto it**,\nin the same transaction, and `advanced_batches` names the ones that moved. A\nwider contract cannot invalidate a label already drawn, so nothing is at risk\n\u2014 which is exactly why a narrowing version moves nothing, `allow_destructive`\nor not. A batch is *open* if it is `approved` or `in_annotation`; a draft has\nno pin yet and takes the active version at approval, and a completed batch's\npin is the record of what its work was judged against.\n\n`advanced_batches` is empty when nothing followed, which is ordinary. A client\nthat renders \"published\" without it cannot tell a version that moved two\nbatches from one that moved none.\n\n**Sending the classes that are already in force writes nothing.** The answer\nis the version that was already active, and it is not an error: the version\na client holds afterwards is the one in force either way, which is the only\nthing it asked for. Identical means the classes match exactly \u2014 names,\ngeometries, colours, attributes and order \u2014 so a colour change is a change\nand does publish a version.\n\n`description` is this version's commit message \u2014 written once, here, and\nnever afterwards, because a version is immutable and there is no route that\nedits one. Blank is legal and comes back as null. `created_at` is stamped by\nthe server, so it is a response field and not a request one.\n\n`provenance` says which kind of work is publishing: `curated` for a version\nauthored in a schema editor, `annotation` for one that fell out of adding a\nclass while labeling. It is stored exactly as sent and never inferred, so a\nclient with no opinion omits it and the version records null \u2014 which readers\ngroup with `curated`. It gates nothing and changes no behaviour; it exists so\na version history can separate the milestones from the runs.\n\nRemoving a class or an attribute answers 409 `DESTRUCTIVE_SCHEMA_CHANGE`\nuntil `allow_destructive=true` says so deliberately. If annotations already\nexist under an affected class it answers 409 `SCHEMA_CHANGE_WOULD_ORPHAN`\ninstead, and **no flag overrides that one** \u2014 which is why a client branches\non `code` and not on the status.",
         "operationId": "create_schema_version",
         "parameters": [
           {
@@ -10313,7 +10335,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SchemaVersionOut"
+                  "$ref": "#/components/schemas/SchemaPublicationOut"
                 }
               }
             },

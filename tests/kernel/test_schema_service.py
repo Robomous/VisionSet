@@ -103,7 +103,7 @@ def test_the_first_version_of_a_schema_is_one(tmp_path: Path) -> None:
     """
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    assert schemas.create_version(project.id, [SIGN]).version == 1
+    assert schemas.create_version(project.id, [SIGN]).published.version == 1
     workspace.close()
 
 
@@ -113,7 +113,7 @@ def test_versions_are_numbered_one_past_the_highest_stored(tmp_path: Path) -> No
     # A different contract each time, because publishing the one already in force
     # is a no-op — see `test_an_identical_version_is_a_no_op`.
     for expected, classes in enumerate(([SIGN], [SIGN, LANE], [SIGN, LANE, RICH]), start=1):
-        assert schemas.create_version(project.id, classes).version == expected
+        assert schemas.create_version(project.id, classes).published.version == expected
     assert [s.version for s in schemas.list_versions(project.id)] == [1, 2, 3]
     workspace.close()
 
@@ -122,7 +122,7 @@ def test_the_active_version_is_the_highest_one(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN])
-    latest = schemas.create_version(project.id, [SIGN, LANE])
+    latest = schemas.create_version(project.id, [SIGN, LANE]).published
     assert schemas.get_active(project.id) == latest
     workspace.close()
 
@@ -140,8 +140,8 @@ def test_a_new_project_has_no_schema(tmp_path: Path) -> None:
 def test_creating_a_version_never_rewrites_an_earlier_one(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    first = schemas.create_version(project.id, [SIGN])
-    second = schemas.create_version(project.id, [SIGN, LANE])
+    first = schemas.create_version(project.id, [SIGN]).published
+    second = schemas.create_version(project.id, [SIGN, LANE]).published
 
     assert first.id != second.id
     assert schemas.get(project.id, 1) == first
@@ -160,8 +160,8 @@ def test_an_identical_version_is_a_no_op(tmp_path: Path) -> None:
     """
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    first = schemas.create_version(project.id, [SIGN])
-    again = schemas.create_version(project.id, [SIGN])
+    first = schemas.create_version(project.id, [SIGN]).published
+    again = schemas.create_version(project.id, [SIGN]).published
 
     assert again == first
     assert [s.version for s in schemas.list_versions(project.id)] == [1]
@@ -178,7 +178,7 @@ def test_an_identical_version_is_a_no_op_only_against_the_active_one(tmp_path: P
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN])
     schemas.create_version(project.id, [SIGN, LANE])
-    back = schemas.create_version(project.id, [SIGN], allow_destructive=True)
+    back = schemas.create_version(project.id, [SIGN], allow_destructive=True).published
 
     assert back.version == 3
     workspace.close()
@@ -198,7 +198,7 @@ def test_a_colour_only_change_is_a_change(tmp_path: Path) -> None:
     schemas.create_version(project.id, [SIGN])
     recoloured = schemas.create_version(
         project.id, [LabelClass(name="sign", geometry=GeometryType.BBOX, color="#eb5a47")]
-    )
+    ).published
 
     assert recoloured.version == 2
     assert recoloured.classes[0].color == "#eb5a47"
@@ -210,7 +210,7 @@ def test_reordering_the_classes_is_a_change(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN, LANE])
-    swapped = schemas.create_version(project.id, [LANE, SIGN])
+    swapped = schemas.create_version(project.id, [LANE, SIGN]).published
 
     assert swapped.version == 2
     assert [c.name for c in swapped.classes] == ["lane", "sign"]
@@ -221,7 +221,7 @@ def test_a_stored_version_cannot_be_edited_in_place(tmp_path: Path) -> None:
     """The models are frozen, so immutability does not depend on nobody trying."""
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    schema = schemas.create_version(project.id, [RICH])
+    schema = schemas.create_version(project.id, [RICH]).published
 
     with pytest.raises(ValidationError):
         schema.version = 9  # type: ignore[misc]
@@ -235,7 +235,7 @@ def test_a_stored_version_cannot_be_edited_in_place(tmp_path: Path) -> None:
 def test_a_version_rehydrates_identically_after_a_reopen(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    stored = schemas.create_version(project.id, [RICH, LANE])
+    stored = schemas.create_version(project.id, [RICH, LANE]).published
     workspace.close()
 
     reopened = WorkspaceService.open(tmp_path / "ws")
@@ -363,7 +363,9 @@ def test_a_class_bound_to_an_unimplemented_geometry_is_refused(
 def test_every_implemented_geometry_is_accepted(tmp_path: Path, geometry: GeometryType) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    schema = schemas.create_version(project.id, [LabelClass(name="thing", geometry=geometry)])
+    schema = schemas.create_version(
+        project.id, [LabelClass(name="thing", geometry=geometry)]
+    ).published
     assert schema.classes[0].geometry is geometry
     workspace.close()
 
@@ -380,7 +382,7 @@ def test_an_unsupported_geometry_is_reported_as_an_invalid_schema(tmp_path: Path
 def test_a_version_with_no_classes_is_a_legitimate_starting_point(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    assert schemas.create_version(project.id, []).classes == ()
+    assert schemas.create_version(project.id, []).published.classes == ()
     workspace.close()
 
 
@@ -426,7 +428,7 @@ def test_an_additive_change_needs_no_flag(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN])
-    assert schemas.create_version(project.id, [SIGN, LANE]).version == 2
+    assert schemas.create_version(project.id, [SIGN, LANE]).published.version == 2
     workspace.close()
 
 
@@ -446,7 +448,7 @@ def test_a_narrowing_change_with_the_flag_and_no_labels_is_allowed(tmp_path: Pat
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN, LANE])
 
-    second = schemas.create_version(project.id, [SIGN], allow_destructive=True)
+    second = schemas.create_version(project.id, [SIGN], allow_destructive=True).published
     assert (second.version, [c.name for c in second.classes]) == (2, ["sign"])
     workspace.close()
 
@@ -455,7 +457,7 @@ def test_the_first_version_is_never_destructive(tmp_path: Path) -> None:
     """There are no annotations under a version that never existed."""
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    assert schemas.create_version(project.id, [SIGN]).version == 1
+    assert schemas.create_version(project.id, [SIGN]).published.version == 1
     workspace.close()
 
 
@@ -482,7 +484,7 @@ def test_labels_under_an_untouched_class_do_not_block_the_change(tmp_path: Path)
     schemas.create_version(project.id, [SIGN, LANE])
     _annotate(workspace, project.id, "sign")
 
-    assert schemas.create_version(project.id, [SIGN], allow_destructive=True).version == 2
+    assert schemas.create_version(project.id, [SIGN], allow_destructive=True).published.version == 2
     workspace.close()
 
 
@@ -494,7 +496,7 @@ def test_labels_in_another_project_do_not_block_the_change(tmp_path: Path) -> No
     schemas.create_version(project.id, [SIGN, LANE])
     _annotate(workspace, neighbour.id, "lane")
 
-    assert schemas.create_version(project.id, [SIGN], allow_destructive=True).version == 2
+    assert schemas.create_version(project.id, [SIGN], allow_destructive=True).published.version == 2
     workspace.close()
 
 
@@ -704,7 +706,7 @@ def test_a_version_records_why_it_exists_and_when(tmp_path: Path) -> None:
     project = projects.create("roads")
     before = datetime.now(UTC)
 
-    created = schemas.create_version(project.id, [SIGN], description="the first contract")
+    created = schemas.create_version(project.id, [SIGN], description="the first contract").published
 
     assert created.description == "the first contract"
     assert created.created_at is not None
@@ -718,7 +720,7 @@ def test_the_moment_survives_a_round_trip_through_the_store(tmp_path: Path) -> N
     wrong by the writer's offset from UTC."""
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("roads")
-    created = schemas.create_version(project.id, [SIGN], description="v1")
+    created = schemas.create_version(project.id, [SIGN], description="v1").published
 
     read = schemas.get(project.id, 1)
 
@@ -733,7 +735,7 @@ def test_a_version_published_without_a_description_has_none(tmp_path: Path) -> N
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("roads")
 
-    created = schemas.create_version(project.id, [SIGN])
+    created = schemas.create_version(project.id, [SIGN]).published
 
     assert created.description is None
     assert schemas.get(project.id, 1).description is None
@@ -746,7 +748,7 @@ def test_a_blank_description_is_none_rather_than_a_refusal(tmp_path: Path, blank
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("roads")
 
-    created = schemas.create_version(project.id, [SIGN], description=blank)
+    created = schemas.create_version(project.id, [SIGN], description=blank).published
 
     assert created.description is None
     workspace.close()
@@ -765,7 +767,7 @@ def test_a_description_is_stripped_and_nfc_normalized(tmp_path: Path) -> None:
     composed = "caf\u00e9 pass"
     assert decomposed.strip() != composed
 
-    created = schemas.create_version(project.id, [SIGN], description=decomposed)
+    created = schemas.create_version(project.id, [SIGN], description=decomposed).published
 
     assert created.description == composed
     workspace.close()
@@ -774,7 +776,7 @@ def test_a_description_is_stripped_and_nfc_normalized(tmp_path: Path) -> None:
 def test_the_description_cannot_be_edited_because_the_model_is_frozen(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("roads")
-    created = schemas.create_version(project.id, [SIGN], description="as published")
+    created = schemas.create_version(project.id, [SIGN], description="as published").published
 
     with pytest.raises(ValidationError):
         created.description = "second thoughts"  # type: ignore[misc]
@@ -822,7 +824,7 @@ def test_the_provenance_a_caller_stated_survives_the_round_trip(
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("roads")
 
-    created = schemas.create_version(project.id, [SIGN], provenance=stated)
+    created = schemas.create_version(project.id, [SIGN], provenance=stated).published
 
     assert created.provenance is stated
     read = schemas.get(project.id, 1)
@@ -844,7 +846,7 @@ def test_a_version_published_without_a_provenance_has_none(tmp_path: Path) -> No
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("roads")
 
-    created = schemas.create_version(project.id, [SIGN])
+    created = schemas.create_version(project.id, [SIGN]).published
 
     assert created.provenance is None
     assert schemas.get(project.id, 1).provenance is None

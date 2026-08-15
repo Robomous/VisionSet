@@ -26,6 +26,7 @@ from visionset.server.models import (
     DestructiveQuery,
     SchemaChangePreviewOut,
     SchemaDiffOut,
+    SchemaPublicationOut,
     SchemaVersionCreate,
     SchemaVersionOut,
     SchemaVersionPage,
@@ -60,10 +61,22 @@ def create_schema_version(
     project_id: UUID,
     body: SchemaVersionCreate,
     allow_destructive: DestructiveQuery = False,
-) -> SchemaVersionOut:
-    """Append the next version of the project's schema.
+) -> SchemaPublicationOut:
+    """Append the next version of the project's schema, and catch the open batches up.
 
     The body is the whole proposed version; versions are never edited in place.
+
+    **A version that only widens the contract moves every open batch onto it**,
+    in the same transaction, and `advanced_batches` names the ones that moved. A
+    wider contract cannot invalidate a label already drawn, so nothing is at risk
+    — which is exactly why a narrowing version moves nothing, `allow_destructive`
+    or not. A batch is *open* if it is `approved` or `in_annotation`; a draft has
+    no pin yet and takes the active version at approval, and a completed batch's
+    pin is the record of what its work was judged against.
+
+    `advanced_batches` is empty when nothing followed, which is ordinary. A client
+    that renders "published" without it cannot tell a version that moved two
+    batches from one that moved none.
 
     **Sending the classes that are already in force writes nothing.** The answer
     is the version that was already active, and it is not an error: the version
@@ -91,14 +104,14 @@ def create_schema_version(
     on `code` and not on the status.
     """
     classes = [label_class.to_domain() for label_class in body.classes]
-    created = SchemaService(workspace).create_version(
+    published = SchemaService(workspace).create_version(
         project_id,
         classes,
         description=body.description,
         provenance=body.provenance,
         allow_destructive=allow_destructive,
     )
-    return SchemaVersionOut.of(created)
+    return SchemaPublicationOut.of(published)
 
 
 @router.post("/preview", responses=documented(404))

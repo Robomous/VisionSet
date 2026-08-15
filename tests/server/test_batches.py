@@ -454,17 +454,41 @@ def approved(client: TestClient, batch_id: str) -> None:
     client.post(f"/batches/{batch_id}/approve")
 
 
-def test_a_class_added_after_approval_reaches_the_batch_through_repin(
+def test_a_class_added_after_approval_reaches_the_batch_with_no_second_call(
     client: TestClient, project: str, ingested: str
 ) -> None:
+    """#381 over the wire: the publish moves the pin and the response says so.
+
+    This used to need a `POST /repin` afterwards, and a client that did not know
+    to make it was left holding a class its own batch would refuse.
+    """
     approved(client, ingested)
-    new_version(client, project, SIGN, LANE, {"name": "crossing", "geometry": "bbox"})
 
-    response = client.post(f"/batches/{ingested}/repin")
+    response = new_version(client, project, SIGN, LANE, {"name": "crossing", "geometry": "bbox"})
 
-    assert response.status_code == 200
-    assert response.json()["schema_version"] == 2
+    assert response.status_code == 201
+    body = response.json()
+    assert body["published"]["version"] == 2
+    assert body["advanced_batches"] == [ingested]
     assert client.get(f"/batches/{ingested}").json()["schema_version"] == 2
+
+
+def test_a_narrowing_version_leaves_the_pin_and_repin_is_still_the_way_across(
+    client: TestClient, project: str, ingested: str
+) -> None:
+    """The route keeps the escape the automatic advance deliberately does not take."""
+    approved(client, ingested)
+
+    published = new_version(client, project, SIGN, allow_destructive=True)
+
+    assert published.status_code == 201
+    assert published.json()["advanced_batches"] == []
+    assert client.get(f"/batches/{ingested}").json()["schema_version"] == 1
+
+    moved = client.post(f"/batches/{ingested}/repin", params={"allow_destructive": True})
+
+    assert moved.status_code == 200
+    assert moved.json()["schema_version"] == 2
 
 
 def test_repinning_onto_the_pinned_version_is_a_no_op(

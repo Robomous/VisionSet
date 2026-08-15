@@ -201,7 +201,6 @@ import {
   useJobProgress,
   usePinnedSchema,
   useJobTransition,
-  useRepinBatch,
   useSaveAnnotations,
   useSetAssetProgress,
 } from "./jobQueries";
@@ -693,7 +692,7 @@ interface WorkspaceProps {
   readonly schema: unknown;
   /** The version the batch pinned at approval — what every write here is judged against. */
   readonly schemaVersion: number | null;
-  /** The batch this job belongs to. The add-a-class chain re-pins it. */
+  /** The batch this job belongs to. An additive version moves its pin (#381). */
   readonly batchId: string;
   readonly loaded: readonly WireAnnotation[];
   readonly counts: {
@@ -1210,7 +1209,6 @@ function Workspace({
   // ask" that could drift.
   const activeSchema = useActiveSchema(projectId, addingClass || pinOpen);
   const createVersion = useCreateSchemaVersion(projectId);
-  const repin = useRepinBatch(batchId);
   const setProgress = useSetAssetProgress(jobId);
   const startBatch = useBatchTransition(batchId, "start");
   const startJob = useJobTransition(jobId, "start");
@@ -1345,7 +1343,6 @@ function Workspace({
     async (added: readonly LabelClassBody[], note: string): Promise<void> => {
       if (activeSchema.data === undefined || added.length === 0) return;
       createVersion.reset();
-      repin.reset();
       try {
         await runAddClass({
           save: commit,
@@ -1358,7 +1355,6 @@ function Workspace({
             createVersion.mutateAsync({ classes, description, provenance: "annotation" }),
           // Asked before anything is published, which is the whole of F23: the
           // chain used to publish and *then* discover the pin would not move.
-          repin: canRepin ? () => repin.mutateAsync() : null,
           activeClasses: activeSchema.data.classes,
           added,
           note,
@@ -1390,7 +1386,7 @@ function Workspace({
         // Rethrowing would reach no handler and surface as an unhandled rejection.
       }
     },
-    [activateClass, activeSchema.data, canRepin, commit, createVersion, repin],
+    [activateClass, activeSchema.data, commit, createVersion],
   );
 
   /**
@@ -2716,10 +2712,10 @@ function Workspace({
         active={activeSchema.data ?? null}
         pinnedVersion={schemaVersion}
         canRepin={canRepin}
-        pending={save.isPending || createVersion.isPending || repin.isPending}
+        pending={save.isPending || createVersion.isPending}
         // Whichever step refused, in the order they run — so the message is about
         // the call that actually stopped, not about the last mutation touched.
-        error={save.error ?? createVersion.error ?? repin.error ?? null}
+        error={save.error ?? createVersion.error ?? null}
         // `addClass` already catches everything and holds the refusal on the
         // mutations the dialog reads, so there is nothing left to reject — but
         // `void` on a promise is the pattern F7 is about, and a `catch` that can
@@ -2863,10 +2859,18 @@ function PinBadge({
             </p>
           ) : (
             <>
+              {/* **Why this is a rarer sentence than it used to be** (#381). A
+                  version that only widens the contract now takes every open batch
+                  with it, so a batch that is behind has declined something: either
+                  a version narrowed the schema past its own pin, or the batch is
+                  no longer open. Saying *what* rather than offering a remedy is
+                  the honest shape — the remedy is a decision about this batch's
+                  labels, which is what `repin` is for and is not a button here. */}
               <p className="text-meta text-muted-foreground" data-testid="pin-behind">
                 The project has moved on to{" "}
-                <span className="font-mono">v{active.version}</span>. Classes published since
-                are not available on this batch — adding one from here re-pins it.
+                <span className="font-mono">v{active.version}</span>. A version that only adds
+                classes would have brought this batch with it, so something below narrowed the
+                schema past this pin — those changes are not applied here.
               </p>
               <PinDiff from={pinned} to={active.version} diff={comparison.data} failed={comparison.isError} />
             </>
