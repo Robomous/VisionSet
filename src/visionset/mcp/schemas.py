@@ -123,12 +123,22 @@ def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[st
     changing an existing schema rather than creating the first one — it is the
     only way to find out that a change is destructive without attempting it.
 
-    `is_destructive` true means the proposal narrows the contract: a class or an
-    attribute is gone, or a geometry moved. `destructive_classes` names them.
-    Applying it then needs `allow_destructive=true` — unless annotations already
-    exist under one of those classes, in which case `create_schema_version`
-    refuses outright and no flag overrides it. Adding classes or optional
-    attributes is additive and needs no flag.
+    `diff.is_destructive` true means the proposal narrows the contract: a class or
+    an attribute is gone, or a geometry moved. `diff.destructive_classes` names
+    them, and applying it then needs `allow_destructive=true`. Adding classes or
+    optional attributes is additive and needs no flag.
+
+    **`is_refused` is the answer no flag changes.** True means annotations already
+    exist under a class this proposal drops, so `create_schema_version` refuses
+    outright however you call it; `blockers` names each such class with how many
+    annotations and how many assets it carries. Do not retry with
+    `allow_destructive=true` — that flag answers a different refusal, and retrying
+    is a loop. Either keep the class, or delete the annotations `blockers` counts
+    and preview again.
+
+    Advisory: nothing is locked. Somebody can label a class between this call and
+    the publish, in which case the publish refuses and that refusal is the
+    authoritative one.
 
     Each entry of `classes` must carry `geometry` as one of the declared geometry
     types; matching against the current version is by exact class name, so
@@ -136,8 +146,8 @@ def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[st
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)
-        diff = SchemaService(workspace).preview(resolved.id, classes)
-    return wire.schema_diff(diff)
+        preview = SchemaService(workspace).preview(resolved.id, classes)
+    return wire.schema_change_preview(preview)
 
 
 def create_schema_version(

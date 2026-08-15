@@ -108,6 +108,7 @@ from visionset.kernel.domain import (
     ResumeKind,
     ResumeTarget,
     SchemaChange,
+    SchemaChangePreview,
     SchemaDiff,
     SchemaProvenance,
     SingleJob,
@@ -409,6 +410,30 @@ class SchemaDiffOut(BaseModel):
             is_destructive=diff.is_destructive,
             destructive_classes=tuple(sorted(diff.destructive_classes)),
             changes=tuple(SchemaChangeOut.of(change) for change in diff.changes),
+        )
+
+
+class SchemaChangePreviewOut(BaseModel):
+    """What publishing a proposed version would do, and what would stop it."""
+
+    # `diff` answers whether this needs `allow_destructive`; `blockers` answers
+    # whether any flag would help. The second is the half a client could not ask
+    # for before and had to discover by being refused — and it is the *same*
+    # structure `SCHEMA_CHANGE_WOULD_ORPHAN` puts in its `detail`, so one renderer
+    # serves the warning and the refusal and the two cannot drift.
+    diff: SchemaDiffOut
+    blockers: tuple[ClassCountOut, ...]
+    # A domain `@property` materialized here, on `SchemaDiffOut`'s terms: a client
+    # deciding whether to offer a way forward must not re-derive the rule from
+    # `blockers`. That is the hand-mirrored table the capabilities contract bans.
+    is_refused: bool
+
+    @classmethod
+    def of(cls, preview: SchemaChangePreview) -> Self:
+        return cls(
+            diff=SchemaDiffOut.of(preview.diff),
+            blockers=tuple(ClassCountOut.of(count) for count in preview.blockers),
+            is_refused=preview.is_refused,
         )
 
 

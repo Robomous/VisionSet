@@ -229,6 +229,26 @@ class DestructiveSchemaChange(VisionSetError):
     is always a decision somebody made, never a side effect of an edit.
     """
 
+    #: Which classes the change narrows — a ``tuple[str, ...]``, the blast radius
+    #: a confirmation has to name.
+    #:
+    #: Names only, with no counts, and that is the whole difference from
+    #: ``SchemaChangeWouldOrphan.blockers``. This refusal is about *intent* and is
+    #: raised before anything on disk is consulted, so attaching counts here would
+    #: put a walk over every asset in the project in front of the one refusal that
+    #: does not need it — and would invert the "intent first, then facts on disk"
+    #: ordering the two gates are built on. A caller who wants the counts asks
+    #: ``SchemaService.preview``, which is what it is for.
+    #:
+    #: A class attribute rather than a constructor parameter, for the reason
+    #: ``SchemaChangeWouldOrphan.blockers`` gives.
+    classes: object | None = None
+
+    def __init__(self, message: str, *, classes: object | None = None) -> None:
+        super().__init__(message)
+        if classes is not None:
+            self.classes = classes
+
 
 class SchemaChangeWouldOrphan(VisionSetError):
     """A destructive change was refused because annotations already depend on it.
@@ -240,6 +260,26 @@ class SchemaChangeWouldOrphan(VisionSetError):
     refuses rather than leaving labels pointing at a class the contract no
     longer describes.
     """
+
+    #: Which classes stand in the way, and how many labels each carries — a
+    #: ``tuple[ClassCount, ...]``.
+    #:
+    #: A class attribute with a ``None`` default and **not** a constructor
+    #: parameter, exactly as ``VisionSetError.index`` and
+    #: ``LossyExportNotConsented.compatibility`` are — so this error is still
+    #: constructible from one message, ``ERROR_RULES``' exact-correspondence test
+    #: is untouched, and ``test_every_mapped_error_can_be_constructed_with_one_argument``
+    #: still holds. The service sets it as a keyword.
+    #:
+    #: Typed ``object`` because this module may not import a domain model; the
+    #: type comes back at the boundary through an ``isinstance`` narrowing, which
+    #: is the same round trip ``compatibility`` makes.
+    blockers: object | None = None
+
+    def __init__(self, message: str, *, blockers: object | None = None) -> None:
+        super().__init__(message)
+        if blockers is not None:
+            self.blockers = blockers
 
 
 class InvalidTransition(VisionSetError):

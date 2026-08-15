@@ -598,19 +598,67 @@ def test_preview_reports_what_create_version_would_gate_on_without_writing(
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN, LANE])
 
-    diff = schemas.preview(project.id, [SIGN])
+    preview = schemas.preview(project.id, [SIGN])
 
-    assert diff.destructive_classes == frozenset({"lane"})
+    assert preview.diff.destructive_classes == frozenset({"lane"})
+    # Nothing is labeled, so the change is destructive and still publishable —
+    # which is the distinction `blockers` exists to draw and `is_destructive`
+    # cannot.
+    assert preview.blockers == ()
+    assert preview.is_refused is False
     assert [s.version for s in schemas.list_versions(project.id)] == [1]
-    with pytest.raises(DestructiveSchemaChange, match=diff.describe(diff.changes[0].kind)):
+    with pytest.raises(
+        DestructiveSchemaChange, match=preview.diff.describe(preview.diff.changes[0].kind)
+    ):
         schemas.create_version(project.id, [SIGN])
+    workspace.close()
+
+
+def test_preview_names_the_classes_that_no_flag_would_get_past(tmp_path: Path) -> None:
+    """The half `SchemaDiff` cannot answer: destructive, and refused outright.
+
+    A caller holding only the diff sees `is_destructive` and reaches for
+    `allow_destructive`, which is the loop `SchemaChangeWouldOrphan` sits outside
+    `DestructiveSchemaChange`'s hierarchy to prevent. `is_refused` is what says so
+    before the attempt rather than after it.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [SIGN, LANE])
+    _annotate(workspace, project.id, "lane")
+
+    preview = schemas.preview(project.id, [SIGN])
+
+    assert preview.is_refused is True
+    assert [(c.label_class, c.annotations, c.assets) for c in preview.blockers] == [("lane", 1, 1)]
+
+    # And the preview agreed with the refusal, which is the whole point of one
+    # shape serving both.
+    with pytest.raises(SchemaChangeWouldOrphan) as caught:
+        schemas.create_version(project.id, [SIGN], allow_destructive=True)
+    assert caught.value.blockers == preview.blockers
+    workspace.close()
+
+
+def test_preview_counts_nothing_for_a_change_that_removes_nothing(tmp_path: Path) -> None:
+    """An additive proposal has no blockers, and does not walk the project to say so."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [SIGN])
+    _annotate(workspace, project.id, "sign")
+
+    preview = schemas.preview(project.id, [SIGN, LANE])
+
+    assert preview.diff.is_destructive is False
+    assert preview.blockers == ()
+    assert preview.is_refused is False
     workspace.close()
 
 
 def test_preview_on_a_project_with_no_schema_is_all_additive(tmp_path: Path) -> None:
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    assert schemas.preview(project.id, [SIGN, LANE]).is_destructive is False
+    assert schemas.preview(project.id, [SIGN, LANE]).diff.is_destructive is False
     workspace.close()
 
 

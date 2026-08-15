@@ -1672,6 +1672,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/schema/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Schema Change
+         * @description Say what publishing these classes would do, without publishing anything.
+         *
+         *     Writes nothing, and answers both gates at once. `diff` is the classification
+         *     `GET /compare` returns — whether this narrows the contract, and over which
+         *     classes — so `diff.is_destructive` decides whether the publish needs
+         *     `allow_destructive=true`.
+         *
+         *     **`is_refused` is the answer no flag changes.** True means annotations already
+         *     exist under a class this proposal drops, so `POST /versions` answers 409
+         *     `SCHEMA_CHANGE_WOULD_ORPHAN` however it is called, and `blockers` names each
+         *     such class with how many annotations and how many assets carry it. That is the
+         *     **same structure** the refusal itself puts in `detail`, so one renderer serves
+         *     the warning and the refusal. Retrying with `allow_destructive=true` against a
+         *     refused preview is the loop `code` exists to prevent.
+         *
+         *     A POST because the proposal is the whole class list and a class list does not
+         *     belong in a query string. It is still a read: nothing is written, nothing is
+         *     locked, and nothing is reserved. Somebody can label a class between this call
+         *     and the publish, in which case the publish refuses and **that** refusal is the
+         *     authoritative one — this removes the round trip that was doomed before it was
+         *     sent, not the need to handle being refused.
+         *
+         *     The body is the same shape `POST /versions` takes, so a client previews and
+         *     publishes the identical document. `description` and `provenance` are accepted
+         *     and ignored: neither enters a diff, and requiring a client to strip them would
+         *     make the two calls differ for no reason.
+         */
+        post: operations["preview_schema_change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/schema/versions": {
         parameters: {
             query?: never;
@@ -3695,6 +3740,17 @@ export interface components {
             kind: components["schemas"]["ChangeKind"];
             /** Label Class */
             label_class: string;
+        };
+        /**
+         * SchemaChangePreviewOut
+         * @description What publishing a proposed version would do, and what would stop it.
+         */
+        SchemaChangePreviewOut: {
+            /** Blockers */
+            blockers: components["schemas"]["ClassCountOut"][];
+            diff: components["schemas"]["SchemaDiffOut"];
+            /** Is Refused */
+            is_refused: boolean;
         };
         /**
          * SchemaDiffOut
@@ -8370,6 +8426,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchemaDiffOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_schema_change: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchemaVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaChangePreviewOut"];
                 };
             };
             /** @description Missing or invalid bearer token */
