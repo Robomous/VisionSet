@@ -6,6 +6,7 @@ so `progress_after_annotating` cannot drift into a move the table forbids.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -56,16 +57,16 @@ from visionset.kernel.services import (
 
 SIGN = LabelClass(
     name="sign",
-    geometry=GeometryType.BBOX,
+    geometries=(GeometryType.BBOX,),
     attributes=(
         Attribute(name="occluded", kind="boolean", required=True),
         Attribute(name="weather", kind="select", options=("dry", "wet")),
     ),
 )
-LANE = LabelClass(name="lane", geometry=GeometryType.POLYGON)
+LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 KIOSK = LabelClass(
     name="kiosk",
-    geometry=GeometryType.CLASSIFICATION_TAG,
+    geometries=(GeometryType.CLASSIFICATION_TAG,),
     attributes=(
         Attribute(name="operator", kind="string"),
         Attribute(name="height", kind="number"),
@@ -74,7 +75,7 @@ KIOSK = LabelClass(
     ),
 )
 #: A class the project only learns about in schema version 2.
-GHOST = LabelClass(name="ghost", geometry=GeometryType.BBOX)
+GHOST = LabelClass(name="ghost", geometries=(GeometryType.BBOX,))
 
 UNANNOTATED = AssetProgress.UNANNOTATED
 ANNOTATED = AssetProgress.ANNOTATED
@@ -117,14 +118,21 @@ def _box(asset_id: UUID, **overrides: Any) -> Annotation:
 class Fixture:
     """A workspace with one three-asset batch, ready to be approved and worked."""
 
-    def __init__(self, tmp_path: Path, name: str = "ws", *, assets: int = 3) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        name: str = "ws",
+        *,
+        assets: int = 3,
+        classes: Sequence[LabelClass] = (SIGN, LANE, KIOSK),
+    ) -> None:
         self.workspace = WorkspaceService.init(tmp_path / name)
         self.batches = BatchService(self.workspace)
         self.jobs = JobService(self.workspace)
         self.schemas = SchemaService(self.workspace)
         self.annotations = AnnotationService(self.workspace)
         self.project = ProjectService(self.workspace).create(f"{name}-project")
-        self.schemas.create_version(self.project.id, [SIGN, LANE, KIOSK])
+        self.schemas.create_version(self.project.id, list(classes))
         self.assets = [self._asset(f"{name}-{index}") for index in range(assets)]
         self.batch = self.batches.create(self.project.id, "first", self.assets)
 
@@ -244,7 +252,7 @@ def test_an_unknown_job_or_asset_is_refused_on_read(tmp_path: Path) -> None:
         pytest.param(
             {"label_class": "lane", "attributes": {}},
             DisallowedGeometry,
-            "is a polygon .* carries a bbox",
+            "accepts polygon .* carries a bbox",
             id="geometry-the-class-did-not-declare",
         ),
         pytest.param(
@@ -292,7 +300,7 @@ def test_an_annotation_the_pinned_version_rejects_is_not_stored(
 
 
 def test_the_geometry_rule_is_per_class_not_the_versions_union(tmp_path: Path) -> None:
-    """The version allows polygons — but not under a class bound to bboxes."""
+    """The version allows polygons — but not under a class that accepts only bboxes."""
     fixture = Fixture(tmp_path)
     job = fixture.working()
     assert fixture.schemas.allowed_geometries(fixture.project.id) >= {
@@ -300,7 +308,7 @@ def test_the_geometry_rule_is_per_class_not_the_versions_union(tmp_path: Path) -
         GeometryType.POLYGON,
     }
 
-    with pytest.raises(DisallowedGeometry, match="is a bbox .* carries a polygon"):
+    with pytest.raises(DisallowedGeometry, match="accepts bbox .* carries a polygon"):
         fixture.annotations.add(
             job.id,
             [
@@ -310,6 +318,55 @@ def test_the_geometry_rule_is_per_class_not_the_versions_union(tmp_path: Path) -
                 )
             ],
         )
+    fixture.close()
+
+
+#: One class, two shapes. The whole point of #584: a sign photographed close up is
+#: worth outlining and one at the end of the street is worth boxing, and they are
+#: the same class.
+BOTH = LabelClass(
+    name="sign",
+    geometries=(GeometryType.BBOX, GeometryType.POLYGON),
+    attributes=(Attribute(name="occluded", kind="boolean", required=True),),
+)
+
+
+def test_a_class_accepting_two_geometries_accepts_either_of_them(tmp_path: Path) -> None:
+    """Both, in one call, under one class — which is the feature.
+
+    Written as one `add` rather than two so the all-or-nothing write is exercised
+    too: a gate that admitted the box and refused the polygon would store neither
+    and this would fail on the count rather than on the refusal.
+    """
+    fixture = Fixture(tmp_path, classes=(BOTH,))
+    job = fixture.working()
+
+    stored = fixture.annotations.add(
+        job.id,
+        [
+            _box(fixture.assets[0]),
+            _box(
+                fixture.assets[0],
+                geometry=PolygonGeometry(points=[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]),
+            ),
+        ],
+    )
+
+    assert [one.geometry.type for one in stored] == [GeometryType.BBOX, GeometryType.POLYGON]
+    fixture.close()
+
+
+def test_a_class_accepting_two_geometries_still_refuses_a_third(tmp_path: Path) -> None:
+    """Membership, not "anything goes" — the half a widened gate loses silently."""
+    fixture = Fixture(tmp_path, classes=(BOTH,))
+    job = fixture.working()
+
+    with pytest.raises(DisallowedGeometry, match="accepts bbox, polygon"):
+        fixture.annotations.add(
+            job.id,
+            [_box(fixture.assets[0], geometry=ClassificationGeometry(), attributes={})],
+        )
+    assert fixture.annotations.for_asset(job.id, fixture.assets[0]) == []
     fixture.close()
 
 
@@ -983,7 +1040,12 @@ def test_an_update_cannot_collide_with_a_tag_already_there(tmp_path: Path) -> No
     fixture = Fixture(tmp_path)
     fixture.schemas.create_version(
         fixture.project.id,
-        [SIGN, LANE, KIOSK, LabelClass(name="booth", geometry=GeometryType.CLASSIFICATION_TAG)],
+        [
+            SIGN,
+            LANE,
+            KIOSK,
+            LabelClass(name="booth", geometries=(GeometryType.CLASSIFICATION_TAG,)),
+        ],
     )
     job = fixture.working()
     asset_id = fixture.assets[0]

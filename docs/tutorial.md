@@ -42,9 +42,9 @@ takes.
 ```json
 {
   "classes": [
-    { "name": "vehicle", "geometry": "bbox",    "color": "#eb5a47" },
-    { "name": "sign",    "geometry": "bbox",    "color": "#2a9d8f" },
-    { "name": "lane",    "geometry": "polygon", "color": "#f4a261" }
+    { "name": "vehicle", "geometries": ["bbox"],    "color": "#eb5a47" },
+    { "name": "sign",    "geometries": ["bbox"],    "color": "#2a9d8f" },
+    { "name": "lane",    "geometries": ["polygon"], "color": "#f4a261" }
   ]
 }
 ```

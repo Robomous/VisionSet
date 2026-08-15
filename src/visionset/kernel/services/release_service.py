@@ -767,11 +767,14 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     :meth:`ReleaseService.check_export` and :meth:`ReleaseService.export` —
     cannot disagree about what a release contains.
 
-    **Three outcomes, not two.** Each class is written whole, written reduced, or
-    not written, read off the format's two declared geometry sets. With only a
-    boolean, this would count a converted polygon as an absent one while the YOLO
-    and VOC exporters wrote it as a box — the report and the output disagreeing
-    about the same annotations, neither wrong on its own terms.
+    **Three outcomes, not two.** Each class *and geometry* is written whole,
+    written reduced, or not written, read off the format's two declared geometry
+    sets. With only a boolean, this would count a converted polygon as an absent
+    one while the YOLO and VOC exporters wrote it as a box — the report and the
+    output disagreeing about the same annotations, neither wrong on its own terms.
+    Per geometry rather than per class for the same kind of reason: a class
+    accepting both boxes and polygons has two answers under a boxes-only format,
+    and a row that carried one of them would misdescribe the other.
     ``excluded_annotations`` counts what disappears and
     ``degraded_annotations`` counts what survives coarser; ``compatible`` is false
     for either, so nothing about consent moved.
@@ -792,24 +795,30 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
     cannot open would have to become a field on ``ManifestAsset``, behind a
     ``MANIFEST_VERSION`` bump, which is its own decision.
     """
-    per_class: dict[str, tuple[GeometryType, int, set[UUID]]] = {}
+    # Keyed by class *and* geometry: a class accepting both boxes and polygons
+    # gets one row per shape, because a boxes-only format writes one whole and
+    # reduces the other and a single row could only say one of those. Seeded from
+    # the declared classes so a class nobody used still appears, at zero.
+    per_shape: dict[tuple[str, GeometryType], tuple[int, set[UUID]]] = {}
     for declared in manifest.classes:
-        per_class[declared.name] = (declared.geometry, 0, set())
+        for geometry in declared.geometries:
+            per_shape[(declared.name, geometry)] = (0, set())
 
     counts = {status: 0 for status in ClassExportStatus}
     touched: dict[ClassExportStatus, set[UUID]] = {status: set() for status in ClassExportStatus}
     for asset in manifest.assets:
         for annotation in asset.annotations:
-            geometry, count, assets = per_class.get(
-                annotation.label_class,
-                # A class the manifest's own `classes` does not declare cannot
-                # happen — `SchemaChangeWouldOrphan` refuses to remove a class
-                # annotations depend on — but a report that dropped a label it
-                # could not place would be silently wrong, so it is placed by the
-                # geometry it actually carries.
-                (GeometryType(annotation.geometry.type), 0, set()),
+            geometry = GeometryType(annotation.geometry.type)
+            # A shape the manifest's own `classes` does not declare cannot happen
+            # — `SchemaChangeWouldOrphan` refuses to remove a class annotations
+            # depend on, and taking a geometry away from one is destructive for
+            # the same reason — but a report that dropped a label it could not
+            # place would be silently wrong, so it is placed by what it carries.
+            count, assets = per_shape.get((annotation.label_class, geometry), (0, set()))
+            per_shape[(annotation.label_class, geometry)] = (
+                count + 1,
+                assets | {asset.asset_id},
             )
-            per_class[annotation.label_class] = (geometry, count + 1, assets | {asset.asset_id})
             status = _status_of(geometry, exporter)
             counts[status] += 1
             touched[status].add(asset.asset_id)
@@ -823,7 +832,7 @@ def _compatibility(release: Release, manifest: Manifest, exporter: Exporter) -> 
             assets=len(assets),
             reason=_reason_for(_status_of(geometry, exporter), geometry, exporter),
         )
-        for name, (geometry, count, assets) in per_class.items()
+        for (name, geometry), (count, assets) in per_shape.items()
     )
 
     dropped = counts[ClassExportStatus.DROPPED]

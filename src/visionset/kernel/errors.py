@@ -585,12 +585,12 @@ class LabelClassNotInSchema(InvalidAnnotation):
 
 
 class DisallowedGeometry(InvalidAnnotation):
-    """The annotation's geometry is not the one its class is bound to.
+    """The annotation's geometry is not one its class accepts.
 
-    A ``LabelClass`` declares a single ``geometry``, so this is an equality
-    test, not a membership one. ``SchemaService.allowed_geometries`` is the
-    union across a version's classes — the right answer to "what may this
-    project draw?" and the wrong one here, where a polygon under a bbox class
+    A ``LabelClass`` declares a set of ``geometries``, so this is membership in
+    **that class's** set. ``SchemaService.allowed_geometries`` is the union
+    across a version's classes — the right answer to "what may this project
+    draw?" and the wrong one here, where a polygon under a boxes-only class
     would sail through.
     """
 

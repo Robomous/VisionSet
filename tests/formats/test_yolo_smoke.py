@@ -72,9 +72,9 @@ ULTRALYTICS_MISSING_HINT = (
 #: point: this asserts ultralytics reads back the schema's order and not the
 #: alphabet's.
 CLASSES = (
-    LabelClass(name="sign", geometry=GeometryType.BBOX),
-    LabelClass(name="lane", geometry=GeometryType.POLYGON),
-    LabelClass(name="weather", geometry=GeometryType.CLASSIFICATION_TAG),
+    LabelClass(name="sign", geometries=(GeometryType.BBOX,)),
+    LabelClass(name="lane", geometries=(GeometryType.POLYGON,)),
+    LabelClass(name="weather", geometries=(GeometryType.CLASSIFICATION_TAG,)),
 )
 
 IMAGE_SIZE = (64, 48)

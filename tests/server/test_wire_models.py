@@ -71,14 +71,17 @@ def test_the_wire_attribute_kinds_are_the_domains_own_four() -> None:
 
 def test_the_wire_geometry_is_the_domains_own_enum() -> None:
     """Reused rather than restated, so the eight members cannot drift apart."""
-    assert LabelClassBody.model_fields["geometry"].annotation is GeometryType
+    assert get_args(LabelClassBody.model_fields["geometries"].annotation) == (
+        GeometryType,
+        Ellipsis,
+    )
 
 
 def test_a_label_class_round_trips_through_the_domain_and_back() -> None:
     """`of` and `to_domain` are inverses, so nothing is lost on the way out."""
     original = LabelClassBody(
         name="sign",
-        geometry=GeometryType.BBOX,
+        geometries=(GeometryType.BBOX,),
         color="#ff0000",
         attributes=(
             AttributeBody(
@@ -96,7 +99,7 @@ def test_a_label_class_round_trips_through_the_domain_and_back() -> None:
 
 def test_a_domain_label_class_survives_being_published() -> None:
     """The other direction: a stored class comes back identical."""
-    label_class = LabelClass(name="lane", geometry=GeometryType.POLYGON)
+    label_class = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
     assert LabelClassBody.of(label_class).to_domain() == label_class
 
@@ -108,7 +111,7 @@ def test_a_wire_label_class_is_refused_by_the_domains_own_rules() -> None:
     and a malformed payload is answering 500 again.
     """
     with pytest.raises(ValueError, match="at least one non-blank character"):
-        LabelClassBody(name="  ", geometry=GeometryType.BBOX)
+        LabelClassBody(name="  ", geometries=(GeometryType.BBOX,))
 
     with pytest.raises(ValueError, match="needs at least one option"):
         AttributeBody(name="weather", kind="select")

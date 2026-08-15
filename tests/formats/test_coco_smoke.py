@@ -63,9 +63,9 @@ PYCOCOTOOLS_MISSING_HINT = (
 )
 
 CLASSES = (
-    LabelClass(name="sign", geometry=GeometryType.BBOX),
-    LabelClass(name="lane", geometry=GeometryType.POLYGON),
-    LabelClass(name="weather", geometry=GeometryType.CLASSIFICATION_TAG),
+    LabelClass(name="sign", geometries=(GeometryType.BBOX,)),
+    LabelClass(name="lane", geometries=(GeometryType.POLYGON,)),
+    LabelClass(name="weather", geometries=(GeometryType.CLASSIFICATION_TAG,)),
 )
 
 IMAGE_SIZE = (64, 48)

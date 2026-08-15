@@ -234,8 +234,8 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
                 "create_schema_version",
                 project=PROJECT,
                 classes=[
-                    {"name": "sign", "geometry": "bbox"},
-                    {"name": "empty-road", "geometry": "classification_tag"},
+                    {"name": "sign", "geometries": ["bbox"]},
+                    {"name": "empty-road", "geometries": ["classification_tag"]},
                 ],
             )
         )

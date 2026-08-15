@@ -62,7 +62,7 @@ from visionset.kernel.services import (
     WorkspaceService,
 )
 
-SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 RECIPE = SplitRecipe(train=0.6, val=0.2, test=0.2, seed=42)
 
 
@@ -243,7 +243,7 @@ def test_the_manifest_pins_the_schema_version_in_force_when_it_was_published(
     fixture = Fixture(tmp_path)
     dataset_id = fixture.ready()
     fixture.schemas.create_version(
-        fixture.project.id, [SIGN, LabelClass(name="lane", geometry=GeometryType.POLYGON)]
+        fixture.project.id, [SIGN, LabelClass(name="lane", geometries=(GeometryType.POLYGON,))]
     )
     release = fixture.releases.publish(dataset_id, "v1")
 
@@ -943,7 +943,7 @@ def _polygon(asset_id: UUID) -> Annotation:
 def _mixed(fixture: Fixture) -> UUID:
     """A release holding boxes on every asset and polygons on the first two."""
     fixture.schemas.create_version(
-        fixture.project.id, [SIGN, LabelClass(name="lane", geometry=GeometryType.POLYGON)]
+        fixture.project.id, [SIGN, LabelClass(name="lane", geometries=(GeometryType.POLYGON,))]
     )
     batch = fixture.batches.create(fixture.project.id, "mixed", fixture.asset_ids)
     fixture.batches.approve(batch.id)
@@ -1007,7 +1007,7 @@ def test_a_class_nobody_used_excludes_nothing_however_unsupported(tmp_path: Path
     """
     fixture = Fixture(tmp_path)
     fixture.schemas.create_version(
-        fixture.project.id, [SIGN, LabelClass(name="lane", geometry=GeometryType.POLYGON)]
+        fixture.project.id, [SIGN, LabelClass(name="lane", geometries=(GeometryType.POLYGON,))]
     )
     fixture.promote()
     release = fixture.releases.publish(fixture.dataset_id, "v1")

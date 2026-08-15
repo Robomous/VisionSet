@@ -19,13 +19,13 @@ with WorkspaceService.open("./road-signs") as workspace:
 
     sign = LabelClass(
         name="sign",
-        geometry=GeometryType.BBOX,
+        geometries=(GeometryType.BBOX,),
         attributes=[
             Attribute(name="occluded", kind="boolean", default=False),
             Attribute(name="weather", kind="select", options=["dry", "wet"]),
         ],
     )
-    lane = LabelClass(name="lane", geometry=GeometryType.POLYGON)
+    lane = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
 
     published = schemas.create_version(project.id, [sign, lane])
     published.published.version  # 1
@@ -199,7 +199,7 @@ not damage.
 second edit, and `create_version` refuses anything outside it:
 
 ```python
-LabelClass(name="road", geometry=GeometryType.MASK)  # constructs fine
+LabelClass(name="road", geometries=(GeometryType.MASK,))  # constructs fine
 schemas.create_version(project.id, [that])  # UnsupportedGeometry
 ```
 
@@ -386,7 +386,7 @@ The file is **JSON**, and it is byte-for-byte the same document
   "classes": [
     {
       "name": "sign",
-      "geometry": "bbox",
+      "geometries": ["bbox"],
       "color": "#ff0000",
       "attributes": [
         {"name": "occluded", "kind": "boolean", "required": false, "default": false}

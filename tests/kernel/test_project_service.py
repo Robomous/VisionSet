@@ -65,7 +65,7 @@ def _populate(workspace: WorkspaceService, project_id: UUID, dataset_id: UUID) -
             AnnotationSchema(
                 project_id=project_id,
                 version=1,
-                classes=[LabelClass(name="sign", geometry=GeometryType.BBOX)],
+                classes=[LabelClass(name="sign", geometries=(GeometryType.BBOX,))],
             )
         )
         uow.sources.add(
@@ -539,7 +539,7 @@ def _schema(workspace: WorkspaceService, project_id: UUID, *names: str) -> None:
             AnnotationSchema(
                 project_id=project_id,
                 version=1,
-                classes=[LabelClass(name=name, geometry=GeometryType.BBOX) for name in names],
+                classes=[LabelClass(name=name, geometries=(GeometryType.BBOX,)) for name in names],
             )
         )
 

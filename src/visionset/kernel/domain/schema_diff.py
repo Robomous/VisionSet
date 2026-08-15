@@ -7,9 +7,9 @@ one?*
 
 - **Additive** — it does. New classes, new optional attributes, a wider ``select``.
   Nothing already labeled stops meaning what it meant.
-- **Destructive** — it does not. Removing a class, changing its geometry, adding
-  a required attribute, narrowing a ``select``. Existing annotations are left
-  referring to something the contract no longer describes.
+- **Destructive** — it does not. Removing a class, taking a geometry away from
+  one, adding a required attribute, narrowing a ``select``. Existing annotations
+  are left referring to something the contract no longer describes.
 
 Matching is by **exact class name and exact attribute name**. That makes a rename
 read as a removal plus an addition, which looks lossy until you remember that
@@ -162,14 +162,24 @@ def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChan
     ``color`` is deliberately absent: it is how a class is drawn, not what it
     means, and reporting it would put cosmetic edits behind a destructive gate.
     """
-    if before.geometry is not after.geometry:
+    # The same shape as a ``select``'s options below, for the same reason: a class
+    # that gains a geometry invalidates nothing already drawn, and one that loses
+    # a geometry orphans every annotation carrying it. Answering the module's one
+    # question per geometry is what makes widening an ordinary save — the whole
+    # point of a class holding a set — while narrowing stays behind the flag.
+    old_geometries = set(before.geometries)
+    new_geometries = set(after.geometries)
+    for geometry in sorted(new_geometries - old_geometries):
+        yield SchemaChange(
+            kind=ChangeKind.ADDITIVE,
+            label_class=after.name,
+            detail=f"geometry {geometry.value!r} added to class {after.name!r}",
+        )
+    for geometry in sorted(old_geometries - new_geometries):
         yield SchemaChange(
             kind=ChangeKind.DESTRUCTIVE,
             label_class=after.name,
-            detail=(
-                f"class {after.name!r} changed geometry from {before.geometry.value!r} "
-                f"to {after.geometry.value!r}"
-            ),
+            detail=f"geometry {geometry.value!r} removed from class {after.name!r}",
         )
 
     old = {attribute.name: attribute for attribute in before.attributes}

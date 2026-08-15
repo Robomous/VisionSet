@@ -464,7 +464,7 @@ def test_a_class_added_after_approval_reaches_the_batch_with_no_second_call(
     """
     approved(client, ingested)
 
-    response = new_version(client, project, SIGN, LANE, {"name": "crossing", "geometry": "bbox"})
+    response = new_version(client, project, SIGN, LANE, {"name": "crossing", "geometries": ["bbox"]})
 
     assert response.status_code == 201
     body = response.json()
@@ -566,7 +566,7 @@ def test_a_completed_batchs_pin_is_history(
     client: TestClient, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
     project, batch_id = annotated_batch(client, runner, tmp_path, images=2)
-    new_version(client, project, SIGN, LANE, {"name": "crossing", "geometry": "bbox"})
+    new_version(client, project, SIGN, LANE, {"name": "crossing", "geometries": ["bbox"]})
 
     response = client.post(f"/batches/{batch_id}/repin")
 

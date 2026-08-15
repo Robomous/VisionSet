@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 from tests.mcp._flow import SCHEMA_CLASSES, call, error, payload, project, schema, tool_schemas
 
-CAR_ONLY: list[dict[str, Any]] = [{"name": "car", "geometry": "bbox"}]
-BOTH: list[dict[str, Any]] = [*SCHEMA_CLASSES, {"name": "car", "geometry": "bbox"}]
+CAR_ONLY: list[dict[str, Any]] = [{"name": "car", "geometries": ["bbox"]}]
+BOTH: list[dict[str, Any]] = [*SCHEMA_CLASSES, {"name": "car", "geometries": ["bbox"]}]
 
 
 def test_a_new_project_has_no_schema_at_all(
@@ -138,7 +138,11 @@ def test_a_class_bound_to_an_unimplemented_geometry_is_refused(
 ) -> None:
     named = project(monkeypatch, tmp_path)
     refusal = error(
-        call("create_schema_version", project=named, classes=[{"name": "lane", "geometry": "mask"}])
+        call(
+            "create_schema_version",
+            project=named,
+            classes=[{"name": "lane", "geometries": ["mask"]}],
+        )
     )
     assert "mask" in refusal["message"]
 
@@ -153,7 +157,7 @@ def test_the_domain_refuses_a_malformed_class_before_the_body_runs(
     # the same split the API makes between 422 and 409.
     named = project(monkeypatch, tmp_path)
     result = call(
-        "create_schema_version", project=named, classes=[{"name": "  ", "geometry": "bbox"}]
+        "create_schema_version", project=named, classes=[{"name": "  ", "geometries": ["bbox"]}]
     )
     assert result.is_error
     assert "classes.0.name" in result.content[0].text
@@ -180,7 +184,7 @@ def test_a_version_carries_the_description_the_agent_wrote(
         call(
             "create_schema_version",
             project=named,
-            classes=[{"name": "sign", "geometry": "bbox"}],
+            classes=[{"name": "sign", "geometries": ["bbox"]}],
             description="the first contract",
         )
     )
@@ -202,7 +206,7 @@ def test_a_version_created_without_one_reports_null_rather_than_omitting_it(
         call(
             "create_schema_version",
             project=named,
-            classes=[{"name": "sign", "geometry": "bbox"}],
+            classes=[{"name": "sign", "geometries": ["bbox"]}],
         )
     )
 
@@ -223,7 +227,7 @@ def test_comparing_two_versions_classifies_what_changed(
         call(
             "create_schema_version",
             project=named,
-            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometry": "bbox"}],
+            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometries": ["bbox"]}],
         )
     )
 
@@ -244,7 +248,7 @@ def test_a_narrowing_comparison_names_what_would_break(
         call(
             "create_schema_version",
             project=named,
-            classes=[{"name": "crossing", "geometry": "bbox"}],
+            classes=[{"name": "crossing", "geometries": ["bbox"]}],
             allow_destructive=True,
         )
     )

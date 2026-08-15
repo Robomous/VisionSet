@@ -231,7 +231,7 @@ def test_repinning_after_that_is_a_no_op_rather_than_an_error(
         call(
             "create_schema_version",
             project=project,
-            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometry": "bbox"}],
+            classes=[*SCHEMA_CLASSES, {"name": "crossing", "geometries": ["bbox"]}],
         )
     )
 
@@ -246,7 +246,7 @@ def test_a_narrowing_repin_names_the_flag_that_retries_it(
         call(
             "create_schema_version",
             project=project,
-            classes=[{"name": "crossing", "geometry": "bbox"}],
+            classes=[{"name": "crossing", "geometries": ["bbox"]}],
             allow_destructive=True,
         )
     )
@@ -270,7 +270,7 @@ def test_a_repin_that_would_orphan_this_batchs_labels_offers_no_retry(
         call(
             "create_schema_version",
             project=project,
-            classes=[{"name": "crossing", "geometry": "bbox"}],
+            classes=[{"name": "crossing", "geometries": ["bbox"]}],
             allow_destructive=True,
         )
     )

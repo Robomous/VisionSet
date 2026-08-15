@@ -56,8 +56,8 @@ tool that reads the dataset on its own: `get_project` already carries `dataset_i
 
 ```
 create_schema_version project="road-signs" classes=[
-  {"name": "sign",       "geometry": "bbox"},
-  {"name": "empty-road", "geometry": "classification_tag"}]
+  {"name": "sign",       "geometries": ["bbox"]},
+  {"name": "empty-road", "geometries": ["classification_tag"]}]
 ->  {"version": 1, ...}
 ```
 

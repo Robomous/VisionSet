@@ -167,19 +167,26 @@
           }
         ],
         "color": "#ff0000",
-        "geometry": "bbox",
+        "geometries": [
+          "bbox",
+          "polygon"
+        ],
         "name": "sign"
       },
       {
         "attributes": [],
         "color": null,
-        "geometry": "polygon",
+        "geometries": [
+          "polygon"
+        ],
         "name": "lane"
       },
       {
         "attributes": [],
         "color": "#eb5a47",
-        "geometry": "polyline",
+        "geometries": [
+          "polyline"
+        ],
         "name": "centerline"
       },
       {
@@ -193,7 +200,9 @@
           }
         ],
         "color": "#00ff00",
-        "geometry": "classification_tag",
+        "geometries": [
+          "classification_tag"
+        ],
         "name": "weather"
       }
     ],

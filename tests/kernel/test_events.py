@@ -57,7 +57,7 @@ from visionset.kernel.services import (
     WorkspaceService,
 )
 
-SIGN = LabelClass(name="sign", geometry=GeometryType.BBOX)
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 
 #: One of every event, for the sweeps below. Checked against the class tree by
 #: ``test_every_event_has_a_sample``, which is what stops this drifting.

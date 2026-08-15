@@ -87,7 +87,12 @@ def _schema() -> AnnotationSchema:
     committed and diffed, so a clock in it would make every regeneration a change.
     """
     populated = SCHEMA_VERSION.classes[0]
-    assert populated.geometry is GeometryType.BBOX, "the sample class is the bbox one"
+    # Two geometries, so the mirror's parser is exercised on a real set rather
+    # than on a list that happens to hold one — a reader dropping everything
+    # after the first element would pass against a singleton everywhere.
+    assert populated.geometries == (GeometryType.BBOX, GeometryType.POLYGON), (
+        "the sample class is the multi-geometry one"
+    )
     return AnnotationSchema(
         project_id=_PROJECT_ID,
         version=SCHEMA_VERSION.version,
@@ -98,17 +103,17 @@ def _schema() -> AnnotationSchema:
             populated,
             # No colour, no attributes. A renderer must choose its own colour for
             # this one, and the parser must accept the keys being absent.
-            LabelClass(name="lane", geometry=GeometryType.POLYGON),
+            LabelClass(name="lane", geometries=(GeometryType.POLYGON,)),
             # A geometry a class can declare with no drawing tool behind it is a
             # fact about the annotator rather than about the wire — so it appears
             # here exactly like the other three.
-            LabelClass(name="centerline", geometry=GeometryType.POLYLINE, color="#eb5a47"),
+            LabelClass(name="centerline", geometries=(GeometryType.POLYLINE,), color="#eb5a47"),
             # An attribute with every optional at its default: not required, no
             # options, no default. `select` is the only kind that may carry
             # options, so this is the other side of `populated`'s attribute.
             LabelClass(
                 name="weather",
-                geometry=GeometryType.CLASSIFICATION_TAG,
+                geometries=(GeometryType.CLASSIFICATION_TAG,),
                 color="#00ff00",
                 attributes=(Attribute(name="note", kind="string"),),
             ),

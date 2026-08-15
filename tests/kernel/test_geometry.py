@@ -177,17 +177,23 @@ def test_discriminator_values_are_geometry_type_members() -> None:
 
 
 def test_geometry_type_is_comparable_to_a_label_class_without_translation() -> None:
-    # This is the check AnnotationService performs, and it is per class: a LabelClass
-    # declares one geometry, so the rule is equality against `LabelClass.geometry`, not
-    # membership in `SchemaService.allowed_geometries` (which is the union across a
-    # version's classes, and would let a polygon through under a bbox class). The union
-    # is designed so either comparison needs no adapter layer.
-    label_class = LabelClass(name="car", geometry=GeometryType.BBOX)
+    # This is the check AnnotationService performs, and it is per class: the rule
+    # is membership in *this class's* `geometries`, not in
+    # `SchemaService.allowed_geometries` (which is the union across a version's
+    # classes, and would let a polygon through under a boxes-only class). The
+    # discriminator's values are `GeometryType` members, so neither comparison
+    # needs an adapter layer.
+    label_class = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
     annotation = _annotation(BboxGeometry(x=1.0, y=2.0, width=10.0, height=20.0))
-    assert annotation.geometry.type == label_class.geometry
+    assert annotation.geometry.type in label_class.geometries
+
+    # The second member of the set, so the test would notice a membership check
+    # that had quietly collapsed back into equality against the first.
+    polygon = _annotation(PolygonGeometry(points=[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]))
+    assert polygon.geometry.type in label_class.geometries
 
     tagged = _annotation(ClassificationGeometry())
-    assert tagged.geometry.type != label_class.geometry
+    assert tagged.geometry.type not in label_class.geometries
 
 
 def test_implemented_geometries_names_exactly_the_variants_of_the_union() -> None:

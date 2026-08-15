@@ -55,8 +55,8 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
             "create_schema_version",
             project="road-signs",
             classes=[
-                {"name": "sign", "geometry": "bbox"},
-                {"name": "empty-road", "geometry": "classification_tag"},
+                {"name": "sign", "geometries": ["bbox"]},
+                {"name": "empty-road", "geometries": ["classification_tag"]},
             ],
         )
     )
