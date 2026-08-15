@@ -604,7 +604,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const grown = await page.request.post(`${origin}/projects/${projectId}/schema/versions`, {
       headers: { Authorization: `Bearer ${token()}` },
       data: {
-        classes: [...current, { name: "pedestrian", geometry: "bbox" }],
+        classes: [...current, { name: "pedestrian", geometries: ["bbox"] }],
         provenance: "curated",
       },
     });
