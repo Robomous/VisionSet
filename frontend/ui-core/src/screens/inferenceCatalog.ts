@@ -59,6 +59,20 @@ export interface CuratedModel {
   readonly totalBytes: number;
   /** One line, the difference between this rung and its neighbours. */
   readonly hint: string;
+  /**
+   * What has to be cleared before this entry can be downloaded at all.
+   *
+   * Absent on an entry anybody can fetch, which is most of them. Where it is
+   * present the form states it **before** the download is offered, because a
+   * requirement discovered by pressing a button and reading a refusal is a
+   * requirement the interface knew about and did not say.
+   */
+  readonly access?: {
+    /** One sentence: what must be accepted, and under whose terms. */
+    readonly note: string;
+    /** Where that is done. */
+    readonly href: string;
+  };
 }
 
 /** A family of curated models, named by the question its models answer. */
@@ -70,9 +84,20 @@ export interface CuratedGroup {
 /**
  * The models this build has an adapter for, grouped by what you ask them.
  *
- * Both groups are Apache-2.0 checkpoints published by the people who trained
- * them, which is the neutral-sources rule this product configures itself under:
- * a curated list points at originals, never at a re-publisher or a mirror.
+ * Every entry is published by the people who trained it, which is the
+ * neutral-sources rule this product configures itself under: a curated list
+ * points at originals, never at a re-publisher or a mirror.
+ *
+ * **Most of them are Apache-2.0 and one is not.** The last rung of the
+ * point-prompt ladder is published under its trainer's own licence and behind an
+ * access gate, and it is offered anyway because the alternative is worse: leaving
+ * it out does not spare anybody the terms, it only means the people who want it
+ * have to find the model id somewhere else and type it in, having read nothing.
+ * Curating it is what puts {@link CuratedModel.access} on screen before a
+ * download is offered. Nothing about the licence reaches this product's own: the
+ * adapter code is ours and stays Apache-2.0, and the weights are fetched by the
+ * person using it, from the publisher, after they have accepted the terms
+ * themselves — this list never redistributes anything.
  *
  * The ladders are complete on purpose. Offering only a middle rung would make
  * the choice between "runs on this laptop" and "as accurate as this build gets"
@@ -105,6 +130,20 @@ export const CURATED_MODELS: readonly CuratedGroup[] = [
         revision: "665f8e2ad61cf5f53d65644ff27c8ee525124610",
         totalBytes: 1_796_013_511,
         hint: "large — the most accurate, wants a GPU",
+      },
+      {
+        modelId: "facebook/sam3",
+        revision: "3c879f39826c281e95690f02c7821c4de09afae7",
+        // The repository publishes its weights twice, once as a checkpoint and
+        // once as safetensors, and fetching a revision fetches all of it. So this
+        // is about twice the size of the model it installs, and it is the figure
+        // that belongs here: what lands on the disk, not what gets loaded.
+        totalBytes: 6_895_093_624,
+        hint: "SAM 3 — a newer architecture, the largest download here, wants a GPU",
+        access: {
+          note: "Meta publishes these weights under the SAM License and grants access by request. Ask for it, then set HF_TOKEN before downloading.",
+          href: "https://huggingface.co/facebook/sam3",
+        },
       },
     ],
   },

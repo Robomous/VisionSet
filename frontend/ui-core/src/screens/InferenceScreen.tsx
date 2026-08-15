@@ -976,6 +976,7 @@ function ConnectionDialog({
                       </FieldHint>
                     </div>
                   </div>
+                  <AccessLine modelId={modelId.trim()} revision={revision.trim()} />
                   <DownloadSizeLine modelId={modelId.trim()} revision={revision.trim()} />
                 </>
               ) : (
@@ -1034,6 +1035,49 @@ function ConnectionDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * What has to be cleared before this model can be fetched, said before it is.
+ *
+ * Principle 9: no requirement is discovered by crashing into it. A gated model
+ * refuses its download with a sentence naming the remedy, which is the right
+ * refusal and still the wrong place to learn it — by then somebody has chosen a
+ * model, created a connection and pressed a button. This is the same fact, one
+ * step earlier, while the choice is still being made.
+ *
+ * Read through {@link curatedEntry} rather than off the select's own value, so it
+ * survives reopening a stored connection: the entry matches on the revision as
+ * well as the id, which means a connection pinned to some other commit of the
+ * same model is correctly *not* described by this line.
+ *
+ * A custom model id gets nothing here, and that is honest rather than a gap —
+ * whether an arbitrary repository is gated is not something this build knows
+ * before asking, and the refusal is what answers it.
+ */
+function AccessLine({
+  modelId,
+  revision,
+}: {
+  readonly modelId: string;
+  readonly revision: string;
+}): JSX.Element {
+  const access = curatedEntry(modelId, revision)?.access;
+  if (access === undefined) return <></>;
+  return (
+    <p className="text-meta text-muted-foreground" data-testid="model-access">
+      {access.note}{" "}
+      <a
+        className="underline underline-offset-2"
+        href={access.href}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Request access
+      </a>
+      .
+    </p>
   );
 }
 
