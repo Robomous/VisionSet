@@ -40,11 +40,18 @@
  * the badge is on the row precisely so the mapping is read rather than memorised.
  */
 
-import { hotkeyForClass, type AnnotationSchema, type LabelClass } from "@visionset/annotator";
+import {
+  drawableGeometries,
+  hotkeyForClass,
+  toolForClass,
+  type AnnotationSchema,
+  type LabelClass,
+  type Tool,
+} from "@visionset/annotator";
 import { Plus } from "lucide-react";
 import { useState, type JSX, type RefObject } from "react";
 
-import { formatGeometries } from "../data/geometryCategory";
+import { formatGeometries, geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { Input } from "../primitives/Input";
@@ -73,6 +80,19 @@ export interface ClassRegionProps {
   readonly activeClass: string | null;
   readonly onActivateClass: (labelClass: string) => void;
   /**
+   * Which of the armed class's shapes the next drag produces, and how to change
+   * it — the same pair `ToolPalette` takes, held once by the page.
+   *
+   * Here because arming a class stopped answering it. A class accepting a set has
+   * no single implied tool, and until this the only place that answer lived was
+   * the strip at the **far left** of the canvas while the class was chosen on the
+   * right: one decision split across the width of the picture, in a loop repeated
+   * hundreds of times a job. Optional, so a host with no tool state renders the
+   * region as a pure list.
+   */
+  readonly activeTool?: Tool | null;
+  readonly onActivateTool?: (tool: Tool) => void;
+  /**
    * Focus target for `c`, held by the page because the keystroke arrives at the
    * canvas's own keyboard root and not at anything in this tree.
    */
@@ -93,6 +113,8 @@ export function ClassRegion({
   schema,
   activeClass,
   onActivateClass,
+  activeTool = null,
+  onActivateTool,
   filterRef,
   onAddClass,
 }: ClassRegionProps): JSX.Element {
@@ -212,6 +234,8 @@ export function ClassRegion({
                 schema={schema}
                 selected={declared.name === activeClass}
                 onSelect={() => onActivateClass(declared.name)}
+                activeTool={activeTool}
+                {...(onActivateTool === undefined ? {} : { onActivateTool })}
               />
             ))
           )}
@@ -237,17 +261,48 @@ function ClassRow({
   schema,
   selected,
   onSelect,
+  activeTool,
+  onActivateTool,
 }: {
   readonly declared: LabelClass;
   readonly schema: AnnotationSchema;
   readonly selected: boolean;
   readonly onSelect: () => void;
+  readonly activeTool: Tool | null;
+  readonly onActivateTool?: (tool: Tool) => void;
 }): JSX.Element {
+  /**
+   * The shapes this row offers as a choice, or nothing.
+   *
+   * Three conditions, and each removes a control that would be noise. **Armed**,
+   * because an unarmed row has no live choice to make and fifty rows of pickers
+   * would be fifty controls for one decision. **More than one drawable**, because
+   * a class with a single shape has nothing to choose. **A host that takes the
+   * answer**, because a picker nothing listens to is worse than none.
+   *
+   * `drawableGeometries` rather than `geometries`: a class may accept a tag
+   * alongside a box, and a tag has no canvas gesture — offering it here would put
+   * a tool on the strip's vocabulary that the canvas cannot answer.
+   */
+  const drawable = drawableGeometries(declared);
+  const picker =
+    selected && drawable.length > 1 && onActivateTool !== undefined
+      ? drawable.map((tool) => ({
+          value: tool,
+          label: geometryLabel(tool),
+          // Through `toolFor`'s own resolution rather than a comparison with the
+          // raw preference: the held tool may be one this class forbids, and the
+          // lit segment must be the one that would actually be drawn.
+          active: toolForClass(declared, activeTool) === tool,
+          onPick: () => onActivateTool(tool),
+        }))
+      : undefined;
   return (
     <ClassListRow
         testId={`class-row-${declared.name}`}
         name={declared.name}
         geometry={formatGeometries(declared.geometries)}
+        {...(picker === undefined ? {} : { shapes: picker })}
         // `classColor` — schema colour first, else a hash of the name — is the
         // single spelling, shared with the canvas, so a swatch here and a box out
         // there are the same colour by construction rather than by two formulas

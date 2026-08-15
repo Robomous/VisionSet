@@ -122,7 +122,23 @@ export function toolFor(
   if (activeClass === null) return "select";
   const declared = classNamed(document, activeClass);
   if (declared === undefined) return "select";
-  const drawable = drawableGeometries(declared);
+  return toolForClass(declared, preferred);
+}
+
+/**
+ * The same resolution, for a caller that already holds the class.
+ *
+ * `toolFor` above takes a document because a palette selection is a *name* and
+ * resolving it is where the "not declared" case is got wrong. A surface
+ * rendering `schema.classes` is iterating the resolved things already and has no
+ * document to hand — a class list, or anything drawing one row per class.
+ *
+ * Exported so that surface does not write `drawable.find(…) ?? drawable[0]` for
+ * itself. Two spellings of a fallback is how a strip and a panel come to disagree
+ * about which shape is lit, which is the one thing they must not do.
+ */
+export function toolForClass(labelClass: LabelClass, preferred: Tool | null = null): Tool {
+  const drawable = drawableGeometries(labelClass);
   if (drawable.length === 0) return "select";
   return drawable.find((tool) => tool === preferred) ?? drawable[0];
 }

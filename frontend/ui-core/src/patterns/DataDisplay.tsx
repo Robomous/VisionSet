@@ -214,6 +214,31 @@ export interface ClassListRowProps {
    */
   readonly testId?: string;
   readonly className?: string;
+  /**
+   * The shapes this class can be drawn as, when there is a choice between them.
+   *
+   * Absent is the ordinary row and the ordinary case: a class accepting one
+   * geometry has nothing to decide, and a list of fifty of them should carry
+   * fifty *names* rather than fifty controls. Present turns the geometry text
+   * into a segmented control — the active shape lit, pressing another switching
+   * the tool without moving the class.
+   *
+   * **Present also changes the row's markup**, and that is not an implementation
+   * detail worth hiding. This component's whole shape is "a real `<button>`
+   * spanning the row"; HTML forbids interactive descendants inside a button, so
+   * a row that offers a choice has to become a group with an inner name button
+   * instead. The caller decides which rows are worth that, and `ClassRegion`
+   * spends it on exactly one — the armed row, which is the only one where the
+   * choice is live. The accessible answer and the density answer agree.
+   *
+   * `geometry` still renders when this is absent, so nothing else moves.
+   */
+  readonly shapes?: readonly {
+    readonly value: string;
+    readonly label: string;
+    readonly active: boolean;
+    readonly onPick: () => void;
+  }[];
 }
 
 /**
@@ -247,8 +272,86 @@ export function ClassListRow({
   refusal,
   testId,
   className,
+  shapes,
 }: ClassListRowProps): JSX.Element {
   const compact = count === undefined;
+  const picking = shapes !== undefined && shapes.length > 0;
+  // One copy of the row's chrome, whichever element ends up carrying it. The
+  // whole reason this component is shared with the schema editor is that the
+  // selected treatment should not have two spellings; a group variant that
+  // rebuilt it would be that drift arriving through the back door.
+  const chrome = cn(
+    "flex w-full items-center gap-2 border-l-2 px-3 text-left transition-colors",
+    compact ? "h-9 shrink-0" : "py-2",
+    selected
+      ? "border-l-primary bg-primary/10"
+      : "border-l-transparent hover:bg-muted focus-visible:bg-muted",
+    refusal !== undefined && "cursor-not-allowed text-disabled-foreground",
+    className,
+  );
+  const swatch = (
+    <span
+      aria-hidden="true"
+      className="size-2.5 shrink-0 rounded-sm"
+      style={{ backgroundColor: color }}
+    />
+  );
+
+  if (picking) {
+    // A group, not a button, because the shapes inside are buttons and HTML has
+    // no nesting for that. Only the name is the "choose this class" target; the
+    // row's own hover still reads as one thing because the chrome is the same.
+    return (
+      <div
+        role="group"
+        aria-label={name}
+        {...(testId === undefined ? {} : { "data-testid": testId })}
+        data-selected={selected ? "true" : undefined}
+        className={chrome}
+      >
+        {swatch}
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-current={selected ? "true" : undefined}
+          // `title` carries the full name, which is what pays for the geometry
+          // words costing the name its width: at three shapes it truncates, and
+          // hovering is how it comes back.
+          title={name}
+          className={cn(
+            "min-w-0 flex-1 truncate text-left text-body",
+            selected && "font-semibold",
+          )}
+        >
+          {name}
+        </button>
+        {shapes.map((shape) => (
+          <button
+            key={shape.value}
+            type="button"
+            onClick={shape.onPick}
+            aria-pressed={shape.active}
+            data-active={shape.active ? "true" : "false"}
+            data-testid={testId === undefined ? undefined : `${testId}-shape-${shape.value}`}
+            className={cn(
+              "shrink-0 rounded-sm px-1.5 text-meta transition-colors",
+              shape.active
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-card hover:text-foreground",
+            )}
+          >
+            {shape.label}
+          </button>
+        ))}
+        {hotkey != null && (
+          <kbd className="shrink-0 rounded-sm border border-border px-1 font-mono text-meta text-muted-foreground">
+            {hotkey}
+          </kbd>
+        )}
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -258,21 +361,9 @@ export function ClassListRow({
       {...(refusal === undefined ? {} : { title: refusal })}
       aria-current={selected ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
-      className={cn(
-        "flex w-full items-center gap-2 border-l-2 px-3 text-left transition-colors",
-        compact ? "h-9 shrink-0" : "py-2",
-        selected
-          ? "border-l-primary bg-primary/10"
-          : "border-l-transparent hover:bg-muted focus-visible:bg-muted",
-        refusal !== undefined && "cursor-not-allowed text-disabled-foreground",
-        className,
-      )}
+      className={chrome}
     >
-      <span
-        aria-hidden="true"
-        className="size-2.5 shrink-0 rounded-sm"
-        style={{ backgroundColor: color }}
-      />
+      {swatch}
       {compact ? (
         <>
           <span

@@ -2724,6 +2724,8 @@ function Workspace({
           onHiddenChange={setHiddenIds}
           activeClass={activeClass}
           onActivateClass={activateClass}
+          activeTool={activeTool}
+          onActivateTool={onActivateTool}
           classFilterRef={classFilterRef}
           // The name comes from whoever asked: the no-match row hands over what
           // was typed (the WS4 prefill), and the header's `+` hands over "" —

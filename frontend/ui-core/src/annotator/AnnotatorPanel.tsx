@@ -85,6 +85,7 @@ import {
   type AnnotationSchema,
   type AnnotatorStore,
   type LabelClass,
+  type Tool,
 } from "@visionset/annotator";
 import { Check, Eye, EyeOff, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
@@ -128,6 +129,9 @@ export interface AnnotatorPanelProps {
    */
   readonly activeClass: string | null;
   readonly onActivateClass: (labelClass: string) => void;
+  /** Which shape the armed class draws, and how to change it. See `ClassRegion`. */
+  readonly activeTool?: Tool | null;
+  readonly onActivateTool?: (tool: Tool) => void;
   /** Focus target for `c`. See `ClassRegion`. */
   readonly classFilterRef?: RefObject<HTMLInputElement | null>;
   /** Open the add-a-class dialog, or absent where there is nowhere to add one. */
@@ -141,6 +145,8 @@ export function AnnotatorPanel({
   readOnly = false,
   activeClass,
   onActivateClass,
+  activeTool,
+  onActivateTool,
   classFilterRef,
   onAddClass,
 }: AnnotatorPanelProps): JSX.Element {
@@ -195,7 +201,13 @@ export function AnnotatorPanel({
 
   return (
     <section
-      className="flex w-72 min-h-0 flex-col gap-2 rounded-lg border border-border bg-muted p-2"
+      // 288px, and 320px only from `2xl`. The extra 32px is headroom for a class
+      // naming three shapes, not a fix — and it is withheld below 1536px on
+      // purpose: `ANNOTATOR_MIN_VIEWPORT_PX` is 768, where a collapsed rail
+      // already leaves a 384px stage, and a width chosen on a large monitor must
+      // not be charged to the smallest screen the editor opens on at all.
+      // `EditorNotice`'s clearance arithmetic is stated at 1280px and stays true.
+      className="flex w-72 min-h-0 flex-col gap-2 rounded-lg border border-border bg-muted p-2 2xl:w-80"
       data-testid="annotator-panel"
       aria-label="Classes and annotations"
     >
@@ -214,6 +226,8 @@ export function AnnotatorPanel({
             schema={schema}
             activeClass={activeClass}
             onActivateClass={onActivateClass}
+            activeTool={activeTool ?? null}
+            {...(onActivateTool === undefined ? {} : { onActivateTool })}
             {...(classFilterRef === undefined ? {} : { filterRef: classFilterRef })}
             {...(onAddClass === undefined ? {} : { onAddClass })}
           />
