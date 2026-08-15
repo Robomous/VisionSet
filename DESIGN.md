@@ -1067,11 +1067,17 @@ The page the reference design shows (#56), with measurements verified in v1's so
   rail already leaves a 384px stage, and a width chosen on a large monitor must not be
   charged to the smallest screen the editor opens on at all. `EditorNotice`'s clearance
   arithmetic is stated at 1280px and is unaffected. Otherwise:
-  `muted` surface, `border`, 12px radius. **Two stacked regions, no tabs and no
-  splitter.** It was Objects | Labels tabs until #368, which sent class selection to the
-  top bar; #420 brings it back and deliberately does not bring the tabs with it. A tab is
-  a claim that two things are alternatives, and these are the two halves of one question —
-  *what may I draw* and *what have I drawn* — so both are on screen at once.
+  `muted` surface, `border`, 12px radius. **Three stacked regions, no tabs and no
+  splitter** — Classes, Tags, Annotations. It was Objects | Labels tabs until #368, which
+  sent class selection to the top bar; #420 brings it back and deliberately does not bring
+  the tabs with it. A tab is a claim that things are alternatives, and these are three
+  answers about one frame, read top to bottom: *what may I draw*, *what is true of the
+  whole picture*, *what have I drawn*. All three are on screen at once.
+
+  **A region with nothing to show is not rendered**, and its divider goes with it: no
+  class anything can be drawn with, or no class declaring a tag. A heading over an empty
+  box is a claim that something is missing. Annotations is the exception and always
+  renders — an empty frame is the normal state of a fresh one, and it says so in words.
 
   **Classes (upper).** Header — the word `Classes`, the class count in muted meta, and a
   24px `+` opening the add-a-class dialog; then a 32px `Filter classes…` input; then the
@@ -1079,17 +1085,32 @@ The page the reference design shows (#56), with measurements verified in v1's so
   in rows**: a floor of 3 rows' worth, one row per class after that, a ceiling of 8, after
   which the region is fixed and the list scrolls inside it. A small ontology gets a region
   proportional to what it holds; a large one cannot push the objects region off the bottom.
-  The count it is computed from is the **schema's**, never the filtered one — a height
-  that tracked the filter would reflow the region below it on every keystroke. The header
+  The count it is computed from is the **schema's drawable classes**, never the filtered
+  ones — a height that tracked the filter would reflow the region below it on every
+  keystroke — and a row that wrapped its chips to a second line is absorbed by the same
+  scroller a ninth class is, rather than by a rule that would have to measure. The header
   and the filter are not rows and do not scroll away.
 
-  **Annotations (lower).** Takes all remaining height and scrolls independently. Top to
-  bottom: **header** (the word `Annotations`, the object count in muted meta text, the
-  all-visibility toggle); the **tag chip strip**, rendered only when the pinned schema
-  declares a `classification_tag` class — rounded-full chips carrying swatch, name and
-  either the hotkey digit or a check; the **filter**, a 32px input that is *always*
-  rendered, because a control that appears once a list is long enough is a control nobody
-  finds; then the **object rows**: `rounded-md border px-1.5 py-1`, meta-size text
+  **Tags (middle).** Rendered only when the pinned schema declares a `classification_tag`
+  class. Header — the word `Tags` and the assigned count in muted meta — then one line of
+  meta-size prose, `Tags apply to the whole image.`, which is the whole difference between
+  this region and the two around it. Then the chips: rounded-full, swatch, name, and
+  either the hotkey digit or a check, `primary/10` with a `primary` border when assigned
+  and outlined muted when not. **Multi-select and unbounded**: an image carries one tag per
+  tag-capable class and as many classes as the schema declares, which is the kernel's own
+  rule (`DuplicateClassificationTag` is keyed `(asset, class)`), so the chips enforce
+  nothing the kernel would contradict. `shrink-0` with a capped scroller of its own, so
+  thirty tag classes cannot push the objects region off the panel; past ~20 it carries a
+  filter, per the lists rule.
+
+  **Annotations (lower).** Takes all remaining height and scrolls independently, and holds
+  **drawn shapes only** — a tag has no coordinates, renders in neither canvas layer, and is
+  assigned in the region above; counting it here gave a tagged-but-undrawn frame `1 object`
+  and offered it a hide button that hides nothing. Top to bottom: **header** (the word
+  `Annotations`, the object count in muted meta text, the all-visibility toggle); the
+  **filter**, a 32px input that is *always* rendered, because a control that appears once a
+  list is long enough is a control nobody finds; then the **object rows**:
+  `rounded-md border px-1.5 py-1`, meta-size text
   `N. class`; **selected = `border-primary` + `bg-primary/10`**; hidden = 50% opacity;
   per-row tag, eye and trash as 24px ghost icon buttons.
 

@@ -100,6 +100,7 @@ import {
   documentFromWire,
   hasPending,
   isParked,
+  isTagAnnotation,
   parseGeometry,
   promptOf,
   randomUuid,
@@ -1517,7 +1518,13 @@ function Workspace({
     attempt(() => setProgress.mutate({ assetId: asset.id, progress: "unannotated" }));
   }
 
-  const drawn = annotationsInDrawOrder(snapshot.document).length;
+  // The badge on the picture says "N objects", and a tag is not one: it has no
+  // coordinates and renders in neither canvas layer, so counting it here made the
+  // number disagree with what a person could see. Same word, same rule, same
+  // filter as the panel's own counter — `isTagAnnotation` is the one spelling.
+  const drawn = annotationsInDrawOrder(snapshot.document).filter(
+    (annotation) => !isTagAnnotation(annotation),
+  ).length;
 
 
   /**

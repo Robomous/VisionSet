@@ -1,5 +1,5 @@
 /**
- * The annotation page's right-hand panel: **Classes over Annotations**, two
+ * The annotation page's right-hand panel: **Classes, Tags, Annotations** — three
  * stacked regions.
  *
  * ## Why it is here and not in `@visionset/annotator`
@@ -17,32 +17,42 @@
  * `hiddenIds` prop and this panel drives it. The split is: the annotator gained an
  * ability, `ui-core` gained the UI.
  *
- * ## Two regions, no tabs, and no splitter
+ * ## Three regions, no tabs, and no splitter
  *
- * There are no **Objects | Labels** tabs. Tagging the *asset* — a fact about this
- * frame rather than about the ontology — is a chip strip here, and class selection
- * is the region above it. A tab is a claim that two things are
- * alternatives; classes and objects are the two halves of one question — what may
- * I draw, and what have I drawn — so they are stacked and both are on screen.
+ * There are no **Objects | Labels** tabs. A tab is a claim that two things are
+ * alternatives, and these are not: they are three answers about one frame, read
+ * in order — *what may I draw* (Classes), *what is true of the whole picture*
+ * (Tags), *what have I drawn* (Annotations). So they are stacked and all three
+ * are on screen.
  *
- * The split follows a rule and is not draggable. `ClassRegion` is `shrink-0` and
- * sizes itself in rows; the objects region is `min-h-0 flex-1` and takes whatever
- * is left. Two scrollers, each inside its region, so a long ontology and a busy
- * frame cannot push each other off the panel. A draggable splitter would add a
- * third piece of per-user state to a surface whose whole point is that it is the
- * same on every frame.
+ * Tags used to be a chip strip *inside* the objects region, above its filter, on
+ * the argument that a tag is a fact about this frame and so belongs beside the
+ * things drawn on it. Two things were wrong with that. The chips sat under a
+ * heading — **Annotations** — that named the numbered rows below them and not the
+ * chips. And because the list was every annotation in the document, each tag was
+ * *also* a row: counted as an object, given a hide button that hides nothing and
+ * a reassignment menu onto classes that cannot hold it. A heading, a count and a
+ * region of its own fixes both, and the filter below now unambiguously filters
+ * the list it sits on.
  *
- * ## The order of the parts, and the one that is not obvious
+ * The splits follow a rule and are not draggable. `ClassRegion` is `shrink-0` and
+ * sizes itself in rows; `TagRegion` is `shrink-0` with a capped scroller, so a
+ * schema of thirty tag classes cannot push the rest off the panel; the objects
+ * region is `min-h-0 flex-1` and takes whatever is left. Each region scrolls
+ * inside itself, so a long ontology, a long tag list and a busy frame cannot push
+ * each other off. A draggable splitter would add a piece of per-user state to a
+ * surface whose whole point is that it is the same on every frame.
  *
- * Header, tags, filter, list. The chip strip sits above the list because the tags
- * describe the whole asset and the list describes the things drawn on it — decision
- * 2's own wording. The filter sits *below* the chips and immediately above the rows
- * it filters, because a control's position is the cheapest statement of what it acts
- * on; between the chips and the list it would read as filtering both.
+ * Each region's heading, count and prose sit outside its scroller and never
+ * scroll away. **A region with nothing to show is not rendered at all** — no
+ * classes anything can be drawn with, or no class declaring a tag — because a
+ * heading over an empty box is a claim that something is missing. The objects
+ * region is the exception and always renders: its emptiness is the normal state
+ * of a fresh frame, and it says so in words.
  *
- * It renders even with nothing drawn. A control that appears once a list is long
- * enough is a control nobody finds, and the panel's width is fixed, so there is no
- * layout to protect by hiding it.
+ * The object filter renders even with nothing drawn. A control that appears once
+ * a list is long enough is a control nobody finds, and the panel's width is
+ * fixed, so there is no layout to protect by hiding it.
  *
  * ## Every write goes through a command
  *
@@ -72,7 +82,9 @@
 import {
   annotationsInDrawOrder,
   classNamed,
+  drawableGeometries,
   hotkeyForClass,
+  isTagAnnotation,
   isTaggableClass,
   randomUuid,
   removeAnnotationsCommand,
@@ -90,6 +102,7 @@ import {
 import { Check, Eye, EyeOff, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
+import { geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
 import { Button } from "../primitives/Button";
 import { Input } from "../primitives/Input";
@@ -153,9 +166,29 @@ export function AnnotatorPanel({
   const snapshot = useAnnotatorSnapshot(store);
   const [filter, setFilter] = useState("");
 
-  const drawn = annotationsInDrawOrder(snapshot.document);
+  /**
+   * What is on the picture — and tags are not.
+   *
+   * `annotationsInDrawOrder` is every annotation in the document, so before this
+   * filter a tag appeared *twice*: once as a chip and once as a numbered row
+   * carrying a hide button that hides nothing, a delete, and a reassignment menu
+   * onto classes that cannot hold it. It also counted as an object, so a tagged
+   * asset with nothing drawn on it read `1 object`.
+   *
+   * The index the rows are numbered by comes from *this* list, so the numbers are
+   * the drawn shapes' own 1..N and a tag no longer takes one.
+   */
+  const drawn = annotationsInDrawOrder(snapshot.document).filter(
+    (annotation) => !isTagAnnotation(annotation),
+  );
   const schema = snapshot.document.schema;
   const tagClasses = schema.classes.filter(isTaggableClass);
+  // A class that can only be tagged has no row in the classes region, so a schema
+  // of nothing but tag classes has no region at all — and no split rule either,
+  // which is why the composer asks rather than `ClassRegion` hiding itself.
+  const drawableClasses = schema.classes.filter(
+    (declared) => drawableGeometries(declared).length > 0,
+  );
 
   const query = filter.trim().toLowerCase();
   // Numbered by **draw order**, never by position in the filtered list: the number
@@ -209,7 +242,7 @@ export function AnnotatorPanel({
       // `EditorNotice`'s clearance arithmetic is stated at 1280px and stays true.
       className="flex w-72 min-h-0 flex-col gap-2 rounded-lg border border-border bg-muted p-2 2xl:w-80"
       data-testid="annotator-panel"
-      aria-label="Classes and annotations"
+      aria-label="Classes, tags and annotations"
     >
       {/* Upper region: the ontology — absent, not disabled, in the read-only
           mode: what may I draw is not a question a viewer can ask, so
@@ -220,7 +253,7 @@ export function AnnotatorPanel({
           `shrink-0`, and it sizes itself in rows — see `ClassRegion` for the
           rule and for why it is computed from the schema's count rather than
           from the filtered one. */}
-      {!readOnly && (
+      {!readOnly && drawableClasses.length > 0 && (
         <>
           <ClassRegion
             schema={schema}
@@ -235,6 +268,29 @@ export function AnnotatorPanel({
           {/* The split. A rule, not a handle — `ClassRegion` decides its own
               height and everything below takes the rest. */}
           <div className="h-px shrink-0 bg-border" aria-hidden="true" data-testid="panel-split" />
+        </>
+      )}
+
+      {/* Between the ontology and the objects, because that is what it is about:
+          the classes above say what may be drawn, these say what is true of the
+          whole frame, and the list below says what has been drawn on it.
+
+          Only when the pinned schema declares one — decision 2. A section with no
+          chips is a heading over nothing, and most schemas declare no tags at all. */}
+      {tagClasses.length > 0 && (
+        <>
+          <TagRegion
+            store={store}
+            readOnly={readOnly}
+            schema={schema}
+            tagClasses={tagClasses}
+            tagged={taggedClassNames(snapshot.document)}
+          />
+          <div
+            className="h-px shrink-0 bg-border"
+            aria-hidden="true"
+            data-testid="panel-split-tags"
+          />
         </>
       )}
 
@@ -262,18 +318,6 @@ export function AnnotatorPanel({
           </Button>
         </div>
       </div>
-
-      {/* Only when the pinned schema declares one — decision 2. A strip with no
-          chips is a heading over nothing, and most schemas declare no tags at all. */}
-      {tagClasses.length > 0 && (
-        <TagStrip
-          store={store}
-          readOnly={readOnly}
-          schema={schema}
-          tagClasses={tagClasses}
-          tagged={taggedClassNames(snapshot.document)}
-        />
-      )}
 
       <Input
         value={filter}
@@ -322,15 +366,38 @@ export function AnnotatorPanel({
 }
 
 /**
- * The asset's classification tags, as chips.
+ * The asset's classification tags: a section of its own, between the classes and
+ * the objects.
  *
  * This is the Labels tab's one capability that had nowhere else to go: a tag is not
  * a shape and cannot be drawn, so no tool and no canvas gesture reaches it. The
  * digit is shown because the keyboard binding is still the fastest way to set one
  * and this is the only surface left that can name it — `hotkeyForClass`, so the chip
  * and the input layer cannot disagree about which number a class answers to.
+ *
+ * ## Why it left the objects region
+ *
+ * It used to sit inside it, above the object filter, on the argument that a tag is
+ * a fact about *this frame* and so belongs beside the things drawn on the frame.
+ * What that missed is the region's heading: everything under **Annotations** is
+ * one of the numbered rows below it, and the chips were not. Worse, they were
+ * *also* rows — the list was every annotation in the document, tags included, so a
+ * tagged asset showed each tag twice and counted it as an object, with a hide
+ * button that hides nothing and a reassignment menu onto classes that cannot hold
+ * it.
+ *
+ * So: three sections, each with a heading, a count, and the things that heading
+ * names. Assigning is multi-select and unbounded — an image carries one tag per
+ * tag-capable class and as many classes as it likes — which is exactly the
+ * kernel's own rule (`DuplicateClassificationTag` is keyed `(asset, class)`), so
+ * nothing here enforces a limit the chips could disagree with.
+ *
+ * `shrink-0` with its own cap and its own scroller, so a schema declaring thirty
+ * tag classes cannot push the objects region off the panel. The heading and the
+ * one line under it sit outside that scroller and never scroll away, which is the
+ * rule `ClassRegion`'s header already follows.
  */
-function TagStrip({
+function TagRegion({
   store,
   readOnly,
   schema,
@@ -355,42 +422,69 @@ function TagStrip({
     if (command !== null) store.execute(command);
   }
 
+  // Assigned, not "tagged with a class this schema still declares": a document
+  // can carry a tag whose class a later version removed, and it is still on the
+  // asset. The chips iterate the *schema*, so such a tag has no chip — counting it
+  // here would name a number the section cannot show.
+  const assigned = tagClasses.filter((declared) => tagged.has(declared.name)).length;
+
   return (
-    <div className="flex flex-wrap gap-1 px-1" data-testid="tag-strip">
-      {tagClasses.map((declared) => {
-        const on = tagged.has(declared.name);
-        return (
-          <button
-            key={declared.name}
-            type="button"
-            data-testid={`tag-chip-${declared.name}`}
-            data-active={on ? "true" : "false"}
-            aria-pressed={on}
-            disabled={readOnly}
-            onClick={() => press(declared)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-meta",
-              on
-                ? "border-primary bg-primary/10 text-foreground"
-                : "border-border bg-card text-muted-foreground",
-            )}
-          >
-            <span
-              aria-hidden="true"
-              className="size-2 shrink-0 rounded-full"
-              style={{ background: classColor(declared, declared.name) }}
-            />
-            <span className="truncate">{declared.name}</span>
-            {on ? (
-              <Check className="size-3 text-primary" aria-hidden="true" />
-            ) : (
-              <kbd className="rounded-sm border border-border px-1 font-mono text-meta">
-                {hotkeyForClass(schema, declared.name) ?? "—"}
-              </kbd>
-            )}
-          </button>
-        );
-      })}
+    <div className="flex shrink-0 flex-col gap-2" data-testid="tag-region">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-body font-medium">Tags</span>
+        <span className="text-meta text-muted-foreground" data-testid="tag-count">
+          {assigned} assigned
+        </span>
+      </div>
+
+      {/* One line, and it earns its place: everything else in this panel is about
+          a thing on the picture, and the whole difference here is that these are
+          not. Sentence case, no exclamation — `DESIGN.md`'s copy rules. */}
+      <p className="px-1 text-meta text-muted-foreground" data-testid="tag-note">
+        Tags apply to the whole image.
+      </p>
+
+      <div
+        className="max-h-24 overflow-y-auto"
+        data-testid="tag-scroller"
+      >
+        <div className="flex flex-wrap gap-1 px-1" data-testid="tag-strip">
+          {tagClasses.map((declared) => {
+            const on = tagged.has(declared.name);
+            return (
+              <button
+                key={declared.name}
+                type="button"
+                data-testid={`tag-chip-${declared.name}`}
+                data-active={on ? "true" : "false"}
+                aria-pressed={on}
+                disabled={readOnly}
+                onClick={() => press(declared)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-meta",
+                  on
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border bg-card text-muted-foreground",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ background: classColor(declared, declared.name) }}
+                />
+                <span className="truncate">{declared.name}</span>
+                {on ? (
+                  <Check className="size-3 text-primary" aria-hidden="true" />
+                ) : (
+                  <kbd className="rounded-sm border border-border px-1 font-mono text-meta">
+                    {hotkeyForClass(schema, declared.name) ?? "—"}
+                  </kbd>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -518,8 +612,14 @@ function ObjectRow({
           // inline colour, and the same `classColor` the canvas draws with.
           style={{ background: classColor(declared, annotation.label_class) }}
         />
+        {/* The geometry, because the class name stopped identifying the shape.
+            A class accepts a *set* now, so two rows reading `3. sign` may be a box
+            and a polygon — and the row is where somebody picks which one to select
+            or delete. `geometryLabel` is the display word, never the wire value,
+            shared with the tool strip and the class rows. */}
         <span className="truncate">
-          {index + 1}. {annotation.label_class}
+          {index + 1}. {annotation.label_class}{" "}
+          <span className="text-muted-foreground">· {geometryLabel(annotation.geometry.type)}</span>
         </span>
       </button>
       {/* Outside the select button: it is a mark, not a target, and putting it

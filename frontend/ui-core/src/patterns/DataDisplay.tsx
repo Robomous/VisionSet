@@ -345,12 +345,19 @@ export function ClassListRow({
             parent so that a second line starts under the *name* and not under the
             colour dot — the indent the design asks for costs no rule of its own.
 
-            `flex-wrap` is the whole mechanism, and it needs the name to have a
-            floor to push against: `grow basis-32` gives it a 128px flex base, so
-            once name-plus-chips exceeds the row the chips take a line of their
-            own, and on a row where they fit the name grows to fill what is left.
-            With `flex-1` (basis zero) the name would simply shrink to nothing and
-            the chips would never move, which was #596 from the other side. */}
+            `flex-wrap` is the mechanism and **the absence of `flex-1` is what arms
+            it**. Flexbox breaks lines on each item's *flex base size*, before any
+            shrinking: left at `auto`, the name's base is the width of the text, so
+            a long name plus its chips overflows the row and the chips take a line
+            of their own — while a short name leaves them beside it. `flex-1` sets
+            the base to zero, which is why the name used to shrink away to nothing
+            and the chips never moved (#596, from the other side). A fixed
+            `basis-32` would be the opposite mistake: every three-chip row would
+            wrap, `car` included.
+
+            `grow` then lets the name fill whatever the line has left, and
+            `min-w-0` + `truncate` are the last resort for a name too long even
+            with the whole line to itself. */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
           <button
             type="button"
@@ -361,7 +368,7 @@ export function ClassListRow({
             // line to itself.
             title={name}
             className={cn(
-              "min-w-0 grow basis-32 truncate text-left text-body",
+              "min-w-0 grow truncate text-left text-body",
               selected && "font-semibold",
             )}
           >

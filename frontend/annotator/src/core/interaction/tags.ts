@@ -150,12 +150,27 @@ export function isTaggableClass(labelClass: LabelClass): boolean {
   return labelClass.geometries.includes("classification_tag");
 }
 
+/**
+ * Whether this annotation is a classification tag rather than a drawn shape.
+ *
+ * The class-level question is {@link isTaggableClass} — *may* this class be
+ * tagged — and this is the annotation-level one: *is* this a tag. A surface
+ * listing what has been drawn needs the second, because a tag has no coordinates
+ * and belongs to the whole asset: it renders in neither canvas layer, it has no
+ * geometry to name in a row, and offering it a hide button or a reassignment menu
+ * would offer operations that mean nothing for it.
+ *
+ * Exported so the panel does not spell the geometry comparison for itself. It was
+ * already written twice in this file; a third copy living in a component is how
+ * "what counts as a tag" comes to have two answers.
+ */
+export function isTagAnnotation(annotation: Annotation): boolean {
+  return annotation.geometry.type === "classification_tag";
+}
+
 /** Whether this annotation is a tag carrying this class. Geometry first. */
 function isTagOf(annotation: Annotation, labelClass: string): boolean {
-  return (
-    annotation.geometry.type === "classification_tag" &&
-    annotation.label_class === labelClass
-  );
+  return isTagAnnotation(annotation) && annotation.label_class === labelClass;
 }
 
 /**
@@ -190,7 +205,7 @@ export function tagsFor(
 export function taggedClassNames(document: AnnotationDocument): ReadonlySet<string> {
   const names = new Set<string>();
   for (const annotation of document.annotations.values()) {
-    if (annotation.geometry.type === "classification_tag") {
+    if (isTagAnnotation(annotation)) {
       names.add(annotation.label_class);
     }
   }

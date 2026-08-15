@@ -232,12 +232,15 @@ describe("ClassListRow", () => {
    * to itself, the chips landing under it — are a browser claim and are measured
    * in `cycle.spec.ts`.
    *
-   * It is worth pinning because both halves are silent when wrong. Without
-   * `flex-wrap` the chips never move; with `flex-1` instead of `grow basis-32` the
-   * name's flex basis is zero, so it shrinks to nothing and the chips never need
-   * to move either — which is #596 arriving again by a different route.
+   * It is worth pinning because every way of getting it wrong is silent. Without
+   * `flex-wrap` the chips never move. With `flex-1` the name's flex base is zero,
+   * so it shrinks away and the chips never *need* to move — #596 arriving again by
+   * another route. With a fixed `basis-*` the base stops tracking the text, and
+   * every three-chip row wraps whether or not it had to, `car` included. Left at
+   * `auto`, the base is the width of the name, which is the quantity the decision
+   * is actually about.
    */
-  it("gives the name a flex floor inside a wrapping block, so the chips can move", () => {
+  it("lets the name's own width decide, inside a wrapping block", () => {
     render(
       <ClassListRow
         testId="row"
@@ -248,8 +251,10 @@ describe("ClassListRow", () => {
       />,
     );
     const name = screen.getByTestId("row-name");
-    expect(name.className).toContain("basis-32");
+    expect(name.className).toContain("grow");
+    // Neither of the two ways to stop the base tracking the text.
     expect(name.className).not.toContain("flex-1");
+    expect(name.className).not.toMatch(/\bbasis-/);
     const block = name.parentElement;
     expect(block?.className).toContain("flex-wrap");
     // The chips live in the same wrapping block, or they could not wrap out of it.
