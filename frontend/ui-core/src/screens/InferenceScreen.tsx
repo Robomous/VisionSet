@@ -976,7 +976,7 @@ function ConnectionDialog({
                       </FieldHint>
                     </div>
                   </div>
-                  <AccessLine modelId={modelId.trim()} revision={revision.trim()} />
+                  <AccessLine modelId={modelId.trim()} />
                   <DownloadSizeLine modelId={modelId.trim()} revision={revision.trim()} />
                 </>
               ) : (
@@ -1047,23 +1047,20 @@ function ConnectionDialog({
  * model, created a connection and pressed a button. This is the same fact, one
  * step earlier, while the choice is still being made.
  *
- * Read through {@link curatedEntry} rather than off the select's own value, so it
- * survives reopening a stored connection: the entry matches on the revision as
- * well as the id, which means a connection pinned to some other commit of the
- * same model is correctly *not* described by this line.
+ * **Looked up by model id alone, and deliberately not through
+ * {@link curatedEntry}.** That helper answers "is this row showing exactly this
+ * curated entry", which compares the revision too — the right question for the
+ * select, and the wrong one here. An access gate belongs to the *repository*:
+ * pinning some other commit of the same model does not exempt anybody from its
+ * terms, so a line that disappeared when the revision was edited would be hiding
+ * a requirement that still applies.
  *
- * A custom model id gets nothing here, and that is honest rather than a gap —
- * whether an arbitrary repository is gated is not something this build knows
- * before asking, and the refusal is what answers it.
+ * A model id nobody curated gets nothing here, and that is honest rather than a
+ * gap — whether an arbitrary repository is gated is not something this build
+ * knows before asking, and the refusal is what answers it.
  */
-function AccessLine({
-  modelId,
-  revision,
-}: {
-  readonly modelId: string;
-  readonly revision: string;
-}): JSX.Element {
-  const access = curatedEntry(modelId, revision)?.access;
+function AccessLine({ modelId }: { readonly modelId: string }): JSX.Element {
+  const access = CURATED_BY_ID.get(modelId)?.access;
   if (access === undefined) return <></>;
   return (
     <p className="text-meta text-muted-foreground" data-testid="model-access">

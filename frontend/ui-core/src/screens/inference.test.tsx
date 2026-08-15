@@ -755,6 +755,32 @@ it("drops the access line again when the choice moves back to an open model", as
   expect(screen.queryByTestId("model-access")).toBeNull();
 });
 
+it("keeps saying a model needs access when it is pinned to another commit", async () => {
+  // An access gate belongs to the repository, not to the revision: choosing a
+  // different commit of the same model does not exempt anybody from its terms.
+  // The line is therefore looked up by model id alone, where the select's own
+  // "is this the curated entry" test compares both halves — a distinction no
+  // other test in this file could see, and the reason this one exists.
+  const gated = CURATED_MODELS.flatMap((group) => group.models).find(
+    (model) => model.access !== undefined,
+  )!;
+  listing([
+    connection({
+      name: "pinned-elsewhere",
+      model_id: gated.modelId,
+      model_revision: "0000000000000000000000000000000000000000",
+      allowed_actions: ["update", "delete"],
+    }),
+  ]);
+  sizeIs(1_200_000_000);
+  render(mount(<InferenceScreen />));
+  await userEvent.click(await screen.findByTestId("actions-pinned-elsewhere"));
+  await userEvent.click(await screen.findByTestId("action-edit"));
+
+  const line = await screen.findByTestId("model-access");
+  expect(line.textContent).toContain(gated.access!.note);
+});
+
 it("curates without restricting: Custom reveals the free model and revision", async () => {
   listing([]);
   sizeIs(1_200_000_000);
