@@ -486,19 +486,31 @@ two was meant.
 Class names are still unique within a version, ignoring case. What changed is what the
 interface does about it.
 
-## Taking a geometry away refuses more than it has to
+## Taking a geometry away asks about the shape, not the class
 
-Widening is the direction this feature is for, and narrowing has a stated limit. Removing one
-of a class's geometries is destructive, so it needs `allow_destructive` — and if *any*
-annotation exists under that class, it is refused outright by `SchemaChangeWouldOrphan`, which
-no flag overrides.
+Removing one of a class's geometries is destructive — the contract narrows — so it needs
+`allow_destructive`. Whether it is *refused outright* is a separate question, and it is asked at
+the grain an annotation actually has: an annotation carries one class **and one shape**, so that
+pair is what decides it.
 
-That refusal is coarser than the question. A `car` accepting `bbox · polygon` whose labels are
-all boxes loses nothing when `polygon` goes, and the publish is refused anyway: the orphan gate
-matches on the class **name**, never on the pair of class and shape. While a class held one
-geometry the two were the same question. They are not any more. Filed as
-[#592](https://github.com/Robomous/VisionSet/issues/592), pinned by a named kernel test, and
-conservative in the safe direction — it refuses rather than orphaning.
+A `car` accepting `bbox · polygon` whose labels are all boxes loses nothing when `polygon` goes,
+and the publish goes through. The same change is refused, by the refusal no flag overrides, the
+moment one `car` polygon exists — and the count in that refusal is the number of annotations
+that would actually be orphaned, not the number the class holds.
+
+Three kinds of narrowing, and they differ only in how much of a class they doom:
+
+| The change | What it can orphan |
+| --- | --- |
+| a geometry removed from a class | annotations of that class carrying **that shape** |
+| the class removed | every annotation of it, whatever shape |
+| an attribute added as required, removed, or narrowed | every annotation of it, whatever shape |
+
+The last two enumerate every shape the class *used to* declare, which is complete because an
+annotation was validated against that declaration when it was written.
+
+`preview` answers with the same set the publish will match on, so the warning a client shows
+before it asks and the refusal it may get back cannot disagree.
 
 ## Export is unchanged
 

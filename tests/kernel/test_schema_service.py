@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 from io import BytesIO
+from itertools import count
 from pathlib import Path
 from typing import NoReturn
 from uuid import UUID, uuid4
@@ -40,8 +41,10 @@ from visionset.kernel.domain import (
     Asset,
     Attribute,
     BboxGeometry,
+    Geometry,
     GeometryType,
     LabelClass,
+    PolygonGeometry,
     SchemaProvenance,
 )
 from visionset.kernel.ports import UnitOfWork
@@ -71,22 +74,54 @@ def _services(
     return workspace, ProjectService(workspace), SchemaService(workspace)
 
 
-def _annotate(workspace: WorkspaceService, project_id: UUID, label_class: str) -> None:
-    """Give the project one annotation under ``label_class``, schema aside."""
-    content_hash = workspace.blob_store.put(BytesIO(label_class.encode()))
+def _annotate(
+    workspace: WorkspaceService,
+    project_id: UUID,
+    label_class: str,
+    geometry: Geometry | None = None,
+) -> None:
+    """Give the project one annotation under ``label_class``, schema aside.
+
+    **The shape has to be one the class declares**, which was free to ignore while
+    the orphan gate matched on the class name and is not any more: since #592 the
+    gate asks about the ``(class, shape)`` pair an annotation carries, so a `lane`
+    stored as a box is a row ``AnnotationService`` would never write and the gate
+    correctly does not count. Defaults to a box because most of this module's
+    fixtures are ``SIGN``; ``LANE`` is a polygon and says so at the call.
+    """
+    # One asset per call: the blob is content-addressed and an asset is unique on
+    # ``(project, content_hash)``, so a class labelled twice would collide on the
+    # second rather than give the project a second annotation.
+    nth = next(_ANNOTATION_SEQUENCE)
+    content_hash = workspace.blob_store.put(BytesIO(f"{label_class}-{nth}".encode()))
     with workspace.unit_of_work() as uow:
         asset = uow.assets.add(
-            Asset(project_id=project_id, content_hash=content_hash, uri=f"/tmp/{label_class}.png")
+            Asset(
+                project_id=project_id,
+                content_hash=content_hash,
+                uri=f"/tmp/{label_class}-{nth}.png",
+            )
         )
         uow.annotations.add(
             Annotation(
                 asset_id=asset.id,
                 label_class=label_class,
                 schema_version=1,
-                geometry=BboxGeometry(x=0, y=0, width=4, height=4),
+                geometry=geometry or BboxGeometry(x=0, y=0, width=4, height=4),
                 provenance="human",
             )
         )
+
+
+#: Makes each ``_annotate`` call its own asset — see the note in that helper.
+_ANNOTATION_SEQUENCE = count()
+
+#: A class accepting both shapes, for the gate that had to learn the difference. #592
+_CAR_BOTH = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+_CAR_BOX = LabelClass(name="car", geometries=(GeometryType.BBOX,))
+
+#: The shape ``LANE`` declares, so a fixture labelling one writes what the class allows.
+_LANE_SHAPE = PolygonGeometry(points=[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0)])
 
 
 # --- versions are 1..N, monotonic, immutable ---------------------------------
@@ -472,7 +507,7 @@ def test_a_narrowing_change_is_refused_once_labels_exist_under_the_class(
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN, LANE])
-    _annotate(workspace, project.id, "lane")
+    _annotate(workspace, project.id, "lane", _LANE_SHAPE)
 
     with pytest.raises(SchemaChangeWouldOrphan, match="'lane' \\(1\\)"):
         schemas.create_version(project.id, [SIGN], allow_destructive=True)
@@ -480,36 +515,110 @@ def test_a_narrowing_change_is_refused_once_labels_exist_under_the_class(
     workspace.close()
 
 
-def test_dropping_one_geometry_of_several_is_refused_by_the_class_not_the_shape(
-    tmp_path: Path,
-) -> None:
-    """Today's behaviour, pinned deliberately: the gate over-refuses. See #592.
+def test_dropping_a_geometry_nobody_drew_is_not_refused(tmp_path: Path) -> None:
+    """#592, and the inversion of the tripwire this replaces.
 
-    ``car`` accepts both shapes and the project holds one **bbox** ``car``. Taking
-    ``polygon`` away orphans nothing — that annotation is still valid under the
-    narrower class — and it is refused anyway, by the refusal no flag overrides.
+    ``car`` accepts both shapes and every ``car`` in the project is a box. Taking
+    ``polygon`` away orphans nothing, so the refusal that has no override must not
+    fire — the gate asks about the ``(class, shape)`` pair an annotation carries,
+    not about its class.
 
-    The reason is that ``destructive_classes`` is a set of *names*, and it is that
-    set which reaches ``add_schema_version_unless_annotated``; the predicate asks
-    whether the project holds any ``car``, never whether it holds a ``car`` drawn
-    as the shape being removed. Before a class could hold a set the two questions
-    had one answer, so the name was exact. It no longer is.
-
-    Pinned rather than fixed because making it exact changes the port method and
-    the guarded-insert contract #589 landed for the TOCTOU race — argued in #592.
-    This test is the tripwire for that work: it should be *inverted* when the gate
-    learns about geometry, never quietly deleted.
+    Still destructive, and still behind ``allow_destructive``: the contract does
+    narrow. What changed is only which narrowings are *impossible*.
     """
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    both = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
-    schemas.create_version(project.id, [both])
-    _annotate(workspace, project.id, "car")  # a bbox, which the narrower class still allows
+    schemas.create_version(project.id, [_CAR_BOTH])
+    _annotate(workspace, project.id, "car")
 
-    box_only = LabelClass(name="car", geometries=(GeometryType.BBOX,))
+    with pytest.raises(DestructiveSchemaChange):
+        schemas.create_version(project.id, [_CAR_BOX])
+
+    published = schemas.create_version(project.id, [_CAR_BOX], allow_destructive=True).published
+    assert published.version == 2
+    workspace.close()
+
+
+def test_dropping_a_geometry_somebody_drew_is_still_refused(tmp_path: Path) -> None:
+    """The other half, and the one that makes the test above mean something.
+
+    Same class and same narrowing; the only difference is that the annotation
+    carries the shape being removed. A gate that stopped refusing here would have
+    traded an over-refusal for an orphan, which is the trade this must not make.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [_CAR_BOTH])
+    _annotate(workspace, project.id, "car", _LANE_SHAPE)
+
     with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
-        schemas.create_version(project.id, [box_only], allow_destructive=True)
+        schemas.create_version(project.id, [_CAR_BOX], allow_destructive=True)
     assert [s.version for s in schemas.list_versions(project.id)] == [1]
+    workspace.close()
+
+
+def test_the_refusal_counts_only_the_annotations_the_change_would_orphan(tmp_path: Path) -> None:
+    """Two boxes and one polygon under one class: the report says **1**, not 3.
+
+    The count is the blast radius somebody decides on, so counting every `car`
+    would describe a change that strands one annotation as one that strands
+    three. It is the same read the preview publishes, which is why asserting it
+    here also pins what a client is shown before it asks.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [_CAR_BOTH])
+    _annotate(workspace, project.id, "car")
+    _annotate(workspace, project.id, "car")
+    _annotate(workspace, project.id, "car", _LANE_SHAPE)
+
+    preview = schemas.preview(project.id, [_CAR_BOX])
+    assert preview.is_refused is True
+    assert [(one.label_class, one.annotations) for one in preview.blockers] == [("car", 1)]
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)") as caught:
+        schemas.create_version(project.id, [_CAR_BOX], allow_destructive=True)
+    assert [one.annotations for one in caught.value.blockers] == [1]
+    workspace.close()
+
+
+def test_removing_the_whole_class_is_refused_whatever_shape_was_drawn(tmp_path: Path) -> None:
+    """A class removed takes every shape with it, so no pair escapes the guard.
+
+    The completeness half of :func:`orphanable_shapes`: a change naming no
+    geometry enumerates every shape the class *used to* declare, which covers
+    every annotation because each was validated against that declaration. Drawn
+    as a polygon here, deliberately — a guard that enumerated only the first
+    declared shape would pass with a box and fail here.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [_CAR_BOTH, SIGN])
+    _annotate(workspace, project.id, "car", _LANE_SHAPE)
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
+        schemas.create_version(project.id, [SIGN], allow_destructive=True)
+    workspace.close()
+
+
+def test_a_narrowed_attribute_is_refused_whatever_shape_was_drawn(tmp_path: Path) -> None:
+    """An attribute change dooms the class's annotations whatever they carry.
+
+    The third arm, and the one a pair-shaped guard could most easily get wrong:
+    nothing about a required attribute is geometry-scoped, so this must enumerate
+    every shape rather than none. A guard that only ever added pairs for a
+    *removed* geometry would let this through and orphan the labels.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [_CAR_BOTH])
+    _annotate(workspace, project.id, "car", _LANE_SHAPE)
+
+    demanding = _CAR_BOTH.model_copy(
+        update={"attributes": (Attribute(name="occluded", kind="boolean", required=True),)}
+    )
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
+        schemas.create_version(project.id, [demanding], allow_destructive=True)
     workspace.close()
 
 
@@ -529,7 +638,7 @@ def test_labels_in_another_project_do_not_block_the_change(tmp_path: Path) -> No
     project = projects.create("signs")
     neighbour = projects.create("other")
     schemas.create_version(project.id, [SIGN, LANE])
-    _annotate(workspace, neighbour.id, "lane")
+    _annotate(workspace, neighbour.id, "lane", _LANE_SHAPE)
 
     assert schemas.create_version(project.id, [SIGN], allow_destructive=True).published.version == 2
     workspace.close()
@@ -540,7 +649,7 @@ def test_the_missing_flag_is_reported_before_the_labels_are_counted(tmp_path: Pa
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN, LANE])
-    _annotate(workspace, project.id, "lane")
+    _annotate(workspace, project.id, "lane", _LANE_SHAPE)
 
     with pytest.raises(DestructiveSchemaChange):
         schemas.create_version(project.id, [SIGN])
@@ -577,7 +686,7 @@ def test_a_refusal_still_names_the_class_when_the_labels_went_away(tmp_path: Pat
     project = projects.create("signs")
     schemas = _DeletingSchemaService(workspace)
     schemas.create_version(project.id, [SIGN, LANE])
-    _annotate(workspace, project.id, "lane")
+    _annotate(workspace, project.id, "lane", _LANE_SHAPE)
 
     with pytest.raises(SchemaChangeWouldOrphan, match="'lane'") as caught:
         schemas.create_version(project.id, [SIGN], allow_destructive=True)
@@ -662,7 +771,7 @@ def test_preview_names_the_classes_that_no_flag_would_get_past(tmp_path: Path) -
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN, LANE])
-    _annotate(workspace, project.id, "lane")
+    _annotate(workspace, project.id, "lane", _LANE_SHAPE)
 
     preview = schemas.preview(project.id, [SIGN])
 

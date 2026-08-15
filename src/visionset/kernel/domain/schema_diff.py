@@ -30,7 +30,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from visionset.kernel.domain.dataset import ClassCount
-from visionset.kernel.domain.schema import Attribute, LabelClass
+from visionset.kernel.domain.schema import Attribute, GeometryType, LabelClass
 
 
 class ChangeKind(StrEnum):
@@ -48,6 +48,18 @@ class SchemaChange(BaseModel):
     kind: ChangeKind
     label_class: str
     attribute: str | None = None
+    geometry: GeometryType | None = None
+    """Which shape this change is about, when it is about one.
+
+    The sibling of ``attribute`` and named for the same reason: a change that
+    touches one of a class's geometries says *which*, so a reader is not left
+    parsing ``detail``. It is also what makes the orphan gate exact —
+    :func:`orphanable_shapes` reads this to tell a change that dooms one shape
+    from one that dooms every annotation of the class.
+
+    ``None`` on every other change, including a class removed outright: that one
+    is about the class, and the shapes it takes down are all of them.
+    """
     detail: str
     """Human-readable, and used verbatim in the errors ``SchemaService`` raises."""
 
@@ -122,6 +134,61 @@ class SchemaChangePreview(BaseModel):
         return bool(self.blockers)
 
 
+type ClassShape = tuple[str, GeometryType]
+"""One class name paired with one of the shapes an annotation of it may carry.
+
+The unit the orphan gate matches on. A class name alone is *not* that unit any
+more: since a class holds a set, taking one shape away leaves every annotation
+drawn as the others perfectly valid, and refusing over the name would refuse a
+change that orphans nothing. See :func:`orphanable_shapes`.
+"""
+
+
+def orphanable_shapes(previous: Sequence[LabelClass], diff: SchemaDiff) -> frozenset[ClassShape]:
+    """Exactly which ``(class, shape)`` pairs this change would leave orphaned.
+
+    The module's one question — *does an annotation valid under the old version
+    stay valid under the new one?* — asked at the grain an annotation actually
+    has. An annotation carries one class **and one shape**, so that pair is what
+    decides it, and answering by class alone over-refuses.
+
+    Three shapes of destructive change, and they differ only in how much of a
+    class they doom:
+
+    - **a geometry removed** dooms that pair and nothing else. This is the whole
+      reason the function exists.
+    - **the class removed** dooms every annotation named it — enumerated as every
+      shape the class *used to* declare, which is complete because an annotation
+      was validated against that declaration when it was written.
+    - **an attribute narrowed** dooms every annotation of the class whatever its
+      shape, so it enumerates the same full set.
+
+    So a change is geometry-scoped exactly when it names a geometry, which is why
+    :attr:`SchemaChange.geometry` exists rather than this re-deriving the fact by
+    parsing ``detail`` or by diffing the class lists a second time. One spelling
+    of the geometry diff, in ``_class_changes``, where it already was.
+
+    ``previous`` supplies the old declarations, and a destructive change always
+    names a class that was in it — a class that was not there cannot be removed,
+    lose a shape, or narrow an attribute. A name that is somehow absent is
+    skipped rather than guessed at: an empty guard refuses nothing, and inventing
+    pairs for a class nobody declared would refuse over shapes that cannot exist.
+    """
+    declared = {label_class.name: label_class for label_class in previous}
+    shapes: set[ClassShape] = set()
+    for change in diff.changes:
+        if change.kind is not ChangeKind.DESTRUCTIVE:
+            continue
+        before = declared.get(change.label_class)
+        if before is None:
+            continue
+        if change.geometry is not None:
+            shapes.add((change.label_class, change.geometry))
+        else:
+            shapes.update((change.label_class, shape) for shape in before.geometries)
+    return frozenset(shapes)
+
+
 def diff_classes(previous: Sequence[LabelClass], proposed: Sequence[LabelClass]) -> SchemaDiff:
     """Judge what ``proposed`` does to ``previous``.
 
@@ -173,12 +240,14 @@ def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChan
         yield SchemaChange(
             kind=ChangeKind.ADDITIVE,
             label_class=after.name,
+            geometry=geometry,
             detail=f"geometry {geometry.value!r} added to class {after.name!r}",
         )
     for geometry in sorted(old_geometries - new_geometries):
         yield SchemaChange(
             kind=ChangeKind.DESTRUCTIVE,
             label_class=after.name,
+            geometry=geometry,
             detail=f"geometry {geometry.value!r} removed from class {after.name!r}",
         )
 

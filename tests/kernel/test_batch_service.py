@@ -44,6 +44,7 @@ from visionset.kernel.domain import (
     BboxGeometry,
     BySegments,
     BySize,
+    Geometry,
     GeometryType,
     LabelClass,
     PolygonGeometry,
@@ -737,14 +738,31 @@ def test_deleting_a_batch_leaves_the_annotations_alone(tmp_path: Path) -> None:
 # --- re-pinning: the one way the pin moves ------------------------------------
 
 
-def _annotate(fixture: Fixture, asset_id: UUID, label_class: str, version: int) -> None:
+#: A class accepting both shapes, and the narrowing that takes one away. #592
+_CAR_BOTH = LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+_CAR_BOX = LabelClass(name="car", geometries=(GeometryType.BBOX,))
+_A_POLYGON = PolygonGeometry(points=[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0)])
+_A_BOX = BboxGeometry(x=0, y=0, width=4, height=4)
+
+
+def _annotate(
+    fixture: Fixture,
+    asset_id: UUID,
+    label_class: str,
+    version: int,
+    geometry: Geometry | None = None,
+) -> None:
     """Put one annotation on an asset, the way the delete tests above do.
 
     Straight through the unit of work rather than ``AnnotationService``: what
     these tests need is a label sitting under a class, and routing it through the
     service would drag a job and a progress transition in with it.
     """
-    geometry = (
+    # Named at the call for a class accepting more than one shape, because since
+    # #592 the pair is what the orphan gate matches on and a default cannot know
+    # which of them a test means. The `sign`/`lane` split below is the old rule,
+    # kept for every caller that has only one shape to pick from.
+    geometry = geometry or (
         BboxGeometry(x=0, y=0, width=4, height=4)
         if label_class == "sign"
         else PolygonGeometry(points=[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0)])
@@ -837,6 +855,64 @@ def test_the_flag_does_not_help_when_this_batch_holds_the_labels(tmp_path: Path)
     with pytest.raises(SchemaChangeWouldOrphan, match="'lane' \\(1\\)"):
         fixture.batches.repin(batch_id, allow_destructive=True)
     assert fixture.batches.get(batch_id).schema_version == 2
+    fixture.close()
+
+
+def test_a_repin_dropping_a_shape_this_batch_never_drew_is_not_refused(tmp_path: Path) -> None:
+    """#592 one scope down: the re-pin gate matches the pair too.
+
+    The batch holds a `car` box; the active version takes `car`'s polygon away.
+    Nothing this batch holds stops being valid, so the refusal with no override
+    must not fire — while the change is still a narrowing and still needs the
+    flag.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOTH])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOX], allow_destructive=True)
+    # Named, not defaulted: `car` accepts both, so which one this batch drew is
+    # the entire question the test is asking.
+    _annotate(fixture, fixture.assets[0], "car", version=2, geometry=_A_BOX)
+
+    assert fixture.batches.repin(batch_id, allow_destructive=True).schema_version == 3
+    fixture.close()
+
+
+def test_a_repin_dropping_a_shape_this_batch_drew_is_still_refused(tmp_path: Path) -> None:
+    """The half that keeps the one above honest — same narrowing, doomed shape drawn."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOTH])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOX], allow_destructive=True)
+    _annotate(fixture, fixture.assets[0], "car", version=2, geometry=_A_POLYGON)
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
+        fixture.batches.repin(batch_id, allow_destructive=True)
+    assert fixture.batches.get(batch_id).schema_version == 2
+    fixture.close()
+
+
+def test_the_repin_refusal_counts_only_what_it_would_orphan(tmp_path: Path) -> None:
+    """Two boxes and one polygon in the batch: the report says **1**, not 3.
+
+    ``SchemaService``'s count has the same rule and its own test; this is the
+    batch scope, and it exists because a mutation proved the two were not the
+    same assertion — dropping the filter here left every test green while the
+    refusal described a blast radius three times the real one.
+    """
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOTH])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOX], allow_destructive=True)
+    _annotate(fixture, fixture.assets[0], "car", version=2, geometry=_A_BOX)
+    _annotate(fixture, fixture.assets[1], "car", version=2, geometry=_A_BOX)
+    _annotate(fixture, fixture.assets[0], "car", version=2, geometry=_A_POLYGON)
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)") as caught:
+        fixture.batches.repin(batch_id, allow_destructive=True)
+    assert [(one.label_class, one.annotations, one.assets) for one in caught.value.blockers] == [
+        ("car", 1, 1)
+    ]
     fixture.close()
 
 
