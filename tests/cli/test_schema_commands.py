@@ -53,12 +53,16 @@ def test_apply_creates_version_one(root: Path, tmp_path: Path) -> None:
     assert ok(root, "schema", "apply", str(schema_file(tmp_path)), "-p", "road-signs") == "1"
 
 
-def test_applying_again_creates_the_next_version(root: Path, tmp_path: Path) -> None:
-    # Versions are 1..N and none of them changes, so an unchanged document still
-    # adds one — there is no edit and no rollback.
+def test_applying_the_same_document_again_adds_nothing(root: Path, tmp_path: Path) -> None:
+    """Which is what makes this safe to leave in a provisioning script.
+
+    The version already in force is what comes back, so the caller reads the same
+    number twice rather than a history of versions that changed nothing.
+    """
     file = schema_file(tmp_path)
     ok(root, "schema", "apply", str(file), "-p", "road-signs")
-    assert ok(root, "schema", "apply", str(file), "-p", "road-signs") == "2"
+    assert ok(root, "schema", "apply", str(file), "-p", "road-signs") == "1"
+    assert len(payload(root, "schema", "list", "-p", "road-signs")["items"]) == 1
 
 
 def test_the_classes_survive_the_round_trip(root: Path, tmp_path: Path) -> None:
