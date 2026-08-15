@@ -2400,7 +2400,7 @@ test("the palette reports the tool whatever moved the class", async ({ page }) =
   await expect(page.getByTestId("tool-polygon")).toHaveAttribute("data-active", "true");
   await expect(page.getByTestId("tool-select")).toHaveAttribute("data-active", "false");
 
-  await page.getByTestId("class-row-vehicle").click();
+  await page.getByTestId("class-row-vehicle-name").click();
   await expect(page.getByTestId("tool-bbox")).toHaveAttribute("data-active", "true");
   // **Gone, not inactive** (#584). With a boxes-only class held, a polygon is not
   // something that could be drawn here, and a button offering one would answer

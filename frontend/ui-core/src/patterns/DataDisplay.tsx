@@ -313,6 +313,7 @@ export function ClassListRow({
         <button
           type="button"
           onClick={onSelect}
+          {...(testId === undefined ? {} : { "data-testid": `${testId}-name` })}
           aria-current={selected ? "true" : undefined}
           // `title` carries the full name, which is what pays for the geometry
           // words costing the name its width: at three shapes it truncates, and
@@ -366,7 +367,14 @@ export function ClassListRow({
       {swatch}
       {compact ? (
         <>
+          {/* The same `-name` handle the group variant puts on its inner button,
+              so a caller that wants to *choose this class* has one target in both
+              markups. Clicking the row's centre works today by about fourteen
+              pixels: once a picker is on the row, a longer name or a third shape
+              moves that centre onto a shape segment, and the press would switch
+              the tool while every "is it selected?" assertion still passed. */}
           <span
+            {...(testId === undefined ? {} : { "data-testid": `${testId}-name` })}
             className={cn("min-w-0 flex-1 truncate text-body", selected && "font-semibold")}
           >
             {name}

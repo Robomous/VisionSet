@@ -1207,7 +1207,11 @@ async function openProject(
  * it is.
  */
 async function activate(page: Page, name: string): Promise<void> {
-  await page.getByTestId(`class-row-${name}`).click();
+  // The **name**, not the row. Once a class accepts more than one shape its armed
+  // row carries a shape picker, and a click on the row's centre lands on whichever
+  // control happens to be there — which for a long enough name is a shape segment,
+  // switching the tool while `data-selected` below still reads true.
+  await page.getByTestId(`class-row-${name}-name`).click();
   await expect(page.getByTestId(`class-row-${name}`)).toHaveAttribute("data-selected", "true");
 }
 
