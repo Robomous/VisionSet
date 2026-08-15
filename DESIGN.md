@@ -663,7 +663,7 @@ Presentational contracts, all in `ui-core`, all data-only — no fetching, no ro
 |---|---|
 | `StatCard` | muted meta-size label above a large value, tinted surface, **no border**. Used in grids of 3–4. Optional context line under the value. |
 | `DistributionBar` | one row of a bar chart: swatch · fixed-width label · proportional bar in the class colour · right-aligned count. **All bars in one chart share a single max-value scale.** |
-| `ClassListRow` | swatch + name + a `geometry · count` secondary line. Selected = tinted background + 2px left accent rule. The whole row is the click target, and it is a real `<button>`. |
+| `ClassListRow` | swatch + name + a `geometry · count` secondary line. Selected = tinted background + 2px left accent rule, covering the row's full height whether it takes one line or two. The whole row is the click target and a real `<button>` — **except** when it carries shape chips, which are press targets and cannot nest inside a button: that row is a `role="group"` with an inner name button, addressed by the same `-name` handle in both markups. A row carrying a `refusal` never takes the group form, because only the button can be `disabled`. |
 | `EmptyState` | icon + a headline naming the space + one line of body + a verb-first CTA. Never a bare "No items". |
 | `ThumbnailGrid` | square tiles, 6px gap, `sm` radius. The last tile becomes a `+N` overflow linking onward. Missing thumbnails show a photo icon on `muted` — **never a broken-image glyph**. |
 | Chip | `primitives/Badge.tsx`, which already is one. It gains variants; it is not reimplemented. |
@@ -945,24 +945,48 @@ The page the reference design shows (#56), with measurements verified in v1's so
   has (#123) and for the same reason — a paste and a drawing class both belong to one
   pinned schema.
 
-  **On the armed row, the geometry words are the shape picker** (#584). A class accepts a
-  *set* of geometries, so arming one no longer picks the shape — and until this the only
-  place that answer lived was the tool strip at the far left of the canvas while the class
-  was chosen on the right: one decision split across the width of the picture, in a loop
-  repeated hundreds of times a job. The active shape is lit; pressing another switches the
-  tool and **never the class**, which is the same retarget rule the strip holds. Only the
-  armed row carries it, and the accessible answer and the density answer agree: a row
-  `<button>` cannot contain buttons, so a row offering a choice becomes a group — and an
-  unarmed row has no live choice, so fifty classes would otherwise mean fifty controls for
-  one decision. A class accepting a single shape shows nothing.
+  **Every row's shapes are chips, and every chip is a press target** (#584, widened here).
+  A class accepts a *set* of geometries, so arming one no longer picks the shape — and
+  until #584 the only place that answer lived was the tool strip at the far left of the
+  canvas while the class was chosen on the right: one decision split across the width of
+  the picture, in a loop repeated hundreds of times a job. One chip per **drawable**
+  geometry, drawn as the tool strip's own glyph (`GeometryIcon`, one spelling for both
+  surfaces) with the word as its accessible name.
+
+  What a press does depends on the row, and the two readings are one rule — *this class,
+  this shape*:
+
+  - On the **armed** row the active chip is lit and pressing another switches the tool and
+    **never the class**, which is the same retarget rule the strip holds. Changing shape
+    must not move somebody's labels to a class they did not choose.
+  - On an **unarmed** row no chip is lit — a chip drawn as chosen on a class nothing is
+    armed to would claim a state the canvas is not in — and pressing one arms the class
+    *with that shape*, in one press where it used to be two.
+  - Pressing the **name** arms the class with its first drawable shape.
+
+  Chips were the armed row's alone until every row could arm with one. The cost is that a
+  row carrying chips is a `role="group"` with an inner name button rather than one row-wide
+  `<button>` — HTML forbids interactive descendants inside a button — and the `-name`
+  handle addresses that button in both markups. A row carrying a **refusal** never picks:
+  it falls back to the plain button, which is the only one that can be `disabled`, so
+  principle 9 stays *explained and inert* rather than explained and still pressable.
 
   Geometry words are **display labels, never wire values** — `box`, not `bbox`; `tag`, not
   `classification_tag`. One map, `GEOMETRY_LABELS`, shared with the tool strip, which
   capitalises at its own control; lowercase, because the same word is read as a chip in a
-  row and inside a sentence. A set joins with `·`, which is what a set reads as at this
-  density. **The ceiling, stated**: at three or more shapes the class name truncates and the
-  full name is on hover — the row is 36px in a 288px panel and those characters come out of
-  the name.
+  row and inside a sentence. A set joins with `·` wherever it is still spelled as words.
+
+  **What gives way, stated**: the row's *height*. The name has a flex floor and the chips
+  wrap beneath it, left-aligned with the name and indented past the swatch, so a long name
+  gets the whole first line. It was the name that gave way once (34px of 176 — #596), then
+  the shape list, shortened to `box +3` (#598); neither is available now that each shape is
+  a control, because truncating a control is worse than truncating a label. A row is
+  therefore `min-h-9` rather than 36px exactly, and the classes region absorbs the
+  difference in the scroller it already has — see the height rule above.
+
+  **A class that declares only `classification_tag` is not in this list at all.** It has no
+  canvas gesture; the Tags section is where it is assigned. It is also excluded from the
+  count the height rule reads, so it does not size a region it has no row in.
 - **Pinned version badge** (#229, made an answer by #368): `v{n}` in the left zone names
   the version *this batch is judged against* — not the project's active one, since #229
   made the pin movable. Pressing it opens a small panel that says whether that is still

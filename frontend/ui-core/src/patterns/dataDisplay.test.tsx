@@ -192,10 +192,12 @@ describe("ClassListRow", () => {
     );
   });
 
-  it("drops the hotkey badge while the row is picking a shape", () => {
-    // The chips are press targets and keep their width, so the ~28px the badge
-    // and its gap take is bought for the name. The digit arms the class, and this
-    // row is the armed one.
+  it("keeps the hotkey badge on a row that is picking a shape", () => {
+    // It was dropped here to buy the name ~28px, on the argument that this was
+    // the *armed* row and the digit's job is to arm. Every row picks now, so that
+    // trade would take the digit off the whole list — and `hotkeyForClass` is the
+    // only place a person can read which number reaches which class. The chips
+    // wrap to a second line instead, which costs the name nothing.
     const shapes = [
       { value: "bbox", label: "box", active: true, onPick: vi.fn() },
       { value: "polygon", label: "polygon", active: false, onPick: vi.fn() },
@@ -216,10 +218,63 @@ describe("ClassListRow", () => {
         shapes={shapes}
       />,
     );
-    expect(screen.queryByText("1")).toBeNull();
-    // Every shape still offered — the badge went, the controls did not.
+    expect(screen.getByText("1")).toBeDefined();
     expect(screen.getByTestId("row-shape-bbox")).toBeDefined();
     expect(screen.getByTestId("row-shape-polygon")).toBeDefined();
+  });
+
+  /**
+   * The wrap, as far as jsdom can see it.
+   *
+   * There is no layout here, so this asserts the *mechanism* rather than the
+   * result: the chips share a wrapping container with the name, and the name has
+   * a flex floor to push against. The pixels — a long name taking the first line
+   * to itself, the chips landing under it — are a browser claim and are measured
+   * in `cycle.spec.ts`.
+   *
+   * It is worth pinning because both halves are silent when wrong. Without
+   * `flex-wrap` the chips never move; with `flex-1` instead of `grow basis-32` the
+   * name's flex basis is zero, so it shrinks to nothing and the chips never need
+   * to move either — which is #596 arriving again by a different route.
+   */
+  it("gives the name a flex floor inside a wrapping block, so the chips can move", () => {
+    render(
+      <ClassListRow
+        testId="row"
+        name="pedestrian crossing marker"
+        geometry="box · polygon"
+        color="#f00"
+        shapes={[{ value: "bbox", label: "box", active: true, onPick: vi.fn() }]}
+      />,
+    );
+    const name = screen.getByTestId("row-name");
+    expect(name.className).toContain("basis-32");
+    expect(name.className).not.toContain("flex-1");
+    const block = name.parentElement;
+    expect(block?.className).toContain("flex-wrap");
+    // The chips live in the same wrapping block, or they could not wrap out of it.
+    expect(block?.contains(screen.getByTestId("row-shape-bbox"))).toBe(true);
+  });
+
+  it("refuses to pick when the row is refused, however many shapes it is handed", () => {
+    // Principle 9 in the direction that matters: the group variant has no
+    // `disabled` to carry, so a refused row must fall through to the button that
+    // does — explained *and* inert, rather than explained and still pressable.
+    render(
+      <ClassListRow
+        testId="row"
+        name="car"
+        geometry="box"
+        color="#f00"
+        refusal="needs a polygon"
+        shapes={[{ value: "bbox", label: "box", active: false, onPick: vi.fn() }]}
+      />,
+    );
+    expect(screen.queryByTestId("row-shape-bbox")).toBeNull();
+    const row = screen.getByTestId("row");
+    expect(row.tagName).toBe("BUTTON");
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+    expect(row.getAttribute("title")).toBe("needs a polygon");
   });
 });
 

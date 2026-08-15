@@ -639,10 +639,15 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * a ~240px row — and the name is `flex-1`, so it took what was left: **34px,
      * two characters of it**. The row's identity was the first thing to go.
      *
+     * The first answer shortened the *set* to `box +3`. The set is now a row of
+     * chips, and every one of them is a press target, so shortening it is no
+     * longer available: what gives instead is the row's **height**. The name has a
+     * flex floor to push against and the chips wrap under it.
+     *
      * Here rather than in `e2e/`, and that is not a preference: the demo schema
-     * those 37 scenarios run against has no multi-shape class at all, and
-     * inflating a fixture the whole suite asserts on to make room for this would
-     * be the more expensive change. This walk publishes real classes anyway.
+     * those scenarios run against has no multi-shape class at all, and inflating a
+     * fixture the whole suite asserts on to make room for this would be the more
+     * expensive change. This walk publishes real classes anyway.
      *
      * jsdom cannot answer it — there is no layout — so the vitest half asserts the
      * *structure* (`dataDisplay.test.tsx`) and this asserts the pixels.
@@ -654,12 +659,40 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       needed: el.scrollWidth,
     }));
     expect(fit.needed).toBeGreaterThan(0);
-    // Not truncated at all: the name now takes what it needs and the shape list
-    // is what shortened. Against the old layout this reads ~34 of ~130.
+    // Not truncated at all: the name takes what it needs. Against the original
+    // layout this reads ~34 of ~130.
     expect(fit.shown).toBeGreaterThanOrEqual(fit.needed - 1);
-    // And the metadata says how many shapes without spelling them, so the width
-    // stops growing with the set.
-    await expect(page.getByTestId("class-row-pedestrian crossing")).toContainText("box +3");
+
+    // The chips went to a second line to pay for it, which is the whole
+    // mechanism — a row that stayed one line tall here would mean the name won
+    // its width by truncating a control instead.
+    const row = page.getByTestId("class-row-pedestrian crossing");
+    const rowBox = await row.boundingBox();
+    const nameBox = await crossing.boundingBox();
+    const chipBox = await page
+      .getByTestId("class-row-pedestrian crossing-shape-polygon")
+      .boundingBox();
+    expect(rowBox).not.toBeNull();
+    expect(nameBox).not.toBeNull();
+    expect(chipBox).not.toBeNull();
+    // Taller than the 36px an unwrapped row stands at.
+    expect(rowBox!.height).toBeGreaterThan(36);
+    // The chips are *below* the name, not beside it.
+    expect(chipBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height);
+    // And they start at the name's left edge — indented past the swatch, which is
+    // what makes the second line read as belonging to this row.
+    expect(Math.abs(chipBox!.x - nameBox!.x)).toBeLessThanOrEqual(1);
+
+    // Every shape is a chip, and the tag is not among them: a tag has no canvas
+    // gesture, and the Tags section below is where this class is tagged.
+    for (const shape of ["bbox", "polygon", "polyline"]) {
+      await expect(
+        page.getByTestId(`class-row-pedestrian crossing-shape-${shape}`),
+      ).toBeVisible();
+    }
+    await expect(
+      page.getByTestId("class-row-pedestrian crossing-shape-classification_tag"),
+    ).toHaveCount(0);
 
     /*
      * 3a-ter — **the annotator's own add-a-class door, which is now two calls.**

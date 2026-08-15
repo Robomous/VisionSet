@@ -210,7 +210,7 @@ describe("the notice column", () => {
     // to hold the calm readings as well, or arming the tool would make a panel
     // jump corners as its state changed.
     await open();
-    await userEvent.click(screen.getByTestId("class-row-vehicle"));
+    await userEvent.click(screen.getByTestId("class-row-vehicle-name"));
     await userEvent.click(screen.getByTestId("tool-suggest"));
 
     const panel = await screen.findByTestId("suggest-panel");

@@ -371,7 +371,7 @@ describe("the active class moves and the tool stays armed", () => {
     await open();
     await arm();
 
-    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+    await userEvent.click(screen.getByTestId("class-row-lane-area-name"));
 
     // Armed still — the panel is the tool's one voice, so its presence is the
     // armed state and its absence is the tool put away.
@@ -389,7 +389,7 @@ describe("the active class moves and the tool stays armed", () => {
     clickCanvas();
     await screen.findByTestId("suggestion-shape");
 
-    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+    await userEvent.click(screen.getByTestId("class-row-lane-area-name"));
 
     // The shape was answered under `vehicle`'s allowed kinds; accepting it as a
     // `lane-area` could write a geometry that class does not admit.
@@ -404,7 +404,7 @@ describe("the active class moves and the tool stays armed", () => {
     await open();
     await arm();
 
-    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await userEvent.click(screen.getByTestId("class-row-lane-name"));
 
     const parked = await screen.findByTestId("suggest-parked");
     expect(parked.textContent).toContain("lane");
@@ -419,7 +419,7 @@ describe("the active class moves and the tool stays armed", () => {
   it("leaves the canvas alone while parked, so the class can still be drawn", async () => {
     await open();
     await arm();
-    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await userEvent.click(screen.getByTestId("class-row-lane-name"));
     await screen.findByTestId("suggest-parked");
 
     clickCanvas();
@@ -433,10 +433,10 @@ describe("the active class moves and the tool stays armed", () => {
   it("re-arms on the way back, with no second press", async () => {
     await open();
     await arm();
-    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await userEvent.click(screen.getByTestId("class-row-lane-name"));
     await screen.findByTestId("suggest-parked");
 
-    await userEvent.click(screen.getByTestId("class-row-lane-area"));
+    await userEvent.click(screen.getByTestId("class-row-lane-area-name"));
 
     // Nobody pressed the tool again; the armed intent was remembered.
     await screen.findByTestId("suggest-idle");
@@ -446,7 +446,7 @@ describe("the active class moves and the tool stays armed", () => {
   it("offers a way out of the parked state, since the strip button is dimmed", async () => {
     await open();
     await arm();
-    await userEvent.click(screen.getByTestId("class-row-lane"));
+    await userEvent.click(screen.getByTestId("class-row-lane-name"));
     await screen.findByTestId("suggest-parked");
 
     await userEvent.click(screen.getByTestId("suggest-discard"));

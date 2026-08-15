@@ -196,24 +196,43 @@ describe("the shape picker on the armed row (#584)", () => {
     expect(onActivateClass).not.toHaveBeenCalled();
   });
 
-  it("shows no picker on a row that is not armed", () => {
-    // An unarmed row has no live choice. Fifty classes would otherwise carry
-    // fifty controls for one decision.
+  it("offers its shapes on a row that is not armed, with none of them lit", () => {
+    // The rule that inverted: a chip on an unarmed row is not a *switch*, it is
+    // "arm this class, with this shape" — one press where picking the class and
+    // then the shape was two. What must not happen is a chip drawn as chosen on a
+    // class nothing is armed to, which would claim a state the canvas is not in.
     render(mountMixed({ activeClass: "lane" }));
 
-    expect(screen.queryByTestId("class-row-car-shape-bbox")).toBeNull();
+    const box = screen.getByTestId("class-row-car-shape-bbox");
+    const polygon = screen.getByTestId("class-row-car-shape-polygon");
+    expect(box.getAttribute("aria-pressed")).toBe("false");
+    expect(polygon.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("shows no picker on an armed class that accepts only one shape", () => {
+  it("arms the class and the shape together, from an unarmed row's chip", () => {
+    const onActivateClass = vi.fn();
+    const onActivateTool = vi.fn();
+    render(mountMixed({ activeClass: "lane", onActivateClass, onActivateTool }));
+
+    screen.getByTestId("class-row-car-shape-polygon").click();
+
+    expect(onActivateClass).toHaveBeenCalledWith("car");
+    expect(onActivateTool).toHaveBeenCalledWith("polygon");
+  });
+
+  it("shows a chip for a class accepting a single shape, so every row answers", () => {
+    // It used to show none: the row spelled its geometries as words beside the
+    // name, so a one-shape class still said what it was. The chips carry that
+    // answer now, and a row with neither would have stopped giving it.
     render(mountMixed({ activeClass: "lane" }));
 
-    expect(screen.queryByTestId("class-row-lane-shape-polyline")).toBeNull();
+    expect(screen.getByTestId("class-row-lane-shape-polyline")).toBeTruthy();
   });
 
-  it("counts drawable shapes, so a tag beside a box is not a second tool", () => {
+  it("offers drawable shapes only, so a tag beside a box is not a second chip", () => {
     // A class may accept a tag *and* a box. The tag has no canvas gesture, so it
-    // is not a choice the canvas could answer — one drawable shape means no
-    // picker, exactly as if the tag were not declared.
+    // is not a choice the canvas could answer — and the Tags section is where it
+    // is assigned. One chip, exactly as if the tag were not declared.
     const tagAndBox = {
       ...MIXED,
       classes: [
@@ -222,8 +241,19 @@ describe("the shape picker on the armed row (#584)", () => {
     } as unknown as AnnotationSchema;
     render(mountMixed({ schema: tagAndBox }));
 
-    expect(screen.queryByTestId("class-row-car-shape-bbox")).toBeNull();
+    expect(screen.getByTestId("class-row-car-shape-bbox")).toBeTruthy();
     expect(screen.queryByTestId("class-row-car-shape-classification_tag")).toBeNull();
+  });
+
+  it("leaves a class that can only be tagged out of the list altogether", () => {
+    // `weather` is `classification_tag` and nothing else: no canvas gesture, so no
+    // row here — and, because the height rule reads the same count, no share of
+    // the region either.
+    render(mountMixed());
+
+    expect(screen.queryByTestId("class-row-weather")).toBeNull();
+    // car, lane. Not weather.
+    expect(screen.getByTestId("class-count").textContent).toBe("2 classes");
   });
 
   it("lights the shape that would actually be drawn, not the raw preference", () => {
