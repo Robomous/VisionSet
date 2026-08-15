@@ -690,8 +690,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const row = page.getByTestId("class-row-pedestrian crossing");
     const rowBox = await row.boundingBox();
     const nameBox = await crossing.boundingBox();
+    // The **first** chip, and that is the whole of the assertion below: the chips
+    // are a row, so the second one starts 28px in (a 24px chip and a 4px gap) and
+    // comparing it against the name's left edge measures the gap rather than the
+    // indent.
     const chipBox = await page
-      .getByTestId("class-row-pedestrian crossing-shape-polygon")
+      .getByTestId("class-row-pedestrian crossing-shape-bbox")
       .boundingBox();
     expect(rowBox).not.toBeNull();
     expect(nameBox).not.toBeNull();
