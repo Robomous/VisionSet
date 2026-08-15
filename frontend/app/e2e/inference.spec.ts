@@ -365,3 +365,42 @@ test("a transfer and a re-read are two records on one row", async ({ page }) => 
   await expect(page.getByTestId("integrity-progress-prose")).toHaveText("3 of 9 files · 33%");
   await expect(page.getByTestId("download-progress")).toHaveCount(0);
 });
+
+test("a model whose weights have to be asked for says so before it can be downloaded", async ({
+  page,
+}) => {
+  // Here rather than only in `inference.test.tsx` because the claim is about what
+  // a person meets on the way to a download: the requirement has to be legible in
+  // the real dialog, above the real size line, before the control that would
+  // fetch anything exists. jsdom proves the conditional; this proves the journey.
+  await serveApi(page, () => connection("ready", null));
+  await page.route("**/api/inference/download-size*", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        model_id: "facebook/sam3",
+        model_revision: "3c879f39826c281e95690f02c7821c4de09afae7",
+        total_bytes: 6_895_093_624,
+        file_count: 12,
+      },
+    }),
+  );
+  await openInference(page);
+
+  await page.getByTestId("new-connection").click();
+  await page.getByTestId("choose-local").click();
+  // The form opens on a model anybody can fetch, so there is nothing to say yet.
+  await expect(page.getByTestId("model-access")).toHaveCount(0);
+
+  await page.getByTestId("connection-model").click();
+  await page.getByRole("option", { name: /facebook\/sam3/ }).click();
+
+  const access = page.getByTestId("model-access");
+  await expect(access).toBeVisible();
+  await expect(access).toContainText("SAM License");
+  await expect(access).toContainText("HF_TOKEN");
+  await expect(access.getByRole("link", { name: "Request access" })).toHaveAttribute(
+    "href",
+    "https://huggingface.co/facebook/sam3",
+  );
+});
